@@ -7,6 +7,8 @@ the planned primitives in order from the revision the intent's commit returned, 
 does not land.
 
 - **First refusal stops** (rule 3): committed steps stand, and the intent records the stop boundary.
+  A partial stale stop with no known fresh-call continuation stays ACTIVE for explicit ``resolve`` (E137), never an
+  automatic retry. The existing E133 call-again paths still end their original intent.
 - **A later STALE_REVISION** is retried once (rule 4; R5-1, all five conditions): the step is MECHANICAL or
   POLICY_RESOLVED, the stage's effective class is not judgment-bearing (rule 5: a judgment is never replayed, nor any
   step of a stage that carries one), the bound legality digest is unchanged, the caller's authority still holds (its
@@ -432,7 +434,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                 if drift is not None:  # rule 6 before rule 4: the stage never runs on under a policy it did not bind
                     return _stop(c, intent, n, step["primitive"], drift, outputs)
                 if not retry:
-                    named = _call_again(intent, c, refusal, bool(outputs))
+                    named = _call_again(intent, c, refusal)
                     return _stop(c, intent, n, step["primitive"], named, outputs)
                 retried, rev = True, _revision(c)
             except errors.HarnessLaunchFailed as failed:
@@ -452,15 +454,22 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     return _payload(c, intent, outputs)
 
 
-def _call_again(intent: str, c: Call, refusal: errors.StaleRevision, committed: bool) -> errors.StaleRevision:
-    """A stale step of a stage that may not retry it (rule 5), naming the way out where a call is known to go on from
-    where it stopped (E133), and otherwise only the refusal: what is committed stands either way."""
+def _call_again(intent: str, c: Call, refusal: errors.StaleRevision) -> errors.StaleRevision:
+    """A stale step that may not retry: name E133's known fresh-call continuation, or retain a partial intent for
+    explicit resolve (E137). Committed steps stand; judgment is never replayed automatically."""
     si = c.engine.stage_intent(intent)
-    if si["tool"] not in SA.STARTS_AT:
-        return refusal
     unit = c.engine.store.current()["work"].get(si["subject"]["id"]) or {}
-    way = SA.way_on(si["tool"], si["arguments"], unit, committed=committed)
+    way = (SA.way_on(si["tool"], si["arguments"], unit, committed=bool(si["steps"]))
+           if si["tool"] in SA.STARTS_AT else None)
     if way is None:
+        from aew.surface.run import _stale
+
+        if 0 < len(si["steps"]) < len(si["plan"]) and _stale(c.engine, c.ctx) is None:
+            return errors.StaleRevision(
+                f"{refusal.message}. The committed steps stand. Call resolve with subject {intent}, choice continue "
+                "and your rationale on the current revision to recheck and run only the remaining steps, or choice "
+                "abandon to leave them undone. Nothing is retried automatically",
+                **{**refusal.details, "reason": "resolve_stage", "resolve": {"tool": "resolve", "subject": intent}})
         return refusal
     return errors.StaleRevision(f"{refusal.message}: {way['say']}",
                                 **{**refusal.details, "reason": "call_again", "call_again": way["tool"]})
@@ -580,7 +589,9 @@ def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, ou
     done = len(si["steps"])
     at = done + 1 if done < len(si["plan"]) else done
     _end(c, lambda r: c.engine.stage_stop(token=c.token(), expect_rev=r, intent=intent, n=at, boundary=journal or where,
-                                          code=exc.code, message=redact(exc.message), reason=exc.details.get("reason")))
+                                          code=exc.code, message=redact(exc.message), reason=exc.details.get("reason"),
+                                          await_resolution=exc.details.get("reason") == "resolve_stage"
+                                          and isinstance(exc, errors.StaleRevision)))
     return _payload(c, intent, outputs)
 
 

@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 from aewflow import (
+    NOT_THE_DEFAULT_CAP,
     SUBTRACT_PATCH,
     assign,
     create_planned_ticket,
@@ -34,6 +35,7 @@ from aewflow import (
     prepare_and_validate,
     review,
     sample_project,
+    set_mutating_concurrency,
     stand_in_containment,
     to_commit_ready,
     verify,
@@ -42,7 +44,7 @@ from conftest import Project, git, run_aew
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
 from test_stage_runner import CTX, call, intent, intervene, launching
-from test_stages_ticket import _declared, _effects, _observe, _twins
+from test_stages_ticket import DRAFT, _declared, _effects, _observe, _twins
 from test_validation_checks import CONTAINED, SMOKE, policy
 
 import aew.operator
@@ -57,7 +59,7 @@ from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
 from aew.harness import containment, procs
 from aew.surface import availability as SA
-from aew.surface import projection
+from aew.surface import projection, stage
 from aew.surface import run as R
 from aew.surface.projection import project
 from aew.util import dump_yaml, load_yaml
@@ -113,9 +115,9 @@ def checks_mode(p: Project) -> None:
     policy(p, checks=SMOKE, post=["smoke", "guardrails"])
 
 
-def verifying(p: Project, tmp_path: Path) -> tuple[str, str]:
+def verifying(p: Project, tmp_path: Path, *, scope: tuple[str, ...] = ("calc/**", "tests/**")) -> tuple[str, str]:
     """A VERIFY_PENDING Ticket and its Ticket-scope verification report, not accepted yet."""
-    wid = create_planned_ticket(p, tmp_path)
+    wid = create_planned_ticket(p, tmp_path, scope=scope)
     implement(assign(p, wid))
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     p.lead("review", "ingest", wid, "--evidence", review(p, wid))
@@ -123,9 +125,10 @@ def verifying(p: Project, tmp_path: Path) -> tuple[str, str]:
     return wid, verify(p, wid)
 
 
-def prepared(p: Project, tmp_path: Path) -> tuple[str, str, dict[str, Any]]:
+def prepared(p: Project, tmp_path: Path, *,
+             scope: tuple[str, ...] = ("calc/**", "tests/**")) -> tuple[str, str, dict[str, Any]]:
     """`ticket_prepare` run: the Ticket, its custodian and the stage's result."""
-    wid, report = verifying(p, tmp_path)
+    wid, report = verifying(p, tmp_path, scope=scope)
     out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
     assert out["ok"], out["stopped"]
     held = lease(p)
@@ -833,6 +836,209 @@ def test_a_stage_stopped_stale_says_to_call_it_again_and_that_call_goes_on(tmp_p
     out = call(p, "ticket_prepare", work_id=wid)
     assert out["ok"], out["stopped"]
     assert control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("stales", [1, 2])
+def test_a_draft_interrupted_by_another_tickets_registration_has_a_typed_continuation(
+        tmp_path, contained, custody, monkeypatch, stales):
+    """E137: the created Ticket stands; explicit resolve proposes its plan without creating another Ticket."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    _other, custodian, _prepared = prepared(p, tmp_path)
+    seen = intervene(monkeypatch, "plan.propose", times=stales,
+                     before=lambda c: c.engine.custody_register(custody[custodian]))
+    stopped = call(p, "ticket_draft", **DRAFT)
+    assert not stopped["ok"] and stopped["stopped"]["error"]["code"] == "STALE_REVISION"
+    si = intent(p, stopped)
+    assert [s["primitive"] for s in si["steps"]] == ["work.create"]
+    wid = si["subject"]["id"]
+    assert control(p)["work"][wid]["plans"] == []
+    assert si["status"] == SI.ACTIVE, "a terminal partial draft cannot be continued by resolve"
+    assert si["stopped"]["error"]["reason"] == "resolve_stage"
+    assert stopped["stopped"]["error"]["details"]["resolve"] == {"tool": "resolve", "subject": si["id"]}
+    for _ in range(stales):
+        projection.clear_cache()
+        [decision] = [d for d in project(engine(p), CTX, wid)["decisions_required"]
+                      if d["decision"] == "RESOLVE_STAGE"]
+        out = call(p, decision["tool"], **{**decision["arguments"], "choice": "continue",
+                                          "rationale": "finish the draft, keeping its created Ticket"})
+        if not out["ok"]:
+            assert intent(p, out)["status"] == SI.ACTIVE and len(intent(p, out)["steps"]) == 1
+    assert out["ok"], out["stopped"]
+    assert intent(p, out)["status"] == SI.COMPLETED
+    assert [s["primitive"] for s in intent(p, out)["steps"]] == ["work.create", "plan.propose"]
+    assert len(control(p)["work"][wid]["plans"]) == 1
+    assert len(seen) == stales + 1 and seen == sorted(set(seen))
+    assert lease(p)["custodian"] == custodian
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("change", ["abandon", "stale_revision", "policy_drift", "takeover"])
+def test_a_retained_stale_stage_still_requires_current_authority_policy_and_explicit_choice(
+        tmp_path, contained, custody, monkeypatch, change):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    _other, custodian, _prepared = prepared(p, tmp_path)
+    intervene(monkeypatch, "plan.propose", before=lambda c: c.engine.custody_register(custody[custodian]))
+    stopped = call(p, "ticket_draft", **DRAFT)
+    si = intent(p, stopped)
+    assert si["status"] == SI.ACTIVE and len(si["steps"]) == 1
+    rev = p.rev()
+    if change == "policy_drift":
+        set_mutating_concurrency(p, NOT_THE_DEFAULT_CAP)
+        assert engine(p).policy_digests()["legality_digest"] != si["binding"]["legality_digest"]
+    elif change == "takeover":
+        take_over(engine(p))
+    before = p.rev()
+    out = call(p, "resolve", subject=si["id"], choice="abandon" if change == "abandon" else "continue",
+               rationale="an explicit new decision", expect_rev=rev - 1 if change == "stale_revision" else before)
+    if change == "abandon":
+        assert out["ok"] and intent(p, out)["status"] == SI.ABANDONED
+    else:
+        assert not out["ok"] and p.rev() == before
+        assert out["stopped"]["error"]["code"] == {
+            "stale_revision": "STALE_REVISION", "policy_drift": "STALE_POLICY",
+            "takeover": "STALE_AUTHORITY"}[change]
+        assert engine(p).stage_intent(si["id"])["status"] == SI.ACTIVE
+    assert control(p)["work"][si["subject"]["id"]]["plans"] == []
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize(("name", "promoted", "dispatch_no"), [
+    ("ticket_start", False, 1), ("ticket_start", True, 1),
+    ("ticket_request_review", False, 1), ("ticket_request_review", True, 1),
+    ("ticket_request_review", True, 2), ("ticket_request_verification", False, 1)])
+def test_custody_registration_between_ticket_stage_steps_never_replays_a_judgment(
+        tmp_path, contained, custody, monkeypatch, name, promoted, dispatch_no):
+    """Real other-Ticket registration: policy retry, or explicit resolve past the committed dispatch/acceptance."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    set_mutating_concurrency(p, 2)
+    _other, custodian, _prepared = prepared(p, tmp_path, scope=("calc/core.py", "tests/test_subtract.py"))
+    lab = launching(p, tmp_path, monkeypatch)
+    lab.script("default", [{"do": "hang"}])
+    try:
+        wid = create_planned_ticket(p, tmp_path, scope=("calc/other.py", "tests/test_other.py"))
+        args: dict[str, Any] = {"work_id": wid}
+        if promoted:
+            args["execution"] = {"profile": "standard"}
+        if name != "ticket_start":
+            implement(assign(p, wid), {"calc/other.py": "OTHER = 1\n"})
+        if name == "ticket_request_verification":
+            p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+            args["review_evidence"] = review(p, wid)
+        if dispatch_no == 2:
+            p.lead("work", "staff", wid, "--review", "code_reviewer", "--review", "security_reviewer",
+                   "--reason", "two review obligations")
+        primitive = "work.transition" if name == "ticket_start" else "invoke.create.mutating"
+        seen = intervene(monkeypatch, primitive, times=dispatch_no,
+                         before=lambda c: c.engine.custody_register(custody[custodian])
+                         if len(seen) == dispatch_no else None)
+        out = call(p, name, **args)
+        needs_judgment = promoted or name == "ticket_request_verification"
+        if needs_judgment:
+            assert not out["ok"] and len(seen) == dispatch_no, out["stopped"]
+            si = intent(p, out)
+            assert si["status"] == SI.ACTIVE and not si["retried_after_stale_revision"]
+            committed = list(si["steps"])
+            projection.clear_cache()
+            [decision] = [d for d in project(engine(p), CTX, wid)["decisions_required"]
+                          if d["decision"] == "RESOLVE_STAGE"]
+            out = call(p, "resolve", **{**decision["arguments"], "choice": "continue",
+                                        "rationale": "finish only the uncommitted steps"})
+            assert intent(p, out)["steps"][:len(committed)] == committed
+        assert out["ok"], out["stopped"]
+        si = intent(p, out)
+        assert si["status"] == SI.COMPLETED and len(seen) == dispatch_no + 1
+        if dispatch_no == 2:
+            assert len([s for s in si["steps"] if s["primitive"] == "invoke.create.mutating"]) == 2
+        assert len({s["key"] for s in si["steps"]}) == len(si["plan"])
+        assert control(p)["work"][wid]["state"] == {
+            "ticket_start": "RUNNING", "ticket_request_review": "REVIEW_PENDING",
+            "ticket_request_verification": "VERIFY_PENDING"}[name]
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+@pytest.mark.parametrize("mode", ["checks", "verifier"])
+def test_prepare_follows_the_real_same_ticket_registration_after_grant(tmp_path, contained, custody, monkeypatch, mode):
+    """Once the granting lock is released, registration stales the next step, never the committed preparation."""
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    lab.script("default", [{"do": "hang"}])
+    if mode == "checks":
+        checks_mode(p)
+    seen = []
+
+    real = stage.STEP_RUNNERS["integrate.prepare"]
+
+    def prepare(c, args, rev):
+        out = real(c, args, rev)
+        custodian = lease(p)["custodian"]
+        binding = SI._STEP.set(None)  # the worker has its own context, not the Lead's armed prepare step
+        try:
+            seen.append(c.engine.custody_register(custody[custodian])["revision"])
+        finally:
+            SI._STEP.reset(binding)
+        return out  # deliberately keep prepare's now-stale returned revision
+
+    monkeypatch.setitem(stage.STEP_RUNNERS, "integrate.prepare", prepare)
+    try:
+        wid, report = verifying(p, tmp_path)
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert len(seen) == 1
+        if mode == "verifier":
+            assert not out["ok"]
+            assert out["stopped"]["error"]["details"]["call_again"] == "integration_publish"
+            out = call(p, "integration_publish", work_id=wid,
+                       prepared_candidate=control(p)["work"][wid]["integration"]["candidate"])
+        assert out["ok"], out["stopped"]
+        assert intent(p, out)["status"] == SI.COMPLETED
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+@pytest.mark.parametrize("times", [1, 3])
+def test_prepare_close_registration_drift_is_bounded_and_resolvable(tmp_path, contained, custody, monkeypatch, times):
+    """Bookkeeping follows drift without replaying prepare; exhaustion keeps the existing typed resolution."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    real = Engine.stage_close
+    seen = []
+
+    def close(e, **kw):
+        seen.append(kw["expect_rev"])
+        if len(seen) <= times:
+            e.custody_register(custody[lease(p)["custodian"]])
+        return real(e, **kw)
+
+    monkeypatch.setattr(Engine, "stage_close", close)
+    wid, report = verifying(p, tmp_path)
+    out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+    si = intent(p, out)
+    steps = list(si["steps"])
+    if times == 3:
+        assert si["status"] == SI.ACTIVE and out["result"]["left_active"]["code"] == "STALE_REVISION"
+        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="close the finished preparation")
+    assert out["ok"], out["stopped"]
+    assert intent(p, out)["status"] == SI.COMPLETED and intent(p, out)["steps"] == steps
+    assert len(seen) == min(times + 1, 3)
+    assert_control_invariants(p)
+
+
+def test_registration_rechecks_revoked_custody_in_its_locked_transaction(tmp_path, contained, custody):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, custodian, _out = prepared(p, tmp_path)
+    e = engine(p)
+    e.integrate_defer(token=p.token, expect_rev=p.rev(), work_id=wid, reason="release before worker registers")
+    rev = p.rev()
+    with pytest.raises((PermissionDenied, StaleAuthority)):
+        e.custody_register(custody[custodian])
+    assert p.rev() == rev and "worker" not in control(p)["invocations"][custodian]
     assert_control_invariants(p)
 
 

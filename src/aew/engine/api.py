@@ -1096,9 +1096,9 @@ class Engine:
                                  auto_run=auto_run)
 
     def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
-                                 code=code, message=message, reason=reason)
+                                 code=code, message=message, reason=reason, await_resolution=await_resolution)
 
     def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
         return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)

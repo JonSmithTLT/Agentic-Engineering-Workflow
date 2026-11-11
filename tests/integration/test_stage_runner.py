@@ -225,7 +225,8 @@ def rule_no_replay(p, tmp_path, monkeypatch):
     out = call(p, "probe_judged", work_id=wid)
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision" and len(seen) == 1
     si = intent(p, out)
-    assert si["effective_class"] == "JUDGMENT_BEARING" and si["status"] == "STOPPED_AT_BOUNDARY"
+    assert si["effective_class"] == "JUDGMENT_BEARING" and si["status"] == SI.ACTIVE
+    assert si["stopped"]["error"]["reason"] == "resolve_stage"  # renewed judgment, never an automatic replay
     assert not si["retried_after_stale_revision"] and load_control(p.root)["work"][wid]["state"] == "READY"
 
 
@@ -305,7 +306,8 @@ def test_a_stale_retry_happens_at_most_once(project, tmp_path, monkeypatch):
     out = call(p, "probe_start", work_id=wid)
     assert len(seen) == 2 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
     si = intent(p, out)
-    assert si["status"] == "STOPPED_AT_BOUNDARY" and len(si["steps"]) == 1
+    assert si["status"] == SI.ACTIVE and len(si["steps"]) == 1
+    assert si["stopped"]["error"]["reason"] == "resolve_stage"
     assert_control_invariants(p)
 
 
@@ -332,7 +334,8 @@ def test_a_stale_retry_needs_the_action_still_available(project, tmp_path, monke
     seen = intervene(monkeypatch, "work.assign", before=assign_first)
     out = call(p, "probe_start", work_id=wid)
     assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
-    assert intent(p, out)["status"] == "STOPPED_AT_BOUNDARY"
+    assert intent(p, out)["status"] == SI.ACTIVE
+    assert intent(p, out)["stopped"]["error"]["reason"] == "resolve_stage"
 
 
 def before_the_retry_decision(monkeypatch, act: Callable[[Any], None]) -> list[int]:

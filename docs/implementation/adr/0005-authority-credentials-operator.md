@@ -235,3 +235,34 @@ behaviour above stands.
 - **What AEW shows.** A refusal for a missing credential gives the per-session hidden-input forms, rendered by
   `aew.lead_credential` (their one owner); no text offers a persistent variable or a startup-file line.
 - **Known limit.** `--invocation-token` (scripted roles) still takes a value; the register tracks it.
+
+## Amendment 2026-11-10 — dashboard auto-start from the operator's `aew opencode` session
+
+The operator's no-code decision of 2026-11-07 (design workspace efc7980, including its pointers), the operator's
+later-open ruling, and the designer's provenance ruling of 2026-11-10 (design workspace `6a4fcf9`) amend the dashboard
+portion of the 2026-10-05 amendment above:
+
+- **One no-code issuer.** At the operator's terminal with a display, `aew opencode` starts an in-process dashboard
+  service, after the Lead seat is held and validated and before the TUI. The terminal start authorizes its first
+  browser session without a typed-back code. It records `authorized_by: operator-start`; `serve` and `open` retain
+  their typed-back codes and record `operator-tty`. Both `SessionTable.mint` and `Service.issue` require an explicit
+  provenance keyword. `operator-start` is not an operator confirmation and grants only `dashboard.read`.
+- **Memory and lifetime.** For auto-start, the session table lives in the `aew opencode` host process, outside the
+  contained Lead's sandbox, and ends with that session. The standalone `serve` process still owns its own table.
+  No dashboard session secret enters control state or a file. The existing session listing reports provenance.
+- **Delivery.** Auto-start opens the first URL directly in the browser, never printing, logging or saving it in AEW.
+  The bootstrap remains 256 bits, single-use, valid at most ten minutes; the cookie is never a command-line value.
+  Both platforms may expose the bootstrap in the browser's argv; Windows ShellExecute avoids only AEW's child argv.
+  The session's dashboard logger has a NullHandler and propagation off, so errors do not write over the TUI.
+- **No alternative authorization input.** The 2026-10-05 amendment's blanket sentence applies to the typed-code
+  `serve`/`open` paths; the operator's own terminal start is this one exception, not a flag, environment variable,
+  stdin input, file or API parameter that authorizes a mint. `AEW_DASHBOARD_AUTOSTART=off` only disables the start.
+  The same dev-grade Lead-session check as endpoint auto-start refuses it (environment and Linux ancestry).
+- **Reuse and later sessions.** A running dashboard is reused without minting. An auto-started dashboard accepts no
+  later `open` on either platform: the single no-console check refuses it, naming the usable next step of ending
+  `aew opencode` and running `aew dashboard serve` in a terminal of its own. `server.json` records `opens: false`
+  so `serve` beside it gives that same step. No hidden console or G3 approval route is added here.
+- **Nonfatal starts.** No display means no auto-start and a line naming `serve`. The usual port is 4280, never moved
+  automatically; an occupied port skips the dashboard and offers `aew dashboard serve --port 0` to explicitly request
+  an ephemeral port (or a free port the operator chooses). A dashboard failure never fails the Lead session. No write
+  path is added; a write route bypassing adopt or the operator endpoint reopens the no-code decision.

@@ -29,7 +29,7 @@ from legality_modules import legality_modules
 from notifier import Console, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
-from test_stage_runner import PROBES, intervene
+from test_stage_runner import PROBES, call, intent, intervene
 from test_stages_request import implemented, seed_anomaly
 
 from aew.engine import outbox
@@ -209,6 +209,46 @@ def hot_intents(project: Any) -> dict[str, Any]:
 def spooled(project: Any) -> list[dict[str, Any]]:
     path = event_spool.file_of(project.root / ".aew", event_spool.BROKER)
     return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+
+
+# ---------------------------------------------------------------------------------------------- the order (E227)
+
+
+DRAFT = {"title": "Add subtract()", "risk_class": 1, "scope": ["calc/**", "tests/**"],
+         "goal": ["calc.core.subtract(5, 3) == 2 through the public module"]}
+
+
+def test_the_loop_starts_the_critical_ticket_first_whatever_the_ids(p):
+    """Register E227, through the real tick (review of the priority PR, m4): two Tickets drafted through
+    `ticket_draft`, the later one critical; the loop projects them from the committed state, ranks them by that state
+    and takes the critical one first, though its id is higher. Each Ticket is offered one bookkeeping step, so Walk
+    runs it with no confirmation."""
+    ids = []
+    for extra in ({}, {"priority": "critical", "priority_reason": "the release waits on it"}):
+        out = call(p, "ticket_draft", **DRAFT, **extra)
+        assert out["ok"], out.get("stopped")
+        ids.append(intent(p, out)["subject"]["id"])
+    normal, critical = ids
+    assert normal < critical
+
+    def projector(engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        _, real = L._project_all(engine, ctx, state)
+        subjects = {str(unit["subject"]) for unit in real}
+        assert subjects >= {normal, critical}, subjects
+        offered = {str(unit["subject"]): [action("probe_notes", {"expect_rev": rev, "note": unit["subject"]})]
+                   for unit in real}
+        return projection("project", rev), [projection(s, rev, actions=offered[s]) for s in offered]
+
+    took: list[str] = []
+
+    def executor(engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        took.append(arguments["note"])
+        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
+
+    mode(p, "walk")
+    loop(p, projector, executor=executor).activate()
+    assert took and took[0] == critical, took
 
 
 # ---------------------------------------------------------------------------------------------- Walk and confirmation
@@ -511,8 +551,8 @@ def bounded(project: Any, command: list[str]) -> None:
 
 def _held_ahead(tmp_path: Path, held: str) -> tuple[Any, str, str | None]:
     """A Run project whose T-0002 is RUNNING with its implementer reported, and a stop the loop meets first: an
-    earlier READY Ticket (no profile sets deadline_s, so its start stops at NO_HARD_DEADLINE), or an open high
-    anomaly."""
+    earlier READY Ticket (no profile sets deadline_s, so its start stops at NO_HARD_DEADLINE), an open high
+    anomaly, or (``own_stop``) none here: the test's projector holds the loop on the Ticket's own blocker."""
     sp = sample_project(tmp_path)
     command, _ = recorder(tmp_path)
     policy_text(sp, command=command)
@@ -525,26 +565,35 @@ def _held_ahead(tmp_path: Path, held: str) -> tuple[Any, str, str | None]:
     return sp, wid, first
 
 
-@pytest.mark.parametrize("held", ["ticket_ahead", "project_anomaly"])
+@pytest.mark.parametrize("held", ["ticket_ahead", "project_anomaly", "own_stop"])
 def test_a_loop_held_on_a_told_stop_ahead_of_the_ticket_leaves_its_run_end_to_the_lead(tmp_path, held):
     """Quick check of E228's PR, QC-M1 (the reviewer's q2): the loop is held, every activation, on a stop it already
     told (the same occurrence), ahead of the Ticket's `ticket_request_review`, so it never takes the run in until the
-    Lead acts. ``will_ingest`` says so, and the queue keeps the run's end for the Lead."""
+    Lead acts. ``will_ingest`` says so, and the queue keeps the run's end for the Lead. The second quick check's
+    QC2-n1: a told stop about the Ticket itself holds it the same way, though its own projection offers the step."""
     sp, wid, first = _held_ahead(tmp_path, held)
     e = Engine.discover(sp.root)
     spy = Spy()
     ep = operator_endpoint.OperatorEndpoint(e, console=Console(), dev=True, timeout=10)
     ep.start()
+
+    def own_blocker(engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        return projection("project", rev), [projection(wid, rev, state="RUNNING", blockers=[
+            {"code": "FILES_CONFLICT", "message": "held"}])]
+
     try:
-        lp = loop(sp, executor=spy)
+        lp = loop(sp, own_blocker if held == "own_stop" else None, executor=spy)
         s1 = lp.activate()
         r1 = recorded(sp)
         s2 = lp.activate()
         r2 = recorded(sp)
     finally:
         ep.close()
-    assert s1.subject != wid and s1 == s2, (s1, s2)
-    if first:
+    assert s1 == s2, (s1, s2)
+    if held == "own_stop":
+        assert s1.subject == wid and s1.code == L.BLOCKED, s1
+    elif first:
         assert s1.subject == first and s1.code == L.NO_HARD_DEADLINE, s1
     else:
         assert s1.code == L.ANOMALY_HIGH, s1

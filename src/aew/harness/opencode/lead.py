@@ -32,6 +32,7 @@ can then read; the command says so.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -42,13 +43,13 @@ import sqlite3
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 from aew import process_kind
 from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible, UsageError
-from aew.harness import agentenv, lead_broker, operator_autostart
+from aew.harness import agentenv, dashboard_autostart, lead_broker, operator_autostart
 from aew.harness.opencode import capabilities, login, projection
 from aew.harness.opencode.adapter import binary_command
 
@@ -250,6 +251,9 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
         notes.append("No AEW credential and no provider key is in it unless passed with --provider-env.")
     notes.append(f"A session starts this project's operator endpoint in the background unless one is live; "
                  f"{operator_autostart.OFF_ENV}=off turns that off.")
+    notes.append(f"At your terminal with a display, the dashboard starts for this session and opens its first browser "
+                 f"session without a typed-back code; {dashboard_autostart.OFF_ENV}=off turns that off. A running "
+                 "dashboard is reused without issuing; later opens against an auto-started server refuse.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
     config = (projection.lead_config(guide, push_wake=wakes) if contained_here()
               else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
@@ -294,15 +298,19 @@ def keyless_certified(policy: Mapping[str, Any] | None, keys: Mapping[str, Any],
 def certified_models(policy: Mapping[str, Any] | None, providers: Mapping[str, Any]) -> dict[str, list[str]]:
     """Each keyless certificate provider's models, from the execution policy's profiles that pin it (E123 quick check,
     Q3): the contained Lead doesn't load the operator's OpenCode configuration, and OpenCode's catalog doesn't know a
-    provider of the policy's own id, so without these the Lead would have no model of it to choose. A profile whose
-    model maps to no pair is skipped: the policy's own check refuses it."""
+    provider of the policy's own id, so without these the Lead would have no model of it to choose. Only the profiles
+    of the Lead's own harness: another harness may name the same model differently (E123 quick check, N2). A profile
+    whose model maps to no pair is skipped: the policy's own check refuses it."""
     from aew.errors import AEWError
     from aew.harness import registry
+    from aew.harness.opencode.adapter import OpenCodeAdapter
     from aew.policy import execution as X
 
     out: dict[str, list[str]] = {}
     profiles = (policy or {}).get("profiles") or {}
     for name in sorted(profiles):
+        if X.profile_harness(dict(policy or {}), profiles[name]) != OpenCodeAdapter.name:
+            continue
         try:
             pair = X.model_pair(dict(policy or {}), name, registry.model_identity)
         except AEWError:
@@ -310,6 +318,15 @@ def certified_models(policy: Mapping[str, Any] | None, providers: Mapping[str, A
         if pair.provider in providers and pair.model not in out.setdefault(pair.provider, []):
             out[pair.provider].append(pair.model)
     return out
+
+
+def _unpinned(provider: str) -> str:
+    """A certificate provider no profile of the Lead's harness pins a model of (E123 quick check, N3): the Lead's
+    configuration names only the models the profiles pin for it, so it would offer none."""
+    return (f"the {provider} provider has a client certificate and an upstream, but no OpenCode profile pins a model "
+            f"of it, so "
+            f"the Lead would have none to choose and it is not relayed: pin one in a profile "
+            f"(profiles.<name>.provider: {provider}, with its model), then start `aew opencode` again")
 
 
 def _unrelayed(engine: Any) -> None:
@@ -342,12 +359,12 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         _tools_before_the_tui()
         offer = _switch_offers(engine)
         stages.mark("logins")
-        with operator_autostart.for_session(engine, provider_env=provider_env):
+        with session_services(engine, provider_env=provider_env) as on_ready:
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
                                           keep_seat=keep_seat,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
                                                       push_wake=pushes_wakes(engine)), contained=lead,
-                                          with_token=offer.apply)
+                                          with_token=offer.apply, on_ready=on_ready)
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -365,10 +382,22 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(line)
     _unrelayed(engine)
     offer = _switch_offers(engine)
-    with operator_autostart.for_session(engine, provider_env=provider_env):
+    with session_services(engine, provider_env=provider_env) as on_ready:
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker, with_token=offer.apply)
+                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready)
     return _outcome(out, version)
+
+
+@contextlib.contextmanager
+def session_services(engine: Any, *, provider_env: list[str]) -> Iterator[Callable[[], None]]:
+    """One stack for both starts; the dashboard begins only once the broker has validated the held seat (m4)."""
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(operator_autostart.for_session(engine, provider_env=provider_env))
+
+        def on_ready() -> None:
+            stack.enter_context(dashboard_autostart.for_session(engine))
+
+        yield on_ready
 
 
 def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
@@ -647,9 +676,13 @@ class ContainedLead:
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed")
         # Only where start_lead relays: under a shared or isolated network it relays nothing, and the Lead is told so
         # instead (E123 quick check, Q1).
-        self.certified = keyless_certified(policy, self.keys, self.refreshing)
+        # One no profile pins a model of is not relayed: the Lead would have nothing of it to choose (E123 quick check,
+        # N3). It is named at the start instead, with what to pin.
+        keyless = keyless_certified(policy, self.keys, self.refreshing)
         self.unrelayed = [] if netns.relay_route(policy, True) else client_cert.unrelayed_lines(policy, "aew opencode")
-        self.models = certified_models(policy, self.certified)
+        self.models = certified_models(policy, keyless)
+        self.certified = {p: c for p, c in keyless.items() if self.models.get(p)}
+        self.unpinned = {p: c for p, c in keyless.items() if p not in self.certified}
         # the provider variables AEW knows that are set in the operator's environment and not fed: names only
         unfed = sorted({v: p for p, v in netns.PROVIDER_KEY_ENV.items()
                         if v not in self.fed and agentenv.lookup(base, v)}.items())
@@ -668,6 +701,8 @@ class ContainedLead:
         for provider, found in self.certified.items():
             out.write(f"aew opencode: {provider} is relayed on the host with the client certificate named in "
                       f"{found.field('cert')}, and no key.\n")
+        for provider in getattr(self, "unpinned", {}):
+            out.write(f"aew opencode: {_unpinned(provider)}.\n")
         for line in self.unrelayed:
             out.write(line)
         if self.unfed:
@@ -701,11 +736,19 @@ class ContainedLead:
         """Refuse the session before its sandbox, and before a seat is taken, when no provider is relayed to the Lead
         (no key and no refreshing login): its configuration switches OpenCode's own providers off
         (``projection.LEAD_DENIED_PROVIDERS``), so it would have no model at all (the designer's ruling of
-        2026-11-06). The closed reason is a worker's (``netns.PROVIDER_KEY_MISSING``)."""
-        from aew.harness.containment import netns
+        2026-11-06). The closed reason is a worker's (``netns.PROVIDER_KEY_MISSING``). A certificate provider counts
+        only with a model a profile pins for it; a Lead whose only one has none is refused with what to pin (E123 quick
+        check, N3)."""
+        from aew.harness.containment import client_cert, netns
 
-        if self.keys or self.refreshing or self.certified:
+        models = getattr(self, "models", {})
+        if self.keys or self.refreshing or any(models.get(p) for p in self.certified):
             return
+        unpinned = sorted({*getattr(self, "unpinned", {}), *self.certified})
+        if unpinned:
+            raise HarnessIncompatible(
+                f"no provider the contained Lead could use: {'; '.join(_unpinned(p) for p in unpinned)}",
+                provider=unpinned[0], reason=client_cert.NO_MODEL)
         needs_relay = (" A provider with a client certificate is relayed only under containment.network.mode: "
                        "proxy_only (the default)." if getattr(self, "unrelayed", None) else "")
         variables = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)
@@ -718,7 +761,7 @@ class ContainedLead:
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
         from aew.harness import containment, weaker_register
-        from aew.harness.containment import egress, netns
+        from aew.harness.containment import client_cert, egress, netns
 
         engine = self.engine
         self.stages.mark("seat")
@@ -738,9 +781,17 @@ class ContainedLead:
         label["session"] = run_dir.name
         label["start_s"] = self.stages.seconds  # the stages to come are added in place, before the label is recorded
         if layout is None:  # allowed weaker by the policy: the TUI runs as it does elsewhere, labelled so
+            # No relay runs, so a Lead whose only provider takes the certificate would have none: refused, as a
+            # worker is after `establish` (E123 quick check, N1).
+            if self.certified and not (self.keys or self.refreshing):
+                provider = sorted(self.certified)[0]
+                raise ContainmentUnavailable(str(client_cert.no_relay(provider, policy, on_relay_route=False,
+                                                                      lead=True)),
+                                             provider=provider, reason=client_cert.NO_RELAY)
             sys.stderr.write(f"aew opencode: the Lead runs NOT contained ({label['filesystem']}): "
                              f"{label.get('weaker_because')}\n")
-            _unrelayed(engine)
+            if not self.unrelayed:  # its start lines said them already under a shared or isolated network
+                _unrelayed(engine)
             self._record(run_dir, label)
             entry = weaker_register.enter(label=label, **where)
             env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}})

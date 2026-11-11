@@ -7,8 +7,11 @@ work graph in control state is the canonical to-do source (WC §8.3, KC §18).
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 from typing import Any
+
+from aew.engine import priority as PRIORITY
 
 GROUPS = [
     ("NOW", {"ASSIGNED", "RUNNING"}),
@@ -34,7 +37,19 @@ def _blocker_text(unit: dict[str, Any]) -> str:
     return " -> " + ", ".join(parts) if parts else ""
 
 
-def work_graph_lines(state: dict[str, Any]) -> list[str]:
+def _priority_text(unit: dict[str, Any], now: dt.datetime | None) -> str:
+    """A Ticket's priority beside its line when it isn't the default (register E227): its level and reason, and how
+    long a `low` one that has not started has waited, when ``now`` is given (``status``; the generated CURRENT.md
+    gives none, so it stays a function of the state)."""
+    found = PRIORITY.of(unit)
+    if found["level"] == PRIORITY.DEFAULT:
+        return ""
+    age = PRIORITY.waiting_age(unit, now) if now is not None else None
+    head = found["level"] + (f", waiting {age}" if age else "")
+    return f"  [{head}: {found['reason']}]" if found["reason"] else f"  [{head}]"
+
+
+def work_graph_lines(state: dict[str, Any], now: dt.datetime | None = None) -> list[str]:
     tickets = {k: v for k, v in state["work"].items() if v["kind"] == "ticket"}
     lines: list[str] = []
     for title, states in GROUPS:
@@ -51,7 +66,8 @@ def work_graph_lines(state: dict[str, Any]) -> list[str]:
             if unit["state"] == "BLOCKED":
                 extra = _blocker_text(unit)
             label = unit["state"] if title not in {"READY", "BLOCKED", "DONE"} else ""
-            lines.append(f"  {wid} {label}{extra}  {unit['title']}".replace("  ", " ", 1).rstrip())
+            lines.append(f"  {wid} {label}{extra}  {unit['title']}".replace("  ", " ", 1).rstrip()
+                          + _priority_text(unit, now))
     return lines or ["(no Tickets)"]
 
 

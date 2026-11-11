@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 os.environ.setdefault("AEW_OPERATOR_AUTOSTART", "off")  # a session test starts no endpoint of its own
+os.environ.setdefault("AEW_DASHBOARD_AUTOSTART", "off")  # no session test opens a real browser or a window
 
 import git_isolation  # noqa: E402  (no test writes to the enclosing repository, or to the user's git configuration)
 

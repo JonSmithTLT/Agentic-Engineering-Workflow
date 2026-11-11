@@ -907,6 +907,16 @@
           "minimum": 0,
           "maximum": 4
         },
+        "priority": {
+          "description": "A Ticket's scheduling priority, the Lead's judgment at the draft (register E227): the order the steering loop starts eligible Tickets in. Absent is normal.",
+          "type": "object",
+          "required": ["level"],
+          "additionalProperties": false,
+          "properties": {
+            "level": {"enum": ["critical", "normal", "low"]},
+            "reason": {"type": ["string", "null"], "minLength": 1}
+          }
+        },
         "mutating": {
           "type": "boolean"
         },

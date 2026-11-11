@@ -66,6 +66,15 @@ def rendered() -> str:
     return lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
 
 
+def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
+    text = rendered()
+    assert "quote AEW's recorded coverage" in text and "never compose coverage yourself or drop its unknowns" in text
+    assert "coverage not recorded" in text.lower() and "validated within its scope" in text.lower()
+    documented = (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8")
+    assert documented.startswith("<!-- Generated:")
+    assert documented.partition("-->\n\n")[2] == text
+
+
 def system_text() -> str:
     """What a Lead's TUI is given: the system text with the guide appended."""
     return projection.lead_config(rendered())["agents"][projection.LEAD_AGENT]["system"]

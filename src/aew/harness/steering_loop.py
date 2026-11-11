@@ -20,8 +20,10 @@ to a stop; the envelope is counted per activation.
 2. **Stop** for the same reasons in every mode (CWR §2, §11: identical stop sets; :func:`select`): stale authority or
    policy; an open high anomaly anywhere (§2.4); a project-level blocker or decision. A Ticket with a decision, a
    blocker or an action whose availability is UNKNOWN is never advanced; when no Ticket has an eligible action
-   (AVAILABLE and ``auto_runnable``), the loop stops, naming the first reason it met.
-3. Select the first eligible action, Tickets in id order.
+   (AVAILABLE and ``auto_runnable``), the loop stops, naming the first reason it met that only the Lead can
+   clear, else the first.
+3. Select the first eligible action, Tickets in the priority order (``priority.order``: the level, then how many
+   live Tickets each unblocks, then the id; register E227).
 4. ``confirm_before`` (``steering.confirmation_reason``): Crawl always, Walk unless every declared effect of every
    primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
    such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
@@ -54,12 +56,13 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from aew import errors
+from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
 from aew.harness import contract as K
@@ -145,11 +148,15 @@ class Activation:
 LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)  # stops only the Lead can clear; a BLOCKED can clear on its own
 
 
-def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Stop:
+def select(project: dict[str, Any], units: list[dict[str, Any]],
+           rank: Mapping[str, tuple[int, int, str]] | None = None) -> Choice | Stop:
     """Steps 2 and 3 of a tick, the same in every mode: the first eligible action, or why there is none. ``project``
-    is the project's projection, ``units`` each live Ticket's. When none is eligible, the stop reported is the first
-    that only the Lead can clear (``LEAD_ONLY``), else the first: so a Ticket's self-clearing BLOCKED never hides
-    another's decision, and the Lead's ``loop_waiting`` wake names what needs it (review of the priority PR, m6)."""
+    is the project's projection, ``units`` each live Ticket's, taken in ``rank``'s order (``priority.order``: the
+    level, then how many live Tickets each unblocks, then the id; register E227) and in id order without one. A `low`
+    Ticket starts only when no `critical` or `normal` one has an eligible action, and nothing is pre-empted. When
+    none is eligible, the stop reported is the first in that order that only the Lead can clear (``LEAD_ONLY``), else
+    the first: so a Ticket's self-clearing BLOCKED never hides another's decision, and the Lead's ``loop_waiting`` wake
+    names what needs it (review of the priority PR, m6)."""
     high = [a for a in project.get("anomalies") or [] if (a.get("details") or {}).get("severity") == "high"]
     if high:
         a = high[0]["details"]
@@ -164,7 +171,12 @@ def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Sto
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
                                        "the Lead's")
     stops: list[Stop] = []
-    for p in sorted(units, key=lambda u: str(u.get("subject"))):
+
+    def place(u: dict[str, Any]) -> tuple[int, int, str]:
+        subject = str(u.get("subject"))
+        return (rank or {}).get(subject) or (PRIORITY.LEVELS.index(PRIORITY.DEFAULT), 0, subject)
+
+    for p in sorted(units, key=place):
         subject = str(p.get("subject"))
         actions = p.get("actions") or []
         why: Stop | None = None
@@ -352,7 +364,7 @@ class SteeringLoop:
             if S.effective(state)["mode"] is None:
                 return False
             project, units = self._project(self.engine, self._ctx(), state)
-            return selection(select(project, units)) != self._selected
+            return selection(select(project, units, PRIORITY.order(state))) != self._selected
         except Exception:  # noqa: BLE001  a look that fails is no change: the next look, wake or commit retries
             return False
 
@@ -459,7 +471,7 @@ class SteeringLoop:
                                           "(A1 §3)", episode=act.id)
         ctx = self._ctx()
         project, units = self._project(self.engine, ctx, state)
-        picked = select(project, units)
+        picked = select(project, units, PRIORITY.order(state))
         self._selected = selection(picked)
         if isinstance(picked, Stop):
             return picked

@@ -12,6 +12,7 @@ import io
 import json
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +22,7 @@ import pytest
 
 from aew import errors
 from aew.harness import lead_broker, procs
-from aew.harness.containment import netns
+from aew.harness.containment import client_cert, netns
 from aew.harness.opencode import lead, login, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
@@ -1305,3 +1306,98 @@ def test_a_contained_lead_on_the_relay_route_relays_its_certificate_provider_wit
                                            "models": {"big-1": {"settings": {"baseURL": url}},
                                                       "small-2": {"settings": {"baseURL": url}}}}
     assert config["providers"]["anthropic"] == {"settings": {"baseURL": "http://127.0.0.1:4112/v1"}}  # as before
+
+
+def test_the_contained_leads_certificate_models_come_only_from_profiles_of_its_own_harness(tmp_path, at_a_terminal,
+                                                                                          monkeypatch):
+    """E123 quick check, N2: a profile of another harness that pins the certificate provider may name its model as
+    that harness does, so the OpenCode Lead offers only its own harness's; a profile naming none is the policy's."""
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    policy = cert_policy(harness="opencode", profiles={
+        "work": {"provider": "mtls", "model": "big-1"},
+        "named": {"harness": "opencode", "provider": "mtls", "model": "small-2"},
+        "other": {"harness": "codex", "provider": "mtls", "model": "cx-4"}})
+    assert contained(tmp_path, policy=policy).models == {"mtls": ["small-2", "big-1"]}
+
+
+def test_a_certificate_only_lead_whose_profiles_pin_no_model_of_it_is_refused_naming_what_to_pin(
+        tmp_path, at_a_terminal, monkeypatch):
+    """E123 quick check, N3: the Lead's configuration names only the models the profiles pin for a certificate
+    provider, so with none it would open with nothing to choose. That provider is not relayed and the start says what
+    to pin; a Lead with no other provider is refused for it, and one with a key goes on with its key."""
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    policy = cert_policy(harness="opencode", profiles={
+        "work": {"provider": "anthropic", "model": "claude-x"},
+        "other": {"harness": "codex", "provider": "mtls", "model": "cx"}})
+    built = contained(tmp_path, policy=policy)
+    assert built.certified == {} and list(built.unpinned) == ["mtls"]
+    out = io.StringIO()
+    built.announce(out)
+    said = out.getvalue()
+    assert "is relayed on the host" not in said and "profiles.<name>.provider: mtls, with its model" in said, said
+    with pytest.raises(errors.HarnessIncompatible) as caught:
+        built.require_provider()
+    assert caught.value.details["reason"] == client_cert.NO_MODEL and caught.value.details["provider"] == "mtls"
+    assert "no OpenCode profile pins a model of it" in caught.value.message  # the codex profile's pin doesn't count
+    assert "/synthetic/k.pem" not in caught.value.message
+    store(tmp_path, [r for r in key_rows() if r[0] == "anthropic"])
+    keyed = contained(tmp_path, policy=policy)
+    assert keyed.certified == {} and list(keyed.unpinned) == ["mtls"]
+    keyed.require_provider()  # its key's provider is enough
+
+
+def _fallback_lead(tmp_path: Path, monkeypatch, policy: dict[str, Any]) -> lead.ContainedLead:
+    """A contained Lead whose sandbox can't be established and whose policy allows it to run weaker."""
+    from aew.harness import containment
+
+    monkeypatch.setattr(containment, "establish",
+                        lambda **kw: (None, containment.label(contained=False, reason="allowed weaker")))
+    monkeypatch.setattr(lead, "binary_command", lambda: ["opencode"])
+    engine = SimpleNamespace(execution_policy=lambda: (policy, None), repo_root=tmp_path / "repo",
+                             aew_root=tmp_path / "repo" / ".aew")
+    (tmp_path / "repo").mkdir()
+    return lead.ContainedLead(engine, argv=["opencode"], provider_env=[], guide="",
+                              base={"HOME": str(tmp_path), "PATH": "/usr/bin"})
+
+
+def test_a_certificate_only_lead_that_falls_back_to_running_uncontained_is_refused_before_it_runs(
+        tmp_path, at_a_terminal, monkeypatch, capsys):
+    """E123 quick check, N1: under proxy_only a certificate provider is relayed once the sandbox is up; a sandbox that
+    can't be established under allow_weaker leaves no relay, so a Lead whose only provider takes the certificate is
+    refused, as a worker is after `establish`, before it is labelled weaker or entered in the register."""
+    from aew.harness import weaker_register
+
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    policy = cert_policy(harness="opencode", profiles={"work": {"provider": "mtls", "model": "big-1"}})
+    policy["containment"]["mode"] = "allow_weaker"
+    built = _fallback_lead(tmp_path, monkeypatch, policy)
+    built.require_provider()  # before the sandbox, it has a provider
+    with pytest.raises(errors.ContainmentUnavailable) as caught:
+        built(None, {lead_broker.ENV_ENDPOINT: "/tmp/aew-bridge-x/s"})
+    assert caught.value.details["reason"] == client_cert.NO_RELAY and caught.value.details["provider"] == "mtls"
+    assert CERT_FIELD in caught.value.message and "/synthetic/k.pem" not in caught.value.message
+    # Its way forward is a Lead's: another provider of its own, not a profile, which gives a Lead none (N4)
+    assert "`--provider-env NAME`" in caught.value.message and "`opencode auth login`" in caught.value.message
+    assert "pin a profile" not in caught.value.message, caught.value.message
+    assert "runs NOT contained" not in capsys.readouterr().err
+    assert not [x for x in weaker_register.read().live if x["kind"] == "lead_opencode"]
+
+
+def test_a_lead_that_falls_back_with_another_provider_says_once_that_it_cannot_use_its_certificate_provider(
+        tmp_path, at_a_terminal, monkeypatch, capsys):
+    """E123 quick check, N1: with a key it runs weaker, and says once which certificate provider it can't use, whether
+    its start lines said so already (a shared network) or its sandbox's fallback does (proxy_only)."""
+    for mode in (netns.SHARED, netns.PROXY_ONLY):
+        monkeypatch.setattr(netns, "mode", lambda policy, mode=mode: mode)
+        policy = cert_policy(mode, harness="opencode", profiles={"work": {"provider": "mtls", "model": "big-1"}})
+        policy["containment"]["mode"] = "allow_weaker"
+        home = tmp_path / mode
+        home.mkdir()
+        store(home, [r for r in key_rows() if r[0] == "anthropic"])
+        built = _fallback_lead(home, monkeypatch, policy)
+        built.require_provider()
+        built.announce(sys.stderr)
+        built(None, {lead_broker.ENV_ENDPOINT: "/tmp/aew-bridge-x/s"})
+        err = capsys.readouterr().err
+        assert err.count("can't use that provider this session") == 1, (mode, err)
+        assert "runs NOT contained" in err

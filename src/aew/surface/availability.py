@@ -49,7 +49,7 @@ def _create(a: dict[str, Any]) -> dict[str, Any]:
             "mutating": not a.get("non_mutating", False), "parent": a.get("parent"),
             "depends_on": a.get("depends_on"), "scope_paths": a.get("scope"), "goal_backwards": a.get("goal"),
             "contract": a.get("contract"), "rationale": a.get("rationale"), "body": a.get("body") or "",
-            "card": a.get("card")}
+            "card": a.get("card"), "priority": a.get("priority"), "priority_reason": a.get("priority_reason")}
 
 
 def _propose(a: dict[str, Any]) -> dict[str, Any] | None:

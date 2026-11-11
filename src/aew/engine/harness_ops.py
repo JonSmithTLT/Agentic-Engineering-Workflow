@@ -466,7 +466,7 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                             **_missing_capabilities(record),
+                            **_missing_capabilities(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -514,8 +514,9 @@ class Harness:
         order: a run's record, then (with `--any`) the control state, then the triggers, so a run whose invocation
         ended is returned as ended, never as one to steer.
 
-        Every return carries the named runs' digests (`runs`; a timeout's statuses are `statuses`), and a run's end
-        always carries a `next_action`, even when `aew status` no longer lists the run (E122 review, m1)."""
+        Every return carries the named runs' digests (`runs`; a timeout's statuses are `statuses`) and their recorded
+        delivery (`run_capabilities`). A run's end always carries a `next_action`, even when `aew status` no longer
+        lists the run (E122 review, m1)."""
         names = [runs] if isinstance(runs, str) else list(runs)
         if not names:
             raise UsageError("name the run(s) to wait on")
@@ -623,7 +624,9 @@ class Harness:
             record_told(self.k.aew_root, out, lead=lead)
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
-        for field, missing in _missing_capabilities(record).items():
+        recorded = _missing_capabilities(record)
+        for field in ("missing_tools", "missing_skills"):
+            missing = recorded[field]
             if missing:  # keep the single ended run's existing top-level lists, beside the per-run collection
                 out[field] = missing
         if control is not None:
@@ -1035,8 +1038,14 @@ _SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id,
 
 
 def _missing_capabilities(record: dict[str, Any] | None) -> dict[str, Any]:
-    """The same recorded-delivery projection on status and every wait return; advisory, never a run outcome."""
-    return {"missing_tools": _missing_tools(record), "missing_skills": _missing_skills(record)}
+    """Recorded delivery, not a claim that an absent/legacy plan provided everything. Flags qualify each list;
+    the lists keep their existing display semantics. Advisory only, never a run outcome."""
+    label = _field(record, "containment")
+    skills = _field(_field(_field(record, "contract"), "extra"), "skills")
+    return {"recorded": isinstance(record, dict),
+            "tools_recorded": isinstance(label.get("missing_tools"), dict),
+            "skills_recorded": isinstance(skills.get("unavailable"), list),
+            "missing_tools": _missing_tools(record), "missing_skills": _missing_skills(record)}
 
 
 def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:

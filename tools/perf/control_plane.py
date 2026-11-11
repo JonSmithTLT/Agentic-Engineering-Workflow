@@ -242,20 +242,32 @@ class Cloner:
         pattern = re.compile(r"(?<![\w])(" + "|".join(sorted(map(re.escape, mapping), key=len, reverse=True))
                              + r")(?![\w])")
 
-        def remap(value: Any) -> Any:
+        def remap(value: Any, memo: dict[int, Any] | None = None) -> Any:
+            # Preserve template sharing (notably coverage pins) so YAML aliases and per-unit byte counts survive.
+            # A fresh memo per root also prevents object-id reuse between independently deep-copied records.
+            if memo is None:
+                memo = {}
             if isinstance(value, str):
                 return pattern.sub(lambda m: mapping[m.group(1)], value)
+            if isinstance(value, list | dict) and id(value) in memo:
+                return memo[id(value)]
             if isinstance(value, list):
-                return [remap(v) for v in value]
+                items: list[Any] = []
+                memo[id(value)] = items
+                items.extend(remap(v, memo) for v in value)
+                return items
             if isinstance(value, dict):
-                return {remap(k): remap(v) for k, v in value.items()}
+                fields: dict[Any, Any] = {}
+                memo[id(value)] = fields
+                fields.update((remap(k, memo), remap(v, memo)) for k, v in value.items())
+                return fields
             return value
 
         def rehash(node: Any) -> None:
             if isinstance(node, dict):
                 if isinstance(node.get("path"), str) and node["path"] in written and "sha256" in node:
                     node["sha256"] = sha256_text(written[node["path"]])
-                if node.get("record") in written and "record_sha256" in node:
+                if isinstance(node.get("record"), str) and node["record"] in written and "record_sha256" in node:
                     node["record_sha256"] = sha256_text(written[node["record"]])
                 for v in node.values():
                     rehash(v)

@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import coverage as CV
 from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
@@ -349,6 +350,11 @@ class Integration:
         record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                   "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
                   "binding": self.gates.integration_binding(unit)}
+        record["coverage"] = CV.build(
+            subject={"work_id": work_id, "scope": "integration", "base": base}, configured=[], checks=[],
+            changed_files=CV.files(None, source="candidate_diff", reason="candidate_not_prepared"),
+            capabilities={}, result="not validated",
+            complete=False)
         if admission is not None:  # a rebuild's own decision; a granted build's is on its custodian
             record["admission"] = admission
         candidate: str = merged.get("commit") or ""
@@ -380,6 +386,11 @@ class Integration:
             snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
             unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
                                    "candidate_snapshot": snap, "changed_paths": changed}
+            unit["integration"]["coverage"] = CV.build(
+                subject={"work_id": work_id, "scope": "integration", "base": base, "candidate": candidate,
+                         "snapshot": snap}, configured=[], checks=[],
+                changed_files=CV.files(changed, source=f"candidate_diff_from:{base}"), capabilities={},
+                result="not validated", complete=False)
             self.queue.record_attempt(state, work_id, unit["integration"])
             ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
         return unit, conflict, refused
@@ -913,7 +924,8 @@ class Integration:
         if remove_ticket_workspace:
             worktrees.remove(self.k.repo_root, unit["workspace"]["path"])
         return {"ok": True, "work_id": work_id, "state": "DONE", "integrated_commit": candidate, "cas": cas,
-                "worktree_sync": sync, "revision": ctx.session.committed_revision}
+                "worktree_sync": sync, "revision": ctx.session.committed_revision,
+                "coverage": CV.load(self.k.aew_root, integ.get("coverage") or CV.legacy())}
 
     @staticmethod
     def _settle_ticket_workspace(unit: dict[str, Any], ticket_commit: str) -> bool:
@@ -943,9 +955,11 @@ class Integration:
 
     def _completion_record(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> str:
         integ = unit["integration"]
+        coverage = CV.load(self.k.aew_root, integ.get("coverage") or CV.legacy())
         plan = unit.get("plan") or {}
         meta = {
             "schema": "aew/completion/v1",
+            "coverage": coverage,
             "work_unit": work_id,
             "at": utc_now(),
             "plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
@@ -961,9 +975,10 @@ class Integration:
             "waivers": unit.get("waivers", []),
         }
         body = (f"# Completion — {work_id}: {unit['title']}\n\n"
-                f"Accepted by the Lead after independent review, goal-backwards and contract verification, "
-                f"controlled integration into `{self.k.authoritative_branch}` and post-integration verification "
-                f"of the integrated snapshot.\n")
+                f"Accepted by the Lead under the applicable gates and integrated into "
+                f"`{self.k.authoritative_branch}`.\n"
+                "The recorded validation scope and limitations follow; a workflow acceptance is not wider evidence.\n\n"
+                + "\n".join([*coverage["summary"]["lines"], coverage["summary"]["headline"]]) + "\n")
         return render_frontmatter(meta, body)
 
     def _publishing_lease(self, state: dict[str, Any], work_id: str, reconciling: bool) -> dict[str, Any] | None:

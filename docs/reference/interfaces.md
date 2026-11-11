@@ -36,6 +36,10 @@ Outside the API:
 - `/session/{rest}`: handled by `_exchange`, under `/session/`; answered only while the server has `sessions`.
 - `/{file}`: handled by `_static`, outside `/api/`, `/session/`; answered only while the server has `static_root`.
 
+## Dashboard sessions
+
+`SessionTable.mint` and `Service.issue` require keyword-only `authorized_by`, with no default; mint accepts only `operator-tty`, `operator-start` (read from `aew.dashboard.session.AUTHORIZED_BY`). `operator-tty` records the typed-back code used by `aew dashboard serve` and `open`; `operator-start` records the first no-code session opened by `aew opencode`. The existing session listing reports this provenance unchanged. A browser session grants only `dashboard.read`, never an engine operator confirmation.
+
 ## Tools
 
 | Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |
@@ -66,13 +70,13 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
 | `checks` | `checks.schema.json` | 12 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
-| `control` | `control.schema.json` | 488 | 271 |
+| `control` | `control.schema.json` | 491 | 272 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
 | `coordination-message` | `coordination-message.schema.json` | 18 | 17 |
 | `coordination-seal` | `coordination-seal.schema.json` | 19 | 16 |
 | `decision` | `decision.schema.json` | 17 | 10 |
 | `disposition` | `disposition.schema.json` | 36 | 15 |
-| `evidence` | `evidence.schema.json` | 128 | 46 |
+| `evidence` | `evidence.schema.json` | 176 | 66 |
 | `execution` | `execution.schema.json` | 66 | 10 |
 | `gate-correction` | `gate-correction.schema.json` | 20 | 17 |
 | `gates` | `gates.schema.json` | 72 | 21 |

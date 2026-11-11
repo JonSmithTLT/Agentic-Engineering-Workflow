@@ -50,6 +50,8 @@ def session_own(rel: str) -> bool:
     folder, _, name = rel.rpartition("/")
     return any(folder == own.rpartition("/")[0] and name.startswith(f".{own.rpartition('/')[2]}.")
                and name.endswith(".tmp") for own in SESSION_FILES)
+
+
 # The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
 # it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
 # nothing.

@@ -926,15 +926,40 @@ def test_extra_interpreter_history_grows_shards_past_the_floor():
     history = reference_history({**tests, serial: 9000.0}, outside_s=45.0)
     history["lanes"]["win32"][serial] = "serial"
     history["workers"] = {"win32": 4}
-    sizings, table, _, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
+    sizings, table, source, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
     linux, windows = sizings
     assert linux.shards == 4 and any("linux extra: using the 4-shard floor" in w for w in warnings)
+    assert "median of 1" in source and "shard floors for linux" in source
     assert windows.shards == 10 and windows.slowest_s <= shard_plan.EXTRA_TARGET_S
     assert table["platforms"]["win32"][serial] == 9000.0
     # The serial weight still affects the partition. Re-estimate one fewer shard with the table the jobs receive.
     durations = table["platforms"]["win32"]
     assert shard_plan.slowest_shard_s(sorted(durations), durations, windows.shards - 1, 4, 45.0,
                                      excluded=frozenset({serial})) > shard_plan.EXTRA_TARGET_S
+
+
+def test_extra_interpreter_plan_keeps_both_floors_with_small_usable_histories():
+    history = reference_history({ALL[0]: 10.0, ALL[1]: 20.0})
+    history["workers"] = {"linux": 4, "win32": 4}
+    sizings, _, _, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
+    assert not warnings
+    assert [(s.platform, s.shards) for s in sizings] == [("linux", 4), ("win32", 8)]
+
+
+def test_extra_interpreter_estimates_use_the_returned_shared_table():
+    history = reference_history({ALL[0]: 10.0, ALL[1]: 700.0, ALL[2]: 9000.0}, outside_s=45.0)
+    del history["platforms"]["linux"][ALL[1]]
+    history["workers"] = {"linux": 4, "win32": 4}
+    for collected in history["lanes"].values():
+        collected[ALL[2]] = "serial"
+    sizings, table, _, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
+    assert not warnings
+    assert ALL[1] not in table["platforms"]["linux"]
+    for sizing in sizings:
+        platform = sizing.platform
+        assert sizing.slowest_s == shard_plan.slowest_shard_s(
+            sorted(history["lanes"][platform]), shard_plan._lanes_module().durations_for(platform, table),
+            sizing.shards, history["workers"][platform], 45.0, excluded=frozenset({ALL[2]}))
 
 
 @pytest.mark.parametrize("history", [None, update_durations.seed_history({})])

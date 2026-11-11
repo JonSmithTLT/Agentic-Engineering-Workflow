@@ -221,8 +221,8 @@ def size_lane(platform: str, lane: str, nodeids: Sequence[str], durations: Mappi
     weight = _lanes_module().weights(nodeids, durations)
     longest = max(weight.keys() - excluded, key=lambda n: (weight[n], n), default="")
     if longest and weight[longest] + outside_s > budget:
-        floor = weight[longest] + outside_s  # no shard count can go below its longest test
-        n = min((k for k, e in estimates.items() if e <= floor * 1.05), default=MAX_SHARDS)
+        longest_s = weight[longest] + outside_s  # no shard count can go below its longest test
+        n = min((k for k, e in estimates.items() if e <= longest_s * 1.05), default=MAX_SHARDS)
         why = (f"{longest} alone is estimated at {weight[longest]:.0f} s, more than the {budget:.0f} s budget: make "
                "it cheaper or split it")
     else:
@@ -365,6 +365,8 @@ def extra_plan(history: Mapping[str, Any] | None, seed: Mapping[str, Any], runne
     tables = {p: measured[p] if p in usable else (seed.get("platforms") or {}).get(p, {}) for p in platforms}
     source = f"the median of {len(runs)} nightly extra-interpreter run(s), the last {runs[-1]}" if usable else (
         "the committed partition table and extra-interpreter shard floors")
+    if usable and (fallback_platforms := sorted(set(platforms) - usable)):
+        source += f", with the committed table and shard floors for {', '.join(fallback_platforms)}"
     lanes_module = _lanes_module()
     sizings, warnings = [], []
     for p in platforms:

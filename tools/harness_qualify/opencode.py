@@ -682,7 +682,7 @@ class OpenCodePack:
                 doc.update(qualification=facts["qualification.reevaluation"])
             out[self.messaging_pin_name(version)] = (
                 dump(doc),
-                 "measured: messaging behaviour with the scripted loopback model; pin is platform-scoped")
+                "measured: messaging behaviour with the scripted loopback model; pin is platform-scoped")
         return out
 
     def unmeasured(self) -> Mapping[str, str]:

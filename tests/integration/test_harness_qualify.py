@@ -612,6 +612,9 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
     result = check.run(ctx)
     ignored_response_changes = ("envelope_defaults", "admitted_time_changed", "admitted_mode_changed")
     assert result.status == (core.PASS if mutation in ("none", *ignored_response_changes) else core.FAIL), result
+    if mutation in ("first_mode_changed", "first_time_missing"):
+        for mode in ("steer", "queue"):
+            assert mode + ".first_identity_valid" in result.notes
     if name == "prompt_identity" and mutation == "admitted_time_changed":
         assert result.facts["observation.prompt_identity"]["steer.admitted_created_time_preserved"] is False
 
@@ -825,6 +828,18 @@ def test_first_response_requires_a_finite_nonnegative_numeric_time(created):
     assert messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
                                     first["payload"]["text"], first["payload"]["metadata"])
     first["time"] = {"created": created}
+    assert not messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
+                                        first["payload"]["text"], first["payload"]["metadata"])
+
+
+def test_first_response_requires_the_posted_delivery_mode():
+    from harness_qualify import messaging
+
+    first = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_bytes())["facts"][
+        "measurement.prompt_identity"]["steer"]["first"]
+    assert messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
+                                    first["payload"]["text"], first["payload"]["metadata"])
+    first["delivery"] = "queue"
     assert not messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
                                         first["payload"]["text"], first["payload"]["metadata"])
 

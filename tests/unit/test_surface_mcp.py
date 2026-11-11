@@ -433,7 +433,7 @@ def _entry_bytes(row: contract.Tool) -> int:
 
 # The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
 # catalog moves them here first.
-A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 923, "A1a-2": 284,
+A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 923, "A1a-2": 364,
             "A1b resume readOnlyHint": 1}
 
 

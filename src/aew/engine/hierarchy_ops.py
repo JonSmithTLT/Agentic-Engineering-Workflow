@@ -567,8 +567,7 @@ class Hierarchy:
                 "source + child set). Children completing alone does not prove parent acceptance (WC §8).\n")
         return render_frontmatter(meta, body)
 
-    @staticmethod
-    def cancellation_subject(state: dict[str, Any], work_id: str) -> dict[str, Any]:
+    def cancellation_subject(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         descendants = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
         return {"descendants": descendants, "digest": approval.cascade_digest(work_id, descendants)}
 

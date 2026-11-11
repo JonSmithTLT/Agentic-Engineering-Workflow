@@ -167,11 +167,17 @@ def missing_blobs(repo: Path, entries: list[Entry]) -> list[str]:
     return sorted(e.path for e, line in zip(blobs, lines, strict=False) if line.endswith(" missing"))
 
 
-def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None) -> None:
+def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None, deadline: float | None = None) -> None:
     """A partial clone on git older than 2.44 could fetch a missing object lazily whatever AEW asks: refused.
-    ``timeout`` bounds each git process (``object_git``'s default without it)."""
-    bound = {} if timeout is None else {"timeout": timeout}
-    if git.is_partial_clone(repo, **bound) and git.version(repo, **bound) < git.NO_LAZY_FETCH_FROM:
+    ``timeout`` bounds each git process (``object_git``'s default without it); ``deadline`` bounds both together, each
+    process getting only the time left (E184 review MIN-1: one ``timeout`` for each let the step take twice it)."""
+
+    def bound() -> dict[str, float]:
+        if deadline is not None:
+            return {"timeout": _left(deadline)}
+        return {} if timeout is None else {"timeout": timeout}
+
+    if git.is_partial_clone(repo, **bound()) and git.version(repo, **bound()) < git.NO_LAZY_FETCH_FROM:
         raise MapCurrentnessUnproven(
             "this repository is a partial clone and this git (older than 2.44) cannot be stopped from fetching "
             "missing objects lazily: generate the map in a full clone, or upgrade git", reason="partial_clone")
@@ -199,7 +205,7 @@ def open_tree(repo: Path, rev: str, *, deadline: float | None = None) -> Iterato
             yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries,
                               fetch=batch.read)
         return
-    refuse_lazy_fetch(repo, timeout=_left(deadline))
+    refuse_lazy_fetch(repo, deadline=deadline)
     commit, tree, object_format = resolve(repo, rev, timeout=_left(deadline))
     entries = list_tree(repo, tree, timeout=_left(deadline))
     with git.CatFileBatch(repo, timeout=_left(deadline)) as batch:
@@ -208,4 +214,7 @@ def open_tree(repo: Path, rev: str, *, deadline: float | None = None) -> Iterato
             batch.timeout = _left(deadline)  # read() arms its watchdog with this: the read ends by the deadline
             return batch.read(oid)
 
-        yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries, fetch=fetch)
+        try:
+            yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries, fetch=fetch)
+        finally:  # the close waits only for the time left, then kills the reader (E184 review MIN-1)
+            batch.close_timeout = min(batch.close_timeout, max(0.0, deadline - time.monotonic()))

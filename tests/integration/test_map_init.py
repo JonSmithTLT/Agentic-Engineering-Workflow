@@ -90,6 +90,31 @@ def test_a_registry_that_selects_no_structural_map_takes_the_first_one(tmp_path)
     assert registry["epoch"] == leftover["epoch"] and registry["map_revision"] == leftover["map_revision"] + 1
 
 
+def test_the_step_init_prints_selects_at_the_registrys_own_revision(tmp_path, monkeypatch):
+    """E184 review MIN-3: with a leftover registry, the printed `--expect-map-rev none:0` was refused; the step now
+    carries the registry's revision, and it works."""
+    engine = _engine(tmp_path)
+    leftover = store.select(engine.aew_root, "architecture", expect=store.NO_REGISTRY,
+                            entry={"evidence_id": "E-0001"}, actor=service.INIT_ACTOR)
+    real = service.build
+
+    def broken(repo, commit, **kw):
+        raise OSError("the commit's objects cannot be read")
+
+    monkeypatch.setattr(service, "build", broken)
+    failed = service.first_map(engine)
+    rev = store.revision_of(leftover)
+    assert f"`aew map generate --select --expect-map-rev {rev}`" in failed["detail"]
+    assert "none:0" not in failed["detail"]
+    monkeypatch.setattr(type(engine), "authoritative_commit", lambda self: None)
+    assert f"--expect-map-rev {rev}`" in service.first_map(engine)["detail"]
+    monkeypatch.undo()
+    record = real(engine.repo_root, engine.authoritative_commit())  # the printed step's compare-and-set holds
+    sha, root = store.write_artifact(engine.aew_root, record)
+    store.select_structural(engine.aew_root, expect=rev, entry=service._entry(record, sha, root),
+                            actor=service.INIT_ACTOR)
+
+
 def test_committing_the_aew_state_leaves_inits_map_current(tmp_path):
     """The map's listing leaves `.aew/` out (ADR-0015, amended 2026-11-11 for register E184): the first commit of the
     project's state is not a change to the map, so init's map stays CURRENT at it."""

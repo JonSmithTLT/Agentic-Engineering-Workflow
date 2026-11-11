@@ -39,7 +39,8 @@ NAME = "codebase_map"
 # ba1a0a2f, 2026-10-07): the design sets no number. Filled to them, the body measures about 2,900 bytes at 8-character
 # directory names and 6,000 at 60, and a STALE line naming metadata paths adds about 650 (the E184 review of
 # 2026-11-08 estimated 5,120 to 8,070, plus 400). The byte bound holds all of that and cuts only longer names: hints
-# go first, then rows, and the counts say so. Re-measure: `python tools/perf/map_slice_bytes.py`.
+# go first, then rows, and the counts say so; the fixed lines are never cut (``body``). Re-measure:
+# `python tools/perf/map_slice_bytes.py`.
 ROWS, HINTS = 40, 20
 SLICE_MAX_BYTES = 9 * 1024
 HEADING = "## Codebase map (structural; derived reference data, not authority)"
@@ -128,13 +129,13 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
                 entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
         else:
             record = got["record"]
-            fresh = _compact(F.freshness(repo_root, record, base_commit, _identity()))
             entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
-                     "source_revision": record["source_revision"], "freshness": fresh}
-            note = (f"refresh at dispatch: this map was made for the work's base in {got['seconds']:g} s, "
+                     "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
+            how = "found stored" if got.get("reused") else "made"
+            note = (f"refresh at dispatch: this map was {how} for the work's base in {got['seconds']:g} s, "
                     + ("and is now the selected map" if got["selected"] else
                        "stored and not selected (the base is not the authoritative head, or another selection "
-                       "landed meanwhile)"))
+                       "landed or held the registry meanwhile)"))
     if record is None:
         return entry, _unavailable(str(entry["unavailable"]))
     try:
@@ -142,6 +143,14 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
         return _unknown(), _unavailable("unknown")
     return {**entry, **({"refresh": note} if note else {}), "slice": rows}, frame(rows)
+
+
+def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:
+    """A record's freshness at its own commit, by construction: ``refresh_at_dispatch`` returns only a map made from
+    the work's base by the installed generator, and ``freshness`` reads such a map CURRENT (its source tree is the
+    base's tree). No git process runs, so nothing after a refresh can fail the pack or pass its bound (E184 review
+    MIN-1: this was a ``freshness`` call outside both)."""
+    return {"status": F.CURRENT, "reasons": [], "reason": None, "against_commit": record["source_revision"]}
 
 
 def pinned(sources: list[dict[str, Any]] | None) -> dict[str, Any] | None:
@@ -258,9 +267,10 @@ def _size(lines: list[str]) -> int:
 
 def body(record: dict[str, Any], fresh: dict[str, Any], scope_paths: list[str], *,
          note: str | None = None) -> list[str]:
-    """The lines inside the slice's fence, which a built pack pins as ``slice``: at most ROWS rows and HINTS hints, and
-    at most SLICE_MAX_BYTES in all (hints are cut first, then rows, and the shown counts say so). ``note``: the
-    refresh at dispatch's line, after the freshness line."""
+    """The lines inside the slice's fence, which a built pack pins as ``slice``: at most ROWS rows and HINTS hints, cut
+    to keep the body within SLICE_MAX_BYTES (hints first, then rows, and the shown counts say so). The heading,
+    freshness, refresh and limits lines are never cut, so a freshness line naming very long metadata paths can carry
+    the body past the bound on its own. ``note``: the refresh at dispatch's line, after the freshness line."""
     prefixes = [static_prefix(p) for p in scope_paths]
     restricted = bool(prefixes) and all(prefixes)
 

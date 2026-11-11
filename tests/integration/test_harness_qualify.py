@@ -194,6 +194,7 @@ def test_verified_isolation_is_observed_before_version_and_preserved_in_the_reco
 def test_network_verification_requires_all_observations(monkeypatch, interfaces, route, denial, expected):
     monkeypatch.setenv(core.NETWORK_BLOCKED_ENV, "1")
     monkeypatch.setattr(core.sys, "platform", "linux")
+
     def read(path, **kwargs):
         if path.name == "dev":
             return "header\nheader\n" + "\n".join(n + ": 0" for n in interfaces)
@@ -382,7 +383,8 @@ def binding_events():
 
 @pytest.mark.parametrize("mutation", ["none", "missing_call", "misbound_call", "misbound_end", "missing_end",
                                      "early_step_end", "early_execution_end", "missing_execution_end",
-                                     "no_parallel", "no_failure", "no_success", "no_reconnect"])
+                                     "no_parallel", "no_failure", "no_success", "no_reconnect", "same_process",
+                                     "no_process_observation"])
 def test_wait_binding_check_uses_scripted_event_identity_and_order(tmp_path, monkeypatch, mutation):
     from harness_qualify import messaging
 
@@ -410,7 +412,10 @@ def test_wait_binding_check_uses_scripted_event_identity_and_order(tmp_path, mon
 
     def measure(ctx):
         return {**messaging.binding_facts(events), "short_call_ends_before_step": True,
-                "real_shell_child_started": True, "stream_drop_and_reconnect": mutation != "no_reconnect"}
+                "real_shell_child_started": True, "distinct_shell_child": mutation != "same_process",
+                "process_observation": None if mutation == "no_process_observation" else {
+                    "child_alive_after_timeout": True, "parent_alive_after_timeout": False},
+                "stream_drop_and_reconnect": mutation != "no_reconnect"}
 
     monkeypatch.setattr(messaging, "binding_measurement", measure)
     outcome = messaging.binding_check(core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6"))
@@ -433,7 +438,7 @@ def test_shell_timeout_check_cannot_claim_an_unmeasured_or_unsafe_budget(
     out = messaging.timeout_check(core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6"))
     assert out.status == status
     if status == core.PASS:
-        assert 0 < out.facts["messaging.shell_timeout"]["maximum_safe_wait_seconds"] <= min(90, default - 30)
+        assert 0 < out.facts["measurement.shell_timeout"]["maximum_safe_wait_seconds"] <= min(90, default - 30)
 
 
 def test_the_messaging_pack_has_all_seven_behaviour_checks_and_no_enum_substitute():
@@ -448,7 +453,7 @@ def test_the_messaging_pack_has_all_seven_behaviour_checks_and_no_enum_substitut
     ("none", "steer_boundary"), ("none", "queue_boundary"),
     ("model_admission", "steer_boundary"), ("model_cancelled", "steer_boundary"),
     ("shell_admission", "steer_boundary"), ("shell_cancelled", "steer_boundary"),
-    ("shell_failed", "steer_boundary"), ("steer_late", "steer_boundary"),
+    ("shell_failed", "steer_boundary"), ("tool_output_truncated", "steer_boundary"), ("steer_late", "steer_boundary"),
     ("steer_reordered", "steer_boundary"), ("queue_early", "queue_boundary"),
     ("queue_reordered", "queue_boundary"), ("queue_overtakes", "queue_boundary"),
 ])
@@ -457,7 +462,7 @@ def test_boundary_checks_fail_raw_transcript_and_request_violations(tmp_path, mo
 
     ids = {n: "msg_" + n for n in ("initial", "s1", "s2", "q1", "q2")}
     users = list(ids.values())
-    following = "HQ_s1 HQ_s2"
+    following = "HQ_s1 HQ_s2 HQ_FOREGROUND_COMPLETED"
     during_model, during_shell = set(), set()
     started = completed = True
     exits = [0]
@@ -471,6 +476,8 @@ def test_boundary_checks_fail_raw_transcript_and_request_violations(tmp_path, mo
         completed = False
     elif mutation == "shell_failed":
         exits = [137]
+    elif mutation == "tool_output_truncated":
+        following = "HQ_s1 HQ_s2"
     elif mutation == "steer_late":
         following = "HQ_s1"
     elif mutation == "steer_reordered":

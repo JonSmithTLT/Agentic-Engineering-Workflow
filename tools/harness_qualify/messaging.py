@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shlex
 import sys
 import threading
@@ -252,10 +253,12 @@ def binding_measurement(ctx: Context) -> dict[str, Any]:
     release = work / "release"
     script = work / "child.py"
     script.write_text(
-        "import os,pathlib,sys,time\n"
+        "import json,os,pathlib,sys,time\n"
         f"root=pathlib.Path({str(work)!r})\n"
         "name=sys.argv[1]\n"
-        "(root/(name+'-started')).write_text(str(os.getpid()))\n"
+        "pending=root/(name+'-started.tmp')\n"
+        "pending.write_text(json.dumps({'pid':os.getpid(),'parent':os.getppid()}))\n"
+        "pending.replace(root/(name+'-started'))\n"
         "deadline=time.monotonic()+40\n"
         "while not (root/'release').exists():\n"
         " if time.monotonic()>deadline: raise TimeoutError('probe release missing')\n"
@@ -286,6 +289,7 @@ def binding_measurement(ctx: Context) -> dict[str, Any]:
                 server.client.post(f"/api/session/{sid}/prompt", {"id": "msg_hq_binding", "text": "HQ_BINDING"})
                 until(lambda: (work / "long-started").exists() and (work / "short-started").exists(),
                       "both foreground child processes")
+
                 def short_ended() -> bool:
                     calls = {(e.get("data") or {}).get("id") for e in events
                              if e.get("type") == "session.tool.called" and
@@ -296,8 +300,13 @@ def binding_measurement(ctx: Context) -> dict[str, Any]:
                 until(short_ended,
                       "the short call's failure beside the still-running call")
                 facts = {"short_call_ends_before_step": not any(e.get("type") in (
-                    "session.step.ended", "session.step.failed") for e in events),
-                    "real_shell_child_started": (work / "short-started").read_text().isdigit()}
+                    "session.step.ended", "session.step.failed") for e in events)}
+                child = json.loads((work / "short-started").read_text(encoding="utf-8"))
+                facts["real_shell_child_started"] = all(isinstance(child.get(k), int) and child[k] > 0
+                                                        for k in ("pid", "parent"))
+                facts["distinct_shell_child"] = facts["real_shell_child_started"] and child["pid"] != child["parent"]
+                process = {"child_alive_after_timeout": process_alive(child["pid"]),
+                           "parent_alive_after_timeout": process_alive(child["parent"])}
                 release.touch()
                 until(lambda: any(e.get("type") == "session.execution.succeeded" for e in events),
                       "the execution end")
@@ -311,6 +320,7 @@ def binding_measurement(ctx: Context) -> dict[str, Any]:
                 until(lambda: any(e.get("type") == "session.execution.succeeded" for e in events[before:]),
                       "post-reconnect execution frames")
                 facts["stream_drop_and_reconnect"] = stream.drops >= 1
+                facts["process_observation"] = process  # informative either way, never an assumed orphan outcome
                 return facts
             finally:
                 release.touch()
@@ -321,13 +331,33 @@ def binding_measurement(ctx: Context) -> dict[str, Any]:
 
 
 BINDING_FACTS = ("call_step_identity_order", "parallel_shell_calls", "completion_and_failure", "execution_end",
-                 "short_call_ends_before_step", "real_shell_child_started", "stream_drop_and_reconnect")
+                 "short_call_ends_before_step", "real_shell_child_started", "distinct_shell_child",
+                 "stream_drop_and_reconnect")
+
+
+def process_alive(pid: int) -> bool:
+    """Observe only a probe-owned process ID. A zombie has ended even though kill(pid, 0) still succeeds."""
+    from pathlib import Path
+
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        os.kill(pid, 0)
+        return stat.rsplit(")", 1)[1].split()[0] != "Z"
+    except (FileNotFoundError, ProcessLookupError):
+        return False
 
 
 def binding_check(ctx: Context) -> Outcome:
     observed = binding_measurement(ctx)
     facts = {key: observed.get(key) for key in BINDING_FACTS}
     failed = [key for key, value in facts.items() if value is not True]
+    process = observed.get("process_observation")
+    if not isinstance(process, dict) or set(process) != {
+            "child_alive_after_timeout", "parent_alive_after_timeout"} or not all(
+                isinstance(value, bool) for value in process.values()):
+        failed.append("missing real shell/child outcome observation")
+    else:
+        facts["process_observation"] = process
     return Outcome(FAIL if failed else PASS, {"messaging.wait_binding": facts}, failed)
 
 
@@ -374,7 +404,7 @@ def timeout_check(ctx: Context) -> Outcome:
                   for n in (default, short))
     # A full second is reserved for observation/poll delay in addition to the design's 30 s margin.
     maximum = max(0, min(90, math.floor(default) - 31)) if numbers else 0
-    facts = {**observed, "maximum_safe_wait_seconds": maximum}
+    measured = {**observed, "maximum_safe_wait_seconds": maximum}
     notes = []
     if not numbers or maximum <= 0:
         notes.append("no positive safe wait budget measured")
@@ -382,7 +412,13 @@ def timeout_check(ctx: Context) -> Outcome:
         notes.append("the foreground default did not stop the command")
     if observed.get("short_stopped_before_completion") is not True or not numbers or not short < default:
         notes.append("the shorter tool timeout was not observed")
-    return Outcome(FAIL if notes else PASS, {"messaging.shell_timeout": facts}, notes)
+    facts = {"positive_safe_wait_budget": numbers and maximum > 0,
+             "foreground_default_stops_command": observed.get("default_stopped_before_completion") is True,
+             "shorter_timeout_observed": numbers and short < default and
+             observed.get("short_stopped_before_completion") is True}
+    # Pin semantics, not wall-clock jitter. The exact measured durations/budget stay in the qualification record.
+    return Outcome(FAIL if notes else PASS, {"messaging.shell_timeout": facts,
+                                          "measurement.shell_timeout": measured}, notes)
 
 
 def boundary_measurement(ctx: Context) -> dict[str, Any]:
@@ -465,6 +501,7 @@ def boundary_facts(ids: dict[str, str], during_model: set[str], during_shell: se
         "model_not_interrupted": not (first & during_model) and started,
         "shell_not_interrupted": not (first & during_shell) and not (all_pending & before_release)
         and completed and 0 in exits,
+        "tool_output_not_truncated": "HQ_FOREGROUND_COMPLETED" in following,
         "steer_before_next_request": all("HQ_" + n in following for n in ("s1", "s2")),
         "queue_not_before_turn_end": all("HQ_" + n not in following for n in ("q1", "q2")),
         "steer_fifo": [i for i in users if i in (ids["s1"], ids["s2"])] == [ids["s1"], ids["s2"]],
@@ -474,7 +511,8 @@ def boundary_facts(ids: dict[str, str], during_model: set[str], during_shell: se
 
 
 BOUNDARY_FACTS = {
-    "steer_boundary": ("model_not_interrupted", "shell_not_interrupted", "steer_before_next_request", "steer_fifo"),
+    "steer_boundary": ("model_not_interrupted", "shell_not_interrupted", "tool_output_not_truncated",
+                       "steer_before_next_request", "steer_fifo"),
     "queue_boundary": ("queue_not_before_turn_end", "queue_fifo", "steer_overtakes_queue"),
 }
 

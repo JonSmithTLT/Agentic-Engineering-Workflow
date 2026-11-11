@@ -32,6 +32,41 @@
       "type": "integer",
       "minimum": 0
     },
+    "control_requests": {
+      "description": "Optional create receipts for the current Lead generation. A new generation clears this index.",
+      "type": "object",
+      "required": ["generation", "operations"],
+      "additionalProperties": false,
+      "properties": {
+        "generation": {"type": "integer", "minimum": 1},
+        "operations": {
+          "type": "object",
+          "propertyNames": {
+            "enum": ["work.create", "plan.propose", "invoke.create", "work.redispatch", "work.promote", "harness.launch"]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,64}$"},
+            "additionalProperties": {
+              "type": "object",
+              "required": ["arguments", "result"],
+              "additionalProperties": false,
+              "properties": {
+                "arguments": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha256"}},
+                "result": {
+                  "type": "object",
+                  "required": ["revision"],
+                  "properties": {
+                    "revision": {"type": "integer", "minimum": 1},
+                    "invocation_token": {"type": "null"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "manifest_sha256": {
       "$ref": "#/$defs/sha256"
     },
@@ -607,7 +642,7 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]}
           ]
         }
       }

@@ -28,6 +28,7 @@ from aew.engine.dispatch import Blocker, blocker_from, checked
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.guards import NotQueryable, refusal, require
 from aew.engine.guards import checked as guard_checked
+from aew.engine.request_ids import ControlRequest, without_invocation_credential
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
     GATE,
@@ -744,7 +745,11 @@ class EvidenceCommands:
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
+        if request_id is not None:
+            return self._invoke_request(token, expect_rev, request_id, evidence_only=True, work_id=work_id,
+                                        role=role, card=card, scope=scope, execution_profile=execution_profile,
+                                        launch=launch)
         handler = self.kinds.resolve_evidence_only(INVOKE, self.units.unit(self.k.store.current(), work_id))
         return handler(token=token, expect_rev=expect_rev, work_id=work_id, role=role, card=card, scope=scope,
                        execution_profile=execution_profile, launch=launch)
@@ -756,11 +761,34 @@ class EvidenceCommands:
 
     def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
                       card: str | None = None, scope: str = "ticket",
-                      execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                      execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                      request_id: str | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation, by the handler registered for the unit's kind."""
+        if request_id is not None:
+            return self._invoke_request(token, expect_rev, request_id, evidence_only=False, work_id=work_id,
+                                        role=role, card=card, scope=scope, execution_profile=execution_profile,
+                                        launch=launch)
         return self._handler(INVOKE, work_id)(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
                                               card=card, scope=scope, execution_profile=execution_profile,
                                               launch=launch)
+
+    def _invoke_request(self, token: str, expect_rev: int, request_id: str, *, evidence_only: bool,
+                        work_id: str, role: str | None, card: str | None, scope: str,
+                        execution_profile: dict[str, Any] | None, launch: bool) -> dict[str, Any]:
+        arguments = {"work_id": work_id, "role": role, "card": card, "scope": scope,
+                     "execution_profile": execution_profile, "launch": launch}
+        request = ControlRequest.prepare(request_id, evidence_only=evidence_only, **arguments)
+        with self.k.lead_txn(token, expect_rev, "invoke.create", request=request) as ctx:
+            if ctx.replayed is not None:
+                return ctx.replayed
+            # A repeat can name an invocation whose unit has since been archived.
+            # Only a new request resolves the live unit and its dispatch kind.
+            unit = self.units.unit(ctx.state, work_id)
+            resolve = self.kinds.resolve_evidence_only if evidence_only else self.kinds.resolve
+            handler = resolve(INVOKE, unit)
+            out = handler(token=token, expect_rev=expect_rev, **arguments, _ctx=ctx)
+            ctx.request_result = without_invocation_credential(out)
+        return out | {"revision": ctx.session.committed_revision}
 
     # ---- the dispatch guards of ``invoke create`` for a mutating Ticket (M4-A), in the order the route checked
 
@@ -835,11 +863,13 @@ class EvidenceCommands:
 
     def _invoke_ticket(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
                        card: str | None = None, scope: str = "ticket",
-                       execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                       execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                       _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation for a mutating Ticket. The Role card (explicit, planned, or workflow
         default) determines the archetype; authority comes from the archetype only (ADR-0006). Its legality is the
         ``invoke.create.mutating`` dispatch entrypoint's guards (M4-A)."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else contextlib.nullcontext(_ctx)
+        with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)

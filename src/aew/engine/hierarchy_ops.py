@@ -12,6 +12,7 @@ earlier parent review/verification stale.
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import gates as G
@@ -21,6 +22,7 @@ from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_ed
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
 from aew.errors import (
     DependencyUnsatisfied,
@@ -38,7 +40,7 @@ from aew.schemas import schema
 from aew.util import render_frontmatter, sha256_text, utc_now
 
 if TYPE_CHECKING:
-    from aew.engine.base import Kernel
+    from aew.engine.base import Kernel, TxnContext
     from aew.engine.ports import (
         ArchivePort,
         DispatchPort,
@@ -313,9 +315,10 @@ class Hierarchy:
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Review/verify invocations for a Story or Epic's acceptance, bound to the parent snapshot."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else nullcontext(_ctx)
+        with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             decision = self.dispatch.decide_in(ctx, "invoke.create.parent", work_id, role=role, card_id=card,
@@ -657,11 +660,19 @@ class Hierarchy:
                 "plans_needing_reconfirmation": invalidated, "revision": ctx.session.committed_revision}
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
         """Promote a Ticket to a Story (or a Ticket/Story to an Epic): identity and evidence are preserved."""
-        if not (reason and reason.strip()):
-            raise UsageError("promotion needs the reason evidence showed the unit was too small (KC §9.4)")
-        with self.k.lead_txn(token, expect_rev, "work.promote", reason=reason) as ctx:
+        missing_reason = not (reason and reason.strip())
+        reason_required = "promotion needs the reason evidence showed the unit was too small (KC §9.4)"
+        if request_id is None and missing_reason:
+            raise UsageError(reason_required)
+        request = ControlRequest.prepare(request_id, work_id=work_id, to=to, title=title, reason=reason,
+                                         risk_class=risk_class)
+        with self.k.lead_txn(token, expect_rev, "work.promote", reason=reason, request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
+            if missing_reason:
+                raise UsageError(reason_required)
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if to not in PROMOTION.get(unit["kind"], set()):
@@ -686,8 +697,10 @@ class Hierarchy:
             self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})", operation=PROMOTE)
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
-        return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,
-                "revision": ctx.session.committed_revision}
+            out = {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision}
+            if request is not None:
+                ctx.request_result = out
+        return out | {"revision": ctx.session.committed_revision}
 
     def _create_promoted(self, ctx: Any, kind: str, title: str, risk_class: int, parent: str | None,
                          promoted_from: str) -> str:

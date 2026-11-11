@@ -17,6 +17,7 @@ acknowledged by the Lead for the current authoritative commit (``freshness``).
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,7 @@ from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.request_ids import ControlRequest, without_invocation_credential
 from aew.engine.seams import (
     GATE,
     GATE_CONTEXT,
@@ -514,11 +516,19 @@ class NonMutating:
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
                         card: str | None = None, execution_profile: dict[str, Any] | None = None,
-                        launch: bool = False) -> dict[str, Any]:
+                        launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
         """Supersede the current attempt atomically and start the next one (operator review #2)."""
-        if not (reason and reason.strip()):
-            raise UsageError("a redispatch supersedes the current attempt; it needs a reason")
-        with self.k.lead_txn(token, expect_rev, "work.redispatch", reason=reason) as ctx:
+        missing_reason = not (reason and reason.strip())
+        reason_required = "a redispatch supersedes the current attempt; it needs a reason"
+        if request_id is None and missing_reason:
+            raise UsageError(reason_required)
+        request = ControlRequest.prepare(request_id, work_id=work_id, reason=reason, card=card,
+                                         execution_profile=execution_profile, launch=launch)
+        with self.k.lead_txn(token, expect_rev, "work.redispatch", reason=reason, request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
+            if missing_reason:
+                raise UsageError(reason_required)
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)
@@ -538,11 +548,14 @@ class NonMutating:
                  "reason": f"{reason} ({record}); attempt {unit['execution']['attempt']} = {inv_id}"})
             ctx.summary = f"{work_id} redispatched: attempt {unit['execution']['attempt']} ({inv_id})"
             self.units.before_commit(ctx)
+            inv = ctx.state["invocations"][inv_id]
+            out = {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
+                   "invocation": inv_id, "invocation_token": inv_token, "execution": unit["execution"],
+                   "observation": inv["observation"]}
+            if request is not None:
+                ctx.request_result = without_invocation_credential(out)
         self.prune_observations()
-        inv = ctx.state["invocations"][inv_id]
-        return {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
-                "invocation": inv_id, "invocation_token": inv_token, "execution": unit["execution"],
-                "observation": inv["observation"], "revision": ctx.session.committed_revision}
+        return out | {"revision": ctx.session.committed_revision}
 
     def execute_record_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any], kind: str,
                                submitted: dict[str, Any]) -> dict[str, Any]:
@@ -789,9 +802,10 @@ class NonMutating:
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Review/verify invocations for a non-mutating Ticket, bound to the record they evaluate."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else nullcontext(_ctx)
+        with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             decision = self.dispatch.decide_in(ctx, "invoke.create.non_mutating", work_id, role=role, card_id=card,
                                                scope=scope)

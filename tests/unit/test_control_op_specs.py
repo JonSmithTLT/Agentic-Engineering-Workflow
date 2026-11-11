@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from aew.engine import primitives as P
+from aew.schemas import schema
 
 ENGINE = Path(P.__file__).resolve().parent
 DIRECT_COMMIT_MODULES = {"lead_ops.py", "migrate_ops.py"}
@@ -102,6 +103,13 @@ def test_control_op_specs_match_static_entry_sites():
     assert len(entries) == 65
 
 
+def test_the_request_index_accepts_exactly_the_create_ops_that_declare_request_ids():
+    operations = schema("control")["properties"]["control_requests"]["properties"]["operations"]
+    assert set(operations["propertyNames"]["enum"]) == {
+        name for name, specs in P.CONTROL_OP_SPECS.items() if any(spec.request_id for spec in specs)
+    }
+
+
 def test_static_scan_reports_undeclared_and_unreadable_entries():
     scan = EntryScan("planted.py")
     scan.visit(ast.parse(
@@ -134,7 +142,7 @@ TRANSACTION_HANDLERS = {
     ("api", "ProjectAdmin"): "authority_accept authority_reject manifest_adopt",
     ("disposition_ops", "Dispositions"): "dispose",
     ("evidence_ops", "EvidenceCommands"): (
-        "_invoke_ticket invoke_cancel _ingest_ticket_review _ingest_ticket_verification "
+        "_invoke_request _invoke_ticket invoke_cancel _ingest_ticket_review _ingest_ticket_verification "
         "_classify_ticket_verification waive"
     ),
     ("gate_ops", "GateRepair"): "gate_replace",

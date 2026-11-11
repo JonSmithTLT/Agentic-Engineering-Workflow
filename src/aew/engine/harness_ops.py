@@ -36,6 +36,7 @@ from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_le
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import is_nm_ticket
+from aew.engine.request_ids import ControlRequest
 from aew.engine.store import Transition
 from aew.errors import (
     AEWError,
@@ -164,10 +165,14 @@ class Harness:
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
+    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+                       request_id: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
-        with self.k.lead_txn(token, expect_rev, "harness.launch") as ctx:
+        request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
+        with self.k.lead_txn(token, expect_rev, "harness.launch", request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
             state = ctx.state
             target = state["invocations"].get(invocation)
             if target is None:
@@ -180,12 +185,21 @@ class Harness:
             run = K.run_id(invocation, len(runs) + 1)
             stop_old = self._record_request(previous, "stop", {"reason": f"superseded by {run}"}) if previous else None
             credential = rotate_invocation_token(state, invocation, f"rotated: {run}")
-            runs.append({"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
-                         "launched_at": utc_now(), "kind": "relaunch" if previous else "launch",
-                         "generation": state["lead"]["generation"]})
+            run_record = {"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
+                          "launched_at": utc_now(),
+                          "kind": "relaunch" if previous else "launch", "generation": state["lead"]["generation"]}
+            runs.append(run_record)
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
+            if request is not None:
+                # The dispatch finalizer attaches provenance before the receipt is recorded.
+                ctx.request_result = lambda: {
+                    "ok": True, "invocation": invocation, "run": run,
+                    "run_record": {key: value for key, value in run_record.items() if key != "token_id"},
+                    "superseded": previous["run"] if previous else None,
+                    "supervisor_status": f"aew harness status {invocation}",
+                }
         revision = ctx.session.committed_revision
         old_dir = runlog.run_dir(self.k.aew_root, previous["run"]) if previous else None
         if old_dir is not None and old_dir.exists() and stop_old:  # best effort: its credential is already dead,

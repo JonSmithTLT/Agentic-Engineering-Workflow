@@ -246,6 +246,9 @@ def test_resumed_session_keeps_acknowledged_processes_at_exit(acquired, monkeypa
         result = lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="new", keep_seat=False,
                                          contained=contained, opencode_kind=seat.VACANT_START)
         assert result["seat"].startswith("held;")
+        if isinstance(left, int):
+            assert "the next `aew opencode` resumes it" in result["seat"]
+            assert "to free the seat instead" in result["seat"]
     assert len(prompts) == 1
     assert engine.lead_show()["status"] == "active"
     assert seat.read_leftovers(engine.aew_root, old["generation"] + 1) == left
@@ -318,7 +321,9 @@ def test_unknown_leftover_outcome_keeps_the_seat_and_names_the_way_back(acquired
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "unowned"))
     result = lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="new", keep_seat=False,
                                      contained=synthetic_harness, opencode_kind=seat.VACANT_START)
-    assert "held because the leftover process outcome is unknown" in result["seat"]
+    assert result["seat"].startswith("held; processes left: unknown; ")
+    assert "the next `aew opencode` resumes it from this host and user if eligible" in result["seat"]
+    assert "to free the seat instead" in result["seat"]
     assert "`aew lead takeover --reason <reason> --expect-rev " in result["seat"]
     assert "at your own terminal, then `aew lead release --expect-rev " in result["seat"]
     generation = engine.lead_show()["generation"]

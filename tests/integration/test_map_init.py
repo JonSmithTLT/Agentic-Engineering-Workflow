@@ -64,3 +64,67 @@ def test_init_never_replaces_a_selected_map(tmp_path):
     again = service.first_map(engine)
     assert (again["selected"], again["reason"]) == (False, "already_selected")
     assert store.revision_of(store.read_registry(engine.aew_root)) == first["map_revision"]
+
+
+def test_init_in_a_repository_with_no_commit_exits_0_and_says_when_the_first_map_comes(tmp_path):
+    """The never-fails proof at the command itself (E184 review, 2026-11-08): `aew init` before the first commit."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git("init", "-q", "-b", "main", cwd=repo)
+    out = Project(repo).ok("init", "--project-id", "calc")  # `ok` asserts exit 0
+    assert (out["map"]["selected"], out["map"]["reason"]) == (False, "no_commit")
+    assert store.read_registry(repo / ".aew") is None
+
+
+def test_a_registry_that_selects_no_structural_map_takes_the_first_one(tmp_path):
+    """`already_selected` means a structural map is selected (E184 review, 2026-11-08): a leftover registry holding
+    only an architecture reference gets the first map at its own revision."""
+    engine = _engine(tmp_path)
+    leftover = store.select(engine.aew_root, "architecture", expect=store.NO_REGISTRY,
+                            entry={"evidence_id": "E-0001"}, actor=service.INIT_ACTOR)
+    result = service.first_map(engine)
+    assert result["selected"] is True, result
+    registry = store.read_registry(engine.aew_root)
+    assert registry["selected"]["structural"]["sha256"] == result["root"]
+    assert registry["selected"]["architecture"] == {"evidence_id": "E-0001"}
+    assert registry["epoch"] == leftover["epoch"] and registry["map_revision"] == leftover["map_revision"] + 1
+
+
+def test_the_step_init_prints_selects_at_the_registrys_own_revision(tmp_path, monkeypatch):
+    """E184 review MIN-3: with a leftover registry, the printed `--expect-map-rev none:0` was refused; the step now
+    carries the registry's revision, and it works."""
+    engine = _engine(tmp_path)
+    leftover = store.select(engine.aew_root, "architecture", expect=store.NO_REGISTRY,
+                            entry={"evidence_id": "E-0001"}, actor=service.INIT_ACTOR)
+    real = service.build
+
+    def broken(repo, commit, **kw):
+        raise OSError("the commit's objects cannot be read")
+
+    monkeypatch.setattr(service, "build", broken)
+    failed = service.first_map(engine)
+    rev = store.revision_of(leftover)
+    assert f"`aew map generate --select --expect-map-rev {rev}`" in failed["detail"]
+    assert "none:0" not in failed["detail"]
+    monkeypatch.setattr(type(engine), "authoritative_commit", lambda self: None)
+    assert f"--expect-map-rev {rev}`" in service.first_map(engine)["detail"]
+    monkeypatch.undo()
+    record = real(engine.repo_root, engine.authoritative_commit())  # the printed step's compare-and-set holds
+    sha, root = store.write_artifact(engine.aew_root, record)
+    store.select_structural(engine.aew_root, expect=rev, entry=service._entry(record, sha, root),
+                            actor=service.INIT_ACTOR)
+
+
+def test_committing_the_aew_state_leaves_inits_map_current(tmp_path):
+    """The map's listing leaves `.aew/` out (ADR-0015, amended 2026-11-11 for register E184): the first commit of the
+    project's state is not a change to the map, so init's map stays CURRENT at it."""
+    from aew.maps import slices
+
+    repo = make_git_repo(tmp_path / "repo", {"calc/core.py": "def add(a, b):\n    return a + b\n"})
+    out = Project(repo).ok("init", "--project-id", "calc")
+    git("add", "-f", ".aew", cwd=repo)
+    git("commit", "-q", "-m", "the project's AEW state", cwd=repo)
+    head = git("rev-parse", "HEAD", cwd=repo)
+    assert head != out["map"]["source_revision"]
+    entry = slices.source_entry(repo / ".aew", repo, head)
+    assert entry["sha256"] == out["map"]["root"] and entry["freshness"]["status"] == "CURRENT", entry

@@ -28,6 +28,7 @@ from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control, retry_lock_free
 from aew.engine.workspace_ops import mutating_cap
+from aew.harness import seat
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -160,7 +161,7 @@ def control_violations(root: Path) -> list[str]:
     start = lead.get("start") or {}
     if start and (start.get("generation") != lead["generation"] or start.get("at") != lead["acquired_at"]):
         problems.append("Lead seat start does not match its generation and acquisition time")
-    if lead["status"] == "active" and start.get("kind") in {"opencode_acquire", "vacant_start"}:
+    if lead["status"] == "active" and start.get("kind") in seat.RESUMABLE:
         if not (start.get("host") and start.get("user") is not None and start.get("pid") and start.get("start_id")):
             problems.append("active OpenCode seat lacks its host, user or session identity")
         if isinstance(start.get("user"), int) and lead.get("host_uid") != start["user"]:
@@ -414,6 +415,15 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
             problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
+        if si["status"] == S.COMPLETED and stop is not None:
+            problems.append(f"{where}: a completed intent still carries a stop")
+        if si["status"] == S.ACTIVE and stop is not None:
+            error = stop["error"]
+            if not (error["code"] == "STALE_REVISION" and error.get("reason") == "resolve_stage"
+                    and stop["boundary"] == "stale_revision" and 0 < done < len(si["plan"])):
+                problems.append(f"{where}: an ACTIVE stop is not a partial stale stop awaiting resolve")
+            if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
+                problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
 
     def resolutions(si: dict[str, Any], where: str) -> None:

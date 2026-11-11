@@ -1034,10 +1034,10 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     continuation = ("the next `aew opencode` resumes it from this host and user if eligible; otherwise use "
                     "`aew lead takeover` at your own terminal" if opencode else
                     "continue with `aew lead takeover` at your own terminal")
-    if left is None:
-        return ("held because the leftover process outcome is unknown; to free the seat, run "
-                f"`aew lead takeover --reason <reason> {EXPECT_REV}` at your own terminal, then "
-                f"`aew lead release {EXPECT_REV}` with the new revision")
-    if left:
-        return f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
+    if left is None or left:
+        outcome = f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
+        if left is None or isinstance(left, int):
+            outcome += (f"; to free the seat instead, run `aew lead takeover --reason <reason> {EXPECT_REV}` "
+                        f"at your own terminal, then `aew lead release {EXPECT_REV}` with the new revision")
+        return outcome
     return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

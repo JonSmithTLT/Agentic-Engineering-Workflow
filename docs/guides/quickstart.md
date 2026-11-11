@@ -67,8 +67,10 @@ the `provider-env` check fails and shows the forms above.
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
   head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
-- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it finished may run again,
-  with other values.
+- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
+  may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
+  and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the
+  tool screen comes again when the Lead starts, and the first dispatch that needs a map makes one.
 
 ### Edit pinned settings or classify authority candidates
 

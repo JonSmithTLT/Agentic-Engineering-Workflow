@@ -507,3 +507,11 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
     for scope in ({}, {"deadline_scope": "always"}):
         own = pin({**policy, "profiles": {"default": {"model": "openai/m", "deadline_s": 900, **scope}}})
         assert own.get("deadline_scope") == scope.get("deadline_scope") and applied(own) == 900
+
+
+def test_quickstart_marks_key_export_as_optional_and_points_to_the_shell_forms():
+    quickstart = Path(__file__).resolve().parents[2] / "docs" / "guides" / "quickstart.md"
+    guide = quickstart.read_text(encoding="utf-8")
+    intro = "If you use an exported key (not a saved OpenCode login),"
+    pointer = "above with the provider variable in place of"
+    assert guide.index(intro) < guide.index("read -rsp") < guide.index(pointer)

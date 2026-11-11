@@ -40,9 +40,11 @@ from aew.harness.opencode import capabilities
 
 DB = "opencode.db"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
-# Two attempts share the existing login-store busy-wait budget for one request.
+# Implementation bound: two SQLite busy waits total BUSY_TIMEOUT_S. Wall time also includes the pause and
+# SQLite/filesystem work (5.36 s measured with a busy store).
 RESOLVE_READ_ATTEMPTS = 2
 RESOLVE_BUSY_TIMEOUT_S = BUSY_TIMEOUT_S / RESOLVE_READ_ATTEMPTS
+RESOLVE_RETRY_PAUSE_S = 0.1
 # A refreshing login the contained Lead relays as stored (the designer's addendum 1 to the CS-4 hand-off, option a).
 # Implementation bound: a request that starts with less than this left on the access token may outlive it mid-answer
 # (a 136 KB streamed answer took 7.8 s through a slow client in CS-3b's live lane), so the relay counts it expired.
@@ -289,7 +291,7 @@ class StoredLogin:
 
     def _deciding_row(self) -> tuple[str | None, Any] | None:
         path = db_path(self.base)
-        for _ in range(RESOLVE_READ_ATTEMPTS):
+        for attempt in range(RESOLVE_READ_ATTEMPTS):
             try:
                 if not stat.S_ISREG(path.stat().st_mode):
                     break
@@ -303,10 +305,21 @@ class StoredLogin:
                     ).fetchone()
             except FileNotFoundError:
                 return None
-            except (OSError, ValueError, sqlite3.Error):
-                continue
-        raise relay.Unavailable(f"AEW: your stored {self.integration} login could not be read. Try again once "
-                                "OpenCode's login store is readable.", cause="unreadable")
+            except sqlite3.Error as exc:
+                code = getattr(exc, "sqlite_errorcode", 0) & 0xff  # SQLite's low byte is the primary result code
+                if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                    break
+                if attempt + 1 == RESOLVE_READ_ATTEMPTS:
+                    raise relay.Unavailable(
+                        f"AEW: your stored {self.integration} login is in a busy or locked store. "
+                        "Try again once the store is available.", cause="unreadable", retryable=True) from None
+                time.sleep(RESOLVE_RETRY_PAUSE_S)
+            except (OSError, ValueError):
+                break
+        raise relay.Unavailable(
+            f"AEW: your stored {self.integration} login could not be read. If your own OpenCode cannot use the "
+            f"store, move it aside so OpenCode can recreate it. Log in again with your own OpenCode "
+            f"(`opencode auth login {self.integration}`).", cause="unreadable")
 
     def __call__(self) -> tuple[str, dict[str, str]]:
         row = self._deciding_row()

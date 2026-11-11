@@ -1519,9 +1519,13 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   three). Inside, the provider's variable holds the relay's sentinel; the relay outside swaps in the key.
 - **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
   (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
-  provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
-  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`lead.StoredLogin`) re-reads the operator's
-  login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
+  provider-level `baseURL` alone takes its requests to the relay, measured). A configured upstream override for
+  that provider prevents the Lead from relaying the stored login. The relay returns 403 before connecting for any
+  target outside `/backend-api/codex/` or with an ambiguous path. The relay asks for the credential on each request
+  (`relay.ProviderRelay`'s `resolve`), and `login.StoredLogin` re-reads only that provider's deciding row,
+  read-only, so a refresh by the operator's own OpenCode is used from the next request on. A store still unreadable
+  after the bounded busy or locked retry gets 503 `credential_unreadable`. Other store faults get 401 and the
+  operator's recovery step. It sets the
   account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
   writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
   the provider and `opencode auth list` (which makes the operator's own OpenCode refresh it, measured) and saying

@@ -221,7 +221,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.opencode.adapter`: `binary_command` (Path.exists), `default_binary` (Path.exists)
 - `aew.harness.opencode.lead`: `ContainedLead._seed_models` (Path.is_file), `ContainedLead._seed_models` (Path.read_text), `ContainedLead._seed_models` (Path.stat), `operator_mcp_servers` (Path.is_file), `operator_mcp_servers` (Path.read_text), `operator_preferences` (Path.is_file), `operator_preferences` (Path.read_text)
 - `aew.harness.opencode.lead_wake`: `url_of` (Path.read_text)
-- `aew.harness.opencode.login`: `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
+- `aew.harness.opencode.login`: `StoredLogin._deciding_row` (Path.stat), `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
 - `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (Path.read_text), `session_holders_live` (Path.read_text)
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
 - `aew.harness.runlog`: `_open_regular` (os.lstat), `_open_regular` (os.open), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)

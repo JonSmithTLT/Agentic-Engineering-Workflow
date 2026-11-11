@@ -8,9 +8,11 @@ credential here is a synthetic value. Every socket has a timeout and is closed i
 
 from __future__ import annotations
 
+import json
 import socket
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -256,11 +258,15 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     assert answer.startswith(b"HTTP/1.1 401 Unauthorized\r\n") and b"X-AEW-Refusal: credential_unavailable" in answer
     assert answer.endswith(b"the stored login has expired: refresh it, and the next request works")
     assert service.counts().get("credential_unavailable") == 1
-    assert service.counts().get("expired") == 1
+    assert service.counts().get("credential:expired") == 1
 
 
 @pytest.mark.parametrize("target", [
     "/v1/models",
+    "*",
+    "?/backend-api/codex/responses",
+    "/elsewhere?path=/backend-api/codex/responses",
+    "http://provider.example/backend-api/codex/responses",
     "https://provider.example/backend-api/codex/responses",
     "/backend-api/codex",
     "/backend-api/codexX",
@@ -273,6 +279,11 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     "/backend-api/codex/..;param/x",
     "/backend-api/codex//responses",
     "/backend-api/codex/responses#fragment",
+    r"/backend-api/codex/..\elsewhere",
+    "/backend-api/codex/responses?x=\t",
+    "/backend-api/codex/responses?x=\n",
+    "/backend-api/codex/responses?x=\x00",
+    "/backend-api/codex/responses?x=\x7f",
 ])
 def test_a_resolve_mode_target_outside_the_prefix_or_ambiguous_connects_nothing(target):
     seam = Seam(OSError("unexpected connection"))
@@ -297,29 +308,79 @@ def test_resolve_mode_forwards_a_codex_path_and_its_query_as_received():
     assert sent.split(b"\r\n", 1)[0] == request.split(b"\r\n", 1)[0]
 
 
-def test_an_unreadable_store_returns_503_and_counts_the_cause_after_the_bounded_retry(tmp_path, monkeypatch):
+def write_refreshing_store(db):
+    con = sqlite3.connect(db)
+    try:
+        with con:
+            con.execute("CREATE TABLE credential (integration_id, method_id, active, time_updated, value)")
+            value = json.dumps({"type": "oauth", "access": "synthetic-access", "expires": (time.time() + 3600) * 1000})
+            con.execute("INSERT INTO credential VALUES ('openai', 'chatgpt', 1, 1, ?)", (value,))
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("code", [sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED])
+def test_a_busy_store_returns_503_and_counts_the_cause_after_the_bounded_retry(tmp_path, monkeypatch, code):
     db = tmp_path / "synthetic.db"
-    db.touch()
+    write_refreshing_store(db)
     attempts = []
+    pauses = []
 
     def busy(database, *, uri, timeout):
         attempts.append(timeout)
         assert database == f"{db.as_uri()}?mode=ro" and uri is True
-        raise sqlite3.OperationalError("database is locked")
+        exc = sqlite3.OperationalError("database is locked")
+        exc.sqlite_errorcode = code
+        raise exc
 
-    monkeypatch.setattr(login.sqlite3, "connect", busy)
     stored = login.StoredLogin("openai", {"OPENCODE_DB": str(db)})
     seam = Seam(OSError("unexpected connection"))
-    with relayed(seam, upstream="http://provider.example/backend-api/codex",
-                 resolve=lambda: netns._grant("synthetic-sentinel", stored)) as (service, client, _):
-        client.sendall(b"GET /backend-api/codex/responses HTTP/1.1\r\n\r\n")
-        answer = read_all(client)
+    with monkeypatch.context() as patch:
+        patch.setattr(login.sqlite3, "connect", busy)
+        patch.setattr(login, "time", SimpleNamespace(sleep=pauses.append))
+        with relayed(seam, upstream="http://provider.example/backend-api/codex",
+                     resolve=lambda: netns._grant("synthetic-sentinel", stored)) as (service, client, _):
+            client.sendall(b"GET /backend-api/codex/responses HTTP/1.1\r\n\r\n")
+            answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 503 Service Unavailable\r\n")
     assert b"X-AEW-Refusal: credential_unreadable\r\n" in answer
+    assert answer.endswith(b"Try again once the store is available.")
     assert b"synthetic.db" not in answer and b"database is locked" not in answer
     assert not seam.calls
-    assert len(attempts) == 2 and sum(attempts) <= login.BUSY_TIMEOUT_S
-    assert service.counts().get("unreadable") == 1
+    assert len(attempts) == 2 and sum(attempts) == login.BUSY_TIMEOUT_S
+    assert pauses == [login.RESOLVE_RETRY_PAUSE_S] and pauses[0] > 0
+    assert service.counts().get("credential:unreadable") == 1
+    assert stored()[0] == "synthetic-access"  # the same resolver works once the lock is gone
+
+
+@pytest.mark.parametrize("fault", ["not-a-database", "missing-table", "directory"])
+def test_a_nonbusy_store_fault_refuses_without_retry_and_names_how_to_recover(tmp_path, monkeypatch, fault):
+    db = tmp_path / "synthetic.db"
+    if fault == "directory":
+        db.mkdir()
+    elif fault == "missing-table":
+        sqlite3.connect(db).close()
+    else:
+        db.write_text("synthetic invalid SQLite data", encoding="utf-8")
+    pauses = []
+    stored = login.StoredLogin("openai", {"OPENCODE_DB": str(db)})
+    seam = Seam(OSError("unexpected connection"))
+    with monkeypatch.context() as patch:
+        patch.setattr(login, "time", SimpleNamespace(sleep=pauses.append))
+        with relayed(seam, upstream="http://provider.example/backend-api/codex",
+                     resolve=lambda: netns._grant("synthetic-sentinel", stored)) as (service, client, _):
+            client.sendall(b"GET /backend-api/codex/responses HTTP/1.1\r\n\r\n")
+            answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 401 Unauthorized\r\n")
+    assert b"X-AEW-Refusal: credential_unavailable\r\n" in answer
+    assert b"move it aside so OpenCode can recreate it" in answer
+    assert answer.endswith(b"Log in again with your own OpenCode (`opencode auth login openai`).")
+    assert b"Try again" not in answer and b"synthetic" not in answer
+    assert not pauses and not seam.calls
+    assert service.counts().get("credential:unreadable") == 1
+    db.rename(tmp_path / "store-moved-aside")
+    write_refreshing_store(db)  # stand in for OpenCode recreating the store and writing the new login
+    assert stored()[0] == "synthetic-access"
 
 
 @pytest.mark.parametrize("override", [False, True])
@@ -330,6 +391,11 @@ def test_the_lead_network_only_builds_refreshing_relays_to_the_builtin_upstream(
     monkeypatch.setattr(netns, "listen", lambda _: None)
     monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
     monkeypatch.setattr(netns.egress.EgressProxy, "start", lambda self: self)
+
+    def policy_upstream(*args, **kwargs):
+        pytest.fail("a refreshing relay must use its built-in upstream directly")
+
+    monkeypatch.setattr(netns, "upstream", policy_upstream)
     layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir="unused")
     reads = []
 

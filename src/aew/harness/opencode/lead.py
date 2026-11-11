@@ -594,10 +594,21 @@ class ContainedLead:
         self.logins, self.no_logins = login.stored(base)
         self.lines: list[str] = []
         self.refreshing: dict[str, login.Login] = {}  # provider -> its refreshing login, relayed as stored
+        self.refreshing_overrides: dict[str, str] = {}
         for entry in self.logins:
-            if entry.kind == "oauth" and netns.stored_key_override(entry.integration, policy):
-                self.lines.append(f"{entry.integration} ({entry.kind}): stored login not relayed because "
-                                  f"containment.network.upstreams.{entry.integration} is set")
+            provider = entry.integration
+            if (entry.kind == "oauth" and provider in netns.REFRESHING_UPSTREAMS
+                    and netns.stored_key_override(provider, policy)):
+                variable = netns.PROVIDER_KEY_ENV[provider]
+                field = f"containment.network.upstreams.{provider}"
+                why = f"stored login not relayed because {field} is set"
+                if provider in self.keys:
+                    why += f", using the key supplied by `--provider-env {variable}` instead"
+                else:
+                    why += (f". Remove the override to use the stored login, or export {variable} and start "
+                            f"`aew opencode --provider-env {variable}` to use an API key")
+                    self.refreshing_overrides[provider] = why
+                self.lines.append(f"{provider} ({entry.kind}): {why}")
             elif entry.integration in self.keys:
                 self.lines.append(f"{entry.integration} ({entry.kind}): fed by --provider-env instead")
             elif entry.kind == login.UNKNOWN:
@@ -696,6 +707,11 @@ class ContainedLead:
             raise HarnessIncompatible(
                 f"no provider the contained Lead could use: {'; '.join(_unpinned(p) for p in unpinned)}",
                 provider=unpinned[0], reason=client_cert.NO_MODEL)
+        overrides = getattr(self, "refreshing_overrides", {})
+        if overrides:
+            raise HarnessIncompatible(
+                f"no provider is relayed to the contained Lead: {'; '.join(overrides.values())}",
+                provider=next(iter(overrides)), reason=netns.PROVIDER_KEY_MISSING)
         needs_relay = (" A provider with a client certificate is relayed only under containment.network.mode: "
                        "proxy_only (the default)." if getattr(self, "unrelayed", None) else "")
         variables = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)

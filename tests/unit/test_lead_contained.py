@@ -85,6 +85,7 @@ def test_the_stored_login_is_read_read_only_one_row_per_provider_the_active_one_
     {"type": "oauth", "access": "synthetic-access-new"},                            # no expiry
     {"type": "oauth", "access": "synthetic-access-new", "expires": True},           # not a time
     {"type": "oauth", "access": "synthetic-access-new", "expires": 9, "metadata": ["synthetic"]},
+    {"type": "oauth", "access": "synthetic-access-new", "expires": float("inf")},
     {"type": "oauth2", "token": "synthetic-access-new", "expires": 9},              # a type AEW does not know
     "synthetic-not-an-object"])
 def test_a_providers_row_in_a_shape_aew_does_not_know_is_its_login_unread_and_never_passed_over(tmp_path, value):
@@ -164,7 +165,7 @@ def chatgpt(access: str, expires_s: float, account: str = "synthetic-account-000
             "expires": int(expires_s * 1000), "metadata": {"accountID": account}}
 
 
-def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_written(tmp_path):
+def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_written(tmp_path, at_a_terminal):
     """Addendum 1, option (a): the relay's resolver reads the operator's login store on each request, read-only, so a
     refresh by the operator's own OpenCode is used from the next request on; the account header comes from the
     stored login. Expired (or within the margin), gone, or no longer a refreshing login: the message names the
@@ -195,12 +196,18 @@ def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_writt
         assert refused.value.cause == cause
         message = str(refused.value)
         assert f"your stored openai login {words}" in message and "synthetic" not in message
+    assert "Restart `aew opencode`" in message
+    restarted = contained(tmp_path)
+    restarted.require_provider()
+    assert restarted.keys == {"openai": key_row["key"]} and restarted.refreshing == {}
     db.unlink()
     with pytest.raises(relay.Unavailable, match=r"your stored openai login is missing\. .*the Lead's next "
                                                 "request then works, with no restart") as refused:
         resolve()
     assert refused.value.cause == "missing"
     assert str(tmp_path) not in str(refused.value)
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-returned", time.time() + 3600), 1)])
+    assert resolve()[0] == "synthetic-access-returned"
 
 
 def test_the_resolver_reads_only_the_latest_tied_active_row_for_its_provider(tmp_path):
@@ -229,21 +236,42 @@ def test_the_lead_announces_it_will_not_relay_a_refreshing_login_with_an_overrid
     assert session.refreshing == {} and session.keys == {}
     out = io.StringIO()
     session.announce(out)
-    assert ("openai (oauth): stored login not relayed because containment.network.upstreams.openai is set"
-            in out.getvalue())
+    refusal = "stored login not relayed because containment.network.upstreams.openai is set"
+    way_on = ("Remove the override to use the stored login, or export OPENAI_API_KEY and start "
+              "`aew opencode --provider-env OPENAI_API_KEY` to use an API key")
+    assert f"openai (oauth): {refusal}. {way_on}" in out.getvalue()
     assert "synthetic-access" not in out.getvalue()
+    with pytest.raises(errors.HarnessIncompatible) as refused:
+        session.require_provider()
+    assert f"{refusal}. {way_on}" in refused.value.message
+    assert "opencode auth login" not in refused.value.message
+
+    restored = contained(tmp_path)
+    restored.require_provider()
+    assert set(restored.refreshing) == {"openai"}
+
+    keyed = contained(tmp_path, ["OPENAI_API_KEY"], policy=policy, OPENAI_API_KEY="synthetic-key")
+    keyed.require_provider()
+    assert keyed.refreshing == {} and keyed.keys == {"openai": "synthetic-key"}
+    keyed_out = io.StringIO()
+    keyed.announce(keyed_out)
+    assert f"{refusal}, using the key supplied by `--provider-env OPENAI_API_KEY` instead" in keyed_out.getvalue()
+    assert "synthetic-key" not in keyed_out.getvalue()
 
 
 def test_an_expired_login_says_what_refreshes_it_and_that_the_next_request_works(tmp_path):
     from aew.harness.containment import relay
 
-    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() - 1), 1)])
+    db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() - 1), 1)])
+    resolve = login.StoredLogin("openai", {"HOME": str(tmp_path)})
     with pytest.raises(relay.Unavailable) as refused:
-        login.StoredLogin("openai", {"HOME": str(tmp_path)})()
+        resolve()
     assert str(refused.value) == (
         "AEW: your stored openai login has expired, and the contained Lead never refreshes it (that would write your "
         "OpenCode's own login). Run `opencode auth list` at your own terminal: your OpenCode refreshes it there, and "
         "the Lead's next request then works, with no restart.")
+    rewrite(db, chatgpt("synthetic-access-refreshed", time.time() + 3600))
+    assert resolve()[0] == "synthetic-access-refreshed"
 
 
 def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and_on_a_request(tmp_path,
@@ -271,6 +299,9 @@ def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and
         resolve()
     assert refused.value.cause == "unknown_shape"
     assert str(refused.value) == f"AEW: your stored openai login is now {unknown}."
+    keyed = contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="synthetic-key")
+    keyed.require_provider()
+    assert keyed.keys == {"openai": "synthetic-key"} and keyed.refreshing == {}
 
 
 def test_a_relayed_login_close_to_expiry_is_named_at_launch_with_the_refresh_step_and_blocks_nothing(tmp_path,

@@ -12,7 +12,7 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    it starts: ``netns.provider_key_missing``). A credential that
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
-   or 503 for an unreadable store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
+   or 503 for a busy or locked store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
 3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``;
 4. connects to its one fixed upstream, through the operator's HTTP proxy when the provider's environment names one,
    over TLS for ``https``;
@@ -83,9 +83,10 @@ CredentialCause = Literal["expired", "kind_changed", "unknown_shape", "missing",
 class Unavailable(Exception):
     """A name-only refusal whose message is sent to the client and whose cause is counted."""
 
-    def __init__(self, message: str, *, cause: CredentialCause) -> None:
+    def __init__(self, message: str, *, cause: CredentialCause, retryable: bool = False) -> None:
         super().__init__(message)
         self.cause = cause
+        self.retryable = retryable
 
 
 def sentinel() -> str:
@@ -196,8 +197,8 @@ class ProviderRelay(Service):
         try:
             return resolve()
         except Unavailable as exc:
-            self._count(exc.cause)
-            if exc.cause == "unreadable":
+            self._count(f"credential:{exc.cause}")
+            if exc.cause == "unreadable" and exc.retryable:
                 raise _Refused(503, "credential_unreadable", str(exc)) from None
             raise _Refused(401, "credential_unavailable", str(exc)) from None
 

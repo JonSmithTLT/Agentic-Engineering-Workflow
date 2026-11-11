@@ -39,8 +39,11 @@ and holds the file to:
 ``check`` also checks table-owned switch defaults and evidence, decidable on_by_default pairs, wired reference
 records, stale remaining slices and FORMAT.md rule 1's count. A count above wip_limit requires the operator's covering
 wip_allowance; the allowance is stale once the count recovers. A system ``awaiting_signoff`` (built, wired and on by
-default, with no slices left, not yet tested and signed off by the operator) is not counted. The operator's words and
-their extra conditions are reviewed, not authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
+default, with no slices left, not yet tested and signed off by the operator) is not counted. ``on_and_used`` requires
+the operator's ``signoff`` (a quoted date and their words), and a sign-off on any other state is refused. The lag rule:
+a system with no own slices left that is still partly_built, built_off, built_not_wired or staged is refused unless
+its recommendation is freeze, cut or keep. The operator's words and their extra conditions are reviewed, not
+authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
 hand-kept and are labelled. Render labels the evidence citations; check validates their table ownership. Render
 imports neither the policy tables nor the as-built reference.
 Not here yet: deriving board_state or built, serves, lanes or a dashboard view.
@@ -674,6 +677,31 @@ def stale_slice_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
             if s["row"] in own.rows - own.open_rows and not HOLD_RE.match(s["row"])]
 
 
+def signoff_problems(data: dict[str, Any]) -> list[Problem]:
+    """on_and_used carries the operator's sign-off, and only on_and_used does (the operator, 2026-11-10). The words
+    are reviewed, not authenticated, as the allowance's are."""
+    out = []
+    for e in data["systems"]:
+        state, signed = e["state"]["board_state"], "signoff" in e
+        if state == SIGNED and not signed:
+            out.append(Problem("signoff", e["id"], f"{e['id']} is {SIGNED} with no sign-off on record: add signoff "
+                               f"with the operator's date and words, or move it to {AWAITING}"))
+        elif signed and state != SIGNED:
+            out.append(Problem("signoff", e["id"], f"{e['id']} carries a sign-off but is {state}: a sign-off belongs "
+                               f"to {SIGNED} only, so move it there or remove the sign-off"))
+    return out
+
+
+def lag_problems(data: dict[str, Any]) -> list[Problem]:
+    """A system with no own slices left has left the building states, unless it is frozen, cut or kept (the operator,
+    2026-11-10): the pull request that lands a system's last slice moves its state in the same pull request."""
+    return [Problem("lag", e["id"], f"{e['id']} has no own slices left but is still {e['state']['board_state']}: move "
+                    f"it to {AWAITING}, or to {SIGNED} with the operator's sign-off")
+            for e in data["systems"]
+            if e["state"]["board_state"] in BUILDING and e["recommendation"] not in NOT_COUNTED
+            and not own_slices(e, data)]
+
+
 def limit_problems(data: dict[str, Any]) -> list[Problem]:
     """No count above N without the operator's covering allowance; a recovered count cannot retain that allowance.
     The words and any extra conditions they state are reviewed by the operator/Lead, not verified by this tool."""
@@ -846,7 +874,7 @@ def problems(text: str, own: Owners) -> list[Problem]:
               + lint_problems(data) + public_problems(text))
     if not schema_problems(data):
         found += switch_problems(data, own) + wired_problems(data, own) + stale_slice_problems(data, own)
-        found += limit_problems(data)
+        found += limit_problems(data) + signoff_problems(data) + lag_problems(data)
         found += rendered_problems(own.root, data, own.now_order)
     return sorted(set(found), key=lambda p: (p.check, p.where, p.text))
 

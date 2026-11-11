@@ -42,11 +42,9 @@ provider_env: [OPENAI_API_KEY]
 - **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. An explicit value comes from whoever launches the run. On contained Linux the relay can also use a saved OpenCode API-key login for the pinned provider under the conditions below. On the relay route the server receives a sentinel. A built-in provider does not require another built-in provider's key variable. A missing required variable is refused before anything starts, naming the variable; `aew doctor`'s `provider-env` line says the same beforehand. Behind a proxy, list the variable OpenCode reads for your provider's scheme here too: `HTTPS_PROXY` for an `https://` provider, `HTTP_PROXY` for an `http://` one (OpenCode 2.0.18 does not read `ALL_PROXY`, and `HTTP_PROXY` never applies to `https://`). AEW then adds `127.0.0.1`, `localhost`, `::1` and `[::1]` to `NO_PROXY`, keeping any entries you pass (a `NO_PROXY` of `*` is left as it is), so OpenCode's loopback traffic never goes through the proxy. AEW's own calls to the run's server ignore proxy settings in any case. `aew opencode --provider-env` does the same for the Lead's OpenCode.
 - **Routing** is most specific first: card, then risk class, then archetype, then default. The profile is pinned on each invocation at dispatch, so editing the policy never changes work already dispatched. The Lead can override one dispatch with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
 
-The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --expect-rev N` at your own
-terminal to accept the change (until then every Lead change is refused). It asks for the Lead credential at a hidden
-prompt; see [Giving AEW the Lead credential](quickstart.md#giving-aew-the-lead-credential). That route holds the seat,
-and it doesn't mix with section 3's `--acquire`: a held seat refuses it, so start the Lead there with
-`aew opencode` and your credential.
+For a manual edit of the pinned execution policy, follow the quickstart's
+[pinned settings steps](quickstart.md#edit-pinned-settings-or-classify-authority-candidates). Once you've adopted the
+edit at your terminal and released the seat, start the Lead with `aew opencode --acquire`.
 
 Then check the project:
 

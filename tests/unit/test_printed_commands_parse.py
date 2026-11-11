@@ -2,18 +2,14 @@
 
 The check: every printed command the finders see in ``src/aew`` (``tests/helpers/printed_commands.py`` says how they
 find them and what they cannot see) is judged as a reader runs it. A code span that is a bare command path, every word
-a real (sub)command and nothing else (`aew manifest adopt`), is a mention: it names the command and passes if that
-path exists. Anything with an option or an argument is a command: its placeholders are filled from the one table, a
-fenced block's heredoc body is expanded by the CLI's own ``fields.expand``, and the result must parse with the real
+a real (sub)command and nothing else, is a mention if its parser has no required options. Other sites must parse.
+The check fills placeholders from the one table, expands any fenced block's heredoc body with the CLI's own
+``fields.expand``, and parses the result with the real
 ``build_parser()`` (the Lead's ruling, ITEMS 56 (1)-(3)). A site that fails names its file and line. A site the check
 does not hold is listed below with why; the lists are pinned both ways (an entry must still be live, and must still
 fail).
 
 Its limits:
-- a bare-name instruction ("run `aew migrate`") passes as a mention; the instruction-style ones are an ITEMS 56
-  follow-on (``test_a_bare_name_instruction_passes_as_a_mention`` probes one);
-- `aew lead handoff accept` stays a mention: its complete form puts the offer credential on the command line as a value
-  (`--offer`), the class ITEMS 61 owns;
 - what the finders cannot see (``printed_commands``' docstring), each with a probe below.
 
 It is a recogniser feeding an enforced check, so it carries the standard items: a second finder written apart from the
@@ -78,6 +74,73 @@ EXEMPT = {
 }
 
 
+# Pre-existing bare spans outside this change's adoption scope, pinned by file, text and count.
+# The handoff accept form would expose an offer credential on the command line.
+# The manifest header is part of the bytes init pins, including its informational adopt and authority references.
+# Other entries preserve the existing command references and advice until their callers are updated.
+LEGACY_BARE_SPANS = {
+    ("cli/work_commands.py", "aew harness launch"): 1,
+    ("dashboard/reasons.py", "aew migrate"): 1,
+    ("engine/disposition_ops.py", "aew work dispose"): 1,
+    ("engine/evidence_ops.py", "aew integrate prepare"): 1,
+    ("engine/evidence_ops.py", "aew work redispatch"): 1,
+    ("engine/guide.py", "aew authority accept"): 1,
+    ("engine/guide.py", "aew authority reject"): 1,
+    ("engine/guide.py", "aew evidence ingest"): 1,
+    ("engine/guide.py", "aew lead acquire"): 1,
+    ("engine/guide.py", "aew lead takeover"): 1,
+    ("engine/guide.py", "aew work transition"): 1,
+    ("engine/hierarchy_ops.py", "aew integrate reconcile"): 2,
+    ("engine/history_ops.py", "aew migrate"): 1,
+    ("engine/integration_ops.py", "aew integrate prepare"): 4,
+    ("engine/integration_ops.py", "aew integrate reconcile"): 3,
+    ("engine/integration_ops.py", "aew integrate requeue"): 1,
+    ("engine/lead_ops.py", "aew lead handoff accept"): 1,
+    ("engine/migrate_ops.py", "aew harness stop|wait"): 1,
+    ("engine/nonmutating_ops.py", "aew evidence ingest"): 2,
+    ("engine/nonmutating_ops.py", "aew review ingest"): 1,
+    ("engine/nonmutating_ops.py", "aew verify ingest"): 1,
+    ("engine/nonmutating_ops.py", "aew work accept"): 3,
+    ("engine/nonmutating_ops.py", "aew work acknowledge-input"): 1,
+    ("engine/nonmutating_ops.py", "aew work close"): 1,
+    ("engine/nonmutating_ops.py", "aew work dispatch"): 2,
+    ("engine/nonmutating_ops.py", "aew work redispatch"): 3,
+    ("engine/queue_ops.py", "aew integrate prepare"): 1,
+    ("engine/reasons.py", "aew work reclassify"): 1,
+    ("engine/resume_ops.py", "aew evidence ingest"): 1,
+    ("engine/resume_ops.py", "aew integrate prepare"): 4,
+    ("engine/resume_ops.py", "aew integrate reconcile"): 1,
+    ("engine/resume_ops.py", "aew integrate requeue"): 1,
+    ("engine/resume_ops.py", "aew integrate validate"): 1,
+    ("engine/resume_ops.py", "aew invoke create"): 3,
+    ("engine/resume_ops.py", "aew lead handoff accept"): 2,
+    ("engine/resume_ops.py", "aew lead takeover"): 1,
+    ("engine/resume_ops.py", "aew work redispatch"): 2,
+    ("engine/stage_intents.py", "aew stage continue|abandon"): 1,
+    ("engine/steering.py", "aew lead mode lower"): 1,
+    ("engine/validation_ops.py", "aew integrate requeue"): 1,
+    ("engine/validation_ops.py", "aew integrate validate"): 2,
+    ("engine/validation_ops.py", "aew migrate"): 1,
+    ("engine/work_ops.py", "aew work redispatch"): 1,
+    ("harness/contract.py", "aew lead release"): 1,
+    ("harness/contract.py", "aew submit"): 2,
+    ("harness/lead_broker.py", "aew lead mode lower"): 1,
+    ("harness/lead_broker.py", "aew lead takeover"): 2,
+    ("harness/opencode/projection.py", "aew lead handoff offer"): 1,
+    ("harness/opencode/projection.py", "aew submit"): 1,
+    ("knowledge/manifest.py", "aew authority accept"): 1,
+    ("knowledge/manifest.py", "aew manifest adopt"): 1,
+    ("policy/execution.py", "aew harness launch"): 1,
+    ("process_kind.py", "aew submit"): 1,
+    ("surface/availability.py", "aew work staff"): 1,
+    ("workspace/integration.py", "aew integrate reconcile"): 2,
+}
+
+
+def _legacy_bare_span(site: P.Site) -> tuple[str, str]:
+    return site.path.removeprefix("src/aew/"), site.shown
+
+
 def _held(site: P.Site) -> bool:
     return (site.path, site.shown) not in DEFERRED and site.key not in EXEMPT
 
@@ -93,7 +156,17 @@ def _why_not(site: P.Site) -> str | None:
 def test_every_printed_command_parses_as_printed() -> None:
     sites = P.ast_sites()
     assert len(sites) > 300  # the finder sees the source at all
-    failures = [f"{s.key} ({s.kind}) {s.shown!r}: {why}" for s in sites if _held(s) and (why := _why_not(s))]
+    remaining = Counter(LEGACY_BARE_SPANS)
+    failures = []
+    for site in sites:
+        if not _held(site) or not (why := _why_not(site)):
+            continue
+        key = _legacy_bare_span(site)
+        if site.kind == "span" and remaining[key] > 0:
+            remaining[key] -= 1
+            continue
+        failures.append(f"{site.key} ({site.kind}) {site.shown!r}: {why}")
+    assert not +remaining, f"stale bare spans: {+remaining}"
     assert not failures, f"{len(failures)} printed commands do not run as printed:\n" + "\n".join(failures)
 
 
@@ -177,8 +250,7 @@ GOOD = f"aew invoke cancel INV-1 {K.EXPECT_REV} --fields - <<'EOF'\nreason: 'why
         pytest.param(f"aew authority accept <candidate> --class <contracts|decisions> {K.EXPECT_REV}", "span",
                      id="choices"),
         pytest.param("aew work create --help", "span", id="help"),
-        pytest.param("aew manifest adopt", "span", id="mention"),
-        pytest.param("aew harness stop|wait", "span", id="mentions"),
+        pytest.param("aew work show", "span", id="mention"),
         pytest.param(f"aew lead takeover {K.EXPECT_REV} --reason 'the session is gone'", "field", id="field"),
     ],
 )
@@ -201,6 +273,7 @@ def test_a_right_command_passes(command: str, kind: str) -> None:
                      id="bad-alternative"),
         pytest.param("aew lead takeover --reason why", "span", "required: --expect-rev", id="incomplete"),
         pytest.param("aew lead takeover", "field", "required", id="bare-name-in-a-field"),
+        pytest.param("aew manifest adopt", "span", "--reason", id="missing-adopt-options"),
         pytest.param("aew manifest adoptt", "span", "invalid choice", id="misspelled-mention"),
         pytest.param(f"aew work cancel T-1 --reason ... {K.EXPECT_REV}", "span", "elided value", id="elision"),
     ],
@@ -277,7 +350,11 @@ def test_operator_terminal_refusals_parse() -> None:
     every command it is given, passes once rendered."""
     for words in LEAD_KEPT_OUT:
         for printed, fenced in P.commands(operator_terminal_refusal(" ".join(words))):
-            P.check(printed, "fence" if fenced else "span")
+            if printed == "aew g3 request" and not fenced:
+                # This refusal tells the Lead whom to ask. The operator's client supplies the required inputs.
+                P.parse(f"{printed} --help", fenced=False)
+            else:
+                P.check(printed, "fence" if fenced else "span")
 
 
 def test_each_capability_change_names_a_capability_command() -> None:
@@ -326,8 +403,16 @@ def test_every_command_the_rendered_guide_prints_passes(post_verify: bool) -> No
                                                    "verification": post_verify}}
     printed = P.commands(lead_text.render(gates, DEFAULT_CHECKS))
     assert len(printed) > 30  # a floor on the finder: E130's guide prints each command once, not per move
+    # The guide names these commands in its explanations. Its runnable examples are checked below.
+    references = {
+        "aew authority accept", "aew authority reject", "aew lead acquire", "aew lead takeover",
+        "aew lead release", "aew evidence ingest", "aew work transition",
+    }
     for command, fenced in printed:
-        P.check(command, "fence" if fenced else "span")
+        if not fenced and command in references:
+            P.parse(f"{command} --help", fenced=False)
+        else:
+            P.check(command, "fence" if fenced else "span")
 
 
 def test_a_slot_is_filled_as_one_word() -> None:
@@ -339,10 +424,6 @@ def test_a_slot_is_filled_as_one_word() -> None:
         P.parse("aew work show T-1 T-2", fenced=False)
 
 
-def test_a_bare_name_instruction_passes_as_a_mention() -> None:
-    """The mention rule's limit: an instruction that names a command without its arguments ("run `aew migrate`",
-    ``history_ops``) passes. Converting the instruction-style ones is an ITEMS 56 follow-on."""
+def test_a_bare_name_instruction_with_required_options_fails() -> None:
     [site] = [s for s in P.ast_sites() if s.path == "src/aew/engine/history_ops.py" and s.text == "aew migrate"]
-    assert _why_not(site) is None
-    with pytest.raises(P.PrintedCommandError):
-        P.parse(site.text, fenced=False)
+    assert "--expect-rev" in (_why_not(site) or "")

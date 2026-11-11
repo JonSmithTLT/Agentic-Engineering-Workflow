@@ -192,8 +192,9 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
         lab.lead("lead", "release")  # the operator's own seat is given up: the Lead's session acquires it
         lab.project.token = ""
         lab.script("default", {"steps": [{"do": "hang"}], "server": {"tool_parts": True, "live_usage": {}}})
-        # At a terminal the contained Lead's start asks for the tools AEW is missing, and no one here answers: the
-        # operator's "no", given ahead in the register `aew opencode` reads (the driver's own XDG_DATA_HOME)
+        # The operator's "no" to the tools AEW is missing, given ahead in the register `aew opencode` reads (the
+        # driver's own XDG_DATA_HOME): the start then shows no tool screen at all, so this session's terminal carries
+        # only what the server's loss draws (the driver would answer a screen too, but this test has no need of one)
         register = lab.tmp / "lead-opencode" / "data" / "aew" / "capability"
         register.mkdir(parents=True, exist_ok=True)
         consent.decline(consent.offers(register), register)

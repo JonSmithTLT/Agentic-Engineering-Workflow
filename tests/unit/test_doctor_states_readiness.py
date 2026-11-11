@@ -73,13 +73,15 @@ def test_inside_a_lead_session_the_fix_says_the_session_must_be_restarted():
     assert "started without" not in outside and "already running keeps the environment it started with" in outside
 
 
-def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monkeypatch):
+@pytest.mark.parametrize("snapshot", [None, '["coordination.messaging"]'])
+def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monkeypatch, snapshot):
     from aew.harness import lead_broker, procs
+    from aew.surface.contract import ENV_SWITCHES
 
     seen = []
 
     class Broker:
-        env: dict = {}
+        env: dict = {ENV_SWITCHES: snapshot} if snapshot is not None else {}
         superseded = None
         server = type("Server", (), {"private_dir": None})
 
@@ -101,6 +103,7 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
         store = Store()
 
     def tree(command, *, env, cwd, relay=False, survivors=None):
+        assert env.get(ENV_SWITCHES) == snapshot  # the broker's hint replaces/removes an ambient forged one
         seen.append(("run", agentenv.env_fix("VENDOR_KEY")))
         return 0, "clean"
 
@@ -108,7 +111,8 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
     monkeypatch.setattr(procs, "run_session_tree", tree)
     monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic")
-    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={},
+    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False,
+                            env={ENV_SWITCHES: '["forged"]'},
                             contained=lambda _dir, env: lead_broker.Harness(argv=["harness"], env=env, relay=False,
                                                                             label={}, close=lambda: None))
     assert [k for k, _ in seen] == ["start", "run"]

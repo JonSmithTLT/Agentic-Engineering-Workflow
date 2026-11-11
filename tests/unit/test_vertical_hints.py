@@ -133,7 +133,7 @@ HINT_SOURCES = ("src/aew/engine/resume_ops.py", "src/aew/engine/harness_ops.py",
 # subject is a Ticket, `_guidance` keeps only that subject's lines, and these are the project's, or a parent's.
 NOT_A_TICKETS = {f"aew lead acquire {K.EXPECT_REV}", f"aew lead takeover {K.EXPECT_REV} --reason <reason>",
                  f"aew migrate {K.EXPECT_REV}", f"aew history audit {K.EXPECT_REV}",
-                 f"aew history audit {K.EXPECT_REV} --full"}
+                 f"aew history audit {K.EXPECT_REV} --full", K.MANIFEST_ADOPT.strip("`")}
 
 
 def _parse_failure(argv: list[str], site: P.Site) -> str | None:
@@ -154,7 +154,8 @@ def test_a_filled_hint_parses_as_printed() -> None:
     live."""
     results, whole = {}, 0
     for site, argv in _census():
-        if argv is not None and site.path in HINT_SOURCES and (P.SLOT.search(site.text) or not P.mention(site.text)):
+        if (argv is not None and site.path in HINT_SOURCES
+                and (P.SLOT.search(site.text) or not P.mention(site.text, allow_required_options=True))):
             whole += 1
             results[site.key, site.shown] = _parse_failure(argv, site)
     assert len(results) == whole > 20  # two spans on one line are two results (#325's review, F4)

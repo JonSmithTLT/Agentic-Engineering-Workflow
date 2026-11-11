@@ -40,7 +40,7 @@ from aew.util import atomic_write, load_yaml, safe_dump_yaml, utc_now
 REMEMBERED = "local/switch-offers.json"  # gitignored and never pinned: an answer is not policy
 ABSENT: Any = object()  # a key the file doesn't hold, as `effective` is told
 # The last step of each hand route, runnable as printed but for its two placeholders.
-THEN_ADOPT = f"then the operator runs `aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
+THEN_ADOPT = f"then the operator runs {K.MANIFEST_ADOPT}"
 
 
 class HandChange(Exception):

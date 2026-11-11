@@ -4,19 +4,23 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Totals
 
-**on_and_used:** 3 — SYS-17, SYS-38, SYS-39
+**on_and_used:** 0 — none
+
+**awaiting_signoff (built, awaiting your sign-off):** 4 — SYS-17, SYS-37, SYS-38, SYS-39
 
 **partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-20, SYS-21, SYS-25, SYS-48
 
 **built_off:** 4 — SYS-07, SYS-12, SYS-14, SYS-23
 
-**built_not_wired:** 2 — SYS-10, SYS-37
+**built_not_wired:** 1 — SYS-10
 
 **staged:** 2 — SYS-22, SYS-27
 
 **designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46, SYS-47
 
-**Limit's count / wip_limit:** 14 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-20, SYS-22, SYS-37, SYS-48
+**Waiting on your sign-off:** 4 — SYS-17, SYS-37, SYS-38, SYS-39
+
+**Limit's count / wip_limit:** 13 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-20, SYS-22, SYS-48
 
 **Operator allowance:** up to 14 — Until the operator’s root G3 session closes SYS-20 and SYS-37, I allow 14 counted systems. No new system starts while this allowance stands; it lapses when both close. — 2026-11-10 (only the cap and staleness are checked; the words' conditions are not checked)
 
@@ -128,7 +132,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-37 — Register of weaker contexts (E112, G3 addendum 7)
 
-**Board state:** built_not_wired
+**Board state:** awaiting_signoff
 
 **Who:** Lead, with G3-C
 
@@ -140,7 +144,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-39 — Integration pipeline (ADR-0004 queue, custody worker, workspaces)
 
-**Board state:** on_and_used
+**Board state:** awaiting_signoff
 
 **Who:** Lead
 

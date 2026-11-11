@@ -351,7 +351,8 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
     spans = printed(text)
     assert spans[0] == "aew lead acquire --expect-rev 0" and spans[1].startswith("aew manifest adopt --reason")
     assert spans[2] == "aew opencode --acquire" and K.HELD_SEAT in text
-    assert spans[3] == f"aew lead release {K.EXPECT_REV}"
+    assert spans[3:] == [f"aew lead release {K.EXPECT_REV}", "aew opencode --acquire"]
+    assert text.endswith("Then start the Lead with `aew opencode --acquire`")
 
 
 # ---------------------------------------------------------------------------------------------- the seat, in each text
@@ -359,7 +360,6 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
 
 # The literals that name `aew lead acquire` without the seat's sentence, and why each may.
 NO_SEAT_SENTENCE = {
-    "commands.py": "the flagless `next`, which the ruling keeps as it always was",
     "lead_ops.py": "a takeover refused on a vacant seat: not a first step, and its reader already holds the route",
     "first_configuration.py": "`post_pin_route`: each caller adds the sentence, as the tests above and below say",
 }
@@ -413,7 +413,7 @@ def test_the_refusal_on_an_initialized_project_says_what_it_takes_now():
     """Review of #329, F8: the code stays as ruled, and the message gives the way forward."""
     text = FC.already_initialized("/repo/.aew")
     assert "already an initialized AEW project" in text and K.HELD_SEAT in text
-    assert ".aew/policy/checks.yaml or .aew/policy/execution.yaml" in text
+    assert ".aew/policy/checks.yaml, .aew/policy/execution.yaml" in text
     assert printed(text)[1:3] == [f"aew lead acquire {K.EXPECT_REV}",
                                   f"aew manifest adopt --reason <reason> {K.EXPECT_REV}"]
 

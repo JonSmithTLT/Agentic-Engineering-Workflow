@@ -30,9 +30,11 @@ from notifier import Console, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
 from test_stage_runner import PROBES, call, intent, intervene
+from test_stages_request import implemented, seed_anomaly
 
 from aew.engine import outbox
 from aew.engine import primitives as P
+from aew.engine import steering as S
 from aew.engine.api import Engine
 from aew.engine.primitives import PrimitiveSpec
 from aew.harness import event_spool, operator_endpoint, runlog
@@ -505,6 +507,119 @@ def test_loop_refuses_run_without_a_live_endpoint(p):
     assert ran.code == L.REPETITION
 
 
+def test_under_run_the_loop_takes_in_an_implementer_run_itself(tmp_path, monkeypatch):
+    """CL-R07's last bullet (review of E228's PR, M3): under Run the loop auto-runs `ticket_request_review` on a
+    RUNNING Ticket whose implementer reported, and that stage's transition guard ingests the run, so the loop will
+    take the run's end in itself (``will_ingest``), derived from the guards, not from names; under Walk, or for a
+    READY Ticket, it won't."""
+    sp = sample_project(tmp_path)
+    command, _ = recorder(tmp_path)
+    policy_text(sp, command=command)
+    wid, _ = implemented(sp, tmp_path)
+    bounded(sp, command)
+    e = Engine.discover(sp.root)
+    raise_to(e, "walk")
+    assert not loop(sp).will_ingest(e.store.current(), wid)  # Walk confirms it: the Lead's
+    raise_to(e, "run")
+    state = e.store.current()
+    assert loop(sp).will_ingest(state, wid)
+    offered = [a for a in L._project_all(e, loop(sp)._ctx(), state)[1][0]["actions"] if a.get("auto_runnable")]
+    assert [a["action"] for a in offered] == ["ticket_request_review"]
+    assert L.ingesting_action(state, offered[0]) and not L.ingesting_action(
+        state, action("ticket_start", {"work_id": wid}))
+    spy = Spy()
+    ep = operator_endpoint.OperatorEndpoint(e, console=Console(), dev=True, timeout=10)
+    ep.start()
+    try:
+        stop = loop(sp, executor=spy).activate()
+    finally:
+        ep.close()
+    # the loop takes it: every profile sets deadline_s, so Run's own checks let the step run
+    assert "ticket_request_review" in spy.calls, (stop, spy.calls)
+
+
+def bounded(project: Any, command: list[str]) -> None:
+    """A configured execution policy whose every profile sets ``deadline_s``, so Run may auto-run a step that starts a
+    run (A1 §3.2), with steering and the notifier as ``policy_text`` writes them."""
+    path = project.root / ".aew" / "policy" / "execution.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    doc.update({k: v for k, v in POLICY.items() if k != "profiles"})
+    doc["profiles"] = {"standard": {**POLICY["profiles"]["standard"], "deadline_s": 600}}
+    path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
+    policy_text(project, command=command)
+
+
+def _held_ahead(tmp_path: Path, held: str) -> tuple[Any, str, str | None]:
+    """A Run project whose T-0002 is RUNNING with its implementer reported, and a stop the loop meets first: an
+    earlier READY Ticket (no profile sets deadline_s, so its start stops at NO_HARD_DEADLINE), an open high
+    anomaly, or (``own_stop``) none here: the test's projector holds the loop on the Ticket's own blocker."""
+    sp = sample_project(tmp_path)
+    command, _ = recorder(tmp_path)
+    policy_text(sp, command=command)
+    (tmp_path / "ahead").mkdir()
+    first = create_planned_ticket(sp, tmp_path / "ahead", scope=("docs/**",)) if held == "ticket_ahead" else None
+    wid, _ = implemented(sp, tmp_path)
+    if held == "project_anomaly":
+        seed_anomaly(sp, None)
+    raise_to(Engine.discover(sp.root), "run")
+    return sp, wid, first
+
+
+@pytest.mark.parametrize("held", ["ticket_ahead", "project_anomaly", "own_stop"])
+def test_a_loop_held_on_a_told_stop_ahead_of_the_ticket_leaves_its_run_end_to_the_lead(tmp_path, held):
+    """Quick check of E228's PR, QC-M1 (the reviewer's q2): the loop is held, every activation, on a stop it already
+    told (the same occurrence), ahead of the Ticket's `ticket_request_review`, so it never takes the run in until the
+    Lead acts. ``will_ingest`` says so, and the queue keeps the run's end for the Lead. The second quick check's
+    QC2-n1: a told stop about the Ticket itself holds it the same way, though its own projection offers the step."""
+    sp, wid, first = _held_ahead(tmp_path, held)
+    e = Engine.discover(sp.root)
+    spy = Spy()
+    ep = operator_endpoint.OperatorEndpoint(e, console=Console(), dev=True, timeout=10)
+    ep.start()
+
+    def own_blocker(engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        return projection("project", rev), [projection(wid, rev, state="RUNNING", blockers=[
+            {"code": "FILES_CONFLICT", "message": "held"}])]
+
+    try:
+        lp = loop(sp, own_blocker if held == "own_stop" else None, executor=spy)
+        s1 = lp.activate()
+        r1 = recorded(sp)
+        s2 = lp.activate()
+        r2 = recorded(sp)
+    finally:
+        ep.close()
+    assert s1 == s2, (s1, s2)
+    if held == "own_stop":
+        assert s1.subject == wid and s1.code == L.BLOCKED, s1
+    elif first:
+        assert s1.subject == first and s1.code == L.NO_HARD_DEADLINE, s1
+    else:
+        assert s1.code == L.ANOMALY_HIGH, s1
+    assert r1["occurrence"] == r2["occurrence"], "the held stop is one occurrence: told once"
+    assert "ticket_request_review" not in spy.calls
+    assert not lp.will_ingest(e.store.current(), wid)
+
+
+def test_the_loop_takes_in_only_a_run_whose_step_it_auto_runs(p, monkeypatch):
+    """Quick check of E228's PR, QC-m1: `ticket_request_verification` ingests the run (its guard is in the set) but
+    bears judgment, so the loop never auto-runs it: a RUNNING Ticket offering it leaves the run's end to the Lead."""
+    from aew.surface import projection as pj
+
+    mode(p, "run")
+    state = Engine.discover(p.root).store.current()
+    state["work"] = {"T-0001": {"kind": "ticket", "state": "RUNNING"}}  # what the guards see of it
+    offered: list[dict[str, Any]] = []
+    monkeypatch.setattr(pj, "project", lambda engine, ctx, subject: {"actions": offered})
+    verification = action("ticket_request_verification", {"work_id": "T-0001"}, auto=False)
+    assert L.ingesting_action(state, verification)
+    offered[:] = [verification]
+    assert not loop(p).will_ingest(state, "T-0001")
+    offered[:] = [{**verification, "auto_runnable": True}]  # the same step, were it auto-run, would be the loop's
+    assert loop(p).will_ingest(state, "T-0001")
+
+
 def test_an_endpoint_lost_mid_activation_stops_run_before_its_next_action(p, endpoint, monkeypatch):
     """Register E228: in Run the endpoint is asked before every auto-run action, not once per activation, so an
     endpoint that goes away after the first action stops the loop (NOTIFIER_UNAVAILABLE) before the second runs."""
@@ -645,6 +760,149 @@ def test_two_intents_in_flight(p, monkeypatch):
                                                                 "choice": "abandon", "rationale": "done"},
                      token=p.token)
     assert out["ok"], out["stopped"]
+
+
+# ---------------------------------------------------------------------------------------------- occurrences (CL-R07)
+
+
+def recorded(project: Any) -> dict[str, Any]:
+    return json.loads((project.root / ".aew" / S.LOOP_REL).read_text(encoding="utf-8"))["stop"]
+
+
+class Turns:
+    """A projector that offers, on each call, the next of ``script``'s projections of T-0001 and T-0002 (the last
+    one repeats): ``"act"`` offers a bookkeeping step, ``"blocked"`` a blocker."""
+
+    def __init__(self, *script: dict[str, str]) -> None:
+        self.script, self.calls = list(script), 0
+
+    def __call__(self, engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        turn = self.script[min(self.calls, len(self.script) - 1)]
+        self.calls += 1
+        units = []
+        for subject, what in sorted(turn.items()):
+            if what == "act":
+                units.append(projection(subject, rev, actions=[action("probe_notes", {"expect_rev": rev,
+                                                                                        "note": subject})]))
+            else:
+                units.append(projection(subject, rev, blockers=[{"code": "FILES_CONFLICT", "message": "held"}]))
+        return projection("project", rev), units
+
+
+def test_a_stuck_stop_keeps_its_occurrence_however_often_it_is_recorded(p):
+    """Review of E228's PR, M2: the loop records the same stop on every look while it is stuck; it is one
+    occurrence, so the Lead is told it once."""
+    mode(p, "walk")
+    lp = loop(p, Turns({"T-0001": "blocked"}), executor=Spy())
+    first = lp.activate()
+    assert first.code == L.BLOCKED and recorded(p)["occurrence"] == 1
+    for _ in range(3):
+        lp.activate()
+    assert recorded(p)["occurrence"] == 1 and recorded(p)["condition"] == L.condition_key(first)
+
+
+def test_acting_on_a_stops_subject_then_stopping_there_again_is_a_new_occurrence(p):
+    """Review of E228's PR, M2: within one activation the loop acts on T-0001 and stops on it again, with no record
+    between: that is a new occurrence, so a Lead told of the first is told of the second."""
+    mode(p, "walk")
+    lp = loop(p, Turns({"T-0001": "blocked"}, {"T-0001": "act"}, {"T-0001": "blocked"}), executor=Spy())
+    lp.activate()
+    assert recorded(p)["occurrence"] == 1
+    lp.activate()  # acts on T-0001, then stops on the same condition
+    assert recorded(p)["occurrence"] == 2
+
+
+def test_an_action_on_another_subject_never_moves_a_stuck_stops_occurrence(p):
+    """A busy activation doesn't re-tell a stuck Ticket's stop: the loop acting on T-0002 leaves T-0001's occurrence
+    as it was."""
+    mode(p, "walk")
+    lp = loop(p, Turns({"T-0001": "blocked", "T-0002": "blocked"}, {"T-0001": "blocked", "T-0002": "act"},
+                       {"T-0001": "blocked", "T-0002": "blocked"}), executor=Spy())
+    lp.activate()
+    before = recorded(p)
+    lp.activate()
+    after = recorded(p)
+    assert after["subject"] == before["subject"] == "T-0001" and after["occurrence"] == before["occurrence"] == 1
+
+
+class ProjectHeld:
+    """A projector that offers, on each call, the next of ``script``'s turns (the last one repeats): ``"project"`` a
+    project-level blocker, ``"act"`` a bookkeeping step on T-0001, ``"idle"`` nothing."""
+
+    def __init__(self, *script: str) -> None:
+        self.script, self.calls = list(script), 0
+
+    def __call__(self, engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        turn = self.script[min(self.calls, len(self.script) - 1)]
+        self.calls += 1
+        if turn == "project":
+            return projection("project", rev, blockers=[{"code": "POLICY_DRIFT", "message": "held"}]), []
+        if turn == "act":
+            return projection("project", rev), [projection("T-0001", rev, actions=[
+                action("probe_notes", {"expect_rev": rev, "note": "T-0001"})])]
+        return projection("project", rev), []
+
+
+def test_a_project_stop_after_the_loop_acted_on_anything_is_a_new_occurrence(p):
+    """Quick check of E228's PR, QC-m2: ``select`` returns a project stop before any choice, so an action on any
+    subject means the project stop had cleared: the same project stop again is a new occurrence."""
+    mode(p, "walk")
+    lp = loop(p, ProjectHeld("project", "act", "project"), executor=Spy())
+    lp.activate()
+    assert recorded(p)["subject"] == "project" and recorded(p)["occurrence"] == 1
+    lp.activate()  # acts on T-0001, then the project stop again
+    assert recorded(p)["subject"] == "project" and recorded(p)["occurrence"] == 2
+
+
+def test_a_stop_recorded_after_an_idle_record_is_a_new_occurrence(p):
+    """Quick check of E228's PR, QC-M1: the premise that lets ``will_ingest`` leave a run to an idle loop. Whatever
+    stop the loop records next, though it is one the Lead was told before, is a new occurrence, so it wakes."""
+    mode(p, "walk")
+    lp = loop(p, Turns({"T-0001": "blocked"}, {}, {"T-0001": "blocked"}), executor=Spy())
+    lp.activate()
+    assert recorded(p)["occurrence"] == 1
+    assert lp.activate().code == L.IDLE
+    lp.activate()
+    assert recorded(p)["code"] == L.BLOCKED and recorded(p)["occurrence"] > 1
+
+
+def test_the_loops_record_redacts_before_its_cut(p):
+    """Review of E228's PR, m4 (the quick check's q4): a synthetic credential straddling the record's 2000-character
+    cut is redacted first, so no fragment of it survives."""
+    key = "aew1.tk_" + "0123456789abcdef" + "." + "S" * 30  # synthetic
+    filler = "x" * (2000 - len("T-0001: FILES_CONFLICT: ") - 1 - 12)  # the key's body straddles character 2000
+
+    def held(engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        return projection("project", rev), [projection("T-0001", rev, blockers=[
+            {"code": "FILES_CONFLICT", "message": filler + " " + key}])]
+
+    mode(p, "walk")
+    loop(p, held, executor=Spy()).activate()
+    raw = (p.root / ".aew" / S.LOOP_REL).read_text(encoding="utf-8")
+    assert "tk_0123" not in raw and len(recorded(p)["message"]) <= 2000
+
+
+def test_a_restarted_broker_in_the_same_generation_keeps_the_occurrence(p):
+    """The occurrence is read from the loop's own last record, so a new loop of the same generation (a broker
+    restart) keeps it, and doesn't tell the Lead again."""
+    mode(p, "walk")
+    loop(p, Turns({"T-0001": "blocked"}), executor=Spy()).activate()
+    loop(p, Turns({"T-0001": "blocked"}), executor=Spy()).activate()
+    assert recorded(p)["occurrence"] == 1
+
+
+def test_a_stop_only_the_lead_can_clear_is_reported_ahead_of_one_that_clears_itself():
+    """Review of the priority PR, m6: with nothing eligible, a Ticket's decision is the stop reported, though an
+    earlier Ticket is BLOCKED on a conflict that can clear without the Lead."""
+    units = [projection("T-0001", 3, blockers=[{"code": "FILES_CONFLICT", "message": "held"}]),
+             projection("T-0002", 3, decisions=[{"decision": "plan_acceptance", "evidence": []}])]
+    stop = L.select(projection("project", 3), units)
+    assert stop.code == L.DECISION_REQUIRED and stop.subject == "T-0002", stop
+    alone = L.select(projection("project", 3), units[:1])
+    assert alone.code == L.BLOCKED and alone.subject == "T-0001"
 
 
 # ---------------------------------------------------------------------------------------------- real runs

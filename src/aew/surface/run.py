@@ -289,6 +289,20 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
     return result
 
 
+def record_message_result(engine: Any, result: dict[str, Any], token: str | None) -> None:
+    """Explicit typed ingress consumption, not an automatic steering-loop or bare engine read side effect.
+    The successfully returned StageResult is the receipt boundary, not proof of model understanding. Verify full
+    carried bodies before invoking the established durable writer; no failed result consumes its projection."""
+    if not token or result.get("ok") is not True:
+        return
+    if not any(isinstance(result.get(key), dict) and result[key].get("coordination", {}).get("awaiting_lead")
+               for key in ("result", "projection")):
+        return
+    ids = engine.message_result_ids(result)
+    if ids:
+        engine.message_mark_shown(token=token, messages=ids)
+
+
 def _binding(binding: dict[str, Any] | None) -> dict[str, Any] | None:
     """The digests a stage's intent bound (A3), as the result states them: bare hex."""
     if binding is None:

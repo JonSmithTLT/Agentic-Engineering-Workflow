@@ -404,7 +404,8 @@ class LeadBroker:
         if op == "lead.tool":  # cooperative: it takes the serialization itself
             return self._tool(args)
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
-            return run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track)
+            return run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
+                            on_result=self._read_receipt)
         problem = self._authority_lost()
         if problem:
             self.superseded = problem
@@ -417,6 +418,39 @@ class LeadBroker:
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
         return run_cli(self.engine, self._token, argv, cwd, stdin, channel="lead_broker")
+
+    def _receipt_current(self) -> bool:
+        if self._stop.is_set() or self.server.closed:
+            return False
+        try:
+            state = self.engine.store.read_committed()
+            require_held_lead(state, self._token)
+            return state["lead"]["generation"] == self.generation
+        except errors.AEWError:
+            return False
+
+    def _read_receipt(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
+        """Only verified complete bodies in this successful host read, in its original request scope.
+        This serialization is shared with the queue's final selection; no control session or durable shown write."""
+        from aew.harness import told_messages
+
+        path = command_path(ns)
+        if path not in {frozenset({"status"}), frozenset({"resume"}), frozenset({"harness", "status"}),
+                        frozenset({"harness", "wait"})}:
+            return
+        work_id = ns.work_id if path == frozenset({"status"}) else None
+        invocations = ({ns.invocation} if path == frozenset({"harness", "status"}) and ns.invocation else None)
+        if path == frozenset({"harness", "wait"}):
+            # Only registered runs of this project; a caller's string cannot invent an invocation identity.
+            state = self.engine.store.read_committed()
+            invocations = {inv_id for inv_id, inv in state["invocations"].items()
+                           if any(r["run"] in ns.run for r in inv.get("runs") or [])}
+        with self.server.serialized():
+            if not self._receipt_current():
+                return
+            ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations)
+            if ids:
+                told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
 
     def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
         with self._reads_lock:
@@ -523,6 +557,9 @@ class LeadBroker:
                                          profile=profile, ingress=ingress, switches=self.surface_switches)
                     result = surface_run.run_tool(self.engine, ctx, name, arguments, token=self._token,
                                                   run_cli=cli)
+        with self.server.serialized():
+            if self._cancelled() is None:
+                surface_run.record_message_result(self.engine, result, self._token)
         if result["stopped"] and result["stopped"]["boundary"] == "stale_authority":
             with self.server.serialized():
                 lost = self._authority_lost()
@@ -610,7 +647,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
 
 
 def run_read(engine: Any, argv: list[str], cwd: str,
-             track: Callable[[subprocess.Popen[str], bool], None] | None = None) -> dict[str, Any]:
+             track: Callable[[subprocess.Popen[str], bool], None] | None = None, *,
+             on_result: Callable[[dict[str, Any], argparse.Namespace], None] | None = None) -> dict[str, Any]:
     """Run one read relayed for the contained Lead (``RELAYED_READS``; STG-05 CS-4 addendum 4, ruling 1) on the host,
     and return what it printed, as it printed it, with its exit status. The request is parsed against the command's
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
@@ -675,7 +713,13 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
     detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                 else {"start_new_session": True})
-    with subprocess.Popen([sys.executable, "-m", "aew", *argv], cwd=str(target), env=env, stdin=subprocess.DEVNULL,
+    # Read once as a machine envelope, then render those exact bytes' data for the readable forms. Never infer
+    # identities by parsing readable worker text or by running a second, potentially different query.
+    machine = (on_result is not None and path in {frozenset({"status"}), frozenset({"resume"})}
+               and engine.messaging_enabled())
+    child_argv = [*argv, "--json"] if machine and not ns.json else argv
+    with subprocess.Popen([sys.executable, "-m", "aew", *child_argv], cwd=str(target), env=env,
+                          stdin=subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                           **detached) as proc:  # leaving it closes the pipes and reaps the process
         if track is not None:
@@ -693,6 +737,17 @@ def run_read(engine: Any, argv: list[str], cwd: str,
                 track(proc, False)
     if wait:
         record_delivery(project, list(ns.run), out)
+    if on_result is not None and proc.returncode == 0:
+        try:
+            result = json.loads(out)
+        except ValueError:
+            result = None
+        if isinstance(result, dict):
+            if machine and not ns.json:
+                out = (engine.render_status(result) if ns.command == "status" else engine.render_resume(result))
+                if not out.endswith("\n"):
+                    out += "\n"
+            on_result(result, ns)
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
 
 

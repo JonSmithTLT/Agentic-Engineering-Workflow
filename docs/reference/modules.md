@@ -1433,6 +1433,7 @@ None.
 - `aew.harness.procs`
 - `aew.harness.runlog`
 - `aew.harness.steering_loop`
+- `aew.harness.told_messages`
 - `aew.harness.tool_calls`
 - `aew.harness.wake_queue`
 - `aew.harness.weaker_register`

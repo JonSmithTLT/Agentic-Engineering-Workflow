@@ -860,6 +860,34 @@ class Coordination:
                     and invocations is None else 0), "omitted_revs": revs,
                 "recovery": "aew message unseen", "integrity_errors": damaged}
 
+    def result_messages(self, result: Any, *, work_id: str | None = None,
+                        invocations: set[str] | None = None) -> list[str]:
+        """Lock-free verification of complete attention bodies at fixed host-result fields, never text traversal.
+        Callers supply the request scope. Unknown/failed results, partial bodies and changed identities consume
+        nothing. A concurrent change may omit a receipt (safe re-listing), never justify consuming an unseen body.
+        This function writes nothing and cannot turn an ID in worker text into a delivery identity."""
+        if not isinstance(result, dict) or result.get("ok") is False:
+            return []
+        view = self.attention(self.k.store.read_committed(), work_id=work_id, invocations=invocations)
+        if view is None:
+            return []
+        verified = {m["id"]: m for m in view["awaiting_lead"]}
+        # Engine read envelopes, or the two fixed envelopes in a typed StageResult. No recursive lookup.
+        envelopes = [result]
+        if result.get("surface") == "aew/surface/v1" and result.get("ok") is True:
+            envelopes = [result.get("projection"), result.get("result")]
+        found: set[str] = set()
+        for envelope in envelopes:
+            if not isinstance(envelope, dict):
+                continue
+            coordination = envelope.get("coordination")
+            if not isinstance(coordination, dict) or not isinstance(coordination.get("awaiting_lead"), list):
+                continue
+            for m in coordination["awaiting_lead"]:
+                if isinstance(m, dict) and isinstance(m.get("id"), str) and m == verified.get(m["id"]):
+                    found.add(m["id"])
+        return sorted(found)
+
     def message_list(self, work_id: str) -> dict[str, Any]:
         """``aew message list --work T`` (D-24, operator-only): the unit's threads, hot or archived, as
         ``unit_threads`` shows them."""

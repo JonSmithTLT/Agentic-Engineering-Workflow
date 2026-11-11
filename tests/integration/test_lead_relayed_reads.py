@@ -37,6 +37,9 @@ IMPLEMENT = [
 # What the session's own broker writes under `.aew/local` while it serves (its liveness, the steering loop's state):
 # never a relayed read's.
 SESSION_OWN = ("local/lead", "local/steering")
+# These broker receipt files are not session-liveness noise: every test must account for their exact writes.
+MESSAGE_DELIVERY_RECORDS = frozenset({"local/lead/told-messages.json", "local/lead/told-messages.lock",
+                                      "local/lead/told-messages.lock.queue"})
 # The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
 # it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
 # nothing.
@@ -113,7 +116,8 @@ def cases(run: str, invocation: str) -> list[list[str]]:
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
-    return [c for c in worker_surface.changes(before, after) if not c[1:].startswith(SESSION_OWN)]
+    return [c for c in worker_surface.changes(before, after)
+            if not c[1:].startswith(SESSION_OWN) or c[1:] in MESSAGE_DELIVERY_RECORDS]
 
 
 def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, broker, tmp_path, monkeypatch):

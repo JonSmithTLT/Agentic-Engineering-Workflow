@@ -426,9 +426,10 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
 
-    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
-                        args.name, arguments,
-                        token=token or None, run_cli=cli)
+    result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
+                          args.name, arguments, token=token or None, run_cli=cli)
+    run.record_message_result(engine, result, token or None)
+    return result
 
 
 def _lead_mcp(args: argparse.Namespace) -> Any:

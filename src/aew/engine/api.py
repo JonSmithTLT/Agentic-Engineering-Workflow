@@ -807,7 +807,9 @@ class Engine:
         return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
-        return self._harness.harness_status(invocation)
+        out = self._harness.harness_status(invocation)
+        view = self.message_attention(invocations={invocation} if invocation is not None else None)
+        return out | {"coordination": view} if view is not None else out
 
     def harness_stop(self, *, token: str, run: str, reason: str) -> dict[str, Any]:
         return self._harness.harness_stop(token=token, run=run, reason=reason)
@@ -969,6 +971,10 @@ class Engine:
     def message_attention(self, *, work_id: str | None = None,
                           invocations: set[str] | None = None) -> dict[str, Any] | None:
         return self._coordination.attention(self._k.store.read_committed(), work_id=work_id, invocations=invocations)
+
+    def message_result_ids(self, result: Any, *, work_id: str | None = None,
+                           invocations: set[str] | None = None) -> list[str]:
+        return self._coordination.result_messages(result, work_id=work_id, invocations=invocations)
 
     def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
         return self._coordination.message_waiting(invocation_token=invocation_token, after=after)

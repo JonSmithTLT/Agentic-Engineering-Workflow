@@ -32,6 +32,9 @@ state (§2.7):
 
 A stop the runner cannot record leaves the intent ACTIVE, for ``resume`` and the Lead's ``resolve``: a crash, a seat
 lost to a takeover, or policy drift pending adoption (every Lead commit is refused then, ``lead_txn``).
+A partial stale stop with no known fresh-call continuation also stays ACTIVE (E137), with its stop boundary recorded:
+only renewed Lead judgment continues or abandons it. A successful continue supersedes that diagnostic; the original
+stop transaction remains in history. Terminal records are never reopened.
 
 Resolving an ACTIVE intent (E3c) is the current Lead's explicit choice, never inferred from state (rule 8):
 
@@ -266,12 +269,17 @@ class StageIntents:
         return {"intent": sid, "revision": revision, "binding": dict(intent["binding"])}
 
     def stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-             reason: str | None = None) -> dict[str, Any]:
+             reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         """Record that the stage stopped at step ``n`` (rule 3: the first refusal stops it), and end the intent:
-        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand."""
+        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand. A partial stale stop
+        may instead stay ACTIVE awaiting the Lead's explicit resolution (E137); this never runs another step."""
         with self.k.lead_txn(token, expect_rev, "stage.stop") as ctx:
             si = self._active(ctx.state, intent, owner=True)
             done = len(si["steps"])
+            if await_resolution and not (code == "STALE_REVISION" and boundary == "stale_revision"
+                                         and 0 < done < len(si["plan"])):
+                raise IllegalTransition("only a partially committed stage stopped stale can await resolution",
+                                        reason="not_resolvable_stop")
             # The stop is at the next step, or at the last when every step committed and what followed its commit
             # failed (a launch: rule 7). Never at a step that does not exist (#140 review, finding 3).
             if n != done + 1 and not (n == done == len(si["plan"])):
@@ -280,8 +288,11 @@ class StageIntents:
             si["stopped"] = {"n": n, "boundary": boundary,
                              "error": {"code": code, "message": message[:2000], "reason": reason},
                              "rev": ctx.session.revision + 1, "at": utc_now()}
-            status = STOPPED if si["steps"] else REFUSED
-            self._end(ctx, si, status)
+            status = ACTIVE if await_resolution else STOPPED if si["steps"] else REFUSED
+            if await_resolution:
+                self._validate(si)
+            else:
+                self._end(ctx, si, status)
             ctx.summary = f"stage {si['tool']} ({intent}) stopped at step {n}: {boundary}"
             ctx.refs.append(intent)
             revision = ctx.session.revision + 1
@@ -343,7 +354,9 @@ class StageIntents:
                                   "at": at, "rationale": rationale.strip()[:2000]})
             si["generation"] = generation
             si["resolution"] = {"choice": "continue", "rationale": rationale.strip()[:2000], "generation": generation,
-                                "rev": rev, "at": at}
+                                 "rev": rev, "at": at}
+            # The renewed judgment supersedes a recoverable stale stop; its original transaction remains in history.
+            si["stopped"] = None
             done, planned = len(si["steps"]), len(si["plan"])
             launch = check["checks"]["launch"]
             if launch["status"] not in (OK, NOT_APPLICABLE):

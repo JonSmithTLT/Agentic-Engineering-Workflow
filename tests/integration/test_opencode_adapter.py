@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -22,12 +23,16 @@ import lead_session
 import pytest
 from aewflow import SUBTRACT_SCOPE, create_planned_ticket, own_scope
 from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
+from harness_acceptance import lead as broker_command
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir
 from lead_session import KEYS
+from notifier import Console, raise_to, recorder
 from proxy_env import RecordingProxy, proxy_env
 
+from aew.capability import consent
+from aew.engine.api import Engine
 from aew.harness import contract as K
-from aew.harness import runlog, weaker_register
+from aew.harness import operator_endpoint, runlog, steering_loop, weaker_register
 from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode_adapter
 from aew.harness.opencode import projection
@@ -249,6 +254,7 @@ def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, 
     lab.env["OPENCODE_API_KEY"] = PROVIDER_SECRET
     script(lab, IMPLEMENT, live_usage={}, models=[
         {"id": "gpt-5.6-luna", "providerID": "opencode", "package": package, "enabled": True,
+         "cost": [{"input": 1, "output": 1}],
          "variants": [{"id": "low"}, {"id": "medium"}, {"id": "high"}]}])
     wid = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", wid, "--model", "opencode/gpt-5.6-luna", "--launch")["launch"]["run"]
@@ -257,6 +263,119 @@ def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, 
     sample = runlog.read_live(runlog.run_dir(lab.aew_root, run))
     assert sample is not None and sample["state"] == "final"
     assert usage["token_semantics"] == sample["token_semantics"] == semantics, (usage, sample)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the stored source requires the Linux provider relay")
+@pytest.mark.parametrize("entrypoint", ["dispatch", "direct", "broker", "steering", "anthropic"])
+def test_fresh_shell_workers_start_from_the_named_stored_login(lab, tmp_path, monkeypatch, entrypoint):
+    """The CLI, broker and steering stage resolve the store without an export or a provider request."""
+    key = "SYNTHETIC-NOT-A-KEY"
+    provider = "anthropic" if entrypoint == "anthropic" else "openai"
+    home = lead_session.synthetic_home(tmp_path / ("lead-opencode" if entrypoint == "broker" else "operator"),
+                                       {"openai": key, "anthropic": key + "-OTHER"})
+    db = home / ".local/share/opencode/opencode.db"
+    lab.env.update(HOME=str(home), OPENCODE_DB=str(db))
+    lab.env.pop("OPENAI_API_KEY")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    policy_file = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(policy_file.read_text(encoding="utf-8"))
+    policy["provider_env"].append("ANTHROPIC_API_KEY")
+    for profile in policy["profiles"].values():
+        profile.update(provider=provider, model="synthetic-model")
+        profile.pop("effort", None)
+    if entrypoint == "steering":
+        for profile in policy["profiles"].values():
+            profile["deadline_s"] = 600
+        command, _ = recorder(tmp_path)
+        policy.update(steering={"mode": "crawl"}, notify={"command": command})
+        for name, value in lab.env.items():
+            monkeypatch.setenv(name, value)
+    policy_file.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    script(lab, [], models=[{"id": "synthetic-model", "providerID": provider, "enabled": True, "variants": []}])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    if entrypoint == "dispatch":
+        launched = lab.lead("work", "assign", wid, "--launch")["launch"]
+    elif entrypoint == "steering":
+        engine = Engine.discover(lab.root)
+        raise_to(engine, "run")
+        endpoint = operator_endpoint.OperatorEndpoint(engine, console=Console(), dev=True, timeout=10)
+        endpoint.start()
+        try:
+            state = engine.store.current()
+            loop = steering_loop.SteeringLoop(engine, generation=state["lead"]["generation"],
+                                              session_label="stored-worker", token=lambda: lab.project.token,
+                                              poll_s=0.2)
+            loop.activate()
+            assert [step["action"] for step in loop.executed] == ["ticket_start"]
+            state = engine.store.current()
+            inv = state["work"][wid]["implementer_invocation"]
+            [launched] = state["invocations"][inv]["runs"]
+        finally:
+            endpoint.close()
+    else:
+        inv = lab.lead("work", "assign", wid)["invocation"]
+        lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+        if entrypoint in ("direct", "anthropic"):
+            launched = lab.lead("harness", "launch", inv)
+        else:
+            register = home.parent / "data" / "aew" / "capability"
+            register.mkdir(parents=True)
+            consent.decline(consent.offers(register), register)
+            # Change the built-in address only in the test adapter import, on both host processes.
+            # No execution-policy override or path to a real provider is involved.
+            adapter = tmp_path / "loopback_opencode_adapter.py"
+            adapter.write_text(
+                "from aew.harness.containment import netns\n"
+                "from aew.harness.opencode.adapter import OpenCodeAdapter as ProductAdapter\n"
+                f"netns.UPSTREAMS['openai'] = {lab.provider.url!r}\n"
+                "class LoopbackAdapter(ProductAdapter):\n"
+                "    pass\n", encoding="utf-8",
+            )
+            lab.env["AEW_HARNESS_ADAPTERS"] += f";opencode={adapter}:LoopbackAdapter"
+            catalog = [{"id": "synthetic-model", "providerID": "openai", "enabled": True, "variants": []}]
+            auth = {"variable": "OPENAI_API_KEY", "require_sentinel": True, "rejected_sha256": []}
+            second_run = f"R-{inv}-2"
+            for run_id in (f"R-{inv}-1", second_run):
+                script(lab, [], key=run_id, models=catalog, provider_auth=auth)
+            rotated = key + "-ROTATED"
+            rotated_gate, removed_gate = (sync_dir(tmp_path) / name for name in ("key-rotated", "key-removed"))
+            session = FakeOpenCodeDriver().start_lead(lab, "stored-worker", [
+                broker_command("harness", "launch", inv),
+                {"do": "wait_file", "path": str(rotated_gate), "timeout": 60},
+                broker_command("harness", "launch", inv, "--replace"),
+                {"do": "wait_file", "path": str(removed_gate), "timeout": 60},
+                broker_command("harness", "launch", inv, "--replace"),
+            ])
+            lab.until(lambda: len(lab.provider.seen) == 1, what="first relayed request")
+            with sqlite3.connect(db) as con:
+                con.execute("UPDATE credential SET value = ?, time_updated = 2 WHERE integration_id = 'openai'",
+                            (json.dumps({"type": "key", "key": rotated}),))
+            rotated_gate.touch()
+            lab.until(lambda: len(lab.provider.seen) == 2, what="second relayed request")
+            with sqlite3.connect(db) as con:
+                con.execute("DELETE FROM credential WHERE integration_id = 'openai'")
+            removed_gate.touch()
+            outcome, steps = session.result(timeout=120)
+            assert outcome.returncode == 0, outcome.stderr
+            first, _, second, _, missing = steps.values()
+            assert first["exit"] == second["exit"] == 0
+            assert missing["stderr_json"]["error"]["details"]["reason"] == "provider_key_missing"
+            assert lab.provider.seen == [hashlib.sha256(value.encode()).hexdigest() for value in (key, rotated)]
+            assert not runlog.run_dir(lab.aew_root, f"R-{inv}-3").exists()
+            assert key not in json.dumps(missing)
+            for step in (first, second):
+                started = step["stdout_json"]
+                assert key not in json.dumps(started) + json.dumps(lab.record(started["run"]))
+                directory = runlog.run_dir(lab.aew_root, started["run"])
+                for name in ("supervisor.log", "events.jsonl"):
+                    assert key not in (directory / name).read_text(encoding="utf-8")
+            launched = second["stdout_json"]
+    run = lab.record(launched["run"])
+    network = run["containment"]["network"]
+    assert network["provider_key_source"] == "stored OpenCode login"
+    assert key not in json.dumps(run) + json.dumps(launched)
 
 
 def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab, tmp_path):

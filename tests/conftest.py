@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,25 @@ class CLIResult:
 
 HOST_ENV = dict(os.environ)  # as the session found it: the base the host's own capability register lives under
 CHILD_DATA_BASE: Path | None = None  # the session's base for the register of every `aew` a test starts (CAP-1 F2)
+
+
+@pytest.fixture(autouse=True)
+def guard_worker_key_store() -> Iterator[None]:
+    from aew.harness.opencode import login
+
+    inherited = HOST_ENV.get("HOME")
+    home = Path(inherited).resolve() if inherited else (None if IS_WINDOWS else Path.home().resolve())
+    read = login.worker_keys
+
+    def checked_read(env, providers):
+        if providers and home is not None and login.db_path(env).resolve().is_relative_to(home):
+            pytest.fail("worker_keys attempted to read under the inherited test host's home")
+        return read(env, providers)
+
+    # Keep the guard's lifetime independent of a test's environment monkeypatches.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(login, "worker_keys", checked_read)
+        yield
 
 
 def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:

@@ -9,10 +9,10 @@ reading is a recogniser has a second, independently written detector, and
 them to each other and to their registries; the planted controls of every recogniser are in
 ``tests/unit/test_reference_interface_controls.py``.
 
-**``tools``.** Owner: ``aew.surface.contract.TOOLS``, the Lead's typed tools, imported at run time (basis
-``enumerated``). Complete-by-construction because the catalog has one constructor: ``_catalog`` builds the table,
-refuses a duplicate name, an unknown kind, class, status or profile, and a ``produced_by`` that does not fit. The pin
-(:func:`catalog_shape`, :func:`catalog_problems`) holds that ``TOOLS`` is assigned once at the contract's top level from
+**``tools``.** Owner: ``aew.surface.contract.catalog(ALL_SWITCHES)``, the Lead's typed tools, imported at run time
+(basis ``enumerated``). Complete-by-construction because the catalog has one constructor: ``_catalog`` builds the table,
+refuses duplicates, unknown kinds, classes, statuses, profiles or switches, and a ``produced_by`` that does not fit.
+The pin (:func:`catalog_shape`, :func:`catalog_problems`) holds that ``TOOLS`` is assigned once at the top level from
 a ``_catalog(...)`` call, that every ``Tool(`` call of the contract is an argument of that call, and that no other
 module calls ``Tool`` (a call identified by where its callee was imported from). It does not see a ``Tool`` made by
 ``_replace`` or ``_make``, an alias of ``Tool``, a lookup through ``getattr``, a mutation of ``TOOLS`` from another
@@ -84,7 +84,7 @@ def tool_records() -> list[C.Record]:
     from aew.surface import contract
 
     records = []
-    for name, tool in sorted(contract.TOOLS.items()):
+    for name, tool in sorted(contract.catalog(contract.ALL_SWITCHES).items()):
         properties = tool.input_schema.get("properties") or {}
         fact: dict[str, Any] = {"name": name, "kind": tool.kind, "class": tool.base_class, "status": tool.status,
                                 "mutates": tool.mutates, "dispatches": tool.dispatches, "progression": tool.progression,
@@ -94,6 +94,8 @@ def tool_records() -> list[C.Record]:
                     "promotes": list(tool.promotes),
                     "required_arguments": list(tool.input_schema.get("required") or [])}
         fact.update({k: v for k, v in optional.items() if v})
+        if tool.switch:
+            fact["switch"] = tool.switch
         cov = C.complete(TOOLS_REGISTRY, TOOL_TESTS)
         fact_coverage = {k: cov for k, v in fact.items() if isinstance(v, list)}
         records.append(C.Record(TOOLS, name, CONTRACT, "TOOLS", "enumerated", cov, fact, fact_coverage=fact_coverage))
@@ -164,10 +166,14 @@ def page(records: list[C.Record]) -> str:
               "The existing session listing reports this provenance unchanged. A browser session grants only "
               f"{words(session.SCOPE_OPERATIONS)}, never an engine operator confirmation.", ""]
     lines += ["## Tools", "",
-              "| Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |", "|---|---|---|---|---|---|---|"]
+              "A named switch must be enabled in adopted policy when the row is registered; sessions retain their "
+              "launch snapshot.", "",
+              "| Tool | Kind | Class | Status | Switch | Mutates | Dispatches | Expands to |",
+              "|---|---|---|---|---|---|---|---|"]
     for r in by.get(TOOLS, []):
         f = r.fact or {}
         lines.append(f"| `{f['name']}` | {f['kind']} | {f['class']} | {f['status']} | "
+                     f"{words([f['switch']]) if f.get('switch') else '-'} | "
                      f"{'yes' if f['mutates'] else 'no'} | "
                      f"{'yes' if f['dispatches'] else 'no'} | {words(f.get('expands_to', []))} |")
     lines += ["", "## Schemas", "",

@@ -36,6 +36,7 @@ None.
 - `aew.g3client`
 - `aew.g3standing`
 - `aew.harness.check_changes`
+- `aew.harness.containment.netns`
 - `aew.harness.model_list`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`
@@ -1358,6 +1359,7 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
+- `aew.harness.opencode.login`
 
 ### `aew.harness.containment.peer`
 
@@ -1448,6 +1450,7 @@ None.
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
+- `aew.surface.contract`
 - `aew.surface.run`
 - `aew.surface.validate`
 - `aew.util`
@@ -1499,6 +1502,7 @@ None.
 - `aew.harness.harness_capabilities`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
+- `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
 - `aew.harness.progress`
 - `aew.harness.runlog`
@@ -1556,6 +1560,10 @@ None.
 
 - `aew.errors`
 - `aew.harness.opencode.capabilities`
+
+### `aew.harness.opencode.model_pricing`
+
+None.
 
 ### `aew.harness.opencode.projection`
 
@@ -1831,6 +1839,7 @@ None.
 ### `aew.maps.gitobjects`
 
 - `aew.errors`
+- `aew.knowledge.manifest`
 - `aew.maps.canonical`
 - `aew.workspace.git`
 
@@ -1857,6 +1866,7 @@ None.
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
 - `aew.maps.rules`
+- `aew.maps.service`
 - `aew.maps.store`
 - `aew.maps.structural`
 - `aew.policy.execution`
@@ -2046,6 +2056,7 @@ None.
 Imports from the groups:
 
 - `aew`
+- `aew.coordination`
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
@@ -2075,12 +2086,14 @@ None.
 
 ### `aew.surface.context`
 
-None.
+- `aew.surface.contract`
 
 ### `aew.surface.contract`
 
+- `aew.coordination.layout`
 - `aew.priority_levels`
 - `aew.surface.context`
+- `aew.surface.presentation`
 
 ### `aew.surface.errors`
 
@@ -2102,8 +2115,13 @@ None.
 - `aew.surface.client`
 - `aew.surface.contract`
 - `aew.surface.errors`
+- `aew.surface.presentation`
 - `aew.surface.readable`
 - `aew.surface.validate`
+
+### `aew.surface.presentation`
+
+- `aew.surface.contract`
 
 ### `aew.surface.projection`
 
@@ -2118,6 +2136,7 @@ None.
 - `aew.surface.classify`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.stage`
 - `aew.util`
 
 ### `aew.surface.readable`

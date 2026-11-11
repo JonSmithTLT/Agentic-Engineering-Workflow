@@ -22,6 +22,7 @@ class SurfaceContext:
     generation: int | None  # the Lead generation the caller acts for; None when it acts for none in particular
     profile: str = NORMAL  # presentation and callability only: never legality, never auto_runnable
     ingress: str = "direct"
+    switches: frozenset[str] = frozenset()  # presentation snapshot; not engine authorization
 
     def __post_init__(self) -> None:
         if self.profile not in PROFILES:
@@ -36,6 +37,15 @@ class SurfaceContext:
         return cls(lead_session=session, generation=whoami["generation"], profile=profile, ingress=ingress)
 
     @classmethod
-    def outside_session(cls, *, profile: str = NORMAL, ingress: str = "cli") -> SurfaceContext:
+    def outside_session(cls, *, profile: str = NORMAL, ingress: str = "cli",
+                        switches: frozenset[str] = frozenset()) -> SurfaceContext:
         """An operator's own shell (ADR-0005): no broker; the credential, if any, is checked by the engine."""
-        return cls(lead_session=None, generation=None, profile=profile, ingress=ingress)
+        return cls(lead_session=None, generation=None, profile=profile, ingress=ingress, switches=switches)
+
+
+def switches_for(engine: Any) -> frozenset[str]:
+    """Read the adopted policy through its engine owner, never the presentation environment."""
+    from aew.surface.contract import MESSAGING
+
+    enabled = getattr(engine, "messaging_enabled", None)
+    return frozenset({MESSAGING}) if enabled is not None and enabled() else frozenset()

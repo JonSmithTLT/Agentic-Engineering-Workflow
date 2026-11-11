@@ -36,7 +36,6 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
-import math
 import os
 import re
 import secrets
@@ -78,7 +77,7 @@ from aew.harness.contract import (
 from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
-from aew.harness.opencode import capabilities, projection
+from aew.harness.opencode import capabilities, model_pricing, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
     REQUEST_TIMEOUT_S,
@@ -201,7 +200,7 @@ def binary_command() -> list[str]:
 
 
 def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str], config: dict[str, Any],
-               password: str) -> dict[str, str]:
+               password: str, provider: str | None = None) -> dict[str, str]:
     """The server's environment: operating-system basics, the provider variables the execution policy names,
     and private OpenCode state. Nothing else from the Lead's environment reaches OpenCode.
 
@@ -212,6 +211,7 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     # SHELL: OpenCode picks the agent's shell from it (else PowerShell on Windows), as for the operator's own use.
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper() in ("PATH", "SHELL")
            or (sys.platform != "win32" and k.startswith("LC_"))}
+    provider_env = netns.worker_provider_names(provider, provider_env)
     problems = agentenv.provider_env_problems(provider_env, base)
     if problems:
         raise HarnessIncompatible("the execution policy's provider_env cannot be passed to the harness server: "
@@ -482,6 +482,7 @@ class OpenCodeAdapter(HarnessAdapter):
         if network is not None and network.stored_key_variable is not None:
             names = [name for name in names if name != network.stored_key_variable]
         env = server_env(dict(os.environ), self.state_dir, provider_env=names,
+                         provider=contract.execution_profile.get("provider"),
                          config=config, password=secrets.token_urlsafe(32))
         if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
             env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
@@ -715,18 +716,9 @@ class OpenCodeAdapter(HarnessAdapter):
                 match = None
             if match is not None:
                 if ref["providerID"] == "opencode":
-                    tiers = match.get("cost")
-                    base_prices = [tier for tier in tiers if isinstance(tier, dict) and "tier" not in tier] \
-                        if isinstance(tiers, list) else []
-                    rates = [base_prices[0].get(name) for name in ("input", "output")] if len(base_prices) == 1 else []
-                    prices = [rate for rate in rates if isinstance(rate, (int, float)) and not isinstance(rate, bool)]
-                    paid = len(prices) == 2 and all(math.isfinite(rate) and rate >= 0 for rate in prices) \
-                        and any(rate > 0 for rate in prices)
-                    if ref["id"].endswith("-free") or not paid:
-                        raise HarnessIncompatible(
-                            f"model opencode/{ref['id']} does not have a verified paid base price; "
-                            "pin a paid OpenCode model or choose another provider", model=ref,
-                        )
+                    problem = model_pricing.paid_base_problem(match)
+                    if problem:
+                        raise HarnessIncompatible(problem, model=ref)
                 variants = [v.get("id") for v in match.get("variants") or []]
                 # Each refusal of the pin, here and the catalog's below, names the way on: a new invocation where the
                 # pin must change, a relaunch where the cause is outside it (ADR-0010; CS-4 addendum 11; #304 m1).
@@ -804,7 +796,9 @@ class OpenCodeAdapter(HarnessAdapter):
                             "empty": settled and not done and not offered,
                             "models": [{"providerID": str(m.get("providerID")), "id": str(m.get("id")),
                                         "variants": [str(v.get("id")) for v in m.get("variants") or []],
-                                        "enabled": m.get("enabled") is not False} for m in offered]}
+                                        "enabled": m.get("enabled") is not False,
+                                        **({"price_problem": model_pricing.paid_base_problem(m)}
+                                           if m.get("providerID") == "opencode" else {})} for m in offered]}
                 time.sleep(min(0.25, max(0.0, until - now)))
         finally:
             self.server.close(wait_s=3.0)

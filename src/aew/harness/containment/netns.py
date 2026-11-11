@@ -142,15 +142,24 @@ def stored_key_candidate(provider: str | None, names: Iterable[str], env: Mappin
                          policy: Mapping[str, Any] | None, *, on_relay_route: bool) -> bool:
     """Whether the launch is authorized to look for this provider's stored API key."""
     variable = PROVIDER_KEY_ENV.get(provider or "")
-    overrides = settings(policy).get("upstreams") or {}
     return (
-        on_relay_route and mode(policy) == PROXY_ONLY and provider in UPSTREAMS and provider not in overrides
+        on_relay_route and mode(policy) == PROXY_ONLY and provider in UPSTREAMS
+        and not stored_key_override(provider, policy)
         and variable is not None and variable in names
         and not agentenv.lookup(env, variable)
     )
 
 
-_doctor_keys: ContextVar[list[tuple[dict[str, login.WorkerKey], str | None]] | None] = ContextVar(
+def worker_provider_names(provider: str | None, names: Iterable[str]) -> list[str]:
+    """A built-in provider's worker needs its own key and any non-built-in variables."""
+    own = PROVIDER_KEY_ENV.get(provider or "")
+    if own is None:
+        return list(names)
+    other = set(PROVIDER_KEY_ENV.values()) - {own}
+    return [name for name in names if (name.upper() if sys.platform == "win32" else name) not in other]
+
+
+_doctor_keys: ContextVar[list[tuple[Any, set[str], dict[str, login.WorkerKey], dict[str, str]]] | None] = ContextVar(
     "doctor_worker_keys", default=None,
 )
 
@@ -165,16 +174,22 @@ def doctor_key_snapshot():
         _doctor_keys.reset(token)
 
 
-def doctor_worker_keys(env: Mapping[str, str], providers: set[str]) -> tuple[dict[str, login.WorkerKey], str | None]:
+def doctor_worker_keys(env: Mapping[str, str], providers: set[str]
+                       ) -> tuple[dict[str, login.WorkerKey], dict[str, str]]:
     snapshot = _doctor_keys.get()
     if snapshot:
-        return snapshot[0]
+        path, requested, keys, why = snapshot[0]
+        assert login.db_path(env) == path and providers <= requested, "doctor must preload all candidate providers"
+        return ({provider: keys[provider] for provider in providers & keys.keys()},
+                {provider: why[provider] for provider in providers & why.keys()})
     keys, why = login.worker_keys(env, providers)
     usable = {provider: key for provider, key in keys.items()
               if agentenv.provider_env_problem(PROVIDER_KEY_ENV[provider], {PROVIDER_KEY_ENV[provider]: key.secret})
               is None}
+    why = {provider: worker_key_issue(provider, issue) for provider, issue in why.items()}
+    why.update(dict.fromkeys(keys.keys() - usable.keys(), "no usable stored OpenCode API-key row for this provider"))
     if snapshot is not None:
-        snapshot.append((usable, why))
+        snapshot.append((login.db_path(env), set(providers), usable, why))
     return usable, why
 
 
@@ -187,7 +202,33 @@ def resolve_worker_key(provider: str | None, names: Iterable[str], env: Mapping[
     assert provider is not None
     keys, why = doctor_worker_keys(env, {provider})
     key = keys.get(provider)
-    return key, None if key else why or "no usable stored OpenCode API-key row for this provider"
+    return key, why.get(provider)
+
+
+STORED_REQUIRES_RELAY = "the stored OpenCode login needs the provider relay"
+STORED_REQUIRES_BUILTIN = "the stored OpenCode login is used only with the built-in upstream"
+
+
+def worker_key_issue(provider: str, issue: str) -> str:
+    if issue == login.REFRESHING_LOGIN:
+        kind = "ChatGPT" if provider == "openai" else "OAuth"
+        return (f"the stored login is a refreshing ({kind}) login, which workers never use; "
+                f"set {PROVIDER_KEY_ENV[provider]} where AEW starts, for workers")
+    return issue
+
+
+def stored_key_remedy(provider: str, detail: str | None) -> str:
+    if not detail:
+        return ""
+    remedy = (f" At your own terminal run `opencode auth login {provider}` and choose the API-key method "
+              "when it is appropriate to change that provider's deciding login, or use the named export."
+              if detail not in (STORED_REQUIRES_RELAY, STORED_REQUIRES_BUILTIN)
+              and worker_key_issue(provider, login.REFRESHING_LOGIN) not in detail else "")
+    return f". {detail}." + remedy
+
+
+def stored_key_override(provider: str | None, policy: Mapping[str, Any] | None) -> bool:
+    return provider in (settings(policy).get("upstreams") or {})
 
 
 def provider_key_message(provider: str, variable: str, *, stored_detail: str | None = None) -> str:
@@ -200,7 +241,7 @@ def provider_key_message(provider: str, variable: str, *, stored_detail: str | N
             f"(`provider_env: [{variable}]`) and set it in the terminal you start AEW from, or the Lead session you "
             f"launch from (`aew opencode` keeps the environment it started with). Then pin a paid model of {provider} "
             "in the execution policy's profile, or dispatch a new invocation with --profile or --model"
-            + (f". {stored_detail}." if stored_detail else ""))
+            + stored_key_remedy(provider, stored_detail))
 
 
 def refused_note(target: str, provider: str | None, key_relayed: bool) -> str | None:
@@ -374,8 +415,10 @@ class RunNetwork:
                 except AEWError as exc:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
                 tls, client = relay_tls(provider, policy)
+                relayed_names = worker_provider_names(provider, values)
                 net.relay = relay.ProviderRelay(
-                    target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy, tls=tls, client=client,
+                    target, {sentinels[n]: values[n] for n in relayed_names if values[n]},
+                    proxy=proxy, tls=tls, client=client,
                     listener=listen(os.path.join(layout.net_dir, RELAY))).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
                 if net.key_relayed:

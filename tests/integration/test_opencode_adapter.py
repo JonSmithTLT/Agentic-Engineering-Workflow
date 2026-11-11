@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -265,20 +266,23 @@ def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, 
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the stored source requires the Linux provider relay")
-@pytest.mark.parametrize("entrypoint", ["dispatch", "direct", "broker", "steering"])
+@pytest.mark.parametrize("entrypoint", ["dispatch", "direct", "broker", "steering", "anthropic"])
 def test_fresh_shell_workers_start_from_the_named_stored_login(lab, tmp_path, monkeypatch, entrypoint):
     """The CLI, broker and steering stage resolve the store without an export or a provider request."""
     key = "SYNTHETIC-NOT-A-KEY"
+    provider = "anthropic" if entrypoint == "anthropic" else "openai"
     home = lead_session.synthetic_home(tmp_path / ("lead-opencode" if entrypoint == "broker" else "operator"),
-                                       {"openai": key})
+                                       {"openai": key, "anthropic": key + "-OTHER"})
     db = home / ".local/share/opencode/opencode.db"
     lab.env.update(HOME=str(home), OPENCODE_DB=str(db))
     lab.env.pop("OPENAI_API_KEY")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     policy_file = lab.aew_root / "policy/execution.yaml"
     policy = load_yaml(policy_file.read_text(encoding="utf-8"))
+    policy["provider_env"].append("ANTHROPIC_API_KEY")
     for profile in policy["profiles"].values():
-        profile.update(provider="openai", model="synthetic-model")
+        profile.update(provider=provider, model="synthetic-model")
         profile.pop("effort", None)
     if entrypoint == "steering":
         for profile in policy["profiles"].values():
@@ -289,7 +293,7 @@ def test_fresh_shell_workers_start_from_the_named_stored_login(lab, tmp_path, mo
             monkeypatch.setenv(name, value)
     policy_file.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     lab.project.pin_policy()
-    script(lab, [], models=[{"id": "synthetic-model", "providerID": "openai", "enabled": True, "variants": []}])
+    script(lab, [], models=[{"id": "synthetic-model", "providerID": provider, "enabled": True, "variants": []}])
     wid = create_planned_ticket(lab.project, tmp_path)
     if entrypoint == "dispatch":
         launched = lab.lead("work", "assign", wid, "--launch")["launch"]
@@ -313,18 +317,61 @@ def test_fresh_shell_workers_start_from_the_named_stored_login(lab, tmp_path, mo
     else:
         inv = lab.lead("work", "assign", wid)["invocation"]
         lab.project.lead("work", "transition", wid, "--to", "RUNNING")
-        if entrypoint == "direct":
+        if entrypoint in ("direct", "anthropic"):
             launched = lab.lead("harness", "launch", inv)
         else:
             register = home.parent / "data" / "aew" / "capability"
             register.mkdir(parents=True)
             consent.decline(consent.offers(register), register)
-            session = FakeOpenCodeDriver().start_lead(lab, "stored-worker", [broker_command("harness", "launch", inv)])
+            # Change the built-in address only in the test adapter import, on both host processes.
+            # No execution-policy override or path to a real provider is involved.
+            adapter = tmp_path / "loopback_opencode_adapter.py"
+            adapter.write_text(
+                "from aew.harness.containment import netns\n"
+                "from aew.harness.opencode.adapter import OpenCodeAdapter as ProductAdapter\n"
+                f"netns.UPSTREAMS['openai'] = {lab.provider.url!r}\n"
+                "class LoopbackAdapter(ProductAdapter):\n"
+                "    pass\n", encoding="utf-8",
+            )
+            lab.env["AEW_HARNESS_ADAPTERS"] += f";opencode={adapter}:LoopbackAdapter"
+            catalog = [{"id": "synthetic-model", "providerID": "openai", "enabled": True, "variants": []}]
+            auth = {"variable": "OPENAI_API_KEY", "require_sentinel": True, "rejected_sha256": []}
+            second_run = f"R-{inv}-2"
+            for run_id in (f"R-{inv}-1", second_run):
+                script(lab, [], key=run_id, models=catalog, provider_auth=auth)
+            rotated = key + "-ROTATED"
+            rotated_gate, removed_gate = (sync_dir(tmp_path) / name for name in ("key-rotated", "key-removed"))
+            session = FakeOpenCodeDriver().start_lead(lab, "stored-worker", [
+                broker_command("harness", "launch", inv),
+                {"do": "wait_file", "path": str(rotated_gate), "timeout": 60},
+                broker_command("harness", "launch", inv, "--replace"),
+                {"do": "wait_file", "path": str(removed_gate), "timeout": 60},
+                broker_command("harness", "launch", inv, "--replace"),
+            ])
+            lab.until(lambda: len(lab.provider.seen) == 1, what="first relayed request")
+            with sqlite3.connect(db) as con:
+                con.execute("UPDATE credential SET value = ?, time_updated = 2 WHERE integration_id = 'openai'",
+                            (json.dumps({"type": "key", "key": rotated}),))
+            rotated_gate.touch()
+            lab.until(lambda: len(lab.provider.seen) == 2, what="second relayed request")
+            with sqlite3.connect(db) as con:
+                con.execute("DELETE FROM credential WHERE integration_id = 'openai'")
+            removed_gate.touch()
             outcome, steps = session.result(timeout=120)
             assert outcome.returncode == 0, outcome.stderr
-            [step] = steps.values()
-            assert step["exit"] == 0, step
-            launched = step["stdout_json"]
+            first, _, second, _, missing = steps.values()
+            assert first["exit"] == second["exit"] == 0
+            assert missing["stderr_json"]["error"]["details"]["reason"] == "provider_key_missing"
+            assert lab.provider.seen == [hashlib.sha256(value.encode()).hexdigest() for value in (key, rotated)]
+            assert not runlog.run_dir(lab.aew_root, f"R-{inv}-3").exists()
+            assert key not in json.dumps(missing)
+            for step in (first, second):
+                started = step["stdout_json"]
+                assert key not in json.dumps(started) + json.dumps(lab.record(started["run"]))
+                directory = runlog.run_dir(lab.aew_root, started["run"])
+                for name in ("supervisor.log", "events.jsonl"):
+                    assert key not in (directory / name).read_text(encoding="utf-8")
+            launched = second["stdout_json"]
     run = lab.record(launched["run"])
     network = run["containment"]["network"]
     assert network["provider_key_source"] == "stored OpenCode login"

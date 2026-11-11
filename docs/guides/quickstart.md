@@ -19,14 +19,16 @@ Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py31
 ```bash
 cd <repo>                       # the main worktree, on the authoritative branch
 aew init --check-command "{python} -m pytest -q" --model openai/gpt-6-sol   # also discovers authority *candidates*; confers no authority
-opencode auth login openai       # contained Linux, choose the API-key method if the login is missing
 aew doctor
 aew opencode --acquire
 ```
 
 `aew init` takes the first configuration in that one call and writes it before it pins, so a fresh setup needs no hand
 edit, no adopt and no credential. On contained Linux a worker uses the saved API-key login through the built-in
-provider relay when the policy names that provider's variable. For an explicit override or a legacy launch, use the
+provider relay when the policy names that provider's variable and its other names are set or are other built-in
+providers' key variables. One login decides per provider for the Lead and workers. If the Lead uses a refreshing
+login for a provider, keep it and export that provider's API key for workers. For an explicit override or a legacy
+launch, use the
 shell-only forms below with the provider variable in place of `AEW_LEAD_TOKEN`. Use `aew opencode --provider-env NAME`
 when feeding the Lead's own model from that export. A certificate-only provider skips key setup.
 

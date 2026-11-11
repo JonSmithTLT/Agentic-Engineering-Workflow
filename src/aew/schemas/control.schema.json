@@ -339,6 +339,21 @@
                 "generation": {
                   "type": "integer"
                 },
+                "provider_key_admission": {
+                  "description": "Stored key admission metadata. The generation contains the SQLite row ID and update time.",
+                  "type": "object",
+                  "required": ["provider", "generation"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "provider": {"enum": ["anthropic", "google", "openai", "opencode"]},
+                    "generation": {
+                      "type": "array",
+                      "prefixItems": [{"type": "integer"}, {"type": ["integer", "null"]}],
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                },
                 "requests": {
                   "type": "array",
                   "items": {

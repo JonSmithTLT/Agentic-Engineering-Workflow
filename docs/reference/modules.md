@@ -1481,6 +1481,7 @@ None.
 - `aew.harness.harness_capabilities`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
+- `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
 - `aew.harness.progress`
 - `aew.harness.runlog`
@@ -1538,6 +1539,10 @@ None.
 
 - `aew.errors`
 - `aew.harness.opencode.capabilities`
+
+### `aew.harness.opencode.model_pricing`
+
+None.
 
 ### `aew.harness.opencode.projection`
 

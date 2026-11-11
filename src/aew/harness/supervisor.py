@@ -99,7 +99,8 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
     if missing is not None and not netns.stored_key_candidate(
         provider, provider_env, os.environ, policy, on_relay_route=on_route,
     ):
-        raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
+        detail = netns.STORED_REQUIRES_BUILTIN if netns.stored_key_override(provider, policy) else None
+        raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing, stored_detail=detail),
                                          reason=netns.PROVIDER_KEY_MISSING, variable=missing)
     no_relay = client_cert.no_relay(provider, policy, on_relay_route=on_route)
     if no_relay is not None:  # only the relay presents a client certificate (register E123)
@@ -127,7 +128,7 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
             stored is None or key_admission.get("generation") != list(stored.generation)
         ))
         if missing is not None:
-            detail = unavailable or ("the stored OpenCode login needs the provider relay" if unrelayed else None)
+            detail = unavailable or (netns.STORED_REQUIRES_RELAY if unrelayed else None)
             if changed:
                 detail = "the stored OpenCode login changed after admission" + (f": {detail}" if detail else "")
             raise errors.HarnessIncompatible(

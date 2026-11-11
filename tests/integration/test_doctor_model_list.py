@@ -61,6 +61,22 @@ def leftovers(lab: HarnessLab) -> list[str]:
     return sorted(d.name for d in parent.iterdir()) if parent.is_dir() else []
 
 
+def test_doctor_refuses_a_free_zen_pin_even_with_an_export(lab):
+    def configure(policy):
+        policy["provider_env"] = ["OPENCODE_API_KEY"]
+        for profile in policy["profiles"].values():
+            profile.update(provider="opencode", model="synthetic-free")
+            profile.pop("effort", None)
+
+    edit_policy(lab, configure)
+    serve(lab, [{"id": "synthetic-free", "providerID": "opencode", "enabled": True, "variants": [],
+                 "cost": [{"input": 0, "output": 0}]}])
+    code, row = doctor(lab, env={"OPENCODE_API_KEY": "SYNTHETIC-NOT-A-KEY"})
+    assert code == 1 and row is not None and row["status"] == "FAIL", row
+    assert "verified paid base price" in row["detail"]
+    assert "dispatch a new invocation with --profile or --model" in row["detail"]
+
+
 def test_a_pinned_model_the_list_does_not_offer_is_a_fail_naming_it_and_what_its_provider_lists(lab):
     serve(lab, LISTED)
     set_model(lab, "missing-model")

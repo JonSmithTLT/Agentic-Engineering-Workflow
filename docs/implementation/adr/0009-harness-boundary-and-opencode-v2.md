@@ -2015,16 +2015,26 @@ runs where the Lead's shell runs, and arrive as text.
 
 ## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
 
-The operator approved default worker use with Linux first. The adopted execution policy's
+The operator approved default worker use and Linux first ("yes to both, linux now and file the windows row").
+The adopted execution policy's
 `provider_env` name is the consent for the pinned provider. The stored source is eligible
 only on Linux through the established `proxy_only` relay to that provider's built-in
 upstream. A configured upstream override uses the environment path.
 
+A run carries no other built-in provider's key. For a built-in provider, other built-in providers' key variables
+are not required, including on weaker routes. Every non-proxy name retains its sentinel on the relay route. Among
+built-in key variables the relay swaps only the pinned provider's sentinel. Custom and proxy variable handling
+stays as described above.
+
 A usable named export takes precedence. An invalid nonempty export retains its refusal.
 For an unset or empty named variable, admission checks the provider's deciding API-key
 row, and the supervisor reads it afresh before feeding the relay. Both reads are bounded,
-read-only and host-side. OAuth is excluded. The launch record names the source and may
-carry the store's non-secret row identity and update time for comparison. The key never
+read-only and host-side. SQLite may create WAL sidecar files as a filesystem side effect. The main file and
+its rows stay unchanged. One login decides per provider for the Lead and workers, active first, then by update time
+and descending row ID. Workers only use API-key rows and each launch read selects only the pinned provider's row.
+A refreshing deciding login remains the Lead's login and workers use the named export. The launch record names the source. The
+control-state run entry's `provider_key_admission` carries the non-secret row identity and update time
+for comparison. The key never
 enters the launch contract, the record, the harness environment, logs or errors. The worker
 receives a sentinel. An upstream rejection ends the attempt with that credential. The next
 launch resolves the source afresh.

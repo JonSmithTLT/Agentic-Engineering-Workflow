@@ -145,8 +145,19 @@ def test_the_credential_goes_only_where_its_sentinel_is_and_only_in_a_credential
 
 
 def test_stored_worker_key_uses_the_builtin_relay_and_does_not_retry_a_401(monkeypatch):
+    _check_stored_worker_relay(monkeypatch, other_export=False)
+
+
+def test_a_run_relay_swaps_no_other_built_in_providers_key(monkeypatch):
+    _check_stored_worker_relay(monkeypatch, other_export=True)
+
+
+def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
     synthetic = "SYNTHETIC-NOT-A-KEY"
     variable = "OPENAI_API_KEY"
+    other = "ANTHROPIC_API_KEY"
+    other_key = "SYNTHETIC-NOT-A-KEY-OTHER"
+    exports = {other: other_key} if other_export else {}
     seam = Seam()
     monkeypatch.setattr(netns, "mode", lambda _: netns.PROXY_ONLY)
     monkeypatch.setitem(netns.UPSTREAMS, "openai", UPSTREAM)
@@ -156,22 +167,28 @@ def test_stored_worker_key_uses_the_builtin_relay_and_does_not_retry_a_401(monke
     ))
     monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
     layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir="unused")
-    network = netns.RunNetwork.start(layout, provider="openai", provider_env=[variable],
-                                    policy={}, env={}, relay_needed=True, stored=WorkerKey(synthetic, (1, 10)))
+    network = netns.RunNetwork.start(layout, provider="openai", provider_env=[variable, *exports],
+                                    policy={}, env=exports, relay_needed=True, stored=WorkerKey(synthetic, (1, 10)))
     client, served = socket.socketpair()
     client.settimeout(TIMEOUT)
     thread = threading.Thread(target=network.relay.handle, args=(served,), daemon=True)
     try:
         thread.start()
-        token = network.harness_env({})[variable]
+        inside = network.harness_env({})
+        token = inside[variable]
+        extra_header = f"X-Api-Key: {inside[other]}\r\n" if other_export else ""
         assert token != synthetic
         assert network.describe()["provider_key_source"] == "stored OpenCode login"
         assert synthetic not in repr(network.describe())
         client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
-                       f"Authorization: Bearer {token}\r\nContent-Length: 0\r\n\r\n".encode())
+                       f"Authorization: Bearer {token}\r\n{extra_header}Content-Length: 0\r\n\r\n".encode())
         upstream = seam.upstream()
         head, _ = read_head(upstream)
         assert ("authorization", f"Bearer {synthetic}") in headers(head)
+        if other_export:
+            assert ("x-api-key", inside[other]) in headers(head)
+            assert other_key.encode() not in head
+            assert other in network.leaks(other_key)
         upstream.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         upstream.close()
         assert read_all(client).startswith(b"HTTP/1.1 401")

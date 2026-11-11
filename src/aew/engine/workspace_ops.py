@@ -183,9 +183,9 @@ class Invocations:
         from aew.harness.containment import client_cert, netns
 
         policy, _ = self.k.execution_policy()
-        names = [str(n) for n in (policy or {}).get("provider_env") or []]
         relayed = netns.relay_route(policy, provider_relay)
         provider = profile.get("provider")
+        names = netns.worker_provider_names(provider, map(str, (policy or {}).get("provider_env") or []))
         stored, unavailable = netns.resolve_worker_key(provider, names, os.environ, policy, on_relay_route=relayed)
         selected = netns.PROVIDER_KEY_ENV.get(str(provider))
         needs_relay = selected in names and selected is not None and not relayed and not agentenv.lookup(
@@ -193,7 +193,9 @@ class Invocations:
         )
         self._require_provider_env(
             [name for name in names if (stored is None and unavailable is None) or name != selected],
-            stored_detail="the stored OpenCode login needs the provider relay" if needs_relay else None,
+            stored_detail=(netns.STORED_REQUIRES_RELAY if needs_relay else
+                           netns.STORED_REQUIRES_BUILTIN
+                           if selected in names and netns.stored_key_override(provider, policy) else None),
         )
         missing = netns.provider_key_missing(provider, names, os.environ, on_relay_route=relayed,
                                               stored=stored is not None)

@@ -388,6 +388,8 @@ skipped:
       The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
     tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[steering]: >-
       The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[anthropic]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.

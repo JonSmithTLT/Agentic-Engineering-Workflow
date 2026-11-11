@@ -464,6 +464,7 @@ def test_a_run_with_no_relay_refuses_a_provider_that_needs_a_certificate(pki):
     found = pki.files()
     message = client_cert.no_relay(PROVIDER, policy_of(found, "shared"), on_relay_route=False)
     assert message is not None and found.field("cert") in message and "proxy_only" in message
+    assert "pin a profile whose provider needs no certificate" in message and "--provider-env" not in message
     assert client_cert.no_relay(PROVIDER, policy_of(found), on_relay_route=True) is None
     assert client_cert.no_relay("openai", policy_of(found), on_relay_route=False) is None
 

@@ -110,7 +110,8 @@ def _case_insensitive(repo_root: Path) -> bool:
 
 
 def changed_between(repo_root: Path, a: str, b: str) -> list[str]:
-    raw = git.out("diff", "--name-only", "--no-renames", "-z", a, b, cwd=repo_root)
+    # NUL-delimited pathnames may start with whitespace that git.out would strip.
+    raw = git.git("diff", "--name-only", "--no-renames", "-z", a, b, cwd=repo_root).stdout.decode("utf-8", "replace")
     return [p for p in raw.split("\x00") if p]
 
 

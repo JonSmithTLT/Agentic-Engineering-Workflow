@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from aew.engine.evidence_ops import EvidenceCommands
+from aew.engine.evidence_ops import EvidenceCommands, _check_mutation_diagnostic
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment, procs
 from aew.harness import weaker_register as W
@@ -18,6 +18,25 @@ from aew.policy import checks as C
 
 CONTAINED = {"filesystem": "os_readonly_roots", "network": {"mode": "proxy_only"}, "self_test": {"ok": True},
              "process_ownership": "pid_namespace"}
+
+
+def test_e332_mutation_diagnostic_limits_output_and_keeps_every_tracked_path():
+    outputs = [f"a-output-{i:02}.txt" for i in range(24)]
+    sources = [f"src/source-{i:02}.py" for i in range(22)]
+    mixed = _check_mutation_diagnostic(outputs + sources[:2], set(sources))
+    assert mixed["changed_paths"] == sources[:2] + outputs[:18]
+    assert "26 input path(s)" in mixed["message"]
+    overflow = _check_mutation_diagnostic(outputs + sources, set(sources))
+    assert overflow["changed_paths"] == sources
+    untracked = _check_mutation_diagnostic(outputs, set())
+    assert ".gitignore" in untracked["message"] and "Restore" not in untracked["message"]
+
+
+def test_e332_mutation_diagnostic_explains_an_unnameable_diff():
+    result = _check_mutation_diagnostic([], None)
+    assert result["changed_paths"] == []
+    assert "couldn't be named" in result["message"]
+    assert "snapshots could not be compared" in result["message"]
 
 
 class Layout:
@@ -30,8 +49,9 @@ def direct(tmp_path, monkeypatch):
     """The direct route's own frame, with the check runner stood in for: it records what it was given."""
     policy: dict = {}
     commands = object.__new__(EvidenceCommands)
-    commands.k = type("K", (), {"policy": lambda self, name: policy, "execution_policy": lambda self: (policy, None),
-                                "aew_root": tmp_path / ".aew", "repo_root": tmp_path})()
+    kernel = type("K", (), {"policy": lambda self, name: policy, "execution_policy": lambda self: (policy, None),
+                            "aew_root": tmp_path / ".aew", "repo_root": tmp_path})()
+    monkeypatch.setattr(commands, "k", kernel, raising=False)
     ran: list[dict] = []
 
     def run(cfg, workspace, **kw):
@@ -149,3 +169,16 @@ def test_a_process_tree_that_requires_a_layout_starts_nothing_without_one():
     with pytest.raises(ContainmentUnavailable):
         tree.spawn(["true"])
     tree.close()
+
+
+def test_the_runner_returns_the_cwd_it_passed_to_spawn_even_when_spawn_fails(tmp_path, monkeypatch):
+    spawned = []
+
+    def spawn(self, argv, **kwargs):
+        spawned.append(kwargs["cwd"])
+        raise OSError(2, "synthetic spawn failure")
+
+    monkeypatch.setattr(procs.ProcessTree, "spawn", spawn)
+    out = C.run({"command": ["missing"], "cwd": "child/.."}, tmp_path,
+                policy={"containment": {"mode": "allow_weaker"}})
+    assert out["cwd"] == str(spawned[0]) == str(tmp_path.resolve())

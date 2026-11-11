@@ -769,7 +769,7 @@ def systems_files(data):
 def merge_board():
     return {"schema": "aew/systems/v1", "wip_limit": 12, "unowned": {}, "systems": [
         {"id": f"SYS-{n:02}", "name": f"System {n}", "register": [], "remaining": [], "decision": "none",
-         "recommendation": "finish", "state": {"board_state": "partly_built"}, "who": "Lead"}
+         "recommendation": "finish", "state": {"board_state": "partly_built", "wired": []}, "who": "Lead"}
         for n in range(1, 9)]}
 
 

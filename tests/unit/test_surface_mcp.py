@@ -51,8 +51,10 @@ class Spy:
 # `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
 # 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B);
 # 11,704 with E133's stages that start past their report: the report is not required, and their descriptions say so
-# (-23 B).
-NORMAL_BYTES_PIN = 11_704
+# (-23 B); E227's `priority` and `priority_reason` on `ticket_draft`, where the Lead sets a priority at creation (the
+# operator, 2026-11-10: set at the draft only), with the reason's "needed unless normal", measured against the stop
+# line (11,830: +126 B).
+NORMAL_BYTES_PIN = 11_830
 RESOLVE_BYTES_PIN = 818
 
 
@@ -233,7 +235,8 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_the_mcp_process_has_no_path_to_authority():
-    """No engine, no runner, no token: statically, and in a fresh interpreter that imports the transport."""
+    """No engine, no runner, no token: statically, and in a fresh interpreter that builds the CLI's parser and then
+    imports the transport, as the `aew lead mcp` process does."""
     source = ROOT / "src" / "aew" / "surface" / "mcp.py"
     imported = _imports(source)
     assert not any(m.startswith("aew.engine") or m in ("aew.surface.run", "aew.surface.projection",
@@ -250,7 +253,10 @@ def test_the_mcp_process_has_no_path_to_authority():
         n for n in ast.walk(ast.parse((ROOT / "src/aew/cli/commands.py").read_text(encoding="utf-8")))
         if isinstance(n, ast.FunctionDef) and n.name == "_lead_mcp"))
     assert handler and "_engine" not in handler and "_lead_token" not in handler and "token" not in handler
-    probe = subprocess.run([sys.executable, "-c", "import sys, aew.surface.mcp; "
+    # The process's own path (review of the priority PR, m3): `aew lead mcp` runs through `aew.cli.main`, which builds
+    # the whole parser before its handler imports the transport, so the probe does both, in that order.
+    probe = subprocess.run([sys.executable, "-c", "import sys\nfrom aew.cli.main import build_parser\nbuild_parser()\n"
+                            "import aew.surface.mcp\n"
                             "print(sorted(m for m in sys.modules if m.startswith('aew.engine')))"],
                            capture_output=True, text=True, timeout=60, check=True,
                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)

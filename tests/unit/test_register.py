@@ -550,6 +550,45 @@ def test_bad_board_refuses_render_without_writes_and_can_be_fixed(tmp_path, monk
                                                                              systems.now_order(tmp_path)).encode()
 
 
+@pytest.mark.parametrize("block_aew", [False, True], ids=["no-pythonpath", "no-aew"])
+def test_register_commands_work_without_pythonpath_or_importable_aew(tmp_path, block_aew):
+    _register_copy(tmp_path)
+    for name in ("register.py", "systems.py"):
+        path = tmp_path / "tools" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "tools" / name, path)
+    systems = register._systems(ROOT)
+    shutil.copyfile(ROOT / systems.SYSTEMS, tmp_path / systems.SYSTEMS)
+    assert register.render(tmp_path) == []
+    page = tmp_path / systems.MARKDOWN
+    expected = page.read_bytes()
+    page.write_bytes(b"stale\n")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    guard = ("import builtins, runpy, sys\n"
+             "original = builtins.__import__\n"
+             "def guarded(name, *args, **kwargs):\n"
+             "    if name == 'aew' or name.startswith('aew.'):\n"
+             "        raise ImportError('aew is deliberately unavailable')\n"
+             "    return original(name, *args, **kwargs)\n"
+             "builtins.__import__ = guarded\n"
+             "sys.argv = sys.argv[1:]\n"
+             "runpy.run_path(sys.argv[0], run_name='__main__')\n")
+
+    def run(command):
+        argv = [sys.executable, *(["-c", guard] if block_aew else []), str(tmp_path / "tools/register.py"), command]
+        return subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+    stale = run("check")
+    assert stale.returncode == 1 and "run `python tools/register.py render`" in stale.stdout, stale.stderr
+    rendered = run("render")
+    assert rendered.returncode == 0, rendered.stdout + rendered.stderr
+    checked = run("check")
+    assert checked.returncode == 0 and "in sync" in checked.stdout, checked.stdout + checked.stderr
+    assert page.read_bytes() == expected
+
+
 def test_adding_a_note_leaves_every_rendered_and_source_file_byte_identical(tmp_path):
     """The whole point: a note touches no shared file, so two changes noting the same row cannot conflict on one."""
     _register_copy(tmp_path)

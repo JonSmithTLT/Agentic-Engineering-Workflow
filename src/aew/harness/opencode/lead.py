@@ -323,7 +323,8 @@ def certified_models(policy: Mapping[str, Any] | None, providers: Mapping[str, A
 def _unpinned(provider: str) -> str:
     """A certificate provider no profile of the Lead's harness pins a model of (E123 quick check, N3): the Lead's
     configuration names only the models the profiles pin for it, so it would offer none."""
-    return (f"the {provider} provider has a client certificate and an upstream, but no profile pins a model of it, so "
+    return (f"the {provider} provider has a client certificate and an upstream, but no OpenCode profile pins a model "
+            f"of it, so "
             f"the Lead would have none to choose and it is not relayed: pin one in a profile "
             f"(profiles.<name>.provider: {provider}, with its model), then start `aew opencode` again")
 
@@ -784,7 +785,8 @@ class ContainedLead:
             # worker is after `establish` (E123 quick check, N1).
             if self.certified and not (self.keys or self.refreshing):
                 provider = sorted(self.certified)[0]
-                raise ContainmentUnavailable(str(client_cert.no_relay(provider, policy, on_relay_route=False)),
+                raise ContainmentUnavailable(str(client_cert.no_relay(provider, policy, on_relay_route=False,
+                                                                      lead=True)),
                                              provider=provider, reason=client_cert.NO_RELAY)
             sys.stderr.write(f"aew opencode: the Lead runs NOT contained ({label['filesystem']}): "
                              f"{label.get('weaker_because')}\n")

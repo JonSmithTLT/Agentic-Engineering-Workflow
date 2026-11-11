@@ -6,7 +6,7 @@ import threading
 
 import pytest
 from fake_harness import credential_hits
-from harness_conformance import FakeOpenCodeDriver
+from harness_conformance import FakeOpenCodeDriver, sync_dir
 from test_worker_messages import MID, launch, send, steps_done
 
 from aew.engine import outbox
@@ -251,7 +251,7 @@ def test_two_real_runs_share_the_twenty_body_wait_budget_and_omitted_replies_ret
 
     enable_messaging(lab)
     lab.env["AEW_HARNESS_ADAPTERS"] = f"opencode={HELPERS / 'message_wait_adapter.py'}:FakeWaitOpenCodeAdapter"
-    sync = tmp_path / "two-run-sync"
+    sync = sync_dir(tmp_path) / "two-run"
     sync.mkdir()
     runs = []
     e = Engine.discover(lab.root)

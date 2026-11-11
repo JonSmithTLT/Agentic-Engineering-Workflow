@@ -237,6 +237,13 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
             try:
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
                           what="the write outside the scope", timeout=120)
+                # A digest is published before its advisory wake bump. A later digest is the producer's completion
+                # barrier: the first poll finished its bump before it could enter the next poll. Keep local/wake in
+                # the exact no-write assertion rather than attributing a still-running producer's bump to the read.
+                observed = lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at"),
+                                     what="the trigger poll's observation", timeout=120)
+                lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at") not in (None, observed),
+                          what="the poll after the trigger's advisory wake update", timeout=120)
                 own = f"{runlog.RUNS_REL}/{run}/"
 
                 def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files

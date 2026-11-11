@@ -3509,15 +3509,6 @@ sections:
     When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the week's register PR
 
-  - '#': E236
-    Work: '`tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port`
-      fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process''s own
-      listener, though it answers requests. CI''s Windows passes. The E75 diagnostic loses its listener row on such a host,
-      so the fix is the diagnostic saying so, with the test holding that, not a skip'
-    Source: Seen 2026-11-08 in an agent's shell and in the operator's own terminal; the host is the suspect, not proven
-    When: '**Unscheduled**, in the small-fixes lane'
-    Notes: Filed by the week's register PR
-
   - '#': E237
     Work: 'Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread
       running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server =
@@ -6014,6 +6005,15 @@ sections:
       Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
     Closed: '2026-11-08'
     By: '#384 (`039a281e`), with its review''s follow-ons on #391. What it does not reach is in this row''s note'
+
+  - '#': E236
+    Was: '`tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port`
+      fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process''s own
+      listener, though it answers requests. CI''s Windows passes. The E75 diagnostic loses its listener row on such a host,
+      so the fix is the diagnostic saying so, with the test holding that, not a skip'
+    Closed: '2026-11-08'
+    By: '#383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered
+      (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip'
 
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)

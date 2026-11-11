@@ -372,9 +372,6 @@ systems:
       (E143''s follow-on) but nothing in src/aew/dashboard reads it. The web developer''s to place'
     row: E148
     estimate: 1 PR (estimate)
-  - slice: 'the probe''s diagnostic on a host with no LISTENING row for its own listener'
-    row: E236
-    estimate: 1 small PR (estimate)
   decision: 'decided: kept, not frozen (the operator: "Keep the dashboard"); next after slot 1 (the reset of 2026-11-06
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
@@ -384,8 +381,9 @@ systems:
     with A-44''s S1 and S2 (E101 and E102 notes) and F20.6 in part with S2w (E103), which are SYS-21''s slices.'
   evidence:
   - 'src/aew/dashboard/: 14 modules, 4,760 lines (wc -l at c11a61ea)'
-  - src/aew/cli/dashboard_commands.py:29-51 the dashboard serve, open and status parsers (serve on 127.0.0.1, :29); nothing
-    starts the server automatically
+  - src/aew/cli/dashboard_commands.py:32-57 the dashboard serve, open and status parsers (serve on 127.0.0.1)
+  - 'src/aew/harness/dashboard_autostart.py:1-6 aew opencode opens the operator''s first dashboard session itself, with
+    no typed-back code, and the server ends with that session; src/aew/harness/opencode/lead.py:398 the session enters it'
   - src/aew/dashboard/server.py:267-299 ROUTES, including /attention at :286 and the 0.1.3 maps routes
   - 'src/aew/dashboard/server.py:321-330 /history/search exists only while the adopted execution policy sets recall.raw_history_search:
     explicit'

@@ -2879,18 +2879,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
 
-### E236
-
-**Work:** `tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port` fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process's own listener, though it answers requests. CI's Windows passes. The E75 diagnostic loses its listener row on such a host, so the fix is the diagnostic saying so, with the test holding that, not a skip
-
-**Source:** Seen 2026-11-08 in an agent's shell and in the operator's own terminal; the host is the suspect, not proven
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
-
 ### E237
 
 **Work:** Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server = None`: the thread then reaches `os._exit(0)` and kills the test worker
@@ -4680,6 +4668,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #384 (`039a281e`), with its review's follow-ons on #391. What it does not reach is in this row's note
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
+
+### E236
+
+**Was:** `tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port` fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process's own listener, though it answers requests. CI's Windows passes. The E75 diagnostic loses its listener row on such a host, so the fix is the diagnostic saying so, with the test holding that, not a skip
+
+**Closed:** 2026-11-08
+
+**By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
+
+*Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
 
 ### F1
 

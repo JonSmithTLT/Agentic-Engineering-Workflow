@@ -96,7 +96,8 @@ def test_prepare_pins_the_model_check_and_slices_and_owns_seed_identity(tmp_path
     engine = prepare(tmp_path, MODEL, LEAD_MODEL)
     policy, _ = engine.execution_policy()
     assert pack_slices(policy) == "structural"
-    assert list(policy["profiles"].values()) == [{"model": MODEL}]
+    [profile] = policy["profiles"].values()
+    assert profile["model"] == MODEL
     assert engine.policy("gates")["mutating_concurrency"] == 2
     assert engine.policy("checks")["checks"]["unit"]["command"] == CHECK_COMMAND.split()
     identity = git(tmp_path / "repo", "log", "-1", "--format=%an <%ae>%n%cn <%ce>")

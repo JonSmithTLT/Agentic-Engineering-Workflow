@@ -16,6 +16,7 @@ from typing import Any
 
 from aew.engine.base import WORKSPACE_MARKER
 from aew.errors import AEWError, GitError
+from aew.harness.contract import MANIFEST_ADOPT
 from aew.snapshot import fingerprint
 from aew.util import dump_yaml, utc_now
 from aew.workspace import git
@@ -101,7 +102,7 @@ def _add(repo_root: Path, path: Path, *args: str) -> None:
             raise
         raise GitError(f"the workspace path {path} ({len(str(path))} characters) is too long for git here; set a "
                        "shorter `workspaces.root` in .aew/project.yaml, which the operator adopts with "
-                       "`aew manifest adopt` (for example a "
+                       f"{MANIFEST_ADOPT} (for example a "
                        "short directory beside the repository), or enable long paths (git config core.longpaths "
                        "true, and Windows long-path support)", path=str(path), length=len(str(path)),
                        stderr=exc.details.get("stderr")) from None

@@ -2881,6 +2881,7 @@ PRE_G3A_TIMEOUT_MIN = {
     "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60,
                     "matrix-extra-serial": 60},
     "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
+    "flake-dispatch.yml": {"regression": 30},
 }
 
 
@@ -3232,6 +3233,33 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
     it and keep scheduling past the deadline. A crash is evidence, not something to route around."""
     found = [(x.label, x.max_worker_restart) for x in _workflow_lanes() if x.xdist]
     assert found and all(v == "0" for _, v in found), found
+
+
+def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
+    """The runner can end the pytest step before the job expires, with an unconditional evidence upload next."""
+    import bounds
+
+    workflow = ROOT / ".github" / "workflows" / "flake-dispatch.yml"
+    doc = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    assert set(doc[True]) == {"workflow_dispatch"}
+    assert set(doc["jobs"]) == {"regression"}
+    job = doc["jobs"]["regression"]
+    assert job["runs-on"] == "windows-latest"
+    steps = job["steps"]
+    pytest_step, upload = steps[-2:]
+    lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
+    assert [lane.repeats for lane in lanes] == [1, 2, 1]
+    assert all(lane.step == pytest_step["name"] for lane in lanes)
+    step_seconds = pytest_step["timeout-minutes"] * 60
+    assert f"+ {pytest_step['timeout-minutes']} * 60 > AEW_JOB_DEADLINE" in pytest_step["run"]
+    session_seconds = 0.0
+    for lane in lanes:
+        assert lane.deadline_s is not None
+        session_seconds += lane.repeats * (lane.deadline_s + 2 * lane.margin_s)
+    assert session_seconds <= step_seconds
+    assert step_seconds + bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S < job["timeout-minutes"] * 60
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["if"] == "always()"
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

@@ -190,10 +190,24 @@ def _steering(c: Call) -> Any:
     return out
 
 
+def _message_send(c: Call) -> Any:
+    # Timing is advertised now, but no turn-end record exists until MS5b's finality guard is built.
+    if c.a.get("when", "next-step") != "next-step":
+        raise errors.UsageError("turn-end is not available yet; use next-step to record a message without delivery",
+                                reason="turn_end_not_built")
+    out = c.engine.message_record_lead(
+        token=c.token(), expect_rev=c.a["expect_rev"], to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
+        in_reply_to=c.a.get("in_reply_to"), refs=c.a.get("refs"), idempotency_id=c.a.get("idempotency_id"),
+        channel=("lead_mcp" if c.ctx.ingress == "mcp" else "lead_broker" if c.ctx.lead_session is not None else "cli"))
+    return {**out, "delivery": "not_built",
+            "next": "Delivery is not built yet; this call only records a message."}
+
+
 RUNNERS: dict[str, Runner] = {
     "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
     "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
     "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
+    "message_send": _message_send,
 }
 
 
@@ -228,7 +242,7 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
     ``serial`` and ``cancelled`` are the broker's hooks for a cooperative wait (module docstring); ``run_cli`` runs
     the recovery escape's command with the broker's refusals. ``auto_run`` is the steering loop's attribution of the
     stage it runs (M4-E E7b): recorded on the intent, it changes nothing about the call."""
-    t = check_call(name, arguments, ctx.profile)
+    t = check_call(name, arguments, ctx.profile, ctx.switches)
     # A query is one read-only answer: its runner and its projection share their gate contexts (Engine.gate_memo). A
     # wait or a stage never does (a wait's world changes as it waits; a stage commits).
     with engine.gate_memo() if t.kind == contract.QUERY else contextlib.nullcontext():

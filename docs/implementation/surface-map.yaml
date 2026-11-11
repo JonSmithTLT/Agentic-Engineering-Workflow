@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 3
+version: 4
 
 vocabulary:
   homes:
@@ -91,10 +91,6 @@ proposed_tools:
     expands_to: [work.move, work.promote, work.reclassify, work.depend]
     lands: A2
     note: "one decomposition tool, with `change: move|promote|reclassify|depend`"
-  - name: message_send
-    expands_to: [message.send]
-    lands: F9-A
-    note: "F9-A's typed send (the F9 steer-vs-queue decision, 2026-10-10), offered only with coordination.messaging on"
 proposed_choices:
   - name: accept_plan
     pairs: {plan: plan.accept}
@@ -1088,7 +1084,8 @@ commands:
       primitive: message.send
       lands: F9-A
       reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
-      options: {run: homes, "--text": homes, "--file": homes, "--when": homes}
+      options: {run: homes, "--text": homes, "--file": homes, "--when": uncovered}
+      uncovered: {lands: F9-A, uses: ["option --when"]}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     note: "messaging (F9-A1): A4 keeps a typed home or leaves it reachable, with its reason"
@@ -1101,12 +1098,11 @@ commands:
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
     planned:
-      disposition: typed
-      homes: [message_send]
-      primitive: message.send
-      lands: F9-A
-      reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
-      options: {run: homes}
+      disposition: undecided
+      homes: []
+      primitive: none
+      lands: later
+      reason: "E248 owns the undesigned typed interrupt; message_send is not its home. The shell interrupt remains reachable until that design decides its disposition."
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
   - name: harness config
@@ -1687,6 +1683,17 @@ commands:
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
 
 tools:
+  - name: message_send
+    home: product
+    users: [lead]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: contract.Tool.mutates
+    owner: lead
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION, USAGE, MESSAGING_DISABLED,
+               COORDINATION_LIMIT, IDEMPOTENCY_CONFLICT, NOT_A_WORKER, RECIPIENT_INDEPENDENT,
+               REF_UNKNOWN, REF_OUT_OF_SCOPE, REPLY_NOT_IN_THREAD, ILLEGAL_TRANSITION, MIGRATION_REQUIRED]
+    note: "coordination.messaging switch only; records a next-step message without commit/dispatch. Delivery is not built yet; turn-end refused until MS5b. Does not interrupt a run."
   - name: status
     home: product
     users: [lead]

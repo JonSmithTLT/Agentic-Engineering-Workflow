@@ -20,26 +20,26 @@ __all__ = ["CODES", "AdapterInputError", "check_call"]
 
 
 @cache
-def _validator(name: str) -> Draft202012Validator:
+def _validator(name: str, switches: frozenset[str] = frozenset()) -> Draft202012Validator:
     # The argument schemas are AEW's own: test_surface_contract checks them against the metaschema once.
-    return Draft202012Validator(contract.TOOLS[name].input_schema)
+    return Draft202012Validator(contract.catalog(switches)[name].input_schema)
 
 
-def check_call(name: Any, arguments: Any, profile: str) -> Tool:
+def check_call(name: Any, arguments: Any, profile: str, switches: frozenset[str] = frozenset()) -> Tool:
     """The tool a well-formed call names, or ``AdapterInputError``."""
-    t = contract.tool(name) if isinstance(name, str) else None
+    t = contract.tool(name, switches) if isinstance(name, str) else None
     if t is None:
         raise AdapterInputError("UNKNOWN_TOOL", f"no tool {name!r}",
-                                offered=[x.name for x in contract.exposed(profile)])
+                                offered=[x.name for x in contract.exposed(profile, switches)])
     if not t.built:
         raise AdapterInputError("TOOL_NOT_BUILT", f"{t.name} is designed but not built yet",
-                                offered=[x.name for x in contract.exposed(profile)])
+                                offered=[x.name for x in contract.exposed(profile, switches)])
     if profile not in t.profiles:
         raise AdapterInputError("TOOL_NOT_EXPOSED", f"{t.name} is not offered on the {profile} surface profile",
-                                offered=[x.name for x in contract.exposed(profile)])
+                                offered=[x.name for x in contract.exposed(profile, switches)])
     if not isinstance(arguments, dict):
         raise AdapterInputError("INVALID_ARGUMENTS", f"{t.name}: the arguments must be a JSON object")
-    errors = sorted(_validator(t.name).iter_errors(arguments), key=lambda e: list(e.absolute_path))
+    errors = sorted(_validator(t.name, switches).iter_errors(arguments), key=lambda e: list(e.absolute_path))
     if errors:
         raise AdapterInputError(
             "INVALID_ARGUMENTS", f"{t.name}: the arguments do not match the tool's schema",

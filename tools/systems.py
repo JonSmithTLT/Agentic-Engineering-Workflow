@@ -38,8 +38,12 @@ and holds the file to:
 ``show SYS-NN`` prints an entry as stored and its derived priority, without writing anything.
 ``check`` also checks table-owned switch defaults and evidence, decidable on_by_default pairs, wired reference
 records, stale remaining slices and FORMAT.md rule 1's count. A count above wip_limit requires the operator's covering
-wip_allowance; the allowance is stale once the count recovers. The operator's words and their extra conditions are
-reviewed, not authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
+wip_allowance; the allowance is stale once the count recovers. A system ``awaiting_signoff`` (built, wired and on by
+default, with no slices left, not yet tested and signed off by the operator) is not counted. ``on_and_used`` requires
+the operator's ``signoff`` (a quoted date and their words), and a sign-off on any other state is refused. The lag rule:
+a system with no own slices left that is still partly_built, built_off, built_not_wired or staged is refused unless
+its recommendation is freeze, cut or keep. The operator's words and their extra conditions are reviewed, not
+authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
 hand-kept and are labelled. Render labels the evidence citations; check validates their table ownership. Render
 imports neither the policy tables nor the as-built reference.
 Not here yet: deriving board_state or built, serves, lanes or a dashboard view.
@@ -81,7 +85,7 @@ WIRED_RECORDS = {"cli": "cli-commands", "dashboard": "dashboard-routes", "tool":
 HAND_WIRED = ("lead_text", "pack")
 REQUIRED = ("id", "name", "purpose", "design", "register", "as_built", "touches", "depends_on", "state",
             "finish_line", "remaining", "decision", "recommendation", "who", "reason", "evidence")
-OPTIONAL = ("serves_claims", "serves_pending", "design_unpublished", "touches_new", "switch")
+OPTIONAL = ("serves_claims", "serves_pending", "design_unpublished", "touches_new", "switch", "signoff")
 LISTS = ("design", "register", "as_built", "touches", "depends_on", "evidence", "serves_pending",
          "design_unpublished", "touches_new")
 TEXTS = ("id", "name", "purpose", "finish_line", "decision", "recommendation", "who", "reason")
@@ -89,9 +93,19 @@ STATE_FIELDS = ("board_state", "built", "wired", "on_by_default", "used_in_defau
 SWITCH_FIELDS = ("key", "default", "default_evidence", "owner", "turning_on_changes")
 SLICE_FIELDS = ("slice", "row", "estimate")
 CLAIM_FIELDS = ("closing_works", "extra")
+SIGNOFF_FIELDS = ("date", "words")
+# The operator's sign-off (the operator, 2026-11-10): a system built, wired and on by default with no slices left is
+# awaiting_signoff until the operator has tested it and signed it off; only then is it on_and_used, carrying the
+# sign-off's date and words. Awaiting sign-off is not counted toward wip_limit.
+AWAITING = "awaiting_signoff"
+AWAITING_LABEL = "built, awaiting your sign-off"
+SIGNED = "on_and_used"
+# The states FORMAT.md rule 1 counts, and that a system with no own slices left must have moved out of (the lag rule).
+BUILDING = ("partly_built", "built_off", "built_not_wired", "staged")
+# The recommendations that take a system out of the count and out of the lag rule.
+NOT_COUNTED = ("freeze", "cut", "keep")
 ENUMS = {
-    ("state", "board_state"): ("on_and_used", "partly_built", "built_off", "built_not_wired", "staged",
-                               "designed_only"),
+    ("state", "board_state"): (SIGNED, AWAITING, *BUILDING, "designed_only"),
     ("state", "built"): ("yes", "partly", "no"),
     ("state", "used_in_default_flow"): ("yes", "partly", "no"),
     ("recommendation",): ("finish", "switch_on", "freeze", "cut", "keep", "done"),
@@ -298,11 +312,7 @@ def schema_problems(data: Any) -> list[Problem]:
                 bad("wip_allowance", "count must be an integer above wip_limit")
             if not isinstance(words, str) or not words.strip():
                 bad("wip_allowance", "operator must be the operator's non-empty words, verbatim")
-            try:
-                if not isinstance(when, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when):
-                    raise ValueError
-                datetime.date.fromisoformat(when)
-            except ValueError:
+            if not _is_date(when):
                 bad("wip_allowance", "date must be a quoted YYYY-MM-DD string naming a real date")
     unowned = data.get("unowned")
     if not isinstance(unowned, dict):
@@ -368,7 +378,25 @@ def schema_problems(data: Any) -> list[Problem]:
             for key in ("key", "default", "default_evidence"):
                 if key in entry["switch"] and not isinstance(entry["switch"][key], str):
                     bad(where, f"switch.{key} is text")
+        if "signoff" in entry:
+            signoff = entry["signoff"]
+            if not isinstance(signoff, dict) or set(signoff) != set(SIGNOFF_FIELDS):
+                bad(where, "signoff has exactly date and words")
+            else:
+                if not _is_date(signoff["date"]):
+                    bad(where, "signoff.date must be a quoted YYYY-MM-DD string naming a real date")
+                if not isinstance(signoff["words"], str) or not signoff["words"].strip():
+                    bad(where, "signoff.words must be the operator's non-empty words, verbatim")
     return out
+
+
+def _is_date(value: Any) -> bool:
+    """A quoted YYYY-MM-DD naming a real date (an unquoted one loads as a date, not text)."""
+    try:
+        return (isinstance(value, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
+                and bool(datetime.date.fromisoformat(value)))
+    except ValueError:
+        return False
 
 
 def generated_problems(data: Any) -> list[Problem]:
@@ -548,8 +576,11 @@ def hold_problems(data: Any, own: Owners) -> list[Problem]:
 
 
 def lint_problems(data: Any) -> list[Problem]:
-    """No fact another file owns, restated in hand-kept text: a Now position, a pull request number, a register line."""
-    places = [(e["id"], _strings({k: v for k, v in e.items() if k != "id"}, "")) for e in _entries(data)]
+    """No fact another file owns, restated in hand-kept text: a Now position, a pull request number, a register line.
+    A sign-off is the operator's words, verbatim, as the allowance is: exempt from the lint, never from the public
+    guard."""
+    places = [(e["id"], _strings({k: v for k, v in e.items() if k not in ("id", "signoff")}, ""))
+              for e in _entries(data)]
     unowned = data.get("unowned") if isinstance(data, dict) else None
     if isinstance(unowned, dict):
         places.append(("unowned", _strings({str(k): v for k, v in unowned.items()}, "")))
@@ -646,6 +677,31 @@ def stale_slice_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
             if s["row"] in own.rows - own.open_rows and not HOLD_RE.match(s["row"])]
 
 
+def signoff_problems(data: dict[str, Any]) -> list[Problem]:
+    """on_and_used carries the operator's sign-off, and only on_and_used does (the operator, 2026-11-10). The words
+    are reviewed, not authenticated, as the allowance's are."""
+    out = []
+    for e in data["systems"]:
+        state, signed = e["state"]["board_state"], "signoff" in e
+        if state == SIGNED and not signed:
+            out.append(Problem("signoff", e["id"], f"{e['id']} is {SIGNED} with no sign-off on record: add signoff "
+                               f"with the operator's date and words, or move it to {AWAITING}"))
+        elif signed and state != SIGNED:
+            out.append(Problem("signoff", e["id"], f"{e['id']} carries a sign-off but is {state}: a sign-off belongs "
+                               f"to {SIGNED} only, so move it there or remove the sign-off"))
+    return out
+
+
+def lag_problems(data: dict[str, Any]) -> list[Problem]:
+    """A system with no own slices left has left the building states, unless it is frozen, cut or kept (the operator,
+    2026-11-10): the pull request that lands a system's last slice moves its state in the same pull request."""
+    return [Problem("lag", e["id"], f"{e['id']} has no own slices left but is still {e['state']['board_state']}: move "
+                    f"it to {AWAITING}, or to {SIGNED} with the operator's sign-off")
+            for e in data["systems"]
+            if e["state"]["board_state"] in BUILDING and e["recommendation"] not in NOT_COUNTED
+            and not own_slices(e, data)]
+
+
 def limit_problems(data: dict[str, Any]) -> list[Problem]:
     """No count above N without the operator's covering allowance; a recovered count cannot retain that allowance.
     The words and any extra conditions they state are reviewed by the operator/Lead, not verified by this tool."""
@@ -671,15 +727,15 @@ VIEWS = (
     ("questions", "The operator's open questions", lambda e, n: e["decision"] != "none"
      and not e["decision"].startswith("decided:")),
     ("done", "Done", lambda e, n: e["recommendation"] == "done"),
-    ("not_counted", "Not counted", lambda e, n: e["recommendation"] in ("freeze", "cut", "keep")),
+    ("not_counted", "Not counted", lambda e, n: e["recommendation"] in NOT_COUNTED),
 )
 
 
 def counted_systems(data: dict[str, Any]) -> list[str]:
-    """FORMAT.md rule 1's count, computed once and enforced by limit_problems."""
+    """FORMAT.md rule 1's count, computed once and enforced by limit_problems. A system awaiting the operator's
+    sign-off is not counted (the operator, 2026-11-10)."""
     return sorted(e["id"] for e in data["systems"]
-                  if e["state"]["board_state"] in ("partly_built", "built_off", "built_not_wired", "staged")
-                  and e["recommendation"] in ("finish", "switch_on"))
+                  if e["state"]["board_state"] in BUILDING and e["recommendation"] in ("finish", "switch_on"))
 
 
 def priority(entry: dict[str, Any], order: dict[str, int]) -> int | None:
@@ -723,7 +779,9 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
            "## Totals"]
     for state in ENUMS[("state", "board_state")]:
         ids = sorted(e["id"] for e in data["systems"] if e["state"]["board_state"] == state)
-        out.append(f"**{state}:** {_members(ids)}")
+        out.append(f"**{state}{f' ({AWAITING_LABEL})' if state == AWAITING else ''}:** {_members(ids)}")
+    waiting = sorted(e["id"] for e in data["systems"] if e["state"]["board_state"] == AWAITING)
+    out.append(f"**Waiting on your sign-off:** {_members(waiting)}")
     out.append(f"**Limit's count / wip_limit:** {len(counted_systems(data))} / {data['wip_limit']} — "
                f"{', '.join(counted_systems(data)) or 'none'}")
     allowance = data.get("wip_allowance")
@@ -816,7 +874,7 @@ def problems(text: str, own: Owners) -> list[Problem]:
               + lint_problems(data) + public_problems(text))
     if not schema_problems(data):
         found += switch_problems(data, own) + wired_problems(data, own) + stale_slice_problems(data, own)
-        found += limit_problems(data)
+        found += limit_problems(data) + signoff_problems(data) + lag_problems(data)
         found += rendered_problems(own.root, data, own.now_order)
     return sorted(set(found), key=lambda p: (p.check, p.where, p.text))
 

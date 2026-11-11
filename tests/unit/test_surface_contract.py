@@ -23,6 +23,8 @@ from aew.surface.contract import Tool
 from aew.surface.validate import AdapterInputError, check_call
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
+CATALOGS = [pytest.param(contract.catalog(s, presentation=p), id=f"{'on' if s else 'off'}-{p}")
+            for s in (frozenset(), contract.ALL_SWITCHES) for p in ("standard", "compact")]
 
 
 def _object_schemas(schema: Any):
@@ -49,8 +51,9 @@ def _property_names(schema: Any):
 # ---------------------------------------------------------------------------------------------- schemas
 
 
-def test_every_argument_schema_is_valid_and_closed():
-    for t in contract.TOOLS.values():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_every_argument_schema_is_valid_and_closed(catalog):
+    for t in catalog.values():
         Draft202012Validator.check_schema(t.input_schema)
         objects = list(_object_schemas(t.input_schema))
         assert objects, t.name
@@ -65,8 +68,9 @@ def test_the_result_schema_is_valid_and_every_object_in_it_is_closed():
         assert obj.get("additionalProperties") is False, obj
 
 
-def test_expect_rev_is_required_on_every_stage_and_absent_from_every_query():
-    for t in contract.TOOLS.values():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_expect_rev_is_required_on_every_stage_and_absent_from_every_query(catalog):
+    for t in catalog.values():
         props = t.input_schema["properties"]
         if t.kind in (contract.STAGE, contract.DECISION):
             assert "expect_rev" in props and "expect_rev" in t.input_schema["required"], t.name
@@ -74,9 +78,10 @@ def test_expect_rev_is_required_on_every_stage_and_absent_from_every_query():
             assert "expect_rev" not in props, t.name
 
 
-def test_no_argument_can_carry_a_credential():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_no_argument_can_carry_a_credential(catalog):
     shaped = ("token", "key", "secret", "offer", "credential", "password")
-    for t in contract.TOOLS.values():
+    for t in catalog.values():
         for name in _property_names(t.input_schema):
             assert not any(s in name.lower() for s in shaped), (t.name, name)
 
@@ -117,16 +122,18 @@ def test_a_designed_row_is_refused_before_the_runner(monkeypatch):
     assert "integration_publish" not in {t.name for t in contract.exposed(NORMAL)}
 
 
-def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does():
-    for t in contract.TOOLS.values():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does(catalog):
+    for t in catalog.values():
         reached = set(t.expands_to) & set(ENTRYPOINTS)
         assert bool(reached) == t.dispatches, (t.name, reached)
         if t.dispatches:
             assert "dispatch.launch" in t.expands_to, f"{t.name}: a dispatching stage always launches (custody)"
 
 
-def test_judgment_bearing_rows_name_their_judgments_and_others_name_none():
-    for t in contract.TOOLS.values():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_judgment_bearing_rows_name_their_judgments_and_others_name_none(catalog):
+    for t in catalog.values():
         if t.base_class == JUDGMENT_BEARING:
             assert t.required_judgments, t.name
         else:
@@ -135,9 +142,17 @@ def test_judgment_bearing_rows_name_their_judgments_and_others_name_none():
             assert p in t.input_schema["properties"], (t.name, p)
 
 
-def test_only_workflow_advancing_rows_are_progression_rows():
-    for t in contract.TOOLS.values():
-        if t.kind in (contract.QUERY, contract.WAIT, contract.PRIMITIVE) or t.name in ("checkpoint", "steering"):
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_only_workflow_advancing_rows_are_progression_rows(catalog):
+    from aew.engine.primitives import spec_for
+
+    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "steering": "changes the steering mode",
+                                               "message_send": "records a message"}
+    for t in catalog.values():
+        if t.name in contract.NON_PROGRESSION_STAGES:
+            assert t.base_class == MECHANICAL and not t.dispatches
+            assert all(spec_for(p).guard_id is None for p in t.expands_to)
+        if t.kind in (contract.QUERY, contract.WAIT, contract.PRIMITIVE) or t.name in contract.NON_PROGRESSION_STAGES:
             assert not t.progression, t.name
         elif t.kind in (contract.STAGE, contract.DECISION):
             assert t.progression, t.name
@@ -149,7 +164,8 @@ def test_every_built_tool_has_a_runner_and_every_runner_a_built_tool():
     # A built stage of several primitives runs through its planner and the stage executor (M4-E E5a); every other
     # built tool through its runner. Never both.
     assert not set(run.RUNNERS) & set(stage.STAGES)
-    assert set(run.RUNNERS) | set(stage.STAGES) == {t.name for t in contract.TOOLS.values() if t.built}
+    assert set(run.RUNNERS) | set(stage.STAGES) == {
+        t.name for t in contract.catalog(contract.ALL_SWITCHES).values() if t.built}
 
 
 def test_the_normal_profile_never_offers_the_cli_escape():
@@ -215,7 +231,8 @@ def test_the_effective_class_never_drops_below_the_base_and_fails_closed(t, argu
         assert order.index(effective_class(t, arguments)) >= order.index(t.base_class)
 
 
-def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row(catalog):
     built = SYNTHETIC
     assert auto_runnable(built, AVAILABLE, POLICY_RESOLVED)
     assert not auto_runnable(built, AVAILABLE, JUDGMENT_BEARING)
@@ -223,7 +240,7 @@ def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row():
     assert not auto_runnable(built, UNKNOWN, POLICY_RESOLVED)  # UNKNOWN is never runnable, never BLOCKED either
     assert not auto_runnable(built._replace(status=contract.DESIGNED), AVAILABLE, POLICY_RESOLVED)
     assert not auto_runnable(None, AVAILABLE, MECHANICAL)
-    for t in contract.TOOLS.values():  # queries, the wait, checkpoint and cli: callable, never workflow advancement
+    for t in catalog.values():  # queries, wait, non-progression writes and cli: never workflow advancement
         if not t.progression:
             assert not auto_runnable(t, AVAILABLE, MECHANICAL), t.name
     assert "profile" not in auto_runnable.__code__.co_varnames  # presentation never decides eligibility
@@ -324,7 +341,7 @@ def test_an_adapter_input_error_is_not_an_engine_refusal():
 
 def test_surface_context_holds_no_secret_and_rejects_unknown_profiles():
     names = set(SurfaceContext.__dataclass_fields__)
-    assert names == {"lead_session", "generation", "profile", "ingress"}
+    assert names == {"lead_session", "generation", "profile", "ingress", "switches"}
     with pytest.raises(ValueError):
         SurfaceContext(lead_session=None, generation=None, profile="godmode")
     with pytest.raises(ValueError):
@@ -363,19 +380,21 @@ def test_the_result_schema_is_registered_and_its_surface_version_matches():
 PENDING_F15_2: frozenset[str] = frozenset()
 
 
-def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2(catalog):
     from aew.engine.primitives import spec_for
 
-    undeclared = {p for t in contract.TOOLS.values() for p in t.expands_to if not spec_for(p).declared}
+    undeclared = {p for t in catalog.values() for p in t.expands_to if not spec_for(p).declared}
     assert undeclared == PENDING_F15_2
-    assert all(not contract.TOOLS[t].built for t in contract.TOOLS
-               if set(contract.TOOLS[t].expands_to) & PENDING_F15_2), "a built tool expands to an undeclared primitive"
+    assert all(not t.built for t in catalog.values()
+               if set(t.expands_to) & PENDING_F15_2), "a built tool expands to an undeclared primitive"
     for name in ("ticket_start", "ticket_request_review"):  # the design's POLICY_RESOLVED stages, declared now
         t = contract.TOOLS[name]
         assert t.base_class == POLICY_RESOLVED and effective_class(t, {}) == POLICY_RESOLVED
 
 
-def test_every_staged_primitive_is_declared():
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_every_staged_primitive_is_declared(catalog):
     """Plan v3 §10 (SAE-07's precondition, E5a to E6a): every primitive a built stage expands to has its full
     PrimitiveSpec, with a guard that decides it (a queryable guard or a dispatch entrypoint) and the side effects it
     declares; and every built stage has a planner whose plan the stage executor can run (a step runner for each)."""
@@ -384,7 +403,7 @@ def test_every_staged_primitive_is_declared():
     from aew.surface import stage
 
     effects = {"control_state", "credential", "workspace", "harness_process", "authoritative_ref"}
-    for t in contract.TOOLS.values():
+    for t in catalog.values():
         if t.name == "resolve" or not (t.built and t.name in stage.STAGES or (
                 t.built and t.kind == contract.STAGE and len(t.expands_to) > 1)):
             continue  # `resolve` runs one of its primitives by choice: never a planned sequence

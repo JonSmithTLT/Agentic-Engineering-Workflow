@@ -19,14 +19,36 @@ Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py31
 ```bash
 cd <repo>                       # the main worktree, on the authoritative branch
 aew init --check-command "{python} -m pytest -q" --model openai/gpt-6-sol   # also discovers authority *candidates*; confers no authority
+```
+
+Set the provider key in the terminal you'll start AEW from. Use the form for your shell.
+
+Bash
+
+```bash
+read -rsp 'OPENAI_API_KEY: ' OPENAI_API_KEY; echo; export OPENAI_API_KEY
+```
+
+PowerShell 7
+
+```powershell
+$env:OPENAI_API_KEY = Read-Host "OPENAI_API_KEY" -MaskInput
+```
+
+Windows PowerShell 5.1
+
+```powershell
+$s = Read-Host "OPENAI_API_KEY" -AsSecureString; $env:OPENAI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s
+```
+
+```bash
 aew doctor
-read -rsp 'OPENAI_API_KEY: ' OPENAI_API_KEY; echo; export OPENAI_API_KEY    # bash; this shell only, as for the Lead token below
 aew opencode --acquire --provider-env OPENAI_API_KEY
 ```
 
-`aew init` takes the first configuration in that one call and writes it before it pins, so a fresh setup needs no hand
-edit, no adopt and no credential. Its `next` says what's left for what you gave it. The first `aew doctor` above exits 1
-on `provider-env`, because the key isn't set until the line after it: its message names the variable and how to set it.
+`aew init` writes the first configuration before it pins, so a fresh setup with both flags can go straight to OpenCode
+after setting the key. Its `next` says what's left for what you gave it. If the key is unset when you run `aew doctor`,
+the `provider-env` check fails and shows the forms above.
 
 - **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
   the running Python. The result prints the argv. A command that would pin something broken is refused: empty or
@@ -45,29 +67,25 @@ on `provider-env`, because the key isn't set until the line after it: its messag
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
   head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
-- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it finished may run again,
-  with other values.
+- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
+  may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
+  and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the
+  tool screen comes again when the Lead starts, and the first dispatch that needs a map makes one.
 
-Everything after the pin goes through the Lead credential and an adopt. That's also the route for what the flags don't
-cover. On a project already initialized, skip this block's first line, which `aew init` would refuse:
+### Edit pinned settings or classify authority candidates
 
-```bash
-aew init                        # discovers authority *candidates*; confers no authority
-$EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
-aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
-aew manifest adopt --reason "configured the test command" --expect-rev 1   # asks for the Lead credential, hidden
-```
+After the Lead session exits and releases the seat, use `aew lead acquire` at your terminal and keep the Lead
+credential it shows. For each mutation in this section, pass `--expect-rev` with the current revision from
+`aew status`.
 
-**The two routes don't mix.** `aew lead acquire` holds the seat, and a held seat refuses `aew opencode --acquire`, so a
-Lead session on that route starts with `aew opencode` and your credential. `--acquire` itself never shows a credential (a
-session that exits with work in flight keeps the seat, and taking that over shows one), so the authority candidates wait:
-they block nothing, and you classify them after the session exits and releases the seat, through `aew lead acquire`. That
-holds the seat again, so when you've classified them, `aew lead release` gives it up (with `--expect-rev` and the revision
-from `aew status`, like any change) and `--acquire` works again.
+- For a pinned edit, review the changes under `.aew/`. Run `aew manifest adopt` at your terminal, passing
+  `--reason` with a quoted description of the change. Adopt asks for the Lead credential and a one-time code.
+- Authority candidates can wait while the Lead works. See the IDs in `aew authority list`. To classify one as
+  decisions authority, give its ID and `--class decisions` to `aew authority accept`.
 
-The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
-you review it and run `aew manifest adopt` (a recorded decision). Adopt asks you to type back a one-time code at your
-own terminal, so the Lead, which has no terminal, can never approve a policy change it made.
+The credential route holds the seat. When you're done, use `aew lead release`, then start the Lead with
+`aew opencode --acquire`. If work is still in flight and the old session kept the seat, follow the takeover
+instructions it printed.
 
 ### Giving AEW the Lead credential
 
@@ -100,10 +118,11 @@ a Lead session refuses that flag.
 
 ## Lead: one Ticket, end to end
 
+With `aew opencode --acquire`, the Lead performs the Ticket steps below through its own tools.
+
 Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew status`, and each command returns the new one.
 
 ```bash
-aew authority accept C-001 --class decisions --expect-rev N         # classify candidates
 aew work create ticket --title "..." --class 1 --scope "src/**" \
     --goal "observable outcome" --contract "conformance rule" --expect-rev N
 aew plan propose T-0001 --file plan.md --assurance none --expect-rev N   # or --review/--verify <card|default>

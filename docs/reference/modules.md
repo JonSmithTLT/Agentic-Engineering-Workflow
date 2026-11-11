@@ -204,6 +204,7 @@ Imports from the groups:
 - `aew.harness`
 - `aew.knowledge`
 - `aew.maps`
+- `aew.policy`
 - `aew.surface`
 
 ### `aew.cli`
@@ -239,11 +240,13 @@ None.
 - `aew.engine.first_configuration`
 - `aew.errors`
 - `aew.harness.containment.netns`
+- `aew.harness.contract`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
+- `aew.policy.execution`
 - `aew.surface`
 - `aew.surface.client`
 - `aew.surface.context`
@@ -456,6 +459,7 @@ None.
 - `aew.engine.api`
 - `aew.engine.base`
 - `aew.engine.recall`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.knowledge.manifest`
 - `aew.maps.store`
@@ -1127,6 +1131,7 @@ None.
 - `aew.engine.primitives`
 - `aew.engine.store`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.knowledge.records`
 - `aew.util`
 
@@ -1429,6 +1434,7 @@ None.
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
+- `aew.surface.contract`
 - `aew.surface.run`
 - `aew.surface.validate`
 - `aew.util`
@@ -1612,13 +1618,17 @@ None.
 
 - `aew.engine.authority`
 - `aew.engine.dispatch`
+- `aew.engine.evidence_ops`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
 - `aew.engine.priority`
 - `aew.engine.steering`
+- `aew.engine.transitions`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.harness.event_spool`
 - `aew.harness.operator_client`
+- `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
 - `aew.surface.projection`
@@ -1673,6 +1683,7 @@ None.
 
 ### `aew.harness.wake_queue`
 
+- `aew.engine.steering`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
@@ -1854,6 +1865,7 @@ None.
 ### `aew.maps.gitobjects`
 
 - `aew.errors`
+- `aew.knowledge.manifest`
 - `aew.maps.canonical`
 - `aew.workspace.git`
 
@@ -1880,6 +1892,7 @@ None.
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
 - `aew.maps.rules`
+- `aew.maps.service`
 - `aew.maps.store`
 - `aew.maps.structural`
 - `aew.policy.execution`
@@ -2069,6 +2082,7 @@ None.
 Imports from the groups:
 
 - `aew`
+- `aew.coordination`
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
@@ -2098,12 +2112,14 @@ None.
 
 ### `aew.surface.context`
 
-None.
+- `aew.surface.contract`
 
 ### `aew.surface.contract`
 
+- `aew.coordination.layout`
 - `aew.priority_levels`
 - `aew.surface.context`
+- `aew.surface.presentation`
 
 ### `aew.surface.errors`
 
@@ -2125,8 +2141,13 @@ None.
 - `aew.surface.client`
 - `aew.surface.contract`
 - `aew.surface.errors`
+- `aew.surface.presentation`
 - `aew.surface.readable`
 - `aew.surface.validate`
+
+### `aew.surface.presentation`
+
+- `aew.surface.contract`
 
 ### `aew.surface.projection`
 
@@ -2141,6 +2162,7 @@ None.
 - `aew.surface.classify`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.stage`
 - `aew.util`
 
 ### `aew.surface.readable`
@@ -2217,6 +2239,7 @@ None.
 
 - `aew.engine.base`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`

@@ -46,15 +46,16 @@ def post_pin_route(*files: str, fresh: bool = False) -> str:
     """What changing a pinned policy file takes, ``fresh`` on a project just initialized, at revision 0. Whatever prints
     it adds ``K.HELD_SEAT``."""
     acquire = "`aew lead acquire --expect-rev 0`" if fresh else f"`aew lead acquire {K.EXPECT_REV}`"
-    edits = " or ".join(f".aew/{file}" for file in files)
-    return f"{acquire}, the edit of {edits}, then the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
+    edits = ", ".join(f".aew/{file}" for file in files)
+    return f"run {acquire}, edit the settings in {edits}, then run {K.MANIFEST_ADOPT} at the operator's terminal"
 
 
 def already_initialized(aew_root: Any) -> str:
     """The refusal on a pinned project, whose likeliest reader ran `aew init` and then read about these flags (review of
     #329, F8). The code stays `INTEGRITY_ERROR`, as ruled."""
-    return (f"{aew_root} is already an initialized AEW project, so `aew init` can't change it. Its check command and "
-            f"model now take {post_pin_route(CHECKS_REL, X.REL_PATH)}. {K.HELD_SEAT}")
+    return (f"{aew_root} is already an initialized AEW project, so `aew init` can't change it. "
+            f"To change its check command or model, {post_pin_route(CHECKS_REL, X.REL_PATH)}. "
+            f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`")
 
 
 def _refuse(reason: str, message: str, **details: Any) -> UsageError:
@@ -193,8 +194,9 @@ class FirstConfiguration:
         Lead's relay needs it named, so one line covers both. An ``--acquire`` path shows no credential."""
         if self.argv is None or self.identity is None:  # at least one was given, or there would be no configuration
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
-            return (f"this project still has no {missing}. Adding it now takes "
-                    f"{post_pin_route(file, fresh=True)}. {K.HELD_SEAT}")
+            return (f"this project still has no {missing}. To add it, "
+                    f"{post_pin_route(file, fresh=True)}. {K.HELD_SEAT}. "
+                    "Then start the Lead with `aew opencode --acquire`")
         var = self.provider_env[0]
         hidden = "; ".join(f"{shell}: `{form}`" for shell, form in lead_credential.forms(var, var).items())
         provider = self.identity.provider

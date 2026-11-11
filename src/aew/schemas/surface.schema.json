@@ -80,6 +80,19 @@
                                  "operation_class": {"enum": ["MECHANICAL", "POLICY_RESOLVED"]}}}}
       ]
     },
+    "kept_stop": {
+      "type": "object", "additionalProperties": false,
+      "required": ["n", "boundary", "rev", "error"],
+      "properties": {
+        "n": {"type": "integer", "minimum": 1},
+        "boundary": {"const": "stale_revision"},
+        "rev": {"type": "integer", "minimum": 1},
+        "error": {
+          "type": "object", "additionalProperties": false, "required": ["code", "reason"],
+          "properties": {"code": {"const": "STALE_REVISION"}, "reason": {"const": "resolve_stage"}}
+        }
+      }
+    },
     "decision": {
       "type": "object",
       "additionalProperties": false,
@@ -93,7 +106,8 @@
         "arguments": {"type": ["object", "null"]},
         "availability": {"$ref": "#/$defs/availability"},
         "default": {"const": "NONE"},
-        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]}
+        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]},
+        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]}
       }
     },
     "blocker": {

@@ -143,9 +143,10 @@ def test_a_second_head_move_waits_for_the_lead_and_requeue_returns_it_to_its_pla
     assert run(calc, "integrate", "publish", wid).json["rebuilt"] is True
     _, before = entry(calc, wid)
     custodian = control(calc)["queue"]["lease"]["custodian"]
-    outside_commit(calc, "MORE.md")
+    head = outside_commit(calc, "MORE.md")
     err = refused(calc, "integrate", "publish", wid)
     assert err["code"] == "STALE_CANDIDATE" and err["details"]["why"] == "head_moved_again"
+    assert head[:12] in err["message"] and "outside: MORE.md" in err["message"]
     _, e = entry(calc, wid)
     assert e["state"] == "AWAITING_DISPOSITION" and e["disposition"]["reason"] == "head_moved_again"
     assert control(calc)["queue"]["lease"] is None
@@ -164,9 +165,11 @@ def test_a_second_head_move_waits_for_the_lead_and_requeue_returns_it_to_its_pla
 def test_a_rebuild_that_conflicts_waits_for_the_lead_and_is_never_resolved(calc, tmp_path):
     wid, _ = to_commit_ready(calc, tmp_path)
     prepare_and_validate(calc, wid)
-    outside_commit(calc, "calc/core.py", "def add(a, b):\n    return b + a\n")  # the Ticket changes this file too
+    # The Ticket changes this file too.
+    head = outside_commit(calc, "calc/core.py", "def add(a, b):\n    return b + a\n")
     err = refused(calc, "integrate", "publish", wid)
     assert err["code"] == "STALE_CANDIDATE" and err["details"]["why"] == "conflict"
+    assert all(name in err["message"] for name in (head[:12], "outside: calc/core.py", "paths (1): calc/core.py"))
     _, e = entry(calc, wid)
     assert e["state"] == "AWAITING_DISPOSITION" and e["disposition"]["reason"] == "conflict"
     assert control(calc)["work"][wid]["integration"]["status"] == "conflict"

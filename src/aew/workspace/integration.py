@@ -114,6 +114,21 @@ def changed_between(repo_root: Path, a: str, b: str) -> list[str]:
     return [p for p in raw.split("\x00") if p]
 
 
+def head_subject_and_count(repo_root: Path, base: str, head: str) -> tuple[str | None, int | None]:
+    """Read the head's subject and count the commits reachable from head but not base."""
+    # Count without listing the history or fetching a subject for every commit.
+    try:
+        log = git.git("log", "-1", "--format=%s", head, "--", cwd=repo_root, check=False)
+        if log.returncode != 0:
+            return None, None
+        count = git.git("rev-list", "--count", f"{base}..{head}", "--", cwd=repo_root, check=False)
+        commit_count = int(count.stdout) if count.returncode == 0 else None
+    except (GitError, OSError, ValueError):
+        return None, None
+    subject = log.stdout.decode("utf-8", "replace").rstrip("\r\n")
+    return subject, commit_count
+
+
 def _chunks(items: list[str], n: int = 200) -> list[list[str]]:
     return [items[i:i + n] for i in range(0, len(items), n)]
 

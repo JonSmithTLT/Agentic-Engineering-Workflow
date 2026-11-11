@@ -58,6 +58,7 @@ def stand_in(tmp_path: Path, store: LockFreeOnly) -> Supervisor:
     sup.record = {"timeline": []}
     sup._handled, sup._deferred, sup._state_unreadable = set(), {}, False
     sup._control_seen, sup.stop_reason, sup._watching = None, None, threading.Event()
+    sup.deadline_s = None  # the deadline start() decides at custody: none for these runs
     sup.engine = SimpleNamespace(store=store, aew_root=tmp_path,
                                  run_authority_problem=lambda s, inv, run, tok: s["problem"])
     return sup

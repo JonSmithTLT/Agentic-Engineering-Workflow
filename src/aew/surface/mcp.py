@@ -81,16 +81,21 @@ def tool_entry(t: contract.Tool) -> dict[str, Any]:
                             "openWorldHint": False}}
 
 
-def tools_list(profile: str) -> dict[str, Any]:
-    return {"tools": [tool_entry(t) for t in contract.exposed(profile)]}
+def tools_list(profile: str, switches: frozenset[str] = frozenset()) -> dict[str, Any]:
+    from aew.surface.presentation import compact
+
+    return {"tools": [tool_entry(compact(t) if contract.MESSAGING in switches else t)
+                      for t in contract.exposed(profile, switches)]}
 
 
 class Server:
-    def __init__(self, forward: Forward, *, profile: str = "normal", log: IO[str] | None = None) -> None:
+    def __init__(self, forward: Forward, *, profile: str = "normal", log: IO[str] | None = None,
+                 switches: frozenset[str] | None = None) -> None:
         self.forward = forward
         self.profile = profile
         self.log = log or sys.stderr
         self.initialized = False
+        self.switches = contract.switches_from_env() if switches is None else switches
 
     # ------------------------------------------------------------------ framing
 
@@ -184,7 +189,7 @@ class Server:
         if method == "ping":
             return {}
         if method == "tools/list":
-            return tools_list(self.profile)
+            return tools_list(self.profile, self.switches)
         if method == "tools/call":
             return self.call(params.get("name"), params.get("arguments", {}))
         if method in ("resources/list", "prompts/list"):
@@ -195,7 +200,7 @@ class Server:
 
     def call(self, name: Any, arguments: Any) -> dict[str, Any]:
         try:
-            check_call(name, arguments, self.profile)  # an ill-formed call never reaches the broker
+            check_call(name, arguments, self.profile, self.switches)  # no ill-formed call reaches the broker
             result = self.forward(str(name), arguments, self.profile)
         except AdapterInputError as exc:
             code = BROKER_UNREACHABLE if exc.code == "BROKER_UNREACHABLE" else INVALID_PARAMS

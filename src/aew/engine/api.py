@@ -315,14 +315,16 @@ class ProjectAdmin:
             return checks
         add("manifest-pin", "PASS" if self.k.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.k.manifest_pin_ok(state)
-            else "project.yaml modified outside AEW; the operator reviews it, then `aew manifest adopt`")
+            else f".aew/project.yaml modified outside AEW; the operator reviews it, then runs {K.MANIFEST_ADOPT}")
         drift = self.k.policy_pin_drift(state)
         if drift is None:
-            add("policy-pin", "WARN", "the policy files are not pinned (a project initialized before the pin): the "
-                "operator reviews them, then `aew manifest adopt` pins them")
+            add("policy-pin", "WARN",
+                "the policy files under .aew/ are not pinned (a project initialized before the pin). "
+                f"The operator reviews them, then runs {K.MANIFEST_ADOPT} to pin them")
         else:
             add("policy-pin", "FAIL" if drift else "PASS",
-                f"modified outside AEW: {', '.join(drift)}; the operator reviews them, then `aew manifest adopt`"
+                f"modified outside AEW: {', '.join(f'.aew/{rel}' for rel in drift)}; "
+                f"the operator reviews them, then runs {K.MANIFEST_ADOPT}"
                 if drift else "the policy files match their pinned hashes")
         for name in ("guardrails", "checks", "gates"):
             try:
@@ -359,7 +361,6 @@ class ProjectAdmin:
             add("pricing-snapshots", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         add("usage-ledger", *usage_ops.ledger_doctor(state, usage_ops.Reader(self.k.aew_root, None)))
         from aew.harness import containment
-        from aew.harness import contract as K
         try:
             policy_now = self.k.execution_policy()[0]
         except Exception:
@@ -976,6 +977,10 @@ class Engine:
         """Whether the coordination reads exist for this project (F9-A plan D-31): the switch is on or a thread
         exists. The CLI registers `aew message` only then."""
         return self._coordination.reads_on(self._k.store.read_committed())
+
+    def messaging_enabled(self) -> bool:
+        """The adopted messaging switch for presentation snapshots; recording checks it again under the lock."""
+        return self._coordination.project_switch(self._k.store.read_committed()) == "enabled"
 
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,

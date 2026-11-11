@@ -79,7 +79,8 @@ def test_the_lanes_report_leads_with_the_not_measured_count(tmp_path):
     assert "| test_v1[steering-off] | failed | os_readonly_roots | - |" in text  # the Lead's label, as recorded
     assert "| test_v2[exit] | not measured | - | AssertionError: the Lead session did not start" in text
     assert "| test_v3[stale] | not measured | - | no ledger (it ended before its verdict" in text
-    assert text.count("```") == 4  # the two ledgers' own summaries follow
+    assert "Alpha scripted gate: FAIL" in text
+    assert text.count("```") == 6  # alpha and the two ledgers' own summaries
 
 
 def test_a_run_that_measured_nothing_says_so_in_its_first_words(tmp_path):
@@ -436,7 +437,8 @@ def test_write_out_records_whether_a_result_reached_the_operator_before_it_write
                 and getattr(c.args[0], "id", "") == "RESULT_REACHED"]
     assert len(observed) == 1
     assert {k.arg: ast.unparse(k.value) for k in observed[0].keywords} == {"reached": "bool(op.reports)",
-                                                                           "asked": "asks_result"}
+                                                                           "asked": "asks_result",
+                                                                           None: "result_evidence"}
     written = next(c for c in calls if ast.unparse(c.func) == "op.ledger.write")
     assert observed[0].lineno < written.lineno
 

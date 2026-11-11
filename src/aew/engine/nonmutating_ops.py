@@ -899,7 +899,7 @@ class NonMutating:
             if ev["_sha256"] != rec["sha256"]:
                 raise GateUnsatisfied(
                     f"{evidence_id} no longer matches {source}'s accepted plan proposal; "
-                    f"produce a new accepted proposal with `aew work dispatch <planning-ticket> {EXPECT_REV}`",
+                    f"start a new planning Ticket with `aew work dispatch <T> {EXPECT_REV}`",
                     evidence=evidence_id, expected=rec["sha256"], current=ev["_sha256"],
                 )
             commit = self.k.authoritative_commit()

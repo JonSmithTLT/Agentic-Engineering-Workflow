@@ -13,12 +13,21 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from aew.engine.authority import require_lead
-from aew.errors import AEWError, MapArtifactNondeterministic, MapRegistryInvalid, NotFound, UsageError, ValidationFailed
+from aew.errors import (
+    AEWError,
+    MapArtifactNondeterministic,
+    MapRegistryInvalid,
+    NotFound,
+    StaleRevision,
+    UsageError,
+    ValidationFailed,
+)
 from aew.maps import freshness as F
 from aew.maps import gitobjects, rules, store, structural
 from aew.maps.canonical import seal
@@ -30,10 +39,16 @@ def identity() -> dict[str, Any]:
     return structural.generator_identity(rules.load())
 
 
-def build(repo: Path, commit: str) -> dict[str, Any]:
-    """The record for ``commit``, from its Git objects, without ``artifact_sha256``."""
-    with gitobjects.open_tree(repo, commit) as tree:
+def build(repo: Path, commit: str, *, deadline: float | None = None) -> dict[str, Any]:
+    """The record for ``commit``, from its Git objects, without ``artifact_sha256``. ``deadline`` bounds the whole
+    generation (``gitobjects.open_tree``)."""
+    with gitobjects.open_tree(repo, commit, deadline=deadline) as tree:
         return structural.generate(tree, rules.load())
+
+
+def lead_actor(actor: dict[str, Any]) -> dict[str, Any]:
+    """A Lead as the map registry's log names it, from ``require_lead``'s actor."""
+    return {"kind": "lead", "id": actor["token_id"], "generation": actor["generation"]}
 
 
 def _lead_actor(engine: Any, token: str, *, committed: bool = False) -> dict[str, Any]:
@@ -41,8 +56,7 @@ def _lead_actor(engine: Any, token: str, *, committed: bool = False) -> dict[str
     the committed control state without the control lock (``read_committed``): the check repeated at the publication
     and selection boundary, where the map registry's lock is already held."""
     state = engine.store.read_committed() if committed else engine.store.current()
-    actor = require_lead(state, token, archived=engine.archived_credential)
-    return {"kind": "lead", "id": actor["token_id"], "generation": actor["generation"]}
+    return lead_actor(require_lead(state, token, archived=engine.archived_credential))
 
 
 def _default_commit(engine: Any) -> str:
@@ -132,18 +146,95 @@ def first_map(engine: Any) -> dict[str, Any]:
             return {"selected": False, "reason": "no_commit",
                     "detail": f"the authoritative branch {engine.authoritative_branch!r} has no commit yet; after the "
                               "first commit, the Lead runs `aew map generate --select --expect-map-rev none:0`"}
-        if store.read_registry(engine.aew_root) is not None:
-            return {"selected": False, "reason": "already_selected", "detail": "a map registry exists; left as it is"}
+        registry = store.read_registry(engine.aew_root)
+        if ((registry or {}).get("selected") or {}).get("structural"):
+            return {"selected": False, "reason": "already_selected",
+                    "detail": "a structural map is already selected; left as it is"}
+        # a leftover registry that selects no structural map (only an architecture reference) takes the first map at
+        # its own revision (E184 review: `already_selected` named only a registry that selects one)
         record = build(engine.repo_root, commit)
         sha, root = store.write_artifact(engine.aew_root, record)
-        new = store.select_structural(engine.aew_root, expect=store.NO_REGISTRY, entry=_entry(record, sha, root),
-                                      actor=INIT_ACTOR)
+        new = store.select_structural(engine.aew_root, expect=store.revision_of(registry),
+                                      entry=_entry(record, sha, root), actor=INIT_ACTOR)
         return {"selected": True, "root": sha, "source_revision": record["source_revision"],
                 "map_revision": store.revision_of(new)}
     except Exception as exc:  # init never fails over a map; the line says what to run instead
         return {"selected": False, "reason": getattr(exc, "code", "generation_failed"),
                 "detail": f"{type(exc).__name__}: {exc}; the project works without a map, and "
                           "`aew map generate --select --expect-map-rev none:0` makes one"}
+
+
+# The bound on one refresh at dispatch (refresh_at_dispatch), over the whole generation. Measured
+# (`python tools/perf/structural_map.py`, Windows, E184 notes of 2026-11-07 and -08): 0.67 s at 10,000 tracked paths,
+# 3.0 s at 100,000, about 5 s at 100,000 on a loaded host. 10 s is twice the loaded figure: a dispatch holds the
+# control lock while it builds the pack, so a repository past it keeps its STALE map with the line that says why,
+# instead of holding every other writer for longer.
+REFRESH_S = 10.0
+
+# The maps this process made at dispatch, by (project, base commit, generator identity) -> artifact sha: a base that is
+# not the head is stored and never selected, so without this a second pack at it in the same process (an observation
+# builds its pack twice in one transaction) would generate it again. In memory only; the artifact is re-read and
+# verified on each use, so deleting `local/maps/` costs one generation, never a wrong map.
+_made: dict[tuple[str, str, str, int, str], str] = {}
+MADE_MAX = 64
+
+
+def _made_here(aew_root: Path, key: tuple[str, str, str, int, str]) -> dict[str, Any] | None:
+    sha = _made.get(key)
+    if sha is None:
+        return None
+    try:
+        record = store.read_artifact(aew_root, sha)
+    except Exception:  # gone or damaged: made again
+        _made.pop(key, None)
+        return None
+    return {k: v for k, v in record.items() if k != "artifact_sha256"}
+
+
+def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: dict[str, Any], select: bool,
+                        limit: float | None = None) -> dict[str, Any]:
+    """The map of ``base``, made for a pack whose selected map is STALE or absent (ADR-0015, amended 2026-11-11 for
+    register E62/E184: refreshed at use, never at publish). Only a Lead's dispatch calls it, under the control lock the
+    dispatch holds, with ``actor`` the Lead its transaction authenticated: it writes the artifact and, with ``select``
+    (the base is the authoritative head), selects it as that Lead. A base that is not the head is stored and pinned
+    only, so the project's selection never moves back to an older commit and two bases never trade it.
+
+    Returns ``{"record", "sha256", "root", "selected", "seconds"}``, or ``{"failed": <reason>, "seconds"}``. Never
+    raises: a map never refuses or breaks the dispatch it would have helped (T5-INV-01). Two dispatches cannot race
+    here (the control lock serialises them, and the second finds the first's map CURRENT); an ``aew map generate
+    --select`` that lands between the read and the selection wins the compare-and-set, and this pack still pins the
+    map it made, which is correct for its base."""
+    limit = REFRESH_S if limit is None else limit
+    start = time.monotonic()
+    try:
+        registry = store.read_registry(aew_root) if select else None
+        expect = store.revision_of(registry)
+        ident = identity()
+        key = (str(aew_root), base, ident["name"], int(ident["version"]), ident["ruleset_sha256"])
+        record = _made_here(aew_root, key)
+        if record is None:
+            record = build(repo_root, base, deadline=start + limit)
+        sha, root = store.write_artifact(aew_root, record)
+        record = {**record, "artifact_sha256": sha}
+        _made[key] = sha
+        while len(_made) > MADE_MAX:  # a long-lived process (the steering loop) sees a new base with each head
+            _made.pop(next(iter(_made)))
+        selected = False
+        if select and _nondeterministic(registry, record, sha) is None:
+            try:
+                store.select_structural(aew_root, expect=expect, entry=_entry(record, sha, root),
+                                        actor=lead_actor(actor), note={"by": "dispatch_refresh"})
+                selected = True
+            except StaleRevision:  # another selection landed meanwhile: it stands, and this pack pins its own map
+                pass
+        return {"record": record, "sha256": sha, "root": root, "selected": selected,
+                "seconds": round(time.monotonic() - start, 2)}
+    except Exception as exc:  # the pack keeps the map it had, with the line that says why
+        details = getattr(exc, "details", None) or {}
+        # a blob read the deadline's watchdog stopped fails as a broken pipe, not as a timeout: the clock says which
+        over = details.get("reason") == "timeout" or time.monotonic() - start >= limit
+        reason = "timeout" if over else str(getattr(exc, "code", type(exc).__name__))
+        return {"failed": reason, "seconds": round(time.monotonic() - start, 2)}
 
 
 DISCOVERY = "discovery_record"

@@ -20,7 +20,7 @@ import worker_surface
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from conftest import clean_env, run_aew
 from fake_harness import IMPL_REPORT, HarnessLab
-from harness_conformance import FakeOpenCodeDriver, sync_dir
+from harness_conformance import FakeOpenCodeDriver, supervisor_gone, sync_dir
 
 from aew import process_kind
 from aew.engine.api import Engine
@@ -183,7 +183,11 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
             directory = runlog.run_dir(lab.aew_root, run)
             lab.until(lambda: not runlog.possibly_live(runlog.observed_status(directory)[0], None)
                       and (runlog.read_progress(directory) or {}).get("state") == P.ENDED, what="the run to end",
-                      timeout=120)
+                       timeout=120)
+            # The terminal record precedes the supervisor's final advisory wake bump. Observe process exit before
+            # attributing every subsequent .aew byte change to the read: do not exempt the wake file from the proof.
+            record = lab.record(run)
+            lab.until(lambda: supervisor_gone(record), 30, "the ended run's supervisor to exit")
             seq = int(runlog.read_progress(directory)["trigger_seq"])
             assert seq > 0 and runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
             before = worker_surface.snapshot(lab.aew_root)

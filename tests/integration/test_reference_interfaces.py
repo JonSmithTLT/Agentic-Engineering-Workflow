@@ -261,13 +261,14 @@ def test_a_live_command_with_no_anchorable_handler_is_named_not_anchored_at_the_
 
 
 def test_the_parser_is_built_with_every_switch_it_takes():
-    """``live_commands`` builds the parser with both switches on. A third parameter would leave its commands out of the
+    """``live_commands`` builds the parser with every switch on. A new parameter could leave its commands out of the
     walk, so the parameters are pinned here and the reference fails loudly when one is added."""
     import inspect
 
     from aew.cli.main import build_parser
 
-    assert set(inspect.signature(build_parser).parameters) == {"recall_search", "coordination_reads"}
+    assert set(inspect.signature(build_parser).parameters) == {
+        "recall_search", "coordination_reads", "worker_messaging"}
 
 
 # ------------------------------------------------------------------------------------------------------- the page

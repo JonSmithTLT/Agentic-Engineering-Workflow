@@ -130,7 +130,9 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
    `python tools/lead_probe --no-network --binary <opencode> --out <fresh-dir>`. Record its commit, binary
    SHA-256, network proof and results with the bump. Keep raw bodies outside the checkout.
    For a keyless catalog-only check, add `--catalog-only`. For offline re-analysis of a saved Lead capture,
-   use `python tools/lead_probe --analyse <capture-dir> --out <fresh-dir>`.
+   install AEW from the clean analysing checkout and use
+   `python tools/lead_probe --analyse <capture-dir> --out <fresh-dir>`. The split, result rows and route labels
+   come from the verified code at `analysed_with`. The original measurement keeps its `aew_commit`.
 
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 

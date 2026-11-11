@@ -274,6 +274,30 @@ def test_measure_refuses_a_package_from_different_source(monkeypatch, tmp_path):
         cli.measure(Path("unused"), tmp_path / "out", [], {})
 
 
+def test_measure_refuses_a_leg_whose_private_python_imports_different_aew(monkeypatch, tmp_path):
+    source = tmp_path / "src/aew"
+    source.mkdir(parents=True)
+    local_init = source / "__init__.py"
+    local_init.write_bytes(b"checkout")
+    other = tmp_path / "other"
+    other.mkdir()
+    other_init = other / "__init__.py"
+    other_init.write_bytes(b"wrong package")
+    binary = tmp_path / "opencode"
+    binary.write_bytes(b"stub binary")
+    digest = cli.sha256_file(binary)
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli.aew, "__file__", str(local_init))
+    monkeypatch.setattr(cli, "pinned_sha", lambda: digest)
+    monkeypatch.setattr(cli, "aew_revision", lambda: "a" * 40)
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **_: subprocess.CompletedProcess(
+        cmd, 0, stdout=str(other_init).encode("utf-8"),
+    ))
+    monkeypatch.setattr(cli, "run_binary", lambda *_: pytest.fail("wrong private import reached the binary"))
+    with pytest.raises(ValueError, match="imported aew differs"):
+        cli.measure(binary, tmp_path / "out", ["worker"], {})
+
+
 def test_inner_exit_is_returned_without_a_windows_hold(monkeypatch, capsys):
     loopback(monkeypatch)
     monkeypatch.delenv(cli.REEXEC, raising=False)
@@ -293,7 +317,7 @@ def test_routes_follow_broker_tables(monkeypatch):
     assert measure.shell_route("echo synthetic") == measure.shell_route("aew made-up") == "other"
 
 
-def test_reanalysis_uses_saved_text_and_keeps_the_measured_commit(tmp_path):
+def test_reanalysis_uses_saved_text_and_keeps_the_measured_commit(monkeypatch, tmp_path):
     request, guide, system = fixture_request()
     capture = tmp_path / "capture"
     lead = capture / "lead"
@@ -313,9 +337,12 @@ def test_reanalysis_uses_saved_text_and_keeps_the_measured_commit(tmp_path):
     original = json.dumps(record).encode()
     (capture / "record.json").write_bytes(original)
     out = tmp_path / "reanalyzed"
+    analysing_commit = "b" * 40
+    monkeypatch.setattr(cli, "aew_revision", lambda: analysing_commit)
     assert cli.main(["--analyse", str(capture), "--out", str(out)]) == 0
     revised = json.loads((out / "record.json").read_bytes())
     assert revised["aew_commit"] == record["aew_commit"] and "analysis" not in revised
+    assert revised["analysed_with"] == analysing_commit
     assert revised["legs"]["lead"]["first_request"]["raw_bytes"] == len(wire)
     assert len(revised["legs"]["lead"]["results"]) == 6
     assert (capture / "record.json").read_bytes() == original

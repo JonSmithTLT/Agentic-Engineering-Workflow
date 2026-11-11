@@ -50,6 +50,13 @@ def verify_package(imported_file: Path) -> None:
         raise ValueError("imported aew differs from the named checkout. Install that checkout into the probe Python.")
 
 
+def clean_commit() -> str:
+    commit = aew_revision()
+    if not commit or commit.endswith("+dirty"):
+        raise ValueError("the probe needs a clean Git checkout so the result names its exact commit")
+    return commit
+
+
 def run_binary(binary: Path, env: dict[str, str], cwd: Path, *args: str) -> str:
     result = subprocess.run([str(binary), *args], env=env, cwd=cwd, stdin=subprocess.DEVNULL,
                             capture_output=True, timeout=90, check=False)
@@ -104,9 +111,7 @@ def measure(binary: Path, out: Path, legs: list[str], proof: dict) -> None:
     sha = sha256_file(binary)
     if sha != pinned_sha():
         raise ValueError("OpenCode binary does not match the Linux x64 pin in opencode/capabilities.py")
-    commit = aew_revision()
-    if not commit or commit.endswith("+dirty"):
-        raise ValueError("the probe needs a clean Git checkout so the result names its exact commit")
+    commit = clean_commit()
     out.mkdir(mode=0o700)
     env = private_env(out / "catalog-private", harness="opencode")
     env.update(OPENCODE_DISABLE_PROJECT_CONFIG="1", OPENCODE_DISABLE_AUTOUPDATE="1")
@@ -175,7 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.analyse is not None:
             from lead_probe import measure as analysis
 
-            analysis.reanalyse(args.analyse.resolve(), args.out.resolve())
+            verify_package(Path(aew.__file__))
+            analysis.reanalyse(args.analyse.resolve(), args.out.resolve(), analysed_with=clean_commit())
             return 0
         if sys.platform == "win32":
             raise ValueError(HOLD)

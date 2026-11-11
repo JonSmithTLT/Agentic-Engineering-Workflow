@@ -175,8 +175,8 @@ def lead_measurements(requests: list[dict], guide: str, system: str) -> dict:
             "results": rows}
 
 
-def reanalyse(capture: Path, out: Path) -> None:
-    """Recompute the saved Lead wire analysis offline, retaining its measured commit."""
+def reanalyse(capture: Path, out: Path, *, analysed_with: str) -> None:
+    """Retain the measured commit and derive the split, rows and route labels with the verified analysing commit."""
     result = json.loads((capture / "record.json").read_bytes())
     lead = result.get("legs", {}).get("lead")
     if result.get("schema") != "aew/lead-probe/v1" or not result.get("aew_commit") or not lead:
@@ -222,5 +222,6 @@ def reanalyse(capture: Path, out: Path) -> None:
             continue
         requests.append({"body": body, "raw_bytes": len(wire)})
     lead.update(lead_measurements(requests, guide, system))
+    result["analysed_with"] = analysed_with
     out.mkdir(mode=0o700)
     (out / "record.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n")

@@ -81,6 +81,15 @@ def expected_reply(value: Any, sid: str, mid: str, text: str, metadata: dict[str
             and payload.get("text") == text and payload.get("metadata") == metadata)
 
 
+def expected_inbox(value: Any, sid: str, mid: str, mode: str, text: str, metadata: dict[str, Any]) -> bool:
+    """The first, pre-admission response still has the original mode and a valid enqueue timestamp."""
+    if not expected_reply(value, sid, mid, text, metadata):
+        return False
+    created = (value.get("time") or {}).get("created")
+    return (value.get("delivery") == mode and isinstance(created, (int, float)) and not isinstance(created, bool)
+            and math.isfinite(created) and created >= 0)
+
+
 def identity_measurement(ctx: Context) -> dict[str, Any]:
     """Observe idempotency before and after admission for both modes, including a changed payload/mode and an ID
     owned by another session. Held duplicate retries always explicitly use resume:false."""
@@ -101,8 +110,8 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 before = len(main_requests(llm))
                 status, first = http(server, "POST", path, payload)
                 first = data(first)
-                facts[mode + ".first_identity_valid"] = expected_reply(
-                    first, sid, mid, payload["text"], payload["metadata"])
+                facts[mode + ".first_identity_valid"] = expected_inbox(
+                    first, sid, mid, mode, payload["text"], payload["metadata"])
                 retry_status, retry = http(server, "POST", path, payload)
                 changed_status, changed = http(server, "POST", path, {
                     **payload, "text": "HQ_WRONG_TEXT", "delivery": "queue" if mode == "steer" else "steer"})

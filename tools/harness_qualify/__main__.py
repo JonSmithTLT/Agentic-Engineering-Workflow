@@ -5,8 +5,8 @@ Writes ``record.json`` (the core's :func:`~harness_qualify.core.document`), ``di
 folder (the bump's new fixtures). ``--no-network`` runs the tool under ``bwrap --unshare-net`` (loopback only), which
 needs bubblewrap; without it egress is not blocked, and the record says so.
 
-``--reevaluate <retained-record> --ruling <cited-ruling>`` is offline: no binary/server/model runs. Only the ruled
-Linux retry predicate is recomputed from retained envelopes; other verdicts and runtime provenance remain. With
+``--reevaluate <retained-record> --ruling <addendum-revision-2>`` is offline: no binary/server/model runs. Only the
+amended Linux retry predicate is recomputed from retained envelopes; other verdicts and runtime provenance remain. With
 ``--write-fixtures`` it writes only the messaging semantic pin, and only when all ten required checks pass.
 
 Exit codes: 0 every binary check that ran passed and the facts match the pin; 1 a binary check failed or a fact
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     source = p.add_mutually_exclusive_group(required=True)
     source.add_argument("--binary", type=Path)
     source.add_argument("--reevaluate", type=Path, help="re-evaluate the retained Linux record without a runtime")
-    p.add_argument("--ruling", type=Path, help="the cited Lead ruling for offline re-evaluation")
+    p.add_argument("--ruling", type=Path, help="the binding addendum revision 2 for offline re-evaluation")
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--fixtures", type=Path)
     p.add_argument("--only", nargs="*", help="check ids to run")

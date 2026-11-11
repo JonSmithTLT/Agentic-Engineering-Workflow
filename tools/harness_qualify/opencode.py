@@ -539,8 +539,9 @@ def _render_json(value: Any, indent: int = 0, width: int = 120, prefix: int = 0)
 class OpenCodePack:
     harness = HARNESS
 
-    def __init__(self, fixtures: Path) -> None:
+    def __init__(self, fixtures: Path, *, platform: str | None = None) -> None:
         self.fixtures = fixtures
+        self.platform = platform or sys.platform
         self.version_source = Feed()
         # The pinned version, whose fixtures are the inputs and the pin: the adapter's tested version (its owner).
         self.pinned_version = C.TESTED_VERSIONS[0]
@@ -634,10 +635,17 @@ class OpenCodePack:
         store = fixtures / f"store-{version}.json"
         if store.exists():
             facts["store.schema"] = load(store.name)["tables"]
-        messaging = fixtures / f"messaging-{version}.json"
+        messaging = fixtures / self.messaging_pin_name(version)
         if messaging.exists():
-            facts.update(load(messaging.name)["facts"])
+            pin = load(messaging.name)
+            if pin.get("platform") == self.platform:
+                facts.update(pin["facts"])
         return version, facts
+
+    def messaging_pin_name(self, version: str) -> str:
+        # Keep the existing Linux pin's name; every other platform has a separate, explicitly tagged pin.
+        suffix = "" if self.platform == "linux" else "-" + self.platform
+        return f"messaging-{version}{suffix}.json"
 
     def render(self, version: str, facts: Mapping[str, Any], fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
         out: dict[str, tuple[bytes | None, str]] = {}
@@ -669,12 +677,12 @@ class OpenCodePack:
                        "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
         messaging = {k: v for k, v in facts.items() if k.startswith("messaging.")}
         if messaging:
-            doc = {"harness": HARNESS, "version": version, "facts": messaging}
+            doc = {"harness": HARNESS, "version": version, "platform": self.platform, "facts": messaging}
             if "qualification.reevaluation" in facts:
-                doc.update(platform="linux", qualification=facts["qualification.reevaluation"])
-            out[f"messaging-{version}.json"] = (
+                doc.update(qualification=facts["qualification.reevaluation"])
+            out[self.messaging_pin_name(version)] = (
                 dump(doc),
-                "measured: messaging behaviour with the scripted loopback model; platform is in the run record")
+                 "measured: messaging behaviour with the scripted loopback model; pin is platform-scoped")
         return out
 
     def unmeasured(self) -> Mapping[str, str]:

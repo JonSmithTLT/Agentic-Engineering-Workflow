@@ -578,6 +578,10 @@ class MessagingServerSeam:
             item = {**item, "time": {"created": item["time"]["created"] + 1}}
         elif admitted and self.mutation == "admitted_mode_changed":
             item = {**item, "delivery": "queue" if item["delivery"] == "steer" else "steer"}
+        if not duplicate and self.mutation == "first_mode_changed":
+            item = {**item, "delivery": "wrong"}
+        elif not duplicate and self.mutation == "first_time_missing":
+            item = {k: v for k, v in item.items() if k != "time"}
         return 200, item
 
 
@@ -587,6 +591,7 @@ class MessagingServerSeam:
     ("conflict_accepted", "prompt_identity"), ("retry_wakes", "held_resume"), ("wake_first", "held_resume"),
     ("envelope_defaults", "prompt_identity"), ("admitted_time_changed", "prompt_identity"),
     ("admitted_mode_changed", "prompt_identity"),
+    ("first_mode_changed", "prompt_identity"), ("first_time_missing", "prompt_identity"),
     ("false_admission", "prompt_identity"), ("none", "session_loss"),
     ("message_as_lost", "session_loss"), ("lost_as_message", "session_loss"),
 ])
@@ -605,8 +610,7 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
     ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
     check = next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name)
     result = check.run(ctx)
-    ignored_response_changes = ("envelope_defaults", "admitted_time_changed", "admitted_mode_changed",
-                                "changed_admitted_accepted")
+    ignored_response_changes = ("envelope_defaults", "admitted_time_changed", "admitted_mode_changed")
     assert result.status == (core.PASS if mutation in ("none", *ignored_response_changes) else core.FAIL), result
     if name == "prompt_identity" and mutation == "admitted_time_changed":
         assert result.facts["observation.prompt_identity"]["steer.admitted_created_time_preserved"] is False
@@ -615,11 +619,11 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
 def test_messaging_semantics_render_pin_and_diff_without_overwriting_unrelated_fixtures(tmp_path):
     fixtures = tmp_path / "fixtures"
     shutil.copytree(FIXTURES, fixtures)
-    pack = OC.OpenCodePack(fixtures)
+    pack = OC.OpenCodePack(fixtures, platform="linux")
     fact = {"messaging.steer_boundary": {"steer_fifo": True}}
     rendered = pack.render("2.2.6", fact, fixtures)
     payload, _ = rendered["messaging-2.2.6.json"]
-    assert payload == core.dump({"harness": "opencode", "version": "2.2.6", "facts": fact})
+    assert payload == core.dump({"harness": "opencode", "version": "2.2.6", "platform": "linux", "facts": fact})
     assert not {"openapi-2.2.6.min.json", "tool-parts-2.2.6.json", "store-2.2.6.json"} & set(rendered)
     path = fixtures / "messaging-2.2.6.json"
     path.write_bytes(payload)
@@ -688,7 +692,7 @@ def reevaluated(doc=None):
 
     source = doc or json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
     return reevaluate.evaluate(source, source_digest="29ef41ae1ce5e73cc8c6b2dd1a03b379b48eacc3e2e0bb4543ae937c7a432ef2",
-                               pack=OC.OpenCodePack(FIXTURES), evaluator_revision="offline-test")
+                               pack=OC.OpenCodePack(FIXTURES, platform="linux"), evaluator_revision="offline-test")
 
 
 def test_retained_reevaluation_and_semantic_pin_are_exact_qualifier_output(tmp_path):
@@ -701,7 +705,7 @@ def test_retained_reevaluation_and_semantic_pin_are_exact_qualifier_output(tmp_p
     fixtures = tmp_path / "fixtures"
     shutil.copytree(FIXTURES, fixtures)
     (fixtures / "messaging-2.2.6.json").unlink()  # reproduce the pre-adoption fixture inventory
-    pack = OC.OpenCodePack(fixtures)
+    pack = OC.OpenCodePack(fixtures, platform="linux")
     _, pinned = pack.pinned(fixtures)
     diff = core.fact_diff(record.facts, pinned, unmeasured=record.unmeasured, checks=record.checks)
     expected = core.document(record, diff, core.fixture_report(pack, record.version, record.facts, fixtures),
@@ -712,6 +716,7 @@ def test_retained_reevaluation_and_semantic_pin_are_exact_qualifier_output(tmp_p
     assert (FIXTURES / "messaging-2.2.6.json").read_bytes() == rendered
     assert provenance["runtime_executed"] is False
     assert provenance["ruling"]["digest"] == reevaluate.RULING_DIGEST
+    assert provenance["addendum"]["digest"] == reevaluate.ADDENDUM_DIGEST
     assert provenance["windows_runtime"] == "NOT RUN; capability GAP"
 
 
@@ -736,6 +741,7 @@ def test_the_ruled_predicate_recomputes_all_ten_checks_without_altering_the_fail
         active = record.facts["messaging.prompt_identity"]
         observed = record.facts["observation.prompt_identity"]
         assert active[mode + ".duplicate_admitted"] is True
+        assert active[mode + ".changed_admitted_keeps_identity"] is True
         assert observed[mode + ".admitted_created_time_preserved"] is False
         assert observed[mode + ".changed_admitted_returns_original"] is False
         assert not {mode + "." + k for k in reevaluate.RETIRED} & active.keys()
@@ -777,6 +783,87 @@ def test_replay_does_not_waive_any_other_required_failure(check_id):
     assert core.verdict(record, core.Diff([], [], {}))["binary"] == core.FAIL
 
 
+@pytest.mark.parametrize("mode", ["steer", "queue"])
+@pytest.mark.parametrize("envelope", ["admitted_retry", "admitted_changed"])
+@pytest.mark.parametrize("field", ["id", "sessionID", "text", "metadata", "aew_when", "status", "missing"])
+def test_retry_identity_gates_each_field_in_both_admitted_envelopes(mode, envelope, field):
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_bytes())
+    raw = source["facts"]["measurement.prompt_identity"][mode]
+    if field in ("id", "sessionID"):
+        raw[envelope][field] = "forged"
+    elif field in ("text", "metadata"):
+        raw[envelope]["payload"][field] = "forged"
+    elif field == "aew_when":
+        raw[envelope]["payload"]["metadata"]["aew_when"] = "queue" if mode == "steer" else "steer"
+    elif field == "status":
+        raw[envelope + "_status"] = 409
+    else:
+        del raw[envelope]
+    record = reevaluated(source)
+    row = next(r for r in record.checks if r["id"] == "messaging.prompt_identity")
+    gate = "changed_admitted_keeps_identity" if envelope == "admitted_changed" else "duplicate_admitted"
+    assert row["status"] == core.FAIL and mode + "." + gate in row["notes"]
+
+
+def test_retry_time_and_delivery_changes_leave_both_identity_gates_passing():
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_bytes())
+    for mode in ("steer", "queue"):
+        for envelope in ("admitted_retry", "admitted_changed"):
+            raw = source["facts"]["measurement.prompt_identity"][mode][envelope]
+            raw["time"] = {"created": "ignored"}
+            raw["delivery"] = "ignored"
+    record = reevaluated(source)
+    assert next(r for r in record.checks if r["id"] == "messaging.prompt_identity")["status"] == core.PASS
+
+
+@pytest.mark.parametrize("created", [None, True, -1, "1", float("inf"), float("nan")])
+def test_first_response_requires_a_finite_nonnegative_numeric_time(created):
+    from harness_qualify import messaging
+
+    first = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_bytes())["facts"][
+        "measurement.prompt_identity"]["steer"]["first"]
+    assert messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
+                                    first["payload"]["text"], first["payload"]["metadata"])
+    first["time"] = {"created": created}
+    assert not messaging.expected_inbox(first, first["sessionID"], first["id"], "steer",
+                                        first["payload"]["text"], first["payload"]["metadata"])
+
+
+def test_offline_cli_refuses_an_import_from_another_checkout_before_writing(tmp_path, monkeypatch, capsys):
+    from harness_qualify import reevaluate
+
+    monkeypatch.setattr(reevaluate.aew, "__file__", str(tmp_path / "other" / "aew" / "__init__.py"))
+    out = tmp_path / "out"
+    assert HQ_main(["--reevaluate", str(FIXTURES / "messaging-2.2.6-linux.json"), "--ruling",
+                    str(tmp_path / "unused.md"), "--out", str(out)]) == core.EXIT_USAGE
+    assert "set PYTHONPATH to this checkout's src" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_messaging_pins_are_platform_scoped_and_live_render_always_keeps_the_tag(tmp_path):
+    fixtures = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, fixtures)
+    linux = OC.OpenCodePack(fixtures, platform="linux")
+    windows = OC.OpenCodePack(fixtures, platform="win32")
+    facts = {"messaging.steer_boundary": {"steer_fifo": True}}
+    linux_raw, _ = linux.render("2.2.6", facts, fixtures)["messaging-2.2.6.json"]
+    assert json.loads(linux_raw)["platform"] == "linux"  # no re-evaluation provenance in a live run
+    (fixtures / "messaging-2.2.6.json").write_bytes(linux_raw)
+    assert linux.pinned(fixtures)[1]["messaging.steer_boundary"] == facts["messaging.steer_boundary"]
+    assert not any(k.startswith("messaging.") for k in windows.pinned(fixtures)[1])
+    assert core.fact_diff(facts, windows.pinned(fixtures)[1]).changed == []
+    win_raw, _ = windows.render("2.2.6", facts, fixtures)["messaging-2.2.6-win32.json"]
+    assert json.loads(win_raw)["platform"] == "win32"
+    (fixtures / "messaging-2.2.6-win32.json").write_bytes(win_raw)
+    assert windows.pinned(fixtures)[1]["messaging.steer_boundary"] == facts["messaging.steer_boundary"]
+    assert (fixtures / "messaging-2.2.6.json").read_bytes() == linux_raw
+    # Even a wrongly named or old untagged file cannot qualify a different platform.
+    (fixtures / "messaging-2.2.6-win32.json").write_bytes(linux_raw)
+    assert not any(k.startswith("messaging.") for k in windows.pinned(fixtures)[1])
+    (fixtures / "messaging-2.2.6.json").write_bytes(core.dump({"facts": facts}))
+    assert not any(k.startswith("messaging.") for k in linux.pinned(fixtures)[1])
+
+
 @pytest.mark.parametrize("mutation", ["windows", "missing_check", "duplicate_check", "wrong_revision", "network"])
 def test_replay_refuses_a_record_outside_the_ruled_platform_provenance_or_selection(mutation):
     source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
@@ -807,7 +894,7 @@ def test_offline_cli_generates_only_the_messaging_pin_and_calls_no_runtime(tmp_p
     original = source.read_bytes()
     ruling = tmp_path / "ruling.md"
     ruling.write_bytes(b"test-only ruling citation")
-    monkeypatch.setattr(reevaluate, "RULING_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
+    monkeypatch.setattr(reevaluate, "ADDENDUM_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
     monkeypatch.setattr(core, "aew_revision", lambda: "offline-cli-test")
     monkeypatch.setattr(OC, "serve", lambda *a, **k: pytest.fail("offline replay started a server"))
     monkeypatch.setattr(OC, "read_version", lambda *a, **k: pytest.fail("offline replay started the binary"))
@@ -851,7 +938,7 @@ def test_ruled_active_predicate_never_reads_response_time_or_mode():
     source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
     raw = source["facts"]["measurement.prompt_identity"]
     for mode in ("steer", "queue"):
-        for key in ("first", "admitted_retry"):
+        for key in ("first", "admitted_retry", "admitted_changed"):
             raw[mode][key] = FieldsOnly(raw[mode][key])
     assert reevaluate.identity_outcome(source["facts"]["messaging.prompt_identity"], raw).status == core.PASS
 
@@ -871,7 +958,7 @@ def test_a_remaining_failed_check_writes_a_failed_record_but_no_semantic_pin(tmp
     monkeypatch.setattr(reevaluate, "evaluate", lambda *a, **k: failed_record)
     ruling = tmp_path / "ruling.md"
     ruling.write_bytes(b"test-only ruling citation")
-    monkeypatch.setattr(reevaluate, "RULING_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
+    monkeypatch.setattr(reevaluate, "ADDENDUM_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
     monkeypatch.setattr(core, "aew_revision", lambda: "offline-cli-test")
     out = tmp_path / "out"
     assert reevaluate.run(FIXTURES / "messaging-2.2.6-linux.json", ruling, out=out, fixtures=fixtures,

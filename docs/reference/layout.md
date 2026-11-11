@@ -108,7 +108,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/packs` (git-ignored, masked by containment); written by none; read by none
 - `local/packs/{}` (git-ignored, masked by containment); written by `aew.engine.context_ops`: `ContextPacks.build_pack`, `ContextPacks.context_pack`; read by `aew.engine.context_ops`: `ContextPacks.context_show`
 - `local/recall` (git-ignored, masked by containment); written by `aew.engine.recall`: `Substrate._connect`, `Substrate._delete`; read by `aew.engine.recall`: `Substrate._open`
-- `local/steering` (git-ignored, masked by containment); written by `aew.harness.steering_loop`: `_write`; read by `aew.engine.steering`: `loop_state`
+- `local/steering` (git-ignored, masked by containment); written by `aew.harness.steering_loop`: `_write`; read by `aew.engine.steering`: `loop_state`; `aew.harness.steering_loop`: `_read`
 - `local/validation` (git-ignored, masked by containment); named by `aew.engine.validation_ops`: `STAGING`; written by `aew.engine.validation_ops`: `Validation._execute`; read by `aew.harness.containment.layout`: `for_run`
 - `local/validation/{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.engine.validation_ops`: `Validation._execute`, `Validation._one_check`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; read by `aew.engine.validation_ops`: `Validation._execute`, `Validation._recorded_label`, `Validation._staged`; `aew.harness.containment.layout`: `for_run`
 - `local/validation/{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none

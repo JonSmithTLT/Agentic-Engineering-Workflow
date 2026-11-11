@@ -159,7 +159,20 @@ def activation_wait_s(lp: L.SteeringLoop) -> float:
     """How long a test waits for an activation of ``lp`` to show: the poll that wakes it, one wait for the control lock
     at its own store's lock timeout (``ControlStore``'s, 60 s by default: each tick reads and commits under that lock),
     and one more poll for its work. A literal 30 s sat below a single lock wait (the flake audit at c71ebc7e, §3 row
-    12: "timed out waiting for the first activation", Windows, 2026-10-26)."""
+    12: "timed out waiting for the first activation", Windows, 2026-10-26).
+
+    What it does not budget, each a stated edge (batch 5's m1 and m2):
+    - the actions' own work, and any wait they make outside the control lock: a history index open there waits on
+      SQLite under ``HistoryIndex``'s own timeout, not on this lock. The 11-08 sighting (main at dce6224c, job
+      128630180357, Windows, the job at 19:58 of its 20 minutes) stalled about 60 s in one such open, with no other
+      holder in its process, where this test's median is 8.33 s; the census found the first activation at 1.8 to 2.4 s
+      with only the loop opening the index, so it is counted as runner starvation, not this window's to absorb;
+    - a chain of activations: the repetition test's wait covers ``repetition_n + 1`` activations, each after a poll,
+      so ``repetition_n - 1`` of its polls and all of their work fall outside this window, and a lock wait ending
+      within that much of the lock timeout still exceeds it;
+    - the waits on what the loop does that still use ``HANG_S`` (a literal 60 s, one lock wait at the default):
+      ``Acted.done``, ``Looks``, the closing test's drain and the loop thread's join. They bound a hang, never a
+      timing expectation."""
     return lp.engine.store.lock_timeout + 2 * lp.poll_s
 
 

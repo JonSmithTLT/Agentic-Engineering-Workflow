@@ -14,7 +14,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 9020
-  guide_bytes: 16337
+  guide_bytes: 16433
   join_bytes: 2
   mcp_bytes: 11900
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -54,8 +54,8 @@ allocations:
     source: "E231 budget rule section 1 and the E176 Lead memory brief. About 3 KB for the notes block and its guide text."
 # Current cap. Preserve the operator's exact words and date in approval history when it changes.
 approval:
-  ceiling_bytes: 42459
-  operator: "a, approve 42,459"
+  ceiling_bytes: 42555
+  operator: "A is fine"
   date: '2026-11-11'
 # The approved drop after PR 3 still applies.
 approval_history:
@@ -64,6 +64,10 @@ approval_history:
     date: '2026-11-11'
   - ceiling_bytes: 42459
     operator: "a, approve 42,459"
+    date: '2026-11-11'
+  # In response to "(a) approve 42,555 B" after E137 added 96 B to the guide.
+  - ceiling_bytes: 42555
+    operator: "A is fine"
     date: '2026-11-11'
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

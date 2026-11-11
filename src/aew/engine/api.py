@@ -71,6 +71,7 @@ from aew.knowledge.manifest import (
     roles_readme,
 )
 from aew.operator import require_operator_attribution
+from aew.policy import checks as C
 from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_text, utc_now
@@ -204,7 +205,12 @@ class ProjectAdmin:
                 pins[rel] = None
                 continue
             raw = path.read_bytes()
-            check_policy_bytes(names.get(rel, "execution"), raw, source=str(path))
+            name = names.get(rel, "execution")
+            data = check_policy_bytes(name, raw, source=str(path))
+            if name == "checks":
+                commit = git.rev_parse(f"refs/heads/{manifest['repository']['authoritative_branch']}",
+                                       cwd=self.k.repo_root)
+                C.validate_caches(data, repo=self.k.repo_root, commit=commit, source=str(path))
             pins[rel] = sha256_bytes(raw)
         return pins
 
@@ -578,8 +584,12 @@ class Engine:
             names = {rel: name for name, rel in manifest["policy"].items()}
             for rel in policy_files(manifest):
                 if rel in files:  # the bytes that are pinned below, checked as an adoption would check them
-                    check_policy_bytes(names.get(rel, "execution"), files[rel].encode("utf-8"),
-                                       source=f"{AEW_DIR}/{rel}")
+                    source = f"{AEW_DIR}/{rel}"
+                    logical_name = names.get(rel, "execution")
+                    data = check_policy_bytes(logical_name, files[rel].encode("utf-8"), source=source)
+                    if logical_name == "checks":
+                        commit = git.rev_parse(f"refs/heads/{branch}", cwd=repo_root)
+                        C.validate_caches(data, repo=repo_root, commit=commit, source=source)
         state = {
             "schema": "aew/control/v2",
             "project_id": project_id,

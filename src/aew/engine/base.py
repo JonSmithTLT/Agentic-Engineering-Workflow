@@ -29,9 +29,11 @@ from aew.harness.contract import EXPECT_REV, MANIFEST_ADOPT
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
+from aew.policy import checks as C
 from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import load_yaml, read_yaml, sha256_bytes, sha256_file, utc_now
+from aew.snapshot.fingerprint import CacheInputs
 from aew.workspace import git
 
 WORKSPACE_MARKER = "aew-workspace.yaml"  # stored in a linked worktree's private git dir
@@ -256,14 +258,24 @@ class Kernel:
         return render.views(state, name, self.aew_root)
 
     def policy(self, name: str) -> dict[str, Any]:
+        return self._policy(name, self._pins_in_force())
+
+    def _policy(self, name: str, pins: dict[str, str | None] | None) -> dict[str, Any]:
         rel = self.manifest["policy"][name]
         path = self.aew_root / rel
-        raw = self._pinned_bytes(rel, self._pins_in_force())
+        raw = self._pinned_bytes(rel, pins)
         if raw is None:
             raise FileNotFoundError(str(path))
         data = load_yaml(raw.decode("utf-8"), source=str(path))
         validate(name, data, source=str(path))
         return data
+
+    def check_cache_inputs(self) -> CacheInputs:
+        """Cache declarations from the checks policy in force, never from the workspace being read."""
+        fp = self.manifest.get("fingerprint") or {}
+        pins = self._pins_in_force()
+        patterns = C.cache_patterns(self._policy("checks", pins)) if pins is not None else ()
+        return {"cache_patterns": patterns, "include_ignored": list(fp.get("include_ignored", []))}
 
     def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
         """The execution policy and its file hash; ``(None, None)`` when the project has none (ADR-0010)."""

@@ -137,7 +137,6 @@ class Operator:
     credential: str = field(default="", repr=False)
     transcript: list[dict[str, Any]] = field(default_factory=list)
     allowed_heads: set[str] = field(default_factory=set)  # main's heads not published by AEW
-    excluded_caches: bool = False  # the U14 workaround, applied once after the gate was observed to refuse
     publish_approved: bool = False
     reports: list[dict[str, Any]] = field(default_factory=list)
     said: list[dict[str, Any]] = field(default_factory=list)
@@ -350,8 +349,6 @@ class Operator:
                 if label == "publish" and answer.startswith("y"):
                     self.publish_approved = True
                 self.say(f"answer:{label}", answer)
-            elif kind == "stuck" and self.cache_workaround(msg):
-                continue
             elif kind in ("report", "stuck"):
                 if kind == "report":
                     self.reports.append(msg)
@@ -380,28 +377,6 @@ class Operator:
         session.close()
         return code
 
-    def cache_workaround(self, msg: dict[str, Any]) -> bool:
-        """U14's workaround, only after the gate was observed to refuse (the Lead stuck on GATE_UNSATISFIED while the
-        check's caches sat untracked in the Ticket's workspace): the operator excludes the caches for every worktree
-        (`.git/info/exclude`) and tells the Lead to carry on. Counted as a fallback with its evidence, once."""
-        text = str(msg.get("text", ""))
-        if self.excluded_caches or "GATE_UNSATISFIED" not in text:
-            return False
-        caches = sorted({p.name for p in self.root.parent.glob(".aew-workspaces/*/*/**/__pycache__")} |
-                        {p.name for p in self.root.parent.glob(".aew-workspaces/*/*/.pytest_cache")})
-        if not caches:
-            return False
-        self.excluded_caches = True
-        exclude = self.root / ".git" / "info" / "exclude"
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        with exclude.open("a", encoding="utf-8") as fh:
-            fh.write("\n" + workers.GITIGNORE)
-        self.fallback("caches", "(nothing: the check's own caches should not change its snapshot)", text,
-                      "add __pycache__/ and .pytest_cache/ to .git/info/exclude, then tell the Lead to carry on")
-        self.typed("caches", "$EDITOR .git/info/exclude  (adds __pycache__/, .pytest_cache/, *.pyc)")
-        self.say("caches:ask", "I excluded the test caches from git. Carry on.")
-        return True
-
     # ------------------------------------------------------------------ hard limit: publish needs a decision
 
     def check_heads(self, when: str) -> None:
@@ -427,7 +402,7 @@ class Operator:
 
 def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
     """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
-    sample has no `.gitignore` for the check's caches: a fresh project does not, and nothing may hide U14."""
+    sample declares check caches in policy and has no `.gitignore` entry for them."""
     files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
@@ -503,13 +478,17 @@ class _WithFixtures:
     def files(self) -> dict[str, str]:
         import yaml
 
+        from aew.engine.first_configuration import CHECKS_REL
         from aew.policy import execution as X
 
         files = self.given.files()
-        doc = yaml.safe_load(files[X.REL_PATH])
-        for fixture in self.fixtures.values():
-            fixture(doc)
-        files[X.REL_PATH] = dump_yaml(doc)
+        policies = {X.REL_PATH: yaml.safe_load(files[X.REL_PATH])}
+        for name, fixture in self.fixtures.items():
+            rel = CHECKS_REL if name.startswith("checks.") else X.REL_PATH
+            if rel not in policies:
+                policies[rel] = yaml.safe_load(files[rel])
+            fixture(policies[rel])
+        files.update({rel: dump_yaml(doc) for rel, doc in policies.items()})
         return files
 
 

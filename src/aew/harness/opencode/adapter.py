@@ -172,7 +172,9 @@ def _changed_now(contract: LaunchContract) -> Callable[[], list[str] | None] | N
     def read() -> list[str] | None:
         from aew.snapshot.fingerprint import changed_paths  # only a run with a base reads its workspace
 
-        return changed_paths(workspace, str(base), stores=False)
+        return changed_paths(workspace, str(base), stores=False,
+                             cache_patterns=contract.extra.get("cache_patterns", ()),
+                             include_ignored=contract.extra.get("include_ignored"))
 
     return read
 

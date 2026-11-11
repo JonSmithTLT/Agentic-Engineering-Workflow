@@ -13,15 +13,70 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from aew.engine import faults
-from aew.errors import ContainmentUnavailable, GateUnsatisfied, NotFound
+from aew.errors import ContainmentUnavailable, GateUnsatisfied, GitError, NotFound, ValidationFailed
+from aew.workspace import git
 
 BUILTIN = {"guardrails"}
 DEFAULT_TIMEOUT_S = 900
+PYTEST_CACHES = ("__pycache__/", "*.pyc", ".pytest_cache/")
+_CACHE_PROBES = (b"x", b"a/b", b"a/b.py", b"a/b.txt")
+
+
+def cache_patterns(policy: dict[str, Any]) -> tuple[tuple[str, ...], ...]:
+    """Keep each check's gitignore rules together, then union the matches across configured checks."""
+    return tuple(dict.fromkeys(tuple(cfg["caches"]) for check_id, cfg in policy["checks"].items()
+                               if check_id not in BUILTIN and cfg.get("configured") and cfg.get("command")
+                               and cfg.get("caches")))
+
+
+def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, source: str) -> None:
+    """Refuse cache patterns that would mask a probe or a path in the authoritative commit."""
+    patterns = {pattern for cfg in policy["checks"].values() for pattern in cfg.get("caches", [])}
+    if not patterns:
+        return
+    tracked = git.git("ls-tree", "-r", "--name-only", "-z", commit, cwd=repo).stdout if commit else b""
+    candidates = b"\0".join(_CACHE_PROBES) + b"\0" + tracked
+    # A clean Git repository gives check-ignore only this pattern. The candidates need not exist on disk.
+    with tempfile.TemporaryDirectory(prefix="aew-cache-probes-") as directory:
+        root = Path(directory)
+        git.git("init", "-q", "--template=", cwd=root)
+        for pattern in sorted(patterns):
+            path = pattern.removeprefix("!").lstrip()
+            windows = PureWindowsPath(path)
+            if windows.anchor or ".." in windows.parts or any(c in pattern for c in "\0\r\n"):
+                raise ValidationFailed(f"{source}: invalid check cache pattern {pattern!r}", pattern=pattern)
+            (root / ".gitignore").write_text(pattern + "\n", encoding="utf-8", newline="\n")
+            matched = git.git("-c", "core.excludesFile=", "check-ignore", "--no-index", "-z", "--stdin",
+                              cwd=root, input=candidates, check=False)
+            if matched.returncode not in (0, 1):
+                raise GitError("git check-ignore failed while validating check caches",
+                               stderr=matched.stderr.decode("utf-8", "replace").strip())
+            if matched.stdout:
+                found = matched.stdout.split(b"\0", 1)[0]
+                kind = "probe" if found in _CACHE_PROBES else "tracked path"
+                name = found.decode("utf-8", "replace")
+                raise ValidationFailed(f"{source}: check cache pattern {pattern!r} matches {kind} {name!r}",
+                                       pattern=pattern, path=name)
+
+
+def cache_hint(paths: list[str]) -> str | None:
+    """An exact checks policy line for a nonempty set of known cache paths."""
+    patterns: set[str] = set()
+    for path in paths:
+        parts = path.split("/")
+        matches = [pattern for pattern in PYTEST_CACHES if
+                   (pattern.endswith("/") and pattern[:-1] in parts[:-1])
+                   or (pattern == "*.pyc" and parts[-1].endswith(".pyc"))]
+        if not matches:
+            return None
+        patterns.update(matches)
+    return f"caches: [{', '.join(json.dumps(p) for p in PYTEST_CACHES if p in patterns)}]" if patterns else None
 
 # OpenCode v2.2.6 (also v2.0.18), packages/core/src/tool-output.ts: MAX_BYTES is 50 KiB, measured as UTF-8;
 # truncate keeps only whole lines up to it. Reserve half for the check response's other fields. Measure this excerpt
@@ -111,6 +166,8 @@ def definition_digest(cfg: dict[str, Any], *, guardrails: dict[str, Any] | None 
                  "timeout_s": cfg.get("timeout_s", DEFAULT_TIMEOUT_S)}
         if cfg.get("network"):  # F28 §3.8; absent, the digest is what it was before checks could ask for a network
             basis["network"] = cfg["network"]
+        if "caches" in cfg:
+            basis["caches"] = cfg["caches"]
     return hashlib.sha256(json.dumps(basis, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 

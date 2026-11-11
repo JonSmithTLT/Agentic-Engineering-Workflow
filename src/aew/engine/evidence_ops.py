@@ -111,7 +111,8 @@ def _tracked_paths(workspace: Path) -> set[str] | None:
         return None
 
 
-def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None) -> dict[str, Any]:
+def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None, *,
+                               check_id: str | None = None, include_ignored: list[str] | None = None) -> dict[str, Any]:
     if not paths:
         return {"changed_paths": [], "message": "The check changed its inputs, but the changed paths couldn't be "
                 "named because the two snapshots could not be compared. Inspect the workspace and restore any "
@@ -130,6 +131,12 @@ def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None) -> di
         message += (" For untracked output, write it outside the project or keep it out of the snapshot with "
                     ".gitignore, .git/info/exclude, or fingerprint.exclude. For ignored output included by "
                     "fingerprint.include_ignored, remove it from that list.")
+    forced = [str(path).rstrip("/") for path in include_ignored or []]
+    if check_id and untracked_paths == paths and not any(
+            path == prefix or path.startswith(prefix + "/") for path in paths for prefix in forced):
+        if hint := C.cache_hint(paths):
+            message += (f" If these are disposable caches, add `{hint}` under check {check_id!r} in "
+                        "policy/checks.yaml and adopt the policy.")
     return {"changed_paths": shown, "message": message}
 
 
@@ -223,7 +230,8 @@ class Gates:
         unit = self.units.unit(state, work_id)
         snapshot = self.invocations.current_snapshot(unit)
         ws = unit.get("workspace")
-        changed = changed_paths(Path(ws["path"]), ws["base_commit"]) if snapshot and ws else None
+        changed = (changed_paths(Path(ws["path"]), ws["base_commit"], **self.k.check_cache_inputs())
+                   if snapshot and ws else None)
         return self._gates_at(state, work_id, snapshot, changed)
 
     def accepted_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -1015,8 +1023,8 @@ class EvidenceCommands:
             if base is None:
                 raise IllegalTransition(f"{inv_id}'s workspace records no base commit, so guardrails cannot say what "
                                         "changed")
-            verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
-                                  acceptance_inputs)
+            changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
+            verdict = GR.evaluate(changed, self.k.policy("guardrails"), scope_paths, acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
                    "cwd": str(workspace.resolve())}
@@ -1083,7 +1091,9 @@ class EvidenceCommands:
             tracked_after = _tracked_paths(workspace) if paths else None
             tracked = (tracked_before | tracked_after
                        if tracked_before is not None and tracked_after is not None else None)
-            diagnostic = _check_mutation_diagnostic(paths, tracked)
+            diagnostic = _check_mutation_diagnostic(
+                paths, tracked, check_id=check_id,
+                include_ignored=(self.k.manifest.get("fingerprint") or {}).get("include_ignored"))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
                 "coverage": meta["coverage"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": str(self.k.aew_root / log_rel),
@@ -1182,12 +1192,12 @@ class EvidenceCommands:
                 "evaluated_snapshot": meta["evaluated_snapshot"], "path": str(path),
                 **({"coverage": meta["coverage"]} if "coverage" in meta else {})}
 
-    @staticmethod
-    def _coverage_files(workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
+    def _coverage_files(self, workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
         if not base or scope not in {"ticket", "integration"}:
             return CV.files(None, source="workspace_diff", reason="no_source_diff_for_this_subject")
         try:
-            return CV.files(changed_paths(workspace, base), source=f"workspace_diff_from:{base}")
+            paths = changed_paths(workspace, base, **self.k.check_cache_inputs())
+            return CV.files(paths, source=f"workspace_diff_from:{base}")
         except (AEWError, OSError):
             return CV.files(None, source="workspace_diff", reason="evaluated_source_diff_unavailable")
 

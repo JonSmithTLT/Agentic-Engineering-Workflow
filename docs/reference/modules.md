@@ -1604,6 +1604,7 @@ None.
 - `aew.engine.authority`
 - `aew.engine.disposition_ops`
 - `aew.engine.faults`
+- `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.base`

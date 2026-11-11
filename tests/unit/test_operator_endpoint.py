@@ -110,7 +110,8 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
     """A1 §6: a model Lead cannot raise its mode. The broker refuses the raise and the endpoint's own commands (and
     only them: lowering stays Lead-reachable); the typed tool has no raise; the engine refuses any other value."""
     parser = build_parser()
-    for argv in (["lead", "mode", "raise", "walk"], ["operator", "serve", "--dev"], ["operator", "ping"]):
+    for argv in (["lead", "mode", "raise", "walk"], ["operator", "serve", "--dev"], ["operator", "ping"],
+                 ["notify", "desktop"]):  # the endpoint's notifier: the desktop shows no agent's text (A-44)
         refusal = lead_broker.refuses_locally(parser.parse_args(argv))
         assert refusal and "operator endpoint" in refusal, argv
     assert lead_broker.refuses_locally(parser.parse_args(["lead", "mode", "lower", "crawl", "--expect-rev", "1"])) \
@@ -522,3 +523,35 @@ def test_the_endpoint_accepts_only_its_operations(project, endpoint):
             conn.close()
         assert reply["ok"] is False, message
     assert ep.refused == 3
+
+
+def test_a_ping_to_an_endpoint_that_never_answers_ends_in_its_bound(tmp_path):
+    """Review of E228's third PR, F6: the steering loop pings before each Run action, so a ping to an endpoint that is
+    alive but silent (stopped in its terminal, or wedged) ends within its bound, as not found: the loop takes no
+    action and records its stop, instead of waiting on it."""
+    import time
+    import uuid
+    from multiprocessing.connection import Listener
+
+    family = "AF_PIPE" if IS_WINDOWS else "AF_UNIX"
+    address = (rf"\\.\pipe\aew-test-silent-{uuid.uuid4().hex}" if IS_WINDOWS
+               else str(tmp_path / "silent.sock"))
+    listener = Listener(address, family=family)
+    held: list[Any] = []
+    accepting = threading.Thread(target=lambda: held.append(listener.accept()), daemon=True)
+    accepting.start()
+    root = tmp_path / "aew"
+    path = operator_client.locator_path(root)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"schema": operator_client.LOCATOR_SCHEMA, "address": address, "family": family}),
+                    encoding="utf-8")
+    try:
+        started = time.monotonic()
+        with pytest.raises(errors.NotFound, match="did not answer a ping"):
+            operator_client.ping(root, timeout_s=0.5)
+        assert time.monotonic() - started < 10
+        assert operator_client.PING_TIMEOUT_S <= 10
+    finally:
+        for conn in held:
+            conn.close()
+        listener.close()

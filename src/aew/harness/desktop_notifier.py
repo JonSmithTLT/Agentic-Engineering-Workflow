@@ -3,11 +3,15 @@
 The operator endpoint runs the execution policy's ``notify.command`` with one ``aew/notify-event/v1`` object on stdin
 (``aew.harness.notify``). This command turns that event into one desktop notification:
 
-- **Linux:** ``notify-send`` (libnotify), which needs the desktop session's bus and a display. The endpoint passes
-  the notifier only a sanitized environment, so ``notify.sanitized_env`` keeps the session's own variables
-  (:data:`SESSION_VARS`), which carry no credential.
-- **Windows:** a toast from Windows PowerShell 5.1, with the title and body passed as environment values, never as
-  script text. The interactive session is any but session 0, where services run and no toast can show.
+- **Linux:** ``notify-send`` (libnotify), which talks only to the desktop session's bus. The endpoint passes the
+  notifier only a sanitized environment, so ``notify.sanitized_env`` keeps the bus's two variables
+  (:data:`SESSION_VARS`), and never ``DISPLAY``, ``WAYLAND_DISPLAY`` or ``XAUTHORITY`` (A-44 BOY-12.a).
+- **Windows:** unavailable in V-01 (A-44 BOY-12): the toast is backlog (``BOY-B5``, register E99). The toast below,
+  from Windows PowerShell 5.1 with the title and body passed as environment values, never as script text, waits behind
+  :data:`WINDOWS_TOAST` until that is ruled.
+
+The default runs the operator endpoint's own engine (:func:`runnable`: its interpreter, ``-m aew``), never whatever
+``aew`` is first on ``PATH``, so the check and the delivery run the same code.
 
 With no desktop session it refuses, naming what is missing and both ways back: run the endpoint in the desktop
 session, or set ``notify.command`` to a notifier of your own. :func:`problem` is the same check: ``notifier_problem``
@@ -31,7 +35,13 @@ from typing import Any
 from aew.harness import procs
 
 COMMAND = ("aew", "notify", "desktop")  # the shipped default's argv, as `aew init` writes it
-SESSION_VARS = ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
+# The session bus's variables, the only ones the notifier's child gets beyond the keep-list (A-44 BOY-12.a: never
+# DISPLAY, WAYLAND_DISPLAY or XAUTHORITY). notify-send needs nothing else.
+SESSION_VARS = ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
+# The Windows toast is backlog (A-44 BOY-B5, register E99): until it is ruled in, Windows reports unavailable (BOY-12).
+WINDOWS_TOAST = False
+WINDOWS_UNAVAILABLE = ("the desktop notifier is Linux-only in this version: the Windows toast is register E99 "
+                       "(A-44 BOY-B5)")
 MAX_EVENT_BYTES = 65536
 TIMEOUT_S = 8.0  # inside the endpoint's own notifier timeout (notify.DEFAULT_TIMEOUT_S, 10 s)
 MAX_TEXT = 200
@@ -62,6 +72,15 @@ def is_default(command: Any) -> bool:
     return program in ("aew", "aew.exe") and tuple(command[1:]) == COMMAND[1:]
 
 
+def runnable(command: Any) -> list[str]:
+    """The argv the endpoint runs for ``command``: the shipped default as this engine's own (its interpreter,
+    ``-m aew``, as the endpoint's autostart starts the endpoint), so an older or missing ``aew`` on ``PATH`` never
+    passes the gate and then fails each delivery; anything else as written."""
+    if is_default(command):
+        return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", *COMMAND[1:]]
+    return [str(part) for part in command]
+
+
 def resolve(command: Any) -> str | None:
     """The file ``command[0]`` names: looked up on ``PATH`` when it is a bare name, otherwise the path as written."""
     program = str(command[0])
@@ -86,6 +105,8 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     platform = sys.platform if platform is None else platform
     path = env.get("PATH") or env.get("Path") or ""
     if platform == "win32":
+        if not WINDOWS_TOAST:
+            return WINDOWS_UNAVAILABLE
         if (session_id or windows_session_id)() in (0, None):
             return "no desktop session: this process runs outside an interactive Windows session (session 0)"
         if not shutil.which("powershell.exe", path=path):
@@ -93,13 +114,11 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
         return None
     if not platform.startswith("linux"):
         return f"no desktop notifier on this platform ({platform})"
-    if not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
-        return "no desktop session: neither DISPLAY nor WAYLAND_DISPLAY is set"
     runtime = env.get("XDG_RUNTIME_DIR")
     if not env.get("DBUS_SESSION_BUS_ADDRESS") and not (runtime and bus_socket(os.path.join(runtime, "bus"))):
-        return "no desktop session bus: DBUS_SESSION_BUS_ADDRESS is not set and XDG_RUNTIME_DIR has no bus"
+        return "no desktop session: DBUS_SESSION_BUS_ADDRESS is not set and XDG_RUNTIME_DIR has no session bus"
     if not shutil.which("notify-send", path=path):
-        return "notify-send is not installed (the libnotify package)"
+        return "notify-send is not installed (libnotify; `libnotify-bin` on Debian and Ubuntu)"
     return None
 
 

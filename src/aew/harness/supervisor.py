@@ -502,9 +502,23 @@ class Supervisor:
                         **({"refusal": refusal} if refusal is not None else {})})
         return False
 
+    def applied_deadline(self) -> Any:
+        """The hard deadline this run gets: its pinned profile's ``deadline_s``, unless the profile keeps it to runs
+        started under Run (``deadline_scope: run``, first configuration's provisional one, register E228) and the
+        effective steering mode is not Run as the run starts, so that deadline never ends an attended run (review of
+        E228's third PR, F5). A state that cannot be read keeps the deadline: the bounded side."""
+        profile = self.record.get("execution_profile") or {}
+        if profile.get("deadline_scope") == "run":
+            from aew.engine import steering
+
+            state = self._committed_state()
+            if state is not None and steering.effective(state)["mode"] != "run":
+                return None
+        return profile.get("deadline_s")
+
     def watch(self) -> None:
         self._watching.set()
-        deadline_s = (self.record.get("execution_profile") or {}).get("deadline_s")
+        deadline_s = self.applied_deadline()
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)

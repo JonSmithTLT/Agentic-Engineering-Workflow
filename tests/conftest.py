@@ -365,6 +365,32 @@ def no_switch_offer_prompt():
     switch_offer.terminal = saved
 
 
+# The shipped desktop notifier's real session check, for the tests of that check itself (`real_desktop_notifier`).
+from aew.harness import desktop_notifier as _desktop_notifier  # noqa: E402
+
+REAL_DESKTOP_PROBLEM = _desktop_notifier.problem
+NO_DESKTOP_IN_TESTS = "tests show no desktop notification"
+
+
+@pytest.fixture(autouse=True)
+def no_desktop_notification():
+    """No test shows a real desktop notification (the operator's no-popups rule): in process, the shipped default
+    notifier (`aew notify desktop`, register E104) is unavailable, so `show` refuses before it starts anything, and
+    Run's gate refuses the default as it would on a host with no desktop. A test of the check itself takes
+    `real_desktop_notifier`. The limit: an endpoint a test starts as its own process runs the real check (on Windows
+    the default is unavailable in V-01; on Linux it needs a session bus). (Not through ``monkeypatch``, for the reason
+    ``capability_register`` gives.)"""
+    _desktop_notifier.problem = lambda *a, **k: NO_DESKTOP_IN_TESTS
+    yield
+    _desktop_notifier.problem = REAL_DESKTOP_PROBLEM
+
+
+@pytest.fixture
+def real_desktop_notifier(monkeypatch):
+    """The desktop notifier's real session check, for its own tests: they pass each environment and platform."""
+    monkeypatch.setattr(_desktop_notifier, "problem", REAL_DESKTOP_PROBLEM)
+
+
 @pytest.fixture
 def repo(tmp_path) -> Path:
     return make_git_repo(tmp_path / "repo", {

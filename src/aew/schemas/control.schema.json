@@ -32,6 +32,37 @@
       "type": "integer",
       "minimum": 0
     },
+    "control_requests": {
+      "description": "Optional create identities for hot units in the current Lead generation.",
+      "type": "object",
+      "required": ["generation", "operations"],
+      "additionalProperties": false,
+      "properties": {
+        "generation": {"type": "integer", "minimum": 1},
+        "operations": {
+          "type": "object",
+          "propertyNames": {
+            "enum": ["work.create", "plan.propose", "invoke.create", "work.redispatch", "work.promote", "harness.launch"]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,64}$"},
+            "additionalProperties": {
+              "type": "object",
+              "required": ["arguments", "digest", "unit", "ref", "revision"],
+              "additionalProperties": false,
+              "properties": {
+                "arguments": {"type": "object", "additionalProperties": {"pattern": "^[0-9a-f]{12}$", "type": "string"}},
+                "digest": {"$ref": "#/$defs/sha256"},
+                "unit": {"type": "string"},
+                "ref": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
     "manifest_sha256": {
       "$ref": "#/$defs/sha256"
     },
@@ -638,7 +669,7 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]}
           ]
         }
       }

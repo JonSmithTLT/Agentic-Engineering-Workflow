@@ -279,7 +279,10 @@ def test_the_review_hint_names_its_stage_only_where_the_class_requires_verificat
         gates.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
         p.pin_policy()
     wid, _impl = implemented(p, tmp_path)
-    assert call(p, "ticket_request_review", work_id=wid)["ok"]
+    requested = call(p, "ticket_request_review", work_id=wid)
+    assert requested["ok"]
+    [invocation] = intent(p, requested)["steps"][1]["outputs"]["invocations"]
+    p.lead("invoke", "cancel", invocation, "--reason", "replace the hanging fixture reviewer")
     review(p, wid)
     [hint] = [h for h in hints(p, wid) if h.startswith("ingest review")]
     if verification:
@@ -531,7 +534,7 @@ def test_the_dashboard_flags_a_report_with_an_undisposed_marked_item(tmp_path):
     wid, _impl = implemented(p, tmp_path)
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     evidence = review(p, wid, findings=[MINOR])
-    plain = review(p, wid)
+    plain = review(p, wid, card="security_reviewer")
 
     def flags() -> dict[str, bool]:
         projector = Projector(StateReader(Engine.discover(p.root)).snapshot())

@@ -233,7 +233,6 @@ def test_interruption_does_not_bypass_failure_classification(tmp_path):
     p.lead('work', 'transition', wid, '--to', 'REVIEW_PENDING')
     p.lead('review', 'ingest', wid, '--evidence', review(p, wid))
     p.lead('work', 'transition', wid, '--to', 'VERIFY_PENDING')
-    p.lead('invoke', 'create', wid, '--role', 'verifier')
     failing = verify(p, wid, goal_result='fail')
     p.lead('verify', 'ingest', wid, '--evidence', failing)
     assert unit(p, wid)['state'] == 'VERIFICATION_FAILED'

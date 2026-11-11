@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from aew import operator
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
+from aew.engine.request_ids import INDEX
 from aew.engine.store import Transition
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
 from aew.harness import procs, seat
@@ -107,6 +108,7 @@ class Lead:
         lead = state["lead"]
         identity = seat.start_identity(kind)
         lead["generation"] += 1
+        state.pop(INDEX, None)
         at = utc_now()
         token = issue_token(state, "lead", {"generation": lead["generation"], "session_label": session_label})
         lead.update(

@@ -235,8 +235,7 @@ class LeadInboxFull(CoordinationLimit):
 
 
 class IdempotencyConflict(IllegalTransition):
-    """An idempotency id already names a message on the thread with other content (D-8): a retry must repeat the
-    original exactly, and a new message needs a new id."""
+    """A message or create request already committed with this id and different arguments."""
 
     code = "IDEMPOTENCY_CONFLICT"
 

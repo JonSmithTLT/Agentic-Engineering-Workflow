@@ -198,3 +198,83 @@ COVERED_BY_PREVIOUS: dict[str, frozenset[str]] = {
 
 
 CLASS_RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}
+
+
+class ControlOpSpec(NamedTuple):
+    revision_class: str
+    binding_or_guard: str
+    request_id: bool = False
+    variant: str | None = None
+
+
+# Transaction entries use a different namespace from stage primitives. A tuple
+# allows an entry to declare distinct rules for explicitly named variants.
+CONTROL_OP_SPECS: dict[str, tuple[ControlOpSpec, ...]] = {
+    "authority.accept": (ControlOpSpec("C", "candidate file SHA"),),
+    "authority.reject": (ControlOpSpec("C", "candidate file SHA"),),
+    "checkpoint": (ControlOpSpec("A", "Lead's own checkpoint"),),
+    "evidence.ingest": (ControlOpSpec("A", "current running attempt and evidence integrity"),),
+    "harness.launch": (ControlOpSpec("B", "current run id", request_id=True),),
+    "history.audit": (ControlOpSpec("A", "audited root still current"),),
+    "history.load": (ControlOpSpec("A", "duplicate ref guard"),),
+    "input.acknowledge": (ControlOpSpec("C", "authoritative commit and evidence SHA"),),
+    "integrate.breaker_reset": (ControlOpSpec("C", "breaker failure list"),),
+    "integrate.defer": (ControlOpSpec("B", "queue entry state"),),
+    "integrate.prepare": (ControlOpSpec("A", "candidate admission and lease guards"),),
+    "integrate.publish": (ControlOpSpec("A", "candidate binding and ref CAS"),),
+    "integrate.publishing": (ControlOpSpec("C", "candidate commit SHA"),),
+    "integrate.reconcile": (ControlOpSpec("A", "publishing lease, candidate binding and ref CAS"),),
+    "integrate.reorder": (ControlOpSpec("A", "queue scheduling guards"),),
+    "integrate.requeue": (ControlOpSpec("B", "queue entry state"),),
+    "integrate.validate": (ControlOpSpec("A", "candidate pins and run admission"),),
+    "integrate.validated": (ControlOpSpec("A", "candidate pins and current validation run"),),
+    "integrate.validation_abandoned": (ControlOpSpec("A", "current validation run"),),
+    "integrate.validation_released": (ControlOpSpec("A", "current validation run and lease"),),
+    "integrate.validation_unavailable": (ControlOpSpec("A", "current validation run"),),
+    "invoke.cancel": (ControlOpSpec("A", "named active invocation"),),
+    "invoke.create": (ControlOpSpec("A", "dispatch and active slot guards", request_id=True),),
+    "lead.acquire": (ControlOpSpec("A", "vacant Lead seat"),),
+    "lead.handoff.accept": (ControlOpSpec("A", "current handoff offer token"),),
+    "lead.handoff.cancel": (ControlOpSpec("A", "pending handoff state"),),
+    "lead.handoff.offer": (ControlOpSpec("A", "single pending handoff"),),
+    "lead.release": (ControlOpSpec("A", "active Lead seat with no active invocation"),),
+    "lead.resume": (ControlOpSpec("C", "Lead generation, recorded holder, leftovers and invocations shown"),),
+    "lead.takeover": (ControlOpSpec("C", "Lead generation shown"),),
+    "manifest.adopt": (ControlOpSpec("C", "SHAs of files shown"),),
+    "message.record_lead": (ControlOpSpec("A", "existing sender and thread idempotency id"),),
+    "migrate": (ControlOpSpec("A", "source schema and live-run guards"),),
+    "migrate.closure": (ControlOpSpec("A", "legacy closure pins recomputed under lock"),),
+    "plan.accept": (ControlOpSpec("C", "proposed plan SHA"),),
+    "plan.adopt": (ControlOpSpec("A", "named accepted evidence and its pinned SHA"),),
+    "plan.propose": (ControlOpSpec("A", "append a plan revision", request_id=True),),
+    "plan.reconfirm": (ControlOpSpec("C", "ancestor plan snapshot"),),
+    "review.ingest": (ControlOpSpec("A", "named evidence and its current input bindings"),),
+    "stage.abandon": (ControlOpSpec("A", "named intent and its committed steps"),),
+    "stage.close": (ControlOpSpec("A", "intent owner and state"),),
+    "stage.continue": (ControlOpSpec("C", "intent contract, plan and subject state digest"),),
+    "stage.open": (ControlOpSpec("A", "one unfinished intent per unit"),),
+    "stage.stop": (ControlOpSpec("A", "intent owner and state"),),
+    "steering.lower": (ControlOpSpec("B", "prior override record"),),
+    "steering.request": (ControlOpSpec("A", "append a request without granting an override"),),
+    "verify.classify": (ControlOpSpec("C", "failure evidence awaiting classification"),),
+    "verify.ingest": (ControlOpSpec("A", "named evidence and its current input bindings"),),
+    "verify.ingest.integration": (ControlOpSpec("A", "named evidence and its candidate and lease bindings"),),
+    "waive": (ControlOpSpec("C", "gate context", variant="gate"),
+              ControlOpSpec("A", "immutable finding id and unresolved status", variant="finding")),
+    "work.accept": (ControlOpSpec("C", "accepted execution record id"),),
+    "work.assign": (ControlOpSpec("A", "dispatch admission and active attempt guards"),),
+    "work.cancel": (ControlOpSpec("C", "cancellation cascade"),),
+    "work.close": (ControlOpSpec("C", "children digest"),),
+    "work.create": (ControlOpSpec("A", "new unit admission", request_id=True),),
+    "work.depend": (ControlOpSpec("A", "edge delta and cycle guard"),),
+    "work.dispatch": (ControlOpSpec("A", "in-lock dispatch decision"),),
+    "work.dispose": (ControlOpSpec("C", "anomaly subject record digest"),),
+    "work.gate_replace": (ControlOpSpec("C", "gate context and replacement definition"),),
+    "work.move": (ControlOpSpec("B", "current parent"),),
+    "work.promote": (ControlOpSpec("B", "current kind and parent", request_id=True),),
+    "work.reclassify": (ControlOpSpec("A", "raise-only risk class"),),
+    "work.reconcile": (ControlOpSpec("A", "interrupted work and transition guards"),),
+    "work.redispatch": (ControlOpSpec("A", "superseded attempt and dispatch guards", request_id=True),),
+    "work.staff": (ControlOpSpec("B", "role plan digest"),),
+    "work.transition": (ControlOpSpec("B", "from-state seen"),),
+}

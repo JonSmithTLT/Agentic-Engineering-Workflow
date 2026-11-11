@@ -100,7 +100,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Own slices left:** 2 — The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial — E228 — 1 PR and a measured trial (estimate)
 
-**Switch:** steering.mode — default: absent — not read from the code
+**Switch:** steering.mode — default: crawl — not read from the code
 
 **Wired:** tool:steering, cli:operator serve, cli:operator ping, cli:lead mode raise, cli:lead mode lower, lead_text
 

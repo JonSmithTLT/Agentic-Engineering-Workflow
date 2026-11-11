@@ -821,7 +821,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### HOLD-19
 
-**Work:** The register rows held on the adopted position A-19, operator intent: 1 row still held (F46) after the hold match of 2026-11-06 and F46.4's retirement into I-6 on 2026-11-11 (its note), each with its old title and source in Notes
+**Work:** The register rows held on the adopted position A-19, operator intent: 2 rows still held after the hold match of 2026-11-06, each with its old title and source in Notes
 
 **Source (governing):** the adopted position A-19; the register rebaseline (design workspace, `b598fdc`), section 5
 
@@ -2180,7 +2180,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled**, on SYS-04's finish line beside the scheduler's chain (E228)
 
-**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match, adding no scope to its build. The register PR of 2026-11-11 rewrote its Work to the re-decision: the 2026-11-06 "Hide both" now stands for `request_confirmation` only
+**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match, adding no scope to its build
 
 *Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 

@@ -1584,8 +1584,8 @@ sections:
       - The other members left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: E56, E58, F9, F9.1, F9.2, F33, F41.4, F45; merged as notes: E60 into E175, E78 into E174, F41.2 into E160, F41.14 into E101; dropped: E55, E57, E59, E64, F41, F41.1, F41.3, F41.5, F41.6
 
   - '#': HOLD-19
-    Work: 'The register rows held on the adopted position A-19, operator intent: 1 row still held (F46) after the hold match
-      of 2026-11-06 and F46.4''s retirement into I-6 on 2026-11-11 (its note), each with its old title and source in Notes'
+    Work: 'The register rows held on the adopted position A-19, operator intent: 2 rows still held after the hold match
+      of 2026-11-06, each with its old title and source in Notes'
     Source (governing): the adopted position A-19; the register rebaseline (design workspace, `b598fdc`), section 5
     Belongs to or gated by: '**After the trace.** The group leaves the hold only as the preamble''s *Keeping it current*
       says'
@@ -2925,9 +2925,8 @@ sections:
       same day to the designer''s questions: "yyes record SYS-47 that way, 1. yes but tell me about 2 and 3" (request_raise
       stays advertised) and "yes to 2" (no held system); the designer''s ruling of 2026-11-11 on SYS-04''s held items (`designer-decisions-2026-11-11-sys04-held-items.md`)'
     When: '**Unscheduled**, on SYS-04''s finish line beside the scheduler''s chain (E228)'
-    Notes: 'Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match,
-      adding no scope to its build. The register PR of 2026-11-11 rewrote its Work to the re-decision: the 2026-11-06 "Hide
-      both" now stands for `request_confirmation` only'
+    Notes: Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match,
+      adding no scope to its build
 
   - '#': E184
     Work: '`maps.pack_slices` on for every card: every role''s pack carries the bounded structural slice, not only the roles

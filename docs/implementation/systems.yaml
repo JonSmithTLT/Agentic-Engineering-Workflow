@@ -483,16 +483,15 @@ systems:
   - SYS-20
   switch:
     key: steering.mode
-    default: absent
-    default_evidence: src/aew/engine/steering.py:226-228 (policy_default reads steering.mode, None when absent); src/aew/policy/execution.py:32-75
-      (the execution template carries no steering block)
+    default: crawl
+    default_evidence: src/aew/policy/execution.py:76-89 (the execution template writes steering.mode crawl and notify.command
+      [aew, notify, desktop]; no mode is in effect until the operator first adopts it); src/aew/engine/steering.py:246 (policy_default)
     owner: operator
-    turning_on_changes: 'Adopting any steering.mode ends the tool''s not-configured refusal (engine/steering.py:425-429).
-      Adopting crawl makes crawl the standing, effective mode (:257-281): the loop thread in every Lead broker then stops
-      at CONFIRMATION_UNAVAILABLE on each eligible action instead of STEERING_OFF, because crawl confirms every step (:137-138)
-      and no confirmation exists yet. Adopting walk or run is a raise and changes nothing until the operator raises at `aew
-      operator serve --dev` (:271-274). A raise to run also needs notify.command, which the template leaves absent (:351-355).
-      Every record stays guarantee: dev.'
+    turning_on_changes: 'The template''s crawl becomes the standing mode at the operator''s first adoption (engine/steering.py:277,
+      on_adopt): the loop thread in every Lead broker then stops at CONFIRMATION_UNAVAILABLE on each step it could take,
+      for the Lead, and the default desktop notifier shows each stop once. RUN is opt-in: one `aew lead mode raise run` approved
+      at the operator endpoint (auto-started by `aew opencode`, or `aew operator serve --dev`), which also needs a deliverable
+      notifier (notifier_problem, :212) and a deadline_s on every routable profile. Every record stays guarantee: dev.'
   state:
     board_state: partly_built
     built: partly
@@ -528,12 +527,10 @@ systems:
     E229 and E230 are placed after the RUN trial and will be done (E229 for the unattended mission, E230 so a new Lead
     doesn''t reset the mode); E232, E240 and E249 are follow-ons. Nothing is held: E7c and E6b were superseded or lapsed
     on 2026-11-06, E7d''s custodian half is custody''s row (E349), E8b is F15.6''s at V-01, and F18.6 is a plain Unscheduled
-    row, released by a production-authority decision. This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
-    any time''. lower takes no approval, but it needs an effective mode above its target, and walk or run becomes effective
-    only by the operator''s raise at the --dev endpoint: an adopted walk or run default waits there as a pending raise,
-    and an adopted crawl leaves nothing lower. In a project with no steering.mode, which is the template''s default, every
-    action of the advertised tool, lower included, is refused as not configured. So today lower does something only after
-    an endpoint raise, and the text fix should say so.'
+    row, released by a production-authority decision. lower takes no approval, but it needs an effective mode above its
+    target, and walk or run becomes effective only by the operator''s raise at the endpoint, so lower does something only
+    after a raise; a project made before the template wrote steering.mode refuses every action as not configured. The
+    text fix (E183) says so.'
   evidence:
   - src/aew/engine/steering.py:3 (the project default is execution policy's steering.mode; absent is legacy/manual)
   - 'src/aew/engine/steering.py:56-58 (RANK: absent and crawl rank together, 0)'
@@ -548,7 +545,8 @@ systems:
   - 'src/aew/engine/steering.py:391-393 (request: _require_configured)'
   - src/aew/engine/steering.py:419-421 (a request grants nothing until the operator acts)
   - src/aew/engine/steering.py:425-429 (_require_configured raises SteeringNotConfigured)
-  - 'src/aew/policy/execution.py:32-75 (execution template: no steering, notify or deadline keys)'
+  - 'src/aew/policy/execution.py:76-89 (the execution template: steering.mode crawl and the default desktop notifier; first
+    configuration writes deadline_s with deadline_scope run)'
   - src/aew/harness/steering_loop.py:69 and :405-406 (STEERING_OFF when no mode is in force)
   - src/aew/harness/steering_loop.py:78 and :432-436 (CONFIRMATION_UNAVAILABLE)
   - src/aew/harness/lead_broker.py:271-275 and :286-287 (the loop is built and started with every Lead broker)

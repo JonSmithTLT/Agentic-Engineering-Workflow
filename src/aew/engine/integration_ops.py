@@ -13,6 +13,8 @@ reconciled by inspecting git — success is never inferred.
 from __future__ import annotations
 
 import copy
+import textwrap
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,7 +39,7 @@ from aew.errors import (
     StaleRevision,
     UsageError,
 )
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, redact
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -58,6 +60,55 @@ if TYPE_CHECKING:
 # publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
 FINISH_ATTEMPTS = 3
 PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when the Ticket is left `publishing`
+
+# Match the rebuild summary's SHA length in _moved_head.
+_MOVED_HEAD_SHA = 12
+# Match readable.py's ROW and WHY_ROWS. Reserve one row after the names for the refusal's remedy.
+_MOVED_HEAD_ROW = 72
+_MOVED_HEAD_ROWS = 6
+# Follow _build_candidate's persisted conflict-path cap. The readable row budget usually binds first.
+_MOVED_HEAD_PATHS = 50
+# The message owns the curly quote delimiters around each displayed name.
+_MOVED_NAME_PUNCTUATION = str.maketrans({"`": "｀", "“": "′", "”": "′", '"': "′"})
+
+
+def _display_name(text: str) -> str:
+    return redact("".join(c for c in text if not unicodedata.category(c).startswith("C"))).translate(
+        _MOVED_NAME_PUNCTUATION)
+
+
+def _moved_head_diagnostic(repo: Path, moved: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    current = moved["current"]
+    subject, count = I.head_subject_and_count(repo, moved["expected"], current) if current is not None else (None, None)
+    if current is None:
+        prefix = "The moved commit couldn't be named because the authoritative ref is gone."
+    elif subject is None:
+        prefix = (f"Moved head {current[:_MOVED_HEAD_SHA]}. The commit couldn't be named fully because Git could not "
+                  "read its subject.")
+    else:
+        shown = " ".join(_display_name(subject).split())
+        if len(shown) > _MOVED_HEAD_ROW:
+            shown = shown[:_MOVED_HEAD_ROW - 1] + "…"
+        prefix = f"Moved head {current[:_MOVED_HEAD_SHA]} “{shown or '(no subject)'}”"
+        if count is None:
+            prefix += " (Git could not count the intervening commits)"
+        elif count > 1:
+            prefix += f" ({count} commits)"
+        prefix += "."
+    if moved.get("why") == "conflict":
+        paths = moved["paths"]
+        prefix += f" Conflicting paths ({len(paths)}):"
+        names: list[str] = []
+        for path in paths:
+            name = " ".join(_display_name(path).split())
+            name = f"“{name}”"
+            trial = f"{prefix} {', '.join([*names, name])}."
+            if len(textwrap.wrap(trial, _MOVED_HEAD_ROW)) < _MOVED_HEAD_ROWS:
+                names.append(name)
+                if len(names) == _MOVED_HEAD_PATHS:
+                    break
+        prefix += f" {', '.join(names)}." if names else " see paths in the details."
+    return prefix, {"head_subject": subject, "commit_count": count}
 
 
 def _publish_unfinished(work_id: str) -> str:
@@ -676,17 +727,19 @@ class Integration:
                                 "publish (M4-E E6a)" if V.obligation(
                                     ctx.state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS
                                 else "rerun post-integration verification on it, then publish")}
+        names, detail = _moved_head_diagnostic(self.k.repo_root, moved)
+        detail.update((k, v) for k, v in moved.items() if k != "outcome")
         if moved["outcome"] == "stale":
-            raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
-                                 revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
+            raise StaleCandidate(f"{names} The authoritative ref moved since the candidate was built. Rebuild and "
+                                 "revalidate.", revision=revision, **detail)
         reasons = {"head_moved_again": "the authoritative head moved again after the one automatic rebuild",
                    "legality_changed": "the integration is no longer legal on the moved head",
                    "conflict": "the rebuild on the moved head conflicts",
                    "refused": "the rebuilt candidate was refused at admission",
                    "not_provably_unpublished": "the ref no longer proves the candidate unpublished"}
-        raise StaleCandidate(f"{reasons[moved['why']]}: the queue entry waits for the Lead's disposition (`aew "
-                             "integrate requeue` to try again, or return the Ticket to RUNNING)",
-                             queue=queue, revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
+        raise StaleCandidate(f"{names} {reasons[moved['why']].capitalize()}: the queue entry waits for the Lead's "
+                             "disposition (`aew integrate requeue` to try again, or return the Ticket to RUNNING)",
+                             queue=queue, revision=revision, **detail)
 
     # ---- `integrate.publish`'s guard as a query (M4-E E4b; aew.engine.guards)
 

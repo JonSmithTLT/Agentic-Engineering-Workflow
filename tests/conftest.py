@@ -183,7 +183,12 @@ class Project:
         return res.json
 
     def rev(self) -> int:
-        return self.ok("lead", "show")["revision"]
+        """The committed control revision, read as `aew lead show` reads it (``lead_show``: the store's ``current``,
+        under the control lock and after recovery, as any writer process reads it), but in this process: before every
+        Lead call, a second `aew` process cost about 1.4 s on Windows and a quarter of a Lead-heavy test's time."""
+        from aew.engine.api import Engine
+
+        return Engine.discover(self.root).lead_show()["revision"]
 
     def lead(self, *args: str) -> Any:
         """Run a Lead mutation with the current token and revision."""

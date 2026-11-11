@@ -78,7 +78,8 @@ def test_the_hand_listed_tables_have_distinct_keys():
     assert len(set(fields)) == len(fields)
     assert not set(systems.GENERATED) & set(fields)
     for table in (systems.TOP_FIELDS, systems.STATE_FIELDS, systems.SWITCH_FIELDS, systems.SLICE_FIELDS,
-                  systems.CLAIM_FIELDS, systems.LISTS, systems.TEXTS, systems.HOLD_REFUSED):
+                  systems.CLAIM_FIELDS, systems.LISTS, systems.TEXTS, systems.HOLD_REFUSED, systems.ALLOWANCE_FIELDS,
+                  systems.HAND_WIRED):
         assert len(set(table)) == len(table), table
     for allowed in systems.ENUMS.values():
         assert len(set(allowed)) == len(allowed), allowed
@@ -115,6 +116,7 @@ def board() -> dict[str, Any]:
                   switch={"key": "a.b", "default": "off", "default_evidence": "src/pkg/a.py:1 (the default)",
                           "owner": "operator", "turning_on_changes": "one line"}),
             entry("SYS-02", register=["E2"], depends_on=["SYS-01"], serves_pending=["HOLD-01"],
+                  remaining=[{"slice": "E2: the work", "row": "E2", "estimate": "1 PR"}],  # partly built, so work left
                   evidence=["E2 on the Now list", "designer-decisions-2026-11-06.md item 3", "#12 is two digits",
                             "future-work.yaml (row E2)"]),
         ],
@@ -123,7 +125,8 @@ def board() -> dict[str, Any]:
 
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
-    for name in ("docs/design/a.md", "src/pkg/a.py", "src/pkg/b.py"):
+    for name in ("docs/design/a.md", "src/pkg/a.py", "src/pkg/b.py", "src/aew/policy/execution.py",
+                 "src/aew/knowledge/manifest.py"):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_bytes(b"x\n")
     (tmp_path / "src" / "empty").mkdir()
@@ -134,7 +137,10 @@ def tree(tmp_path: Path) -> Path:
 def own(tree: Path) -> Any:
     return systems.Owners(root=tree, rows=frozenset({"E1", "E2", "E3", "E4", "F1", "F9", "HOLD-01", "HOLD-02"}),
                           open_rows=frozenset({"E1", "E2", "E3", "E4", "HOLD-01"}),
-                          now_rows=frozenset({"E1", "E2", "E3"}), records=frozenset({"modules:pkg.a", "modules:pkg.b"}))
+                          now_rows=frozenset({"E1", "E2", "E3"}), records=frozenset({"modules:pkg.a", "modules:pkg.b"}),
+                          gate_defaults={"mutating_concurrency": 2, "local_checks": ["unit"]},
+                          string_switches={("maps", "pack_slices"): ("off", "structural"),
+                                           ("coordination", "messaging"): ("disabled", "enabled")})
 
 
 def found(own: Any, change: Callable[[dict[str, Any]], Any] | None = None, *, text: Callable[[str], str] | None = None,
@@ -171,6 +177,10 @@ def _set(sid: str, path: str, value: Any) -> Callable[[dict[str, Any]], None]:
 
 def _drop(sid: str, key: str) -> Callable[[dict[str, Any]], None]:
     return lambda data: sys_(data, sid).pop(key)
+
+
+def checked_switch(**fields):
+    return {"key": "maps.pack_slices", "default": "off", "default_evidence": systems.SWITCH_SOURCE, **fields}
 
 
 PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
@@ -237,12 +247,28 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
     "a Windows absolute path": ("public", _set("SYS-01", "evidence", ["C:/work/aew/src/pkg/a.py:1"])),
     "a POSIX absolute path": ("public", _set("SYS-01", "evidence", ["/home/someone/aew/src/pkg/a.py:1"])),
     "a stale rendered page": ("rendered", _set("SYS-01", "name", "Changed name")),
+    "a default differs from its table": ("default", _set("SYS-01", "switch", checked_switch(default="structural"))),
+    "on_by_default disagrees with the pair": ("on_by_default", lambda d: (
+        sys_(d, "SYS-01").update(switch=checked_switch()), sys_(d, "SYS-01")["state"].update(on_by_default=True))),
+    "an unknown wired prefix": ("wired", _set("SYS-01", "state.wired", ["api:x"])),
+    "a closed non-hold slice": ("stale_slice", _set("SYS-01", "remaining", [
+        {"slice": "closed work", "row": "F1", "estimate": "1 PR"}])),
+    "a count above the limit": ("wip", lambda d: d.update(wip_limit=1)),
+    "a stale allowance": ("allowance", lambda d: d.update(wip_allowance={
+        "count": 14, "operator": "I allow 14 systems", "date": "2026-11-10"})),
+    "table evidence on a hand-kept key": ("default", _set("SYS-01", "switch.default_evidence", systems.SWITCH_SOURCE)),
+    # the operator's sign-off, and the lag rule (the operator, 2026-11-10)
+    "a malformed sign-off": ("schema", _set("SYS-01", "signoff", {"date": "2026-11-10"})),
+    "on_and_used without a sign-off": ("signoff", _set("SYS-01", "state.board_state", "on_and_used")),
+    "a sign-off on another state": ("signoff", _set("SYS-01", "signoff", {"date": "2026-11-10", "words": "ok"})),
+    "a zero-slice partly built system": ("lag", _set("SYS-02", "remaining", [])),
 }
 
 
 def test_every_rule_has_a_planted_case():
     rules = {"schema", "generated", "design", "register", "remaining", "as_built", "touches", "switch",
-             "depends_on", "owner", "unowned", "hold", "lint", "public", "rendered"}
+             "depends_on", "owner", "unowned", "hold", "lint", "public", "rendered", "default", "on_by_default",
+             "wired", "stale_slice", "wip", "allowance", "signoff", "lag"}
     assert {rule for rule, _ in PLANTED.values()} == rules
 
 
@@ -372,12 +398,104 @@ def test_the_limit_count_is_format_rule_one(state, rec):
     assert systems.counted_systems(data) == (["SYS-01"] if expected else [])
 
 
+# ------------------------------------------------------------------ the operator's sign-off (the operator, 2026-11-10)
+
+SIGNOFF = {"date": "2026-11-10", "words": "tested it, signed off"}
+
+
+def _state(sid: str, state: str, **fields: Any) -> Callable[[dict[str, Any]], None]:
+    def change(data: dict[str, Any]) -> None:
+        sys_(data, sid)["state"]["board_state"] = state
+        sys_(data, sid).update(fields)
+    return change
+
+
+@pytest.mark.parametrize("rec", ["finish", "switch_on"])
+def test_a_system_awaiting_signoff_is_not_counted_toward_the_limit(rec):
+    data = board()
+    data["wip_limit"] = 1
+    for e in data["systems"]:
+        e["recommendation"] = rec
+    assert systems.counted_systems(data) == ["SYS-01", "SYS-02"]
+    data["systems"][1]["state"]["board_state"] = systems.AWAITING
+    assert systems.counted_systems(data) == ["SYS-01"] and systems.limit_problems(data) == []
+
+
+def test_on_and_used_without_the_operators_signoff_is_refused(own):
+    [problem] = found(own, _state("SYS-01", "on_and_used"))
+    assert (problem.check, problem.where) == ("signoff", "SYS-01")
+    assert "no sign-off" in problem.text and "awaiting_signoff" in problem.text
+    assert found(own, _state("SYS-01", "on_and_used", signoff=dict(SIGNOFF))) == []
+
+
+@pytest.mark.parametrize("state", [s for s in systems.ENUMS[("state", "board_state")] if s != "on_and_used"])
+def test_a_signoff_on_any_state_but_on_and_used_is_refused(state):
+    data = board()
+    data["systems"][0]["state"]["board_state"] = state
+    data["systems"][0]["signoff"] = dict(SIGNOFF)
+    [problem] = systems.signoff_problems(data)
+    assert problem.where == "SYS-01" and state in problem.text and "remove the sign-off" in problem.text
+
+
+@pytest.mark.parametrize("signoff", [{"date": "2026-11-10"}, {"words": "yes"}, "yes", {**SIGNOFF, "by": "x"},
+                                     {**SIGNOFF, "words": " "}, {**SIGNOFF, "date": "2026-02-30"},
+                                     {**SIGNOFF, "date": "10 Nov 2026"}])
+def test_a_malformed_signoff_is_refused_by_the_schema(signoff):
+    data = board()
+    data["systems"][0].update(state={**data["systems"][0]["state"], "board_state": "on_and_used"}, signoff=signoff)
+    assert any("signoff" in p.text for p in systems.schema_problems(data))
+
+
+def test_signoff_words_are_exempt_from_lint_but_never_from_the_public_guard(own):
+    words = {"date": "2026-11-10", "words": "Now 5 is fine, #123 too"}
+    assert found(own, _state("SYS-01", "on_and_used", signoff=words)) == []
+    private = {**words, "words": words["words"] + " AEW-plans/x"}
+    assert {p.check for p in found(own, _state("SYS-01", "on_and_used", signoff=private))} == {"public"}
+
+
+@pytest.mark.parametrize("state", systems.BUILDING)
+def test_the_lag_check_fires_for_a_zero_slice_building_system(own, state):
+    [problem] = found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _state("SYS-02", state)(d)))
+    assert (problem.check, problem.where) == ("lag", "SYS-02")
+    assert problem.text == (f"SYS-02 has no own slices left but is still {state}: move it to awaiting_signoff, or to "
+                            "on_and_used with the operator's sign-off")
+
+
+def test_a_slice_riding_on_another_systems_row_leaves_no_own_slice(own):
+    """The lag rule counts own slices, as the board does: a slice on another system's row is that system's work."""
+    rider = [{"slice": "rides on SYS-01's E1", "row": "E1", "estimate": "inside SYS-01's"}]
+    assert {p.check for p in found(own, _set("SYS-02", "remaining", rider))} == {"lag"}
+
+
+@pytest.mark.parametrize("rec", ["freeze", "cut", "keep"])
+def test_the_lag_check_spares_a_frozen_cut_or_kept_system(own, rec):
+    assert found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _set("SYS-02", "recommendation", rec)(d))) == []
+
+
+@pytest.mark.parametrize("state", ["awaiting_signoff", "designed_only"])
+def test_the_lag_check_spares_a_zero_slice_system_out_of_the_building_states(own, state):
+    assert found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _state("SYS-02", state)(d))) == []
+
+
+def test_the_totals_list_the_systems_waiting_on_the_operators_signoff():
+    data = board()
+    text = systems.render_markdown(data, {})
+    assert "**Waiting on your sign-off:** 0 — none\n" in text
+    assert "**awaiting_signoff (built, awaiting your sign-off):** 0 — none\n" in text
+    for e in data["systems"]:
+        e["state"]["board_state"] = systems.AWAITING
+    text = systems.render_markdown(data, {})
+    assert "**Waiting on your sign-off:** 2 — SYS-01, SYS-02\n" in text
+    assert "**awaiting_signoff (built, awaiting your sign-off):** 2 — SYS-01, SYS-02\n" in text
+    assert "**Limit's count / wip_limit:** 0 / 12 — none" in text
+
+
 def board_copy(root, data=None):
     data = board() if data is None else data
     path = root / systems.SYSTEMS
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
-    register = {"sections": [{"number": 1, "intro": "| 1 | closed: F1 | closed |\n| 2 | E2 | second |\n"
+    register = {"sections": [{"number": 1, "title": "Now", "intro": "| 1 | closed: F1 | closed |\n| 2 | E2 | second |\n"
                              "| 3 | E1 | first |\n| 4 | E1 | again |", "rows": []}]}
     (root / systems.REGISTER).write_text(yaml.safe_dump(register), encoding="utf-8", newline="\n")
     return data
@@ -461,3 +579,300 @@ def test_register_render_refreshes_board_and_check_reports_staleness(tmp_path, m
     assert systems.MARKDOWN in capsys.readouterr().out
     assert register.render(tmp_path) == []
     assert register.main(["check"]) == 0
+
+
+@pytest.mark.parametrize("change", [
+    {"default": "structural"}, {"key": "maps.pack_slice"}, {"default_evidence": "src/aew/policy/execution.py:148"},
+])
+def test_wrong_switch_facts_name_the_table_and_fix(own, change):
+    data = board()
+    data["systems"][0]["switch"] = checked_switch(**change)
+    found = systems.switch_problems(data, own)
+    assert found and all(p.check == "default" and p.where == "SYS-01" for p in found)
+    assert all(systems.SWITCH_SOURCE in p.text for p in found)
+
+
+@pytest.mark.parametrize("missing", ["default", "default_evidence"])
+def test_missing_checked_switch_facts_are_refused(own, missing):
+    data = board()
+    switch = checked_switch()
+    switch.pop(missing)
+    data["systems"][0]["switch"] = switch
+    assert systems.switch_problems(data, own)[0].check == "default"
+
+
+def test_scalar_gate_string_comparison_suffix_and_non_scalar_refusal(own):
+    data = board()
+    e = data["systems"][0]
+    e["switch"] = {"key": "gates.mutating_concurrency (new projects)", "default": "2",
+                   "default_evidence": systems.GATE_SOURCE}
+    assert systems.switch_problems(data, own) == []  # code holds an int, data holds text
+    e["switch"]["default"] = "3"
+    assert systems.switch_problems(data, own)[0].check == "default"
+    e["switch"]["key"] = "gates.local_checks"
+    assert "not a scalar" in systems.switch_problems(data, own)[0].text
+    e["switch"]["key"] = "gates.missing"
+    assert "fix the key" in systems.switch_problems(data, own)[0].text
+    e["switch"] = checked_switch(key="maps.pack_slices (execution policy)")
+    assert systems.switch_problems(data, own) == []
+
+
+@pytest.mark.parametrize("value", ["word", 2, 1.5, True, None])
+def test_each_scalar_gate_default_compares_as_text(own, value):
+    data = board()
+    data["systems"][0]["switch"] = {"key": "gates.sample", "default": str(value),
+                                   "default_evidence": systems.GATE_SOURCE}
+    own = replace(own, gate_defaults={"sample": value})
+    assert systems.switch_problems(data, own) == []
+
+
+@pytest.mark.parametrize("value", [["unit"], {"checks": ["unit"]}])
+def test_non_scalar_gate_defaults_are_not_switches(own, value):
+    data = board()
+    data["systems"][0]["switch"] = {"key": "gates.sample", "default": str(value),
+                                   "default_evidence": systems.GATE_SOURCE}
+    own = replace(own, gate_defaults={"sample": value})
+    assert "not a scalar" in systems.switch_problems(data, own)[0].text
+
+
+@pytest.mark.parametrize("values, on", [(('off', 'on'), False), (('on', 'off'), True),
+                                       (('disabled', 'enabled'), False), (('enabled', 'disabled'), True)])
+def test_off_on_pairs_check_the_boolean_in_both_directions(own, values, on):
+    data = board()
+    data["systems"][0]["switch"] = checked_switch(default=values[0])
+    data["systems"][0]["state"]["on_by_default"] = on
+    own = replace(own, string_switches={("maps", "pack_slices"): values})
+    assert systems.switch_problems(data, own) == []
+    data["systems"][0]["state"]["on_by_default"] = not on
+    [problem] = systems.switch_problems(data, own)
+    assert problem.check == "on_by_default"
+
+
+def test_non_binary_switch_is_checked_without_inventing_an_on_state(own):
+    data = board()
+    data["systems"][0]["switch"] = checked_switch(default="compact")
+    own = replace(own, string_switches={("maps", "pack_slices"): ("compact", "standard")})
+    assert systems.switch_problems(data, own) == []
+
+
+def test_every_table_namespace_is_checked_and_other_namespaces_remain_hand_kept(own):
+    own = replace(own, string_switches={("future_block", "feature"): ("off", "on")})
+    for key in ("future_block.feature", "future_block.typo", "gates.mutating_concurrency"):
+        assert systems.switch_source({"key": key}, own.string_switches)
+    for key in ("containment.mode", "steering.mode", "policy.pricing", 'MODES["O-CMD"]'):
+        data = board()
+        data["systems"][0]["switch"] = {"key": key, "default": "hand-kept"}
+        assert systems.switch_source(data["systems"][0]["switch"], own.string_switches) is None
+        assert systems.switch_problems(data, own) == []
+    data = systems.read_board(ROOT)
+    real = owners_at_head()
+    assert systems.switch_problems(data, real) == []
+    for e in data["systems"]:
+        if "switch" not in e:
+            continue
+        key = e["switch"]["key"].split(" ", 1)[0]
+        checked = systems.switch_source(e["switch"], real.string_switches)
+        assert bool(checked) == (key.startswith("gates.") or key.split(".", 1)[0]
+                                 in {block for block, _ in real.string_switches})
+        if checked:
+            assert e["switch"]["default_evidence"] == checked
+
+
+@pytest.mark.parametrize("evidence", [systems.GATE_SOURCE, systems.SWITCH_SOURCE])
+def test_hand_kept_switch_cannot_claim_either_code_table(own, evidence):
+    data = board()
+    data["systems"][0]["switch"] = {"key": "steering.mode", "default": "absent", "default_evidence": evidence}
+    [problem] = systems.switch_problems(data, own)
+    assert problem.check == "default" and "hand-kept" in problem.text and "replace default_evidence" in problem.text
+    data["systems"][0]["switch"]["default_evidence"] = "src/pkg/a.py:1"
+    assert systems.switch_problems(data, own) == []
+
+
+def test_renderer_labels_planted_evidence_without_importing_policy_tables(own, monkeypatch):
+    data = board()
+    data["systems"][0]["switch"] = checked_switch(key="planted.feature")
+    own = replace(own, string_switches={("planted", "feature"): ("off", "on")})
+    assert systems.switch_problems(data, own) == []
+    monkeypatch.setattr(systems, "code_tables", lambda *args: pytest.fail("render must not import policy tables"))
+    text = systems.render_markdown(data, {})
+    assert f"**Switch:** planted.feature — default: off — checked against {systems.SWITCH_SOURCE}" in text
+    assert "**Switch defaults not read from the code:** 0 — none\n" in text
+    assert "**Hand-kept wiring (no reference record):** 0 — none\n" in text
+    assert not any(line.endswith(" — ") for line in text.splitlines())
+
+
+@pytest.mark.parametrize("claim, record", [("cli:command", "cli-commands:command"),
+                                         ("dashboard:/route/{id}", "dashboard-routes:/route/{id}"),
+                                         ("tool:explain", "tools:explain")])
+def test_wired_claims_require_their_own_reference_family(own, claim, record):
+    data = board()
+    data["systems"][0]["state"]["wired"] = [claim]
+    assert systems.wired_problems(data, replace(own, records=frozenset({record}))) == []
+    [problem] = systems.wired_problems(data, own)
+    assert problem.check == "wired" and record in problem.text and "correct or remove" in problem.text
+
+
+def test_hand_kept_wiring_is_allowed_but_unknown_prefixes_are_not(own):
+    data = board()
+    data["systems"][0]["state"]["wired"] = ["lead_text", "pack"]
+    assert systems.wired_problems(data, own) == []
+    data["systems"][0]["state"]["wired"] = ["lead_text:made_up", "unknown:route", "cli:"]
+    assert len(systems.wired_problems(data, own)) == 3
+    data["systems"][0]["state"]["wired"] = []
+    assert systems.wired_problems(data, own) == []
+
+
+def test_stale_slices_keep_the_hold_rule_as_the_single_reporter(own):
+    data = board()
+    assert systems.stale_slice_problems(data, own) == []
+    data["systems"][0]["remaining"] = [{"slice": "done", "row": "F1", "estimate": "e"}]
+    [problem] = systems.stale_slice_problems(data, own)
+    assert problem.check == "stale_slice" and "F1" in problem.text and "row owed" in problem.text
+    data["systems"][0]["remaining"][0]["row"] = "E1"
+    assert systems.stale_slice_problems(data, own) == []
+    problems = found(own, _set("SYS-02", "remaining", [{"slice": "held", "row": "HOLD-02", "estimate": "e"}]))
+    assert [p.check for p in problems] == ["hold"]
+
+
+@pytest.mark.parametrize("count, cap, rule", [(0, None, None), (1, None, None), (2, None, None),
+                                          (3, None, "wip"), (3, 3, None), (4, 3, "wip"),
+                                          (1, 3, "allowance"), (2, 3, "allowance")])
+def test_wip_limit_and_allowance_boundaries(count, cap, rule):
+    data = board()
+    data["wip_limit"] = 2
+    data["systems"] = [entry(f"SYS-{n:02}") for n in range(1, count + 1)]
+    if cap is not None:
+        data["wip_allowance"] = {"count": cap, "operator": "I allow this", "date": "2026-11-10"}
+    problems = systems.limit_problems(data)
+    assert [p.check for p in problems] == ([rule] if rule else [])
+    if rule == "wip":
+        assert all(e["id"] in problems[0].text for e in data["systems"])
+        if cap is not None:
+            assert f"exceeds the operator's allowance of {cap} (wip_limit 2)" in problems[0].text
+            assert "revised" in problems[0].text
+        data["wip_allowance"] = {"count": count, "operator": "I approve the revised cap", "date": "2026-11-10"}
+        assert systems.limit_problems(data) == []
+
+
+@pytest.mark.parametrize("changes", [{"count": 12}, {"count": 11}, {"count": True}, {"count": "14"},
+                                     {"operator": ""}, {"operator": "   "}, {"date": "2026-02-30"},
+                                     {"date": "2026-1-10"}, {"date": None}, {"unexpected": "x"}])
+def test_malformed_allowance_schema(changes):
+    data = board()
+    data["wip_allowance"] = {"count": 14, "operator": "I allow 14", "date": "2026-11-10", **changes}
+    assert any(p.where == "wip_allowance" for p in systems.schema_problems(data))
+
+
+def test_allowance_date_must_be_quoted_and_all_fields_present():
+    data = board()
+    data["wip_allowance"] = {"count": 14, "operator": "I allow 14", "date": "2026-11-10"}
+    assert systems.schema_problems(data) == []
+    text = yaml.safe_dump(data).replace("'2026-11-10'", "2026-11-10")
+    assert any("quoted" in p.text for p in systems.schema_problems(systems.load(text)))
+    for key in systems.ALLOWANCE_FIELDS:
+        broken = copy.deepcopy(data)
+        broken["wip_allowance"].pop(key)
+        assert systems.schema_problems(broken)
+
+
+def test_operator_words_are_exempt_from_lint_but_never_from_the_public_guard(own):
+    def allowance(data):
+        data.update(wip_limit=1, wip_allowance={"count": 2, "operator": "I allow Now 5 and #123 until done",
+                                              "date": "2026-11-10"})
+
+    assert found(own, allowance) == []
+
+    def private(data):
+        allowance(data)
+        data["wip_allowance"]["operator"] += " AEW-plans/private"
+
+    assert "public" in {p.check for p in found(own, private)}
+
+
+def test_render_labels_hand_kept_facts_and_prints_allowance_words_and_date():
+    data = board()
+    data["wip_allowance"] = {"count": 14, "operator": "I allow 14 until the session closes", "date": "2026-11-10"}
+    data["systems"][0]["state"]["wired"] = ["lead_text", "pack"]
+    text = systems.render_markdown(data, {})
+    assert "**Switch defaults not read from the code:** 1 — SYS-01" in text
+    assert "a.b" in text and "**Hand-kept wiring (no reference record):** 1 — SYS-01" in text
+    assert "SYS-01: lead_text, pack" in text
+    allowance = next(line for line in text.splitlines() if line.startswith("**Operator allowance:**"))
+    assert all(word in allowance for word in ("14", "2026-11-10", data["wip_allowance"]["operator"]))
+    assert "SYS-01" not in allowance and "SYS-02" not in allowance
+    assert "only the cap and staleness are checked; the words' conditions are not checked" in allowance
+    assert "re-runs `python tools/systems.py check` against current main" in text
+    assert systems.public_problems(text) == []
+
+
+def test_allowance_conditions_are_labelled_not_interpreted():
+    data = board()
+    data["wip_limit"] = 2
+    data["systems"] = [entry(f"SYS-{n:02}") for n in range(1, 5)]
+    data["wip_allowance"] = {"count": 4, "operator": "No new starts; lapses when SYS-01 and SYS-02 close",
+                             "date": "2026-11-10"}
+    for closed in (1, 2):  # swap at cap, or a start after the named lapse, both remain numerically covered
+        changed = copy.deepcopy(data)
+        for e in changed["systems"][:closed]:
+            e["recommendation"] = "done"
+        changed["systems"].append(entry("SYS-05"))
+        assert systems.limit_problems(changed) == []
+        text = systems.render_markdown(changed, {})
+        allowance = next(line for line in text.splitlines() if line.startswith("**Operator allowance:**"))
+        assert "the words' conditions are not checked" in allowance
+        assert "SYS-03" not in allowance and "SYS-04" not in allowance and "SYS-05" not in allowance
+
+
+def test_request_economy_tracks_the_leads_existing_open_row():
+    data, own = systems.read_board(ROOT), owners_at_head()
+    e = sys_(data, "SYS-06")
+    slices = [s for s in e["remaining"] if "request-economy" in s["slice"]]
+    assert len(slices) == 1 and slices[0]["row"] == "E162" and "E162" in own.open_rows
+    assert all(s["row"] != "E139" for s in e["remaining"])
+
+
+def test_unreadable_code_or_reference_is_exit_two_not_no_problem(monkeypatch, tmp_path, capsys):
+    import builtins
+
+    importer = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name == "aew.knowledge.manifest":
+            raise ImportError("table unavailable")
+        return importer(name, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "__import__", missing)
+        with pytest.raises(systems.SystemsError, match="table unavailable"):
+            systems.code_tables(ROOT)
+        assert systems.main(["check"]) == 2
+        assert "table unavailable" in capsys.readouterr().err
+    with pytest.raises(systems.SystemsError, match="this checkout"):
+        systems.code_tables(tmp_path)
+    reference = systems._tool("reference")
+
+    def unreadable(root):
+        raise ImportError("reference unavailable")
+
+    monkeypatch.setattr(reference, "render_files", unreadable)
+    with pytest.raises(systems.SystemsError, match="reference unavailable"):
+        systems.reference_records(ROOT)
+
+
+def test_owners_read_the_tables_after_the_reference(tmp_path, monkeypatch):
+    board_copy(tmp_path)
+    order = []
+
+    def reference(root):
+        order.append("reference")
+        return frozenset()
+
+    def tables(root):
+        order.append("tables")
+        raise systems.SystemsError("tables unavailable")
+
+    monkeypatch.setattr(systems, "reference_records", reference)
+    monkeypatch.setattr(systems, "code_tables", tables)
+    with pytest.raises(systems.SystemsError, match="tables unavailable"):
+        systems.owners(tmp_path)
+    assert order == ["reference", "tables"]

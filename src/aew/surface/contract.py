@@ -16,8 +16,12 @@ pin it, is never listed, and a call to it is refused before the runner.
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, NamedTuple
 
+from aew import priority_levels
+from aew.coordination import layout as L
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -68,6 +72,7 @@ class Tool(NamedTuple):
     # Per step of ``expands_to``: the inputs of its guard that an earlier step produces, as ((input, step), ...)
     # (M4-E E4). Presentation of availability only: the stage's commits decide, and the intent does not bind it.
     produced_by: tuple[tuple[tuple[str, int], ...], ...] = ()
+    switch: str | None = None  # presentation only; the engine checks adopted policy again when recording
 
     @property
     def built(self) -> bool:
@@ -98,6 +103,8 @@ EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result'
 WORK_ID_PATTERN = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}
 WORK_ID = {**WORK_ID_PATTERN, "description": "e.g. T-0012"}
 TEXT = {"type": "string", "description": "free text"}
+# A Ticket's priority levels (register E227), from their engine-free owner: the MCP process serves this list.
+PRIORITY_LEVELS: list[str] = list(priority_levels.LEVELS)
 EVIDENCE_ID = {"type": "string", "minLength": 1, "description": "the evidence id you inspected"}
 EXECUTION = _obj({
     "profile": {"type": "string", "minLength": 1},
@@ -161,6 +168,12 @@ EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.muta
 
 # ---------------------------------------------------------------------------------------------- the catalog
 
+MESSAGING = "coordination.messaging"
+ALL_SWITCHES = frozenset({MESSAGING})
+ENV_SWITCHES = "AEW_LEAD_SURFACE_SWITCHES"
+_SWITCH_TOOLS: dict[str, Tool] = {}
+
+
 def _catalog(*tools: Tool) -> dict[str, Tool]:
     out: dict[str, Tool] = {}
     for t in tools:
@@ -168,13 +181,18 @@ def _catalog(*tools: Tool) -> dict[str, Tool]:
             raise ValueError(f"tool {t.name}: unknown kind, class or status")
         if not set(t.profiles) <= set(PROFILES):
             raise ValueError(f"tool {t.name}: unknown profile")
-        if t.name in out:
+        if t.switch is not None and t.switch not in ALL_SWITCHES:
+            raise ValueError(f"tool {t.name}: unknown switch {t.switch!r}")
+        if t.name in out or t.name in _SWITCH_TOOLS:
             raise ValueError(f"tool {t.name} is declared twice")
         if t.produced_by and (len(t.produced_by) != len(t.expands_to) or any(
                 name not in STEP_INPUTS or not 1 <= m < n for n, step in enumerate(t.produced_by, start=1)
                 for name, m in step)):
             raise ValueError(f"tool {t.name}: produced_by names an unknown input or a step that is not an earlier one")
-        out[t.name] = t
+        if t.switch is None:
+            out[t.name] = t
+        else:
+            _SWITCH_TOOLS[t.name] = t
     return out
 
 
@@ -272,7 +290,8 @@ TOOLS: dict[str, Tool] = _catalog(
                "contract": _strings("contract criteria"), "non_mutating": {"type": "boolean"},
                "parent": WORK_ID, "depends_on": _strings("ID or ID:mutating|evidence"),
                "rationale": TEXT, "body": TEXT, "card": {"type": "string", "minLength": 1},
-               "plan": PLAN},
+               "plan": PLAN, "priority": {"enum": PRIORITY_LEVELS},
+               "priority_reason": {"type": "string", "description": "why; needed unless normal"}},
               ("expect_rev", "title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
          mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
@@ -322,16 +341,59 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("verify.ingest.integration", "integrate.publish", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("publish_candidate",), dispatches=True, mutates=True, progression=True,
          produced_by=((), ((VALIDATION, 1),), ((CANDIDATE, 2),), ((DISPATCH, 3),))),
+    Tool(
+        "message_send", STAGE, MECHANICAL,
+        "Record a coordination message for an active worker, not a scope change. "
+        "Delivery not built; turn-end refused.",
+        _obj({"expect_rev": EXPECT_REV,
+              "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
+              "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},
+              "kind": {"enum": list(L.KINDS)},
+              "in_reply_to": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
+              "refs": {"type": "array", "maxItems": L.MAX_REFS,
+                       "items": {"type": "string", "minLength": 1, "maxLength": L.MAX_REF_CHARS}},
+              "idempotency_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,64}$"},
+              "when": {"enum": ["next-step", "turn-end"]}}, ("expect_rev", "to", "body")),
+        expands_to=("message.send",), mutates=True, switch=MESSAGING,
+    ),
 )
 
 
-def tool(name: str) -> Tool | None:
-    return TOOLS.get(name)
+NON_PROGRESSION_STAGES = {"checkpoint": "records a note", "steering": "changes the steering mode",
+                         "message_send": "records a message"}
 
 
-def exposed(profile: str) -> list[Tool]:
+def switches_from_env() -> frozenset[str]:
+    """MCP's presentation snapshot, never authority. The broker checks its own independent snapshot."""
+    try:
+        value = json.loads(os.environ.get(ENV_SWITCHES, "[]"))
+    except ValueError:
+        return frozenset()
+    return (frozenset(value) & ALL_SWITCHES
+            if isinstance(value, list) and all(isinstance(v, str) for v in value) else frozenset())
+
+
+def catalog(switches: frozenset[str] = frozenset(), *, presentation: str = "standard") -> dict[str, Tool]:
+    """Select rows independently of their descriptions; standard always means uncompacted text.
+
+    The explicit presentation argument is for catalog conformance; no standalone compact policy mode is wired yet.
+    """
+    rows = dict(TOOLS)
+    rows.update({name: t for name, t in _SWITCH_TOOLS.items() if t.switch in switches})
+    if presentation == "compact":
+        from aew.surface.presentation import compact
+
+        return {name: compact(t) for name, t in rows.items()}
+    return rows
+
+
+def tool(name: str, switches: frozenset[str] = frozenset()) -> Tool | None:
+    return catalog(switches).get(name)
+
+
+def exposed(profile: str, switches: frozenset[str] = frozenset()) -> list[Tool]:
     """The tools a transport offers on ``profile``: built ones, in catalog order."""
-    return [t for t in TOOLS.values() if t.built and profile in t.profiles]
+    return [t for t in catalog(switches).values() if t.built and profile in t.profiles]
 
 
 def callable_on(t: Tool | None, profile: str) -> bool:

@@ -59,7 +59,7 @@ from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
 from aew.harness import containment, procs
 from aew.surface import availability as SA
-from aew.surface import projection, stage
+from aew.surface import projection, readable, stage
 from aew.surface import run as R
 from aew.surface.projection import project
 from aew.util import dump_yaml, load_yaml
@@ -150,6 +150,36 @@ def outside_commit(p: Project, name: str = "NOTES.md") -> str:
     git("add", name, cwd=p.root)
     git("commit", "-q", "-m", f"outside: {name}", cwd=p.root)
     return git("rev-parse", "HEAD", cwd=p.root)
+
+
+def test_e333_publish_conflict_names_the_moved_head_and_path(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    old = prepare_and_validate(p, wid)
+    outside_commit(p)
+    path, subject = "calc/core.py", "Reverse the addition operands"
+    (p.root / path).write_text("def add(a, b):\n    return b + a\n", encoding="utf-8", newline="\n")
+    git("add", path, cwd=p.root)
+    git("commit", "-q", "-m", subject, cwd=p.root)
+    head = git("rev-parse", "HEAD", cwd=p.root)
+
+    out = call(p, "integration_publish", work_id=wid, prepared_candidate=old["candidate"])
+    error = out["stopped"]["error"]
+    assert error["code"] == "STALE_CANDIDATE" and error["details"]["why"] == "conflict"
+    names = (head[:12], subject, path)
+    assert all(name in error["message"] for name in names), error["message"]
+    readable_text = readable.render(out).split("\n\n", 1)[0]
+    assert all(name in readable_text for name in names)
+    assert str(tmp_path) not in error["message"]
+    assert "2 commits" in error["message"]
+    state = control(p)
+    # The stage journals its stop one revision after the publish disposition commits.
+    refusal_revision = intent(p, out)["stopped"]["rev"] - 1
+    assert error["details"] == {
+        "why": "conflict", "expected": old["base"], "current": head, "paths": [path],
+        "queue": IO.Integration._queue_brief(state, wid), "revision": refusal_revision,
+        "head_subject": subject, "commit_count": 2,
+    }
 
 
 def take_over(e: Engine) -> None:

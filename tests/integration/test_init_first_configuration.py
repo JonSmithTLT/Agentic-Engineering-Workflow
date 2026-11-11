@@ -9,6 +9,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+import printed_commands as P
 import pytest
 import yaml
 from conftest import make_git_repo, run_aew
@@ -95,8 +96,9 @@ def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
     root = repo(tmp_path)
     res = init(root, "--model", "opencode/big")
     assert "provider_note" not in res.json["first_configuration"]
-    assert "`aew lead acquire --expect-rev 0`" in res.json["next"]
-    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+    command, fenced = P.commands(res.json["next"])[0]
+    assert not fenced and command == "aew lead acquire --expect-rev 0"
+    assert run_aew("-C", str(root), *shlex.split(command)[1:]).returncode == 0
 
 
 def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_only_with_it_set(tmp_path):
@@ -194,11 +196,24 @@ def test_the_bytes_are_checked_before_the_pin_and_a_refusal_writes_nothing(tmp_p
     assert not (root / ".aew").exists()
 
 
-def test_flagless_init_says_what_it_always_said(tmp_path):
-    """The bytes are the goldens' (`test_coordination_store`): this is its result."""
+def test_flagless_init_names_both_missing_settings_and_orders_the_route(tmp_path):
+    """The pin's bytes are covered by the goldens in `test_coordination_store`."""
     root = repo(tmp_path)
     out = init(root).json
-    assert out["next"] == "acquire Lead authority: aew lead acquire --expect-rev 0"
+    guidance = out["next"]
+    assert "no check command or model" in guidance
+    assert ".aew/policy/checks.yaml" in guidance and ".aew/policy/execution.yaml" in guidance
+    assert K.HELD_SEAT in guidance
+    assert guidance.endswith("Then start the Lead with `aew opencode --acquire`")
+    assert [command for command, _ in P.commands(guidance)] == [
+        "aew lead acquire --expect-rev 0",
+        K.MANIFEST_ADOPT.strip("`"),
+        "aew opencode --acquire",  # the held-seat warning
+        f"aew lead release {K.EXPECT_REV}",
+        "aew opencode --acquire",
+    ]
+    for command, fenced in P.commands(guidance):
+        P.parse(command, fenced=fenced)
     assert "first_configuration" not in out
     # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
     # `map`: the first structural map, generated and selected by init (register E184), or the line saying why not

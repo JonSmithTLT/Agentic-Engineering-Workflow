@@ -42,24 +42,27 @@ Outside the API:
 
 ## Tools
 
-| Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |
-|---|---|---|---|---|---|---|
-| `checkpoint` | stage | MECHANICAL | built | yes | no | `checkpoint` |
-| `cli` | primitive | JUDGMENT_BEARING | built | yes | no | - |
-| `explain` | query | MECHANICAL | built | no | no | - |
-| `harness_status` | query | MECHANICAL | built | no | no | - |
-| `harness_wait` | wait | MECHANICAL | built | no | no | - |
-| `integration_publish` | decision | JUDGMENT_BEARING | built | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
-| `resolve` | stage | JUDGMENT_BEARING | built | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
-| `resume` | query | MECHANICAL | built | no | no | - |
-| `status` | query | MECHANICAL | built | no | no | - |
-| `steering` | stage | MECHANICAL | built | yes | no | `steering` |
-| `ticket_draft` | stage | JUDGMENT_BEARING | built | yes | no | `work.create`, `plan.propose` |
-| `ticket_prepare` | stage | JUDGMENT_BEARING | built | yes | yes | `verify.ingest`, `work.transition`, `integrate.prepare`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_request_review` | stage | POLICY_RESOLVED | built | yes | yes | `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_request_verification` | stage | JUDGMENT_BEARING | built | yes | yes | `review.ingest`, `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_start` | stage | POLICY_RESOLVED | built | yes | yes | `work.assign`, `dispatch.launch`, `work.transition` |
-| `work_show` | query | MECHANICAL | built | no | no | - |
+A named switch must be enabled in adopted policy when the row is registered; sessions retain their launch snapshot.
+
+| Tool | Kind | Class | Status | Switch | Mutates | Dispatches | Expands to |
+|---|---|---|---|---|---|---|---|
+| `checkpoint` | stage | MECHANICAL | built | - | yes | no | `checkpoint` |
+| `cli` | primitive | JUDGMENT_BEARING | built | - | yes | no | - |
+| `explain` | query | MECHANICAL | built | - | no | no | - |
+| `harness_status` | query | MECHANICAL | built | - | no | no | - |
+| `harness_wait` | wait | MECHANICAL | built | - | no | no | - |
+| `integration_publish` | decision | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
+| `message_send` | stage | MECHANICAL | built | `coordination.messaging` | yes | no | `message.send` |
+| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
+| `resume` | query | MECHANICAL | built | - | no | no | - |
+| `status` | query | MECHANICAL | built | - | no | no | - |
+| `steering` | stage | MECHANICAL | built | - | yes | no | `steering` |
+| `ticket_draft` | stage | JUDGMENT_BEARING | built | - | yes | no | `work.create`, `plan.propose` |
+| `ticket_prepare` | stage | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest`, `work.transition`, `integrate.prepare`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_request_review` | stage | POLICY_RESOLVED | built | - | yes | yes | `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_request_verification` | stage | JUDGMENT_BEARING | built | - | yes | yes | `review.ingest`, `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_start` | stage | POLICY_RESOLVED | built | - | yes | yes | `work.assign`, `dispatch.launch`, `work.transition` |
+| `work_show` | query | MECHANICAL | built | - | no | no | - |
 
 ## Schemas
 
@@ -70,7 +73,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
 | `checks` | `checks.schema.json` | 12 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
-| `control` | `control.schema.json` | 488 | 271 |
+| `control` | `control.schema.json` | 491 | 272 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
 | `coordination-message` | `coordination-message.schema.json` | 18 | 17 |
 | `coordination-seal` | `coordination-seal.schema.json` | 19 | 16 |

@@ -285,8 +285,9 @@ class Gates:
         gc = self.gate_context(state, work_id)
         gc.pop("evidence")
         gc["gate_approval_digests"] = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
-        if "children_digest" in gc["snapshot"]:
-            gc["closeout_approval_digest"] = approval.closeout_digest(gc["snapshot"])
+        snapshot = gc.get("snapshot")
+        if snapshot and "children_digest" in snapshot:
+            gc["closeout_approval_digest"] = approval.closeout_digest(snapshot)
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
         if gc.get("plan_binding"):

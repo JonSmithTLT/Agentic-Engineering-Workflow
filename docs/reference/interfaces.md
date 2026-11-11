@@ -95,7 +95,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `run-usage` | `run-usage.schema.json` | 44 | 27 |
 | `spool-event` | `spool-event.schema.json` | 6 | 0 |
 | `stage-intent` | `stage-intent.schema.json` | 104 | 69 |
-| `surface` | `surface.schema.json` | 91 | 58 |
+| `surface` | `surface.schema.json` | 95 | 60 |
 | `ticket-field-registry` | `ticket-field-registry.schema.json` | 49 | 27 |
 | `transition-events` | `transition-events.schema.json` | 26 | 3 |
 | `transition-segment` | `transition-segment.schema.json` | 51 | 12 |

@@ -268,7 +268,10 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     assert found["status"] == "FAIL" and item in found["detail"] and "choice `replace_gate`" in found["detail"]
     [decision] = status_items(p)
     assert decision["availability"] == "AVAILABLE", decision
-    out = resolve(p, item, "check:unit")
+    option = decision["approval_options"]["check:unit"]
+    assert option["replacement"] == "check:unit"
+    args = {**decision["arguments"], **option, "rationale": "the configured check carries the standard"}
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", args, token=p.token)
     assert out["ok"] and out["result"]["mandatory_gates"] == ["check:unit"], out
     assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]
     assert_control_invariants(p)

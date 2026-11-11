@@ -96,7 +96,8 @@ OFF_READERS = {
     "src/aew/harness/opencode/projection.py": (
         "Known MS3 limit: import-time off summary; snapshot-aware naming belongs to reply/attention.", {"_named": 1}),
     "src/aew/harness/steering_loop.py": (
-        "Only progression actions are picked; message_send never progresses.", {"SteeringLoop.tick": 1}),
+        "Only progression actions are picked, and ingesting_action reads only planned stages; message_send never "
+        "progresses and has no planner.", {"SteeringLoop.tick": 1, "ingesting_action": 1}),
     "src/aew/surface/availability.py": (
         "Only planned workflow stages; message_send has no planner.", {"_compose": 1}),
     "src/aew/surface/mcp.py": ("Wait classification only; message_send is not a wait.", {"_is_wait": 1}),

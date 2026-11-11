@@ -33,10 +33,11 @@ NEUTRAL = {"clean": "", "smudge": "", "process": "", "required": "false", "comma
            "driver": "false"}
 DIFF_COMMANDS = {"diff", "log", "show"}
 # githooks(5) recommends clearing the names printed by `git rev-parse --local-env-vars`
-# before running Git in a different repository. Pin them here so each command needs only one Git invocation.
+# before running Git in a different repository. Pin the union across supported Git versions (2.31 and newer).
 LOCAL_ENV_VARS = frozenset({
     "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
-    "GIT_DIR", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS",
+    "GIT_DIR", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_INTERNAL_SUPER_PREFIX",
+    "GIT_NO_REPLACE_OBJECTS",
     "GIT_OBJECT_DIRECTORY", "GIT_PREFIX", "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE", "GIT_WORK_TREE",
 })
 COUNTED_CONFIG = re.compile(r"GIT_CONFIG_(KEY|VALUE)_\d+\Z")

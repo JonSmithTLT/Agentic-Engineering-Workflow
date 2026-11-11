@@ -24,6 +24,7 @@ def test_workspace_git_ignores_an_inherited_hook_repository(tmp_path, monkeypatc
         hook.setenv("GIT_DIR", str(decoy / ".git"))
         hook.setenv("GIT_WORK_TREE", str(decoy))
         hook.setenv("GIT_INDEX_FILE", str(decoy / ".git" / "index"))
+        hook.setenv("GIT_INTERNAL_SUPER_PREFIX", "sub/")
         workspace_git.git("add", "tracked.txt", cwd=target)
         drivers = {driver["config"] for driver in workspace_git.configured_drivers(target)}
         assert "diff.target.textconv" in drivers

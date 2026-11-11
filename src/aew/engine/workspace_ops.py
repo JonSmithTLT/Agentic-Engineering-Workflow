@@ -59,6 +59,21 @@ class Invocations:
             return None
         return self.snapshot_of(ws["path"], ws["id"])
 
+    @staticmethod
+    def require_free_assurance_card(state: dict[str, Any], work_id: str, archetype: str, card_id: str) -> None:
+        if archetype not in {"reviewer", "verifier"}:
+            return
+        for invocation in state["work"][work_id]["invocations"]:
+            current = state["invocations"].get(invocation) or {}
+            if (current.get("status") == "active" and current.get("role") == archetype
+                    and (current.get("card") or {}).get("id") == card_id):
+                cancel = K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                                          "why this active invocation must end")
+                raise IllegalTransition(
+                    f"{invocation} is still active for {work_id}'s {card_id} card; cancel it with:\n\n{cancel}",
+                    holding=invocation,
+                )
+
     def new_invocation(
         self,
         ctx: TxnContext,

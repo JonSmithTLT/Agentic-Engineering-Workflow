@@ -442,6 +442,7 @@ class NonMutating:
             gc = self.gates.gate_context(state, work_id)
             chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
+            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id)
             record = (unit.get("execution") or {}).get("record")
             if not record:
                 raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
@@ -895,6 +896,12 @@ class NonMutating:
                     and rec.get("kind") == "plan_proposal"):
                 raise UsageError(f"{evidence_id} is not the accepted plan_proposal of a DONE planning Ticket {source}")
             ev = self.inputs.find_unit_evidence(source, evidence_id)
+            if ev["_sha256"] != rec["sha256"]:
+                raise GateUnsatisfied(
+                    f"{evidence_id} no longer matches {source}'s accepted plan proposal; "
+                    f"produce a new accepted proposal with `aew work dispatch <planning-ticket> {EXPECT_REV}`",
+                    evidence=evidence_id, expected=rec["sha256"], current=ev["_sha256"],
+                )
             commit = self.k.authoritative_commit()
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             if not F.is_acceptable_input(fresh) and not self.inputs.acknowledged(unit, evidence_id, ev["_sha256"],

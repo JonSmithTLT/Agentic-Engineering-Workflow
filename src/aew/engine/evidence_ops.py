@@ -816,6 +816,7 @@ class EvidenceCommands:
                 self.gates.require_reported_workspace(work_id, unit, gc)
             chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
+            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id)
             facts.update(card=chosen, archetype=chosen.archetype)
         return checked(check)
 

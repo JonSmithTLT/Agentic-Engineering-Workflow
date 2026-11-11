@@ -148,6 +148,30 @@ def test_multiple_verify_cards_each_required(calc, tmp_path):
     assert out["transition"]["to"] == "VERIFIED"
 
 
+@pytest.mark.parametrize(("slot", "card", "other"), [
+    ("review", "code_reviewer", "security_reviewer"),
+    ("verify", "verifier", "strict_verifier"),
+])
+def test_a_ticket_can_dispatch_each_card_but_cannot_dispatch_the_same_active_card_twice(calc, tmp_path,
+                                                                                        slot, card, other):
+    wid = create_planned_ticket(calc, tmp_path)
+    calc.lead("work", "staff", wid, f"--{slot}", card, f"--{slot}", other)
+    implement(assign(calc, wid))
+    calc.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    if slot == "verify":
+        calc.lead("review", "ingest", wid, "--evidence", review(calc, wid))
+        calc.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    first = calc.lead("invoke", "create", wid, "--card", card)
+    rev = calc.rev()
+    err = fail(calc.aew("invoke", "create", wid, "--expect-rev", str(rev),
+                        env={"AEW_LEAD_TOKEN": calc.token}), "ILLEGAL_TRANSITION")
+    assert first["invocation"] in err["message"]
+    assert "aew invoke cancel" in err["message"]
+    assert calc.rev() == rev
+    second = calc.lead("invoke", "create", wid, "--card", other)
+    assert second["role_card"] == other
+
+
 def test_policy_trigger_requires_named_card(tmp_path):
     calc = sample_project(tmp_path, guardrails={
         "schema": "aew/guardrails/v1", "protected_paths": ["vendor/**"], "generated_paths": [],

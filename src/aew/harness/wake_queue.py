@@ -211,7 +211,7 @@ def status(aew_root: Path, *, generation: int | None = None, off: bool = False) 
         return {"off": True}
     wake = doc["wake"]
     outstanding = None if wake is None else {k: wake.get(k) for k in ("id", "phase", "why")}
-    if outstanding is not None and wake["phase"] == POSTING:
+    if wake is not None and outstanding is not None and wake["phase"] == POSTING:
         outstanding["uncertain_until"] = float(wake.get("posting_at", wake["at"])) + UNCERTAIN_HOLD_S
     return {"outstanding": outstanding,
             "last_posted": doc["last_posted"], "last_delivered": doc["last_delivered"],

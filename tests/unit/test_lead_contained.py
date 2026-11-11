@@ -1338,7 +1338,8 @@ def test_a_certificate_only_lead_whose_profiles_pin_no_model_of_it_is_refused_na
     with pytest.raises(errors.HarnessIncompatible) as caught:
         built.require_provider()
     assert caught.value.details["reason"] == client_cert.NO_MODEL and caught.value.details["provider"] == "mtls"
-    assert "no profile pins a model of it" in caught.value.message and "/synthetic/k.pem" not in caught.value.message
+    assert "no OpenCode profile pins a model of it" in caught.value.message  # the codex profile's pin doesn't count
+    assert "/synthetic/k.pem" not in caught.value.message
     store(tmp_path, [r for r in key_rows() if r[0] == "anthropic"])
     keyed = contained(tmp_path, policy=policy)
     assert keyed.certified == {} and list(keyed.unpinned) == ["mtls"]
@@ -1375,6 +1376,9 @@ def test_a_certificate_only_lead_that_falls_back_to_running_uncontained_is_refus
         built(None, {lead_broker.ENV_ENDPOINT: "/tmp/aew-bridge-x/s"})
     assert caught.value.details["reason"] == client_cert.NO_RELAY and caught.value.details["provider"] == "mtls"
     assert CERT_FIELD in caught.value.message and "/synthetic/k.pem" not in caught.value.message
+    # Its way forward is a Lead's: another provider of its own, not a profile, which gives a Lead none (N4)
+    assert "`--provider-env NAME`" in caught.value.message and "`opencode auth login`" in caught.value.message
+    assert "pin a profile" not in caught.value.message, caught.value.message
     assert "runs NOT contained" not in capsys.readouterr().err
     assert not [x for x in weaker_register.read().live if x["kind"] == "lead_opencode"]
 

@@ -1,0 +1,64 @@
+name: flake-dispatch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: windows-latest
+    timeout-minutes: 34
+    steps:
+      - name: Set the job deadline and start the evidence record
+        shell: bash
+        run: |
+          echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/flake-dispatch"
+          printf 'commit=%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/flake-dispatch/dispatch.txt"
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: "3.13"
+      - name: Run the deadline plants, isolated test and regression shard
+        shell: bash
+        # The 34-minute job reserves four minutes after the absolute pytest deadline.
+        # Recent Windows regression report uploads took under two seconds.
+        timeout-minutes: 28
+        run: |
+          evidence="$RUNNER_TEMP/flake-dispatch"
+          if (( $(date +%s) + 28 * 60 > AEW_JOB_DEADLINE )); then
+            echo "Setup left less than 28 minutes before the session deadline" | tee -a "$evidence/dispatch.txt"
+            exit 1
+          fi
+          base=$(python -c 'import sys; print(sys._base_executable)')
+          failed=0
+
+          echo "deadline plants" | tee -a "$evidence/dispatch.txt"
+          "$base" -m pytest tests/integration/test_hang_autopsy.py -q -p no:cacheprovider -p no:xdist \
+            --test-timeout 180 --session-deadline 240 \
+            "--lane-report=${{ runner.temp }}/flake-dispatch/plants/report.json" --junitxml="$evidence/plants/junit.xml" \
+            -k 'worker_hung_in_native_code or controller_hung_in_native_code or controller_that_cannot_exit or child_left_holding_the_steps_output or child_started_as_the_session_finishes or sentinel_ends_the_session or backstop_moves_with_a_session or marker_an_earlier_session or nothing_hung_so_no_stacks or deadline_thread_that_is_running or after_finish_timer_is_off' \
+            || failed=1
+
+          for attempt in $(seq 1 2); do
+            echo "isolated session $attempt" | tee -a "$evidence/dispatch.txt"
+            "$base" -m pytest tests/regression/test_m4b_review.py::test_the_hostile_repository_runs_its_programs_under_plain_git \
+              -q -p no:cacheprovider --lane regression --test-timeout 150 --session-deadline 180 \
+              "--lane-report=${{ runner.temp }}/flake-dispatch/isolated-$attempt/report.json" \
+              --junitxml="$evidence/isolated-$attempt/junit.xml" || { failed=1; break; }
+          done
+
+          echo "regression shard 2/3" | tee -a "$evidence/dispatch.txt"
+          "$base" -m pytest tests/regression -q -p no:cacheprovider --lane regression --shard 2/3 \
+            -n auto --dist worksteal --test-timeout 600 --session-deadline 780 --max-worker-restart 0 \
+            "--lane-report=${{ runner.temp }}/flake-dispatch/shard/report.json" --junitxml="$evidence/shard/junit.xml" \
+            || failed=1
+          exit "$failed"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: flake-dispatch-evidence
+          path: ${{ runner.temp }}/flake-dispatch/
+          retention-days: 14

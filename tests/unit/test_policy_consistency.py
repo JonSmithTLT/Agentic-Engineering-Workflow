@@ -9,7 +9,8 @@ import pytest
 
 from aew.engine.gates import Catalogue
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
-from aew.policy.consistency import problems
+from aew.policy.consistency import PATH_TABLES, problems
+from aew.schemas import schema
 from aew.util import load_yaml
 
 
@@ -128,3 +129,57 @@ def test_a_waivable_gate_that_does_not_exist_is_reported():
     # judged by the same predicate as the path tables (review F3): a configured `unit` makes `check:unit` one
     configured = catalogue()._replace(checks={"unit": "sha-unit"})
     assert [f for f in problems(gates, DEFAULT_CHECKS, configured) if "check:unit" in f] == []
+
+
+def test_a_by_class_map_that_drops_the_verifier_on_a_raise_is_a_consistency_problem():
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["post_integration"]["validation"] = {"by_class": {"2": "verifier"}, "default": "checks"}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
+        f"policy/gates.yaml post_integration.validation.by_class resolves class {higher} to `checks` "
+        f"after class 2 resolves to `verifier`. Map class {higher} to `verifier` or class 2 to `checks`."
+        for higher in (3, 4)
+    ]
+
+
+def test_by_class_uses_the_implicit_verifier_default():
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["post_integration"]["validation"] = {"by_class": {"2": "checks"}}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
+        "policy/gates.yaml post_integration.validation.by_class resolves class 2 to `checks` "
+        "after class 0 resolves to `verifier`. Map class 2 to `verifier` or class 0 to `checks`."
+    ]
+
+
+@pytest.mark.parametrize("setting", [
+    "checks", "verifier", {"by_class": {"0": "checks", "1": "checks"}},
+    {"by_class": {"2": "checks"}, "default": "checks"},
+    {"by_class": {"3": "verifier", "4": "verifier"}, "default": "checks"},
+])
+def test_monotone_validation_modes_are_consistent(setting):
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["post_integration"]["validation"] = setting
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == []
+
+
+def test_every_class_keyed_policy_setting_is_ordered_or_named_out_of_scope():
+    classes = {str(risk_class) for risk_class in range(5)}
+
+    def class_keyed(node, path):
+        if isinstance(node, dict):
+            allowed_names = node.get("propertyNames", {}).get("enum", ())
+            if set(node.get("required", ())) == classes or set(allowed_names) == classes:
+                yield path
+            for key, value in node.items():
+                yield from class_keyed(value, f"{path}/{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                yield from class_keyed(value, f"{path}/{index}")
+
+    ordered = {f"gates/properties/{name}" for name, _ in PATH_TABLES} | {
+        "gates/properties/post_integration/properties/validation/oneOf/1/properties/by_class",
+    }
+    out_of_scope = {
+        "execution/properties/routing/properties/classes": "Model routing does not select gate obligations.",
+    }
+    observed = {path for name in ("gates", "execution") for path in class_keyed(schema(name), name)}
+    assert observed == ordered | out_of_scope.keys()

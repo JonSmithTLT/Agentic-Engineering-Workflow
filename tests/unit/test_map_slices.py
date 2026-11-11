@@ -86,6 +86,20 @@ def test_the_slice_is_bounded_never_the_whole_record():
     assert len("\n".join(out)) < 8_000 < len(seal(record)[1])
 
 
+def test_the_slice_body_is_bounded_in_bytes_and_says_what_the_bound_cut():
+    """E184 review (2026-11-08): ROWS and HINTS bound the count, not the bytes. Long names fill the byte bound; hints
+    are cut first, then rows, and the shown counts say so. Short names never reach it."""
+    long = "n" * 150
+    files: dict[str, Any] = {f"{long}{i:03d}/{long}/x.py": b"" for i in range(60)}
+    files |= {f"{long}g{i:03d}/vendor/v.c": b"" for i in range(30)}
+    record = sealed(files)
+    rows = slices.body(record, CURRENT, [])
+    assert sum(len(line.encode()) + 1 for line in rows) <= slices.SLICE_MAX_BYTES
+    assert any("the section's byte bound cut the rest" in line for line in rows)
+    short = slices.body(sealed(big_tree()), CURRENT, [])
+    assert not any("byte bound" in line for line in short)
+
+
 def test_the_slice_shows_the_rows_in_scope_and_their_ancestors():
     record = sealed(big_tree())
     out = slices.render(record, CURRENT, ["d007/s1/**", "README.md"])

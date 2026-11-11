@@ -1,4 +1,9 @@
-"""The operator's stored OpenCode login, read on the host for the contained Lead's provider relays (STG-05 CS-4).
+"""The operator's stored OpenCode login, read on the host for contained provider relays.
+
+Workers use the deciding API-key row for Anthropic, Google, OpenAI or OpenCode. A different
+deciding row supplies no worker credential, even if an older API-key row exists. OAuth is
+never used by workers. Worker diagnostics omit the store path. A read-only WAL connection
+can create SQLite sidecars, while the database content stays unchanged.
 
 OpenCode 2.0.18 keeps each login as a row of the ``credential`` table in its SQLite database, ``<data>/opencode.db``
 (``$XDG_DATA_HOME/opencode``, by default ``~/.local/share/opencode``; ``OPENCODE_DB`` names another), read in the pinned
@@ -199,7 +204,7 @@ def operator_files(env: Mapping[str, str]) -> dict[Path, tuple[str, ...]]:
     return out
 
 
-def _read(integration: str, method: str | None, value: Any) -> Login:
+def _read(integration: str, method: str | None, value: Any, *, api_key_only: bool = False) -> Login:
     """A row as a :class:`Login`; :data:`UNKNOWN` unless its value is one of OpenCode 2.0.18's two shapes."""
     try:
         parsed = json.loads(value)
@@ -214,6 +219,8 @@ def _read(integration: str, method: str | None, value: Any) -> Login:
     expires = parsed.get("expires")
     if (parsed.get("type") == "oauth" and isinstance(parsed.get("access"), str)
             and isinstance(expires, (int, float)) and not isinstance(expires, bool)):
+        if api_key_only:
+            return Login(integration, "oauth", method)
         return Login(integration, "oauth", str(parsed.get("methodID") or method or ""), parsed["access"], int(expires),
                      meta)
     return Login(integration, UNKNOWN, method)
@@ -230,7 +237,7 @@ def stored(env: Mapping[str, str]) -> tuple[list[Login], str | None]:
         con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_S)
         try:
             rows = con.execute("SELECT integration_id, method_id, active, value, time_updated FROM credential "
-                               "ORDER BY integration_id, active IS NOT 1, time_updated DESC").fetchall()
+                               "ORDER BY integration_id, active IS NOT 1, time_updated DESC, rowid DESC").fetchall()
         finally:
             con.close()
     except sqlite3.Error as exc:
@@ -240,3 +247,58 @@ def stored(env: Mapping[str, str]) -> tuple[list[Login], str | None]:
         if integration and integration not in out:
             out[integration] = _read(str(integration), method, value)
     return [out[k] for k in sorted(out)], None
+
+
+@dataclass(frozen=True)
+class WorkerKey:
+    secret: str = field(repr=False)
+    generation: tuple[int, int | None]
+
+
+REFRESHING_LOGIN = "refreshing_login"
+
+
+def worker_keys(env: Mapping[str, str], providers: set[str]) -> tuple[dict[str, WorkerKey], dict[str, str]]:
+    """Read the deciding API-key rows for the requested providers in one bounded operation.
+
+    Select only the deciding row for each provider with ordinary SQLite SQL. Discard any row
+    that is not an API-key row. To support Rocky 8 without SQLite JSON1, the host reads and
+    parses the whole deciding value in Python. If it is OAuth, the text is discarded after
+    classification. Its contents never reach a return value, record, log, error or sandbox.
+    Diagnostics never include the path.
+    """
+    if not providers:
+        return {}, {}
+    path = db_path(env)
+    if not path.is_absolute():
+        return {}, dict.fromkeys(providers, "the stored OpenCode login database needs an absolute location")
+    if not path.is_file():
+        return {}, dict.fromkeys(providers, "the stored OpenCode login database is missing")
+    try:
+        con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_S)
+        try:
+            bindings = ", ".join("?" for _ in providers)
+            rows = con.execute(
+                "SELECT c.integration_id, c.rowid, c.time_updated, c.value FROM credential c "  # noqa: S608
+                f"WHERE c.integration_id IN ({bindings}) AND c.rowid = ("
+                "SELECT d.rowid FROM credential d WHERE d.integration_id = c.integration_id "
+                "ORDER BY d.active IS NOT 1, d.time_updated DESC, d.rowid DESC LIMIT 1)",
+                tuple(sorted(providers)),
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        locked = getattr(exc, "sqlite_errorcode", None) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+        status = "locked" if locked else "unreadable"
+        return {}, dict.fromkeys(providers, f"the stored OpenCode login database is {status}")
+    found: dict[str, WorkerKey] = {}
+    unavailable = dict.fromkeys(providers, "the stored OpenCode API-key row is missing")
+    for provider, rowid, updated, value in rows:
+        entry = _read(provider, None, value, api_key_only=True)
+        if entry.kind == "key" and entry.secret:
+            found[provider] = WorkerKey(entry.secret, (rowid, updated if type(updated) is int else None))
+            del unavailable[provider]
+        else:
+            unavailable[provider] = (REFRESHING_LOGIN if entry.kind == "oauth"
+                                     else "the stored OpenCode login has no supported API-key row")
+    return found, unavailable

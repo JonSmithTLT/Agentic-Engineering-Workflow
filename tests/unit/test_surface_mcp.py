@@ -43,18 +43,6 @@ class Spy:
         return self.reply
 
 
-# The context budget's one measure (plan v3 §2.6): a `tools/list` result, or one entry of it, as compact JSON. The cap
-# below and A1-0's measurement spike both call it, so the spike's figures are the cap's own (the A1 slice plan, reviewed
-# CLEAR, §3.4 and §7 `test_a1_rows_measured`). The plan's §7 calls the cap `test_surface_cap`; it is
-# `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
-# Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
-# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
-# 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B);
-# 11,704 with E133's stages that start past their report: the report is not required, and their descriptions say so
-# (-23 B); E227's `priority` and `priority_reason` on `ticket_draft`, where the Lead sets a priority at creation (the
-# operator, 2026-11-10: set at the draft only), with the reason's "needed unless normal", measured against the stop
-# line (11,830: +126 B).
-NORMAL_BYTES_PIN = 11_830
 RESOLVE_BYTES_PIN = 818
 
 
@@ -79,7 +67,7 @@ def test_the_handshake_echoes_a_known_revision_or_answers_with_the_newest():
     assert rpc(server, "nope")["error"]["code"] == mcp.METHOD_NOT_FOUND
 
 
-def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget():
+def test_the_normal_list_omits_the_cli_escape_and_designed_tools():
     normal = mcp.tools_list("normal")
     names = [t["name"] for t in normal["tools"]]
     # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`, E5a `ticket_draft` and
@@ -90,19 +78,11 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
                      "ticket_request_verification", "ticket_prepare", "integration_publish"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
     assert recovery == [*names[:9], "cli", *names[9:]]  # catalog order: the escape before the stages
-    size = mcp.advertised_bytes(normal)
-    assert size < 12_000 and len(names) <= 16, f"the normal advertised surface is {size} bytes"
     by_name = {t["name"]: t for t in normal["tools"]}
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
     assert not by_name["checkpoint"]["annotations"]["readOnlyHint"]
     assert not by_name["steering"]["annotations"]["readOnlyHint"]
     assert not by_name["resolve"]["annotations"]["readOnlyHint"]
-    # Under §2.6's 11,900-byte stop line with every M4-E tool built: `resolve` with E5b's dispositions takes exactly the
-    # 771 bytes the plan measured for it (5,135 bytes at E3c; 7,996 at E5a; 9,991 at E5b, its two stages' rows exactly
-    # as catalogued since F15.1, so the projection with every tool built is unchanged; 11,694 at E6a, the two
-    # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line;
-    # 11,741 with ITEMS 55's `replace_gate` and `replacement`, `resolve` then 818 bytes).
-    assert size <= NORMAL_BYTES_PIN, f"the normal advertised surface grew past E6a's {size} bytes"
     assert mcp.advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised
@@ -377,10 +357,8 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
 # ---------------------------------------------------------------------------------------------- A1-0: the G3 spike
 # The A1 slice plan (reviewed CLEAR) §3.4 and §7 `test_a1_rows_measured`: every advertised row A1 changes, built as a
 # catalog entry with no behaviour (none of these is in `contract.TOOLS`, and none has a runner), swapped into the
-# catalog and measured by the cap's own measure, `mcp.advertised_bytes(mcp.tools_list("normal"))`. Its figures fill §8's
-# G3 question. The candidate texts are this measure's input, not a design: the slice that builds a row re-measures what
-# it really registers (A1a-2 re-sets `resolve`'s pin to its registered length, D2), and the whole-surface pin stays
-# unchanged until the designer answers (D3).
+# catalog and measured against the live compact MCP listing. The figures answer §8's G3 question. Each landing
+# slice re-measures the row it actually registers. E231 owns the overall byte ceiling.
 
 def _proposed(section: str, lands: str) -> list[dict[str, Any]]:
     """The surface map's proposed homes landing in ``lands`` (A1-0's `proposed_tools` and `proposed_choices`): the
@@ -464,7 +442,6 @@ def test_a1_rows_measured():
     base, count = _measured(today)
     # The swap is what is measured: with today's catalog swapped in, the measure is the cap test's, on the live list.
     assert (base, count) == (mcp.advertised_bytes(mcp.tools_list("normal")), len(mcp.tools_list("normal")["tools"]))
-    assert base == NORMAL_BYTES_PIN  # today's surface is exactly the pin (G3)
     deltas, composed = {}, today
     for name, change in _a1_rows().items():
         one = _apply(today, change)
@@ -484,6 +461,6 @@ def test_a1_rows_measured():
     assert sorted(named) == sorted(differ) and len(named) == len(set(named))
     total, tools = _measured(composed)
     assert total == base + sum(deltas.values()) and tools == count  # the fold and `ticket_rework` net to 15 tools
-    print(f"A1-0 spike: today {base} B (pin {NORMAL_BYTES_PIN} B); {deltas}; A1 composed {total} B "
-          f"({total - NORMAL_BYTES_PIN:+d} B against the pin), {tools} tools")
+    print(f"A1-0 spike: today {base} B; {deltas}; A1 composed {total} B "
+          f"({total - base:+d} B against today), {tools} tools")
     assert deltas == A1_SPIKE

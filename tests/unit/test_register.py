@@ -106,7 +106,8 @@ def test_a_build_stage_is_an_id_in_exactly_one_form():
     """One row per build stage of the architecture map, named as the map names it (designer, D-CS1-12)."""
     assert all(register.ID_RE.match(i) for i in ("F2", "F15.5", "STG-05", "STG-12"))
     assert not any(register.ID_RE.match(i) for i in ("STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2"))
-    assert {"STG-03", "STG-05", "STG-12", "STG-13", "STG-15"} <= {r["id"] for r in register.rows(DATA)}
+    # STG-03 closed on 2026-11-10: a closed stage keeps its id, in the same form
+    assert {"STG-03", "STG-05", "STG-12", "STG-13", "STG-15"} <= {r["id"] for r in register.rows(DATA, open_only=False)}
     assert all(r["target"] == "Stage" for r in register.rows(DATA) if (r["id"] or "").startswith("STG-"))
 
 

@@ -396,6 +396,15 @@ class Gates:
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(GATE_CONTEXT, MUTATING, self._ticket_gate_context)]
 
+    # The guards whose transition takes in the implementer's run (``_ingest_implementation``: its relied-on gates and
+    # the invocation's completion). The steering loop reads it to know which run ends it will take in itself (A-58
+    # CL-R07); a test derives it from the guards' code, so a guard that starts or stops ingesting moves it. The limit:
+    # the test sees only a guard that calls ``_ingest_implementation`` itself, so it misses
+    # ``commit_ready_without_review_or_verification`` (through ``_commit_ready``), ``returning_from_escalation``
+    # (through ``check_guard``'s direct edge) and the non-mutating Tickets' guards. Each miss costs one more wake,
+    # never a missed one (quick check of E228's PR, QC-m3).
+    INGESTS_IMPLEMENTATION = frozenset({"ready_for_review", "ready_for_verification_without_review"})
+
     def guard_registrations(self) -> list[GuardRegistration]:
         """The gate-based Lead guards (mutating Tickets' M1 guards; non-mutating Tickets replace them), and the return
         from escalation, which rechecks them (EW-U06.f)."""

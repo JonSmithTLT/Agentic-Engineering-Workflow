@@ -348,7 +348,7 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.
 
-The parser cut: 114 registrations of a command handler; handlers by role (`aew`: 112, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
+The parser cut: 115 registrations of a command handler; handlers by role (`aew`: 113, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
@@ -412,6 +412,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.lead:ContainedLead._inside` (direct: Path.mkdir): `directory` is bound by a `with`, an unpacking or an `except`
 - `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:worker_keys` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live` (direct: Path.unlink): a loop variable over `files`, a list this reading cannot read
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call

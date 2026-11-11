@@ -152,6 +152,7 @@
         "effort": {"x-aew-class": "legality_affecting", "type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
         "max_steps": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 1},
         "deadline_s": {"x-aew-class": "operational", "type": "number", "exclusiveMinimum": 0},
+        "deadline_scope": {"x-aew-class": "operational", "enum": ["always", "run"], "description": "Which runs deadline_s bounds: always (the default), or only a run started while the steering mode is run. First configuration writes run with its provisional deadline, so the deadline Run needs never ends an attended run."},
         "description": {"x-aew-class": "operational", "type": "string"}
       }
     }

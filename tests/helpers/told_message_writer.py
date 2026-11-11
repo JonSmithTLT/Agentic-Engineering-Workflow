@@ -39,6 +39,7 @@ def main():
             os._exit(77)
 
         util.replace_with_retry = die
+
     def current():
         held = args.authority is None or args.authority.read_text(encoding="utf-8") == str(args.generation)
         if args.checked:

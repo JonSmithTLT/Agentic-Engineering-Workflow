@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aew.engine.lock import FileLock
+from aew.engine.lock import DEFAULT_TIMEOUT_S, FileLock
 from aew.errors import (
     IntegrityError,
     MapArtifactCorrupt,
@@ -346,7 +346,7 @@ CAPABILITIES = {"structural": "sha256", "architecture": "evidence_id"}  # what i
 
 def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
                       note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None,
-                      lock_timeout: float | None = None) -> dict[str, Any]:
+                      lock_timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
     """Select ``entry`` as the structural map (``select``)."""
     return select(aew_root, "structural", expect=expect, entry=entry, actor=actor, note=note, authorize=authorize,
                   lock_timeout=lock_timeout)
@@ -354,7 +354,7 @@ def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], act
 
 def select(aew_root: Path, capability: str, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
            note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None,
-           lock_timeout: float | None = None) -> dict[str, Any]:
+           lock_timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
     """Select ``entry`` for ``capability`` (``structural`` or ``architecture``): compare-and-set on the registry's
     epoch and revision, under the registry's own lock. ``authorize`` is called under that lock, after the compare and
     before anything is written, and refuses by raising: the writer's authority is proven at the moment of the write,
@@ -363,9 +363,9 @@ def select(aew_root: Path, capability: str, *, expect: str, entry: dict[str, Any
     key = CAPABILITIES[capability]
     expected = parse_expectation(expect)
     # ``lock_timeout``: the wait for the registry lock, ``FileLock``'s own by default; a dispatch's refresh passes the
-    # time it has left (``service.refresh_at_dispatch``), so its selection stays inside its one bound
-    lock = FileLock(aew_root / LOCK_REL) if lock_timeout is None else FileLock(aew_root / LOCK_REL, lock_timeout)
-    with lock:
+    # time it has left (``service.refresh_at_dispatch``), so its selection stays inside its one bound. One
+    # construction: the concurrency reference counts each as an opener (E184 review, CI at a0d92878)
+    with FileLock(aew_root / LOCK_REL, timeout=lock_timeout) as lock:
         registry = read_registry(aew_root)
         current = revision_of(registry)
         if expected != parse_expectation(current):

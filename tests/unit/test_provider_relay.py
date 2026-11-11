@@ -277,6 +277,7 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     "/backend-api/codex/%2F../x",
     "/backend-api/codex/%zz",
     "/backend-api/codex/..;param/x",
+    "/backend-api/codex/x;p",
     "/backend-api/codex//responses",
     "/backend-api/codex/responses#fragment",
     r"/backend-api/codex/..\elsewhere",

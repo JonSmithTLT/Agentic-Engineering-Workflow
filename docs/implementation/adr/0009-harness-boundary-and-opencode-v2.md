@@ -1519,13 +1519,9 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   three). Inside, the provider's variable holds the relay's sentinel; the relay outside swaps in the key.
 - **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
   (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
-  provider-level `baseURL` alone takes its requests to the relay, measured). A configured upstream override for
-  that provider prevents the Lead from relaying the stored login. The relay returns 403 before connecting for any
-  target outside `/backend-api/codex/` or with an ambiguous path. The relay asks for the credential on each request
-  (`relay.ProviderRelay`'s `resolve`), and `login.StoredLogin` re-reads only that provider's deciding row,
-  read-only, so a refresh by the operator's own OpenCode is used from the next request on. A store still unreadable
-  after the bounded busy or locked retry gets 503 `credential_unreadable`. Other store faults get 401 and the
-  operator's recovery step. It sets the
+  provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
+  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`login.StoredLogin`) re-reads the operator's
+  login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
   account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
   writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
   the provider and `opencode auth list` (which makes the operator's own OpenCode refresh it, measured) and saying
@@ -2050,3 +2046,18 @@ launch resolves the source afresh.
 This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
 providers make no store read. Off the relay, the existing explicit environment path applies.
 The Lead's stored login and the weaker containment guarantees are described above.
+
+## Amendment 2026-11-11 — the refreshing relay tightened (usage pot PR 1)
+
+This amends the refreshing-login paragraph in the 2026-10-25 contained Lead amendment.
+`login.StoredLogin` reads only the provider's deciding row on each request. If the store is still
+busy or locked after the bounded retry, the relay returns 503 `credential_unreadable`. Other store
+faults return 401 with the recovery step.
+
+The refreshing relay sends requests only to the built-in upstream in `netns.REFRESHING_UPSTREAMS`.
+A configured upstream override for that provider prevents the Lead from relaying its stored
+refreshing login. The Lead names the override at startup and explains how to use the stored login
+or an exported API key.
+
+The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
+an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.

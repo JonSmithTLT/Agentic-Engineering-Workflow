@@ -24,7 +24,6 @@ it, and never falls back to an older row of that provider.
 from __future__ import annotations
 
 import json
-import math
 import os
 import sqlite3
 import stat
@@ -241,7 +240,7 @@ def _read(integration: str, method: str | None, value: Any, *, api_key_only: boo
     expires = parsed.get("expires")
     if (parsed.get("type") == "oauth" and isinstance(parsed.get("access"), str)
             and isinstance(expires, (int, float)) and not isinstance(expires, bool)
-            and (isinstance(expires, int) or math.isfinite(expires))):
+            and abs(expires) < 2**53):
         if api_key_only:
             return Login(integration, "oauth", method)
         return Login(integration, "oauth", str(parsed.get("methodID") or method or ""), parsed["access"], int(expires),

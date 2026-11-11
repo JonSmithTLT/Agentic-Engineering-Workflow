@@ -86,6 +86,7 @@ def test_the_stored_login_is_read_read_only_one_row_per_provider_the_active_one_
     {"type": "oauth", "access": "synthetic-access-new", "expires": True},           # not a time
     {"type": "oauth", "access": "synthetic-access-new", "expires": 9, "metadata": ["synthetic"]},
     {"type": "oauth", "access": "synthetic-access-new", "expires": float("inf")},
+    {"type": "oauth", "access": "synthetic-access-new", "expires": 10**400},
     {"type": "oauth2", "token": "synthetic-access-new", "expires": 9},              # a type AEW does not know
     "synthetic-not-an-object"])
 def test_a_providers_row_in_a_shape_aew_does_not_know_is_its_login_unread_and_never_passed_over(tmp_path, value):

@@ -62,7 +62,7 @@ class ResponsesModel:
 
     mode = "responses"
 
-    def __init__(self, script: list[dict[str, Any]]) -> None:
+    def __init__(self, script: list[dict[str, Any]], *, capture_wire: bool = False) -> None:
         self.script = list(script)
         self.requests: list[dict[str, Any]] = []
         self.upgrades = 0
@@ -100,7 +100,8 @@ class ResponsesModel:
 
             def do_POST(self) -> None:  # noqa: N802
                 length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length) or b"{}")
+                wire = self.rfile.read(length)
+                body = json.loads(wire or b"{}")
                 tools = _tools(body)
                 with model._lock:
                     main = bool(tools)
@@ -111,7 +112,8 @@ class ResponsesModel:
                         model._main += 1
                     model.requests.append({"method": "POST", "path": self.path, "main": main, "tools": sorted(tools),
                                            "auth": "present" if self.headers.get("Authorization") else "absent",
-                                           "stream": bool(body.get("stream")), "body": body})
+                                           "stream": bool(body.get("stream")), "body": body, "raw_bytes": len(wire),
+                                           **({"wire": wire.decode("utf-8")} if capture_wire else {})})
                 if not self.path.rstrip("/").endswith("/responses"):
                     self._plain(404, {"error": {"message": f"this scripted model serves /responses, not {self.path}"}})
                     return
@@ -184,8 +186,8 @@ class ResponsesModel:
 MODES = {"responses": ResponsesModel}
 
 
-def start(mode: str, script: list[dict[str, Any]]) -> ScriptedModel:
+def start(mode: str, script: list[dict[str, Any]], *, capture_wire: bool = False) -> ResponsesModel:
     try:
-        return MODES[mode](script)
+        return MODES[mode](script, capture_wire=capture_wire)
     except KeyError:
         raise ValueError(f"no scripted model mode {mode!r} (built: {sorted(MODES)})") from None

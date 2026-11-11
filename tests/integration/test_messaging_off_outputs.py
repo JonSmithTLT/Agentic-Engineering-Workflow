@@ -1,4 +1,4 @@
-"""Consolidated seeded JSON/text/projection off pin, captured from eea24ef1 before worker/attention changes.
+"""Consolidated seeded JSON/text/projection off pin, captured from merged main f1ff2dd3.
 
 This seed has an active assignment and no harness run: its wait refusal is pinned, not a fabricated run result.
 Real ended-run behavior is covered by run_progress_digest and lead_relayed_reads. Normalized volatile values and
@@ -21,7 +21,7 @@ GOLDEN = ROOT / "tests/fixtures/baseline/messaging-off-outputs.json"
 
 
 @pytest.mark.parametrize("messaging", [None, "disabled"])
-def test_never_enabled_seeded_outputs_match_the_pre_worker_json_text_and_projection_pin(tmp_path, messaging):
+def test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin(tmp_path, messaging):
     w = world(tmp_path, messaging=messaging)
     before = worker_surface.snapshot(w.root / ".aew")
     output = subprocess.run([sys.executable, "-B", str(ROOT / "tests/helpers/messaging_off_snapshot.py"),

@@ -577,7 +577,7 @@ def lead_provider_policies() -> list[dict[str, str]]:
 def lead_wake_text(messaging: bool = False) -> str:
     """What a Lead whose project has push wakes on is told (steering design r4 §1, §4): it ends its turn and is woken. A
     capability the Lead isn't told of doesn't exist. Its guidance on each `why` is the wake guide's, as a wait's is."""
-    fields = "(each run's digest), `messages` and `next`" if messaging else "(each run's digest) and `next`"
+    fields = "(each run's digest), `messages` and `next`" if messaging else "(each run's digest), `next`"
     return "\n".join([
         "- Here AEW wakes you, which replaces waiting: after you dispatch, say in one line what you started and which "
         "runs you are waiting on, then end your turn. The operator can talk to you meanwhile, and you may do other "

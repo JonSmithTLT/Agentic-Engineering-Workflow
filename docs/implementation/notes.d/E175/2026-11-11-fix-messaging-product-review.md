@@ -31,7 +31,7 @@ all return MESSAGING_SNAPSHOT_MISMATCH and leave the thread unchanged.
 n1: told_messages cites ADR-0009's delivery-record contract as owner, not the private amendment review.
 
 No push of the product branch; hand back after the main merge and exact-head validation for the Lead's quick check.
-MS4 qualification publication remains separate (#448). No new runtime/provider probe or qualification pin rewrite.
+MS4 qualification publication remains separate (#448, now merged). No new runtime/provider probe or semantic pin rewrite.
 
 Main integration: retain both steering-loop and message gathering, projection and broker callbacks. Production's
 pinned post applies with messaging off too. The immutable selection includes the loop occurrence key, so a later
@@ -41,7 +41,20 @@ Generated conflicts were settled by tools/reference.py resolve, not taking eithe
 
 M3 measurement after main integration: messaging on system/guide/join/MCP = 9,279/16,611/2/11,900 B, total 37,792 B;
 off = 9,023/16,433/2/11,830 B, total 37,288 B. On/off delta = 504 B. Net growth against the recorded 37,355 B baseline
-(which already includes the on catalog) = 437 B. Replace the 200 B estimate with that measured net delta, preserving
-all approval words and the 42,555 B cap. Baseline plus allocations now totals 42,792 B: **237 B over the cap**.
-The pool gate deliberately remains red; the Lead must take this excess to the operator. No raise is authorized here.
+(which already includes the on catalog) = 437 B, replacing the 200 B estimate. The operator approved the 237 B raise
+on 2026-11-11 with the exact words "lets do it": the cap and derived baseline plus allocations are **42,792 B**.
+The earlier cap blocker is resolved. At 0403add3, q7 static and all 9,766 tests passed (3 skips); the pool gate is green.
 Catalog listing baseline remains 11,900 B / 16 tools on and 11,830 B / 15 off. Windows runtime remains NOT RUN / GAP.
+
+Quick-check corrections (QC-1 through QC-6): regenerate both seeded off-output pins from merged main f1ff2dd3,
+checking same-seed normalized branch/main bytes match (main's hint wording and removal of artifact_digests).
+Re-derive the published Linux qualification record with the qualification tool from retained evidence and the live
+CAP_PARTIAL declaration: only capabilities.report_step_and_shell_calls changes (declared gap -> partial, depth
+null -> run, status gap -> pass). All other record fields, original evidence and semantic pin remain unchanged;
+no runtime probe. Qualification tests now expect that derived row. Approval fields record "lets do it" verbatim.
+Restore main's exact messaging-off wake guidance, removing the merge's 3 B: current off pool is **37,285 B**
+(system 9,020 + guide 16,433 + join 2 + MCP 11,830). On remains **37,792 B**, derived ceiling/cap **42,792 B**;
+current on/off difference is 507 B. The approval above records the figures presented then; no cap change is needed.
+Both runtime and preamble wait qualification derive versions from capabilities.TESTED_VERSIONS, with a test that
+moves or empties that owner and checks both consumers together. Gate every branch-touched test module plus all
+reference integration modules, including messaging_off_outputs, harness_qualify and message_wait_delivery.

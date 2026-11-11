@@ -55,7 +55,7 @@ allocations:
 # Current cap. Preserve the operator's exact words and date in approval history when it changes.
 approval:
   ceiling_bytes: 42792
-  operator: "The operator approved raising the Lead context-pool cap to 42,792 B (from 42,555 B, +237 B)."
+  operator: "lets do it"
   date: '2026-11-11'
 # The approved drop after PR 3 still applies.
 approval_history:
@@ -71,7 +71,7 @@ approval_history:
     date: '2026-11-11'
   # Messaging: 37,792 B on, 37,288 B off; 504 B delta, 237 B above the original allocation.
   - ceiling_bytes: 42792
-    operator: "The operator approved raising the Lead context-pool cap to 42,792 B (from 42,555 B, +237 B)."
+    operator: "lets do it"
     date: '2026-11-11'
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

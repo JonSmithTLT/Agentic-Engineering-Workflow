@@ -139,6 +139,23 @@ def test_runtime_wait_reporting_is_enabled_only_for_the_measured_platform_and_ve
     assert a.reports_steps is supported
 
 
+@pytest.mark.parametrize("versions", [(), ("synthetic-qualified-version",)])
+def test_adapter_and_preamble_derive_qualification_from_the_same_version_owner(tmp_path, monkeypatch, versions):
+    from aew.harness.opencode import capabilities
+
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", versions)
+    monkeypatch.setattr(OC.sys, "platform", "linux")
+    a, _ = adapter(tmp_path)
+    a.health["version"] = "synthetic-qualified-version"
+    assert a.reports_steps is bool(versions)
+    assert wait_binding.qualified("linux", a.health["version"]) is bool(versions)
+    assert wait_binding.preamble_wait_supported({"harness": "opencode"}) is bool(versions)
+    assert not wait_binding.preamble_wait_supported({"harness": "other"})
+    monkeypatch.setattr(OC.sys, "platform", "win32")
+    assert not a.reports_steps
+    assert not wait_binding.preamble_wait_supported({"harness": "opencode"})
+
+
 def test_event_stream_drop_notifies_before_reconnecting(tmp_path):
     a, _ = adapter(tmp_path)
     start_call(a)

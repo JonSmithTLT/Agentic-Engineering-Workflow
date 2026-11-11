@@ -1,9 +1,9 @@
-"""Capture the no-run seeded off surface for a pre-worker-source golden, never runtime qualification.
+"""Capture the no-run seeded off surface for a main-source golden, never runtime qualification.
 
 Only volatile paths, times, token IDs, git/content digests and durations are normalized; field names, instructions,
 ordering and JSON/text bodies are pinned. The no-run wait is an actual refusal, not a synthetic ended-run owner fact.
 Existing progress/wait integration tests cover real ended runs; the golden does not claim arbitrary project coverage.
-An optional source root supports one-time generation against the clean pre-MS4/MS6 source, not a CI dependency.
+An optional source root supports generation against clean merged main, not a CI dependency.
 """
 
 from __future__ import annotations

@@ -1754,7 +1754,7 @@ None.
 
 ### `aew.harness.wait_binding`
 
-None.
+- `aew.harness.opencode.capabilities`
 
 ### `aew.harness.wake_queue`
 

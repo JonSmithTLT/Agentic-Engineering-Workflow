@@ -10,6 +10,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+from aew.harness.opencode import capabilities
+
 # Qualified Linux 2.2.6: 119.98 s default, conservatively measured maximum 88 s (messaging.shell_timeout).
 # Windows runtime remains NOT RUN; this constant does not enable an unsupported adapter's binding.
 MAX_WAIT_S = 88
@@ -17,12 +19,13 @@ CALL_GRACE_S = 2.0
 
 
 def qualified(platform: str, version: str) -> bool:
-    return platform == "linux" and version == "2.2.6"
+    return platform == "linux" and version in capabilities.TESTED_VERSIONS
 
 
 def preamble_wait_supported(profile: dict[str, Any]) -> bool:
     """Only the measured host/harness is offered a wait; adapter runtime version is independently checked at use."""
-    return profile.get("harness") == "opencode" and qualified(sys.platform, "2.2.6")
+    return profile.get("harness") == "opencode" and any(
+        qualified(sys.platform, version) for version in capabilities.TESTED_VERSIONS)
 
 
 @dataclass(frozen=True)

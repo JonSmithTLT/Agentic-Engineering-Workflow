@@ -714,6 +714,7 @@ def test_retained_reevaluation_and_semantic_pin_are_exact_qualifier_output(tmp_p
     expected = core.document(record, diff, core.fixture_report(pack, record.version, record.facts, fixtures),
                              pack.adoptable(record.facts, pinned))
     assert published == expected
+    assert published["capabilities"]["report_step_and_shell_calls"]["status"] == "pass"
     assert published["verdict"]["binary"] == core.PASS
     rendered, _ = pack.render(record.version, record.facts, FIXTURES)["messaging-2.2.6.json"]
     assert (FIXTURES / "messaging-2.2.6.json").read_bytes() == rendered
@@ -736,7 +737,7 @@ def test_the_ruled_predicate_recomputes_all_ten_checks_without_altering_the_fail
     assert selected == dict.fromkeys(reevaluate.REQUIRED, core.PASS)
     assert core.document(record, core.Diff([], [], {}), [])["verdict"]["binary"] == core.PASS
     assert record.aew_revision == reevaluate.SOURCE_REVISION and record.platform == "linux"
-    assert record.capabilities["report_step_and_shell_calls"]["status"] == "gap"  # implementation still absent
+    assert record.capabilities["report_step_and_shell_calls"]["status"] == "pass"  # CAP_PARTIAL plus retained checks
     provenance = record.facts["qualification.reevaluation"]
     assert provenance["runtime_executed"] is False and provenance["ruling"]["digest"] == reevaluate.RULING_DIGEST
     assert provenance["windows_runtime"] == "NOT RUN; capability GAP"

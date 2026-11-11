@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from aewflow import (
+    SAMPLE_FILES,
     SUBTRACT_PATCH,
     Role,
     assign,
@@ -18,6 +19,8 @@ from aewflow import (
     verify,
 )
 from conftest import run_aew
+
+from aew.util import dump_yaml, load_yaml
 
 
 @pytest.fixture
@@ -53,6 +56,7 @@ def test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_la
     # what remains of the run's directory: nothing, or its label alone while its entry may be live (#321 review, N3)
     assert all([p.name for p in d.iterdir()] == ["label.json"] for d in left)
     if meta["method"]["containment"] != "os_readonly_roots":  # weaker (Windows, or allowed): entered by this route
+        assert conftest.CHILD_DATA_BASE is not None
         register = conftest.CHILD_DATA_BASE / "aew" / "weaker-contexts"
         mine = [e for e in (json.loads(f.read_text(encoding="utf-8")) for f in register.glob("check_run-*.json"))
                 if e["project"] == str(calc.root)]
@@ -154,8 +158,10 @@ def test_role_separation_negatives(calc, tmp_path):
     # R0 is never independent review.
     fail(reviewer.submit("review", {"review": {"independence": "R0", "disposition": "pass", "findings": []}},
                          expect_ok=False), "VALIDATION_FAILED")
-    calc.lead("review", "ingest", wid, "--evidence", reviewer.submit(
-        "review", {"review": {"independence": "R1", "disposition": "pass", "findings": []}})["evidence"])
+    submitted = reviewer.submit(
+        "review", {"review": {"independence": "R1", "disposition": "pass", "findings": []}})
+    assert isinstance(submitted, dict)
+    calc.lead("review", "ingest", wid, "--evidence", submitted["evidence"])
     calc.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
 
     ver_out = calc.lead("invoke", "create", wid, "--role", "verifier")
@@ -279,13 +285,27 @@ def test_check_that_mutates_inputs_is_inconclusive(tmp_path):
             "unit": {"configured": True, "command": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider",
                                                      "tests"]},
             "codegen": {"configured": True,
-                        "command": ["{python}", "-c", "open('calc/generated.py','w').write('X=1\\n')"]},
+                        "command": ["{python}", "-c", "from pathlib import Path; "
+                                    "Path('calc/core.py').write_text('# rewritten')"]},
         },
     })
     wid = create_planned_ticket(calc, tmp_path)
     impl = assign(calc, wid)
     out = impl.check("codegen")
     assert out["result"] == "inconclusive" and out["mutated_inputs"] is True
+    assert out["changed_paths"] == ["calc/core.py"]
+    assert "Restore" in out["message"] and "stop writing" in out["message"]
+    assert ".gitignore" not in out["message"]
+
+    impl.write({"calc/core.py": SAMPLE_FILES["calc/core.py"]})
+    checks_path = calc.root / ".aew/policy/checks.yaml"
+    checks = load_yaml(checks_path.read_text(encoding="utf-8"))
+    checks["checks"]["codegen"]["command"] = ["{python}", "-c", "pass"]
+    checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    assert calc.adopt_policy(reason="Stop codegen from rewriting the tracked source.")["ok"]
+    fixed = impl.check("codegen")
+    assert fixed["result"] == "pass" and fixed["mutated_inputs"] is False
+    assert "changed_paths" not in fixed and "message" not in fixed
 
 
 def test_unconfigured_check_blocks_instead_of_guessing(tmp_path):

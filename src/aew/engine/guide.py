@@ -440,7 +440,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "When things go wrong:",
         "",
-        "- **`resolve`** settles only what `resume` or a decision lists; a stage that already stopped is not one.",
+        "- **`resolve`** settles only what `resume` or a decision lists. A partial stale stage whose result names "
+        "`resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.",
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
         f"`aew invoke create <T> --role implementer --launch {EXPECT_REV}`. The open findings reach it through its "
         "pack.",

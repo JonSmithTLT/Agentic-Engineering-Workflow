@@ -22,15 +22,16 @@ from typing import Any
 
 import pytest
 import yaml
-from aewflow import create_planned_ticket, sample_project, stand_in_containment
+from aewflow import create_planned_ticket, sample_project, set_mutating_concurrency, stand_in_containment
 from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
 from notifier import Console, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
-from test_stage_runner import PROBES, call, intent, intervene
+from test_stage_runner import PROBES, call, intent, intervene, launching
 from test_stages_request import implemented, seed_anomaly
+from test_stages_ticket import HANG
 
 from aew.engine import outbox
 from aew.engine import primitives as P
@@ -386,6 +387,44 @@ def test_protected_path_overlap_stops_every_mode(calc, tmp_path):
     assert "PROTECTED_CONDITION_OVERLAP" in stops[0][1] and wid in stops[0][1]
 
 
+class Recorded:
+    """An executor that records each call with its arguments and runs nothing."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def __call__(self, engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        self.calls.append((name, dict(arguments)))
+        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
+
+
+def test_under_run_a_ticket_held_for_a_conflict_is_started_by_the_loop_once_released(tmp_path):
+    """E228's proof: under Run, a Ticket whose scope meets a live Ticket's is held by the launch conflict check
+    (FILES_CONFLICT, CNI-03.a), and the loop stops on that hold, starting nothing; once the live Ticket is cancelled,
+    which releases its workspace, the loop itself starts the held one, with no Lead call in between."""
+    p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 3)
+    command, _ = recorder(tmp_path)
+    bounded(p, command)
+    first = create_planned_ticket(p, tmp_path, title="Add subtract()", scope=("calc/**", "tests/**"))
+    second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/two.py", "tests/test_two.py"))
+    p.lead("work", "assign", first)
+    raise_to(Engine.discover(p.root), "run")
+    ep = operator_endpoint.OperatorEndpoint(Engine.discover(p.root), console=Console(), dev=True, timeout=10)
+    ep.start()
+    try:
+        held = Recorded()
+        stop = loop(p, executor=held).activate()
+        assert not [c for c in held.calls if c[1].get("work_id") == second], held.calls
+        assert stop.code == L.BLOCKED and stop.subject == second and "FILES_CONFLICT" in stop.message, stop
+        p.lead("work", "transition", first, "--to", "CANCELLED", "--reason", "the objective moved elsewhere")
+        released = Recorded()
+        loop(p, executor=released).activate()
+    finally:
+        ep.close()
+    assert ("ticket_start", second) in [(name, args.get("work_id")) for name, args in released.calls], released.calls
+
+
 def test_high_anomaly_stops_every_mode(calc, tmp_path):
     """CWR §11 / plan v3 §2.4: an open high anomaly stops the loop in every mode, for the same reason, before any
     action is chosen, though a Ticket is ready to start."""
@@ -536,6 +575,37 @@ def test_under_run_the_loop_takes_in_an_implementer_run_itself(tmp_path, monkeyp
         ep.close()
     # the loop takes it: every profile sets deadline_s, so Run's own checks let the step run
     assert "ticket_request_review" in spy.calls, (stop, spy.calls)
+
+
+def test_under_run_the_loop_auto_runs_ticket_request_review_through_the_real_tool(tmp_path, monkeypatch):
+    """E228: the loop under Run auto-runs `ticket_request_review` itself, through ``run_tool`` as a Lead's call would
+    (no spy): the Ticket whose implementer reported moves to REVIEW_PENDING, its reviewer is launched on the fake
+    harness, and the stage is attributed to the loop."""
+    sp = sample_project(tmp_path)
+    lab = launching(sp, tmp_path, monkeypatch)
+    lab.script("default", HANG)
+    try:
+        command, _ = recorder(tmp_path)
+        wid, _ = implemented(sp, tmp_path)
+        bounded(sp, command)
+        e = Engine.discover(sp.root)
+        raise_to(e, "run")
+        ep = operator_endpoint.OperatorEndpoint(e, console=Console(), dev=True, timeout=10)
+        ep.start()
+        try:
+            lp = loop(sp)
+            lp.activate()
+        finally:
+            ep.close()
+        first = lp.executed[0]
+        assert (first["action"], first["subject"], first["ok"]) == ("ticket_request_review", wid, True), lp.executed
+        assert load_control(sp.root)["work"][wid]["state"] == "REVIEW_PENDING"
+        si = e.stage_intent(first["intent"])
+        assert [s["primitive"] for s in si["steps"]] == ["work.transition", "invoke.create.mutating",
+                                                         "dispatch.launch"], si
+        assert si["steps"][2]["outputs"]["runs"], si  # the reviewer was launched
+    finally:
+        lab.cleanup()
 
 
 def bounded(project: Any, command: list[str]) -> None:

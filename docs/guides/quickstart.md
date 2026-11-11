@@ -85,8 +85,9 @@ aew authority accept C-001 --class decisions --expect-rev <revision from aew sta
 aew lead release --expect-rev <revision from aew status>
 ```
 
-Start the Lead again with plain `aew opencode` when the seat is vacant and your shell has no exported Lead
-credential. If the old session kept the seat, see [Losing the session](#losing-the-session).
+The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
+plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
+explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
 
 ### Giving AEW the Lead credential
 

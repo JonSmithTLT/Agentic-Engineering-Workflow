@@ -129,7 +129,9 @@ sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
 CI publishes a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
 `sightings.json` member contains rows with `entry`, `job`, `at`, and optional `observation`. The run ID comes from
 GitHub artifact metadata. Each row retains its original timestamp across attempts. The queue accepts indexes from
-this repository's `ci.yml` runs on `main` and reports malformed archives in the issue while reading other indexes.
+this repository's `ci.yml` runs on `main` and from its own PR runs. PR indexes carry the PR number and the queue marks
+their sightings by source. For both PR sightings and candidates, the queue checks the PR head ref and repository
+against the run, including after merge. It reports malformed archives in the issue while reading other indexes.
 
 Assurance compares a PR's unchanged test files against its preceding CI run. A test that failed there and now passes
 without an open entry appears as a likely new flake. When the earlier run is unreadable, the summary records that.
@@ -191,7 +193,9 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
   Files changed by the PR are ineligible. Up to three unregistered failures may each be re-run alone once for
   evidence. They keep the job red.
 - **Earlier attempts remain visible.** Re-run failed jobs still works for runner infrastructure. A test that
-  failed in an earlier attempt needs an applicable open entry even if it now passes or moved shards. An
+  failed in an earlier attempt needs an applicable open entry even if it now passes or moved shards. If its
+  isolated re-run also failed, assurance keeps the run red. An earlier failure that clears under an entry
+  leaves a summary note and a sighting. Assurance lists earlier interruptions and worker losses. An
   earlier hang needs an open session entry for its lane and platform. Assurance links the hung job and
   records a sighting. A hang that names a test also needs an applicable open test entry. A timeout before
   pytest starts is infrastructure. Earlier runs supply gate evidence only under the pin-only rule in §3.

@@ -79,12 +79,18 @@ def rerun_root(report: Path) -> Path:
     return report.parent / f"{report.stem}-reruns"
 
 
-def passed(record: dict[str, Any], report: dict[str, Any], node: str, directory: Path) -> bool:
+def isolated_result(record: dict[str, Any], report: dict[str, Any], node: str,
+                    status: int, outcomes: tuple[str, ...]) -> bool:
     return (record.get("schema") == RERUN_SCHEMA and record.get("lane_report") == report_identity(report)
-            and record.get("platform") == report["platform"] and record.get("exitstatus") == 0
-            and record.get("process_exit") == 0 and record.get("session_problems") == []
-            and record.get("collected") == [node] and record.get("results") == {node: "passed"}
-            and not marker_files(directory))
+            and record.get("platform") == report["platform"] and record.get("exitstatus") == status
+            and record.get("process_exit") == status
+            and record.get("collected") == [node]
+            and any(record.get("results") == {node: outcome} for outcome in outcomes))
+
+
+def passed(record: dict[str, Any], report: dict[str, Any], node: str, directory: Path) -> bool:
+    return (isolated_result(record, report, node, 0, ("passed",))
+            and record.get("session_problems") == [] and not marker_files(directory))
 
 
 def test_path(node: str) -> str:
@@ -97,12 +103,17 @@ def test_path(node: str) -> str:
 
 
 def run_once(report: dict[str, Any], node: str, folder: Path, deadline: float, coverage: bool) -> bool:
-    # The session sentinel also caps itself at the absolute job deadline. The subprocess bound covers startup
-    # and cleanup even if pytest cannot install its sentinel.
     remaining = math.floor(deadline - time.time())
     if remaining <= 0:
         print(f"{node}: not re-run (budget)")
         return False
+    helpers = str(Path(__file__).resolve().parents[2] / "tests" / "helpers")
+    if helpers not in sys.path:
+        sys.path.insert(0, helpers)
+    from bounds import DEADLINE_MARGIN_S, SESSION_END_MARGINS
+
+    # CI already reserves these margins after AEW_JOB_DEADLINE, before the job timeout.
+    child_bound = remaining + SESSION_END_MARGINS * DEADLINE_MARGIN_S
     folder.mkdir(parents=True, exist_ok=False)
     output = folder / "result.json"
     wrapper = ["coverage", "run", "-m", "pytest"] if coverage else ["pytest"]
@@ -110,10 +121,10 @@ def run_once(report: dict[str, Any], node: str, folder: Path, deadline: float, c
                "--test-timeout", "600", "--session-deadline", str(remaining), f"--hang-dir={folder}",
                f"--rerun-report={output}", "--", node]
     try:
-        child = subprocess.run(command, check=False, stdin=subprocess.DEVNULL, timeout=remaining,
+        child = subprocess.run(command, check=False, stdin=subprocess.DEVNULL, timeout=child_bound,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))  # noqa: S603
     except subprocess.TimeoutExpired:
-        print(f"{node}: re-run exceeded the job deadline")
+        print(f"{node}: re-run exceeded the session deadline and autopsy margins")
         return False
     if not output.is_file():
         print(f"{node}: re-run wrote no evidence")

@@ -274,6 +274,9 @@ def test_only_ci_core_and_lanes_use_isolated_reruns_before_coverage_upload():
             assert len(matched) == 1
             decision = matched[0]
             assert decision["if"].startswith("always()")
+            assert check_assurance.flake_assurance.rerun.flake_register._started_pytest(
+                [{"name": decision["name"], "started_at": "started"}]
+            )
             assert steps.index(original) < steps.index(decision)
             assert "--evidence" in decision["run"]
             assert ("--coverage" in decision["run"]) == (original["id"] != "serial_lane")
@@ -289,8 +292,11 @@ def test_only_ci_core_and_lanes_use_isolated_reruns_before_coverage_upload():
     index = next(step for step in gate if step.get("with", {}).get("name") == "flake-sighting-index")
     candidates = next(step for step in gate if step.get("with", {}).get("name") == "flake-pr-candidates")
     assert "--flake-policy" in judge["run"] and "--sightings" in judge["run"]
-    assert gate.index(judge) < gate.index(index) and index["if"] == "always()"
+    assert gate.index(judge) < gate.index(index) and index["if"].startswith("always()")
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in index["if"]
     assert index["with"]["retention-days"] == 14
+    durations = next(step for step in gate if step.get("id") == "durations")
+    assert "--passed-only" in durations["run"].split()
     assert "--candidates" in judge["run"] and gate.index(judge) < gate.index(candidates)
     assert candidates["continue-on-error"] is True
     assert "github.event.pull_request.head.repo.full_name == github.repository" in candidates["if"]
@@ -2167,7 +2173,8 @@ def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green
     nightly = yaml.safe_load((workflows / "nightly.yml").read_text(encoding="utf-8"))
     queue = nightly["jobs"]["flake-queue"]
     assert queue["if"] == "always() && github.event_name == 'schedule'"
-    assert queue["permissions"] == {"contents": "read", "actions": "read", "checks": "read", "issues": "write"}
+    assert queue["permissions"] == {"contents": "read", "actions": "read", "checks": "read", "issues": "write",
+                                    "pull-requests": "read"}
     assert "needs" not in queue
 
 

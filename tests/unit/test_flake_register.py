@@ -215,7 +215,8 @@ def test_index_listing_filters_by_name_and_reads_recent_rows_after_older_ones(mo
 def test_indexes_from_untrusted_runs_are_ignored_and_bad_archive_is_reported(monkeypatch):
     runs = {
         1: _ci_run(head_repository={"full_name": "fork/r"}), 2: _ci_run(head_branch="feature"),
-        3: _ci_run(path=".github/workflows/nightly.yml"), 4: _ci_run(event="pull_request"), 5: _ci_run(),
+        3: _ci_run(path=".github/workflows/nightly.yml"),
+        4: _ci_run(event="pull_request", head_branch=""), 5: _ci_run(),
     }
     downloads = []
 
@@ -265,9 +266,20 @@ def test_candidate_artifacts_are_from_own_prs_and_never_enter_the_sighting_queue
         3: {"head_repository": {"full_name": repo}, "event": "push"},
     }
     for run in runs.values():
-        run.update(path=".github/workflows/ci.yml", repository={"full_name": repo}, pull_requests=[{"number": 4}])
-    monkeypatch.setattr(flake, "_pages", lambda *_args: artifacts)
-    monkeypatch.setattr(flake, "_api", lambda _, endpoint: runs[int(endpoint.rsplit("/", 1)[-1])])
+        run.update(path=".github/workflows/ci.yml", repository={"full_name": repo},
+                   head_branch="feature", pull_requests=[])
+    monkeypatch.setattr(flake, "_pages", lambda _, endpoint, _key: (
+        artifacts if endpoint.endswith(flake.CANDIDATE_ARTIFACT) else []
+    ))
+    pulls = []
+
+    def api(_, endpoint):
+        if endpoint == "pulls/4":
+            pulls.append(endpoint)
+            return {"head": {"ref": "feature", "repo": {"full_name": repo}}}
+        return runs[int(endpoint.rsplit("/", 1)[-1])]
+
+    monkeypatch.setattr(flake, "_api", api)
     downloads = []
     node = "tests/unit/test_example.py::test_example"
 
@@ -283,9 +295,48 @@ def test_candidate_artifacts_are_from_own_prs_and_never_enter_the_sighting_queue
     monkeypatch.setattr(flake, "_gh_read", download)
     candidates = list(flake.recent_candidates(repo, now))
     assert downloads == [1]
+    assert pulls == ["pulls/4"]
     assert candidates == [(node, "linux", 4, 1, now)]
     assert "1 PR(s), 1 listing(s)" in flake.candidate_queue({"entries": []}, candidates, now)[0]
     assert list(flake.recent_index_sightings(repo, now - flake.WINDOW)) == []
+
+
+@pytest.mark.parametrize("head,repo,count", [
+    ("feature", "o/r", 3), ("wrong-ref", "o/r", 2), ("feature", "fork/r", 2),
+])
+def test_merged_pr_sightings_count_toward_repeat_offenders_with_source(monkeypatch, head, repo, count):
+    monkeypatch.setattr(flake, "_pages", lambda *_args: [
+        {"id": ident, "workflow_run": {"id": ident}, "created_at": NOW.isoformat(),
+         "size_in_bytes": 120, "expired": False} for ident in (1, 2, 3, 4)
+    ])
+
+    def api(_, endpoint):
+        if endpoint == "pulls/17":
+            return {"head": {"ref": head, "repo": {"full_name": repo}}}
+        ident = int(endpoint.rsplit("/", 1)[-1])
+        if ident in (3, 4):
+            return _ci_run(event="pull_request", head_branch="feature", pull_requests=[],
+                           head_repository={"full_name": "o/r" if ident == 3 else "fork/r"})
+        return _ci_run()
+
+    downloads = []
+
+    def download(endpoint):
+        ident = int(endpoint.split("/")[-2])
+        downloads.append(ident)
+        rows = [{"entry": "a", "job": ident, "at": NOW.isoformat()}]
+        return _index({"pr": 17, "sightings": rows} if ident in (3, 4) else rows)
+
+    monkeypatch.setattr(flake, "_api", api)
+    monkeypatch.setattr(flake, "_gh_read", download)
+    observations = list(flake.recent_index_sightings("o/r", NOW - flake.WINDOW, lambda _: None))
+    assert downloads == [1, 2, 3]
+    pr_counts = {}
+    doc = {"entries": [{"id": "a", "status": "open", "evidence": []}]}
+    assert flake.queue(doc, observations, NOW, pr_counts) == [("a", count, count == 3)]
+    assert pr_counts == ({"a": 1} if count == 3 else {})
+    assert flake.record(doc, observations, NOW) == count
+    assert doc["entries"][0]["evidence"][-1].get("source") == ("pr" if count == 3 else None)
 
 
 def test_candidate_queue_counts_distinct_prs_and_runs_and_says_when_rows_leave():

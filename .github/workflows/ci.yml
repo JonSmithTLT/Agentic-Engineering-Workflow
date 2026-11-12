@@ -213,13 +213,13 @@ jobs:
           "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1200
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
-      - name: Judge the fast lane and record isolated re-runs
+      - name: Judge pytest fast lane and record isolated re-runs
         if: always() && matrix.lane == 'fast'
         run: >-
           python tools/ci/flake_rerun.py --outcome ${{ steps.fast_lane.outcome }} --evidence
           --report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
           ${{ runner.os == 'Linux' && '--coverage' || '' }}
-      - name: Judge the serial lane and record isolated re-runs
+      - name: Judge pytest serial lane and record isolated re-runs
         if: always() && matrix.lane == 'serial'
         run: >-
           python tools/ci/flake_rerun.py --outcome ${{ steps.serial_lane.outcome }} --evidence
@@ -291,7 +291,7 @@ jobs:
           "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
-      - name: Judge the lane and record isolated re-runs
+      - name: Judge pytest sharded lane and record isolated re-runs
         if: always()
         run: >-
           python tools/ci/flake_rerun.py --outcome ${{ steps.lane.outcome }} --evidence
@@ -525,7 +525,9 @@ jobs:
           --flake-policy --sightings "$RUNNER_TEMP/flake-sighting-index/sightings.json"
           --candidates "$RUNNER_TEMP/flake-pr-candidates/candidates.json"
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: >-
+          always() && (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
         with:
           name: flake-sighting-index
           path: ${{ runner.temp }}/flake-sighting-index/sightings.json
@@ -563,7 +565,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
         continue-on-error: true
         run: >-
-          python tools/ci/update_durations.py lane-reports --history shard-history/history.json
+          python tools/ci/update_durations.py lane-reports --passed-only --history shard-history/history.json
           --seed tests/durations.json --out shard-history/durations.json
           --run-label "${{ github.run_id }}/${{ github.run_attempt }} ${{ github.sha }}"
       - name: Save the history for the next runs

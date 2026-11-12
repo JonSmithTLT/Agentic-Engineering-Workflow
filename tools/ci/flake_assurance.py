@@ -16,6 +16,7 @@ import flake_rerun as rerun
 JOB = re.compile(r"([a-z]+) (\d+/\d+) \((windows|ubuntu)-[^)]+\)")
 NAMED_HANG = re.compile(r"\] (tests/.*?::.+): the session deadline")
 ERRORS = (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError)
+ISOLATION_FAILURES = {"checkout isolation guard", "git isolation tripwire"}
 JobKey = tuple[str, str, str, int]
 
 
@@ -88,6 +89,35 @@ def rerun_records(path: Path) -> list[tuple[Path, dict[str, Any]]]:
             for record in sorted(rerun.rerun_root(path).glob("*/result.json"))]
 
 
+def assess_earlier(result: Assessment, report: dict[str, Any], path: Path, failures: list[str],
+                   register: dict[str, Any], changed: set[str], job: dict[str, Any] | None) -> None:
+    platform, lane, _, attempt = report_key(report)
+    problems = set(report.get("session_problems") or [])
+    isolation = problems & ISOLATION_FAILURES
+    if isolation:
+        result.problems.append(f"{platform}: {lane} had a session failure in earlier attempt {attempt}")
+    other = problems - ISOLATION_FAILURES
+    if other or report.get("exitstatus") not in (0, 1, 70):
+        result.notes.append(f"{platform}: {lane} ended in earlier attempt {attempt} with "
+                            f"exit {report.get('exitstatus')}"
+                            + (f" ({', '.join(sorted(other))})." if other else "."))
+    records = rerun_records(path) if failures else []
+    for node in failures:
+        ids = test_entries(register, report, node, changed)
+        if any(rerun.isolated_result(record, report, node, 1, ("failed", "error"))
+               for _, record in records):
+            result.problems.append(f"{platform}: {node} failed twice in attempt {attempt}")
+        elif not ids:
+            result.problems.append(f"{platform}: {node} failed in earlier attempt {attempt} without an "
+                                   "applicable open entry")
+        elif not isolation:
+            result.notes.append(f"`{node}` failed in earlier attempt {attempt} on {platform} ({', '.join(ids)}).")
+            if job:
+                result.sight(ids, job, node)
+            else:
+                result.problems.append(f"{platform}: no CI job matched the earlier failure of {node}")
+
+
 def note_markers(result: Assessment, source: str, folder: Path) -> bool:
     markers = rerun.marker_files(folder)
     for marker in markers:
@@ -112,12 +142,7 @@ def assess_reports(result: Assessment, root: Path, register: dict[str, Any], cha
                 result.sight(rerun.entries(register, key[0], key[1], None), job)
         failures = rerun.failed_tests(report)
         if report["_source"] not in latest_sources:
-            if report.get("session_problems") or report.get("exitstatus") not in (0, 1, 70):
-                result.problems.append(f"{key[0]}: {key[1]} had a session failure in earlier attempt {key[3]}")
-            for node in failures:
-                if not test_entries(register, report, node, changed):
-                    result.problems.append(f"{key[0]}: {node} failed in earlier attempt {key[3]} without an "
-                                           "applicable open entry")
+            assess_earlier(result, report, path, failures, register, changed, job)
             continue
         if not failures or not rerun.eligible(report, path.parent):
             continue
@@ -138,7 +163,8 @@ def assess_reports(result: Assessment, root: Path, register: dict[str, Any], cha
                 result.notes.append(f"`{node}` passed alone on {key[0]} ({', '.join(ids)}).")
                 result.sight(ids, job, node)
             elif not ids:
-                outcome = "passed alone" if passed else "failed alone"
+                failed = rerun.isolated_result(record, report, node, 1, ("failed", "error"))
+                outcome = "passed alone" if passed else "failed alone" if failed else "had an inconclusive re-run"
                 result.notes.append(f"`{node}` {outcome} on {key[0]} (evidence only). "
                                     "If the test is unchanged, triage it before opening a register entry.")
         if accepted == set(failures):
@@ -194,10 +220,9 @@ def assess_hangs(result: Assessment, root: Path, register: dict[str, Any], chang
                                        "open test entry")
 
 
-def previous_run(result: Assessment, root: Path, latest: list[dict[str, Any]], register: dict[str, Any],
-                 changed: set[str], repo: str, run: int, reuse: str) -> None:
+def previous_run(result: Assessment, root: Path, latest: list[dict[str, Any]], register: dict[str, Any] | None,
+                 changed: set[str] | None, repo: str, run: int, reuse: str) -> None:
     from check_assurance import load_reports
-    from pin_shortcut import download_reports
 
     pr, branch = os.environ.get("PR_NUMBER"), os.environ.get("PR_HEAD_REF")
     if not pr or not branch:
@@ -213,20 +238,32 @@ def previous_run(result: Assessment, root: Path, latest: list[dict[str, Any]], r
             data = json.loads(gh("api", f"repos/{repo}/actions/workflows/ci.yml/runs?{query}"))
             old = next((r for r in data["workflow_runs"] if r["id"] < run
                         and r["status"] == "completed"
-                        and int(pr) in rerun.flake_register._candidate_prs(repo, r)), None)
+                        and rerun.flake_register.own_pr_run(repo, r) and r.get("head_branch") == branch), None)
             if old is None:
                 result.notes.append("Previous PR run unavailable for flake comparison.")
                 return
+            if old.get("conclusion") == "success":
+                return
+            if not rerun.flake_register.pr_binding(repo, old, {})(int(pr)):
+                result.notes.append("Previous CI run did not match the pull request head.")
+                return
             with tempfile.TemporaryDirectory(prefix="aew-pr-lane-reports-") as folder:
-                download_reports(old["id"], repo, Path(folder))
+                gh("run", "download", str(old["id"]), "--repo", repo, "--pattern", "lane-report-*", "--dir", folder)
                 previous = load_reports(Path(folder))
         if not previous:
             result.notes.append("Previous PR run had no readable lane reports for flake comparison.")
             return
         passed = {(r["platform"], n) for r in latest for n, res in r["results"].items() if res["outcome"] == "passed"}
-        probable = {(r["platform"], n) for r in previous for n in rerun.failed_tests(r)
-                    if (r["platform"], n) in passed and rerun.test_path(n) not in changed
-                    and not rerun.entries(register, r["platform"], r["lane"], n)}
+        candidates = {(r["platform"], r["lane"], n) for r in previous for n in rerun.failed_tests(r)
+                      if (r["platform"], n) in passed}
+        if not candidates:
+            return
+        if register is None:
+            register = rerun.tip_register()
+        if changed is None:
+            changed = rerun.changed_paths("pull_request", os.environ.get("GITHUB_SHA", "HEAD"))
+        probable = {(platform, n) for platform, lane, n in candidates if rerun.test_path(n) not in changed
+                    and not rerun.entries(register, platform, lane, n)}
         for platform, node in sorted(probable):
             result.notes.append(f"Likely new flake on {platform}: `{node}` failed in the previous PR run "
                                 "and now passes.")
@@ -242,18 +279,25 @@ def assess(root: Path, history: list[dict[str, Any]], latest: list[dict[str, Any
     run = int(os.environ.get("GITHUB_RUN_ID", "0"))
     reuse = os.environ.get("REUSE_RUN", "")
     attempt = int(os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+    register = None
+    changed = None
     try:
-        changed = rerun.changed_paths(event, os.environ.get("GITHUB_SHA", "HEAD"))
-        register = rerun.tip_register()
         jobs = {}
         marker_artifact = any(path.stem in rerun.MARKERS
                               for path in root.glob("lane-report-*/autopsy/session-*/*.txt"))
-        if repo and (attempt > 1 or reuse or marker_artifact or any(rerun.failed_tests(r) for r in history)):
-            endpoint = f"repos/{repo}/actions/runs/{reuse or run}/jobs?filter=all"
-            jobs = {key: job for job in pages(endpoint, "jobs") if (key := job_key(job))}
-        assess_reports(result, root, register, changed, history, latest, jobs)
+        if attempt > 1 or reuse or marker_artifact or any(rerun.failed_tests(r) for r in history):
+            try:
+                changed = rerun.changed_paths(event, os.environ.get("GITHUB_SHA", "HEAD"))
+                register = rerun.tip_register()
+            except ERRORS as exc:
+                result.notes.append(f"Flake register or changed paths unavailable ({type(exc).__name__}).")
+            if repo:
+                endpoint = f"repos/{repo}/actions/runs/{reuse or run}/jobs?filter=all"
+                jobs = {key: job for job in pages(endpoint, "jobs") if (key := job_key(job))}
+        authority = (register or {"entries": []}) if changed is not None else {"entries": []}
+        assess_reports(result, root, authority, changed or set(), history, latest, jobs)
         if jobs:
-            assess_hangs(result, root, register, changed, history, latest, jobs, repo)
+            assess_hangs(result, root, authority, changed or set(), history, latest, jobs, repo)
     except ERRORS as exc:
         result.forgiven.clear()
         result.problems.append(f"Flake evidence could not be verified ({type(exc).__name__}).")
@@ -264,22 +308,31 @@ def assess(root: Path, history: list[dict[str, Any]], latest: list[dict[str, Any
 
 
 def publish(path: Path, result: Assessment) -> None:
-    if not result.sightings:
+    if not result.sightings or os.environ.get("REUSE_RUN"):
         return
     repo = os.environ["GITHUB_REPOSITORY"]
     run = os.environ["GITHUB_RUN_ID"]
     name = rerun.flake_register.INDEX_ARTIFACT
+    pr = int(os.environ["PR_NUMBER"]) if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" else None
     rows: list[dict[str, Any]] = []
     if int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")) > 1:
         artifacts = pages(f"repos/{repo}/actions/runs/{run}/artifacts", "artifacts")
         if any(a["name"] == name and not a["expired"] for a in artifacts):
             with tempfile.TemporaryDirectory(prefix="aew-flake-index-") as folder:
                 gh("run", "download", run, "--repo", repo, "--name", name, "--dir", folder)
-                rows = json.loads((Path(folder) / "sightings.json").read_text(encoding="utf-8"))
+                previous = json.loads((Path(folder) / "sightings.json").read_text(encoding="utf-8"))
+                if pr is not None:
+                    if not isinstance(previous, dict) or previous.get("pr") != pr:
+                        raise ValueError("sighting index PR changed across attempts")
+                    previous = previous["sightings"]
+                if not isinstance(previous, list) or not all(isinstance(row, dict) for row in previous):
+                    raise ValueError("invalid sighting rows from an earlier attempt")
+                rows = previous
     known = {(row["entry"], row["job"], row.get("observation")) for row in rows}
     rows.extend(row for row in result.sightings if (row["entry"], row["job"], row.get("observation")) not in known)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rows) + "\n", encoding="utf-8")
+    doc = {"pr": pr, "sightings": rows} if pr is not None else rows
+    path.write_text(json.dumps(doc) + "\n", encoding="utf-8")
 
 
 def publish_candidates(path: Path, result: Assessment) -> None:

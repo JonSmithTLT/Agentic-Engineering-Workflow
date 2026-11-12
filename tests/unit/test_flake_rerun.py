@@ -137,7 +137,8 @@ def test_a_later_attempt_cannot_hide_an_unregistered_failure_even_after_reshardi
     assert assurance.latest_attempts(reports) == [reports[1]]
     for doc, blocked in [({"entries": []}, True), (register(), False)]:
         result = policy.Assessment()
-        policy.assess_reports(result, tmp_path, doc, set(), reports, reports[1:], {})
+        policy.assess_reports(result, tmp_path, doc, set(), reports, reports[1:],
+                              {policy.report_key(reports[0]): JOB})
         assert bool(result.problems) is blocked
 
 
@@ -147,6 +148,64 @@ def test_a_passing_attempt_cannot_hide_an_earlier_isolation_failure(tmp_path):
     verdict, errors = judge(tmp_path, register())
     assert errors == [f"{sys.platform}: fast had a session failure in earlier attempt 1"]
     assert not verdict.sightings
+
+
+@pytest.mark.parametrize("case", [
+    "failed-alone", "failed-with-marker", "passed-alone", "absent", "wrong-attempt", "error-alone",
+])
+def test_earlier_registered_failure_uses_its_own_isolated_record(tmp_path, case):
+    path = report(tmp_path)
+    if case in ("failed-alone", "failed-with-marker", "error-alone", "wrong-attempt"):
+        identity = rerun.report_identity(json.loads(path.read_text(encoding="utf-8")))
+        if case == "wrong-attempt":
+            identity["attempt"] = 2
+        evidence = record(path, exitstatus=1, process_exit=1, lane_report=identity,
+                          results={NODE: "error" if case == "error-alone" else "failed"})
+        if case == "failed-with-marker":
+            marker(evidence.parent, "left-running")
+    elif case == "passed-alone":
+        record(path)
+    report(tmp_path, attempt=2, exitstatus=0)
+    verdict, errors = judge(tmp_path, register())
+    if case in ("failed-alone", "failed-with-marker", "error-alone"):
+        assert len(errors) == 1 and "failed twice in attempt 1" in errors[0]
+        assert not verdict.sightings
+    else:
+        assert not errors
+        assert "failed in earlier attempt 1" in verdict.summary()
+        assert verdict.sightings == [{**JOB_ID, "observation": NODE}]
+
+
+@pytest.mark.parametrize("status,problems", [(2, ()), (1, ("xdist worker stopped unexpectedly",))])
+def test_a_later_pass_clears_an_interrupted_earlier_session(tmp_path, status, problems):
+    report(tmp_path, exitstatus=status, problems=problems, nodes=())
+    report(tmp_path, attempt=2, exitstatus=0)
+    verdict, errors = judge(tmp_path, {"entries": []})
+    assert not errors and not verdict.sightings
+    assert f"ended in earlier attempt 1 with exit {status}" in verdict.summary()
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_main_fetch_failure_only_prevents_forgiveness(tmp_path, monkeypatch, status):
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("REUSE_RUN", raising=False)
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    path = report(tmp_path, exitstatus=status)
+    if status:
+        record(path)
+    calls = []
+
+    def unavailable():
+        calls.append("fetch")
+        raise subprocess.CalledProcessError(1, ["git", "fetch"])
+
+    monkeypatch.setattr(rerun, "tip_register", unavailable)
+    history = assurance.all_reports(tmp_path)
+    verdict = policy.assess(tmp_path, history, history, "push")
+    assert not verdict.problems and not verdict.forgiven
+    assert calls == (["fetch"] if status else [])
+    errors, _ = assurance.check(history, {}, [sys.platform], forgiven=verdict.forgiven)
+    assert bool(errors) is bool(status)
 
 
 @pytest.mark.parametrize("known,named,setup,changed,expected", [
@@ -229,16 +288,20 @@ def test_an_exhausted_budget_does_not_start_pytest(tmp_path, monkeypatch, capsys
 
 
 def test_a_timed_out_child_cannot_pass_and_is_started_without_a_window_on_windows(tmp_path, monkeypatch, capsys):
+    from bounds import DEADLINE_MARGIN_S, SESSION_END_MARGINS
+
     def timeout(command, **options):
         assert command[-2:] == ["--", NODE]
         assert "-p" in command and "no:xdist" in command
         assert options["stdin"] == subprocess.DEVNULL
         assert options["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        session = int(command[command.index("--session-deadline") + 1])
+        assert options["timeout"] == session + DEADLINE_MARGIN_S * SESSION_END_MARGINS
         raise subprocess.TimeoutExpired(command, options["timeout"])
 
     monkeypatch.setattr(rerun.subprocess, "run", timeout)
     assert not rerun.run_once({}, NODE, tmp_path / "rerun", time.time() + 30, False)
-    assert "re-run exceeded the job deadline" in capsys.readouterr().out
+    assert "re-run exceeded the session deadline and autopsy margins" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("registered,passes,covered", [
@@ -360,43 +423,51 @@ def test_pr_own_registered_failure_stays_red_and_does_not_rerun(tmp_path, monkey
     assert rerun.decide(report(tmp_path), "failure", "pull_request", "HEAD", False, True) == 1
 
 
-@pytest.mark.parametrize("case", ["candidate", "changed", "registered", "unreadable", "malformed", "reuse"])
+@pytest.mark.parametrize("case", [
+    "candidate", "changed", "registered", "unreadable", "malformed", "reuse", "success", "stall",
+])
 def test_previous_pr_run_candidates_are_observational_and_only_record_readable_unchanged_new_cases(
     tmp_path, monkeypatch, case,
 ):
-    import pin_shortcut
-
-    prior = tmp_path / "prior"
-    report(prior)
     current = tmp_path / "current"
     report(current, exitstatus=0)
     latest = assurance.all_reports(current)
     monkeypatch.setenv("PR_NUMBER", "4")
     monkeypatch.setenv("PR_HEAD_REF", "a-branch")
-    monkeypatch.setattr(policy, "gh", lambda *_args: json.dumps({"workflow_runs": [{
+    runs = {"workflow_runs": [{
         "id": 12, "status": "completed", "event": "pull_request", "path": ".github/workflows/ci.yml",
         "head_repository": {"full_name": "o/r"}, "repository": {"full_name": "o/r"},
-        "pull_requests": [{"number": 4}],
-    }]}))
+        "head_branch": "a-branch", "conclusion": "success" if case == "success" else "failure",
+    }]}
     calls = []
 
-    def download(run, repo, folder):
-        calls.append((run, repo))
+    def gh(*args):
+        if args[0] == "api":
+            return json.dumps(runs)
+        calls.append(args[:3])
         if case == "unreadable":
             raise OSError("expired")
-        path = report(folder)
+        if case == "stall":
+            raise subprocess.TimeoutExpired(args, 60)
+        path = report(Path(args[-1]))
         if case == "malformed":
             path.write_text("[]", encoding="utf-8")
 
-    monkeypatch.setattr(pin_shortcut, "download_reports", download)
+        return ""
+
+    monkeypatch.setattr(policy, "gh", gh)
+    monkeypatch.setattr(rerun.flake_register, "_api", lambda repo, endpoint: (
+        {"head": {"ref": "a-branch", "repo": {"full_name": "o/r"}}}
+        if (repo, endpoint) == ("o/r", "pulls/4") else pytest.fail(endpoint)
+    ))
     verdict = policy.Assessment()
     policy.previous_run(verdict, current, latest, register() if case == "registered" else {"entries": []},
                         {FILE} if case == "changed" else set(), "o/r", 13, "12" if case == "reuse" else "")
     assert not verdict.problems and not verdict.forgiven and not verdict.sightings
-    assert calls == ([] if case == "reuse" else [(12, "o/r")])
+    assert calls == ([] if case in ("reuse", "success") else [("run", "download", "12")])
     assert bool(verdict.candidates) is (case == "candidate")
     assert ("Likely new flake" in verdict.summary()) is (case == "candidate")
-    assert ("could not be read" in verdict.summary()) is (case in ("unreadable", "malformed"))
+    assert ("could not be read" in verdict.summary()) is (case in ("unreadable", "malformed", "stall"))
     path = tmp_path / "candidates.json"
     policy.publish_candidates(path, verdict)
     assert path.exists() is (case == "candidate")
@@ -423,3 +494,25 @@ def test_a_forged_candidate_cannot_change_the_gate_or_become_a_sighting(tmp_path
     monkeypatch.setattr(policy, "publish_candidates",
                         lambda *_args: (_ for _ in ()).throw(OSError("candidate disk write failed")))
     assert assurance.main([str(path.parent), *args[1:], "--candidates", str(candidate)]) == 0
+
+
+def test_pr_sighting_index_binds_the_pr_and_preserves_earlier_attempt_evidence(tmp_path, monkeypatch):
+    for key, value in {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "o/r",
+                       "GITHUB_RUN_ID": "13", "GITHUB_RUN_ATTEMPT": "2", "PR_NUMBER": "4"}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("REUSE_RUN", raising=False)
+    monkeypatch.setattr(policy, "pages", lambda *_args: [{"name": "flake-sighting-index", "expired": False}])
+    earlier = {**JOB_ID, "observation": NODE}
+
+    def download(*args):
+        assert args[:3] == ("run", "download", "13")
+        path = Path(args[-1]) / "sightings.json"
+        path.write_text(json.dumps({"pr": 4, "sightings": [earlier]}), encoding="utf-8")
+        return ""
+
+    monkeypatch.setattr(policy, "gh", download)
+    new = {**JOB_ID, "job": 26}
+    current = {**earlier, "at": "2026-11-11T23:45:56Z"}
+    path = tmp_path / "sightings.json"
+    policy.publish(path, policy.Assessment(sightings=[current, new]))
+    assert json.loads(path.read_text(encoding="utf-8")) == {"pr": 4, "sightings": [earlier, new]}

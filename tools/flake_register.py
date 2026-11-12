@@ -166,13 +166,15 @@ def _validate_evidence(rows: Any, *, source: Callable[[str], str | None] | None 
     seen = set()
     for row in rows:
         if (not isinstance(row, dict) or not {"run", "job", "at"} <= row.keys()
-                or set(row) - {"run", "job", "at", "observation", "note", "nodes", "kind"}):
+                or set(row) - {"run", "job", "at", "observation", "note", "nodes", "kind", "source"}):
             raise InvalidRegister("evidence needs run, job and at")
         if any(type(row[key]) is not int or row[key] <= 0 for key in ("run", "job")):
             raise InvalidRegister("run and job IDs must be positive integers")
         _time(row["at"])
         if row.get("kind", "sighting") not in ("sighting", "diagnostic"):
             raise InvalidRegister("unknown evidence kind")
+        if "source" in row and row["source"] != "pr":
+            raise InvalidRegister("unknown evidence source")
         if "observation" in row and not _nonempty(row["observation"]):
             raise InvalidRegister("empty observation identity")
         if "note" in row and not _nonempty(row["note"]):
@@ -295,7 +297,8 @@ def check_base(base_ref: str, current: dict[str, Any]) -> None:
     validate_history(load_register(git("show", f"{base}:{REGISTER}"), source), current)
 
 
-def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]]]:
+def index_sightings(data: bytes, run: int, verify_pr: Callable[[int], bool] | None = None
+                    ) -> Iterable[tuple[str, dict[str, Any]]]:
     if len(data) > MAX_INDEX_BYTES:
         raise InvalidRegister("oversized flake sighting index archive")
     try:
@@ -305,6 +308,11 @@ def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]
             rows = json.loads(archive.read(INDEX_MEMBER))
     except (BadZipFile, CompressionError, EOFError, RuntimeError, NotImplementedError) as exc:
         raise InvalidRegister("invalid flake sighting index archive") from exc
+    if verify_pr is not None:
+        if (not isinstance(rows, dict) or rows.keys() != {"pr", "sightings"}
+                or type(rows["pr"]) is not int or rows["pr"] <= 0 or not verify_pr(rows["pr"])):
+            raise InvalidRegister("invalid sighting index PR")
+        rows = rows["sightings"]
     if not isinstance(rows, list):
         raise InvalidRegister("flake sighting index must contain a list")
     for row in rows:
@@ -313,6 +321,8 @@ def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]
                 or not isinstance(row["entry"], str) or not IDENTIFIER.fullmatch(row["entry"])):
             raise InvalidRegister("invalid flake sighting index row")
         evidence = {key: value for key, value in row.items() if key != "entry"} | {"run": run}
+        if verify_pr is not None:
+            evidence["source"] = "pr"
         _validate_evidence([evidence])
         yield row["entry"], evidence
 
@@ -373,12 +383,15 @@ def session_sightings(doc: dict[str, Any], runs: Iterable[dict[str, Any]],
 
 
 def queue(doc: dict[str, Any], recent: Iterable[tuple[str, dict[str, Any]]],
-          now: datetime) -> list[tuple[str, int, bool]]:
+          now: datetime, pr_counts: dict[str, int] | None = None) -> list[tuple[str, int, bool]]:
     seen = {entry["id"]: set() for entry in doc["entries"] if entry["status"] == "open"}
+    from_pr = {ident: set() for ident in seen}
 
     def add(ident: str, row: dict[str, Any]) -> None:
         if ident in seen and row.get("kind", "sighting") == "sighting" and now - WINDOW <= _time(row["at"]) <= now:
             seen[ident].add(_evidence_key(row))
+            if row.get("source") == "pr":
+                from_pr[ident].add(_evidence_key(row))
 
     for entry in doc["entries"]:
         for row in entry["evidence"]:
@@ -386,6 +399,8 @@ def queue(doc: dict[str, Any], recent: Iterable[tuple[str, dict[str, Any]]],
     for ident, row in recent:
         add(ident, row)
     counts = {ident: len(keys) for ident, keys in seen.items()}
+    if pr_counts is not None:
+        pr_counts.update((ident, len(keys)) for ident, keys in from_pr.items() if keys)
     ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
     return [(ident, count, count >= THRESHOLD) for ident, count in ordered]
 
@@ -421,16 +436,25 @@ def _index_warning(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _candidate_prs(repo: str, run: dict[str, Any]) -> set[int]:
-    if (run.get("path") != ".github/workflows/ci.yml" or run.get("event") != "pull_request"
-            or not all(((run.get(key) or {}).get("full_name") or "").casefold() == repo.casefold()
-                       for key in ("repository", "head_repository"))):
-        return set()
-    return {row["number"] for row in run.get("pull_requests") or []
-            if type(row.get("number")) is int and row["number"] > 0}
+def own_pr_run(repo: str, run: dict[str, Any]) -> bool:
+    return (run.get("path") == ".github/workflows/ci.yml" and run.get("event") == "pull_request"
+            and _nonempty(run.get("head_branch"))
+            and all(((run.get(key) or {}).get("full_name") or "").casefold() == repo.casefold()
+                    for key in ("repository", "head_repository")))
 
 
-def candidate_nodes(data: bytes, prs: set[int]) -> tuple[int, list[tuple[str, str]]]:
+def pr_binding(repo: str, run: dict[str, Any], pulls: dict[int, dict[str, Any]]) -> Callable[[int], bool]:
+    def verify(number: int) -> bool:
+        if number not in pulls:
+            pulls[number] = _api(repo, f"pulls/{number}")
+        head = pulls[number].get("head") or {}
+        return (head.get("ref") == run["head_branch"]
+                and ((head.get("repo") or {}).get("full_name") or "").casefold() == repo.casefold())
+
+    return verify
+
+
+def candidate_nodes(data: bytes, verify_pr: Callable[[int], bool]) -> tuple[int, list[tuple[str, str]]]:
     if len(data) > MAX_INDEX_BYTES:
         raise InvalidRegister("oversized candidate archive")
     try:
@@ -442,7 +466,8 @@ def candidate_nodes(data: bytes, prs: set[int]) -> tuple[int, list[tuple[str, st
     except (BadZipFile, CompressionError, EOFError, RuntimeError, NotImplementedError) as exc:
         raise InvalidRegister("invalid candidate archive") from exc
     if (not isinstance(doc, dict) or doc.keys() != {"schema", "pr", "candidates"}
-            or doc["schema"] != CANDIDATE_SCHEMA or type(doc["pr"]) is not int or doc["pr"] not in prs
+            or doc["schema"] != CANDIDATE_SCHEMA or type(doc["pr"]) is not int or doc["pr"] <= 0
+            or not verify_pr(doc["pr"])
             or not isinstance(doc["candidates"], list)):
         raise InvalidRegister("invalid candidate listing or PR")
     rows = []
@@ -458,7 +483,8 @@ def candidate_nodes(data: bytes, prs: set[int]) -> tuple[int, list[tuple[str, st
 
 def recent_candidates(repo: str, now: datetime, warn: Callable[[str], None] = _index_warning
                       ) -> Iterable[tuple[str, str, int, int, datetime]]:
-    trusted: dict[int, set[int]] = {}
+    runs: dict[int, dict[str, Any]] = {}
+    pulls: dict[int, dict[str, Any]] = {}
     for artifact in _pages(repo, f"actions/artifacts?per_page=100&name={CANDIDATE_ARTIFACT}", "artifacts"):
         try:
             at = _time(artifact["created_at"])
@@ -468,14 +494,15 @@ def recent_candidates(repo: str, now: datetime, warn: Callable[[str], None] = _i
             artifact_id = artifact["id"]
             if type(run) is not int or run < 1 or type(artifact_id) is not int or artifact_id < 1:
                 raise InvalidRegister("invalid candidate artifact metadata")
-            if run not in trusted:
-                trusted[run] = _candidate_prs(repo, _api(repo, f"actions/runs/{run}"))
-            if not trusted[run]:
+            if run not in runs:
+                runs[run] = _api(repo, f"actions/runs/{run}")
+            if not own_pr_run(repo, runs[run]):
                 continue
             if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
                 raise InvalidRegister("invalid candidate archive size")
-            pr, rows = candidate_nodes(_gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip"), trusted[run])
-        except (ValueError, KeyError, TypeError):
+            pr, rows = candidate_nodes(_gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip"),
+                                       pr_binding(repo, runs[run], pulls))
+        except (ValueError, KeyError, TypeError, subprocess.SubprocessError):
             warn("Skipped a malformed PR flake candidate archive or its metadata.")
             continue
         yield from ((node, platform, pr, run, at) for node, platform in rows)
@@ -511,7 +538,8 @@ def recent_index_sightings(
     repo: str, cutoff: datetime, warn: Callable[[str], None] = _index_warning,
 ) -> Iterable[tuple[str, dict[str, Any]]]:
     # GitHub filters exact names, and pages can contain out-of-order timestamps.
-    trusted: dict[int, bool] = {}
+    runs: dict[int, dict[str, Any]] = {}
+    pulls: dict[int, dict[str, Any]] = {}
     for artifact in _pages(repo, f"actions/artifacts?per_page=100&name={INDEX_ARTIFACT}", "artifacts"):
         if artifact["expired"] or _time(artifact["created_at"]) < cutoff:
             continue
@@ -520,16 +548,17 @@ def recent_index_sightings(
         if type(run) is not int or run < 1 or type(artifact_id) is not int or artifact_id < 1:
             warn("Skipped a flake sighting index with invalid artifact or run metadata.")
             continue
-        if run not in trusted:
-            trusted[run] = _own_ci_run(repo, _api(repo, f"actions/runs/{run}"))
-        if not trusted[run]:
+        if run not in runs:
+            runs[run] = _api(repo, f"actions/runs/{run}")
+        from_pr = own_pr_run(repo, runs[run])
+        if not from_pr and not _own_ci_run(repo, runs[run]):
             continue
         try:
             if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
                 raise InvalidRegister("invalid flake sighting index size")
             data = _gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip")
-            rows = list(index_sightings(data, run))
-        except (ValueError, KeyError, TypeError):
+            rows = list(index_sightings(data, run, pr_binding(repo, runs[run], pulls) if from_pr else None))
+        except (ValueError, KeyError, TypeError, subprocess.SubprocessError):
             warn(f"Skipped malformed flake sighting index {artifact_id} from run {run}.")
             continue
         yield from rows
@@ -673,10 +702,12 @@ def main(argv: list[str] | None = None) -> int:
             now = datetime.now(UTC)
             warnings: list[str] = []
             recent = github_sightings(doc, args.repo, now, warnings.append) if args.repo else ()
-            rows = queue(doc, recent, now)
+            pr_counts: dict[str, int] = {}
+            rows = queue(doc, recent, now, pr_counts)
             print("## Flake queue · last seven days\n")
             for ident, count, repeated in rows:
-                print(f"- `{ident}`: {count}" + (" **repeat offender**" if repeated else ""))
+                source = f" ({pr_counts[ident]} from PRs)" if ident in pr_counts else ""
+                print(f"- `{ident}`: {count}{source}" + (" **repeat offender**" if repeated else ""))
             if args.repo:
                 candidates = candidate_queue(doc, recent_candidates(args.repo, now, warnings.append), now)
                 print("\n### PR flake candidates\n")

@@ -106,7 +106,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (1-2 PRs after first use); decided by the operator
+**Who:** Lead (E293's maps profile next, 2-4 PRs); decided by the operator
 
 **Now:** not on the Now list
 

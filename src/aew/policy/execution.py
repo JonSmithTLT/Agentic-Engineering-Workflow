@@ -162,7 +162,8 @@ PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
 PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 
 
-# The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
+# The execution policy's string-valued switches, by path, with their values (the first is what an absent key reads;
+# what a new project holds is the template's, ``new_project_switches``). YAML 1.1 reads
 # an unquoted ``off`` (and ``no``, ``false``, ``on``, ``yes``, ``true``) as a boolean, which a schema enum refuses
 # without saying why; ``refuse_yaml_boolean`` names the cause and the quoted fix (the convention of PR #143's
 # ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.

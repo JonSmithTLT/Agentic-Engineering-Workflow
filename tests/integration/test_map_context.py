@@ -37,8 +37,12 @@ MAPS = Path(".aew") / store.MAPS_REL
 
 
 def switch_on(p: Project) -> None:
+    """The operator turns the slices on, in a project built with ``sample_project(..., maps="off")``: before this the
+    project is as one initialized before maps were on by default (register E184)."""
     policy = p.root / ".aew" / "policy" / "execution.yaml"
-    policy.write_text(policy.read_text(encoding="utf-8") + "maps: {pack_slices: structural}\n", encoding="utf-8",
+    text = policy.read_text(encoding="utf-8")
+    assert text.count('\n  pack_slices: "off"\n') == 1, "switch_on turns on a project built with maps off"
+    policy.write_text(text.replace('\n  pack_slices: "off"\n', "\n  pack_slices: structural\n"), encoding="utf-8",
                       newline="\n")
     p.adopt_policy("turn the structural map slices on")  # the operator's configuration decision (SMQ-01)
 
@@ -134,7 +138,7 @@ def test_every_worker_archetype_names_the_codebase_map():
 
 
 def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     first = select_map(p)
     _, out = dispatch(p, create_investigation(p, tmp_path))
@@ -187,13 +191,29 @@ def test_the_leads_results_carry_the_slices_bytes_and_never_its_body(tmp_path):
         shown = lead_sees(p.ok("invoke", "show", inv))
         section = "\n".join(slices.frame(pinned["slice"]))
         assert section in pack_text(p, inv) and shown["slice_bytes"] == len(section.encode("utf-8")), record["role"]
+        # the brief's default-project pack: a bounded section, with its omission counts
+        assert any(line.startswith("limits and omissions:") for line in pinned["slice"]), record["role"]
+        assert len("\n".join(pinned["slice"]).encode("utf-8")) <= slices.SLICE_MAX_BYTES, record["role"]
         assert {k: v for k, v in shown.items() if k != "slice_bytes"} == {
             k: v for k, v in pinned.items() if k != "slice"}, "only the body is replaced"
         assert regenerate(p, inv)["matches_recorded"], record["role"]
+    # By behaviour, not by reading the source: the body's own lines reach none of the Lead's read views. Only
+    # `aew context show`, whose purpose is to print a pack, prints it.
+    body = {line for i in packed.values() for line in slices.pinned(i["pack"]["sources"])["slice"]
+            if line.startswith("limits and omissions:")}
+    assert body
+    units = sorted({i["work_unit"] for i in packed.values()})
+    assert len(units) >= 2, units
+    views = [("status",), ("resume",), ("resume", "--json"), *[("work", "show", w) for w in units],
+             *[("context", "pack", i) for i in packed]]
+    for command in views:
+        out = p.aew(*command)
+        assert out.returncode == 0, (command, out.stderr)
+        assert not any(line in out.stdout or json.dumps(line)[1:-1] in out.stdout for line in body), command
 
 
 def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_with_the_switch_on(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     off = {r["name"]: r for r in derived(p)}["codebase_map"]
     select_map(p)
     assert {r["name"]: r for r in derived(p)}["codebase_map"] == off
@@ -266,7 +286,7 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
     be rebuilt, and the slice the pack pinned keeps the regenerated pack, and so a launch contract, identical."""
     from aew.engine.api import Engine
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     side = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a commit no ref holds", cwd=p.root)
     p.ok("map", "generate", "--commit", side, "--select", "--expect-map-rev", map_rev(p), "--json",
@@ -408,7 +428,7 @@ def test_no_map_state_changes_dispatch_gates_transitions_or_resume(tmp_path):
     resume works, with the map reported for what it is. A stale, absent or missing map is refreshed at the Lead's
     dispatch first (the base is the head, so it is selected and the resume row reads CURRENT); a corrupt one or a
     malformed registry is left as it is."""
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     outcomes = {}
     for n, condition in enumerate(CONDITIONS):
@@ -435,7 +455,7 @@ def test_a_policy_the_engine_cannot_read_turns_no_map_on(tmp_path, monkeypatch):
     from aew.engine.base import Kernel
     from aew.errors import ValidationFailed
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     select_map(p)
     engine = Engine.discover(p.root)

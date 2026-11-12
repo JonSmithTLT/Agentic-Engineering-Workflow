@@ -998,8 +998,8 @@ systems:
     row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
-  recommendation: switch_on
-  who: Lead (1-2 PRs after first use); decided by the operator
+  recommendation: finish
+  who: Lead (E293's maps profile next, 2-4 PRs); decided by the operator
   reason: 'On for a new project and offered to an existing one (ADR-0015, amended 2026-11-11, second; register E62
     and E184), as the reset of 2026-11-06 decided. Left: V-01''s maps profile (E293), then the semantic layer after its
     benchmark.'

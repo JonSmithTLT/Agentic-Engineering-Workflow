@@ -62,7 +62,7 @@ def counted_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_a_lead_dispatch_at_a_stale_head_refreshes_and_selects_the_heads_map_once(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     first = select_map(p)
     head = advance_main(p, "moved.txt")
@@ -89,7 +89,7 @@ def test_a_base_that_is_not_the_head_is_made_once_across_processes_and_found_sto
     the reviewer's dispatch makes H1's map, and the verifier's finds it stored instead of making it again."""
     from aewflow import assign, create_planned_ticket, implement, review, verify
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     select_map(p)
     wid = create_planned_ticket(p, tmp_path)
@@ -186,7 +186,7 @@ def test_only_a_leads_transaction_refreshes_the_map(tmp_path, monkeypatch):
     it pins the guard for any non-Lead transaction that ever builds one."""
     from aew.engine.api import Engine
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     _, out = dispatch(p, create_investigation(p, tmp_path))
     inv = out["invocation"]
@@ -354,9 +354,21 @@ def test_a_busy_registry_lock_is_waited_on_only_for_the_time_left_and_the_pack_k
     old = select_map(p)
     head = advance_main(p, "moved.txt")
     monkeypatch.setattr(service, "REFRESH_S", 2.0)
-    start = time.monotonic()
+    # The bound is the refresh's, so the clock times the refresh alone: `pin` first looks up the selected map's
+    # freshness, outside REFRESH_S, and under load that lookup alone took seconds (4.0 s in all, twice, on a loaded
+    # Windows host, 2026-11-11; the refresh measured 2.01 s each time).
+    real_refresh, spent = service.refresh_at_dispatch, []
+
+    def refresh(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        start = time.monotonic()
+        try:
+            return real_refresh(*args, **kwargs)
+        finally:
+            spent.append(time.monotonic() - start)
+
+    monkeypatch.setattr(service, "refresh_at_dispatch", refresh)
     with FileLock(aew_root(p) / store.LOCK_REL):  # `aew map generate --select` holding it, in another process
         entry, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
-    assert time.monotonic() - start < 2.0 + 1.0
+    assert len(spent) == 1 and spent[0] < 2.0 + 1.0
     assert entry["source_revision"] == head and entry["freshness"]["status"] == "CURRENT"
     assert "stored and not selected" in entry["refresh"] and selected_sha(p) == old["root"]

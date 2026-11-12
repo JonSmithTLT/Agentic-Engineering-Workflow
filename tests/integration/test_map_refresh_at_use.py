@@ -211,6 +211,23 @@ def test_only_a_leads_transaction_refreshes_the_map(tmp_path, monkeypatch):
     assert seen == [None, LEAD]
 
 
+def test_a_refresh_that_succeeded_pins_the_same_line_however_long_it_took(tmp_path, monkeypatch):
+    """ADR-0015, amended 2026-11-11 (second): the line is pinned in the pack and in control state, so it names no time,
+    and two equal dispatches pin equal packs (the stage-against-primitives test found a refresh's seconds in one)."""
+    p = sample_project(tmp_path)
+    select_map(p)
+    head = advance_main(p, "moved.txt")
+    got = service.refresh_at_dispatch(aew_root(p), p.root, head, actor=LEAD, select=False)  # made, not selected
+    assert "failed" not in got, got
+    entries = []
+    for seconds in (0.01, 7.5):  # the same refresh, as fast and as slow as it can be within REFRESH_S
+        monkeypatch.setattr(service, "refresh_at_dispatch", lambda *a, s=seconds, **k: {**got, "seconds": s})
+        entries.append(slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head))
+    (first, first_lines), (second, second_lines) = entries
+    assert first["refresh"] == second["refresh"] and first_lines == second_lines
+    assert not re.search(r"\d s\b", first["refresh"]), first["refresh"]
+
+
 def test_a_refresh_past_its_limit_is_one_pinned_line_and_never_fails_the_pack(tmp_path, monkeypatch):
     p = sample_project(tmp_path)
     select_map(p)

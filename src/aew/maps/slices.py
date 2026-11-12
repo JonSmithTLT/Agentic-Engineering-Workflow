@@ -134,7 +134,9 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
             entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
                      "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
             how = "found stored" if got.get("reused") else "made"
-            note = (f"refresh at dispatch: this map was {how} for the work's base in {got['seconds']:g} s, "
+            # no seconds here: the note is pinned in the pack and control state, so a refresh that succeeded pins the
+            # same bytes however long it took (two equal dispatches, one pack); a failure says its time, which is why
+            note = (f"refresh at dispatch: this map was {how} for the work's base, "
                     + ("and is now the selected map" if got["selected"] else
                        "stored and not selected (the base is not the authoritative head, or another selection "
                        "landed or held the registry meanwhile)"))

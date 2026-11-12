@@ -122,6 +122,22 @@
           "type": "integer",
           "minimum": 0
         },
+        "start": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generation", "kind", "at", "host", "user", "pid", "start_id"],
+          "properties": {
+            "generation": {"type": "integer", "minimum": 1},
+            "kind": {"enum": ["opencode_acquire", "vacant_start", "lead_acquire", "takeover", "handoff", "seat_resume"]},
+            "at": {"type": "string", "format": "date-time"},
+            "host": {"type": "string", "minLength": 1},
+            "user": {"type": ["integer", "string"], "minimum": 0, "minLength": 1},
+            "pid": {"type": "integer", "minimum": 1},
+            "start_id": {"type": ["string", "null"], "minLength": 1}
+          },
+          "if": {"properties": {"kind": {"enum": ["opencode_acquire", "seat_resume", "vacant_start"]}}},
+          "then": {"properties": {"start_id": {"type": "string"}}}
+        },
         "handoff": {
           "type": [
             "object",

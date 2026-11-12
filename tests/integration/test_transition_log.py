@@ -20,7 +20,7 @@ HELPERS = Path(__file__).resolve().parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
 from aewflow import create_planned_ticket, integrate, sample_project, to_commit_ready  # noqa: E402
-from invariants import assert_control_invariants, load_control  # noqa: E402
+from invariants import assert_control_invariants, baseline_control, load_control  # noqa: E402
 
 from aew.engine import outbox  # noqa: E402
 from aew.engine.store import ControlStore, Transition, serialize_control  # noqa: E402
@@ -140,14 +140,9 @@ def test_an_older_engine_refuses_an_outbox_era_control_file(tmp_path):
 
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
     p = sample_project(tmp_path)
-    state = load_control(p.root)
-    # `steering`, which `aew init` records from the pinned policy (register E228), is a later key the baseline also
-    # refuses; this test pins the refusal of the outbox era's keys only.
-    state.pop("steering", None)
+    state = baseline_control(load_control(p.root), baseline)
     errors = [e.message for e in Draft202012Validator(baseline).iter_errors(state)]
     expected = ["Additional properties are not allowed ('outbox', 'policy_sha256' were unexpected)"]
-    if sys.platform != "win32":  # M4-E E2: a POSIX Lead records host_uid, one more key the baseline never knew
-        expected.append("Additional properties are not allowed ('host_uid' was unexpected)")
     assert errors == expected
     assert baseline["properties"]["last_transition"].get("additionalProperties", True) is not False
 

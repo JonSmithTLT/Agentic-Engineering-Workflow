@@ -476,15 +476,16 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     judged = {f.rule for f in rules.check(outputs[0])}
     assert "O-WORDS" in judged and "O-SECRET" not in judged
     assert str(repo) not in outputs[0].site  # a key never carries message text
-    # `aew opencode` without a credential refuses before anything starts. Run through `run_aew`, so
+    # `aew opencode --prompt-token` without a credential refuses before anything starts. Run through `run_aew`, so
     # the session's capture sees this site in every run (tests start a live `aew opencode` through Popen, unseen).
     # A stand-in OpenCode that reports a tested version, so the version check passes wherever OpenCode is absent.
     from aew.harness.opencode import capabilities
 
     binary = repo.parent / "opencode.py"
     binary.write_text(f"print({capabilities.TESTED_VERSIONS[0]!r})\n", encoding="utf-8")
-    opened = run_aew("-C", str(repo), "opencode", env={"AEW_OPENCODE_BIN": str(binary)})
-    refusal = capture.cli_outputs(["-C", str(repo), "opencode"], opened.stdout, opened.stderr)
+    prompt = ["-C", str(repo), "opencode", "--prompt-token"]
+    opened = run_aew(*prompt, env={"AEW_OPENCODE_BIN": str(binary)})
+    refusal = capture.cli_outputs(prompt, opened.stdout, opened.stderr)
     assert [o.site for o in refusal] == ["cli:aew opencode|USAGE"]
     assert not [f.detail for f in rules.check(refusal[0]) if f.rule == "O-SECRET"]
     shown = run_aew("-C", str(repo), "lead", "show")

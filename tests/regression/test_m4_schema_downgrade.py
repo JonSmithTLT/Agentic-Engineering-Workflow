@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from aewflow import sample_project, to_commit_ready
-from invariants import load_control
+from invariants import baseline_control, load_control
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,11 +24,8 @@ def test_the_baseline_engine_refuses_a_control_file_with_the_queue_and_the_outbo
     p.lead("integrate", "prepare", wid)  # a held lease and a live custody invocation
     state = load_control(p.root)
     assert state["schema"] == "aew/control/v2" and state["queue"]["lease"] is not None
-    # `steering`, which `aew init` records from the pinned policy (register E228), is a later key the baseline also
-    # refuses; this test pins the refusal of the queue and outbox keys only.
-    state.pop("steering", None)
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
-    errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(state))
+    errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(baseline_control(state, baseline)))
     unexpected = "Additional properties are not allowed ('outbox', 'policy_sha256', 'queue' were unexpected)"
     assert unexpected in errors, errors
     # The custodian is an invocation without a role or credential: the baseline refuses that shape too, so even a
@@ -56,5 +53,5 @@ def test_the_baseline_engine_refuses_a_control_file_with_an_unfinished_stage(tmp
     state = load_control(p.root)
     assert "stage_intents" in state and "stage_intents" in V2_ONLY_KEYS
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
-    errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(state))
+    errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(baseline_control(state, baseline)))
     assert any("Additional properties are not allowed" in e and "'stage_intents'" in e for e in errors), errors

@@ -913,8 +913,9 @@ class Engine:
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         return self._harness.launch_dispatched(result)
 
-    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
-        return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label)
+    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None,
+                     kind: str = "lead_acquire") -> dict[str, Any]:
+        return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label, kind=kind)
 
     def lead_guide(self, stages: Sequence[Any]) -> str:
         return self._resume.lead_guide(stages)
@@ -932,6 +933,9 @@ class Engine:
 
     def lead_release(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._lead.lead_release(token=token, expect_rev=expect_rev)
+
+    def lead_resume(self, *, session_label: str | None = None) -> dict[str, Any]:
+        return self._lead.lead_resume(session_label=session_label)
 
     def lead_show(self) -> dict[str, Any]:
         return self._lead.lead_show()

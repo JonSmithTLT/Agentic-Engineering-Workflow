@@ -85,7 +85,7 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR, *,
                 _, login = netns.check_plan_login(pin, execution, os.environ, on_relay_route=name in relay_profiles)
             except AEWError as exc:
                 reason = exc.details.get("reason")
-                warn = reason == "plan_login_expired" or (weaker and reason == "plan_login_route")
+                warn = reason == "plan_login_expired"
                 status = "WARN" if warn else "FAIL"
                 rows.append(_row("provider-key", status, exc.message))
                 continue

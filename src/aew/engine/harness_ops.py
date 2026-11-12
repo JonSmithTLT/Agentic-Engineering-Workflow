@@ -480,7 +480,8 @@ class Harness:
                             "status": observed, "reason": (record or {}).get("reason"),
                             "reason_code": _reason_code(record),
                             **({"cause": (record or {}).get("cause")}
-                               if K.plan_login_failure((record or {}).get("cause")) else {}),
+                               if isinstance((record or {}).get("cause"), str)
+                               and (record or {}).get("cause") in K.PLAN_LOGIN_FAILURES else {}),
                             # its missing tools are the Lead's one list, `missing_tools` (review of #356, m2)
                             "containment": {k: v for k, v in containment.normalize(
                                 (record or {}).get("containment")).items() if k != "missing_tools"},
@@ -858,12 +859,14 @@ class Harness:
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
-            elif plan_failure := K.plan_login_failure((record or {}).get("cause")):
+            elif plan_failure := K.plan_login_failure(
+                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
+            ):
                 action = f"{run} ended because {plan_failure}"
             elif (_reason_code(record) == K.PROVIDER_AUTH_FAILED
                   and (inv.get("execution_profile") or {}).get("credential") == "plan_login"):
-                action = (f"{run} ended because the provider rejected the operator's plan login. Log in again with "
-                          "ChatGPT at the operator's terminal (`opencode auth login openai`), then dispatch again")
+                action = (f"{run} ended because the provider rejected the operator's plan login. "
+                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id))
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
                     try:
@@ -1119,9 +1122,11 @@ def _reason_code(record: dict[str, Any] | None) -> str | None:
 
 
 def _headline(run: str, status: str, record: dict[str, Any] | None) -> str | None:
-    if (plan_failure := K.plan_login_failure((record or {}).get("cause"))) and status != K.ENDED_WITH_EVIDENCE:
-        return f"{run} FAILED: {plan_failure}"
     """One line for a run that ended without its expected output in a way a caller could miss (register U8; V1)."""
+    cause = (record or {}).get("cause")
+    if status != K.ENDED_WITH_EVIDENCE and isinstance(cause, str) and cause in K.PLAN_LOGIN_FAILURES:
+        provider = _field(record, "execution_profile").get("provider", "")
+        return f"{run} FAILED: the operator's {provider} plan login {K.PLAN_LOGIN_FAILURES[cause]}. See next_action"
     if _reason_code(record) == K.PROVIDER_AUTH_FAILED and status != K.ENDED_WITH_EVIDENCE:
         if ((record or {}).get("execution_profile") or {}).get("credential") == "plan_login":
             return f"{run} FAILED: the model provider rejected the operator's plan login"

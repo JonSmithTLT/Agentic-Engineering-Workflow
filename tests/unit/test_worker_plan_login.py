@@ -9,9 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from aew.engine import harness_ops, readiness
+from aew.engine import dispatch, harness_ops, readiness
+from aew.engine.workspace_ops import Invocations
 from aew.errors import HarnessIncompatible
-from aew.harness import contract, runlog, steering_loop, supervisor
+from aew.harness import contract, model_list, runlog, steering_loop, supervisor
 from aew.harness.containment import netns, relay
 from aew.harness.opencode import adapter, capabilities, login
 from tests.helpers.lead_session import CREDENTIAL_TABLE
@@ -47,10 +48,45 @@ def test_mismatch_refuses(store, monkeypatch, value, cause):
     monkeypatch.setattr(netns, "sys", SimpleNamespace(platform="linux"))
     if value is not None:
         put(store, value)
+    policy = {"profiles": {"review": {"model": "openai/review"}}}
     with pytest.raises(HarnessIncompatible) as failure:
-        netns.check_plan_login(PROFILE, {}, store, on_relay_route=True)
+        netns.check_plan_login(PROFILE, policy, store, on_relay_route=True)
     assert failure.value.details["reason"] == f"plan_login_{cause}"
     assert ACCESS not in str(failure.value) and EXPORT not in str(failure.value)
+    if cause == "kind_changed":
+        assert "Profiles review on openai use an API key" in str(failure.value)
+
+
+def test_plan_admission_records_only_the_provider_and_pot_and_explain_names_it(store, monkeypatch):
+    put(store, oauth())
+    monkeypatch.setattr(netns, "sys", SimpleNamespace(platform="linux"))
+    for name in ("HOME", "OPENCODE_DB"):
+        monkeypatch.setenv(name, store[name])
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    policy = {"provider_env": ["OPENAI_API_KEY"]}
+    invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)), roles=None)
+    pin = {**PROFILE, "harness": "opencode"}
+    inv = {"execution_profile": pin, "status": "active", "token_id": "token-id"}
+    inv_id = "INV-0001"
+    state = {"invocations": {inv_id: inv}, "lead": {"generation": 1}}
+    checked = invocations.require_launchable(state, inv_id, relaunch=False)
+    expected = {"provider": "openai", "credential": "plan_login"}
+    assert checked["provider_key_admission"] == expected
+    invocations._record_launch_run(SimpleNamespace(state=state, refs=[]), inv_id)
+    assert inv["runs"][0]["provider_key_admission"] == expected
+    result = SimpleNamespace(facts={"inv": checked}, to_dict=lambda: {}, channel="lead")
+    explainer = SimpleNamespace(k=SimpleNamespace(store=SimpleNamespace(current=lambda: state)),
+                                decide=lambda *_args, **_kwargs: result)
+    assert dispatch.Dispatch.explain(explainer, "harness.launch", "T-0001")["provider_key_source"] == "plan login"
+    with pytest.raises(HarnessIncompatible, match="--profile <a plan_login profile>"):
+        invocations._require_provider_key({**pin, "credential": "api_key", "rule": "lead:model"}, True)
+
+
+def test_model_list_cache_keys_distinguish_the_usage_pots(tmp_path):
+    binary = tmp_path / "binary"
+    binary.write_bytes(b"fake")
+    cls = SimpleNamespace(model_list_binary=lambda: binary, projected_config=lambda _: {})
+    assert model_list.cache_key(cls, {}, PROFILE) != model_list.cache_key(cls, {}, {**PROFILE, "credential": "api_key"})
 
 
 def test_plan_login_must_outlive_the_deadline(store, monkeypatch):
@@ -116,17 +152,19 @@ def test_an_unreadable_store_is_refused_at_admission(store, monkeypatch, tmp_pat
     assert str(bad) not in str(failure.value) and "Try again" not in str(failure.value)
 
 
-def test_doctor_warns_on_the_weaker_route_without_requiring_the_plan_key(store, monkeypatch):
+@pytest.mark.parametrize(("platform", "expected"), [("linux", "WARN"), ("win32", "FAIL")])
+def test_doctor_distinguishes_conditional_and_unavailable_plan_routes(store, monkeypatch, platform, expected):
     put(store, oauth())
-    monkeypatch.setattr(netns, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(netns, "sys", SimpleNamespace(platform=platform))
     for name in ("HOME", "OPENCODE_DB"):
         monkeypatch.setenv(name, store[name])
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     policy = {"profiles": {"impl": {"provider": "openai", "model": "synthetic-model", "credential": "plan_login"}},
               "harness": "opencode", "provider_env": ["OPENAI_API_KEY"], "containment": {"mode": "allow_weaker"}}
     rows = {row["check"]: row for row in readiness.readiness_checks(policy)}
-    assert rows["provider-env"]["status"] == rows["provider-key"]["status"] == "WARN"
-    assert "shared with any Lead on the same login" in rows["provider-key"]["detail"]
+    assert rows["provider-key"]["status"] == expected
+    text = "shared with any Lead on the same login" if platform == "linux" else "Windows"
+    assert text in rows["provider-key"]["detail"]
     assert "OPENAI_API_KEY" not in rows["provider-env"]["detail"]
 
 
@@ -200,7 +238,7 @@ def test_old_run_end_without_cause_still_loads(tmp_path):
     (tmp_path / runlog.RECORD).write_text(json.dumps(old), encoding="utf-8")
     loaded = runlog.read_record(tmp_path)
     assert loaded == old
-    assert contract.plan_login_failure(loaded.get("cause")) is None
+    assert contract.plan_login_failure(loaded.get("cause"), "openai", "INV-0001") is None
 
 
 @pytest.mark.parametrize("cause", contract.PLAN_LOGIN_FAILURES)
@@ -211,9 +249,10 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
     directory.mkdir(parents=True)
     record = {"execution_profile": PROFILE, "containment": {"network": {}}}
     network = SimpleNamespace(decisions=lambda: {"relay": {"credential:" + cause.removeprefix("plan_login_"): 1}},
-                              refused=lambda: None)
+                              refused=lambda: None, retryable_pending=lambda: True)
     worker = SimpleNamespace(
-        _ending=threading.Event(), _checks=SimpleNamespace(end=lambda: None), bridge=None, adapter=None,
+        inv_id="INV-0001", _ending=threading.Event(), _checks=SimpleNamespace(end=lambda: None),
+        bridge=None, adapter=None,
         tree=SimpleNamespace(kill=lambda: None, network=network), weaker=None, run_dir=directory, record=record,
         _record_usage=lambda: None, _compare_effective=lambda: None, _evidence=lambda: [],
         _event=lambda *args, **kwargs: None, _drop_credential=lambda: None,
@@ -222,7 +261,8 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
     supervisor.Supervisor._end(worker, contract.CRASHED, "fake worker failed")
     ended = runlog.read_record(directory)
     assert ended["cause"] == cause and "reason_code" not in ended
-    assert contract.PLAN_LOGIN_FAILURES[cause] in ended["reason"]
+    assert ended["reason"] == "fake worker failed"
+    assert contract.PLAN_LOGIN_FAILURES[cause] in ended["next_action"]
     assert contract.PLAN_LOGIN_FAILURES[cause] in harness_ops._headline(run, contract.CRASHED, ended)
     state = {"invocations": {"INV-0001": {
         "status": "active", "token_id": "token-id", "execution_profile": PROFILE,
@@ -234,6 +274,13 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
     stop = steering_loop.SteeringLoop.tick(loop, SimpleNamespace())
     assert stop.code == steering_loop.PLAN_LOGIN_FAILED and stop.attention
     assert contract.PLAN_LOGIN_FAILURES[cause] in stop.message
+    assert f"aew harness launch INV-0001 {contract.EXPECT_REV}" in stop.message
+    assert "aew invoke cancel INV-0001" in stop.message
+    if cause.endswith("_retryable"):
+        assert "Wait until the store is available" in stop.message and "auth login" not in stop.message
+        network.retryable_pending = lambda: False
+        supervisor.Supervisor._end(worker, contract.CRASHED, "unrelated failure after recovery")
+        assert "cause" not in record and record["reason"] == "unrelated failure after recovery"
 
 
 def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, monkeypatch):
@@ -287,10 +334,11 @@ def test_a_missing_seed_is_a_named_refusal(tmp_path, monkeypatch):
 
 def test_seed_refuses_an_unqualified_binary(tmp_path, monkeypatch):
     monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("2.3.0",))
     worker = SimpleNamespace(
         state_dir=tmp_path, directory=str(tmp_path),
         tree=SimpleNamespace(spawn=lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, communicate=lambda **_: ("v2.0.18", ""))),
+            returncode=0, communicate=lambda **_: ("v2.3.0", ""))),
     )
     with pytest.raises(HarnessIncompatible, match="binary is not qualified") as failure:
         adapter.OpenCodeAdapter._seed_plan_login(worker, ["fake-opencode"], {}, "openai", "synthetic-sentinel")

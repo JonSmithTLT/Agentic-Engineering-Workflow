@@ -555,6 +555,8 @@ class OpenCodePack:
 
     def checks(self) -> list[Check]:
         from .messaging import checks as messaging_checks
+        from .worker_plan import FACT
+        from .worker_plan import check as check_worker_plan
 
         fx, pin = self.fixtures, self.pinned_version
         api = [
@@ -592,6 +594,8 @@ class OpenCodePack:
         behaviour.append(Check("login.store", check_login_store, measures=("login.store", "store.schema"),
                                says="a synthetic key, stored by the server in a private home, reads as AEW's login "
                                     "reader expects; the store is the one the Lead's own store handling knows"))
+        behaviour.append(Check(FACT, check_worker_plan, slow=True, measures=(FACT,),
+                               says="a synthetic worker OAuth login through a loopback-only provider relay"))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, live_usage_version(fx, pin)),
                   ("read_usage",),
@@ -689,9 +693,6 @@ class OpenCodePack:
         return {
             "login.oauth_shape": "an OAuth row needs a real login flow with a provider; the key row is measured "
                                  "(login.store), the OAuth shape stays login.py's citation",
-            "login.worker_plan_route": "requires the separate keyless Linux qualification at the pinned version "
-                                       "against a local fake upstream: paths, sentinel and account substitution, "
-                                       "no key environment, model listing, cost, 503 retry and expiry refusal",
             "lead.tui_preferences": "cli.json is read by the TUI, which needs a terminal and a person; not run "
                                     "offline",
             "readable.tui_display": "what OpenCode's TUI shows a person is seen, not served",

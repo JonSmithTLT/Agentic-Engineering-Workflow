@@ -89,6 +89,8 @@ def test_explicit_model_works_without_a_configured_policy():
 
 
 def test_worker_plan_login_requires_qualification_and_respects_profile_override(monkeypatch):
+    from aew.engine.base import check_policy_bytes
+    from aew.engine.configuration import parse_structured
     from aew.harness.opencode import capabilities
 
     policy = configured()
@@ -96,13 +98,20 @@ def test_worker_plan_login_requires_qualification_and_respects_profile_override(
     policy["profiles"]["standard"]["provider"] = "openai"
     policy["profiles"]["light"].update(provider="openai", credential="api_key")
     with pytest.raises(ValidationFailed) as failure:
-        X.parse(dump_yaml(policy).encode(), source="test")
+        check_policy_bytes("execution", dump_yaml(policy).encode(), source="test")
     assert "awaiting qualification" in failure.value.details["violations"][0]
     monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
-    parsed = X.parse(dump_yaml(policy).encode(), source="test")
+    raw = dump_yaml(policy).encode()
+    parsed = check_policy_bytes("execution", raw, source="test")
     assert resolve(parsed)["credential"] == "plan_login"
     assert resolve(parsed, request={"profile": "light"})["credential"] == "api_key"
     assert resolve(parsed, request={"model": "openai/test-model"})["credential"] == "api_key"
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("2.3.0",))
+    assert resolve(X.parse(raw, source="in force"))["credential"] == "plan_login"
+    assert parse_structured(raw, adoption=False)[1] == []
+    assert [item["code"] for item in parse_structured(raw)[1]] == [X.PLAN_QUALIFICATION]
+    with pytest.raises(ValidationFailed, match="inconsistent"):
+        check_policy_bytes("execution", raw, source="new adoption")
 
 
 @pytest.mark.parametrize(("model", "containment", "reason"), [

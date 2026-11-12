@@ -86,6 +86,10 @@ def _pinned() -> str:
 
 
 PINNED = _pinned()
+# OpenCode 2.0.18's credential table as its migrations create it (pinned bundle, 2026-10-25).
+CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value "
+                    "text NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
+                    "time_updated integer NOT NULL)")
 SPEC = HERE.parent / "fixtures" / "opencode" / f"openapi-{PINNED}.min.json"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 DEFAULT_MODELS = [
@@ -1028,8 +1032,6 @@ def main(argv: list[str], scripts: Path) -> int:
     if argv == ["session", "list"]:
         import sqlite3
         from contextlib import closing
-
-        from lead_session import CREDENTIAL_TABLE
 
         db = Path(os.environ["XDG_DATA_HOME"]) / "opencode" / "opencode.db"
         db.parent.mkdir(parents=True, exist_ok=True)

@@ -257,7 +257,8 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
             raise _Unread(f"a launch would be refused{' (' + str(reason) + ')' if reason else ''}: {exc.message}"
                           + ("; the provider-key row says the same"
                              if reason == netns.PROVIDER_KEY_MISSING and not weaker_allowed else ""),
-                           red=not (reason == "plan_login_route" and weaker_allowed)) from None
+                           red=not (reason == "plan_login_route" and weaker_allowed
+                                    and netns.relay_route(policy, adapter_cls.PROVIDER_RELAY))) from None
         except ContainmentUnavailable as exc:
             raise _Unread(f"a launch's containment was not established here, so the list was not read: {exc.message}",
                           red=False) from None

@@ -126,7 +126,8 @@ def require_plan_route(profile: Mapping[str, Any], policy: Mapping[str, Any] | N
     if not on_relay_route or not sys.platform.startswith("linux") or provider not in REFRESHING_UPSTREAMS:
         route = ("the plan login isn't served on Windows yet (E341); set `credential: api_key` "
                  f"and export {PROVIDER_KEY_ENV.get(provider, 'the provider key')}" if sys.platform == "win32" else
-                 "the plan login needs the provider relay on Linux")
+                 "the plan login needs the provider relay on Linux; use "
+                 f"`containment.network.mode: proxy_only` (the default), or set `credential: api_key` on {name}")
         raise HarnessIncompatible(f"{label}, but {route}.", reason="plan_login_route")
 
 
@@ -153,9 +154,19 @@ def check_plan_login(profile: Mapping[str, Any], policy: Mapping[str, Any] | Non
                                   f"To use the plan, {renew}. {use_key}",
                                   reason="plan_login_missing")
     if entry.kind == "key":
-        key_profiles = sorted(n for n, p in ((policy or {}).get("profiles") or {}).items()
-                              if n != name and p["provider"] == provider
-                              and execution.profile_credential(dict(policy or {}), p, provider) == execution.API_KEY)
+        from aew.harness import registry
+
+        current = dict(policy or {})
+        key_profiles = []
+        for n, p in sorted((current.get("profiles") or {}).items()):
+            if n == name or execution.profile_credential(current, p, provider) != execution.API_KEY:
+                continue
+            try:
+                pair = execution.model_pair(current, n, registry.model_identity)
+            except AEWError:
+                continue  # doctor reports malformed model references separately
+            if pair.provider == provider:
+                key_profiles.append(n)
         needs_export = (f" Profiles {', '.join(key_profiles)} on {provider} use an API key and will then need "
                         f"{PROVIDER_KEY_ENV[provider]} set where AEW starts." if key_profiles else "")
         raise HarnessIncompatible(
@@ -673,6 +684,9 @@ class RunNetwork:
     def decisions(self) -> dict[str, dict[str, int]]:
         """What the relays and the egress proxy decided, counted by outcome, for the run's record at its end."""
         return {name: service.counts() for name, service in self._services() if service is not None}
+
+    def retryable_pending(self) -> bool:
+        return self.relay is not None and self.relay.retryable_pending()
 
     def close(self) -> None:
         """Stop the relays and the egress proxy and remove the run's network directory. Idempotent."""

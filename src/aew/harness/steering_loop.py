@@ -463,7 +463,7 @@ class SteeringLoop:
         mode = now["mode"]
         if mode is None:
             return Stop(OFF, "no steering mode is in force (legacy/manual behaviour)")
-        for inv in state.get("invocations", {}).values():
+        for inv_id, inv in state.get("invocations", {}).items():
             runs = inv.get("runs") or []
             if (inv.get("status") != "active" or not runs or runs[-1].get("token_id") != inv.get("token_id")
                     or (inv.get("execution_profile") or {}).get("credential") != "plan_login"):
@@ -472,7 +472,7 @@ class SteeringLoop:
             record = runlog.read_record(runlog.run_dir(self.aew_root, run)) or {}
             if record.get("status") not in (K.CRASHED, K.ENDED_WITHOUT_EVIDENCE, K.LAUNCH_FAILED):
                 continue
-            if failure := K.plan_login_failure(record.get("cause")):
+            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id):
                 return Stop(PLAN_LOGIN_FAILED, f"{run}: {failure}", subject=inv["work_unit"])
         if act.last_own_rev is not None and int(state["revision"]) != act.last_own_rev:
             act.counts.clear()  # a commit the loop did not make: progress the repetition key cannot see

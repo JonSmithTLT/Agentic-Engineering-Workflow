@@ -350,7 +350,7 @@ def test_a_busy_store_returns_503_and_counts_the_cause_after_the_bounded_retry(t
     assert not seam.calls
     assert len(attempts) == 2 and sum(attempts) == login.BUSY_TIMEOUT_S
     assert pauses == [login.RESOLVE_RETRY_PAUSE_S] and pauses[0] > 0
-    assert service.counts().get("credential:unreadable") == 1
+    assert service.counts().get("credential:unreadable_retryable") == 1
     assert stored()[0] == "synthetic-access"  # the same resolver works once the lock is gone
 
 

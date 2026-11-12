@@ -129,7 +129,8 @@ def profile_credential(policy: dict[str, Any], profile: dict[str, Any], provider
     return profile.get("credential") or (policy.get("credentials") or {}).get(provider, API_KEY)
 
 
-def semantic_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str, str | None]]:
+def semantic_problems(policy: dict[str, Any], *, adoption: bool = False
+                      ) -> list[tuple[tuple[str, ...], str, str | None]]:
     """The policy's semantic problems, as structure: ``(location, code, target)`` with the location as keys from the
     document's root, the code (``NO_SUCH_PROFILE``, ``NO_DEFAULT_ROUTE``) and the route's target profile name (None for
     a missing default). For a schema-valid policy. ``check_semantics`` words them; the configuration projection
@@ -143,13 +144,13 @@ def semantic_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str
         (where, NO_SUCH_PROFILE, name) for where, name in targets if name not in profiles]
     if policy["configured"] and not routing.get("default"):
         out.append((("routing", "default"), NO_DEFAULT_ROUTE, None))
-    out.extend(_plan_login_problems(policy))
+    out.extend(_plan_login_problems(policy, adoption=adoption))
     return out
 
 
-def check_semantics(policy: dict[str, Any], *, source: str) -> None:
+def check_semantics(policy: dict[str, Any], *, source: str, adoption: bool = False) -> None:
     problems = []
-    for where, code, detail in semantic_problems(policy):
+    for where, code, detail in semantic_problems(policy, adoption=adoption):
         if code == NO_SUCH_PROFILE:
             detail = f"no profile {detail!r}"
         elif code == NO_DEFAULT_ROUTE:
@@ -159,7 +160,7 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
 
 
-def _plan_login_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str, str]]:
+def _plan_login_problems(policy: dict[str, Any], *, adoption: bool) -> list[tuple[tuple[str, ...], str, str]]:
     providers: list[tuple[tuple[str, ...], str]] = [
         (("credentials", provider), provider) for provider, value in (policy.get("credentials") or {}).items()
         if value == PLAN_LOGIN
@@ -183,7 +184,7 @@ def _plan_login_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], 
         elif netns.stored_key_override(provider, policy):
             problems.append((where, PLAN_OVERRIDE,
                              f"plan_login for {provider} cannot be used with a containment.network.upstreams override"))
-        elif not set(capabilities.TESTED_VERSIONS).issubset(capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS):
+        elif adoption and not set(capabilities.TESTED_VERSIONS).issubset(capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS):
             versions = ", ".join(capabilities.TESTED_VERSIONS)
             problems.append((where, PLAN_QUALIFICATION,
                              f"plan_login for {provider} is awaiting qualification for pinned OpenCode {versions}"))

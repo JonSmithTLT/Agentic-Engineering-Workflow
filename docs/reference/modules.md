@@ -1369,6 +1369,7 @@ None.
 - `aew.harness.containment.relay`
 - `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
+- `aew.harness.registry`
 - `aew.policy.execution`
 
 ### `aew.harness.containment.peer`

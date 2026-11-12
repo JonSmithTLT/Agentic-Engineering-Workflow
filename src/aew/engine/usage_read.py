@@ -96,7 +96,8 @@ class UsageReads:
         inv = state["invocations"].get(inv_id) or self.archive.archived_invocation(state, inv_id)
         for entry in (inv or {}).get("runs") or []:
             if entry.get("run") == run:
-                row = reader.run_row(entry, inv_id)
+                pin = (inv or {}).get("execution_profile") or {}
+                row = reader.run_row(entry, inv_id, plan_login=pin.get("credential") == "plan_login")
                 return {"target": {"kind": "run", "id": run}, "row": O.public_row(row)}
         return None
 

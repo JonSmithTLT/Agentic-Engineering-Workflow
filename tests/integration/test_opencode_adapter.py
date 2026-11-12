@@ -14,6 +14,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -121,6 +122,59 @@ def test_plan_worker_uses_a_synthetic_store_through_the_fake_upstream(lab, tmp_p
         worker.terminate()
         tree.kill()
         containment.retire_private_git(run_dir)
+
+
+def test_renewing_and_relaunching_the_printed_invocation_clears_the_steering_stop(lab, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.engine.harness_ops import Harness
+    from aew.harness.opencode import login
+
+    def oauth(hours):
+        return {"type": "oauth", "methodID": "chatgpt-browser", "access": "synthetic-plan-renewal",
+                "refresh": "synthetic-no-refresh", "expires": int((time.time() + hours * 3600) * 1000)}
+
+    home = lead_session.synthetic_home(tmp_path / "operator", oauth={"openai": oauth(120)})
+    db = home / ".local/share/opencode" / login.DB
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("OPENCODE_DB", str(db))
+    monkeypatch.setattr(netns, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(Harness, "_spawn_run", lambda self, inv, run, credential: {"run": run, "spawn": "starting"})
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy.pop("containment", None)  # the lab's built-in API-key override is inapplicable to this pin
+    policy["profiles"][policy["routing"]["default"]].update(
+        provider="openai", model="synthetic-model", credential="plan_login")
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    wid = create_planned_ticket(lab.project, tmp_path)
+    inv = lab.lead("work", "assign", wid)["invocation"]
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    engine = Engine.discover(lab.root)
+    first = engine.harness_launch(token=lab.project.token, expect_rev=lab.project.rev(), invocation=inv)
+    directory = runlog.run_dir(lab.aew_root, first["run"])
+    directory.mkdir(parents=True, exist_ok=True)
+    runlog.write_record(directory, {"status": K.CRASHED, "cause": "plan_login_expired", "reason": "worker failed"})
+    with sqlite3.connect(db) as con:
+        con.execute("UPDATE credential SET value = ?", (json.dumps(oauth(0)),))
+    loop = SimpleNamespace(aew_root=lab.aew_root, engine=engine, _closed=threading.Event(),
+                           _snapshot=lambda: None, _authority_lost=lambda: None)
+    monkeypatch.setattr(steering_loop.S, "effective", lambda _: {"mode": "run"})
+    stopped = steering_loop.SteeringLoop.tick(loop, SimpleNamespace())
+    assert stopped.code == steering_loop.PLAN_LOGIN_FAILED
+    assert "opencode auth login openai" in stopped.message
+    command = next(line for line in stopped.message.split("`") if line.startswith("aew harness launch "))
+    _, _, _, target, *_ = command.split()
+    with sqlite3.connect(db) as con:
+        con.execute("UPDATE credential SET value = ?", (json.dumps(oauth(120)),))
+    relaunched = engine.harness_launch(token=lab.project.token, expect_rev=lab.project.rev(), invocation=target)
+    assert target == inv and relaunched["superseded"] == first["run"]
+    monkeypatch.setattr(loop.engine, "policy_digests", lambda: {})
+    loop._ctx = lambda: None
+    loop._clock = lambda: 0
+    loop._project = lambda *_: ({}, [])
+    resumed = steering_loop.SteeringLoop.tick(loop, SimpleNamespace(last_own_rev=None, actions=0, started=0))
+    assert resumed.code != steering_loop.PLAN_LOGIN_FAILED
 
 
 def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:

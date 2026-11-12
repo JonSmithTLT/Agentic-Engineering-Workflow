@@ -77,7 +77,9 @@ def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
     date is the table's ``as_of`` string), any other entry as YAML only. Raises ``VALIDATION_FAILED``; the one owner of
     "this file is valid", which the configuration projection's document states also read (register F46.1)."""
     if name == "execution":
-        return X.parse(raw, source=source)
+        policy = X.parse(raw, source=source)
+        X.check_semantics(policy, source=source, adoption=True)
+        return policy
     data = load_yaml(raw.decode("utf-8"), source=source)
     if name in ("guardrails", "checks", "gates"):
         validate(name, data, source=source)

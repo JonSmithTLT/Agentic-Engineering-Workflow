@@ -43,6 +43,10 @@ def usd(figure: dict[str, Any]) -> Decimal:
 
 
 def test_a_plan_run_keeps_tokens_and_suppresses_list_price_estimates(tmp_path):
+    from types import SimpleNamespace
+
+    from aew.engine.usage_read import UsageReads
+
     reader = O.Reader(tmp_path, PRICES, read_run=lambda _: {"result": {"usage_record": record(input=10)}})
     inv = {"execution_profile": {"credential": "plan_login"}, "runs": [{"run": "R-INV-0001-1"}]}
     report = reader.invocation("INV-0001", inv)
@@ -50,6 +54,15 @@ def test_a_plan_run_keeps_tokens_and_suppresses_list_price_estimates(tmp_path):
     assert row["estimated_under_current_prices"] == row["estimated_at_record"] == {"unpriced": "plan_login"}
     assert report["totals"]["tokens"]["input"] == 10
     assert O._row_lines(row, "")[-1].strip() == "plan login: not billed per token"
+    total = report["totals"]["estimated_under_current_prices"]
+    assert O.figure_text(total) == "1 plan login run(s): not billed per token"
+    assert O._model_figure(report["totals"]["by_model"]["openai/gpt-6.1"]) == O.figure_text(total)
+    reads = UsageReads.__new__(UsageReads)
+    reads.archive = SimpleNamespace(archived_invocation=lambda *_: None)
+    single = reads._run({"invocations": {"INV-0001": inv}}, row["run"], "INV-0001", reader)
+    assert single["row"]["estimated_under_current_prices"] == {"unpriced": O.UNPRICED_PLAN_LOGIN}
+    missing = O.Reader(tmp_path, PRICES, read_run=lambda _: None).invocation("INV-0001", inv)["rows"][0]
+    assert missing["estimated_under_current_prices"] == {"unpriced": O.UNPRICED_USAGE_MISSING}
     inv["execution_profile"] = {}
     [old] = reader.invocation("INV-0001", inv)["rows"]
     assert "usd" in old["estimated_under_current_prices"]

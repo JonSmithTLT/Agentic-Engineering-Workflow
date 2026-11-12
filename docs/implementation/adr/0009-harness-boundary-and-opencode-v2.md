@@ -2066,7 +2066,8 @@ an ambiguous path. A non-ASCII target is rejected as a malformed request line wi
 
 The operator's grant, relayed by the Lead: “right that was teh plan wheter througha  asetting or whatever mechaism i wanted teh ability to choose which usage pot is being used.”
 
-This amends the E337 stored-key amendment, the E17 worker credential check, and the contained Lead's refreshing relay.
+This supersedes E337's sentence “A refreshing deciding login remains the Lead's login and workers use the named export.”
+It also amends the E17 worker credential check and the contained Lead's refreshing relay.
 A worker's usage pot is the operator's choice: `credentials.<provider>` in the execution policy, overridden by a
 profile's `credential`, either `api_key` (the default, as the E337 amendment describes) or `plan_login`. Under
 `plan_login` the worker reaches its provider only through the established `proxy_only` relay, to the provider's

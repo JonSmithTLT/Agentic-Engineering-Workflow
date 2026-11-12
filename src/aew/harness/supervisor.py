@@ -675,10 +675,10 @@ class Supervisor:
             return self._finish(K.ENDED_WITHOUT_EVIDENCE, "harness exited successfully without recording its expected "
                                 f"output ({', '.join(sorted(expected))}); no AEW state changed")
         if reason_code == K.PROVIDER_AUTH_FAILED:  # its own reason, in the existing status (register V1)
-            if (self.record.get("execution_profile") or {}).get("credential") == "plan_login":
+            pin = self.record.get("execution_profile") or {}
+            if pin.get("credential") == "plan_login":
                 return self._finish(K.CRASHED, "the model provider rejected the operator's plan login. "
-                                    "Log in again with ChatGPT at the operator's terminal "
-                                    "(`opencode auth login openai`), then dispatch again")
+                                    + K.plan_login_recovery(pin["provider"], self.inv_id))
             names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
             return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
                                 "the harness exited without recording its expected output; check the key in "
@@ -766,7 +766,8 @@ class Supervisor:
         self._compare_effective()
         self.record["evidence"] = self._evidence()
         self.record.update(status=status, reason=reason, ended_at=utc_now())
-        self.record.pop("cause", None)
+        if self.record.pop("cause", None) is not None:
+            self.record.pop("next_action", None)
         # The vocabulary follows the status (amendment 1, R2-m2): a launch-failure code is written with `launch_failed`
         # and never survives onto another ending, such as a `crashed` re-end after this one failed (PR #185, F2).
         if status == K.LAUNCH_FAILED:
@@ -785,9 +786,12 @@ class Supervisor:
             ):
                 for cause in K.PLAN_LOGIN_FAILURES:
                     count_key = "credential:" + cause.removeprefix("plan_login_")
+                    if cause.endswith("_retryable") and not self.tree.network.retryable_pending():
+                        continue
                     if decisions.get("relay", {}).get(count_key):
                         self.record["cause"] = cause
-                        reason = self.record["reason"] = K.plan_login_failure(cause) or reason
+                        self.record["next_action"] = K.plan_login_failure(
+                            cause, self.record["execution_profile"]["provider"], self.inv_id)
                         break
         self._event("ended", status=status, reason=reason)
         self._drop_credential()

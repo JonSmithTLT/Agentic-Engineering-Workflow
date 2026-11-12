@@ -171,19 +171,28 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     label = record["baseline"]["containment"]
     original = render_pool(label, MESSAGING_ON)
     cap = approved_ceiling(record)
-    name, meaning, _example = lead_text.guide.CLASS_TEXT["0"]
-    monkeypatch.setitem(lead_text.guide.CLASS_TEXT, "0", (name, meaning, "x"))
+    render_guide = lead_text.guide.render
+
+    def shorter_guide(*args, **kwargs):
+        text = render_guide(*args, **kwargs)
+        # Free enough to expose the floor even when some of the reserved room already covers other growth.
+        return text[:len(text) // 2]
+
+    monkeypatch.setattr(lead_text.guide, "render", shorter_guide)
     smaller = render_pool(label, MESSAGING_ON)
     freed = original.guide_bytes - smaller.guide_bytes
     assert freed > 0 and smaller.total == original.total - freed
-    message = rf"{cap} B cap.*guide {smaller.guide_bytes} B.*{freed} B saving.*{RECORD_PATH}"
+    estimates = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
+    saving = cap - (smaller.total + estimates)
+    assert 0 < saving <= freed
+    message = rf"{cap} B cap.*guide {smaller.guide_bytes} B.*{saving} B saving.*{RECORD_PATH}"
     with pytest.raises(AssertionError, match=message):
         check_pool(smaller, record, switches=MESSAGING_ON)
     check_pool(render_pool(label, frozenset()), record, switches=frozenset())
-    record["baseline"]["guide_bytes"] = smaller.guide_bytes
-    with pytest.raises(AssertionError, match=rf"{cap} B cap.*{freed} B saving.*{RECORD_PATH}"):
+    record["baseline"]["guide_bytes"] -= saving
+    with pytest.raises(AssertionError, match=rf"{cap} B cap.*{saving} B saving.*{RECORD_PATH}"):
         check_pool(smaller, record, switches=MESSAGING_ON)
-    record["approval"]["ceiling_bytes"] -= freed
+    record["approval"]["ceiling_bytes"] -= saving
     check_pool(smaller, record, switches=MESSAGING_ON)
 
 

@@ -20,7 +20,7 @@
       }
     },
     "broker": {
-      "description": "The Lead broker (writer `broker`): its steering loop's stops that need attention, `loop_stopped` (M4-E E7b), with the stop's code and message as `reason`, the subject it stopped on (or `project`) and the loop activation as `ref`. M4-E E7c adds `confirmation_pending`.",
+      "description": "The Lead broker (writer `broker`): its steering loop's stops that need attention, `loop_stopped` (M4-E E7b), with the stop's code and message as `reason`, the subject it stopped on (or `project`) and the loop activation as `ref`.",
       "type": "object",
       "required": ["schema", "event", "at", "subject", "reason"],
       "additionalProperties": false,

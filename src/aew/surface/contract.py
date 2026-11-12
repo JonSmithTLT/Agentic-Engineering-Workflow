@@ -120,7 +120,10 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
 
 # The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
-STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
+STEERING_ACTIONS = ("lower", "request_raise")
+STEERING_GUIDANCE = ("Without steering.mode, all steering actions are refused. In Crawl and Walk, take each step "
+                     "yourself. Lower needs an endpoint raise first. request_raise asks for a raise and the notifier "
+                     "tells the operator. Requests grant nothing.")
 STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
                       "request_raise": (("mode", "rationale"), ("mode", "rationale")),
                       "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
@@ -244,12 +247,10 @@ TOOLS: dict[str, Tool] = _catalog(
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
     Tool("steering", STAGE, MECHANICAL,
-         "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. Requests grant "
-         "nothing.",
+         STEERING_GUIDANCE,
          _obj({"expect_rev": EXPECT_REV,
                "action": {"enum": list(STEERING_ACTIONS)},
                "mode": {"enum": ["crawl", "walk", "run"]},
-               "action_ref": {"type": "string", "minLength": 1},
                "rationale": TEXT},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),

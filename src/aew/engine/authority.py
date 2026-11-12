@@ -244,7 +244,7 @@ def require_invocation(
 CUSTODY = "custody"
 # The closed family (§2.3): the validation pin and commit and their infrastructure outcomes, routing a result (never
 # accepting a report), the custodian's own lease release, the worker's registration (S2), and the PIC publish, which
-# also needs the operator's envelope and the §17 predicate in the same transaction (E6b: until then it is refused).
+# is reserved. The engine refuses publication under custody because no operator envelope exists.
 CUSTODY_OPS = ("custody.register", "integrate.validate", "integrate.validated", "integrate.validation_abandoned",
                "integrate.validation_unavailable", "integrate.validation_released", "integrate.route",
                "integrate.release", "integrate.publishing")

@@ -28,11 +28,26 @@ from aew.harness.contract import wake_guidance
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.surface import availability as SA
-from aew.surface import contract, lead_text
+from aew.surface import contract, lead_text, mcp
 from aew.surface import projection as surface
 from aew.surface.context import NORMAL, RECOVERY
 
 PLANTED = "zz_planted"
+
+
+def test_the_lead_receives_only_the_built_steering_actions_and_guidance():
+    [tool] = [row for row in mcp.tools_list(NORMAL)["tools"] if row["name"] == "steering"]
+    props = tool["inputSchema"]["properties"]
+    assert props["action"]["enum"] == ["lower", "request_raise"]
+    assert "action_ref" not in props
+    system = projection.lead_config("")["agents"][projection.LEAD_AGENT]["system"]
+    for text in (tool["description"], system):
+        assert "Without steering.mode, all steering actions are refused." in text
+        assert "In Crawl and Walk, take each step yourself." in text
+        assert "Lower needs an endpoint raise first." in text
+        assert "request_raise asks for a raise and the notifier tells the operator." in text
+
+
 # A single backticked word: in what a Lead reads, a tool, one of its arguments, or a word listed below.
 WORD = re.compile(r"`([a-z][a-z_]*)`")
 # The backticked words that are neither a tool nor a tool's argument, each with what it is (#331 review F2). Any other

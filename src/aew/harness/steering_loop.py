@@ -25,8 +25,8 @@ to a stop; the envelope is counted per activation.
 3. Select the first eligible action, Tickets in the priority order (``priority.order``: the level, then how many
    live Tickets each unblocks, then the id; register E227).
 4. ``confirm_before`` (``steering.confirmation_reason``): Crawl always, Walk unless every declared effect of every
-   primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
-   such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
+   primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. When the check holds,
+   the Lead takes that step itself. The loop stops with ``CONFIRMATION_UNAVAILABLE``.
 5. The envelope (A1 §3): the activation's deadline, its action count, and the repetition key ``(action, arguments,
    subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation the
    notifier must be able to deliver, and before each action the operator endpoint must answer
@@ -46,8 +46,7 @@ Lead's call and the loop's are each one stage, CAS-checked: at most two intents 
 **What it records:** its state (``.aew/local/steering/loop.json``: running or stopped, and why; never control state,
 §2.7), and a ``loop_stopped`` line in the broker's event spool for a stop that needs attention, so the operator
 endpoint notifies (§2.8). A stop that returns control to the Lead in the ordinary way (a decision, a blocker, an
-unknown, nothing to do) is recorded but not notified. Until E7c, ``CONFIRMATION_UNAVAILABLE`` is recorded too, but
-neither notified nor told to the Lead (``HELD_UNTIL_E7C``).
+unknown, nothing to do, or the Lead's own step) is recorded without an operator notification.
 """
 
 from __future__ import annotations
@@ -76,18 +75,11 @@ IDLE = "NOTHING_TO_DO"
 DECISION_REQUIRED = "DECISION_REQUIRED"
 BLOCKED = "BLOCKED"
 UNKNOWN = "UNKNOWN"
-QUIET = frozenset({OFF, IDLE, DECISION_REQUIRED, BLOCKED, UNKNOWN})
+CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"  # stable wire code for a step the Lead takes itself
+QUIET = frozenset({OFF, IDLE, DECISION_REQUIRED, BLOCKED, UNKNOWN, CONFIRMATION_UNAVAILABLE})
 ANOMALY_HIGH = "ANOMALY_HIGH"
 STALE_AUTHORITY = "STALE_AUTHORITY"
 STALE_POLICY = "STALE_POLICY"
-CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"  # E7b: confirm_before holds and no confirmation exists yet (m3)
-# Recorded (``loop.json``, so ``status`` and the steering view show it) but held from the notifier's spool and from the
-# Lead's ``loop_waiting`` wake until M4-E E7c, which lifts the hold: before E7c nothing can act on such a stop (no
-# confirmation exists, crawl cannot be lowered, and under Walk lowering to crawl only confirms more), so each would be
-# a toast and a Lead turn for a step that stays the Lead's own (the operator's ruling on the quick check of E228's
-# fourth PR, QC-1 (c)). It is the code's, in any mode, never crawl's: every other stop is notified and wakes the Lead
-# as before.
-HELD_UNTIL_E7C = frozenset({CONFIRMATION_UNAVAILABLE})
 NOTIFIER_UNAVAILABLE = "NOTIFIER_UNAVAILABLE"
 NO_HARD_DEADLINE = "NO_HARD_DEADLINE"
 LOOP_DEADLINE = "LOOP_DEADLINE"
@@ -489,9 +481,10 @@ class SteeringLoop:
         assert t is not None  # auto_runnable is never true for an unknown tool (surface.classify)
         why = S.confirmation_reason(mode, t.expands_to)
         if why is not None:
-            return about(picked, CONFIRMATION_UNAVAILABLE, f"{picked.action['action']} on {picked.subject} needs a "
-                                                          f"confirmation ({why}); confirmation arrives with M4-E E7c, "
-                                                          "so it is never executed here")
+            detail = f" ({why})" if mode == "walk" else ""
+            return about(picked, CONFIRMATION_UNAVAILABLE, f"In {mode}, the Lead takes "
+                                                          f"{picked.action['action']} on {picked.subject} itself"
+                                                          f"{detail}.")
         if mode == "run":
             refused = self._run_checks(act, policy, t)
             if refused is not None:
@@ -664,7 +657,7 @@ class SteeringLoop:
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
         self._acted.clear()
-        if not stop.attention or stop.code in HELD_UNTIL_E7C:  # held from the spool until E7c (HELD_UNTIL_E7C)
+        if not stop.attention:
             return
         if stop.condition in self._notified:
             self._notified.move_to_end(stop.condition)  # recurring: the last to be forgotten (LRU; review, R2)

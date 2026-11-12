@@ -16,7 +16,6 @@ DESCRIPTIONS = {
     "harness_status": "Inspect worker runs and progress; changes nothing.",
     "harness_wait": "Wait for a run to end or need the Lead; one call, no polling.",
     "checkpoint": "Record a bounded handoff note; advances no work.",
-    "steering": "Lower steering or request a raise or confirmation; requests grant nothing.",
     "resolve": "Continue or abandon a stage; dispose a finding, claim or anomaly; replace a stuck gate.",
     "ticket_draft": "Create a Ticket and optionally propose, never accept, its plan.",
     "ticket_start": "Assign a READY mutating Ticket by policy, launch and move to RUNNING.",

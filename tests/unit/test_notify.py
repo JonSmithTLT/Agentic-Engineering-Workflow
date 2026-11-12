@@ -33,6 +33,17 @@ def event(**over: Any) -> dict[str, Any]:
                              "authenticated": False, **over})
 
 
+@pytest.mark.parametrize("kind", ["confirmation_pending", "envelope_ended", "published_under_pic", "pic_not_exercised"])
+def test_retired_notify_events_remain_readable_in_saved_state(tmp_path, kind):
+    directory = notify.notify_dir(tmp_path)
+    directory.mkdir(parents=True)
+    (directory / notify.STATE).write_text(json.dumps({"schema": notify.STATE_SCHEMA,
+        "failed": 1, "last_failure": {"event": kind, "reason": "not_configured"}}), encoding="utf-8")
+    loaded = notify.summary(tmp_path)
+    assert loaded is not None and loaded["last_failure"]["event"] == kind
+    assert kind not in schemas.schema("notify-event")["properties"]["event"]["enum"]
+
+
 # ---------------------------------------------------------------------------------------------- delivery
 
 

@@ -1774,6 +1774,7 @@ tools:
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+    note: "Advertises lower and request_raise. An endpoint raise is required before lower."
   - name: resolve
     home: product
     users: [lead]

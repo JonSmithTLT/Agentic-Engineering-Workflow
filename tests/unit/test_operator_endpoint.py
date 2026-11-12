@@ -282,10 +282,19 @@ def test_requests_grant_nothing(project):
     def call(**args: Any) -> dict[str, Any]:
         return run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), **args}, token=project.token)
 
+    def confirm(action_ref: str) -> dict[str, Any]:
+        return engine.steering_request(token=project.token, expect_rev=project.rev(), kind="confirmation",
+                                       action_ref=action_ref, rationale="needs a look")
+
     assert call(action="request_raise", mode="walk", rationale="routine edits")["ok"]
     assert call(action="request_raise", mode="run", rationale="unattended overnight")["ok"]
-    assert call(action="request_confirmation", action_ref="ticket_start T-0001", rationale="needs a look")["ok"]
-    view = engine.steering_view()
+    with pytest.raises(AdapterInputError) as refused:
+        check_call("steering", {"expect_rev": project.rev(), "action": "request_confirmation",
+                                "action_ref": "ticket_start T-0001", "rationale": "needs a look"}, NORMAL)
+    assert refused.value.code == "INVALID_ARGUMENTS"
+    assert confirm("ticket_start T-0001")["ok"]
+    # A confirmation written by the old surface remains readable as a committed request.
+    view = Engine.discover(project.root).steering_view()
     assert view["effective"] == "crawl"
     assert [(r["kind"], r.get("mode")) for r in view["requests"]] == [("raise", "run"), ("confirmation", None)]
     assert any(r["kind"] == "request_closed" and "replaced" in r["closed"] for r in _records(project))
@@ -295,9 +304,10 @@ def test_requests_grant_nothing(project):
         with pytest.raises(AdapterInputError):
             check_call("steering", {"expect_rev": 1, **bad}, NORMAL)
     for i in range(S.MAX_REQUESTS - 2):
-        assert call(action="request_confirmation", action_ref=f"step {i}", rationale="r")["ok"]
-    over = call(action="request_confirmation", action_ref="one too many", rationale="r")
-    assert not over["ok"] and len(engine.store.read()["steering"]["requests"]) == S.MAX_REQUESTS
+        assert confirm(f"step {i}")["ok"]
+    with pytest.raises(errors.IllegalTransition, match="requests are already open"):
+        confirm("one too many")
+    assert len(engine.store.read()["steering"]["requests"]) == S.MAX_REQUESTS
     assert engine.steering_view()["effective"] == "crawl"
     assert_control_invariants(project)
 

@@ -447,6 +447,7 @@ LEAD_SYSTEM = "\n".join([
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "
     f"and `aew` commands for you. A shell mutation still needs `{EXPECT_REV}` (from `status` or the previous command).",
     lead_tools_text(),
+    f"- Steering: {contract.STEERING_GUIDANCE}",
     "- Delegate implementation, review, verification, investigation and research to bounded invocations: the stages "
     "launch a mutating Ticket's runs, and the guide names the way for the rest. Each run's supervisor holds its "
     f"credential. {WAIT_SENTENCE}",

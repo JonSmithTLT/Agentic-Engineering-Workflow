@@ -3,8 +3,9 @@
 * `request` asks the operator to approve a protected command set in the G3 confirmer, waits for the decision, and
   submits the approved set to the O-01 route (:mod:`aew.g3client`). It is the operator's, at their own terminal:
   it refuses in a Lead session (:func:`aew.engine.custody_ops.refuse_kept_out`) before it reads anything, and
-  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. A Lead asks through steering's
-  ``request_confirmation`` (addendum 6). Nothing here asks for the PIN, which is typed only in the confirmer.
+  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. For a raise, ask with the
+  ``steering`` tool (request_raise). For any other approval, tell the operator in chat; there's no recorded
+  request for it yet. Nothing here asks for the PIN, which is typed only in the confirmer.
 """
 
 from __future__ import annotations

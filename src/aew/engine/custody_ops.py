@@ -169,8 +169,8 @@ REGISTER_READ = "`aew capability list` reads the register here"
 LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {
     ("capability", "check"): REGISTER_READ,
     ("capability", "fetch"): REGISTER_READ,
-    ("g3", "request"): "a Lead asks through steering's request_confirmation, naming the action; the operator's client "
-                       "submits it",
+    ("g3", "request"): "For a raise, ask with the `steering` tool (request_raise). For any other approval, tell the "
+                       "operator in chat; there's no recorded request for it yet.",
 }
 
 

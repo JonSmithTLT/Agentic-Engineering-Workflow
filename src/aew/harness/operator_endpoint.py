@@ -24,10 +24,9 @@ operator principal cannot be shown distinct from the Lead host's. What a same-ui
 :data:`RESIDUALS`; none of these barriers is a security boundary against it (plan v3 §2.1).
 
 The protocol is the dashboard control channel's (F20.3): one JSON request per connection, ``{op, args}``, never pickle,
-bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (M4-E E7c), the
-publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1). ``capability_change``
-is the capability register's operator changes (CAP-1; the designer's ruling 1): the register is per host, so a
-project's endpoint authorizes a change every project on the host reads.
+bounded size, one challenge at a time. It serves ``ping``, ``mode_raise`` and ``capability_change``. The relaunch
+breaker belongs to F15.6. ``capability_change`` serves the capability register's operator changes (CAP-1). The register
+is per host, so a project's endpoint authorizes a change every project on the host reads.
 
 **Started by a Lead session** (``aew opencode``, :mod:`aew.harness.operator_autostart`): the same endpoint with the
 same refusals, in the background, reparented so that no Lead session is its ancestor. Once no session it serves is

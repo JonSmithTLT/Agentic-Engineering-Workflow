@@ -668,7 +668,8 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
     owners = kept_out_refusal(frozenset({"g3", "request"}))
     assert owners and err["message"].startswith(owners)  # the one owner's text, present (QN2), and first (F1)
     assert "ask the operator to run `aew g3 request`" in err["message"]
-    assert "steering's request_confirmation" in err["message"]  # addendum 6's aside: where a Lead does ask
+    assert "For a raise, ask with the `steering` tool (request_raise)." in err["message"]
+    assert "For any other approval, tell the operator in chat" in err["message"]
 
 
 # F3: each refusal the command claims, proven through `main`, with the service and the route as recorders.

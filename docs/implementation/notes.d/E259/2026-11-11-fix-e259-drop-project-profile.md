@@ -1,0 +1,1 @@
+New projects omit the unused `project.profile` field. Existing `aew/project/v1` manifests can still carry the optional string and load without migration. The initialization test checks the new output and loads a legacy manifest fixture.

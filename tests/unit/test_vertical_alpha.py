@@ -90,6 +90,16 @@ def test_alpha_requires_steering_off_result_contents_and_strict_preflight():
     assert "strict preflight pass not observed" in text
 
 
+def test_a_takeover_in_the_gated_v2_scenario_fails_the_alpha():
+    scenarios = measured_scenarios()
+    assert "Alpha scripted gate: PASS" in render(scenarios)
+    scenarios[alpha.FORCED].count("takeovers", {}, actor="operator", step="reopen")
+    text = render(scenarios, platform="win32")
+    assert text.startswith(ledger.WINDOWS_UNQUALIFIED)
+    assert "Alpha scripted gate: FAIL" in text
+    assert f"{alpha.FORCED}: takeovers = 1" in text
+
+
 def test_receipt_lines_keep_dry_runs_distinct_from_real_receipts():
     assert alpha.receipt_lines(None) == [
         "Alpha receipt: NOT RECORDED (a real-model run the operator starts, per event)"]

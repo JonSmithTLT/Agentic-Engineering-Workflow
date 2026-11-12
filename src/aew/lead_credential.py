@@ -102,11 +102,11 @@ def can_prompt() -> bool:
     return interactive and not in_session() and operator.has_terminal()
 
 
-def required(*, instead: str = "") -> str:
+def required(*, instead: str = "", force_prompt: bool = False) -> str:
     """The Lead credential for this command: ``AEW_LEAD_TOKEN``, else what the operator types at the hidden prompt,
     else a refusal that says how to give it safely. ``instead`` names another way the command has (``--acquire``)."""
     global _prompted
-    token = os.environ.get(ENV) or _prompted
+    token = (None if force_prompt else os.environ.get(ENV)) or _prompted
     if token:
         return token
     alternative = f" Or {instead}." if instead else ""

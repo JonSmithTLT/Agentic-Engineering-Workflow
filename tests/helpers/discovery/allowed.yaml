@@ -7,6 +7,7 @@ allowed:
   O-IDS:
   - cli:aew checkpoint|MIGRATION_REQUIRED
   - cli:aew context show|result
+  - cli:aew doctor|result
   - cli:aew guide|result
   - cli:aew harness config|result
   - cli:aew harness launch|RUN_LIVE
@@ -58,6 +59,7 @@ allowed:
   - static:docs/guides/opencode.md|aew harness stop R-INV-0001-1 --reason "..."
   - static:docs/guides/opencode.md|aew harness wait R-INV-0001-1 --timeout 110
   - static:docs/guides/opencode.md|aew manifest adopt --reason ... --expect-rev N
+  - static:docs/guides/quickstart.md|aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
   - static:docs/guides/quickstart.md|aew context show INV-0001
   - static:docs/guides/quickstart.md|aew evidence ingest T-0001 --evidence <id> --expect-rev N
   - static:docs/guides/quickstart.md|aew harness config opencode <INV>|--lead
@@ -73,7 +75,10 @@ allowed:
   - static:docs/guides/quickstart.md|aew invoke create S-0001 --role verifier --expect-rev N
   - static:docs/guides/quickstart.md|aew invoke create T-0001 --expect-rev N
   - static:docs/guides/quickstart.md|aew invoke create T-0001 --scope integration --expect-rev N
+  - static:docs/guides/quickstart.md|aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
+  - static:docs/guides/quickstart.md|aew lead release --expect-rev <revision from aew status>
   - static:docs/guides/quickstart.md|aew lead takeover --reason "..." --expect-rev N
+  - static:docs/guides/quickstart.md|aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
   - static:docs/guides/quickstart.md|aew migrate --expect-rev N
   - static:docs/guides/quickstart.md|aew plan accept S-0001 --revision 1 --expect-rev N
   - static:docs/guides/quickstart.md|aew plan accept T-0001 --revision 1 --expect-rev N
@@ -431,6 +436,26 @@ allowed:
   O-ENV:
   - static:lead-system+guide
 residuals:
+- rule: O-IDS
+  site: cli:aew doctor|result
+  decision: Lead's E330 follow-on ruling, 2026-11-10
+  reason: The manifest adopt advice names its required revision and reason until the revision-check switch-on.
+- rule: O-IDS
+  site: static:docs/guides/quickstart.md|aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
+  decision: Lead's E330 follow-on ruling, 2026-11-10
+  reason: Complete example for the existing terminal authority-candidate command.
+- rule: O-IDS
+  site: static:docs/guides/quickstart.md|aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
+  decision: Lead's E330 follow-on ruling, 2026-11-10
+  reason: Complete example for acquiring a vacant seat before terminal settings changes.
+- rule: O-IDS
+  site: static:docs/guides/quickstart.md|aew lead release --expect-rev <revision from aew status>
+  decision: Lead's E330 follow-on ruling, 2026-11-10
+  reason: Complete example for releasing a seat after terminal settings changes.
+- rule: O-IDS
+  site: static:docs/guides/quickstart.md|aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
+  decision: Lead's E330 follow-on ruling, 2026-11-10
+  reason: Complete example for adopting pinned settings at the operator's terminal.
 - rule: O-IDS
   site: static:docs/guides/opencode.md|aew manifest adopt --reason ... --expect-rev N
   decision: 'the operator, 2026-11-01: "yes accept the two O-IDS entries"'

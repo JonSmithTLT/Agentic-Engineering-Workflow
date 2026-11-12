@@ -730,7 +730,7 @@ def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relaye
     monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")
     monkeypatch.setattr(lead, "contained_here", lambda: True)
-    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire: None)
+    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire, **_: None)
     monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: started.append(a) or {})
     monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin"})
     engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path)
@@ -765,7 +765,7 @@ def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ:
                         lambda self, out: calls.append("announce") or announce(self, out))
     monkeypatch.setattr(lead_broker.WeakerLead, "precheck", lambda self: calls.append("precheck"))
 
-    def require_credential(acquire: bool) -> None:
+    def require_credential(acquire: bool, **_: Any) -> None:
         calls.append("credential")
         if not credential:
             raise errors.AEWError("synthetic: no Lead credential")
@@ -1103,10 +1103,12 @@ class Engine:
 
     def __init__(self) -> None:
         self.released: list[str] = []
-        self.store = type("St", (), {"current": lambda _s: {"revision": 3, "invocations": {}}})()
+        self.store = type("St", (), {"current": lambda _s: {
+            "revision": 3, "lead": {"status": "active", "generation": 1}, "invocations": {},
+        }})()
 
-    def lead_acquire(self, **_: Any) -> dict[str, str]:
-        return {"token": "synthetic-token"}
+    def lead_acquire(self, **_: Any) -> dict[str, str | int]:
+        return {"token": "synthetic-token", "generation": 1}
 
     def lead_release(self, *, token: str, expect_rev: int) -> None:
         self.released.append(token)

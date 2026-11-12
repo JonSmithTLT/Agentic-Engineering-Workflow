@@ -8,6 +8,31 @@ import pytest
 from aewflow import set_mutating_concurrency
 from conftest import git, run_aew
 
+from aew.workspace import git as workspace_git
+
+
+def test_workspace_git_ignores_an_inherited_hook_repository(tmp_path, monkeypatch):
+    target, decoy = tmp_path / "target", tmp_path / "decoy"
+    for repo in (target, decoy):
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        (repo / "tracked.txt").write_text(repo.name, encoding="utf-8")
+    git("config", "diff.target.textconv", "target", cwd=target)
+    git("config", "diff.decoy.textconv", "decoy", cwd=decoy)
+
+    with monkeypatch.context() as hook:
+        hook.setenv("GIT_DIR", str(decoy / ".git"))
+        hook.setenv("GIT_WORK_TREE", str(decoy))
+        hook.setenv("GIT_INDEX_FILE", str(decoy / ".git" / "index"))
+        hook.setenv("GIT_INTERNAL_SUPER_PREFIX", "sub/")
+        workspace_git.git("add", "tracked.txt", cwd=target)
+        drivers = {driver["config"] for driver in workspace_git.configured_drivers(target)}
+        assert "diff.target.textconv" in drivers
+        assert "diff.decoy.textconv" not in drivers
+
+    assert git("show", ":tracked.txt", cwd=target) == "target"
+    assert git("ls-files", cwd=decoy) == ""
+
 
 def planned_ticket(project, tmp_path, title="Add subtract()"):
     wid = project.lead("work", "create", "ticket", "--title", title, "--class", "1", "--scope", "calc/**")["id"]

@@ -238,6 +238,7 @@ CONTROL_OP_SPECS: dict[str, tuple[ControlOpSpec, ...]] = {
     "lead.handoff.cancel": (ControlOpSpec("A", "pending handoff state"),),
     "lead.handoff.offer": (ControlOpSpec("A", "single pending handoff"),),
     "lead.release": (ControlOpSpec("A", "active Lead seat with no active invocation"),),
+    "lead.resume": (ControlOpSpec("C", "Lead generation, recorded holder, leftovers and invocations shown"),),
     "lead.takeover": (ControlOpSpec("C", "Lead generation shown"),),
     "manifest.adopt": (ControlOpSpec("C", "SHAs of files shown"),),
     "message.record_lead": (ControlOpSpec("A", "existing sender and thread idempotency id"),),

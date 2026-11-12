@@ -18,7 +18,9 @@ times are normalised too.
 What no two runs share is **normalised, never dropped**: a time becomes ``"<time>"`` (a null stays null, so closed or
 revoked versus open still differs), a credential id becomes a stable ordinal in order of first appearance (so the
 token table, its revocations and every reference to a token still compare), a credential verifier becomes
-``"<verifier>"``, the project's location ``"<project>"`` and its workspaces root ``"<workspaces>"``, and the revision a
+``"<verifier>"``, and a Lead start's pid and start id share a first-seen process ordinal (so PID reuse still names a
+different process, and an unknown start id stays null). The project's location becomes ``"<project>"``, its workspaces
+root ``"<workspaces>"``, and the revision a
 dispatch was decided at ``"<revision-bound>"`` (E5a: ``REVISION_BOUND``). A dispatch's decision digest is recomputed
 over the decision itself with that revision substituted (``recorded_decisions``: the test records the decisions it
 makes), so any other difference in the decision still compares; a digest no recorded decision has stays as it is. An
@@ -108,6 +110,7 @@ class _Normaliser:
         self.places = [(w, "<workspaces>") for w in dict.fromkeys(
             (workspaces, workspaces.replace("\\", "/")) if workspaces else ())]
         self.tokens: dict[str, str] = {}
+        self.processes: dict[tuple[int, str | None], str] = {}
 
     def _token(self, match: re.Match[str]) -> str:
         return self.tokens.setdefault(match.group(0), f"<token-{len(self.tokens) + 1}>")
@@ -120,6 +123,14 @@ class _Normaliser:
 
     def __call__(self, value: Any, path: tuple[str, ...] = (), dropped: frozenset[tuple[str, ...]] = DROPPED) -> Any:
         if isinstance(value, dict):
+            if path == ("lead", "start") and type(value.get("pid")) is int:
+                start_id = value.get("start_id")
+                if start_id is None or isinstance(start_id, str):
+                    identity = value["pid"], start_id
+                    ordinal = self.processes.setdefault(identity, f"<process-{len(self.processes) + 1}>")
+                    value = {**value, "pid": ordinal}
+                    if start_id is not None:
+                        value["start_id"] = ordinal
             out = {}
             for k, v in value.items():
                 here = (*path, str(k))

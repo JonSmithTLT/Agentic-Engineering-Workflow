@@ -35,6 +35,9 @@ from typing import Any
 from aew.harness import procs
 
 COMMAND = ("aew", "notify", "desktop")  # the shipped default's argv, as `aew init` writes it
+# Steering's modes (`aew.engine.steering.MODES`, their owner), held here so a toast's process never imports the engine
+# to name one (review of the notifier's retry PR, its nit); a test pins the two equal.
+MODES = ("crawl", "walk", "run")
 # The session bus's variables, the only ones the notifier's child gets beyond the keep-list (A-44 BOY-12.a: never
 # DISPLAY, WAYLAND_DISPLAY or XAUTHORITY). notify-send needs nothing else.
 SESSION_VARS = ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
@@ -125,8 +128,6 @@ def text(event: Mapping[str, Any]) -> tuple[str, str]:
     """The title and body for ``event``: its kind, subject and project, never its reason. A ``raise_requested``
     also names the mode asked for (its ``ref``), and only when that is one of steering's modes: a mode is an enum, not
     agent text, while the reason is the Lead's rationale (the designer's ruling of 2026-11-11 on SYS-04, part 4(b))."""
-    from aew.engine.steering import MODES
-
     kind = _clean(event.get("event")).replace("_", " ") or "event"
     if event.get("event") == "raise_requested" and event.get("ref") in MODES:
         kind = f"{kind} to {event['ref']}"

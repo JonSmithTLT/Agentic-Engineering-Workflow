@@ -1423,7 +1423,6 @@ None.
 
 ### `aew.harness.desktop_notifier`
 
-- `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.procs`
 

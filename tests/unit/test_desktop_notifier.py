@@ -123,6 +123,10 @@ def test_a_raise_toast_names_the_mode_asked_for_and_never_the_rationale():
     assert all("the Lead's own words" not in part for part in D.text(raise_))
 
 
+def test_the_toast_s_modes_are_steering_s():
+    assert D.MODES == steering.MODES
+
+
 @pytest.mark.parametrize("event", [
     {"event": "raise_requested", "ref": "run now, said the agent"},  # not one of steering's modes
     {"event": "raise_requested", "ref": None},

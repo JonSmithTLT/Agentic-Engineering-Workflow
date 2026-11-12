@@ -25,7 +25,7 @@ from aew import operator
 from aew.engine.api import Engine
 from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.store import Transition
-from aew.errors import ApprovalSubjectChanged
+from aew.errors import ApprovalSubjectChanged, PermissionDenied
 from aew.knowledge.records import read_record
 from aew.util import load_yaml, safe_dump_yaml, sha256_bytes
 
@@ -105,6 +105,32 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
             child = create_investigation(project, tmp_path, cls=0, parent=wid, title="Child added after review")
             complete_investigation(project, child)
         args = {"work_id": wid, "reason": "Parent decision"}
+    elif op == "lead.resume":
+        from aew.harness import procs, seat
+
+        engine.lead_release(token=project.token, expect_rev=project.rev())
+        old = engine.lead_acquire(expect_rev=project.rev(), kind=seat.VACANT_START)
+        generation = old["generation"]
+        seat.write_leftovers(engine.aew_root, generation, None)
+        monkeypatch.setattr(procs, "same_process", lambda *_: False)
+        monkeypatch.setattr("aew.switch_offer.may_ask", lambda: True)
+        after_writer = []
+
+        def replace_shown_holder(prompt):
+            assert f"generation     : {generation} -> {generation + 1}" in prompt
+            engine.lead_release(token=old["token"], expect_rev=project.rev())
+            engine.lead_acquire(expect_rev=project.rev(), kind=seat.VACANT_START)
+            after_writer.append((project.rev(), control_bytes(project)))
+            return {"authorized_by": "operator-tty"}
+
+        monkeypatch.setattr(operator, "authorize", replace_shown_holder)
+        with pytest.raises(PermissionDenied) as failure:
+            engine.lead_resume()
+        assert failure.value.details["reason"] == "seat_resume_changed"
+        assert "the recorded holder changed" in str(failure.value)
+        assert engine.lead_show()["generation"] == generation + 1
+        assert [(project.rev(), control_bytes(project))] == after_writer
+        return
     elif op == "lead.takeover":
         before_rev = project.rev()
         after_writer = []

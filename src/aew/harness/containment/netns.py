@@ -273,7 +273,7 @@ def egress_policy(policy: Mapping[str, Any] | None, extra: Iterable[str] = ()) -
 def upstream(provider: str | None, policy: Mapping[str, Any] | None,
              known: Mapping[str, str] = UPSTREAMS) -> relay.Upstream:
     """The provider relay's fixed upstream: the policy's ``upstreams.<provider>``, else ``known``'s
-    (:data:`UPSTREAMS`, or :data:`REFRESHING_UPSTREAMS` for a refreshing login). Raises ``ContainmentUnavailable``
+    (:data:`UPSTREAMS` by default). Raises ``ContainmentUnavailable``
     when there is none, saying what to set."""
     configured = settings(policy).get("upstreams") or {}
     url = configured.get(provider) if isinstance(configured, dict) else None
@@ -454,11 +454,12 @@ class RunNetwork:
         net.lead, net.http_proxy = True, True
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
-        resolvers = dict(refreshing or {})
+        resolvers = {p: resolve for p, resolve in (refreshing or {}).items()
+                     if p in REFRESHING_UPSTREAMS and not stored_key_override(p, policy)}
         try:
             for i, provider in enumerate(sorted({*keys, *resolvers, *keyless})):
                 resolve = resolvers.get(provider)
-                target = upstream(provider, policy, REFRESHING_UPSTREAMS if resolve else UPSTREAMS)
+                target = relay.Upstream(REFRESHING_UPSTREAMS[provider]) if resolve else upstream(provider, policy)
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:

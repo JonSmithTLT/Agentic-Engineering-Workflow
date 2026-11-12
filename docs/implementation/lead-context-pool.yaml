@@ -45,19 +45,19 @@ allocations:
     kind: estimate
     source: "Register E162. Three short pieces of Lead guidance covering check setup, commit permission and catalog references."
   messaging_guide_line:
-    bytes: 200
-    kind: estimate
-    source: "LEAD-CONTEXT-BUDGET-2026-11-10, decision 1. One short guide line. The shipped switch-on MCP catalog is in the baseline."
+    bytes: 437
+    kind: measured
+    source: "Review M3, merged render_pool with switches passed to lead_config; duplicate worker_message row removed. On: system 9279, guide 16611, join 2, MCP 11900 = 37792 B. Off: system 9023, guide 16433, join 2, MCP 11830 = 37288 B. On/off delta 504 B; net growth over the recorded 37355 B baseline is 437 B (on catalog already included). Original allocation 200 B; operator approved the 237 B excess on 2026-11-11, raising the cap from 42555 B to 42792 B for these measured on/off figures."
   E176:
     bytes: 3000
     kind: estimate
     source: "E231 budget rule section 1 and the E176 Lead memory brief. About 3 KB for the notes block and its guide text."
 # Current cap. Preserve the operator's exact words and date in approval history when it changes.
 approval:
-  ceiling_bytes: 33873
+  ceiling_bytes: 34110
   operator: "yes approve 42,405 and the drop after PR 3"
   date: '2026-11-11'
-# E231 PR 3 reduces the main cap by 8,682 B (8,572 B guide and 110 B system).
+# E231 PR 3 reduces the cap by 8,682 B from the measured MS5/MS6 pool on main.
 approval_history:
   - ceiling_bytes: 42405
     operator: "yes approve 42,405 and the drop after PR 3"
@@ -69,8 +69,12 @@ approval_history:
   - ceiling_bytes: 42555
     operator: "A is fine"
     date: '2026-11-11'
-  # PR 3 applies the already approved drop to the main cap of 42,555 B.
-  - ceiling_bytes: 33873
+  # Messaging: 37,792 B on, 37,288 B off; 504 B delta, 237 B above the original allocation.
+  - ceiling_bytes: 42792
+    operator: "lets do it"
+    date: '2026-11-11'
+  # E231 PR 3 applies the approved drop to the MS5/MS6 cap of 42,792 B.
+  - ceiling_bytes: 34110
     operator: "yes approve 42,405 and the drop after PR 3"
     date: '2026-11-11'
 # When approved, a raise takes the systems board's wip_allowance shape.

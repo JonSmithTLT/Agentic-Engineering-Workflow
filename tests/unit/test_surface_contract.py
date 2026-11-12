@@ -17,7 +17,15 @@ from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
 from aew.errors import ValidationFailed
 from aew.schemas import _validator, validate_def
 from aew.surface import contract, run
-from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
+from aew.surface.classify import (
+    AUTO_RUN,
+    AVAILABLE,
+    BLOCKED,
+    UNKNOWN,
+    auto_run_set,
+    auto_runnable,
+    effective_class,
+)
 from aew.surface.context import NORMAL, RECOVERY, SurfaceContext
 from aew.surface.contract import Tool
 from aew.surface.validate import AdapterInputError, check_call
@@ -244,6 +252,20 @@ def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row(catalo
         if not t.progression:
             assert not auto_runnable(t, AVAILABLE, MECHANICAL), t.name
     assert "profile" not in auto_runnable.__code__.co_varnames  # presentation never decides eligibility
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_only_the_two_declared_steps_auto_run_each_called_without_execution(catalog):
+    """Register E83 (R01-38; R-DEC-04): the shipped stages `auto_runnable` can admit are exactly the declared set,
+    ticket_start and ticket_request_review, so a stage that joins or leaves it fails here (the derived set calls
+    `auto_runnable` itself), in every catalog, so a switched-on row never joins it; and each is admitted only when
+    called without `execution`, which promotes it to judgment-bearing. (That only Run lets them run unconfirmed is the
+    steering loop's rule, tested in tests/integration/test_steering_loop.py.)"""
+    assert auto_run_set(catalog) == AUTO_RUN == {"ticket_start", "ticket_request_review"}
+    for name in sorted(AUTO_RUN):
+        t = catalog[name]
+        assert "execution" in t.promotes, name
+        assert not auto_runnable(t, AVAILABLE, effective_class(t, {"execution": {}})), name
 
 
 def test_the_schema_refuses_an_auto_runnable_wait_or_unknown_action():

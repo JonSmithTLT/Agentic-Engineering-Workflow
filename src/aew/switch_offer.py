@@ -398,7 +398,7 @@ def terminal() -> bool:
     return operator.has_terminal()
 
 
-def _may_ask() -> bool:
+def may_ask() -> bool:
     """`lead_session_problem`, not `consent._never_here`: that refuses ``AEW_LEAD_TOKEN``, which is how an operator
     legitimately starts `aew opencode`. It reads the broker's variables and, on Linux, the process chain from the parent
     up, so `aew opencode` doesn't refuse itself and a Lead's own shell is refused."""
@@ -445,7 +445,7 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
     out = out if out is not None else sys.stderr
     decision = Decision(engine, out)
     try:
-        if not _may_ask():
+        if not may_ask():
             return decision
     except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
         _say(out, f"the switch offers could not be read ({type(exc).__name__}: {exc}); see `aew doctor`.")

@@ -475,6 +475,10 @@ handlers:
   does: returns
   reason: re-raised under required; where the policy allows weaker runs, it returns the weaker label it reports (read
     on every path since #321's review, F3)
+- site: src/aew/harness/lead_broker.py::run_session
+  catches: [BaseException]
+  does: raises
+  reason: records a failed start for seat cleanup and re-raises the original exception
 - site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
   catches: [BaseException]
   does: raises

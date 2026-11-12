@@ -103,6 +103,34 @@ Deterministic fault points are named code locations, not timings. That is why th
   - AEW's behaviour was correct: it refuses a second implementer while one is live, and the Lead recovers with `aew invoke cancel` followed by a fresh dispatch.
   - Per the policy, the failure became a deterministic CLI test, `test_compositions.py::test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and_redispatch`. The walk now models the recovery. The default merge-gate seeds take step-for-step identical paths before and after that change.
 
+### Flake register
+
+`tests/flake-register.yaml` records a test or a session, its platform scope, lane, suspected cause, owner and dated
+run and job evidence. `python tools/flake_register.py check` validates the file and resolves test functions in source.
+Closing an entry records the merged fix and a deterministic proof by event, fault injection or fixed order. A
+recurrence or a period without a sighting does not close it. Census-only nodes and diagnostic runs do not enter the queue.
+
+A pull request into `main` that modifies only the existing register takes the docs tier when both merge parents and
+the tested register can be verified. Creation, deletion, rename, mixed changes, invalid input and unverifiable history
+take full CI. Core fast and serial both compare against the base. Existing entry IDs and their evidence are retained,
+and changing an open entry's lane or platforms requires a valid closure. A later recurrence can open its own entry
+with a link to the earlier closure.
+
+`python tools/flake_register.py queue` ranks open entries by distinct sightings in the trailing seven days and marks
+counts of three or more. The scheduled `flake-queue` job updates a standing issue on green and red nights. It combines
+committed evidence and cancelled test jobs with no-response annotations or an observed
+five-minute post-cancel stall. A limit reached in setup before pytest is infrastructure. Triage can preserve new
+sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
+
+The second flake PR will publish a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
+`sightings.json` member will contain rows with `entry`, `job`, `at`, and optional `observation`. The run ID will come from
+GitHub artifact metadata. Each row will retain its original timestamp across attempts. The queue accepts indexes from
+this repository's `ci.yml` runs on `main` and reports malformed archives in the issue while reading other indexes.
+
+The queue batches check-suite reads, then fetches details for matching cancelled jobs and active jobs on cancelled runs.
+It records qualifying jobs against each matching session entry. The scheduled job has Checks read access for these
+queries and reports an incomplete seven-day run listing as an error.
+
 ### Coverage (register E2, M4-A)
 
 - **What is measured.** Line and branch coverage of `src/aew`, measured with coverage.py (the `coverage` extra) on the Linux jobs: the `fast` lane in `core`, and every shard of the `integration`, `acceptance`, `regression` and `adversarial` lanes. Every Python subprocess the tests start is measured too: `aew` CLIs, harness supervisors, the Lead broker and xdist workers (`patch = ["subprocess"]`, `parallel = true`, `[tool.coverage.run]` in `pyproject.toml`). The `serial` lane runs without coverage, because its property is timing.
@@ -212,7 +240,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
   - **It never fails a run.** A history that cannot be read, or is not of a history's shape, is set aside, and the next green `main` run starts a new one from the committed table. The steps that update and save it cannot fail the gate, and one the update could not write is not saved.
   - **Every run uses it.** The `tier` job restores the newest history and computes the run's table: each test's median, and each lane's shard count as the history sizes it (§8). It uploads that table once (`shard-durations`), and every lane job balances on it, so all shards of a lane cut the same partition.
   - **It does not expire.** GitHub removes a cache entry nobody has read for seven days, so a week with no CI run would lose it. The nightly reads it every night and never saves one.
-  - **`tests/durations.json`** is committed: a run's table as `shard_plan.py` writes it, with each lane's count (the first was sized from `main`'s run 39900909868 as a first history would be). It is the seed a missing history starts from. When a run has no usable history, it balances on this table and gives each lane twice its count (a count above the tripwire, `shard_plan.MAX_SHARDS`, counts as the tripwire, as it does with a history), so a stale table cannot time a run out unless a lane has more than doubled since it was refreshed. Each lane's count there is also its floor (§8). Every run with a history warns when the copy falls behind: a lane that needs more shards than it gives, or a table that knows under 90% of the history's tests. To refresh it, copy a green `main` push run's `shard-durations` artifact over it in an ordinary pull request: the warnings say when, and no automated pull request opens one (the operator's ruling on CRD-13, 2026-10-23). Local runs and the nightly's `matrix-extra` read it too; the nightly's `reference` shards balance on their own history (§11).
+  - **`tests/durations.json`** is committed: a run's table as `shard_plan.py` writes it, with each lane's count (the first was sized from `main`'s run 39900909868 as a first history would be). It is the seed a missing history starts from. When a run has no usable history, it balances on this table and gives each lane twice its count (a count above the tripwire, `shard_plan.MAX_SHARDS`, counts as the tripwire, as it does with a history), so a stale table cannot time a run out unless a lane has more than doubled since it was refreshed. Each lane's count there is also its floor (§8). Every run with a history warns when the copy falls behind: a lane that needs more shards than it gives, or a table that knows under 90% of the history's tests. To refresh it, copy a green `main` push run's `shard-durations` artifact over it in an ordinary pull request: the warnings say when, and no automated pull request opens one (the operator's ruling on CRD-13, 2026-10-23). Local runs read it too. The nightly's `matrix-extra` and `reference` shards use it as a fallback, and each balances on its own timing history when available (§11).
 
 ## 8. Runtime budgets
 
@@ -332,7 +360,7 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `walk-extended` | 3 blocks × 6 rotating seeds per OS for both walks, 150 steps, fault rate 0.15 (hierarchy walk: 250 steps, fault rate 0.12) | More adversarial sequences and crashes |
 | `race-repeat` | Serial lane ×10, then 200 racing writes per writer | Heavier race and kill repetition |
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
-| `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11, in duration-balanced shards like the PR lanes (`-m "not serial" --shard k/N -n auto`: Linux 4, Windows 8 since 2026-11-10, each under its timeout before G3a (`PRE_G3A_TIMEOUT_MIN` in `tests/unit/test_ci_tools.py`) plus the session deadline's clearance, and grown when one nears 30) | Broader environment |
+| `matrix-extra` | Full suite on ubuntu/py3.13 and windows/py3.11 in duration-balanced shards (`-m "not serial" --shard k/N -n auto`). `reference-plan` sizes a separate matrix from the extra jobs' xdist history (cache `extra-durations-`) and uploads one partition table. Each OS uses at least Linux 4 or Windows 8 shards and grows until its slowest estimate fits 30 minutes. With no usable history for an OS, its floor and the committed durations apply. The estimate cuts the full collection and excludes serial tests from the xdist time. | Broader environment under the existing deadline |
 | `matrix-extra`, grown 2026-11-10 | Linux 3 → 4 shards, Windows 4 → 8, by the 30-minute rule | On 2026-11-10 every Windows shard took 47 to 57 minutes (shard 1: 2183 s on 11-05, 3407 s on 11-10) and Linux 34 to 40. From 11-05 to 11-10 the sharded tests went from 8813 to 11738 (fast lane 6347 → 8681, integration 2104 → 2687), and Windows' summed test time from 33848 to 46300 s: 5541 s from the new tests, and 7077 s from the 8786 tests that ran both nights, 21% slower (Linux: 2905 s and 25%, though only 2% on 11-09). The 20 most slowed tests explain 17% of Windows' growth and 14% of Linux's, so the shards grow; those that stayed slow two nights running are follow-ons. Linux 4 holds 11-09's load with margin and 11-10's only at the rule, so a further Linux night like 11-10 grows it to 5. With these counts 27 nightly jobs start beside `reference-plan` (20 before); a night that sizes 17 to 19 `reference` shards from its history asks for up to 46 at once, and the jobs over the account's 40 wait for the first to finish, never fail |
 | `matrix-extra-serial` | `matrix-extra`'s serial lane, once per OS on the same interpreters, no xdist, in a job of its own | It ran in shard 1 after the sharded step, under that job's one deadline. On 2026-11-10 (run 42845505402) the Windows shard's sharded step took 3407 s of its 3600 s deadline, and the serial lane, which takes 185 to 254 s, ran out of time. A job of its own keeps it off every shard's time |
 | `matrix-extra-assurance` | `check_assurance.py` over every `matrix-extra` shard's and `matrix-extra-serial`'s reports, with `--require linux,win32`, and a check that both jobs succeeded | As `reference-assurance`: a dropped shard or a missing serial lane fails the nightly, never a smaller green one |

@@ -112,6 +112,19 @@ def describe(lab: Any) -> str:
     return f"{lab.root} at {time.strftime('%H:%M:%S')}:\n" + "\n".join(describe_run(d) for d in dirs)
 
 
+def describe_shell(directory: Path, result: dict[str, Any]) -> str:
+    """Failure-only shell evidence; fake_agent merges stderr into stdout unless a separate file is named.
+    Redact each complete stream before taking its last 40 lines; an unreadable file must not mask the assertion."""
+    lines = [f"harness dir: {directory}",
+             f"shell exit: {result.get('exit')}; timed_out: {result.get('timed_out')}; "
+             f"barrier_error: {result.get('barrier_error')}"]
+    paths = list(dict.fromkeys(str(result[key]) for key in ("stdout_file", "stderr_file") if result.get(key)))
+    for name in paths:
+        lines.append(f"--- shell stdout/stderr: {name} (last 40 lines)")
+        lines.append(_tail(Path(name), lines=40))
+    return "\n".join(lines)
+
+
 def _safe(nodeid: str) -> str:
     """A directory name for one test: readable, bounded for Windows paths, and unique (its full id's digest: two ids
     that differ only in punctuation, such as parametrized URLs, never share a directory; #136 review, F2)."""

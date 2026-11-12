@@ -5,17 +5,17 @@ file. The relay runs in the run's supervisor, outside the sandbox, and holds the
 holds only a sentinel in its place (:func:`sentinel`). For each request it:
 
 1. reads the request head (``origin-form`` only: a target that names a host is refused, so the sandbox never chooses
-   where the relay connects);
+   where the relay connects). A per-request credential also requires a path inside its upstream prefix;
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
    it starts: ``netns.provider_key_missing``). A credential that
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
-   with the resolver's message (:class:`Unavailable`), and nothing is connected;
+   or 503 for a busy or locked store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
 3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``;
-4. connects to its one fixed upstream (the execution policy's, never the sandbox's; through the operator's own HTTP
-   proxy when the provider's environment names one), over TLS for ``https``;
+4. connects to its one fixed upstream, through the operator's HTTP proxy when the provider's environment names one,
+   over TLS for ``https``;
 5. sends the request and its body (framed by ``Content-Length`` or chunked), then streams the response back as it
    comes, until the upstream ends it or the client goes away.
 
@@ -41,7 +41,7 @@ import ssl
 import time
 import urllib.parse
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
@@ -64,8 +64,12 @@ CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "api-key", "x-goog
 HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate",
                         "te", "trailer", "upgrade", "expect"})
 _TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
-_PHRASES = {400: "Bad Request", 401: "Unauthorized", 408: "Request Timeout", 431: "Request Header Fields Too Large",
-            501: "Not Implemented", 502: "Bad Gateway"}
+# Resolve-mode forwards the target raw. Accept only unreserved path characters and literal separators so
+# neither percent decoding nor upstream-specific path parameter handling can change its interpretation.
+_RESOLVED_PATH = re.compile(r"/[A-Za-z0-9._~/\-]*")
+_PHRASES = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 408: "Request Timeout",
+            431: "Request Header Fields Too Large", 501: "Not Implemented",
+            502: "Bad Gateway", 503: "Service Unavailable"}
 
 Connector = Callable[[str, int, float], socket.socket]
 # What a resolver gives one request: each sentinel's value, and the headers the relay sets (replacing any of the same
@@ -73,9 +77,16 @@ Connector = Callable[[str, int, float], socket.socket]
 Grant = tuple[Mapping[str, str], Mapping[str, str]]
 
 
+CredentialCause = Literal["expired", "kind_changed", "unknown_shape", "missing", "unreadable"]
+
+
 class Unavailable(Exception):
-    """A credential the relay resolves per request cannot be used now. Its message, which says why and what to do,
-    is the 401 answer's body: what the harness shows its user."""
+    """A name-only refusal whose message is sent to the client and whose cause is counted."""
+
+    def __init__(self, message: str, *, cause: CredentialCause, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.cause = cause
+        self.retryable = retryable
 
 
 def sentinel() -> str:
@@ -186,7 +197,18 @@ class ProviderRelay(Service):
         try:
             return resolve()
         except Unavailable as exc:
+            self._count(f"credential:{exc.cause}")
+            if exc.cause == "unreadable" and exc.retryable:
+                raise _Refused(503, "credential_unreadable", str(exc)) from None
             raise _Refused(401, "credential_unavailable", str(exc)) from None
+
+    def _check_resolved_target(self, target: str) -> None:
+        path = target.partition("?")[0]
+        if (not path.startswith(f"{self.upstream.path}/") or not _RESOLVED_PATH.fullmatch(path)
+                or "//" in path or "#" in target or {".", ".."}.intersection(path.split("/"))
+                or any(c <= " " or c == "\x7f" for c in target)):
+            raise _Refused(403, "outside_upstream_path", "the provider relay takes only unambiguous paths "
+                           "under the stored login's upstream path")
 
     def handle(self, conn: socket.socket) -> None:
         """Serve one request on ``conn`` to its end, and close it."""
@@ -246,7 +268,9 @@ class ProviderRelay(Service):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1") from None
         if not _TOKEN.fullmatch(method) or version not in ("HTTP/1.1", "HTTP/1.0"):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1")
-        if not target.startswith("/") or any(c <= " " or c == "\x7f" for c in target):
+        if self._resolve is not None:
+            self._check_resolved_target(target)
+        elif not target.startswith("/") or any(c <= " " or c == "\x7f" for c in target):
             raise _Refused(400, "not_origin_form", "the provider relay takes a path only (/v1/...): it always "
                            "connects to the run's fixed provider upstream, which a request cannot name")
         headers = []

@@ -56,6 +56,19 @@ def policy_files(manifest: dict[str, Any]) -> list[str]:
     return sorted({*named.values(), named.get("execution") or X.REL_PATH})
 
 
+def policy_digests_of(manifest: dict[str, Any], raws: dict[str, bytes | None], aew_root: Path) -> dict[str, str]:
+    """``legality_digest`` and ``operational_digest`` over ``raws`` (``{path under .aew: bytes or None when absent}``,
+    one per ``policy_files(manifest)``): the one computation behind ``Kernel.policy_digests`` and the record ``aew
+    init`` writes before any kernel exists (``steering.seed_at_init``)."""
+    from aew.policy import classes
+
+    named = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
+    return classes.digests({
+        rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
+              None if raw is None else load_yaml(raw.decode("utf-8"), source=str(aew_root / rel)))
+        for rel, raw in raws.items()})
+
+
 def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
     """A policy file's bytes, parsed and checked as adoption checks them (``manifest adopt``), under its logical name
     (the manifest's ``policy`` key, or ``execution`` at its conventional path): the execution policy fully
@@ -311,19 +324,13 @@ class Kernel:
         """``legality_digest`` and ``operational_digest`` over every policy file in force, read from the pinned bytes
         (the pre-F15.2 amendment A3; ``aew.policy.classes``). A file named by a manifest ``policy`` entry is read
         against that entry's schema; the execution policy at its conventional path is ``execution``."""
-        from aew.policy import classes
-
         named = {rel: name for name, rel in (self.manifest.get("policy") or {}).items()}
         pins = self._pins_in_force()
         raws = {rel: self._pinned_bytes(rel, pins) for rel in policy_files(self.manifest)}
         # Decisions are computed on every projection; parse only when the bytes in force change.
         key = tuple((rel, named.get(rel), sha256_bytes(raw) if raw is not None else None) for rel, raw in raws.items())
         if self._digest_cache[0] != key:
-            files: dict[str, tuple[str | None, Any]] = {
-                rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
-                      None if raw is None else load_yaml(raw.decode("utf-8"), source=str(self.aew_root / rel)))
-                for rel, raw in raws.items()}
-            self._digest_cache = (key, classes.digests(files))
+            self._digest_cache = (key, policy_digests_of(self.manifest, raws, self.aew_root))
         return dict(self._digest_cache[1])
 
     def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:

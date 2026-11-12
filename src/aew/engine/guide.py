@@ -157,7 +157,8 @@ def _local_checks(gates_policy: dict[str, Any]) -> str:
     return ", ".join(f"`{check}`" for check in gates_policy.get("local_checks") or []) or "none configured"
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
+           messaging: bool = False) -> str:
     from aew.engine.workspace_ops import mutating_cap  # local: its imports reach the harness, which reaches this text
 
     paths = gates_policy.get("risk_paths") or {}
@@ -285,6 +286,10 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "| --- | --- |",
         *(f"| `aew lead guide {name}` | {when} |" for name, (when, _) in SECTIONS.items()),
     ]
+    if messaging:
+        from aew.harness.contract import messaging_guide_lines
+
+        lines.extend(["", "## Coordination messages", "", *messaging_guide_lines()])
     return "\n".join(lines) + "\n"
 
 

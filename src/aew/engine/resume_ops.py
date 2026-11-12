@@ -632,11 +632,11 @@ class Resume:
             **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
         }
 
-    def lead_guide(self) -> str:
+    def lead_guide(self, *, messaging: bool = False) -> str:
         """How work flows in AEW for this project's Lead, from its own policy. Read-only."""
         from aew.engine import guide
 
-        return guide.render(self.k.policy("gates"), self.k.policy("checks"))
+        return guide.render(self.k.policy("gates"), self.k.policy("checks"), messaging=messaging)
 
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",

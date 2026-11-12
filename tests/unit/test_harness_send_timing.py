@@ -90,17 +90,13 @@ def test_send_route_decides_every_cell_and_refuses_all_but_the_request_file(when
         with pytest.raises(MessagingSnapshotMismatch) as refused:
             send_route(project, snapshot, when, invocation="INV-0007")
         assert refused.value.details == {"project": project, "snapshot": snapshot, "when": when}
-        if project == ON:  # before MS4 a relaunch never clears it: every run reads as launched off
-            assert "relaunch" not in refused.value.message.lower()
-            assert "needs messaging switched off" in refused.value.message
-        else:  # the project is off: a relaunched run reads as launched off, so it agrees with the project
-            assert ("Relaunch the run (`aew harness launch INV-0007 --expect-rev <revision from aew status>`)"
-                    in refused.value.message)
-            assert "needs messaging switched off" not in refused.value.message
+        assert ("Relaunch the run (`aew harness launch INV-0007 --expect-rev <revision from aew status>`)"
+                in refused.value.message)
+        assert "needs messaging switched off" not in refused.value.message
 
 
-def test_until_ms4_writes_the_snapshot_every_run_reads_as_launched_off():
-    """The HS1 and MS4 coupling (§3.1, §7): the snapshot is MS4's, so no run carries one yet, and an absent snapshot
-    reads as off. MS4 replaces the accessor with the real read, and this test with its own."""
-    for entry in ({}, {"run": "R-INV-0001-1", "harness": "opencode"}):
+def test_only_an_explicit_enabled_launch_snapshot_reads_as_on():
+    for entry in ({}, {"run": "R-INV-0001-1", "harness": "opencode"}, {"coordination": None},
+                  {"coordination": {"messaging": "disabled"}}, {"coordination": {"messaging": True}}):
         assert run_messaging_snapshot(entry) == OFF
+    assert run_messaging_snapshot({"coordination": {"messaging": "enabled"}}) == ON

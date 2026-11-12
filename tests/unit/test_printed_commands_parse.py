@@ -333,11 +333,20 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
-    guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    rendered guide or recovery hints."""
     from aew.engine import guide
-    from aew.surface import lead_text
+    from aew.engine.harness_ops import send_route
+    from aew.errors import MessagingSnapshotMismatch
+    from aew.policy import execution
+    from aew.surface import contract, lead_text
 
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
+    # The refusal's invocation placeholder lives inside a dynamic f-string.
+    with pytest.raises(MessagingSnapshotMismatch) as refused:
+        send_route(execution.MESSAGING_ENABLED, execution.MESSAGING_DISABLED, "next-step")
+    [(command, fenced)] = P.commands(refused.value.message)
+    P.parse(command, fenced=fenced)
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), command,
+                          lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=contract.ALL_SWITCHES),
                           *(guide.render_section(section, DEFAULT_GATES) for section in guide.SECTIONS)])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused

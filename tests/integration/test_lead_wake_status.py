@@ -261,6 +261,43 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
         broker.close()
 
 
+def test_broker_posting_does_not_age_its_snapshot_during_the_process_identity_check(project, monkeypatch):
+    """A delayed identity check must not compare an earlier heartbeat snapshot with a later clock."""
+    from notifier import Clock, Steps
+
+    from aew.harness import broker_liveness, operator_client
+    from aew.harness.lead_broker import POLL_S
+
+    root = project.root / ".aew"
+    generation = _engine_of(project).lead_show()["generation"]
+    clock = Clock()
+    beat = broker_liveness.Beat(root, generation=generation, poll_s=POLL_S, wedge_after_s=62.0,
+                                clock=clock, idle=Steps)
+    beat.start()
+    Q.mark_serving(root, generation)
+    same_process = operator_client.same_process
+    monkeypatch.setattr(Q, "time", SimpleNamespace(time=clock), raising=False)
+    monkeypatch.setattr(broker_liveness, "time", SimpleNamespace(time=clock))
+    checked = []
+
+    def delayed_identity(record):
+        alive = same_process(record)  # the actual host's process check, including Windows' native checks
+        checked.append(alive)
+        clock.advance(3 * POLL_S)  # force preemption/slow identity observation without sleeping or retries
+        return alive
+
+    monkeypatch.setattr(operator_client, "same_process", delayed_identity)
+    try:
+        assert Q.some_broker_posts(root)
+        assert checked == [True]
+        # At the next observation the unchanged record really is stale; the threshold is not widened.
+        monkeypatch.setattr(operator_client, "same_process", same_process)
+        assert Q.some_broker_posts(root) is False
+    finally:
+        beat.close()
+        Q.clear_serving(root, generation)
+
+
 def test_a_project_with_wakes_off_shows_only_that_and_no_stale_wake(project):
     """Nothing runs the queue with the switch off, so what it last held isn't an alarm (review, m8)."""
     from aew.policy import execution as X

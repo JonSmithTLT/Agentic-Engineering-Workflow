@@ -46,7 +46,8 @@ Lead's call and the loop's are each one stage, CAS-checked: at most two intents 
 **What it records:** its state (``.aew/local/steering/loop.json``: running or stopped, and why; never control state,
 §2.7), and a ``loop_stopped`` line in the broker's event spool for a stop that needs attention, so the operator
 endpoint notifies (§2.8). A stop that returns control to the Lead in the ordinary way (a decision, a blocker, an
-unknown, nothing to do) is recorded but not notified.
+unknown, nothing to do) is recorded but not notified. Until E7c, ``CONFIRMATION_UNAVAILABLE`` is recorded too, but
+neither notified nor told to the Lead (``HELD_UNTIL_E7C``).
 """
 
 from __future__ import annotations
@@ -80,6 +81,13 @@ ANOMALY_HIGH = "ANOMALY_HIGH"
 STALE_AUTHORITY = "STALE_AUTHORITY"
 STALE_POLICY = "STALE_POLICY"
 CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"  # E7b: confirm_before holds and no confirmation exists yet (m3)
+# Recorded (``loop.json``, so ``status`` and the steering view show it) but held from the notifier's spool and from the
+# Lead's ``loop_waiting`` wake until M4-E E7c, which lifts the hold: before E7c nothing can act on such a stop (no
+# confirmation exists, crawl cannot be lowered, and under Walk lowering to crawl only confirms more), so each would be
+# a toast and a Lead turn for a step that stays the Lead's own (the operator's ruling on the quick check of E228's
+# fourth PR, QC-1 (c)). It is the code's, in any mode, never crawl's: every other stop is notified and wakes the Lead
+# as before.
+HELD_UNTIL_E7C = frozenset({CONFIRMATION_UNAVAILABLE})
 NOTIFIER_UNAVAILABLE = "NOTIFIER_UNAVAILABLE"
 NO_HARD_DEADLINE = "NO_HARD_DEADLINE"
 LOOP_DEADLINE = "LOOP_DEADLINE"
@@ -656,7 +664,7 @@ class SteeringLoop:
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
         self._acted.clear()
-        if not stop.attention:
+        if not stop.attention or stop.code in HELD_UNTIL_E7C:  # held from the spool until E7c (HELD_UNTIL_E7C)
             return
         if stop.condition in self._notified:
             self._notified.move_to_end(stop.condition)  # recurring: the last to be forgotten (LRU; review, R2)

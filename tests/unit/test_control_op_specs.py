@@ -147,7 +147,7 @@ def _static_entries():
 def test_control_op_specs_match_static_entry_sites():
     entries = _static_entries()
     assert entries == P.CONTROL_OP_SPECS.keys()
-    assert len(entries) == 65
+    assert len(entries) == 66
 
 
 def test_the_request_index_accepts_exactly_the_create_ops_that_declare_request_ids():
@@ -314,6 +314,7 @@ def test_control_op_specs_match_runtime_transaction_entries(monkeypatch, tmp_pat
 
 
 def _record_non_transaction_entries(k, seen, monkeypatch):
+    from aew import switch_offer
     from aew.engine import coordination_ops, lead_ops, migrate_ops
     from aew.engine.base import V1
 
@@ -334,7 +335,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
                  "handoff": {"carry_invocations": [], "record": "handoff"}},
     }
     session = SimpleNamespace(state=state, revision=1, commit=commit)
-    k.store = SimpleNamespace(current=lambda: state, session=lambda: nullcontext(session))
+    k.store = SimpleNamespace(current=lambda: state, session=lambda: nullcontext(session), root=k.aew_root)
     k.check_manifest_pin = nothing
     k.new_decision = lambda *a, **kw: "decision"
     k.project_id = "synthetic"
@@ -355,7 +356,16 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
     with pytest.raises(ReachedTransaction):
         lead.lead_takeover(expect_rev=1, reason="synthetic")
 
-    migration = migrate_ops.Migration(k, hierarchy=None, archive=archive, coordination=coordination)
+    state["lead"]["start"] = {"generation": 1}
+    monkeypatch.setattr(lead, "_check_resume", nothing)
+    monkeypatch.setattr(lead_ops.seat, "read_leftovers", lambda *args: [])
+    monkeypatch.setattr(switch_offer, "may_ask", lambda: True)
+    with pytest.raises(ReachedTransaction):
+        lead.lead_resume()
+
+    steering = SimpleNamespace(register_on_migrate=nothing)
+    migration = migrate_ops.Migration(k, hierarchy=None, archive=archive, coordination=coordination,
+                                      steering=steering)
     monkeypatch.setattr(migration, "discard_unreachable", lambda: [])
     with pytest.raises(ReachedTransaction):
         migration.migrate(token="synthetic", expect_rev=1)

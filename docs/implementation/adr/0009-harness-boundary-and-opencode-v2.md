@@ -1520,7 +1520,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
   (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
   provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
-  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`lead.StoredLogin`) re-reads the operator's
+  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`login.StoredLogin`) re-reads the operator's
   login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
   account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
   writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
@@ -1641,7 +1641,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   addendum 15, "A test runs each relayed command against a project and finds the store and `.aew/local/` unchanged,
   apart from any derived cache the read already rebuilds today and the broker's delivery records, each of which the
   test names by its exact path" (the delivery records: `local/harness/runs/<run>/progress.returned.json` and
-  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned), one
+  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned; messaging's local
+  told-ID record and its synchronization files are specified in the 2026-11-11 amendment below), one
   answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
   server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
@@ -2013,6 +2014,42 @@ runs where the Lead's shell runs, and arrive as text.
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
 
+## Amendment 2026-11-11 — local message delivery receipts are not durable shown facts
+
+The delivery-record exception to relayed reads' no-write rule is constrained as a class:
+
+1. The broker writes, never the relayed non-writer process.
+2. Only identities actually carried in the successful result, verified against the project's data and request scope,
+   qualify. Worker text is data, not a recursively searched source of IDs; omitted or partial bodies qualify for none.
+3. Every destination is named exactly by the tests. Existing wait records remain
+   `local/harness/runs/<run>/progress.returned.json` and `local/harness/runs/<run>/progress.end-returned`.
+   Message receipts use `local/lead/told-messages.json`, a closed object with only `generation` and `messages`
+   (sorted unique complete IDs). Its stable empty synchronization files are `local/lead/told-messages.lock` and
+   `local/lead/told-messages.lock.queue`. Atomic replacement's transient temporary file is utility-owned in that
+   same directory, not another delivery destination. The stable lock files are not replaced or deleted by the writer.
+4. Normal message updates grow by union within the held generation; an old broker cannot regress a newer generation.
+   Invalid or missing disposable records suppress nothing. They are not a claim of exactly-once model receipt.
+5. Records carry only their declared identity/sequence/flag payload, never bodies, credentials or control state.
+6. **Every member of this delivery-record class writes only under `.aew/local/`.** No thread, seal, registration,
+   lead-seen log, control/history file or advisory `local/wake` bump is part of relayed message consumption.
+
+Typed broker tools and own-shell `aew lead tool` keep the existing durable shown writer for verified bodies in a
+successful result; credentialed `message unseen` keeps its recovery semantics. Plain operator and contained-local
+reads consume nothing. A relayed status/resume uses a single machine result, rendering that same result for readable
+output, then after the successful bridge send the broker records only its verified bodies locally. Relayed wait
+sequence/end marks use that same send-success boundary. Own-shell typed consumption follows successful stdout emit
+and flush. A failed send/write/flush records no message receipt. Local receipts do not clear durable attention or
+the worker inbox cap. Receipt of a successful response is not proof the model read or understood it, and a process
+loss between successful output and receipt recording may cause re-listing rather than exactly-once delivery.
+
+**Bounded uncertain wake recovery (2026-11-11, review M1).** `wake_queue.UNCERTAIN_HOLD_S` is a **60-second** local
+reconciliation deadline starting at the first recorded POSTING attempt, preserved across reads, `/new` and broker
+restart. It is a liveness/recovery bound, not evidence of non-admission. A pinned-session 404 or expiry clears the
+uncertain selection without marking any selected ID posted or advancing its news marks. The same queue can gather
+fresh news again; a delayed earlier admission may repeat news, the accepted disposable-state re-listing cost. The
+status line names the uncertain hold and its deadline. Confirmed admission still records only its exact verified IDs.
+This recovery bound applies to message and steering-loop wakes, not only one kind of news.
+
 ## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
 
 The operator approved default worker use and Linux first ("yes to both, linux now and file the windows row").
@@ -2046,3 +2083,40 @@ launch resolves the source afresh.
 This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
 providers make no store read. Off the relay, the existing explicit environment path applies.
 The Lead's stored login and the weaker containment guarantees are described above.
+
+## Amendment 2026-11-11 — the refreshing relay tightened (usage pot PR 1)
+
+This amends the refreshing-login paragraph in the 2026-10-25 contained Lead amendment.
+`login.StoredLogin` reads only the provider's deciding row on each request. If the store is still
+busy or locked after the bounded retry, the relay returns 503 `credential_unreadable`. Other store
+faults return 401 with the recovery step.
+
+The refreshing relay sends requests only to the built-in upstream in `netns.REFRESHING_UPSTREAMS`.
+A configured upstream override for that provider prevents the Lead from relaying its stored
+refreshing login. The Lead names the override at startup and explains how to use the stored login
+or an exported API key.
+
+The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
+an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.
+
+## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
+
+- **Lead session exit (former line 122).** When `aew opencode` took the seat itself, the seat is released at
+  exit when nothing is in flight. Otherwise it stays held, and the next `aew opencode` resumes it under the
+  conditions in [ADR-0005's resume amendment](0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume).
+  A seat held by a live Lead, or by the operator's own token, still needs a terminal takeover. The 2026-10-04
+  condition that release waits until no process the session started is running still applies.
+- **Owned process tree (former lines 481–482).** The seat stays held against leftover processes, and the operator
+  can resume it under ADR-0005's resume conditions. An unknown outcome keeps the seat held. To free it, take it
+  over at the operator's terminal and then release it.
+- **Lead session lifetime (former line 650).** The harness process holds the session (when `aew opencode` takes
+  the seat itself, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it).
+
+A failed start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+The next generation's held-exit evidence carries those processes forward. The local evidence records
+process identities on Linux and a count on Windows. An unknown result or missing evidence requires
+acknowledgement. Local process evidence is dev-grade on both platforms.
+
+Each new generation records `lead.start` in the seat operation's commit, with `generation`, `kind`, `at`,
+`host`, `user`, `pid` and `start_id`. The resumable kinds are `opencode_acquire`, `vacant_start` and
+`seat_resume`. The other routes record `lead_acquire`, `takeover` or `handoff`.

@@ -222,9 +222,9 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
     refreshes the login (the test writes the operator's row, as it would), and the next request, in the same session,
     reaches the upstream with the new access token and the stored account id; so does the one after the next
     refresh, read again. AEW wrote nothing of the operator's, and nothing of the operator's login is inside."""
-    up = Upstream()
+    up = Upstream(path="/backend-api/codex")
     try:
-        lab, tui = make_lab(tmp_path, upstreams={"openai": up.url})
+        lab, tui = make_lab(tmp_path)
         try:
             home = synthetic_home(tmp_path, oauth={"openai": chatgpt("synthetic-access-expired", time.time() - 10)})
             operator = home / ".local" / "share" / "opencode" / "opencode.db"
@@ -246,7 +246,7 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
 
             refresher = threading.Thread(target=refresh, daemon=True)
             refresher.start()
-            done = at_the_terminal(lab, home)
+            done = at_the_terminal(lab, home, refreshing_upstream=up.url)
             refresher.join(10)
             assert done["code"] == 0, done["stderr"][-3000:]
             assert "openai (oauth): relayed as stored, expired now" in done["stderr"]
@@ -261,7 +261,7 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
             assert body.startswith("AEW: your stored openai login has expired") and "`opencode auth list`" in body
             assert "the Lead's next request then works, with no restart" in body
             assert [r["openai"][0] for r in inside["later"]] == [200, 200], inside["later"]
-            assert up.seen == [("/v1/probe", f"Bearer synthetic-access-fresh-{n}") for n in (1, 2)]
+            assert up.seen == [("/backend-api/codex/probe", f"Bearer synthetic-access-fresh-{n}") for n in (1, 2)]
             assert up.accounts == ["synthetic-account-0007"] * 2
             [row] = inside["logins"]
             assert row["integration"] == "openai" and row["access"].startswith("aew-relay-"), row

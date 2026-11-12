@@ -13,8 +13,8 @@ the connection. The agent's environment carries only the endpoint and the key; t
 
 * Requests are **structured JSON** (``send_bytes``/``recv_bytes``): never pickle, which would let an
   authenticated client run code inside the credential-holding supervisor.
-* Only three operations exist, each with exact arguments. A request cannot name an invocation, run or
-  credential: the bridge acts only as its own run.
+* Operations have exact arguments; enabled worker snapshots additionally offer reply/read/wait. A request cannot
+  name an invocation, run or credential: the bridge acts only as its own run.
 * The supervisor executes each request through the AEW engine with the held credential, so the engine's
   authority and scope checks stay authoritative. The bridge adds no authority.
 * The key is a run-scoped capability deliberately usable by every process the agent starts (they are the
@@ -37,6 +37,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from multiprocessing import AuthenticationError
 from multiprocessing.connection import Client, Listener
 from typing import Any
@@ -53,6 +54,11 @@ OPERATIONS: Operations = {
     "whoami": {},
     "check.run": {"check_id": str},
     "submit": {"kind": str, "text": str},
+}
+MESSAGE_OPERATIONS: Operations = {
+    "message.reply": {"in_reply_to": str, "kind": str, "body": str, "refs": list, "idempotency_id": str},
+    "message.read": {},
+    "message.wait": {"after": str, "timeout_s": str},
 }
 MAX_REQUEST = 16 * 1024 * 1024
 IS_WINDOWS = sys.platform == "win32"
@@ -93,16 +99,28 @@ def validate_request(request: Any, operations: Operations = OPERATIONS) -> tuple
     return op, args
 
 
+@dataclass
+class ResultDelivery:
+    """A host handler that must check lifetime immediately before sending and record receipt only after success.
+    ``deliver`` calls its supplied sender exactly once. No such object can arrive through the JSON protocol."""
+
+    deliver: Callable[[Callable[[Any], None]], None]
+
+
 class BridgeServer:
     """The supervisor side. ``handler(op, args)`` runs one request with the held credential."""
 
     def __init__(self, handler: Callable[[str, dict[str, Any]], Any], operations: Operations = OPERATIONS,
-                 cooperative: frozenset[str] = frozenset()) -> None:
+                 cooperative: frozenset[str] = frozenset(), *,
+                 connection_handlers: dict[str, Callable[[dict[str, Any], Any], Any]] | None = None) -> None:
         self.handler = handler
         self.operations = operations
         if not cooperative <= set(operations):
             raise ValueError(f"cooperative operations must be operations: {sorted(cooperative - set(operations))}")
         self.cooperative = cooperative
+        self.connection_handlers = connection_handlers or {}
+        if not self.connection_handlers.keys() <= cooperative:
+            raise ValueError("connection handlers must be cooperative operations")
         self.key = secrets.token_bytes(32)
         self.address, family, self._private_dir = private_address()
         self._listener = Listener(self.address, family=family, authkey=self.key)
@@ -149,12 +167,22 @@ class BridgeServer:
         try:
             raw = conn.recv_bytes(MAX_REQUEST)
             op = "invalid"
+            sent = False
+
+            def send_result(value: Any) -> None:
+                nonlocal sent
+                if sent:
+                    raise RuntimeError("a bridge request can return only one result")
+                conn.send_bytes(redact(json.dumps({"ok": True, "result": value}, default=str)).encode("utf-8"))
+                sent = True
+
             try:
                 op, args = validate_request(json.loads(raw.decode("utf-8")), self.operations)
                 if op in self.cooperative:  # it serializes its own engine calls (``serialized``)
                     with self._idle:
                         self.requests += 1
-                    result = self.handler(op, args)
+                    connected = self.connection_handlers.get(op)
+                    result = connected(args, conn) if connected is not None else self.handler(op, args)
                 else:
                     with self._serial:
                         if self._closed.is_set():
@@ -162,6 +190,12 @@ class BridgeServer:
                                                         "superseded, or its invocation ended")
                         self.requests += 1
                         result = self.handler(op, args)
+                if isinstance(result, ResultDelivery):
+                    result.deliver(send_result)
+                    if not sent:
+                        raise RuntimeError("a deferred bridge result must send its response")
+                    self._count(op, "ok")
+                    return
                 reply: dict[str, Any] = {"ok": True, "result": result}
             except errors.AEWError as exc:
                 self.refused += 1
@@ -172,6 +206,9 @@ class BridgeServer:
             except Exception as exc:  # never let a request kill the supervisor
                 self.refused += 1
                 reply = {"ok": False, "error": {"code": "BRIDGE_ERROR", "message": f"{type(exc).__name__}: {exc}"}}
+            if sent:  # a post-send record failed: never send a contradictory second response
+                self._count(op, "record_failed_after_send")
+                return
             self._count(op, "ok" if reply["ok"] else str(reply["error"].get("code")))  # op: "invalid" until validated
             conn.send_bytes(redact(json.dumps(reply, default=str)).encode("utf-8"))
         except (OSError, EOFError):
@@ -183,11 +220,16 @@ class BridgeServer:
                 self._idle.notify_all()
 
     @contextmanager
-    def serialized(self) -> Iterator[None]:
+    def serialized(self, *, timeout: float | None = None) -> Iterator[None]:
         """The one-request-at-a-time section, for a cooperative operation's engine calls. It does not refuse a closed
         bridge: a request already being handled may still answer from committed state (its handler checks)."""
-        with self._serial:
+        acquired = self._serial.acquire() if timeout is None else self._serial.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError("the bridge's serialization remained busy")
+        try:
             yield
+        finally:
+            self._serial.release()
 
     def drain(self, timeout: float) -> bool:
         """Wait for requests already being handled to finish (each is refused or completed by the engine)."""

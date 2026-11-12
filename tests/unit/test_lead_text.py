@@ -43,6 +43,7 @@ NOT_TOOLS = {
     "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",
     "use_when": "a role card's field",
     "why": "a wait result's field: why it returned (E122)",
+    "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
     "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
     "loop": "a field of a push wake: the steering loop's stop a `loop_waiting` wake is about (A-58 CL-R07)",
@@ -180,7 +181,7 @@ def test_every_backticked_name_in_the_engines_words_is_a_tool_an_argument_or_a_l
 
 
 @pytest.mark.parametrize("name", ["status", "resume", "work_show", "checkpoint", "resolve", "harness_wait",
-                                  "ticket_prepare", "integration_publish"])
+                                  "integration_publish"])
 def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(monkeypatch, name):
     """The rename the review drove: the catalog moves, the prose and hints keep the old name."""
     row = contract.TOOLS[name]

@@ -107,7 +107,12 @@ def sentinel_ends(session: Path) -> None:
     its command line, which names the session's folder, and never by reading the folder: until it has gone it may be
     looking up who holds each of the session's files (``proctree.holders``), and on Windows the Restart Manager's
     lookup makes a read of that file fail with a sharing violation (`main`, 2026-11-10: ``PermissionError`` reading
-    ``session-started.txt`` just after ``abnormal-exit``)."""
+    ``session-started.txt`` just after ``abnormal-exit``).
+
+    Its limit: a sentinel the table lists with no command line is not waited on. The table reads a command line from
+    ``/proc/<pid>/cmdline`` or the process's own handle, and the sentinel is this user's unprotected child started at
+    configure, before the inner session returned, so it is either listed with its command line or already gone. Its pid
+    is not used instead: only the controller knew it, and the controller has exited, leaving it only in the folder."""
     for ident in [p.identity for p in proctree.table() if "sentinel" in p.cmdline and session.name in p.cmdline]:
         bounds.bounded_wait("test.sentinel_exits", lambda ident=ident: not proctree.same(ident), seconds=60)
 
@@ -339,9 +344,9 @@ def test_the_deadline_ends_only_the_sessions_own_processes(tmp_path, monkeypatch
         proc = inner(project(tmp_path, SESSION_SET), hangs, "--session-deadline", deadline,
                      "--session-deadline-margin", MARGIN, *mode)
         session = session_dir(hangs)
+        sentinel_ends(session)  # before the message reads the session's files
         why = f"{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
         assert proc.returncode == DEADLINE_EXIT, why
-        sentinel_ends(session)
         assert (out / "supervisor.pid").exists(), why
         supervisor = int((out / "supervisor.pid").read_text(encoding="utf-8"))
         listed = texts(session, "controller-processes*")
@@ -882,9 +887,10 @@ stale.mkdir(parents=True)
     stale = next(p for name, p in found.items() if (p / f"{marker}.txt").exists()
                  and (p / f"{marker}.txt").read_text(encoding="utf-8") == "planted")
     own = [p for p in found.values() if p != stale]
+    assert len(own) == 1, f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- found: {sorted(found)}"
+    sentinel_ends(own[0])  # before the message reads the session's files
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- found: {sorted(found)}\n{texts(hangs / 'autopsy')}"
-    assert proc.returncode == 0 and len(own) == 1, why
-    sentinel_ends(own[0])
+    assert proc.returncode == 0, why
     assert "planted" not in texts(own[0]), why
     assert not (own[0] / "stuck-after-finish.txt").exists(), why
 
@@ -941,6 +947,40 @@ atexit.register(time.sleep, 2)  # past the timer's half margin, and inside the s
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
     assert proc.returncode == 0, why
     assert not (session / "controller-after-finish-stacks.txt").exists(), why
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="the after-finish stack request uses a Linux process signal")
+def test_a_blocked_atexit_callback_leaves_its_frame_threads_and_children_in_the_autopsy(tmp_path):
+    extra = '''
+
+import atexit, subprocess, sys, threading, time
+
+
+def background_during_atexit():
+    time.sleep(120)  # bounded
+
+
+def blocks_during_atexit():
+    threading.Thread(target=background_during_atexit, daemon=True).start()
+    subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)", "atexit-autopsy-child"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(120)  # bounded
+
+
+atexit.register(blocks_during_atexit)
+'''
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=extra), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "4", "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (-9, 137) and "1 passed" in proc.stdout, why
+    assert (session / "stuck-after-finish.txt").exists(), why
+    assert "atexit-autopsy-child" in texts(session, "sentinel-processes-after-finish.txt"), why
+    stacks = texts(session, "controller-after-finish-stacks.txt")
+    assert "in blocks_during_atexit" in stacks, why
+    assert "in background_during_atexit" in stacks, why
 
 
 # The controller's last Python: registered early, so it runs after `finish`'s own callback. What it lists is what an

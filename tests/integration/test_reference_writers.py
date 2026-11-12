@@ -231,7 +231,7 @@ def runtime_commands() -> dict[tuple[str, ...], tuple[str, str]]:
                 for name, sub in action.choices.items():
                     walk(sub, (*path, name))
 
-    walk(main.build_parser(recall_search=True, coordination_reads=True), ())
+    walk(main.build_parser(recall_search=True, coordination_reads=True, worker_messaging=True), ())
     return found
 
 

@@ -123,6 +123,22 @@ def set_mutating_concurrency(p: Project, cap: int) -> None:
     p.pin_policy()
 
 
+def without_steering(p: Project) -> None:
+    """Make ``p`` a project that never configured steering: one made before the template had a mode. ``aew init``
+    records the template's pinned default (crawl), so the control state's ``steering`` key, its record counter and its
+    records are removed, as such a project never had them. Its policy files are left as pinned."""
+    import shutil
+
+    from aew.engine.store import deserialize_control, serialize_control
+
+    control = p.root / ".aew/state/control.yaml"
+    state = deserialize_control(control.read_bytes(), source=str(control))
+    state.pop("steering", None)
+    state["counters"].pop("steering_record", None)
+    control.write_bytes(serialize_control(state))
+    shutil.rmtree(p.root / ".aew/records/steering", ignore_errors=True)
+
+
 # A `mutating_concurrency` that is not the default, for a test that needs a real change of legality policy: appending
 # the default itself would change the file's bytes but not the policy.
 NOT_THE_DEFAULT_CAP = DEFAULT_GATES["mutating_concurrency"] + 1

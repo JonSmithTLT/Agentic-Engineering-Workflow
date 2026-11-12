@@ -30,7 +30,7 @@ The top-level properties of the control schema, which is closed and which the st
 - `schema` (required, initial): `aew.engine.api:Engine.initialize`
 - `spec_set` (required, initial): `aew.engine.api:Engine.initialize`
 - `stage_intents` (v2-only): `aew.engine.base:V2_ONLY_KEYS`
-- `steering` (v2-only): `aew.engine.base:V2_ONLY_KEYS`
+- `steering` (v2-only, initial): `aew.engine.base:V2_ONLY_KEYS`
 - `tokens` (required, initial): `aew.engine.api:Engine.initialize`
 - `work` (required, initial): `aew.engine.api:Engine.initialize`
 

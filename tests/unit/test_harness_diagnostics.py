@@ -60,6 +60,20 @@ def test_the_evidence_is_copied_redacted_and_never_as_json(tmp_path):
     assert all(TOKEN not in p.read_text(encoding="utf-8") for p in copied)
 
 
+def test_shell_failure_names_the_directory_exit_and_redacted_last_40_lines(tmp_path):
+    output = tmp_path / "shell-2.stdout"
+    output.write_text("\n".join([*(f"line-{i:02d}" for i in range(45)), f"error {TOKEN}"]), encoding="utf-8")
+    result = {"exit": 1, "timed_out": False, "barrier_error": "shell timeout barrier was never reached",
+              "stdout_file": str(output), "stderr_file": str(output)}  # combined streams appear only once
+    text = D.describe_shell(tmp_path, result)
+    assert f"harness dir: {tmp_path}" in text and "shell exit: 1; timed_out: False" in text
+    assert result["barrier_error"] in text and text.count("--- shell stdout/stderr:") == 1
+    assert "line-05" not in text and "line-06" in text and "line-44" in text
+    assert TOKEN not in text and "aew1.<redacted>" in text
+    output.unlink()
+    assert "<unreadable: FileNotFoundError>" in D.describe_shell(tmp_path, result)
+
+
 def test_a_credential_cut_by_a_bound_is_still_redacted(tmp_path):
     """#136 review, F1: redaction runs on the whole text before a line is cut to its bound or a file to its tail, so
     a credential straddling the cut never leaves a piece the pattern no longer matches."""

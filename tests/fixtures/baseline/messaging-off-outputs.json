@@ -1,0 +1,2334 @@
+{
+  "absent": {
+    "harness_status": {
+      "runs": []
+    },
+    "harness_wait": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "no run R-INV-0001-1"
+      }
+    },
+    "resume": {
+      "accepted_authority": [],
+      "authority_candidates_pending": [
+        {
+          "confidence": "low",
+          "id": "C-001",
+          "path": "README.md",
+          "reason": "README: orientation, may be stale or non-normative",
+          "status": "proposed",
+          "suggested_class": "orientation"
+        }
+      ],
+      "authority_guidance": "Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.",
+      "contradictions": [],
+      "control": {
+        "last_transition": {
+          "actor": {
+            "generation": 1,
+            "kind": "lead",
+            "session_label": "lead-a",
+            "token_id": "<token-id>"
+          },
+          "at": "<time>",
+          "event_overflow": null,
+          "events": [
+            {
+              "from": "ASSIGNED",
+              "id": "T-0001",
+              "kind": "work.state",
+              "to": "RUNNING",
+              "unit": "ticket"
+            }
+          ],
+          "h": "<digest>",
+          "op": "work.transition",
+          "reason": null,
+          "refs": [],
+          "revision": 6,
+          "schema": "aew/transition/v1",
+          "summary": "T-0001 ASSIGNED -> RUNNING",
+          "txn": null
+        },
+        "revision": 6
+      },
+      "derived_knowledge": [
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "architecture_map",
+          "path": null
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "codebase_map",
+          "path": null
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "glossary",
+          "path": null
+        },
+        {
+          "detail": "maintained by people, not derived",
+          "freshness": "AUTHORED",
+          "name": "open_questions",
+          "path": "knowledge/OPEN-QUESTIONS.md"
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "ownership_map",
+          "path": null
+        },
+        {
+          "detail": "maintained by people, not derived",
+          "freshness": "AUTHORED",
+          "name": "project_overview",
+          "path": "knowledge/PROJECT.md"
+        }
+      ],
+      "guardrails": "policy/guardrails.yaml",
+      "latest_handoff": null,
+      "lead": {
+        "generation": 1,
+        "holder_reachable": "unknown",
+        "session_label": "lead-a",
+        "status": "active"
+      },
+      "lead_note": null,
+      "next_actions": [
+        "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+        "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+        "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+      ],
+      "open_review_findings": [],
+      "order": [
+        "project_manifest",
+        "control_state",
+        "active_work",
+        "accepted_plans",
+        "latest_handoff",
+        "open_review_findings",
+        "verification_failures",
+        "authority_and_guardrails",
+        "derived_knowledge",
+        "next_actions"
+      ],
+      "project": {
+        "id": "calc",
+        "manifest": "project.yaml",
+        "name": "repo"
+      },
+      "role_catalog": [
+        {
+          "display_name": "C Engineer",
+          "extends": "implementer",
+          "id": "c_engineer",
+          "use_when": [
+            "the Ticket's change surface is C/C++ source",
+            "memory safety, ownership or ABI compatibility matters"
+          ]
+        },
+        {
+          "display_name": "C Reviewer",
+          "extends": "reviewer",
+          "id": "c_reviewer",
+          "use_when": [
+            "the change touches C/C++ source"
+          ]
+        },
+        {
+          "display_name": "Code Reviewer",
+          "extends": "reviewer",
+          "id": "code_reviewer",
+          "use_when": [
+            "baseline independent review of any Class 1+ change"
+          ]
+        },
+        {
+          "display_name": "Engineer",
+          "extends": "implementer",
+          "id": "engineer",
+          "use_when": [
+            "no language- or domain-specific engineering card fits better"
+          ]
+        },
+        {
+          "display_name": "Codebase Investigator",
+          "extends": "investigator",
+          "id": "investigator",
+          "use_when": [
+            "ownership, entry points, call paths or current behavior must be established before design",
+            "a substantial audit or characterization of existing behavior (security audit, performance characterization)"
+          ]
+        },
+        {
+          "display_name": "Planner / Designer",
+          "extends": "planner",
+          "id": "planner",
+          "use_when": [
+            "a Ticket, Story or Epic needs an implementation contract or decomposition before execution"
+          ]
+        },
+        {
+          "display_name": "Python Engineer",
+          "extends": "implementer",
+          "id": "python_engineer",
+          "use_when": [
+            "the Ticket's change surface is primarily Python"
+          ]
+        },
+        {
+          "display_name": "Technology Researcher",
+          "extends": "researcher",
+          "id": "researcher",
+          "use_when": [
+            "a design depends on external behavior that must be confirmed with versions and sources"
+          ]
+        },
+        {
+          "display_name": "Security Reviewer",
+          "extends": "reviewer",
+          "id": "security_reviewer",
+          "use_when": [
+            "a guardrail review trigger for security fires",
+            "the change touches authentication/authorization, cryptography, secrets or untrusted input parsing"
+          ]
+        },
+        {
+          "display_name": "Verifier",
+          "extends": "verifier",
+          "id": "verifier",
+          "use_when": [
+            "any Ticket whose risk path requires verification, and post-integration verification"
+          ]
+        }
+      ],
+      "role_catalog_problems": [],
+      "spec_set": "aew-frozen-2026-09-25",
+      "tree": [
+        "Ticket T-0001 [RUNNING] Add subtract()"
+      ],
+      "verification_failures": [],
+      "work": [
+        {
+          "accepted_plan": {
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "text": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test."
+          },
+          "active_invocations": [
+            {
+              "card": "engineer",
+              "id": "INV-0001",
+              "role": "implementer"
+            }
+          ],
+          "blocked_by": [],
+          "completion_record": null,
+          "depends_on": [],
+          "dispatch_binding": null,
+          "id": "T-0001",
+          "inputs": [],
+          "integration": null,
+          "kind": "ticket",
+          "parent": null,
+          "plan_binding": null,
+          "risk_class": 1,
+          "role_plan": {
+            "execute": [
+              {
+                "card": "engineer",
+                "reason": "default implementer card for a required gate",
+                "selected_by": "workflow"
+              }
+            ],
+            "review": [
+              {
+                "card": "code_reviewer",
+                "reason": "default reviewer card for a required gate",
+                "selected_by": "workflow"
+              }
+            ],
+            "verify": [
+              {
+                "card": "verifier",
+                "reason": "default verifier card for a required gate",
+                "selected_by": "workflow"
+              }
+            ]
+          },
+          "state": "RUNNING",
+          "title": "Add subtract()",
+          "unmet_gates": {
+            "local_checks": "MISSING",
+            "review_r1": "MISSING",
+            "self_review": "MISSING",
+            "verification_contract": "MISSING",
+            "verification_goal_backwards": "MISSING"
+          },
+          "workspace": {
+            "base_commit": "<digest>",
+            "id": "ws-T-0001-1",
+            "path": "<project>/.aew-workspaces/calc/T-0001-1",
+            "status": "active"
+          }
+        }
+      ]
+    },
+    "resume_text": "# AEW resume \u2014 repo (control revision 6)\n\nLead: active (generation 1)\nLead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\n\n## Hierarchy\n\n```text\nTicket T-0001 [RUNNING] Add subtract()\n```\n\n## Work\n- T-0001 [RUNNING] Add subtract()\n    roles: execute: engineer; review: code_reviewer; verify: verifier\n    unmet gates: {'local_checks': 'MISSING', 'self_review': 'MISSING', 'review_r1': 'MISSING', 'verification_goal_backwards': 'MISSING', 'verification_contract': 'MISSING'}\n\n## Next actions\n- classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\n- configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\n- T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)",
+    "status": {
+      "coverage": {
+        "summary": {
+          "headline": "Validation: not yet validated",
+          "known_gaps": {},
+          "lines": [],
+          "verdict": "not yet validated"
+        }
+      },
+      "revision": 6,
+      "work_unit": {
+        "attempts": 1,
+        "blocked_by": [],
+        "classifications": [],
+        "created_at": "<time>",
+        "depends_on": [],
+        "evidence": [],
+        "history": [
+          {
+            "at": "<time>",
+            "from": "READY",
+            "reason": "assigned to INV-0001 in ws-T-0001-1",
+            "to": "ASSIGNED"
+          },
+          {
+            "at": "<time>",
+            "from": "ASSIGNED",
+            "reason": null,
+            "to": "RUNNING"
+          }
+        ],
+        "id": "T-0001",
+        "implementer_invocation": "INV-0001",
+        "integration": null,
+        "invocations": [
+          "INV-0001"
+        ],
+        "kind": "ticket",
+        "mutating": true,
+        "parent": null,
+        "plan": {
+          "accepted": 1,
+          "ancestor_plans": {},
+          "path": "work/T-0001/plan-v1.md",
+          "sha256": "<digest>"
+        },
+        "plans": [
+          {
+            "assurance": {
+              "review": [],
+              "verify": []
+            },
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "status": "accepted",
+            "supersedes": null
+          }
+        ],
+        "policy": null,
+        "record": "work/T-0001/ticket.md",
+        "record_sha256": "<digest>",
+        "risk_class": 1,
+        "role_plan": {
+          "execute": [],
+          "forbidden": [],
+          "review": [],
+          "verify": []
+        },
+        "state": "RUNNING",
+        "state_reason": null,
+        "title": "Add subtract()",
+        "waivers": [],
+        "workspace": {
+          "allocated_at": "<time>",
+          "base_commit": "<digest>",
+          "base_snapshot": {
+            "base_revision": "<digest>",
+            "relevant_inputs_fingerprint": "git-tree:<digest>",
+            "workspace_id": "ws-T-0001-1"
+          },
+          "branch": "aew/T-0001-1",
+          "dependencies": [],
+          "id": "ws-T-0001-1",
+          "path": "<project>/.aew-workspaces/calc/T-0001-1",
+          "status": "active"
+        }
+      }
+    },
+    "status_text": "kind: ticket\ntitle: Add subtract()\nrecord: work/T-0001/ticket.md\nrecord_sha256: <digest>\nparent: None\nstate: RUNNING\nstate_reason: None\nrisk_class: 1\nmutating: True\ndepends_on: []\npolicy: None\ncreated_at: <time>\nplan: {'accepted': 1, 'path': 'work/T-0001/plan-v1.md', 'sha256': '<digest>', 'ancestor_plans': {}}\nplans: [{'revision': 1, 'path': 'work/T-0001/plan-v1.md', 'sha256': '<digest>', 'supersedes': None, 'status': 'accepted', 'assurance': {'review': [], 'verify': []}}]\nblocked_by: []\nworkspace: {'id': 'ws-T-0001-1', 'path': '<project>/.aew-workspaces/calc/T-0001-1', 'branch': 'aew/T-0001-1', 'base_commit': '<digest>', 'allocated_at': '<time>', 'status': 'active', 'base_snapshot': {'base_revision': '<digest>', 'workspace_id': 'ws-T-0001-1', 'relevant_inputs_fingerprint': 'git-tree:<digest>'}, 'dependencies': []}\ninvocations: ['INV-0001']\nimplementer_invocation: INV-0001\nevidence: []\nclassifications: []\nwaivers: []\nintegration: None\nrole_plan: {'execute': [], 'review': [], 'verify': [], 'forbidden': []}\nattempts: 1\nhistory: [{'from': 'READY', 'to': 'ASSIGNED', 'at': '<time>', 'reason': 'assigned to INV-0001 in ws-T-0001-1'}, {'from': 'ASSIGNED', 'to': 'RUNNING', 'at': '<time>', 'reason': None}]\nid: T-0001\nValidation: not yet validated",
+    "typed_harness_status": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 6,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": {
+          "runs": []
+        },
+        "revision": 6,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "harness_status"
+      },
+      "text": "harness_status: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"harness_status\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"runs\":[]}}\n\nharness_status: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_harness_wait": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": false,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 6,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": null,
+        "revision": 6,
+        "stage_intent_id": null,
+        "stopped": {
+          "at": "harness_wait",
+          "boundary": "not_found",
+          "error": {
+            "code": "NOT_FOUND",
+            "details": {},
+            "message": "no run R-INV-0001-1"
+          }
+        },
+        "surface": "aew/surface/v1",
+        "tool": "harness_wait"
+      },
+      "text": "harness_wait: stopped at harness_wait (not_found): no run R-INV-0001-1\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":false,\"tool\":\"harness_wait\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":{\"at\":\"harness_wait\",\"boundary\":\"not_found\",\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"no run R-INV-0001-1\",\"details\":{}}},\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":null}\n\nharness_wait: stopped at harness_wait (not_found): no run R-INV-0001-1\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_resume": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 6,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": {
+          "accepted_authority": [],
+          "authority_candidates_pending": [
+            {
+              "confidence": "low",
+              "id": "C-001",
+              "path": "README.md",
+              "reason": "README: orientation, may be stale or non-normative",
+              "status": "proposed",
+              "suggested_class": "orientation"
+            }
+          ],
+          "authority_guidance": "Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.",
+          "contradictions": [],
+          "control": {
+            "last_transition": {
+              "actor": {
+                "generation": 1,
+                "kind": "lead",
+                "session_label": "lead-a",
+                "token_id": "<token-id>"
+              },
+              "at": "<time>",
+              "event_overflow": null,
+              "events": [
+                {
+                  "from": "ASSIGNED",
+                  "id": "T-0001",
+                  "kind": "work.state",
+                  "to": "RUNNING",
+                  "unit": "ticket"
+                }
+              ],
+              "h": "<digest>",
+              "op": "work.transition",
+              "reason": null,
+              "refs": [],
+              "revision": 6,
+              "schema": "aew/transition/v1",
+              "summary": "T-0001 ASSIGNED -> RUNNING",
+              "txn": null
+            },
+            "revision": 6
+          },
+          "derived_knowledge": [
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "architecture_map",
+              "path": null
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "codebase_map",
+              "path": null
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "glossary",
+              "path": null
+            },
+            {
+              "detail": "maintained by people, not derived",
+              "freshness": "AUTHORED",
+              "name": "open_questions",
+              "path": "knowledge/OPEN-QUESTIONS.md"
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "ownership_map",
+              "path": null
+            },
+            {
+              "detail": "maintained by people, not derived",
+              "freshness": "AUTHORED",
+              "name": "project_overview",
+              "path": "knowledge/PROJECT.md"
+            }
+          ],
+          "guardrails": "policy/guardrails.yaml",
+          "latest_handoff": null,
+          "lead": {
+            "generation": 1,
+            "holder_reachable": "unknown",
+            "session_label": "lead-a",
+            "status": "active"
+          },
+          "lead_note": null,
+          "next_actions": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "open_review_findings": [],
+          "order": [
+            "project_manifest",
+            "control_state",
+            "active_work",
+            "accepted_plans",
+            "latest_handoff",
+            "open_review_findings",
+            "verification_failures",
+            "authority_and_guardrails",
+            "derived_knowledge",
+            "next_actions"
+          ],
+          "project": {
+            "id": "calc",
+            "manifest": "project.yaml",
+            "name": "repo"
+          },
+          "role_catalog": [
+            {
+              "display_name": "C Engineer",
+              "extends": "implementer",
+              "id": "c_engineer",
+              "use_when": [
+                "the Ticket's change surface is C/C++ source",
+                "memory safety, ownership or ABI compatibility matters"
+              ]
+            },
+            {
+              "display_name": "C Reviewer",
+              "extends": "reviewer",
+              "id": "c_reviewer",
+              "use_when": [
+                "the change touches C/C++ source"
+              ]
+            },
+            {
+              "display_name": "Code Reviewer",
+              "extends": "reviewer",
+              "id": "code_reviewer",
+              "use_when": [
+                "baseline independent review of any Class 1+ change"
+              ]
+            },
+            {
+              "display_name": "Engineer",
+              "extends": "implementer",
+              "id": "engineer",
+              "use_when": [
+                "no language- or domain-specific engineering card fits better"
+              ]
+            },
+            {
+              "display_name": "Codebase Investigator",
+              "extends": "investigator",
+              "id": "investigator",
+              "use_when": [
+                "ownership, entry points, call paths or current behavior must be established before design",
+                "a substantial audit or characterization of existing behavior (security audit, performance characterization)"
+              ]
+            },
+            {
+              "display_name": "Planner / Designer",
+              "extends": "planner",
+              "id": "planner",
+              "use_when": [
+                "a Ticket, Story or Epic needs an implementation contract or decomposition before execution"
+              ]
+            },
+            {
+              "display_name": "Python Engineer",
+              "extends": "implementer",
+              "id": "python_engineer",
+              "use_when": [
+                "the Ticket's change surface is primarily Python"
+              ]
+            },
+            {
+              "display_name": "Technology Researcher",
+              "extends": "researcher",
+              "id": "researcher",
+              "use_when": [
+                "a design depends on external behavior that must be confirmed with versions and sources"
+              ]
+            },
+            {
+              "display_name": "Security Reviewer",
+              "extends": "reviewer",
+              "id": "security_reviewer",
+              "use_when": [
+                "a guardrail review trigger for security fires",
+                "the change touches authentication/authorization, cryptography, secrets or untrusted input parsing"
+              ]
+            },
+            {
+              "display_name": "Verifier",
+              "extends": "verifier",
+              "id": "verifier",
+              "use_when": [
+                "any Ticket whose risk path requires verification, and post-integration verification"
+              ]
+            }
+          ],
+          "role_catalog_problems": [],
+          "spec_set": "aew-frozen-2026-09-25",
+          "stage_intents": [],
+          "tree": [
+            "Ticket T-0001 [RUNNING] Add subtract()"
+          ],
+          "verification_failures": [],
+          "work": [
+            {
+              "accepted_plan": {
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "text": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test."
+              },
+              "active_invocations": [
+                {
+                  "card": "engineer",
+                  "id": "INV-0001",
+                  "role": "implementer"
+                }
+              ],
+              "blocked_by": [],
+              "completion_record": null,
+              "depends_on": [],
+              "dispatch_binding": null,
+              "id": "T-0001",
+              "inputs": [],
+              "integration": null,
+              "kind": "ticket",
+              "parent": null,
+              "plan_binding": null,
+              "risk_class": 1,
+              "role_plan": {
+                "execute": [
+                  {
+                    "card": "engineer",
+                    "reason": "default implementer card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ],
+                "review": [
+                  {
+                    "card": "code_reviewer",
+                    "reason": "default reviewer card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ],
+                "verify": [
+                  {
+                    "card": "verifier",
+                    "reason": "default verifier card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ]
+              },
+              "state": "RUNNING",
+              "title": "Add subtract()",
+              "unmet_gates": {
+                "local_checks": "MISSING",
+                "review_r1": "MISSING",
+                "self_review": "MISSING",
+                "verification_contract": "MISSING",
+                "verification_goal_backwards": "MISSING"
+              },
+              "workspace": {
+                "base_commit": "<digest>",
+                "id": "ws-T-0001-1",
+                "path": "<project>/.aew-workspaces/calc/T-0001-1",
+                "status": "active"
+              }
+            }
+          ]
+        },
+        "revision": 6,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "resume"
+      },
+      "text": "resume: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"resume\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"order\":[\"project_manifest\",\"control_state\",\"active_work\",\"accepted_plans\",\"latest_handoff\",\"open_review_findings\",\"verification_failures\",\"authority_and_guardrails\",\"derived_knowledge\",\"next_actions\"],\"spec_set\":\"aew-frozen-2026-09-25\",\"project\":{\"id\":\"calc\",\"name\":\"repo\",\"manifest\":\"project.yaml\"},\"control\":{\"revision\":6,\"last_transition\":{\"schema\":\"aew/transition/v1\",\"revision\":6,\"at\":\"<time>\",\"actor\":{\"kind\":\"lead\",\"session_label\":\"lead-a\",\"generation\":1,\"token_id\":\"<token-id>\"},\"op\":\"work.transition\",\"summary\":\"T-0001 ASSIGNED -> RUNNING\",\"reason\":null,\"refs\":[],\"txn\":null,\"events\":[{\"kind\":\"work.state\",\"id\":\"T-0001\",\"unit\":\"ticket\",\"from\":\"ASSIGNED\",\"to\":\"RUNNING\"}],\"event_overflow\":null,\"h\":\"<digest>\"}},\"lead\":{\"status\":\"active\",\"generation\":1,\"session_label\":\"lead-a\",\"holder_reachable\":\"unknown\"},\"authority_guidance\":\"Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or /u2014 if the previous session is lost /u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\",\"work\":[{\"id\":\"T-0001\",\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"state\":\"RUNNING\",\"risk_class\":1,\"parent\":null,\"depends_on\":[],\"blocked_by\":[],\"accepted_plan\":{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"text\":\"1. Add subtract(a, b) to calc/core.py./n2. Add a focused test.\"},\"role_plan\":{\"execute\":[{\"card\":\"engineer\",\"selected_by\":\"workflow\",\"reason\":\"default implementer card for a required gate\"}],\"review\":[{\"card\":\"code_reviewer\",\"selected_by\":\"workflow\",\"reason\":\"default reviewer card for a required gate\"}],\"verify\":[{\"card\":\"verifier\",\"selected_by\":\"workflow\",\"reason\":\"default verifier card for a required gate\"}]},\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"base_commit\":\"<digest>\",\"status\":\"active\"},\"active_invocations\":[{\"id\":\"INV-0001\",\"role\":\"implementer\",\"card\":\"engineer\"}],\"integration\":null,\"completion_record\":null,\"unmet_gates\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\",\"review_r1\":\"MISSING\",\"verification_goal_backwards\":\"MISSING\",\"verification_contract\":\"MISSING\"},\"plan_binding\":null,\"dispatch_binding\":null,\"inputs\":[]}],\"latest_handoff\":null,\"open_review_findings\":[],\"verification_failures\":[],\"accepted_authority\":[],\"authority_candidates_pending\":[{\"id\":\"C-001\",\"path\":\"README.md\",\"suggested_class\":\"orientation\",\"confidence\":\"low\",\"reason\":\"README: orientation, may be stale or non-normative\",\"status\":\"proposed\"}],\"guardrails\":\"policy/guardrails.yaml\",\"derived_knowledge\":[{\"name\":\"architecture_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"codebase_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"glossary\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"open_questions\",\"path\":\"knowledge/OPEN-QUESTIONS.md\",\"freshness\":\"AUTHORED\",\"detail\":\"maintained by people, not derived\"},{\"name\":\"ownership_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"project_overview\",\"path\":\"knowledge/PROJECT.md\",\"freshness\":\"AUTHORED\",\"detail\":\"maintained by people, not derived\"}],\"role_catalog\":[{\"id\":\"c_engineer\",\"display_name\":\"C Engineer\",\"extends\":\"implementer\",\"use_when\":[\"the Ticket's change surface is C/C++ source\",\"memory safety, ownership or ABI compatibility matters\"]},{\"id\":\"c_reviewer\",\"display_name\":\"C Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"the change touches C/C++ source\"]},{\"id\":\"code_reviewer\",\"display_name\":\"Code Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"baseline independent review of any Class 1+ change\"]},{\"id\":\"engineer\",\"display_name\":\"Engineer\",\"extends\":\"implementer\",\"use_when\":[\"no language- or domain-specific engineering card fits better\"]},{\"id\":\"investigator\",\"display_name\":\"Codebase Investigator\",\"extends\":\"investigator\",\"use_when\":[\"ownership, entry points, call paths or current behavior must be established before design\",\"a substantial audit or characterization of existing behavior (security audit, performance characterization)\"]},{\"id\":\"planner\",\"display_name\":\"Planner / Designer\",\"extends\":\"planner\",\"use_when\":[\"a Ticket, Story or Epic needs an implementation contract or decomposition before execution\"]},{\"id\":\"python_engineer\",\"display_name\":\"Python Engineer\",\"extends\":\"implementer\",\"use_when\":[\"the Ticket's change surface is primarily Python\"]},{\"id\":\"researcher\",\"display_name\":\"Technology Researcher\",\"extends\":\"researcher\",\"use_when\":[\"a design depends on external behavior that must be confirmed with versions and sources\"]},{\"id\":\"security_reviewer\",\"display_name\":\"Security Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"a guardrail review trigger for security fires\",\"the change touches authentication/authorization, cryptography, secrets or untrusted input parsing\"]},{\"id\":\"verifier\",\"display_name\":\"Verifier\",\"extends\":\"verifier\",\"use_when\":[\"any Ticket whose risk path requires verification, and post-integration verification\"]}],\"role_catalog_problems\":[],\"tree\":[\"Ticket T-0001 [RUNNING] Add subtract()\"],\"lead_note\":null,\"next_actions\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"contradictions\":[],\"stage_intents\":[]}}\n\nresume: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_status": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [
+            {
+              "action": "ticket_request_review",
+              "arguments": {
+                "expect_rev": 6,
+                "work_id": "T-0001"
+              },
+              "auto_runnable": false,
+              "availability": "BLOCKED",
+              "callable": true,
+              "cli_fallback": [
+                "work",
+                "transition",
+                "T-0001",
+                "--to",
+                "REVIEW_PENDING",
+                "--expect-rev",
+                "6"
+              ],
+              "kind": "stage",
+              "operation_class": "POLICY_RESOLVED",
+              "reason_codes": [
+                "GATE_UNSATISFIED"
+              ]
+            }
+          ],
+          "anomalies": [],
+          "blockers": [
+            {
+              "code": "GATE_UNSATISFIED",
+              "details": {
+                "fingerprint": "git-tree:<digest>",
+                "unmet": {
+                  "local_checks": "MISSING",
+                  "self_review": "MISSING"
+                }
+              },
+              "message": "RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot"
+            }
+          ],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 6,
+          "runs": [],
+          "state": "RUNNING",
+          "subject": "T-0001"
+        },
+        "result": {
+          "coverage": {
+            "summary": {
+              "headline": "Validation: not yet validated",
+              "known_gaps": {},
+              "lines": [],
+              "verdict": "not yet validated"
+            }
+          },
+          "revision": 6,
+          "work_unit": {
+            "attempts": 1,
+            "blocked_by": [],
+            "classifications": [],
+            "created_at": "<time>",
+            "depends_on": [],
+            "evidence": [],
+            "history": [
+              {
+                "at": "<time>",
+                "from": "READY",
+                "reason": "assigned to INV-0001 in ws-T-0001-1",
+                "to": "ASSIGNED"
+              },
+              {
+                "at": "<time>",
+                "from": "ASSIGNED",
+                "reason": null,
+                "to": "RUNNING"
+              }
+            ],
+            "id": "T-0001",
+            "implementer_invocation": "INV-0001",
+            "integration": null,
+            "invocations": [
+              "INV-0001"
+            ],
+            "kind": "ticket",
+            "mutating": true,
+            "parent": null,
+            "plan": {
+              "accepted": 1,
+              "ancestor_plans": {},
+              "path": "work/T-0001/plan-v1.md",
+              "sha256": "<digest>"
+            },
+            "plans": [
+              {
+                "assurance": {
+                  "review": [],
+                  "verify": []
+                },
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "status": "accepted",
+                "supersedes": null
+              }
+            ],
+            "policy": null,
+            "record": "work/T-0001/ticket.md",
+            "record_sha256": "<digest>",
+            "risk_class": 1,
+            "role_plan": {
+              "execute": [],
+              "forbidden": [],
+              "review": [],
+              "verify": []
+            },
+            "state": "RUNNING",
+            "state_reason": null,
+            "title": "Add subtract()",
+            "waivers": [],
+            "workspace": {
+              "allocated_at": "<time>",
+              "base_commit": "<digest>",
+              "base_snapshot": {
+                "base_revision": "<digest>",
+                "relevant_inputs_fingerprint": "git-tree:<digest>",
+                "workspace_id": "ws-T-0001-1"
+              },
+              "branch": "aew/T-0001-1",
+              "dependencies": [],
+              "id": "ws-T-0001-1",
+              "path": "<project>/.aew-workspaces/calc/T-0001-1",
+              "status": "active"
+            }
+          }
+        },
+        "revision": 6,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "status"
+      },
+      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":6,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"6\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":6,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+    },
+    "typed_work_show": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [
+            {
+              "action": "ticket_request_review",
+              "arguments": {
+                "expect_rev": 6,
+                "work_id": "T-0001"
+              },
+              "auto_runnable": false,
+              "availability": "BLOCKED",
+              "callable": true,
+              "cli_fallback": [
+                "work",
+                "transition",
+                "T-0001",
+                "--to",
+                "REVIEW_PENDING",
+                "--expect-rev",
+                "6"
+              ],
+              "kind": "stage",
+              "operation_class": "POLICY_RESOLVED",
+              "reason_codes": [
+                "GATE_UNSATISFIED"
+              ]
+            }
+          ],
+          "anomalies": [],
+          "blockers": [
+            {
+              "code": "GATE_UNSATISFIED",
+              "details": {
+                "fingerprint": "git-tree:<digest>",
+                "unmet": {
+                  "local_checks": "MISSING",
+                  "self_review": "MISSING"
+                }
+              },
+              "message": "RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot"
+            }
+          ],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 6,
+          "runs": [],
+          "state": "RUNNING",
+          "subject": "T-0001"
+        },
+        "result": {
+          "allowed_transitions": {
+            "CANCELLED": "transition",
+            "COMMIT_READY": "transition",
+            "DONE": "accept",
+            "ESCALATED": "transition",
+            "INTERRUPTED": "interrupt",
+            "REPLAN_REQUIRED": "transition",
+            "REVIEW_PENDING": "transition",
+            "VERIFY_PENDING": "transition"
+          },
+          "children": [],
+          "control": {
+            "attempts": 1,
+            "blocked_by": [],
+            "classifications": [],
+            "created_at": "<time>",
+            "depends_on": [],
+            "evidence": [],
+            "history": [
+              {
+                "at": "<time>",
+                "from": "READY",
+                "reason": "assigned to INV-0001 in ws-T-0001-1",
+                "to": "ASSIGNED"
+              },
+              {
+                "at": "<time>",
+                "from": "ASSIGNED",
+                "reason": null,
+                "to": "RUNNING"
+              }
+            ],
+            "implementer_invocation": "INV-0001",
+            "integration": null,
+            "invocations": [
+              "INV-0001"
+            ],
+            "kind": "ticket",
+            "mutating": true,
+            "parent": null,
+            "plan": {
+              "accepted": 1,
+              "ancestor_plans": {},
+              "path": "work/T-0001/plan-v1.md",
+              "sha256": "<digest>"
+            },
+            "plans": [
+              {
+                "assurance": {
+                  "review": [],
+                  "verify": []
+                },
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "status": "accepted",
+                "supersedes": null
+              }
+            ],
+            "policy": null,
+            "record": "work/T-0001/ticket.md",
+            "record_sha256": "<digest>",
+            "risk_class": 1,
+            "role_plan": {
+              "execute": [],
+              "forbidden": [],
+              "review": [],
+              "verify": []
+            },
+            "state": "RUNNING",
+            "state_reason": null,
+            "title": "Add subtract()",
+            "waivers": [],
+            "workspace": {
+              "allocated_at": "<time>",
+              "base_commit": "<digest>",
+              "base_snapshot": {
+                "base_revision": "<digest>",
+                "relevant_inputs_fingerprint": "git-tree:<digest>",
+                "workspace_id": "ws-T-0001-1"
+              },
+              "branch": "aew/T-0001-1",
+              "dependencies": [],
+              "id": "ws-T-0001-1",
+              "path": "<project>/.aew-workspaces/calc/T-0001-1",
+              "status": "active"
+            }
+          },
+          "id": "T-0001",
+          "record": "---\nschema: aew/work-unit/v1\nid: T-0001\nkind: ticket\ntitle: Add subtract()\nparent: null\nexternal_refs: []\ncreated_at: '<time>'\ncreated_by:\n  kind: lead\n  session_label: lead-a\n  generation: 1\ninitial_risk_class: 1\nmutating: true\nscope:\n  paths:\n  - calc/**\n  - tests/**\nacceptance:\n  goal_backwards:\n  - calc.core.subtract(5, 3) == 2\n  contract:\n  - changes stay in calc/ and tests/\n---\n",
+          "revision": 6,
+          "rollup": null
+        },
+        "revision": 6,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "work_show"
+      },
+      "text": "work_show: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"work_show\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":6,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"6\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"id\":\"T-0001\",\"revision\":6,\"control\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}]},\"record\":\"---/nschema: aew/work-unit/v1/nid: T-0001/nkind: ticket/ntitle: Add subtract()/nparent: null/nexternal_refs: []/ncreated_at: '<time>'/ncreated_by:/n  kind: lead/n  session_label: lead-a/n  generation: 1/ninitial_risk_class: 1/nmutating: true/nscope:/n  paths:/n  - calc/**/n  - tests/**/nacceptance:/n  goal_backwards:/n  - calc.core.subtract(5, 3) == 2/n  contract:/n  - changes stay in calc/ and tests//n---/n\",\"allowed_transitions\":{\"REVIEW_PENDING\":\"transition\",\"VERIFY_PENDING\":\"transition\",\"COMMIT_READY\":\"transition\",\"DONE\":\"accept\",\"CANCELLED\":\"transition\",\"ESCALATED\":\"transition\",\"REPLAN_REQUIRED\":\"transition\",\"INTERRUPTED\":\"interrupt\"},\"children\":[],\"rollup\":null}}\n\nwork_show: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+    },
+    "work_show": {
+      "allowed_transitions": {
+        "CANCELLED": "transition",
+        "COMMIT_READY": "transition",
+        "DONE": "accept",
+        "ESCALATED": "transition",
+        "INTERRUPTED": "interrupt",
+        "REPLAN_REQUIRED": "transition",
+        "REVIEW_PENDING": "transition",
+        "VERIFY_PENDING": "transition"
+      },
+      "children": [],
+      "control": {
+        "attempts": 1,
+        "blocked_by": [],
+        "classifications": [],
+        "created_at": "<time>",
+        "depends_on": [],
+        "evidence": [],
+        "history": [
+          {
+            "at": "<time>",
+            "from": "READY",
+            "reason": "assigned to INV-0001 in ws-T-0001-1",
+            "to": "ASSIGNED"
+          },
+          {
+            "at": "<time>",
+            "from": "ASSIGNED",
+            "reason": null,
+            "to": "RUNNING"
+          }
+        ],
+        "implementer_invocation": "INV-0001",
+        "integration": null,
+        "invocations": [
+          "INV-0001"
+        ],
+        "kind": "ticket",
+        "mutating": true,
+        "parent": null,
+        "plan": {
+          "accepted": 1,
+          "ancestor_plans": {},
+          "path": "work/T-0001/plan-v1.md",
+          "sha256": "<digest>"
+        },
+        "plans": [
+          {
+            "assurance": {
+              "review": [],
+              "verify": []
+            },
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "status": "accepted",
+            "supersedes": null
+          }
+        ],
+        "policy": null,
+        "record": "work/T-0001/ticket.md",
+        "record_sha256": "<digest>",
+        "risk_class": 1,
+        "role_plan": {
+          "execute": [],
+          "forbidden": [],
+          "review": [],
+          "verify": []
+        },
+        "state": "RUNNING",
+        "state_reason": null,
+        "title": "Add subtract()",
+        "waivers": [],
+        "workspace": {
+          "allocated_at": "<time>",
+          "base_commit": "<digest>",
+          "base_snapshot": {
+            "base_revision": "<digest>",
+            "relevant_inputs_fingerprint": "git-tree:<digest>",
+            "workspace_id": "ws-T-0001-1"
+          },
+          "branch": "aew/T-0001-1",
+          "dependencies": [],
+          "id": "ws-T-0001-1",
+          "path": "<project>/.aew-workspaces/calc/T-0001-1",
+          "status": "active"
+        }
+      },
+      "id": "T-0001",
+      "record": "---\nschema: aew/work-unit/v1\nid: T-0001\nkind: ticket\ntitle: Add subtract()\nparent: null\nexternal_refs: []\ncreated_at: '<time>'\ncreated_by:\n  kind: lead\n  session_label: lead-a\n  generation: 1\ninitial_risk_class: 1\nmutating: true\nscope:\n  paths:\n  - calc/**\n  - tests/**\nacceptance:\n  goal_backwards:\n  - calc.core.subtract(5, 3) == 2\n  contract:\n  - changes stay in calc/ and tests/\n---\n",
+      "revision": 6,
+      "rollup": null
+    }
+  },
+  "disabled": {
+    "harness_status": {
+      "runs": []
+    },
+    "harness_wait": {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "no run R-INV-0001-1"
+      }
+    },
+    "resume": {
+      "accepted_authority": [],
+      "authority_candidates_pending": [
+        {
+          "confidence": "low",
+          "id": "C-001",
+          "path": "README.md",
+          "reason": "README: orientation, may be stale or non-normative",
+          "status": "proposed",
+          "suggested_class": "orientation"
+        }
+      ],
+      "authority_guidance": "Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.",
+      "contradictions": [],
+      "control": {
+        "last_transition": {
+          "actor": {
+            "generation": 1,
+            "kind": "lead",
+            "session_label": "lead-a",
+            "token_id": "<token-id>"
+          },
+          "at": "<time>",
+          "event_overflow": null,
+          "events": [
+            {
+              "from": "ASSIGNED",
+              "id": "T-0001",
+              "kind": "work.state",
+              "to": "RUNNING",
+              "unit": "ticket"
+            }
+          ],
+          "h": "<digest>",
+          "op": "work.transition",
+          "reason": null,
+          "refs": [],
+          "revision": 7,
+          "schema": "aew/transition/v1",
+          "summary": "T-0001 ASSIGNED -> RUNNING",
+          "txn": null
+        },
+        "revision": 7
+      },
+      "derived_knowledge": [
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "architecture_map",
+          "path": null
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "codebase_map",
+          "path": null
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "glossary",
+          "path": null
+        },
+        {
+          "detail": "maintained by people, not derived",
+          "freshness": "AUTHORED",
+          "name": "open_questions",
+          "path": "knowledge/OPEN-QUESTIONS.md"
+        },
+        {
+          "detail": "not generated",
+          "freshness": "UNAVAILABLE",
+          "name": "ownership_map",
+          "path": null
+        },
+        {
+          "detail": "maintained by people, not derived",
+          "freshness": "AUTHORED",
+          "name": "project_overview",
+          "path": "knowledge/PROJECT.md"
+        }
+      ],
+      "guardrails": "policy/guardrails.yaml",
+      "latest_handoff": null,
+      "lead": {
+        "generation": 1,
+        "holder_reachable": "unknown",
+        "session_label": "lead-a",
+        "status": "active"
+      },
+      "lead_note": null,
+      "next_actions": [
+        "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+        "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+        "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+      ],
+      "open_review_findings": [],
+      "order": [
+        "project_manifest",
+        "control_state",
+        "active_work",
+        "accepted_plans",
+        "latest_handoff",
+        "open_review_findings",
+        "verification_failures",
+        "authority_and_guardrails",
+        "derived_knowledge",
+        "next_actions"
+      ],
+      "project": {
+        "id": "calc",
+        "manifest": "project.yaml",
+        "name": "repo"
+      },
+      "role_catalog": [
+        {
+          "display_name": "C Engineer",
+          "extends": "implementer",
+          "id": "c_engineer",
+          "use_when": [
+            "the Ticket's change surface is C/C++ source",
+            "memory safety, ownership or ABI compatibility matters"
+          ]
+        },
+        {
+          "display_name": "C Reviewer",
+          "extends": "reviewer",
+          "id": "c_reviewer",
+          "use_when": [
+            "the change touches C/C++ source"
+          ]
+        },
+        {
+          "display_name": "Code Reviewer",
+          "extends": "reviewer",
+          "id": "code_reviewer",
+          "use_when": [
+            "baseline independent review of any Class 1+ change"
+          ]
+        },
+        {
+          "display_name": "Engineer",
+          "extends": "implementer",
+          "id": "engineer",
+          "use_when": [
+            "no language- or domain-specific engineering card fits better"
+          ]
+        },
+        {
+          "display_name": "Codebase Investigator",
+          "extends": "investigator",
+          "id": "investigator",
+          "use_when": [
+            "ownership, entry points, call paths or current behavior must be established before design",
+            "a substantial audit or characterization of existing behavior (security audit, performance characterization)"
+          ]
+        },
+        {
+          "display_name": "Planner / Designer",
+          "extends": "planner",
+          "id": "planner",
+          "use_when": [
+            "a Ticket, Story or Epic needs an implementation contract or decomposition before execution"
+          ]
+        },
+        {
+          "display_name": "Python Engineer",
+          "extends": "implementer",
+          "id": "python_engineer",
+          "use_when": [
+            "the Ticket's change surface is primarily Python"
+          ]
+        },
+        {
+          "display_name": "Technology Researcher",
+          "extends": "researcher",
+          "id": "researcher",
+          "use_when": [
+            "a design depends on external behavior that must be confirmed with versions and sources"
+          ]
+        },
+        {
+          "display_name": "Security Reviewer",
+          "extends": "reviewer",
+          "id": "security_reviewer",
+          "use_when": [
+            "a guardrail review trigger for security fires",
+            "the change touches authentication/authorization, cryptography, secrets or untrusted input parsing"
+          ]
+        },
+        {
+          "display_name": "Verifier",
+          "extends": "verifier",
+          "id": "verifier",
+          "use_when": [
+            "any Ticket whose risk path requires verification, and post-integration verification"
+          ]
+        }
+      ],
+      "role_catalog_problems": [],
+      "spec_set": "aew-frozen-2026-09-25",
+      "tree": [
+        "Ticket T-0001 [RUNNING] Add subtract()"
+      ],
+      "verification_failures": [],
+      "work": [
+        {
+          "accepted_plan": {
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "text": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test."
+          },
+          "active_invocations": [
+            {
+              "card": "engineer",
+              "id": "INV-0001",
+              "role": "implementer"
+            }
+          ],
+          "blocked_by": [],
+          "completion_record": null,
+          "depends_on": [],
+          "dispatch_binding": null,
+          "id": "T-0001",
+          "inputs": [],
+          "integration": null,
+          "kind": "ticket",
+          "parent": null,
+          "plan_binding": null,
+          "risk_class": 1,
+          "role_plan": {
+            "execute": [
+              {
+                "card": "engineer",
+                "reason": "default implementer card for a required gate",
+                "selected_by": "workflow"
+              }
+            ],
+            "review": [
+              {
+                "card": "code_reviewer",
+                "reason": "default reviewer card for a required gate",
+                "selected_by": "workflow"
+              }
+            ],
+            "verify": [
+              {
+                "card": "verifier",
+                "reason": "default verifier card for a required gate",
+                "selected_by": "workflow"
+              }
+            ]
+          },
+          "state": "RUNNING",
+          "title": "Add subtract()",
+          "unmet_gates": {
+            "local_checks": "MISSING",
+            "review_r1": "MISSING",
+            "self_review": "MISSING",
+            "verification_contract": "MISSING",
+            "verification_goal_backwards": "MISSING"
+          },
+          "workspace": {
+            "base_commit": "<digest>",
+            "id": "ws-T-0001-1",
+            "path": "<project>/.aew-workspaces/calc/T-0001-1",
+            "status": "active"
+          }
+        }
+      ]
+    },
+    "resume_text": "# AEW resume \u2014 repo (control revision 7)\n\nLead: active (generation 1)\nLead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\n\n## Hierarchy\n\n```text\nTicket T-0001 [RUNNING] Add subtract()\n```\n\n## Work\n- T-0001 [RUNNING] Add subtract()\n    roles: execute: engineer; review: code_reviewer; verify: verifier\n    unmet gates: {'local_checks': 'MISSING', 'self_review': 'MISSING', 'review_r1': 'MISSING', 'verification_goal_backwards': 'MISSING', 'verification_contract': 'MISSING'}\n\n## Next actions\n- classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\n- configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\n- T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)",
+    "status": {
+      "coverage": {
+        "summary": {
+          "headline": "Validation: not yet validated",
+          "known_gaps": {},
+          "lines": [],
+          "verdict": "not yet validated"
+        }
+      },
+      "revision": 7,
+      "work_unit": {
+        "attempts": 1,
+        "blocked_by": [],
+        "classifications": [],
+        "created_at": "<time>",
+        "depends_on": [],
+        "evidence": [],
+        "history": [
+          {
+            "at": "<time>",
+            "from": "READY",
+            "reason": "assigned to INV-0001 in ws-T-0001-1",
+            "to": "ASSIGNED"
+          },
+          {
+            "at": "<time>",
+            "from": "ASSIGNED",
+            "reason": null,
+            "to": "RUNNING"
+          }
+        ],
+        "id": "T-0001",
+        "implementer_invocation": "INV-0001",
+        "integration": null,
+        "invocations": [
+          "INV-0001"
+        ],
+        "kind": "ticket",
+        "mutating": true,
+        "parent": null,
+        "plan": {
+          "accepted": 1,
+          "ancestor_plans": {},
+          "path": "work/T-0001/plan-v1.md",
+          "sha256": "<digest>"
+        },
+        "plans": [
+          {
+            "assurance": {
+              "review": [],
+              "verify": []
+            },
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "status": "accepted",
+            "supersedes": null
+          }
+        ],
+        "policy": null,
+        "record": "work/T-0001/ticket.md",
+        "record_sha256": "<digest>",
+        "risk_class": 1,
+        "role_plan": {
+          "execute": [],
+          "forbidden": [],
+          "review": [],
+          "verify": []
+        },
+        "state": "RUNNING",
+        "state_reason": null,
+        "title": "Add subtract()",
+        "waivers": [],
+        "workspace": {
+          "allocated_at": "<time>",
+          "base_commit": "<digest>",
+          "base_snapshot": {
+            "base_revision": "<digest>",
+            "relevant_inputs_fingerprint": "git-tree:<digest>",
+            "workspace_id": "ws-T-0001-1"
+          },
+          "branch": "aew/T-0001-1",
+          "dependencies": [],
+          "id": "ws-T-0001-1",
+          "path": "<project>/.aew-workspaces/calc/T-0001-1",
+          "status": "active"
+        }
+      }
+    },
+    "status_text": "kind: ticket\ntitle: Add subtract()\nrecord: work/T-0001/ticket.md\nrecord_sha256: <digest>\nparent: None\nstate: RUNNING\nstate_reason: None\nrisk_class: 1\nmutating: True\ndepends_on: []\npolicy: None\ncreated_at: <time>\nplan: {'accepted': 1, 'path': 'work/T-0001/plan-v1.md', 'sha256': '<digest>', 'ancestor_plans': {}}\nplans: [{'revision': 1, 'path': 'work/T-0001/plan-v1.md', 'sha256': '<digest>', 'supersedes': None, 'status': 'accepted', 'assurance': {'review': [], 'verify': []}}]\nblocked_by: []\nworkspace: {'id': 'ws-T-0001-1', 'path': '<project>/.aew-workspaces/calc/T-0001-1', 'branch': 'aew/T-0001-1', 'base_commit': '<digest>', 'allocated_at': '<time>', 'status': 'active', 'base_snapshot': {'base_revision': '<digest>', 'workspace_id': 'ws-T-0001-1', 'relevant_inputs_fingerprint': 'git-tree:<digest>'}, 'dependencies': []}\ninvocations: ['INV-0001']\nimplementer_invocation: INV-0001\nevidence: []\nclassifications: []\nwaivers: []\nintegration: None\nrole_plan: {'execute': [], 'review': [], 'verify': [], 'forbidden': []}\nattempts: 1\nhistory: [{'from': 'READY', 'to': 'ASSIGNED', 'at': '<time>', 'reason': 'assigned to INV-0001 in ws-T-0001-1'}, {'from': 'ASSIGNED', 'to': 'RUNNING', 'at': '<time>', 'reason': None}]\nid: T-0001\nValidation: not yet validated",
+    "typed_harness_status": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 7,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": {
+          "runs": []
+        },
+        "revision": 7,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "harness_status"
+      },
+      "text": "harness_status: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"harness_status\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"runs\":[]}}\n\nharness_status: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_harness_wait": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": false,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 7,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": null,
+        "revision": 7,
+        "stage_intent_id": null,
+        "stopped": {
+          "at": "harness_wait",
+          "boundary": "not_found",
+          "error": {
+            "code": "NOT_FOUND",
+            "details": {},
+            "message": "no run R-INV-0001-1"
+          }
+        },
+        "surface": "aew/surface/v1",
+        "tool": "harness_wait"
+      },
+      "text": "harness_wait: stopped at harness_wait (not_found): no run R-INV-0001-1\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":false,\"tool\":\"harness_wait\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":{\"at\":\"harness_wait\",\"boundary\":\"not_found\",\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"no run R-INV-0001-1\",\"details\":{}}},\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":null}\n\nharness_wait: stopped at harness_wait (not_found): no run R-INV-0001-1\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_resume": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [],
+          "anomalies": [],
+          "blockers": [],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 7,
+          "runs": [],
+          "state": null,
+          "subject": "project"
+        },
+        "result": {
+          "accepted_authority": [],
+          "authority_candidates_pending": [
+            {
+              "confidence": "low",
+              "id": "C-001",
+              "path": "README.md",
+              "reason": "README: orientation, may be stale or non-normative",
+              "status": "proposed",
+              "suggested_class": "orientation"
+            }
+          ],
+          "authority_guidance": "Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.",
+          "contradictions": [],
+          "control": {
+            "last_transition": {
+              "actor": {
+                "generation": 1,
+                "kind": "lead",
+                "session_label": "lead-a",
+                "token_id": "<token-id>"
+              },
+              "at": "<time>",
+              "event_overflow": null,
+              "events": [
+                {
+                  "from": "ASSIGNED",
+                  "id": "T-0001",
+                  "kind": "work.state",
+                  "to": "RUNNING",
+                  "unit": "ticket"
+                }
+              ],
+              "h": "<digest>",
+              "op": "work.transition",
+              "reason": null,
+              "refs": [],
+              "revision": 7,
+              "schema": "aew/transition/v1",
+              "summary": "T-0001 ASSIGNED -> RUNNING",
+              "txn": null
+            },
+            "revision": 7
+          },
+          "derived_knowledge": [
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "architecture_map",
+              "path": null
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "codebase_map",
+              "path": null
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "glossary",
+              "path": null
+            },
+            {
+              "detail": "maintained by people, not derived",
+              "freshness": "AUTHORED",
+              "name": "open_questions",
+              "path": "knowledge/OPEN-QUESTIONS.md"
+            },
+            {
+              "detail": "not generated",
+              "freshness": "UNAVAILABLE",
+              "name": "ownership_map",
+              "path": null
+            },
+            {
+              "detail": "maintained by people, not derived",
+              "freshness": "AUTHORED",
+              "name": "project_overview",
+              "path": "knowledge/PROJECT.md"
+            }
+          ],
+          "guardrails": "policy/guardrails.yaml",
+          "latest_handoff": null,
+          "lead": {
+            "generation": 1,
+            "holder_reachable": "unknown",
+            "session_label": "lead-a",
+            "status": "active"
+          },
+          "lead_note": null,
+          "next_actions": [
+            "classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up",
+            "configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`",
+            "T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "open_review_findings": [],
+          "order": [
+            "project_manifest",
+            "control_state",
+            "active_work",
+            "accepted_plans",
+            "latest_handoff",
+            "open_review_findings",
+            "verification_failures",
+            "authority_and_guardrails",
+            "derived_knowledge",
+            "next_actions"
+          ],
+          "project": {
+            "id": "calc",
+            "manifest": "project.yaml",
+            "name": "repo"
+          },
+          "role_catalog": [
+            {
+              "display_name": "C Engineer",
+              "extends": "implementer",
+              "id": "c_engineer",
+              "use_when": [
+                "the Ticket's change surface is C/C++ source",
+                "memory safety, ownership or ABI compatibility matters"
+              ]
+            },
+            {
+              "display_name": "C Reviewer",
+              "extends": "reviewer",
+              "id": "c_reviewer",
+              "use_when": [
+                "the change touches C/C++ source"
+              ]
+            },
+            {
+              "display_name": "Code Reviewer",
+              "extends": "reviewer",
+              "id": "code_reviewer",
+              "use_when": [
+                "baseline independent review of any Class 1+ change"
+              ]
+            },
+            {
+              "display_name": "Engineer",
+              "extends": "implementer",
+              "id": "engineer",
+              "use_when": [
+                "no language- or domain-specific engineering card fits better"
+              ]
+            },
+            {
+              "display_name": "Codebase Investigator",
+              "extends": "investigator",
+              "id": "investigator",
+              "use_when": [
+                "ownership, entry points, call paths or current behavior must be established before design",
+                "a substantial audit or characterization of existing behavior (security audit, performance characterization)"
+              ]
+            },
+            {
+              "display_name": "Planner / Designer",
+              "extends": "planner",
+              "id": "planner",
+              "use_when": [
+                "a Ticket, Story or Epic needs an implementation contract or decomposition before execution"
+              ]
+            },
+            {
+              "display_name": "Python Engineer",
+              "extends": "implementer",
+              "id": "python_engineer",
+              "use_when": [
+                "the Ticket's change surface is primarily Python"
+              ]
+            },
+            {
+              "display_name": "Technology Researcher",
+              "extends": "researcher",
+              "id": "researcher",
+              "use_when": [
+                "a design depends on external behavior that must be confirmed with versions and sources"
+              ]
+            },
+            {
+              "display_name": "Security Reviewer",
+              "extends": "reviewer",
+              "id": "security_reviewer",
+              "use_when": [
+                "a guardrail review trigger for security fires",
+                "the change touches authentication/authorization, cryptography, secrets or untrusted input parsing"
+              ]
+            },
+            {
+              "display_name": "Verifier",
+              "extends": "verifier",
+              "id": "verifier",
+              "use_when": [
+                "any Ticket whose risk path requires verification, and post-integration verification"
+              ]
+            }
+          ],
+          "role_catalog_problems": [],
+          "spec_set": "aew-frozen-2026-09-25",
+          "stage_intents": [],
+          "tree": [
+            "Ticket T-0001 [RUNNING] Add subtract()"
+          ],
+          "verification_failures": [],
+          "work": [
+            {
+              "accepted_plan": {
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "text": "1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test."
+              },
+              "active_invocations": [
+                {
+                  "card": "engineer",
+                  "id": "INV-0001",
+                  "role": "implementer"
+                }
+              ],
+              "blocked_by": [],
+              "completion_record": null,
+              "depends_on": [],
+              "dispatch_binding": null,
+              "id": "T-0001",
+              "inputs": [],
+              "integration": null,
+              "kind": "ticket",
+              "parent": null,
+              "plan_binding": null,
+              "risk_class": 1,
+              "role_plan": {
+                "execute": [
+                  {
+                    "card": "engineer",
+                    "reason": "default implementer card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ],
+                "review": [
+                  {
+                    "card": "code_reviewer",
+                    "reason": "default reviewer card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ],
+                "verify": [
+                  {
+                    "card": "verifier",
+                    "reason": "default verifier card for a required gate",
+                    "selected_by": "workflow"
+                  }
+                ]
+              },
+              "state": "RUNNING",
+              "title": "Add subtract()",
+              "unmet_gates": {
+                "local_checks": "MISSING",
+                "review_r1": "MISSING",
+                "self_review": "MISSING",
+                "verification_contract": "MISSING",
+                "verification_goal_backwards": "MISSING"
+              },
+              "workspace": {
+                "base_commit": "<digest>",
+                "id": "ws-T-0001-1",
+                "path": "<project>/.aew-workspaces/calc/T-0001-1",
+                "status": "active"
+              }
+            }
+          ]
+        },
+        "revision": 7,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "resume"
+      },
+      "text": "resume: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"resume\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"project\",\"state\":null,\"actions\":[],\"decisions_required\":[],\"blockers\":[],\"anomalies\":[],\"hints\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"order\":[\"project_manifest\",\"control_state\",\"active_work\",\"accepted_plans\",\"latest_handoff\",\"open_review_findings\",\"verification_failures\",\"authority_and_guardrails\",\"derived_knowledge\",\"next_actions\"],\"spec_set\":\"aew-frozen-2026-09-25\",\"project\":{\"id\":\"calc\",\"name\":\"repo\",\"manifest\":\"project.yaml\"},\"control\":{\"revision\":7,\"last_transition\":{\"schema\":\"aew/transition/v1\",\"revision\":7,\"at\":\"<time>\",\"actor\":{\"kind\":\"lead\",\"session_label\":\"lead-a\",\"generation\":1,\"token_id\":\"<token-id>\"},\"op\":\"work.transition\",\"summary\":\"T-0001 ASSIGNED -> RUNNING\",\"reason\":null,\"refs\":[],\"txn\":null,\"events\":[{\"kind\":\"work.state\",\"id\":\"T-0001\",\"unit\":\"ticket\",\"from\":\"ASSIGNED\",\"to\":\"RUNNING\"}],\"event_overflow\":null,\"h\":\"<digest>\"}},\"lead\":{\"status\":\"active\",\"generation\":1,\"session_label\":\"lead-a\",\"holder_reachable\":\"unknown\"},\"authority_guidance\":\"Lead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or /u2014 if the previous session is lost /u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\",\"work\":[{\"id\":\"T-0001\",\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"state\":\"RUNNING\",\"risk_class\":1,\"parent\":null,\"depends_on\":[],\"blocked_by\":[],\"accepted_plan\":{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"text\":\"1. Add subtract(a, b) to calc/core.py./n2. Add a focused test.\"},\"role_plan\":{\"execute\":[{\"card\":\"engineer\",\"selected_by\":\"workflow\",\"reason\":\"default implementer card for a required gate\"}],\"review\":[{\"card\":\"code_reviewer\",\"selected_by\":\"workflow\",\"reason\":\"default reviewer card for a required gate\"}],\"verify\":[{\"card\":\"verifier\",\"selected_by\":\"workflow\",\"reason\":\"default verifier card for a required gate\"}]},\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"base_commit\":\"<digest>\",\"status\":\"active\"},\"active_invocations\":[{\"id\":\"INV-0001\",\"role\":\"implementer\",\"card\":\"engineer\"}],\"integration\":null,\"completion_record\":null,\"unmet_gates\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\",\"review_r1\":\"MISSING\",\"verification_goal_backwards\":\"MISSING\",\"verification_contract\":\"MISSING\"},\"plan_binding\":null,\"dispatch_binding\":null,\"inputs\":[]}],\"latest_handoff\":null,\"open_review_findings\":[],\"verification_failures\":[],\"accepted_authority\":[],\"authority_candidates_pending\":[{\"id\":\"C-001\",\"path\":\"README.md\",\"suggested_class\":\"orientation\",\"confidence\":\"low\",\"reason\":\"README: orientation, may be stale or non-normative\",\"status\":\"proposed\"}],\"guardrails\":\"policy/guardrails.yaml\",\"derived_knowledge\":[{\"name\":\"architecture_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"codebase_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"glossary\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"open_questions\",\"path\":\"knowledge/OPEN-QUESTIONS.md\",\"freshness\":\"AUTHORED\",\"detail\":\"maintained by people, not derived\"},{\"name\":\"ownership_map\",\"path\":null,\"freshness\":\"UNAVAILABLE\",\"detail\":\"not generated\"},{\"name\":\"project_overview\",\"path\":\"knowledge/PROJECT.md\",\"freshness\":\"AUTHORED\",\"detail\":\"maintained by people, not derived\"}],\"role_catalog\":[{\"id\":\"c_engineer\",\"display_name\":\"C Engineer\",\"extends\":\"implementer\",\"use_when\":[\"the Ticket's change surface is C/C++ source\",\"memory safety, ownership or ABI compatibility matters\"]},{\"id\":\"c_reviewer\",\"display_name\":\"C Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"the change touches C/C++ source\"]},{\"id\":\"code_reviewer\",\"display_name\":\"Code Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"baseline independent review of any Class 1+ change\"]},{\"id\":\"engineer\",\"display_name\":\"Engineer\",\"extends\":\"implementer\",\"use_when\":[\"no language- or domain-specific engineering card fits better\"]},{\"id\":\"investigator\",\"display_name\":\"Codebase Investigator\",\"extends\":\"investigator\",\"use_when\":[\"ownership, entry points, call paths or current behavior must be established before design\",\"a substantial audit or characterization of existing behavior (security audit, performance characterization)\"]},{\"id\":\"planner\",\"display_name\":\"Planner / Designer\",\"extends\":\"planner\",\"use_when\":[\"a Ticket, Story or Epic needs an implementation contract or decomposition before execution\"]},{\"id\":\"python_engineer\",\"display_name\":\"Python Engineer\",\"extends\":\"implementer\",\"use_when\":[\"the Ticket's change surface is primarily Python\"]},{\"id\":\"researcher\",\"display_name\":\"Technology Researcher\",\"extends\":\"researcher\",\"use_when\":[\"a design depends on external behavior that must be confirmed with versions and sources\"]},{\"id\":\"security_reviewer\",\"display_name\":\"Security Reviewer\",\"extends\":\"reviewer\",\"use_when\":[\"a guardrail review trigger for security fires\",\"the change touches authentication/authorization, cryptography, secrets or untrusted input parsing\"]},{\"id\":\"verifier\",\"display_name\":\"Verifier\",\"extends\":\"verifier\",\"use_when\":[\"any Ticket whose risk path requires verification, and post-integration verification\"]}],\"role_catalog_problems\":[],\"tree\":[\"Ticket T-0001 [RUNNING] Add subtract()\"],\"lead_note\":null,\"next_actions\":[\"classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\",\"configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\",\"T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"contradictions\":[],\"stage_intents\":[]}}\n\nresume: done (project)\nnext for the project: classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask\u2026"
+    },
+    "typed_status": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [
+            {
+              "action": "ticket_request_review",
+              "arguments": {
+                "expect_rev": 7,
+                "work_id": "T-0001"
+              },
+              "auto_runnable": false,
+              "availability": "BLOCKED",
+              "callable": true,
+              "cli_fallback": [
+                "work",
+                "transition",
+                "T-0001",
+                "--to",
+                "REVIEW_PENDING",
+                "--expect-rev",
+                "7"
+              ],
+              "kind": "stage",
+              "operation_class": "POLICY_RESOLVED",
+              "reason_codes": [
+                "GATE_UNSATISFIED"
+              ]
+            }
+          ],
+          "anomalies": [],
+          "blockers": [
+            {
+              "code": "GATE_UNSATISFIED",
+              "details": {
+                "fingerprint": "git-tree:<digest>",
+                "unmet": {
+                  "local_checks": "MISSING",
+                  "self_review": "MISSING"
+                }
+              },
+              "message": "RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot"
+            }
+          ],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 7,
+          "runs": [],
+          "state": "RUNNING",
+          "subject": "T-0001"
+        },
+        "result": {
+          "coverage": {
+            "summary": {
+              "headline": "Validation: not yet validated",
+              "known_gaps": {},
+              "lines": [],
+              "verdict": "not yet validated"
+            }
+          },
+          "revision": 7,
+          "work_unit": {
+            "attempts": 1,
+            "blocked_by": [],
+            "classifications": [],
+            "created_at": "<time>",
+            "depends_on": [],
+            "evidence": [],
+            "history": [
+              {
+                "at": "<time>",
+                "from": "READY",
+                "reason": "assigned to INV-0001 in ws-T-0001-1",
+                "to": "ASSIGNED"
+              },
+              {
+                "at": "<time>",
+                "from": "ASSIGNED",
+                "reason": null,
+                "to": "RUNNING"
+              }
+            ],
+            "id": "T-0001",
+            "implementer_invocation": "INV-0001",
+            "integration": null,
+            "invocations": [
+              "INV-0001"
+            ],
+            "kind": "ticket",
+            "mutating": true,
+            "parent": null,
+            "plan": {
+              "accepted": 1,
+              "ancestor_plans": {},
+              "path": "work/T-0001/plan-v1.md",
+              "sha256": "<digest>"
+            },
+            "plans": [
+              {
+                "assurance": {
+                  "review": [],
+                  "verify": []
+                },
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "status": "accepted",
+                "supersedes": null
+              }
+            ],
+            "policy": null,
+            "record": "work/T-0001/ticket.md",
+            "record_sha256": "<digest>",
+            "risk_class": 1,
+            "role_plan": {
+              "execute": [],
+              "forbidden": [],
+              "review": [],
+              "verify": []
+            },
+            "state": "RUNNING",
+            "state_reason": null,
+            "title": "Add subtract()",
+            "waivers": [],
+            "workspace": {
+              "allocated_at": "<time>",
+              "base_commit": "<digest>",
+              "base_snapshot": {
+                "base_revision": "<digest>",
+                "relevant_inputs_fingerprint": "git-tree:<digest>",
+                "workspace_id": "ws-T-0001-1"
+              },
+              "branch": "aew/T-0001-1",
+              "dependencies": [],
+              "id": "ws-T-0001-1",
+              "path": "<project>/.aew-workspaces/calc/T-0001-1",
+              "status": "active"
+            }
+          }
+        },
+        "revision": 7,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "status"
+      },
+      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":7,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"7\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":7,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+    },
+    "typed_work_show": {
+      "json": {
+        "base_operation_class": "MECHANICAL",
+        "completed_steps": [],
+        "effective_operation_class": "MECHANICAL",
+        "generation": 1,
+        "ok": true,
+        "policy_binding": null,
+        "projection": {
+          "actions": [
+            {
+              "action": "ticket_request_review",
+              "arguments": {
+                "expect_rev": 7,
+                "work_id": "T-0001"
+              },
+              "auto_runnable": false,
+              "availability": "BLOCKED",
+              "callable": true,
+              "cli_fallback": [
+                "work",
+                "transition",
+                "T-0001",
+                "--to",
+                "REVIEW_PENDING",
+                "--expect-rev",
+                "7"
+              ],
+              "kind": "stage",
+              "operation_class": "POLICY_RESOLVED",
+              "reason_codes": [
+                "GATE_UNSATISFIED"
+              ]
+            }
+          ],
+          "anomalies": [],
+          "blockers": [
+            {
+              "code": "GATE_UNSATISFIED",
+              "details": {
+                "fingerprint": "git-tree:<digest>",
+                "unmet": {
+                  "local_checks": "MISSING",
+                  "self_review": "MISSING"
+                }
+              },
+              "message": "RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot"
+            }
+          ],
+          "decisions_required": [],
+          "generation": 1,
+          "hints": [
+            "implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+          ],
+          "revision": 7,
+          "runs": [],
+          "state": "RUNNING",
+          "subject": "T-0001"
+        },
+        "result": {
+          "allowed_transitions": {
+            "CANCELLED": "transition",
+            "COMMIT_READY": "transition",
+            "DONE": "accept",
+            "ESCALATED": "transition",
+            "INTERRUPTED": "interrupt",
+            "REPLAN_REQUIRED": "transition",
+            "REVIEW_PENDING": "transition",
+            "VERIFY_PENDING": "transition"
+          },
+          "children": [],
+          "control": {
+            "attempts": 1,
+            "blocked_by": [],
+            "classifications": [],
+            "created_at": "<time>",
+            "depends_on": [],
+            "evidence": [],
+            "history": [
+              {
+                "at": "<time>",
+                "from": "READY",
+                "reason": "assigned to INV-0001 in ws-T-0001-1",
+                "to": "ASSIGNED"
+              },
+              {
+                "at": "<time>",
+                "from": "ASSIGNED",
+                "reason": null,
+                "to": "RUNNING"
+              }
+            ],
+            "implementer_invocation": "INV-0001",
+            "integration": null,
+            "invocations": [
+              "INV-0001"
+            ],
+            "kind": "ticket",
+            "mutating": true,
+            "parent": null,
+            "plan": {
+              "accepted": 1,
+              "ancestor_plans": {},
+              "path": "work/T-0001/plan-v1.md",
+              "sha256": "<digest>"
+            },
+            "plans": [
+              {
+                "assurance": {
+                  "review": [],
+                  "verify": []
+                },
+                "path": "work/T-0001/plan-v1.md",
+                "revision": 1,
+                "sha256": "<digest>",
+                "status": "accepted",
+                "supersedes": null
+              }
+            ],
+            "policy": null,
+            "record": "work/T-0001/ticket.md",
+            "record_sha256": "<digest>",
+            "risk_class": 1,
+            "role_plan": {
+              "execute": [],
+              "forbidden": [],
+              "review": [],
+              "verify": []
+            },
+            "state": "RUNNING",
+            "state_reason": null,
+            "title": "Add subtract()",
+            "waivers": [],
+            "workspace": {
+              "allocated_at": "<time>",
+              "base_commit": "<digest>",
+              "base_snapshot": {
+                "base_revision": "<digest>",
+                "relevant_inputs_fingerprint": "git-tree:<digest>",
+                "workspace_id": "ws-T-0001-1"
+              },
+              "branch": "aew/T-0001-1",
+              "dependencies": [],
+              "id": "ws-T-0001-1",
+              "path": "<project>/.aew-workspaces/calc/T-0001-1",
+              "status": "active"
+            }
+          },
+          "id": "T-0001",
+          "record": "---\nschema: aew/work-unit/v1\nid: T-0001\nkind: ticket\ntitle: Add subtract()\nparent: null\nexternal_refs: []\ncreated_at: '<time>'\ncreated_by:\n  kind: lead\n  session_label: lead-a\n  generation: 1\ninitial_risk_class: 1\nmutating: true\nscope:\n  paths:\n  - calc/**\n  - tests/**\nacceptance:\n  goal_backwards:\n  - calc.core.subtract(5, 3) == 2\n  contract:\n  - changes stay in calc/ and tests/\n---\n",
+          "revision": 7,
+          "rollup": null
+        },
+        "revision": 7,
+        "stage_intent_id": null,
+        "stopped": null,
+        "surface": "aew/surface/v1",
+        "tool": "work_show"
+      },
+      "text": "work_show: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"work_show\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":7,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"7\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"id\":\"T-0001\",\"revision\":7,\"control\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}]},\"record\":\"---/nschema: aew/work-unit/v1/nid: T-0001/nkind: ticket/ntitle: Add subtract()/nparent: null/nexternal_refs: []/ncreated_at: '<time>'/ncreated_by:/n  kind: lead/n  session_label: lead-a/n  generation: 1/ninitial_risk_class: 1/nmutating: true/nscope:/n  paths:/n  - calc/**/n  - tests/**/nacceptance:/n  goal_backwards:/n  - calc.core.subtract(5, 3) == 2/n  contract:/n  - changes stay in calc/ and tests//n---/n\",\"allowed_transitions\":{\"REVIEW_PENDING\":\"transition\",\"VERIFY_PENDING\":\"transition\",\"COMMIT_READY\":\"transition\",\"DONE\":\"accept\",\"CANCELLED\":\"transition\",\"ESCALATED\":\"transition\",\"REPLAN_REQUIRED\":\"transition\",\"INTERRUPTED\":\"interrupt\"},\"children\":[],\"rollup\":null}}\n\nwork_show: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+    },
+    "work_show": {
+      "allowed_transitions": {
+        "CANCELLED": "transition",
+        "COMMIT_READY": "transition",
+        "DONE": "accept",
+        "ESCALATED": "transition",
+        "INTERRUPTED": "interrupt",
+        "REPLAN_REQUIRED": "transition",
+        "REVIEW_PENDING": "transition",
+        "VERIFY_PENDING": "transition"
+      },
+      "children": [],
+      "control": {
+        "attempts": 1,
+        "blocked_by": [],
+        "classifications": [],
+        "created_at": "<time>",
+        "depends_on": [],
+        "evidence": [],
+        "history": [
+          {
+            "at": "<time>",
+            "from": "READY",
+            "reason": "assigned to INV-0001 in ws-T-0001-1",
+            "to": "ASSIGNED"
+          },
+          {
+            "at": "<time>",
+            "from": "ASSIGNED",
+            "reason": null,
+            "to": "RUNNING"
+          }
+        ],
+        "implementer_invocation": "INV-0001",
+        "integration": null,
+        "invocations": [
+          "INV-0001"
+        ],
+        "kind": "ticket",
+        "mutating": true,
+        "parent": null,
+        "plan": {
+          "accepted": 1,
+          "ancestor_plans": {},
+          "path": "work/T-0001/plan-v1.md",
+          "sha256": "<digest>"
+        },
+        "plans": [
+          {
+            "assurance": {
+              "review": [],
+              "verify": []
+            },
+            "path": "work/T-0001/plan-v1.md",
+            "revision": 1,
+            "sha256": "<digest>",
+            "status": "accepted",
+            "supersedes": null
+          }
+        ],
+        "policy": null,
+        "record": "work/T-0001/ticket.md",
+        "record_sha256": "<digest>",
+        "risk_class": 1,
+        "role_plan": {
+          "execute": [],
+          "forbidden": [],
+          "review": [],
+          "verify": []
+        },
+        "state": "RUNNING",
+        "state_reason": null,
+        "title": "Add subtract()",
+        "waivers": [],
+        "workspace": {
+          "allocated_at": "<time>",
+          "base_commit": "<digest>",
+          "base_snapshot": {
+            "base_revision": "<digest>",
+            "relevant_inputs_fingerprint": "git-tree:<digest>",
+            "workspace_id": "ws-T-0001-1"
+          },
+          "branch": "aew/T-0001-1",
+          "dependencies": [],
+          "id": "ws-T-0001-1",
+          "path": "<project>/.aew-workspaces/calc/T-0001-1",
+          "status": "active"
+        }
+      },
+      "id": "T-0001",
+      "record": "---\nschema: aew/work-unit/v1\nid: T-0001\nkind: ticket\ntitle: Add subtract()\nparent: null\nexternal_refs: []\ncreated_at: '<time>'\ncreated_by:\n  kind: lead\n  session_label: lead-a\n  generation: 1\ninitial_risk_class: 1\nmutating: true\nscope:\n  paths:\n  - calc/**\n  - tests/**\nacceptance:\n  goal_backwards:\n  - calc.core.subtract(5, 3) == 2\n  contract:\n  - changes stay in calc/ and tests/\n---\n",
+      "revision": 7,
+      "rollup": null
+    }
+  }
+}

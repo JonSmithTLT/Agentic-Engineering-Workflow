@@ -131,6 +131,32 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     env = {k: v.replace("{FORGED_CREDENTIAL}", forged) for k, v in s["env"].items()} if s.get("env") else None
     if do == "aew":
         return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=env, input_bytes=stdin)
+    if do == "shell":
+        command = s["command"]
+        argv = (["powershell", "-NoProfile", "-NonInteractive", "-Command", command] if sys.platform == "win32"
+                else ["sh", "-c", command + "; :"])
+        output = Path(state["tmp"]) / f"shell-{state['n']}.stdout"
+        timed_out = False
+        with output.open("wb") as fh:
+            proc = subprocess.Popen(argv, env={**os.environ, **(env or {})}, stdout=fh, stderr=fh,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if s.get("pidfile"):
+                Path(s["pidfile"]).write_text(str(proc.pid), encoding="utf-8")
+            if s.get("timeout_after_file"):
+                # The orphan test starts its short shell clock only once the bridge wait has bound to this call.
+                # Process/shell/CLI startup is not the event the test is trying to race.
+                if not wait_file(s["timeout_after_file"], 30):
+                    proc.kill()
+                    proc.wait()
+                    return {"exit": proc.returncode, "timed_out": False, "shell_pid": proc.pid,
+                            "stdout_file": str(output), "barrier_error": "shell timeout barrier was never reached"}
+            try:
+                proc.wait(timeout=s.get("timeout_s"))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                proc.kill()  # deliberately ONLY the shell, not its descendants: exercise the orphan worst case
+                proc.wait()
+        return {"exit": proc.returncode, "timed_out": timed_out, "shell_pid": proc.pid, "stdout_file": str(output)}
     if do == "check":
         return aew("check", "run", s["id"])
     if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)

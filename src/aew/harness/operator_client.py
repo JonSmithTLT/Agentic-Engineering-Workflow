@@ -139,7 +139,10 @@ def name_session(aew_root: Path) -> Path | None:
 def unname_session(aew_root: Path, path: Path) -> None:
     """This session's file removed at its end, under the lock every look reads the files under: on Windows a file
     another process has open cannot be removed (WinError 32), and a background endpoint's look opens each one. If the
-    lock is busy or the removal still fails, the endpoint's next look removes the file once this process has gone."""
+    lock is busy or the removal still fails, the endpoint's next look removes the file once this process has gone. A
+    file already gone needs no lock, and taking it would create ``local/operator`` and its lock files for nothing."""
+    if not path.exists():
+        return
     try:
         with sessions_lock(aew_root):
             path.unlink(missing_ok=True)

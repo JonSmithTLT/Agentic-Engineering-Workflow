@@ -248,10 +248,13 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
                                         "credential or, by default, any provider key (ADR-0009); on Linux it runs "
                                         "contained, at a terminal (STG-05 CS-4)")
-    p.add_argument("--acquire", action="store_true",
-                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    seat_mode = p.add_mutually_exclusive_group()
+    seat_mode.add_argument("--acquire", action="store_true",
+                           help="take a vacant seat or resume an eligible seat in-process")
+    seat_mode.add_argument("--prompt-token", action="store_true",
+                           help="use the hidden prompt for an existing Lead credential")
     p.add_argument("--session-label")
-    p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    p.add_argument("--keep-seat", action="store_true", help="keep a seat this session took or resumed at exit")
     p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
                    help="use this provider variable for the Lead's model: on Linux it feeds that provider's relay on "
                         "the host and the Lead's shell sees a placeholder; elsewhere it is passed to the Lead's "
@@ -468,7 +471,7 @@ def _opencode(args: argparse.Namespace) -> Any:
 
     return lead.run(_engine(args), acquire=args.acquire, session_label=args.session_label, keep_seat=args.keep_seat,
                     provider_env=list(args.provider_env), extra_args=list(args.opencode_args),
-                    print_config=args.print_config)
+                    print_config=args.print_config, prompt_token=args.prompt_token)
 
 
 def _resume(args: argparse.Namespace) -> Any:

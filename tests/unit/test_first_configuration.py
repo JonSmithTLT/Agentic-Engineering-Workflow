@@ -499,8 +499,8 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
              "steering": {**S.empty(), "standing": {"mode": mode, "record": None, "rev": 0}}}
 
     def applied(profile: dict[str, Any], read: Any = state) -> Any:
-        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile},  # type: ignore[arg-type]
-                                                           _committed_state=lambda: read))
+        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile}),  # type: ignore[arg-type]
+                                           read)
 
     first = pin(policy)
     assert first["deadline_s"] == FC.DEADLINE_S and first["deadline_scope"] == "run"

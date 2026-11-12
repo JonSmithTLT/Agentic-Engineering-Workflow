@@ -1520,7 +1520,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
   (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
   provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
-  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`lead.StoredLogin`) re-reads the operator's
+  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`login.StoredLogin`) re-reads the operator's
   login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
   account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
   writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
@@ -2046,3 +2046,40 @@ launch resolves the source afresh.
 This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
 providers make no store read. Off the relay, the existing explicit environment path applies.
 The Lead's stored login and the weaker containment guarantees are described above.
+
+## Amendment 2026-11-11 — the refreshing relay tightened (usage pot PR 1)
+
+This amends the refreshing-login paragraph in the 2026-10-25 contained Lead amendment.
+`login.StoredLogin` reads only the provider's deciding row on each request. If the store is still
+busy or locked after the bounded retry, the relay returns 503 `credential_unreadable`. Other store
+faults return 401 with the recovery step.
+
+The refreshing relay sends requests only to the built-in upstream in `netns.REFRESHING_UPSTREAMS`.
+A configured upstream override for that provider prevents the Lead from relaying its stored
+refreshing login. The Lead names the override at startup and explains how to use the stored login
+or an exported API key.
+
+The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
+an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.
+
+## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
+
+- **Lead session exit (former line 122).** When `aew opencode` took the seat itself, the seat is released at
+  exit when nothing is in flight. Otherwise it stays held, and the next `aew opencode` resumes it under the
+  conditions in [ADR-0005's resume amendment](0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume).
+  A seat held by a live Lead, or by the operator's own token, still needs a terminal takeover. The 2026-10-04
+  condition that release waits until no process the session started is running still applies.
+- **Owned process tree (former lines 481–482).** The seat stays held against leftover processes, and the operator
+  can resume it under ADR-0005's resume conditions. An unknown outcome keeps the seat held. To free it, take it
+  over at the operator's terminal and then release it.
+- **Lead session lifetime (former line 650).** The harness process holds the session (when `aew opencode` takes
+  the seat itself, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it).
+
+A failed start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+The next generation's held-exit evidence carries those processes forward. The local evidence records
+process identities on Linux and a count on Windows. An unknown result or missing evidence requires
+acknowledgement. Local process evidence is dev-grade on both platforms.
+
+Each new generation records `lead.start` in the seat operation's commit, with `generation`, `kind`, `at`,
+`host`, `user`, `pid` and `start_id`. The resumable kinds are `opencode_acquire`, `vacant_start` and
+`seat_resume`. The other routes record `lead_acquire`, `takeover` or `handoff`.

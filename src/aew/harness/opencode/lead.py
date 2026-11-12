@@ -21,8 +21,8 @@ comes from ``aew resume``).
 ``.aew/local/harness/lead/``: the operator's OpenCode login and configuration are not in it. Each provider of the
 operator's stored login gets a relay on the host, which holds the key (``login``, ``netns.RunNetwork.start_lead``); the
 sandbox holds only a sentinel. ``--provider-env NAME`` feeds NAME's provider relay in the same way. A refreshing login
-AEW has measured (openai's ChatGPT login) is relayed as stored (:class:`StoredLogin`): re-read on each request and never
-refreshed or written, with a row in the Lead's own login store that holds the relay's sentinel.
+AEW has measured (openai's ChatGPT login) is relayed as stored (:class:`login.StoredLogin`): re-read on each request and
+never refreshed or written, with a row in the Lead's own login store that holds the relay's sentinel.
 
 **Elsewhere** (Windows) the TUI runs in the operator's normal OpenCode environment (their providers,
 configuration and skills), labelled not contained. The Lead's model then authenticates with the credentials
@@ -63,16 +63,6 @@ SERVER_LOG, SERVER_URL_FILE = "lead-server.log", "lead-server.json"  # the Lead'
 CONTAINED_ENV = process_kind.LEAD_CONTAINED_ENV
 # The operator's OpenCode configuration files, in its configuration directory (OpenCode 2.0.18).
 CONFIG_FILES = ("config.json", "opencode.json", "opencode.jsonc")
-# A refreshing login the contained Lead relays as stored (the designer's addendum 1 to the CS-4 hand-off, option a).
-# Implementation bound: a request that starts with less than this left on the access token may outlive it mid-answer
-# (a 136 KB streamed answer took 7.8 s through a slow client in CS-3b's live lane), so the relay counts it expired.
-EXPIRY_MARGIN_S = 60.0
-# The cheapest use of the operator's own OpenCode that resolves, and so refreshes, a stored login: `opencode auth list`
-# went to the provider's token endpoint with no model call (measured on the Rocky VM, 2026-10-25).
-REFRESH_COMMAND = "opencode auth list"
-# What the operator runs when a relayed login has expired: the expiry message and the launch's warning both give it.
-REFRESH_STEP = (f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refreshes it there, and the Lead's next "
-                "request then works, with no restart")
 # A relayed login that expires within this many hours is named at the Lead's launch (the designer's addendum 2,
 # ruling 1: one working day's session). The operator's execution policy changes it: containment.lead.login_warning_h.
 LOGIN_WARNING_H = 24
@@ -81,9 +71,6 @@ LOGIN_WARNING_H = 24
 # others, with a new expiry (`Credential.create`, read in the pinned bundle), and the relay reads the active row.
 RENEW_STEP = ("To renew it now, log in again at your own terminal (`opencode auth login {provider}`): your OpenCode "
               "stores a fresh login, and the Lead's next request uses it, with no restart.")
-# Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
-# values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
-LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
 # The Lead's own row for such a login expires this far off, so the TUI never tries to refresh it (that needs the
 # operator's refresh token, which never goes inside).
 INSIDE_LOGIN_S = 365 * 86400
@@ -339,9 +326,15 @@ def _unrelayed(engine: Any) -> None:
 
 
 def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: bool, provider_env: list[str],
-        extra_args: list[str], print_config: bool) -> dict[str, Any]:
+        extra_args: list[str], print_config: bool, prompt_token: bool = False) -> dict[str, Any]:
+    from aew import lead_credential
+    from aew.harness import seat
+
     if print_config:
         return {"ok": True, **describe(engine, provider_env=provider_env, extra_args=extra_args)}
+    opencode_kind = (seat.OPENCODE_ACQUIRE if acquire else
+                     seat.VACANT_START if not prompt_token and not os.environ.get(lead_credential.ENV) else None)
+    acquire = opencode_kind is not None
     stages = StartStages()
     version = check_version()
     stages.mark("version")
@@ -350,7 +343,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if contained_here():
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
         # would stay held), a missing credential first.
-        lead_broker.require_credential(acquire)
+        lead_broker.require_credential(acquire, prompt_token=prompt_token)
         _readiness(engine)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
@@ -361,7 +354,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         stages.mark("logins")
         with session_services(engine, provider_env=provider_env) as on_ready:
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
-                                          keep_seat=keep_seat,
+                                          keep_seat=keep_seat, opencode_kind=opencode_kind, prompt_token=prompt_token,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
                                                       push_wake=pushes_wakes(engine)), contained=lead,
                                           with_token=offer.apply, on_ready=on_ready)
@@ -374,7 +367,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
-    lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    lead_broker.require_credential(acquire, prompt_token=prompt_token)
     _readiness(engine)
     _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
@@ -384,7 +377,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     offer = _switch_offers(engine)
     with session_services(engine, provider_env=provider_env) as on_ready:
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready)
+                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready,
+                                      opencode_kind=opencode_kind, prompt_token=prompt_token)
     return _outcome(out, version)
 
 
@@ -408,7 +402,7 @@ def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
     from aew.harness.containment.shim import EXIT_SERVER_LOST, EXIT_SETUP
 
     if out.get("exit") == EXIT_SERVER_LOST:  # the shim's own codes, which a TUI that ran doesn't exit with
-        held = str(out.get("seat") or "").startswith("held;")  # a run in flight: `aew opencode` alone is refused
+        held = str(out.get("seat") or "").startswith("held;")
         follow = "continue as `seat` says" if held else "start `aew opencode` again"
         return {**out, "ok": False, "opencode": version,
                 "server_lost": f"the Lead's server ended, and nothing restarts it, so the session ended; {follow}, and "
@@ -531,17 +525,6 @@ def login_warning_h(policy: Mapping[str, Any] | None) -> int:
     return found if isinstance(found, int) and not isinstance(found, bool) and found >= 0 else LOGIN_WARNING_H
 
 
-def _unknown(provider: str) -> str:
-    """Why a stored login in a shape AEW does not know is not used, and what serves its provider instead."""
-    from aew.harness.containment import netns
-
-    variable = netns.PROVIDER_KEY_ENV.get(provider)
-    return (f"in a shape AEW does not know (AEW reads OpenCode {', '.join(capabilities.TESTED_VERSIONS)}'s, and never "
-            "guesses at another), so the contained Lead does not use it"
-            + (f"; to serve {provider} with an API key instead, start `aew opencode --provider-env {variable}`"
-               if variable and provider not in netns.CATALOG_ADDRESSED else ""))
-
-
 def _not_served(provider: str) -> str:
     """Why a provider whose models carry their own catalogue address gets no relay (the designer's addendum 2, ruling
     2): its key, stored or in the environment, never goes inside, and the Lead's configuration switches the provider
@@ -559,39 +542,6 @@ def _left(entry: login.Login) -> str:
     if hours <= 0:
         return "expired now"
     return f"{max(1, round(hours * 60))} min left" if hours < 1 else f"{hours:.0f} h left"
-
-
-class StoredLogin:
-    """A refreshing login the contained Lead's relay serves as stored (the designer's addendum 1, option a): the
-    operator's login store is read on each request, read-only (``login.stored``), so a refresh by the operator's own
-    OpenCode is used from the next request on. AEW never refreshes it and never writes it. Raises
-    ``relay.Unavailable`` with what to do when the login is gone, is in a shape AEW does not know, has changed kind or
-    has expired: the TUI shows that message as the request's error."""
-
-    def __init__(self, integration: str, base: Mapping[str, str]) -> None:
-        self.integration, self.base = integration, dict(base)
-
-    def __call__(self) -> tuple[str, dict[str, str]]:
-        from aew.harness.containment import relay
-
-        logins, why = login.stored(self.base)
-        entry = next((e for e in logins if e.integration == self.integration), None)
-        if entry is None:
-            raise relay.Unavailable(f"AEW: your stored {self.integration} login could not be read "
-                                    f"({why or 'it is no longer there'}). Log in with your own OpenCode "
-                                    "(`opencode auth login`); the Lead's next request then works, with no restart.")
-        if entry.kind == login.UNKNOWN:
-            raise relay.Unavailable(f"AEW: your stored {self.integration} login is now {_unknown(self.integration)}.")
-        if entry.kind != "oauth":
-            raise relay.Unavailable(f"AEW: your stored {self.integration} login is now an API key, which this Lead "
-                                    "session's relay was not set up for. Restart `aew opencode` to use it.")
-        if entry.expires is None or entry.expires / 1000 - EXPIRY_MARGIN_S <= time.time():
-            raise relay.Unavailable(f"AEW: your stored {self.integration} login has expired, and the contained Lead "
-                                    "never refreshes it (that would write your OpenCode's own login). "
-                                    f"Run {REFRESH_STEP}.")
-        meta = entry.metadata
-        return entry.secret, {h: str(meta[k]) for h, k in LOGIN_HEADERS.get(self.integration, {}).items()
-                              if meta.get(k)}
 
 
 class StartStages:
@@ -651,19 +601,33 @@ class ContainedLead:
         self.logins, self.no_logins = login.stored(base)
         self.lines: list[str] = []
         self.refreshing: dict[str, login.Login] = {}  # provider -> its refreshing login, relayed as stored
+        self.refreshing_overrides: dict[str, str] = {}
         for entry in self.logins:
-            if entry.integration in self.keys:
+            provider = entry.integration
+            if (entry.kind == "oauth" and provider in netns.REFRESHING_UPSTREAMS
+                    and netns.stored_key_override(provider, policy)):
+                variable = netns.PROVIDER_KEY_ENV[provider]
+                field = f"containment.network.upstreams.{provider}"
+                why = f"stored login not relayed because {field} is set"
+                if provider in self.keys:
+                    why += f", using the key supplied by `--provider-env {variable}` instead"
+                else:
+                    why += (f". Remove the override to use the stored login, or export {variable} and start "
+                            f"`aew opencode --provider-env {variable}` to use an API key")
+                    self.refreshing_overrides[provider] = why
+                self.lines.append(f"{provider} ({entry.kind}): {why}")
+            elif entry.integration in self.keys:
                 self.lines.append(f"{entry.integration} ({entry.kind}): fed by --provider-env instead")
             elif entry.kind == login.UNKNOWN:
                 self.lines.append(f"{entry.integration}: not relayed; its stored login is "
-                                  f"{_unknown(entry.integration)}")
+                                  f"{login.unknown_remedy(entry.integration)}")
             elif entry.integration in netns.CATALOG_ADDRESSED:
                 self.lines.append(f"{entry.integration} ({entry.kind}): {_not_served(entry.integration)}")
             elif entry.kind != "key" and entry.integration in netns.REFRESHING_UPSTREAMS:
                 self.refreshing[entry.integration] = entry
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed as stored, {_left(entry)}; AEW never "
-                                  f"refreshes it: when it expires, `{REFRESH_COMMAND}` at your own terminal refreshes "
-                                  "it, and the Lead's next request works")
+                                  f"refreshes it: when it expires, `{login.REFRESH_COMMAND}` at your own terminal "
+                                  "refreshes it, and the Lead's next request works")
             elif entry.kind != "key":
                 self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; of the refreshing logins, AEW "
                                   "serves those whose requests it has measured: "
@@ -714,7 +678,8 @@ class ContainedLead:
         for entry in self.refreshing.values():  # addendum 2, ruling 1: it warns, and blocks nothing
             hours = (entry.expires / 1000 - time.time()) / 3600 if entry.expires is not None else 0.0
             if hours <= 0:
-                out.write(f"aew opencode: your stored {entry.integration} login has expired. Run {REFRESH_STEP}.\n")
+                out.write(f"aew opencode: your stored {entry.integration} login has expired. "
+                          f"Run {login.REFRESH_STEP}.\n")
             elif hours <= self.warning_h:
                 out.write(f"aew opencode: your stored {entry.integration} login expires in "
                           f"{_left(entry).removesuffix(' left')} (named when {self.warning_h} h or less is left: "
@@ -749,6 +714,11 @@ class ContainedLead:
             raise HarnessIncompatible(
                 f"no provider the contained Lead could use: {'; '.join(_unpinned(p) for p in unpinned)}",
                 provider=unpinned[0], reason=client_cert.NO_MODEL)
+        overrides = getattr(self, "refreshing_overrides", {})
+        if overrides:
+            raise HarnessIncompatible(
+                f"no provider is relayed to the contained Lead: {'; '.join(overrides.values())}",
+                provider=next(iter(overrides)), reason=netns.PROVIDER_KEY_MISSING)
         needs_relay = (" A provider with a client certificate is relayed only under containment.network.mode: "
                        "proxy_only (the default)." if getattr(self, "unrelayed", None) else "")
         variables = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)
@@ -817,7 +787,8 @@ class ContainedLead:
             if layout.private_network:
                 network = netns.RunNetwork.start_lead(
                     layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
-                    refreshing={p: StoredLogin(p, self.base) for p in self.refreshing}, keyless=list(self.certified))
+                    refreshing={p: login.StoredLogin(p, self.base) for p in self.refreshing},
+                    keyless=list(self.certified))
                 label["network"].update(network.describe())
                 self.stages.mark("network")
             from aew.capability import ops as capability
@@ -934,7 +905,7 @@ class ContainedLead:
                 con.execute("DELETE FROM credential WHERE id LIKE 'cred_aew_%'")
                 for provider, token in sorted(sentinels.items()):
                     entry = self.refreshing[provider]
-                    meta = {k: "aew-relay-placeholder" for k in LOGIN_HEADERS.get(provider, {}).values()
+                    meta = {k: "aew-relay-placeholder" for k in login.LOGIN_HEADERS.get(provider, {}).values()
                             if entry.metadata.get(k)}
                     value = {"type": "oauth", "methodID": entry.method, "refresh": "aew-relay-no-refresh",
                              "access": token, "expires": now + INSIDE_LOGIN_S * 1000, "metadata": meta}

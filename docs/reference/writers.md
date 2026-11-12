@@ -216,12 +216,13 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
 - `local/harness/runs/{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/history.sqlite`, named by `aew.history.index:INDEX_REL`: written or removed by `aew.engine.history_ops:HistoryCommands.history_reindex` (direct: Path.unlink); `aew.history.index:HistoryIndex._db` (direct: sqlite3.connect); `aew.history.index:HistoryIndex._rebuild` (direct: Path.unlink); `aew.history.index:HistoryIndex.sync` (direct: Path.unlink)
-- `local/lead`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
+- `local/lead`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.seat:write_leftovers` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
 - `local/lead-wakes.json`, named by `aew.harness.wake_queue:WAKES_REL`: written or removed by `aew.harness.wake_queue:WakeQueue._save` (direct: atomic_write)
 - `local/lead-wakes.serving`, named by `aew.harness.wake_queue:SERVING_REL`: written or removed by `aew.harness.wake_queue:clear_serving` (direct: Path.unlink); `aew.harness.wake_queue:mark_serving` (direct: atomic_write)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
 - `local/lead/defects.jsonl`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/defects.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
+- `local/lead/leftovers-{}.json`: written or removed by `aew.harness.seat:write_leftovers` (direct: atomic_write)
 - `local/lead/tool-calls.jsonl`, named by `aew.harness.tool_calls:LOG_REL`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/tool-calls.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/maps`, named by `aew.maps.store:MAPS_REL`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.maps.store:_append_log` (direct: Path.mkdir)
@@ -413,6 +414,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.client:Server.start` (direct: Path.open): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.lead:ContainedLead._inside` (direct: Path.mkdir): `directory` is bound by a `with`, an unpacking or an `except`
 - `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.opencode.login:StoredLogin._deciding_row` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live` (direct: Path.unlink): a loop variable over `files`, a list this reading cannot read

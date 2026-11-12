@@ -23,6 +23,7 @@ from aew.engine.api import Engine
 from aew.errors import ValidationFailed
 from aew.harness import contract as K
 from aew.harness.containment import netns
+from aew.knowledge.manifest import load_manifest
 from aew.util import sha256_file
 
 FILES = {"README.md": "# sample\n"}
@@ -54,6 +55,18 @@ def test_init_refuses_mixing_fetch_none_with_a_tool_before_writing(tmp_path):
     res = init(root, "--fetch-tool", "none", "--fetch-tool", "ripgrep")
     assert res.error["code"] == "USAGE" and "by itself" in res.error["message"]
     assert not (root / ".aew").exists()
+
+
+def test_init_omits_the_legacy_project_profile(tmp_path):
+    root = repo(tmp_path)
+    res = init(root)
+    assert res.returncode == 0, res.stderr
+    assert "profile" not in load_manifest(root / ".aew")["project"]
+
+
+def test_a_legacy_project_manifest_still_loads():
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
+    assert load_manifest(fixture)["project"]["profile"] == "base"
 
 
 def test_a_flagged_init_writes_the_files_it_pins_so_no_adopt_or_credential_is_needed(tmp_path):

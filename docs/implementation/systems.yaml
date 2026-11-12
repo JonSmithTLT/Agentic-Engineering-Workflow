@@ -323,7 +323,12 @@ systems:
   - dashboard-routes:/work
   - dashboard-routes:/work/{id}
   - dashboard-routes:/{file}
+  - modules:aew.stg02.adopted
+  - modules:aew.stg02.wire
   touches:
+  - src/aew/stg02/adopted/**
+  - src/aew/stg02/adopted.py
+  - src/aew/stg02/wire.py
   - src/aew/dashboard/projections.py
   - src/aew/dashboard/reasons.py
   - src/aew/dashboard/reader.py
@@ -356,14 +361,13 @@ systems:
     - dashboard:/maps
     on_by_default: false
     used_in_default_flow: 'no'
-  finish_line: /attention answers from the typed surface's action projection instead of 403, E73's reader uses the store's
-    one lock-free reader, the event endpoint (F20.7) and the provider route (E148) are served, the packaged frontend matches
-    the served contract (E94), and F20.6's browser acceptance is recorded against a real project's live state.
+  finish_line: /attention answers from the typed surface's action projection instead of 403, the event endpoint (F20.7)
+    and the provider route (E148) are served, the packaged frontend matches the served contract (E94), and F20.6's browser
+    acceptance is recorded against a real project's live state. E73's reader uses the store's one lock-free retry (done).
+    The vendored adopted contract files (aew.stg02.adopted, and aew.stg02.wire, which pins their versions) stay loadable
+    by capability status, the G3 client and its adapter; they moved here when the STG-02 producer stopped being a board
+    entry of its own (the operator, 2026-11-11), and they are never extended here.
   remaining:
-  - slice: 'E73: the maps registry reader converges on engine/store.py read_lock_free instead of returning NONE on the first
-      FileNotFoundError'
-    row: E73
-    estimate: 1 small PR (estimate)
   - slice: 'E94: the web package refresh (S3); the packaged build still names contract 0.1.2''s digest while the served
       contract is 0.1.3. The web developer''s'
     row: E94
@@ -397,8 +401,10 @@ systems:
     :423 its project()
   - docs/implementation/future-work.yaml (row F15.1, at c11a61ea) F15.1's close leaves 'TLS-25's dashboard half' to E18;
     :1270-1271 E101 corrects the stale 403 reason to name it
-  - src/aew/dashboard/reader.py:236-237 returns Registry(NONE) on the first FileNotFoundError; src/aew/engine/store.py:132
-    read_lock_free is the one owner (E73, docs/implementation/future-work.yaml (row E73, at c11a61ea))
+  - src/aew/dashboard/reader.py:233 the maps registry reads through the store's retry_lock_free (src/aew/engine/store.py:117),
+    the one owner (E73, closed)
+  - 'src/aew/capability/status.py:38 capability status imports aew.stg02.adopted; src/aew/g3client.py:48-49 and src/aew/harness/g3_adapter.py:34
+    import aew.stg02.wire: the vendored adopted half that shipped code loads'
   - 'src/aew/dashboard/static/BUILD.json: contract docs/design/dashboard-api-v1-provisional.yaml sha256 68b46527..., built_at
     2026-10-06; that digest is contract 0.1.2''s (docs/design/proposals/dashboard-maps-and-history-search-v0.1.md:16), while
     the file in the tree is version 0.1.3 (dashboard-api-v1-provisional.yaml:4); src/aew/dashboard/contract.py:35 BASE_VERSION
@@ -422,8 +428,7 @@ systems:
     extra:
     - I6-06.d
     - R01-38
-  serves_pending:
-  - HOLD-19
+  serves_pending: []
   design:
   - docs/design/crawl-walk-run-steering-design-v0.1.md
   - docs/design/steering-authority-execution-envelope-amendment-v0.1.md
@@ -438,6 +443,7 @@ systems:
   - E232
   - E240
   - E249
+  - E183
   as_built:
   - modules:aew.engine.steering
   - modules:aew.harness.steering_loop
@@ -477,16 +483,21 @@ systems:
   - SYS-20
   switch:
     key: steering.mode
-    default: absent
-    default_evidence: src/aew/engine/steering.py:226-228 (policy_default reads steering.mode, None when absent); src/aew/policy/execution.py:32-75
-      (the execution template carries no steering block)
+    default: crawl
+    default_evidence: 'src/aew/policy/execution.py:76-90 (the execution template writes steering.mode crawl and notify.command
+      [aew, notify, desktop]); src/aew/engine/api.py:607-613 (`aew init` pins that policy and calls steering.seed_at_init,
+      so crawl is recorded as the standing mode at revision 0 and is in effect from init, the merge check of E228''s third PR, M1);
+      src/aew/engine/steering.py:105-131 (take_default, the one rule for recording a pinned default) and :148-161 (seed_at_init);
+      src/aew/engine/steering.py:313 (policy_default)'
     owner: operator
-    turning_on_changes: 'Adopting any steering.mode ends the tool''s not-configured refusal (engine/steering.py:425-429).
-      Adopting crawl makes crawl the standing, effective mode (:257-281): the loop thread in every Lead broker then stops
-      at CONFIRMATION_UNAVAILABLE on each eligible action instead of STEERING_OFF, because crawl confirms every step (:137-138)
-      and no confirmation exists yet. Adopting walk or run is a raise and changes nothing until the operator raises at `aew
-      operator serve --dev` (:271-274). A raise to run also needs notify.command, which the template leaves absent (:351-355).
-      Every record stays guarantee: dev.'
+    turning_on_changes: 'The template''s crawl is already the standing mode in a project made by `aew init` (recorded at
+      revision 0, engine/steering.py:148, seed_at_init); an older project gets it at the adoption that pins the template
+      (engine/steering.py:343, on_adopt) or at its migration to v2 (:356, register_on_migrate). The loop thread in every
+      Lead broker therefore stops at CONFIRMATION_UNAVAILABLE on each step it could take, for the Lead; until E7c that
+      stop is recorded in loop.json and shown by status, but neither notified nor does it wake the Lead (E228''s fourth PR), and the
+      default desktop notifier shows each other stop once. RUN is opt-in: one `aew lead mode raise run` approved
+      at the operator endpoint (auto-started by `aew opencode`, or `aew operator serve --dev`), which also needs a deliverable
+      notifier (notifier_problem, :279) and a deadline_s on every routable profile. Every record stays guarantee: dev.'
   state:
     board_state: partly_built
     built: partly
@@ -499,90 +510,66 @@ systems:
     - lead_text
     on_by_default: false
     used_in_default_flow: partly
-  finish_line: 'Confirmation (G3-backed per A-37), `aew confirm`, publication grants and the breaker reset at the endpoint,
-    with a principal proof that lifts records above guarantee: dev, and the Lead told exactly what works at each step. Until
-    those leave HOLD-19 and HOLD-17, done means only that the tool''s text matches the code.'
+  finish_line: 'RUN on and used: the scheduler on (E228: its PR 1, PR 3 and PR 4 merged; what is left
+    is the measured RUN trial, which the operator folded into Session B on 2026-11-11: "yeah thats the better plan that
+    sounds like session B SHOULD be validating that"), with the scheduler''s priority (E227, done); the steering tool''s and the Lead''s text say what works at each step;
+    and the catalog item: request_raise stays advertised and request_confirmation is hidden (E183).'
   remaining:
-  - slice: 'The steering tool''s text and the Lead''s text say what works today (the designer''s ruling, BOARD v2 §1). The
-      code narrows that ruling, so the text must also say: lower succeeds only after the operator has raised the mode at
-      the --dev endpoint, and in a project with no steering.mode every action, lower included, is refused as not configured'
-    row: row owed
-    estimate: 1 small PR (estimate)
-  - slice: 'Only if the operator decides it (BOARD v2 §3): hide request_raise and request_confirmation from the normal catalog
-      until a grant path exists; lower stays'
-    row: row owed
-    estimate: 1 small PR (estimate), could ride with the text fix
-  - slice: 'Confirmation: E7c as planned, or re-pointed at G3 per A-37; `aew confirm`'
-    row: HOLD-19
-    estimate: 2-3 PRs (estimate), held
-  - slice: E6b publication grants and E8b breaker reset and relaunch at the endpoint; E7d's events
-    row: HOLD-19
-    estimate: 2-3 PRs (estimate), held
-  - slice: 'F18.6, the principal proof, so operator records can carry more than guarantee: dev'
-    row: F18.6
-    estimate: 1-2 PRs (estimate), held
-  - slice: 'Scheduler priority: a Ticket field, three levels, the derived unblock count'
-    row: E227
-    estimate: not sized (estimate)
-  - slice: 'The scheduler on: the switch-on chain after E123'
+  - slice: 'The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better
+      plan that sounds like session B SHOULD be validating that"); PR 4 has merged'
     row: E228
-    estimate: several PRs (estimate)
-  - slice: 'A priority floor, the operator''s setting'
-    row: E229
-    estimate: not sized (estimate)
-  - slice: 'A steering raise that persists for the project (SMP, A-56)'
-    row: E230
-    estimate: not sized (estimate)
-  - slice: 'A console window for a Linux background endpoint'
-    row: E232
+    estimate: a measured trial inside Session B (estimate)
+  - slice: 'The steering and Lead text fix, with the crawl and walk stop named as the Lead''s step, and request_confirmation
+      hidden from the steering tool''s enum and schema; request_raise stays advertised'
+    row: E183
     estimate: 1 small PR (estimate)
-  - slice: 'Push wake measured on Windows'
-    row: E240
-    estimate: a measurement, no PR (estimate)
-  - slice: 'The conversational Lead''s docs follow-ons'
-    row: E249
-    estimate: 1 docs PR (estimate)
-  decision: 'decided: hide request_raise and request_confirmation from the Lead''s normal catalog, keep lower; they return
-    with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
+  decision: 'decided: re-cut to RUN on and used (the operator, 2026-11-10: "yes to both, re-cut it and hide them"); then,
+    on the designer''s questions, the operator''s answers of the same day: request_raise stays advertised and request_confirmation
+    alone is hidden ("yyes record SYS-47 that way, 1. yes but tell me about 2 and 3"), and no held system is made ("yes
+    to 2. and kind of both 229 and 230 are crucial for unattended mission so yes we can do it after thwe trial if that
+    times better but it WILL be done")'
   recommendation: finish
   who: Lead
-  reason: 'Steering''s push wake has merged whole: the server, endpoint auto-start and push wake PR 3. The live work is
-    outside HOLD-19 and HOLD-17: the scheduler''s chain (E228), which follows E123 in the builder order (the operator ranked
-    it above stall detection, 2026-11-09). Confirmation and the publication grants stay held in HOLD-19; A-37 still moves
-    confirmation to G3, so E7c as planned may be superseded (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
-    any time''. lower takes no approval, but it needs an effective mode above its target, and walk or run becomes effective
-    only by the operator''s raise at the --dev endpoint: an adopted walk or run default waits there as a pending raise,
-    and an adopted crawl leaves nothing lower. In a project with no steering.mode, which is the template''s default, every
-    action of the advertised tool, lower included, is refused as not configured. So today lower does something only after
-    an endpoint raise, and the text fix should say so.'
+  reason: 'The re-cut of 2026-11-10 puts RUN on and used as the finish line. E227 (the scheduler''s priority) is done,
+    and E228''s chain has only the measured RUN trial left, which the operator folded into Session B on 2026-11-11 (PR 4
+    merged, and E83 rode it, on SYS-08''s row). Off the finish line:
+    E229 and E230 are placed after the RUN trial and will be done (E229 for the unattended mission, E230 so a new Lead
+    doesn''t reset the mode); E232, E240 and E249 are follow-ons. Nothing is held: E7c and E6b were superseded or lapsed
+    on 2026-11-06, E7d''s custodian half is custody''s row (E349), E8b is F15.6''s at V-01, and F18.6 is a plain Unscheduled
+    row, released by a production-authority decision. lower takes no approval, but it needs an effective mode above its
+    target, and walk or run becomes effective only by the operator''s raise at the endpoint, so lower does something only
+    after a raise; a project made before the template wrote steering.mode refuses every action as not configured. The
+    text fix (E183) says so.'
   evidence:
   - src/aew/engine/steering.py:3 (the project default is execution policy's steering.mode; absent is legacy/manual)
-  - 'src/aew/engine/steering.py:56-58 (RANK: absent and crawl rank together, 0)'
-  - src/aew/engine/steering.py:59 (GUARANTEE = "dev" until F18.6)
-  - 'src/aew/engine/steering.py:86-88 (is_raise: a strictly higher rank)'
-  - src/aew/engine/steering.py:137-138 (crawl, or no mode, confirms every eligible step)
-  - 'src/aew/engine/steering.py:257-281 (on_adopt: an adopted default that is a raise is left pending at :271-274; only
-    a non-raise becomes standing, :280)'
-  - src/aew/engine/steering.py:351-355 (a raise to run needs an executable notifier)
-  - 'src/aew/engine/steering.py:359-369 (lower: _require_configured at :365, then IllegalTransition unless the effective
-    mode is higher, :367-369)'
-  - 'src/aew/engine/steering.py:391-393 (request: _require_configured)'
-  - src/aew/engine/steering.py:419-421 (a request grants nothing until the operator acts)
-  - src/aew/engine/steering.py:425-429 (_require_configured raises SteeringNotConfigured)
-  - 'src/aew/policy/execution.py:32-75 (execution template: no steering, notify or deadline keys)'
-  - src/aew/harness/steering_loop.py:69 and :405-406 (STEERING_OFF when no mode is in force)
-  - src/aew/harness/steering_loop.py:78 and :432-436 (CONFIRMATION_UNAVAILABLE)
-  - src/aew/harness/lead_broker.py:271-275 and :286-287 (the loop is built and started with every Lead broker)
-  - 'src/aew/harness/lead_broker.py:216-219 (the Lead''s refusal text sends it to request_raise and to aew lead mode lower:
+  - 'src/aew/engine/steering.py:57 (RANK: absent and crawl rank together, 0)'
+  - src/aew/engine/steering.py:58 (GUARANTEE = "dev" until F18.6)
+  - 'src/aew/engine/steering.py:88-90 (is_raise: a strictly higher rank)'
+  - src/aew/engine/steering.py:139-140 (crawl, or no mode, confirms every eligible step)
+  - 'src/aew/engine/steering.py:105-131 (take_default: a default that is a raise is left pending, only a non-raise becomes
+    standing) and :343-353 (on_adopt) and :356-369 (register_on_migrate), both calling it; :148-161 (seed_at_init, `aew init`)'
+  - src/aew/engine/steering.py:374-378 (a raise to run needs an executable notifier)
+  - 'src/aew/engine/steering.py:382-392 (lower: _require_configured at :388, then IllegalTransition unless the effective
+    mode is higher, :390-392)'
+  - 'src/aew/engine/steering.py:405 and :416 (request: _require_configured at :416)'
+  - src/aew/engine/steering.py:407 and :442 (a request grants nothing until the operator acts)
+  - src/aew/engine/steering.py:450-454 (_require_configured raises SteeringNotConfigured)
+  - 'src/aew/policy/execution.py:76-89 (the execution template: steering.mode crawl and the default desktop notifier; first
+    configuration writes deadline_s with deadline_scope run)'
+  - src/aew/harness/steering_loop.py:73 and :455-456 (STEERING_OFF when no mode is in force)
+  - src/aew/harness/steering_loop.py:82 and :484-486 (CONFIRMATION_UNAVAILABLE)
+  - src/aew/harness/lead_broker.py:283-285 and :299-300 (the loop is built and started with every Lead broker)
+  - 'src/aew/harness/lead_broker.py:219-222 (the Lead''s refusal text sends it to request_raise and to aew lead mode lower:
     lead_text)'
-  - src/aew/harness/operator_endpoint.py:142-147 (starts only with --dev)
-  - src/aew/harness/operator_endpoint.py:300-307 (offers only ping, mode_raise, capability_change)
-  - src/aew/cli/operator_commands.py:27-31 (aew operator serve --dev) and :47 (aew lead mode lower)
-  - 'src/aew/surface/contract.py:116 (STEERING_ACTIONS: lower, request_raise, request_confirmation)'
-  - src/aew/surface/contract.py:228-237 (the steering tool and its text) and :67 (profiles default BOTH)
-  - 'src/aew/surface/run.py:176-190 (the tool''s adapter: lower or record a request)'
-  - src/aew/harness/notify.py:677 (not_configured when notify.command is absent)
-  - docs/implementation/future-work.yaml (row HOLD-19, at c11a61ea) (HOLD-19, F15.5) and :583 (F18.6 in HOLD-17)
+  - src/aew/harness/operator_endpoint.py:127-132 (starts only with --dev)
+  - src/aew/harness/operator_endpoint.py:320-327 (offers only ping, mode_raise, capability_change)
+  - src/aew/cli/operator_commands.py:30-34 (aew operator serve --dev) and :54 (aew lead mode lower)
+  - 'src/aew/surface/contract.py:123 (STEERING_ACTIONS: lower, request_raise, request_confirmation)'
+  - src/aew/surface/contract.py:246-255 (the steering tool and its text) and :71 (profiles default BOTH)
+  - 'src/aew/surface/run.py:180-192 (the tool''s adapter: lower or record a request)'
+  - src/aew/harness/notify.py:698-701 (not_configured when notify.command is absent)
+  - 'docs/implementation/future-work.yaml (row F18.6): Unscheduled, restored from HOLD-17, which closed on 2026-11-06; (row
+    HOLD-19): its one member still held is F46, the settings surface, not steering'
 - id: SYS-05
   name: Harness currency and further harness adapters
   purpose: Keep the one built harness adapter (OpenCode V2) current and qualified, and let further harnesses plug in behind
@@ -910,6 +897,7 @@ systems:
   - F22.2
   - F22.3
   - E62
+  - E184
   - E293
   as_built:
   - modules:aew.maps
@@ -983,27 +971,35 @@ systems:
     manual step, and each pack''s added bytes measured; no site map view in V-01 (register V-01 milestone, future-work.yaml
     (§1 text, at c11a61ea)).'
   remaining:
-  - slice: maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-      item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 3)
+  - slice: 'PR B, the switch-on: maps.pack_slices on for all cards in a new project (operator, 2026-11-06, design workspace
+      record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3), offered to an existing
+      project through the shared switch offer, with each card''s added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 3); and E184''s owed items: the Lead''s dispatch result carries a reference and the byte count, never the
+      slice body, and the projects already switched on are told'
     row: E62
+    estimate: 1-2 PRs (estimate)
+  - slice: 'E293, V-01''s maps profile: the built maps held against A-14''s obligations, the profile written, each divergence
+      fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code'
+    row: E293
     estimate: 1-2 PRs (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
-  decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
+  decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
+    E293 placed now by the operator (the Lead''s reading of the question; 2026-11-11: "we can do the maps profile since maps is mostly done right?")'
   recommendation: switch_on
-  who: Lead (1-2 PRs after first use); decided by the operator
-  reason: 'Built and off: the operator''s 2026-10-07 gate (recorded at future-work.yaml (row F22.1, at c11a61ea)) keeps
-    wider serving behind evaluation, while the register''s V-01 milestone says V-01 shows the maps to agents (future-work.yaml
-    (§1 text, at c11a61ea)); the board''s recommendation is to lift the gate for V-01 only, which needs the operator''s
-    decision.'
+  who: Lead (PR B, then E293); decided by the operator
+  reason: 'Built and off. The map refreshed at use is built, inert while the switch is off (ADR-0015, amendment of 2026-11-11),
+    so the switch-on is the last code step of the finish line, with E184''s owed items. The operator''s 2026-10-07 gate
+    (recorded at future-work.yaml (row F22.1, at c11a61ea)) kept wider serving behind evaluation; the operator lifted it
+    for all cards on 2026-11-06 (E184), and placed V-01''s maps profile (E293) on 2026-11-11.'
   evidence:
-  - src/aew/policy/execution.py:135 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
-  - src/aew/policy/execution.py:147 STRING_SWITCHES row for maps.pack_slices, first value (the default) off
-  - src/aew/policy/execution.py:185-188 pack_slices() returns off unless set
-  - src/aew/schemas/execution.schema.json:109-111 the schema default off; 'Turning it on is the operator's configuration
+  - src/aew/policy/execution.py:150 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
+  - src/aew/policy/execution.py:163 STRING_SWITCHES row for maps.pack_slices, first value (the default) off
+  - src/aew/policy/execution.py:231-232 pack_slices() returns off unless set
+  - src/aew/schemas/execution.schema.json:119-121 the schema default off; 'Turning it on is the operator's configuration
     decision'
+  - 'src/aew/switch_offer.py:270-273 OFFERS: the shared switch offer has no maps.pack_slices row yet'
   - src/aew/maps/slices.py:4-5 packs and resume byte-identical to a project without maps while off
   - 'src/aew/maps/slices.py:50-55 wanted(): switch structural AND the role''s context names codebase_map'
   - src/aew/engine/context_ops.py:177 the pack slice is pinned only when slices.wanted()
@@ -1054,6 +1050,8 @@ systems:
   - E138
   - E133
   - E83
+  - E349
+  - E359
   as_built:
   - modules:aew.surface.stage
   - modules:aew.surface.classify
@@ -1107,40 +1105,32 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'Every stage the Lead''s main path takes ends in a typed result it can act on: no publish stranded after
-    a STALE_REVISION (E137), no escaping defect without its class and stage result (E138), and the auto-run set declared
-    and pinned (E83), each exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
-    designer''s D4 and the operator''s placement out of HOLD-10.'
+    a STALE_REVISION (E137, done), no escaping defect without its class and stage result (E138, done), a typed exit from
+    REVIEW_PASSED, VERIFIED and COMMIT_READY (E133, done), and the auto-run set declared and pinned (E83), each exercised
+    in a real Lead run. Dispositions are done as built: the review half of `requires_disposition` marks a listed non-required
+    finding and is tested; its verification half was dropped by AIR-08 (2026-10-11). The custody publish (E6b) lapsed into
+    STG-14.'
   remaining:
-  - slice: 'E137: the other judgment stages stranded at their last committed step, and the custody worker''s registration
-      (suspected); the publish case is fixed'
-    row: E137
-    estimate: 1 PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E138: record the escaping exception''s class where it can be read, with a stage result when steps committed'
-    row: E138
-    estimate: 1 small PR (estimate)
-  - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable''s
-      set equals it'
+  - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test
+      that classify.auto_runnable''s set equals it; it rides the scheduler''s PR 4 (E228)'
     row: E83
     estimate: 1 small PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      designer decision D4: what a listed unrequired verification result marks, before that half of requires_disposition
-      can mark anything'
-    row: row owed
-    estimate: a ruling, no PR (estimate)
-  decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
-    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+  decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
+    item 6); E138 unfrozen into the finish (the operator, 2026-11-11: "yes unfreeze E138")'
   recommendation: finish
-  who: Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
-  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sized four
-    as about 4 small PRs with no switch, and E133 has since merged, leaving three. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
-    are POLICY_RESOLVED progression rows); its gap is the declaration and the pinning test, subject to classify''s promotion
-    over each expanded primitive''s class (classify.py:33-34), which the census did not trace per primitive. The custody
-    refusal does not block publishing: the Lead''s integration_publish publishes a VALIDATED entry outside custody.'
+  who: Lead (E83)
+  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log. E133, E137 and E138 have
+    merged, leaving E83. E83''s behaviour already holds in code (only ticket_start and ticket_request_review are POLICY_RESOLVED
+    progression rows, and a call that supplies `execution` is promoted to JUDGMENT_BEARING); its gap is the declaration
+    and the pinning test. "Under RUN only" is the steering loop''s mode gate, not classify''s. D4 blocks nothing: AIR-08
+    dropped the verification half on 2026-10-11, and removing its dead readers is E359, outside the finish line, the operator''s
+    to place once this system has finished (the designer''s ruling of 2026-11-11). HOLD-10 closed on 2026-11-06. E7d''s
+    custodian half is E349. The custody refusal does not block publishing: the Lead''s integration_publish publishes a
+    VALIDATED entry outside custody.'
   evidence:
-  - 'src/aew/surface/contract.py:241-256 (resolve), :267-321 (ticket_draft to integration_publish): progression=True at
-    :255,278,283,289,297,306,321'
-  - 'src/aew/surface/contract.py:279,285: ticket_start and ticket_request_review are POLICY_RESOLVED; :241,267,291,299,314
+  - 'src/aew/surface/contract.py:259 (resolve), :285-335 (ticket_draft to integration_publish), the stage and decision
+    tools'
+  - 'src/aew/surface/contract.py:298,304: ticket_start and ticket_request_review are POLICY_RESOLVED; :259,285,310,319,335
     are JUDGMENT_BEARING'
   - 'src/aew/surface/classify.py:26-44: effective_class promotion over expands_to and auto_runnable (progression, built,
     AVAILABLE, not JUDGMENT_BEARING)'
@@ -1151,17 +1141,17 @@ systems:
     (E6b)'
   - 'src/aew/engine/validation_ops.py:757-762: a custodian''s validation releases the entry VALIDATED for the Lead''s later
     integration_publish'
-  - 'src/aew/engine/disposition_ops.py:3-7,122-127: requires_disposition empty by default; the verification half marks nothing
-    until the designer''s D4'
+  - 'src/aew/engine/disposition_ops.py:3-7: requires_disposition empty by default; its docstring still says the verification
+    half waits for D4, which AIR-08 dropped (E359 rewords it)'
   - 'src/aew/schemas/gates.schema.json:98-99: gates.requires_disposition, empty by default (a policy property, not a switch:
     BOARD v2 §1 lists no switch)'
-  - 'src/aew/surface/mcp.py:168-170: a non-AEW exception is answered INTERNAL_ERROR (-32603, :44) with no stage result (E138)'
-  - docs/implementation/future-work.yaml (row E137, at c11a61ea) (E137, 3 of 9 publishes stopped stale), :1621-1627 (E138),
-    :1092-1099 (E83); the Now list names E137
-  - 'docs/implementation/future-work.yaml (row F15.2, at c11a61ea): F15.2 closed 2026-10-24, held in HOLD-10; :502-503 list
-    F15 and F15.2 as HOLD-10 members'
-  - 'src/aew/surface/contract.py:279-290: ticket_start expands to work.assign, dispatch.launch, work.transition and ticket_request_review
-    to work.transition, invoke.create.mutating, dispatch.launch; classify.py:33-34 promotes over each primitive''s class'
+  - 'src/aew/surface/mcp.py:180-189: an unexpected exception is answered INTERNAL_ERROR (-32603, :46) naming where it failed
+    and its class; src/aew/surface/run.py:280-288 the runner''s defect and its stage result; src/aew/harness/defects.py:68
+    the local defects record (E138, closed)'
+  - docs/implementation/future-work.yaml (row E83) (E83, open; rows E133, E137 and E138 closed)
+  - 'docs/implementation/future-work.yaml (row HOLD-10): closed on 2026-11-06, every member matched'
+  - 'src/aew/surface/contract.py:298-309: ticket_start and ticket_request_review are POLICY_RESOLVED, each promoted by
+    `execution`; classify.py:33-34 promotes over each primitive''s class'
 - id: SYS-09
   name: Capability register (CAP-1 and the base bundle)
   purpose: Bring AEW's own pinned base tools into every contained agent context, offline, with statuses and operator commands,
@@ -1184,6 +1174,9 @@ systems:
   register:
   - STG-15
   - E171
+  - E191
+  - E196
+  - E358
   as_built:
   - modules:aew.capability
   - modules:aew.capability.bind
@@ -1229,24 +1222,31 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: The whole base bundle (ripgrep, fd, jq, yq, ast-grep, Universal Ctags) is shipped as records and bound into
-    every contained context; an agent and the Lead are told when a tool is missing; the operator's fetch exists; role-card
-    capabilities resolve against the register instead of printing 'workbench resolution pending'; exercised in a real contained
-    run.
+  finish_line: 'Linux only: the whole base bundle (ripgrep, fd, jq, yq, ast-grep, Universal Ctags) is shipped as records
+    and bound into every contained Linux context; an agent and the Lead are told when a tool is missing; the operator''s
+    fetch exists, and `aew init` can decline every download up front (E191); role-card capabilities resolve against the
+    register instead of printing ''workbench resolution pending''; the code''s text says what main does (E196); exercised
+    in a real contained run. The Windows bind waits for Windows containment (E358), outside this finish line.'
   remaining:
-  - slice: The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR
-    row: row owed
-    estimate: part of 1 small docs PR (estimate)
+  - slice: '`aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered'
+    row: E191
+    estimate: part of 1 small PR with E196 (estimate)
+  - slice: 'The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings
+      only'
+    row: E196
+    estimate: part of 1 small PR with E191 (estimate)
   - slice: 'Later: MCP servers and SPT''s records (A-54, SPB), host placement and network; designed only'
     row: STG-15
     estimate: unsized (estimate)
-  decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
+  decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
+    the finish line is Linux only (the operator, 2026-11-11: "Yes linux only for now until we get time for windos contaiment")'
   recommendation: finish
-  who: Lead
+  who: Lead (E191 with E196, placed on 2026-11-11 for the near-finish push); the operator for the real contained run
   reason: CAP-1 PR 1 to PR 3 are merged, and the first bundle's six tools are shipped as records and bound into every contained
     Linux launch. The tool-consent prompt and the operator's fetch (E171) are merged, agents are told their tools by name,
-    and card capabilities resolve against the shipped map. What is left is the stale docstring, a real contained run with
-    all six tools (the operator's yes of 2026-11-10), and the later records.
+    and card capabilities resolve against the shipped map. What is left on Linux is E191 and E196 in one small PR, a real
+    contained run with all six tools (the operator's yes of 2026-11-10), and the later records. Windows contexts get no
+    tools until Windows containment (E358).
   evidence:
   - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
     six shipped records'
@@ -1265,169 +1265,8 @@ systems:
   - src/aew/harness/operator_endpoint.py:324 the operator endpoint's capability_change
   - src/aew/engine/harness_ops.py:388 card capabilities carried into the launch contract's card_capabilities
   - src/aew/knowledge/context.py:186-190 the pack splits card capabilities by CARD_CAPABILITIES (src/aew/capability/records.py:374)
-  - src/aew/harness/opencode/projection.py:234 a run without a tool says so (the missing-tool line)
+  - src/aew/harness/opencode/projection.py:269-271 a run without a tool says so (the missing-tool line)
   - tests/live/test_capability_q08_live.py the live lane's fetch, import and contained check
-- id: SYS-10
-  name: 'STG-02 slice producer: the O-01 command route and D-01 reads, with the vendored adopted contract files'
-  purpose: A standalone HTTP producer of the adopted D-01 reads and the O-01 command route for one operator journey, plus
-    the vendored, pinned adopted contract files that shipped code loads.
-  serves_claims:
-    closing_works: []
-    extra:
-    - AOI-10.d
-    - CS-01
-    - CS-02
-    - CS-03
-    - CS-04
-    - CS-05
-    - CS-08
-    - CS-09
-    - D01-0.3.4/GET /v1/read/continuation-state/{work_id}
-    - D01-0.3.4/GET /v1/read/owner-operations
-    - D01-0.3.4/GET /v1/read/runs/{execution_id}
-    - D01-0.3.4/GET /v1/read/waiting
-    - D01-WR-01
-    - D01-WR-08.a
-    - D01-WR-16
-    - D01-WR-17
-    - O01-0.7/ATTACH_LEAD/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/CLOSE_ATTACHMENT/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/CONTINUE_ELIGIBLE_WORK
-    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATED_GRANT_UNVERIFIED
-    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATED_INTENT_NOT_GRANTED
-    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATION_EXPIRED
-    - O01-0.7/DELEGATED_CANCEL/DELEGATED_GRANT_UNVERIFIED
-    - O01-0.7/DELEGATED_CANCEL/DELEGATED_INTENT_NOT_GRANTED
-    - O01-0.7/DELEGATED_CANCEL/DELEGATION_EXPIRED
-    - O01-0.7/DELEGATED_CANCEL/NOT_MODELLED
-    - O01-0.7/ISSUE_STANDING_POLICY/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/LIFT_OPERATOR_SUSPENSION/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/REAFFIRM_ELIGIBLE_CHILD_GRANTS/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/REATTACH_LEAD/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/REQUEST_PROFILE_CHANGE/ORIGIN_NOT_ESTABLISHED
-    - O01-0.7/SUSPEND_GRANT/ORIGIN_NOT_ESTABLISHED
-    - O01-0.9/CONTINUE_ELIGIBLE_WORK/HEB_STALE_PREDECESSOR
-    - O01-0.9/CONTINUE_ELIGIBLE_WORK/HEB_STATE_UNKNOWN
-    - O01-0.9/CONTINUE_ELIGIBLE_WORK/WORK_NOT_CURRENTLY_ELIGIBLE
-    - O01-06
-    - O01-10
-    - OP-03
-    - OP-08
-    - OW-03
-    - R-5
-  serves_pending: []
-  design:
-  - docs/contracts/A-12/A-12__AEW-D01-shared-read-wire-contract-candidate-v0.3.2.md
-  - docs/contracts/A-19/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md
-  - docs/contracts/A-25/OWNER-PIN-RULES.md
-  - docs/contracts/A-25/SELECTION-PROFILE-AND-SUBSTITUTABILITY.md
-  - docs/contracts/A-33/BUILD-BRIEF-PROPOSED.md
-  register: []
-  as_built:
-  - modules:aew.stg02
-  - modules:aew.stg02.adopted
-  - modules:aew.stg02.commands
-  - modules:aew.stg02.ledger
-  - modules:aew.stg02.reads
-  - modules:aew.stg02.server
-  - modules:aew.stg02.wire
-  - modules:aew.stg02.world
-  - entry-points:aew.stg02.server
-  - sqlite-tables:aew.stg02.ledger:entitlement
-  - sqlite-tables:aew.stg02.ledger:keys
-  - sqlite-tables:aew.stg02.ledger:owner_ops
-  - writers:unresolved:aew.stg02.ledger:Ledger.__init__:Path.mkdir
-  - writers:unresolved:aew.stg02.ledger:Ledger._connect:sqlite3.connect
-  - writers:unresolved:aew.stg02.server:_main:Path.write_text
-  - stg02-routes:GET /o01/v0/owner-operations/{owner}/{operation_ref}
-  - stg02-routes:GET /v1/read/assurance/{subject_kind}/{subject_id}
-  - stg02-routes:GET /v1/read/attachments
-  - stg02-routes:GET /v1/read/attachments/{attachment_id}
-  - stg02-routes:GET /v1/read/attention
-  - stg02-routes:GET /v1/read/capabilities
-  - stg02-routes:GET /v1/read/continuation-state/{work_id}
-  - stg02-routes:GET /v1/read/coverage
-  - stg02-routes:GET /v1/read/holds/{hold_id}/recovery
-  - stg02-routes:GET /v1/read/knowledge
-  - stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}
-  - stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity
-  - stg02-routes:GET /v1/read/owner-operations
-  - stg02-routes:GET /v1/read/research/claims/{claim_id}
-  - stg02-routes:GET /v1/read/resolve
-  - stg02-routes:GET /v1/read/runs
-  - stg02-routes:GET /v1/read/runs/{execution_id}
-  - stg02-routes:GET /v1/read/waiting
-  - stg02-routes:GET /v1/read/work
-  - stg02-routes:GET /v1/read/work/{work_kind}/{work_id}
-  - stg02-routes:GET /v1/read/work/{work_kind}/{work_id}/packages
-  - stg02-routes:POST /_test/engine-outage
-  - stg02-routes:POST /_test/read-entitlement
-  - stg02-routes:POST /o01/v0/command-sets
-  - commands:ATTACH_LEAD
-  - commands:CLOSE_ATTACHMENT
-  - commands:CONTINUE_ELIGIBLE_WORK
-  - commands:DELEGATED_CANCEL
-  - commands:ISSUE_STANDING_POLICY
-  - commands:LIFT_OPERATOR_SUSPENSION
-  - commands:REAFFIRM_ELIGIBLE_CHILD_GRANTS
-  - commands:REATTACH_LEAD
-  - commands:REQUEST_PROFILE_CHANGE
-  - commands:SUSPEND_GRANT
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STALE_PREDECESSOR
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STATE_UNKNOWN
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:WORK_NOT_CURRENTLY_ELIGIBLE
-  - command-refusals:ATTACH_LEAD:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:CLOSE_ATTACHMENT:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_GRANT_UNVERIFIED
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_INTENT_NOT_GRANTED
-  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATION_EXPIRED
-  - command-refusals:DELEGATED_CANCEL:DELEGATED_GRANT_UNVERIFIED
-  - command-refusals:DELEGATED_CANCEL:DELEGATED_INTENT_NOT_GRANTED
-  - command-refusals:DELEGATED_CANCEL:DELEGATION_EXPIRED
-  - command-refusals:DELEGATED_CANCEL:NOT_MODELLED
-  - command-refusals:ISSUE_STANDING_POLICY:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:LIFT_OPERATOR_SUSPENSION:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:REATTACH_LEAD:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:REQUEST_PROFILE_CHANGE:ORIGIN_NOT_ESTABLISHED
-  - command-refusals:SUSPEND_GRANT:ORIGIN_NOT_ESTABLISHED
-  touches: []
-  depends_on:
-  - SYS-03
-  state:
-    board_state: built_not_wired
-    built: 'yes'
-    wired: []
-    on_by_default: false
-    used_in_default_flow: partly
-  finish_line: 'Frozen, not finished: the stage closed with STG-02 (its backend). The production wire (O-01 0.9, D-01 W1-W5,
-    a session issuer, real owners) is new stages owned by the wire-track systems, I-6 first. Done here means the producer
-    stays as the conformance slice and the G3 client''s local O-01 target in tests, and the vendored contract half stays
-    loadable by capability status and the G3 client; it is never extended.'
-  remaining: []
-  decision: none
-  recommendation: freeze
-  who: designer
-  reason: 'BOARD v2 §4: freeze; the G3 client, the oracle and capability status depend on it, and the real wire is I-6.
-    The producer speaks the superseded O-01 0.2 review candidate. It cannot be cut: the vendored adopted/wire half is imported
-    by shipped code, and `aew g3 request` (SYS-20''s surface) posts to /o01/v0/command-sets, whose only in-tree producer
-    is this server. No aew command, engine path or dashboard starts the producer, so it is wired to nothing itself.'
-  evidence:
-  - 'src/aew/stg02/wire.py:27-28: D-01 0.3.4 and O-01 "o01-command-0.2-review-candidate"'
-  - 'src/aew/stg02/server.py:1-38: the routes served, the synthetic bearer tokens (no session issuer), --fixture-recipient
-    and --test-routes; :462-473 the process flags, off unless given'
-  - 'src/aew/stg02/commands.py:140-148: only CONTINUE_ELIGIBLE_WORK reaches an owner; other actions ORIGIN_NOT_ESTABLISHED
-    or NOT_MODELLED'
-  - 'src/aew/stg02/world.py:9-11: fixture owners; :126-127 the real source reads through dashboard.reader'
-  - 'src/aew/stg02/reads.py:197-203: phase, custody and resource state UNKNOWN'
-  - 'src/aew/process_kind.py:52-53: aew.stg02.server registered NON_WRITER, a standalone process'
-  - 'src/aew/capability/status.py:37,43: capability status loads the vendored D-01 schema through aew.stg02.adopted'
-  - 'src/aew/g3client.py:45-46,57,256: the G3 client imports adopted and wire and posts to /o01/v0/command-sets; src/aew/cli/g3_commands.py:23,29
-    (`aew g3 request --o01`)'
-  - 'tests/helpers/vertical/oracle.py:179-189: the V-01 oracle reads its registry and routes'
-  - grep over src/aew finds no aew CLI subcommand, engine or dashboard caller of aew.stg02.server
-  - 'docs/implementation/future-work.yaml (the Now list''s STG-14 line, at c11a61ea): STG-14 (I-6) is on it, the real wire''s
-    first increment'
 - id: SYS-11
   name: Run cost and usage ledger (with live usage meter)
   purpose: Record each run's token usage, price it from a pinned price table, roll it up per invocation, Ticket and project,
@@ -1943,21 +1782,23 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'Frozen, not finished: `aew settings show` stays as the configuration read, and `aew init`''s first-configuration
-    flags (E119) are the fresh-project path. No further F46 slice is built. The register says whether F46.2 is held or retired
-    into I-6, and the unread project.profile field is dropped.'
+    flags (E119) are the fresh-project path. No further F46 slice is built here: the settings write path (F46.2) and the
+    web settings page (F46.4) retire into I-6 (SYS-29), and the unread project.profile field is dropped (E259).'
   remaining:
-  - slice: Drop the unread project.profile field, batched with BOARD v2 §4's loose ends
+  - slice: Drop the unread project.profile field; placed on 2026-11-11 in the near-finish small fixes
     row: E259
-    estimate: part of 1 small batched PR (estimate)
+    estimate: 1 small PR (estimate)
   decision: 'decided: the settings write path (F46.2) retires into I-6 (SYS-29); `settings show` and `aew init`''s flags
-    stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations)'
+    stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations);
+    the web settings page (F46.4) retires into I-6 too (operator, 2026-11-11: "yes the web seetings comes with teh rest
+    of teh settingw features in i-6")'
   recommendation: cut
   who: Lead
   reason: The F46.2 settings write path retires into I-6 (SYS-29), the designer's recommendation in BOARD v2 §3; `settings
     show` stays as I-6's configuration read. The read projection is built and serves as the configuration read; E119 now
-    covers first settings at init. Only F46's write, catalog and web slices are left. The records disagree on whether F46.2
-    is held (HOLD-19) or retired into I-6's owner actions; the operator decided it retires into I-6 (2026-11-09), so this
-    system stays frozen at its read, and HOLD-19's disagreement ends.
+    covers first settings at init. F46.2 merged into STG-14 at the hold match, F46.3 was dropped, and the operator retired
+    the write path (2026-11-09) and the web page, F46.4 (2026-11-11), into I-6, so this system stays frozen at its read.
+    HOLD-19 still holds F46 itself.
   evidence:
   - src/aew/engine/configuration.py:1-7 the read-only configuration projection (F46.1); :60-67 the AWAITS_F46_2, AWAITS_F46_3
     and AWAITS_LATER_F46 reasons, with workflow and project UNSUPPORTED; :141 config_digest for a later Save
@@ -1973,7 +1814,8 @@ systems:
     no pin; src/aew/engine/api.py:333-335 doctor's WARN says so
   - src/aew/knowledge/manifest.py default_manifest omits project.profile; src/aew/schemas/project.schema.json accepts
     it for existing projects, as proved by tests/integration/test_init_first_configuration.py
-  - docs/implementation/future-work.yaml (row HOLD-19, at c11a61ea) HOLD-19 members F15.5 and F46 to F46.4
+  - 'docs/implementation/future-work.yaml (row HOLD-19): F46 is the one member still held, and F46.4 retired into I-6 on
+    2026-11-11 (HOLD-19''s note of that day)'
 - id: SYS-16
   name: Plan assurance before mutating dispatch (ASSURED)
   purpose: Refuse or obligate a mutating dispatch whose plan or scope is unsafe; the designed ASSURED predicate would also
@@ -2267,40 +2109,36 @@ systems:
     - dashboard:/evidence/{id}
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: Every validation records what it evaluated and what it did not check, and a failing check's lines reach the
-    worker (E120); artifact_digests is populated or dropped and working_diff kept or removed; all exercised by the vertical
-    driver and a real run. The remote validation provider stays Designed until it has acceptance.
+  finish_line: 'Every validation records what it evaluated and what it did not check, from a project-owned source of its
+    affected tests and CI tools (E120, E243), with ''not known'' and a reason where a project has none; a failing check''s
+    lines reach the worker (E120); all exercised by the
+    vertical driver and a real run. artifact_digests is dropped from the engine and working_diff removed (done). The remote
+    validation provider stays Designed until it has acceptance.'
   remaining:
-  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), and E243''s project-owned
-      source for the two lists its record now says are not known'
+  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), with E243''s source for
+      the two lists its record now says are not known'
     row: E120
     estimate: 1-2 PRs (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      artifact_digests, always empty: populate or drop (BOARD v2 §4 loose end)'
-    row: row owed
-    estimate: 1 small PR (estimate, BOARD v2 §4)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      working_diff, never called: keep or remove (BOARD v2 §4 loose end)'
-    row: row owed
-    estimate: 1 small PR (estimate, BOARD v2 §4)
-  - slice: 'A project-owned source for E120''s two lists'
+  - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 1 (the coverage declaration,
+      the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor)'
     row: E243
-    estimate: not sized (estimate)
-  decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
-    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+    estimate: 2 PRs (estimate)
+  decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
+    item 6); unfrozen for the drop of artifact_digests and working_diff, and E243 placed inside the finish line (the operator,
+    2026-11-11: "1. sire. 2. yup if it knows it tehn yes statre it", the Lead''s reading: "sure" and "state")'
   recommendation: finish
-  who: Lead (E120); designer or operator for the two loose ends (BOARD v2 §4)
+  who: Lead (E120, E243)
   reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
-    closed. artifact_digests is always empty and working_diff has no src caller; BOARD v2 §4 batches both as loose ends.
-    The remote provider stays Designed only.
+    closed, and the two loose ends are gone (artifact_digests dropped from the engine, working_diff removed, ADR-0002 amended).
+    E243's contract is the designer's, about 2 PRs to first use. The
+    remote provider stays Designed only.
   evidence:
-  - src/aew/snapshot/fingerprint.py:384-397 (evaluated_snapshot accepts artifact_digests)
-  - src/aew/engine/workspace_ops.py:47-52 (its only caller passes exclude and include_ignored only, so artifact_digests
-    is always [])
-  - src/aew/schemas/evidence.schema.json:190; src/aew/dashboard/projections.py:661,677 (schema field and dashboard echo)
-  - src/aew/engine/evidence_ops.py:1012,1043 (evaluated_snapshot on every evidence record), :954-979 (mutated_inputs refusal)
-  - 'src/aew/snapshot/fingerprint.py:32,414 (working_diff, self-flagged with no caller in src); grep: callers only tests/integration/test_fingerprint_reads.py:343
-    and tests/regression/test_m4b_review.py:104'
+  - src/aew/snapshot/fingerprint.py:383 (evaluated_snapshot carries no artifact_digests); :31 working_diff removed (2026-11-11,
+    no caller; packs diff the snapshot tree)
+  - src/aew/engine/workspace_ops.py:54 (its only caller)
+  - src/aew/dashboard/projections.py:662,678 (the dashboard keeps artifact_digests [] for contract 0.1.3)
+  - src/aew/engine/evidence_ops.py:900,1048 (evaluated_snapshot on every evidence record), :1060 (mutated_inputs)
+  - 'src/aew/engine/coverage.py:77-78: affected_tests and ci_tools are {known: false, reason: no_project_source} (E243)'
   - src/aew/engine/validation_ops.py:50,314,398 (the coverage record E120's slices added)
   - src/aew/engine/workspace_ops.py:269,303 ('readiness' is dependency readiness, not setup readiness)
   - tests/acceptance/test_vertical_path.py:83 (seeded check-changes-snapshot cause), :94-97 (model-not-listed seed), :723
@@ -2336,7 +2174,7 @@ systems:
   - tests/unit/test_weaker_register.py
   depends_on:
   - SYS-02
-  - SYS-10
+  - SYS-03
   - SYS-37
   state:
     board_state: on_and_used
@@ -2348,7 +2186,10 @@ systems:
   signoff:
     date: '2026-11-10'
     words: 'SYS-37 and SYS-20 signed off, tested in my root session AS WELL'
-  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied through G3-C''s overlay as the operator chose on 2026-11-08. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
+  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s
+    decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied
+    through G3-C''s overlay as the operator chose on 2026-11-08. E82''s known-answer tests and G3-C are merged; G3 is installed
+    by root on a Linux host where
     every agent context runs contained; a raise approved in the confirmer with the PIN is admitted once by its owner and
     the mode rises; a replay is refused; and after a weaker launch the next raise falls back to the typed code with the
     standing''s reason. The operator''s root session on a Linux host, 2026-11-10, passed this acceptance. ATTACH_LEAD and
@@ -2513,10 +2354,11 @@ systems:
   - src/aew/engine/status_ops.py:113 notifier failures shown in aew status; :129-130 the Next actions block
   - src/aew/harness/operator_endpoint.py:185 the notifier Watcher starts only with the operator endpoint; src/aew/engine/steering.py:208-210
     no notify.command means no notifier
-  - src/aew/policy/execution.py:65-74 the init template writes no notify key
-  - no /waiting route, `aew ask` or `aew notify desktop` in src/aew/cli, src/aew/dashboard or src/aew/engine (grep at c11a61ea);
-    the GET /v1/read/waiting at src/aew/stg02/server.py:220 and src/aew/stg02/reads.py:115-117 is the STG-02 slice's fixture-backed
-    D-01 read (SYS-10), not E102's GET /api/v1/waiting
+  - src/aew/policy/execution.py:76-89 the init template writes steering.mode crawl and notify.command [aew, notify, desktop]
+  - no /waiting route or `aew ask` in src/aew/cli, src/aew/dashboard or src/aew/engine (grep at c11a61ea); `aew notify desktop`
+    now exists at src/aew/cli/notify_commands.py:11-28 (shows one notify event from stdin as a desktop notification;
+    `--check` says whether one can be shown), registered at src/aew/cli/commands.py:164; the GET /v1/read/waiting at src/aew/stg02/server.py:220 and src/aew/stg02/reads.py:115-117 is the STG-02 slice's fixture-backed
+    D-01 read (the STG-02 producer, under SYS-29 until E356 retires it), not E102's GET /api/v1/waiting
   - docs/implementation/future-work.yaml (row E101, at c11a61ea) E101 (S1, Contained); :1283-1295 E102; :1296-1306 E103;
     :1307-1321 E104 (V-01); :1322-1355 E105 to E107 (V-01); :1374-1384 E109 (Evaluation); :1385-1392 E110 (Unscheduled,
     the operator places it)
@@ -2538,7 +2380,8 @@ systems:
   - E142
   - E136
   - E135
-  as_built: []
+  as_built:
+  - modules:aew.skills
   touches:
   - src/aew/harness/opencode/projection.py
   - src/aew/harness/opencode/adapter.py
@@ -2560,39 +2403,34 @@ systems:
     - pack
     on_by_default: false
     used_in_default_flow: partly
-  finish_line: E127's four skills, then E142's two and E136's eleven, ship from AEW's install with a hash manifest, labelled
-    unevaluated; a card's requested and optional skills are offered and loaded; the run's record says what was offered and
-    loaded; exercised in a real run; E135's qualification before anything beyond the personal alpha.
+  finish_line: 'E127''s four skills, then E142''s two (merged) and E136''s eleven, ship from AEW''s install with
+    a hash manifest, labelled unevaluated; a card''s requested and optional skills are offered and loaded; the run''s record
+    says what was offered and loaded; exercised in a real run; E135''s qualification before anything beyond the personal
+    alpha.'
   remaining:
-  - slice: 'E142: serve security-review and c-review (on the Now list)'
-    row: E142
-    estimate: 1 PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E136: the other eleven skills as optional_skills, batched (on the Now list)'
+  - slice: 'E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text
+      check; after E142'
     row: E136
-    estimate: 2-4 batched PRs (estimate)
+    estimate: about 3 batched PRs (estimate)
   - slice: 'E135: the evaluation runner, and qualification before anything beyond the personal alpha'
     row: E135
     estimate: 1 PR for the runner (estimate), plus operator-approved spend
-  decision: 'decided: E142 at the end of slot 3; E136 frozen until E120 shows what workers ask for (the reset of 2026-11-06
-    (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
+  decision: 'decided: E142 at the end of slot 3 (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md));
+    E136 unfrozen (the operator, 2026-11-11: "Also yes serve the skills.")'
   recommendation: finish
   who: Lead
-  reason: E127 provides four skills. The system remains staged for the remaining rollout; E142's two skills, E136's
-    eleven optional skills (frozen pending E120), and E135's qualification are still owed.
+  reason: 'E127 and E142 ship six skills from AEW''s install, E142''s two, with every built-in card''s requested
+    skill shipping. The system stays staged for the rest of the rollout; E136''s eleven optional skills follow now that
+    the operator has unfrozen them, and E135''s qualification is still owed.'
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills
-  - src/aew/engine/harness_ops.py:306 the pinned card's skills go on the launch contract as card_skills
-  - src/aew/harness/opencode/projection.py:86-89 skills() splits requested into exposed and unavailable against a provided
-    set that defaults empty
-  - src/aew/harness/opencode/projection.py:104-105 the skill permission is denied, then allowed only for exposed skills
-  - src/aew/harness/opencode/projection.py:145-147 the system text names the unavailable skills
-  - src/aew/harness/opencode/projection.py:166-170 invocation_config's provided_skills defaults to frozenset()
-  - src/aew/harness/opencode/adapter.py:350-355 and src/aew/engine/harness_ops.py:625-630 call invocation_config and skills()
-    without provided_skills; grep provided_skills finds only projection.py
-  - src/aew/knowledge/context.py:196 the pack still says 'Skills to load (how the work is done)' for the card's skills
-  - 'find src/aew -iname ''*skill*'' finds nothing: no skill files or manifest are shipped'
+  - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
+    lists six, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
+    and E142''s c-review and security-review), with every built-in card''s requested skill shipping'
+  - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
+  - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills
+  - src/aew/knowledge/context.py:217-221 the pack names the card's skills and its optional skills
   - docs/skills/README.md:3-5 the candidates are documentation, 'not ... an installed skill catalog'
   - 'docs/implementation/future-work.yaml (the Now list''s E127 line, at c11a61ea): E127, E142 and E136'
   - 'docs/implementation/future-work.yaml (row E127, at c11a61ea) E127 runs ''after CAP-1 PR 2, since both change the same
@@ -2610,7 +2448,8 @@ systems:
   design:
   - docs/implementation/adr/0006-role-archetypes-and-cards.md
   - docs/agent-engineering-workflow-design-v0.7.md
-  register: []
+  register:
+  - E357
   as_built:
   - modules:aew.policy.guardrails
   - schemas:guardrails
@@ -2631,12 +2470,14 @@ systems:
     a configured dependency_rules entry shows in `aew doctor`, so no operator is misled. Enforcing any of the four needs
     its own design and register row first.'
   remaining:
-  - slice: show a configured but unenforced dependency_rules in `aew doctor` (BOARD v2 §4)
-    row: row owed
+  - slice: show a configured but unenforced dependency_rules in `aew doctor` (BOARD v2 §4); the last of the near-finish
+      small fixes, then done as frozen
+    row: E357
     estimate: 1 small PR (estimate)
-  decision: none
+  decision: 'decided: frozen properly, with the doctor warning as its one slice, then done as frozen (the operator, 2026-11-11:
+    "yes sys 23 is not in progress in any capacity so freeze it properly")'
   recommendation: freeze
-  who: designer
+  who: Lead (E357)
   reason: 'BOARD v2 §4: freeze, fail-closed today. Nothing schedules any of the four, and removing them would break the
     guardrails, role and evidence schemas and ADR-0006''s and WC §5.9''s traceability. The one UX gap: a configured dependency_rules
     entry is reported only inside the guardrails check''s JSON log, not in doctor.'
@@ -3030,14 +2871,125 @@ systems:
   serves_claims:
     closing_works:
     - 'the wire track: I-6''s increment (A-39), built for V-01'
-    extra: []
+    extra:
+    - AOI-10.d
+    - CS-01
+    - CS-02
+    - CS-03
+    - CS-04
+    - CS-05
+    - CS-08
+    - CS-09
+    - D01-0.3.4/GET /v1/read/continuation-state/{work_id}
+    - D01-0.3.4/GET /v1/read/owner-operations
+    - D01-0.3.4/GET /v1/read/runs/{execution_id}
+    - D01-0.3.4/GET /v1/read/waiting
+    - D01-WR-01
+    - D01-WR-08.a
+    - D01-WR-16
+    - D01-WR-17
+    - O01-0.7/ATTACH_LEAD/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/CLOSE_ATTACHMENT/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/CONTINUE_ELIGIBLE_WORK
+    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATED_GRANT_UNVERIFIED
+    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATED_INTENT_NOT_GRANTED
+    - O01-0.7/CONTINUE_ELIGIBLE_WORK/DELEGATION_EXPIRED
+    - O01-0.7/DELEGATED_CANCEL/DELEGATED_GRANT_UNVERIFIED
+    - O01-0.7/DELEGATED_CANCEL/DELEGATED_INTENT_NOT_GRANTED
+    - O01-0.7/DELEGATED_CANCEL/DELEGATION_EXPIRED
+    - O01-0.7/DELEGATED_CANCEL/NOT_MODELLED
+    - O01-0.7/ISSUE_STANDING_POLICY/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/LIFT_OPERATOR_SUSPENSION/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/REAFFIRM_ELIGIBLE_CHILD_GRANTS/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/REATTACH_LEAD/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/REQUEST_PROFILE_CHANGE/ORIGIN_NOT_ESTABLISHED
+    - O01-0.7/SUSPEND_GRANT/ORIGIN_NOT_ESTABLISHED
+    - O01-0.9/CONTINUE_ELIGIBLE_WORK/HEB_STALE_PREDECESSOR
+    - O01-0.9/CONTINUE_ELIGIBLE_WORK/HEB_STATE_UNKNOWN
+    - O01-0.9/CONTINUE_ELIGIBLE_WORK/WORK_NOT_CURRENTLY_ELIGIBLE
+    - O01-06
+    - O01-10
+    - OP-03
+    - OP-08
+    - OW-03
+    - R-5
   serves_pending: []
   design:
   - docs/contracts/A-39/I6-PROFILE.md
   - docs/contracts/A-19/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md
+  - docs/contracts/A-12/A-12__AEW-D01-shared-read-wire-contract-candidate-v0.3.2.md
+  - docs/contracts/A-25/OWNER-PIN-RULES.md
+  - docs/contracts/A-25/SELECTION-PROFILE-AND-SUBSTITUTABILITY.md
+  - docs/contracts/A-33/BUILD-BRIEF-PROPOSED.md
   register:
   - STG-14
-  as_built: []
+  - E356
+  as_built:
+  - modules:aew.stg02
+  - modules:aew.stg02.commands
+  - modules:aew.stg02.ledger
+  - modules:aew.stg02.reads
+  - modules:aew.stg02.server
+  - modules:aew.stg02.world
+  - entry-points:aew.stg02.server
+  - sqlite-tables:aew.stg02.ledger:entitlement
+  - sqlite-tables:aew.stg02.ledger:keys
+  - sqlite-tables:aew.stg02.ledger:owner_ops
+  - writers:unresolved:aew.stg02.ledger:Ledger.__init__:Path.mkdir
+  - writers:unresolved:aew.stg02.ledger:Ledger._connect:sqlite3.connect
+  - writers:unresolved:aew.stg02.server:_main:Path.write_text
+  - stg02-routes:GET /o01/v0/owner-operations/{owner}/{operation_ref}
+  - stg02-routes:GET /v1/read/assurance/{subject_kind}/{subject_id}
+  - stg02-routes:GET /v1/read/attachments
+  - stg02-routes:GET /v1/read/attachments/{attachment_id}
+  - stg02-routes:GET /v1/read/attention
+  - stg02-routes:GET /v1/read/capabilities
+  - stg02-routes:GET /v1/read/continuation-state/{work_id}
+  - stg02-routes:GET /v1/read/coverage
+  - stg02-routes:GET /v1/read/holds/{hold_id}/recovery
+  - stg02-routes:GET /v1/read/knowledge
+  - stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}
+  - stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity
+  - stg02-routes:GET /v1/read/owner-operations
+  - stg02-routes:GET /v1/read/research/claims/{claim_id}
+  - stg02-routes:GET /v1/read/resolve
+  - stg02-routes:GET /v1/read/runs
+  - stg02-routes:GET /v1/read/runs/{execution_id}
+  - stg02-routes:GET /v1/read/waiting
+  - stg02-routes:GET /v1/read/work
+  - stg02-routes:GET /v1/read/work/{work_kind}/{work_id}
+  - stg02-routes:GET /v1/read/work/{work_kind}/{work_id}/packages
+  - stg02-routes:POST /_test/engine-outage
+  - stg02-routes:POST /_test/read-entitlement
+  - stg02-routes:POST /o01/v0/command-sets
+  - commands:ATTACH_LEAD
+  - commands:CLOSE_ATTACHMENT
+  - commands:CONTINUE_ELIGIBLE_WORK
+  - commands:DELEGATED_CANCEL
+  - commands:ISSUE_STANDING_POLICY
+  - commands:LIFT_OPERATOR_SUSPENSION
+  - commands:REAFFIRM_ELIGIBLE_CHILD_GRANTS
+  - commands:REATTACH_LEAD
+  - commands:REQUEST_PROFILE_CHANGE
+  - commands:SUSPEND_GRANT
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STALE_PREDECESSOR
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STATE_UNKNOWN
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:WORK_NOT_CURRENTLY_ELIGIBLE
+  - command-refusals:ATTACH_LEAD:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:CLOSE_ATTACHMENT:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_GRANT_UNVERIFIED
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_INTENT_NOT_GRANTED
+  - command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATION_EXPIRED
+  - command-refusals:DELEGATED_CANCEL:DELEGATED_GRANT_UNVERIFIED
+  - command-refusals:DELEGATED_CANCEL:DELEGATED_INTENT_NOT_GRANTED
+  - command-refusals:DELEGATED_CANCEL:DELEGATION_EXPIRED
+  - command-refusals:DELEGATED_CANCEL:NOT_MODELLED
+  - command-refusals:ISSUE_STANDING_POLICY:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:LIFT_OPERATOR_SUSPENSION:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:REATTACH_LEAD:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:REQUEST_PROFILE_CHANGE:ORIGIN_NOT_ESTABLISHED
+  - command-refusals:SUSPEND_GRANT:ORIGIN_NOT_ESTABLISHED
   touches:
   - src/aew/stg02/adopted/**
   - src/aew/stg02/commands.py
@@ -3049,7 +3001,7 @@ systems:
   - tests/unit/test_stg02_adopted.py
   - tests/unit/test_g3client.py
   depends_on:
-  - SYS-10
+  - SYS-03
   - SYS-20
   state:
     board_state: designed_only
@@ -3059,8 +3011,12 @@ systems:
     used_in_default_flow: 'no'
   finish_line: The O-01 0.8 actions for I-6's nine rows (P04, P06, P07, P08, P10, P11, P12, P14, U10) built, as the profile
     assigns them, with their owners' handlers and surface-map entries, the code wire moved up from 0.2; protected rows stay
-    held until G3 is established on a host; exercised by V-01's P04 and P14 steps.
+    held until G3 is established on a host; exercised by V-01's P04 and P14 steps. The STG-02 producer, which this entry
+    holds until then, is retired when I-6's O-01 route lands, and the G3 client's tests move to that route (E356).
   remaining:
+  - slice: 'Retire the STG-02 producer when I-6''s real O-01 route lands, and move the G3 client''s tests to the real route'
+    row: E356
+    estimate: 1 PR (estimate), with I-6's route
   - slice: 'Move the code''s O-01 command wire from 0.2 to 0.8 (I-7''s 0.9 follows, BOARD v2 §2: ''O-01 0.2 to 0.8/0.9'')'
     row: STG-14
     estimate: 1-2 PRs (estimate)
@@ -3072,13 +3028,25 @@ systems:
       unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1)
     row: STG-14
     estimate: inside I-6's estimate
-  decision: none
+  decision: 'decided: placed after the near-finish push, so the dashboard and AEW are back in sync on the command and read
+    wire (the operator, 2026-11-11: "yes we DO needc to do teh api and command update so teh dashboard and aew mainline
+    can get back fully insync and compliant"); the STG-02 producer is not a system of its own ("this just seems like
+    something interacting with codfe called a system even when theres nothing to really build with it") and sits here
+    until I-6 retires it'
   recommendation: finish
-  who: Lead (BOARD v2 §2, on the Now list)
-  reason: STG-14 (I-6) on the Now list, and the first V-01 wire increment; the relay meter (E97), the paid-class qualification
-    (E98) and V-01's P04 and P14 steps sit behind it.
+  who: Lead (BOARD v2 §2, on the Now list); its brief is owed
+  reason: 'STG-14 (I-6) on the Now list, and the first V-01 wire increment; the relay meter (E97), the paid-class qualification
+    (E98) and V-01''s P04 and P14 steps sit behind it. I-6 itself is unbuilt; the as-built records here are the STG-02
+    producer''s, a standalone HTTP producer of the adopted D-01 reads and the O-01 0.2 review candidate''s command route
+    for one operator journey, which no aew command, engine path or dashboard starts. It stays the conformance slice and
+    the G3 client''s local O-01 target in tests, and is never extended (E356). The vendored adopted contract files it carried
+    stay with SYS-03.'
   evidence:
   - src/aew/stg02/__init__.py:1-7 (the code's command route is O-01 0.2)
+  - 'src/aew/stg02/server.py:1-38: the routes the producer serves, the synthetic bearer tokens (no session issuer), --fixture-recipient
+    and --test-routes'
+  - 'src/aew/process_kind.py:53: aew.stg02.server registered NON_WRITER, a standalone process'
+  - grep over src/aew finds no aew CLI subcommand, engine or dashboard caller of aew.stg02.server
   - src/aew/g3client.py:4, :103 (the G3 client checks an O-01 0.2 CommandSet)
   - src/aew/stg02/adopted/extended-action-registry.json:3-104 (10 actions; ISSUE_STANDING_POLICY at :38 and REQUEST_PROFILE_CHANGE
     at :49, which I-6 reuses for P07 and P11's profile half)
@@ -3126,7 +3094,6 @@ systems:
   - src/aew/schemas/inquiry.schema.json
   - src/aew/schemas/link.schema.json
   depends_on:
-  - SYS-10
   - SYS-20
   - SYS-29
   - SYS-46
@@ -3195,7 +3162,6 @@ systems:
   depends_on:
   - SYS-02
   - SYS-04
-  - SYS-10
   - SYS-25
   - SYS-29
   - SYS-46
@@ -3268,7 +3234,7 @@ systems:
   - tests/unit/test_outage_reader.py
   depends_on:
   - SYS-02
-  - SYS-10
+  - SYS-29
   state:
     board_state: designed_only
     built: 'no'
@@ -3621,9 +3587,9 @@ systems:
   - src/aew/g3standing.py:103-114 no_weaker_context() sweeps, then reads the register; the standing calls it
   - src/aew/harness/g3_adapter.py:60-66 a raise's choice of path computes the standing
   - src/aew/harness/supervisor.py:125 worker runs write an entry when weaker
-  - src/aew/harness/lead_broker.py:877 aew lead session writes an entry
+  - src/aew/harness/lead_broker.py:906 aew lead session writes an entry
   - src/aew/engine/validation_ops.py:509 validation runs write an entry when weaker
-  - src/aew/engine/evidence_ops.py:876 aew check run writes an entry when weaker
+  - src/aew/engine/evidence_ops.py:952 aew check run writes an entry when weaker
   - src/aew/harness/opencode/lead.py:796,859 aew opencode writes an entry when weaker
   - 'wired is empty: the write side rides the launch commands of SYS-02, and the read side is reached through G3''s standing
     (doctor''s g3 line and the raise), which are SYS-20''s'
@@ -3780,25 +3746,25 @@ systems:
     on_by_default: true
     used_in_default_flow: 'yes'
   finish_line: 'Built, on, and used every time a Ticket integrates, and E151''s launch conflict check merged. mutating_concurrency
-    is 2 for a new project, proven by two scripted workers integrating one after the other (tests/regression/test_concurrency_two.py).
-    Still owed: the offer that switches an existing project at the operator''s terminal, which replaces the gates.yaml migration,
-    and a real run with two mutating workers.'
+    is 2 for a new project, proven by a scripted test, two scripted workers integrating one after the other (tests/regression/test_concurrency_two.py),
+    and an existing project is offered the default at the operator''s terminal (the shared switch offer, built). Still owed:
+    E225, and a real run with two mutating workers, which the operator''s sign-off needs.'
   remaining:
-  - slice: The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces
-      the migration
-    row: F10
-    estimate: 1 PR (estimate)
-  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation'
+  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in
+      the near-finish small fixes'
     row: E225
     estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
   who: Lead
   reason: 'The pipeline is on and used (BOARD v2 §5). E151 merged and the default is 2 for a new project. The reset of 2026-11-06
-    reversed F10''s "after first use", and the operator confirmed that on 2026-11-07 (F10''s note of that day). HOLD-09 holds this pipeline''s E59
-    (publish trailers), E64 (queue-wait events) and Q14 (the remote integration target). E137''s stranded publish is a stage
-    defect on SYS-08''s row, not here.'
+    reversed F10''s "after first use", and the operator confirmed that on 2026-11-07 (F10''s note of that day). The offer
+    that switches an existing project is built (F10''s note of 2026-11-08). "Proven" in the finish line means the scripted
+    test; the real run with two mutating workers is still owed, and the starter kit (E117) sets it up. HOLD-09 holds this
+    pipeline''s E59 (publish trailers), E64 (queue-wait events) and Q14 (the remote integration target).'
   evidence:
+  - 'src/aew/switch_offer.py:270-273 OFFERS: the mutating_concurrency offer, 1 to the default, at the operator''s terminal
+    (F10)'
   - 'src/aew/knowledge/manifest.py:29 (mutating_concurrency: 2, register F10)'
   - 'src/aew/engine/workspace_ops.py:246-254 (mutating_cap: the default is DEFAULT_GATES''s; admission and doctor read it)'
   - 'src/aew/engine/workspace_ops.py:338-345 (_g_cap: the admission guard refuses past the cap)'
@@ -4354,7 +4320,8 @@ systems:
   recommendation: finish
   who: Lead files the rows (V-01 is placed); builders after I-6
   reason: 'The largest share of the trace''s GAPs (1,113 across six closing works) closes here, and no census system held
-    it: SYS-10 is the frozen 0.2 conformance slice and SYS-29 is I-6 only.'
+    it: the STG-02 producer is the frozen 0.2 conformance slice (under SYS-29 until E356 retires it) and SYS-29
+    is I-6 only.'
   evidence:
   - 'docs/implementation/future-work.yaml (§1 text, at c11a61ea) (V-01: ''The wire track builds the increments the slice
     needs: I-6, then I-7'')'
@@ -4375,8 +4342,10 @@ systems:
   - designer-decisions-2026-11-02-mtls-in-the-relay.md
   register:
   - E123
-  as_built: []
+  as_built:
+  - modules:aew.harness.containment.client_cert
   touches:
+  - src/aew/harness/containment/client_cert.py
   - src/aew/harness/containment/relay.py
   - src/aew/harness/containment/netns.py
   - src/aew/harness/containment/layout.py
@@ -4388,36 +4357,39 @@ systems:
   - SYS-02
   - SYS-33
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired:
+    - cli:doctor
+    on_by_default: true
     used_in_default_flow: 'no'
-  finish_line: 'E123 merged: the relay presents a provider''s client certificate from policy-named certificate, key and
-    CA paths masked from every sandbox, a launch refuses if they are not masked, a run with no relay refuses that provider,
-    tested against a throwaway CA; and the gate''s live qualification (AIR-85) done before such a provider is used.'
-  remaining:
-  - slice: 'E123: certificate, key and CA fields in the execution policy schema, the client certificate loaded in the relay''s
-      TLS context per upstream, mask-and-refuse at launch, no-relay refusal, throwaway-CA tests, and a 429 measurement against
-      a local fake upstream (on the Now list)'
-    row: E123
-    estimate: 1-2 PRs (estimate)
-  - slice: The gate's live qualification of the forced request fields against the provider (AIR-85), a live run before a
-      provider that requires a client certificate is used
-    row: row owed
-    estimate: a live run, no PR (estimate)
-  decision: none
+  finish_line: 'E123 merged (done): the relay presents a provider''s client certificate from policy-named certificate,
+    key and CA paths masked from every sandbox, a launch refuses if they are not masked, a run with no relay refuses that
+    provider, tested against a throwaway CA. The operator''s sign-off check is AIR-85, the gate''s live qualification
+    of the forced request fields against a provider that requires a client certificate, run where the first release is
+    installed against such a provider. Beside AIR-85, the first real run also checks what E123''s note of 2026-11-09 left
+    unmeasured and no open row carries: OpenCode 2.0.18''s back-off on a 429 and its handling of Retry-After, that the Lead
+    and two workers on one model spend one per-model bucket together (and that runs on different models do not), what
+    the provider''s own 429s look like, whether OpenCode resolves a provider of its own id
+    (a worker''s and the Lead''s projections, each checked), and whether it needs a placeholder key for one.'
+  remaining: []
+  decision: 'decided: awaiting the operator''s sign-off, with AIR-85 as its sign-off check, run where the first release
+    is installed against such a provider (the operator, 2026-11-10: "yyes record SYS-47 that way")'
   recommendation: finish
-  who: Lead (E99 is adopted as A-55, which names E123 as the provider-access owner); operator for the live AIR-85
-    qualification
-  reason: Half of E123's Now item (BOARD v2 §1), split from the frozen gateway (SYS-25) so the freeze does not stop it.
+  who: operator (AIR-85, then the sign-off)
+  reason: 'E123 merged with its review''s follow-ons, so nothing is left to build; it is on whenever the policy names a
+    provider''s certificate, and no provider in the default flow does, so it is not used there yet. The relay passes a 429
+    through as the upstream sent it; how OpenCode backs off on it is not measured (E123''s note of 2026-11-09). Split from
+    the frozen gateway (SYS-25) so the freeze does not stop it.'
   evidence:
-  - 'src/aew/harness/containment/relay.py:449-454 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor and no
-    load_cert_chain); a grep of src/ for load_cert_chain, client_cert, certfile, keyfile and mTLS finds nothing'
-  - 'src/aew/schemas/execution.schema.json: no certificate, key or CA field (a case-insensitive grep for ''cert'' and ''tls''
-    finds none)'
-  - 'docs/implementation/future-work.yaml (row E123, at c11a61ea) (E123: the designer''s ruling of 2026-11-02; on the Now
-    list)'
+  - 'src/aew/harness/containment/client_cert.py:49-50 (the policy field containment.network.client_certs and its cert,
+    key and ca files), :184 (context: the relay''s TLS context presents the certificate)'
+  - 'src/aew/schemas/execution.schema.json:65 (client_certs, legality_affecting)'
+  - 'src/aew/harness/containment/relay.py:487-499 (a handshake failure answers 502 client_cert_required or client_cert_refused,
+    naming the policy field)'
+  - 'src/aew/engine/workspace_ops.py:225-227 (a launch with no relay refuses the provider, client_cert.NO_RELAY); src/aew/engine/readiness.py:65-67
+    (aew doctor''s client-cert row)'
+  - 'docs/implementation/future-work.yaml (row E123): closed'
 - id: SYS-48
   name: Build board and systems generator (E182)
   purpose: 'Keep the build board''s data in the repository and checked by CI: one entry per system, ownership checked both

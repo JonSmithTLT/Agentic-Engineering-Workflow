@@ -8,9 +8,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 1 — SYS-39
 
-**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
+**partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
 
-**built_off:** 4 — SYS-07, SYS-12, SYS-14, SYS-23
+**built_off:** 3 — SYS-12, SYS-14, SYS-23
 
 **built_not_wired:** 1 — SYS-10
 
@@ -104,15 +104,15 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-07 — Project maps in agents' context
 
-**Board state:** built_off
+**Board state:** partly_built
 
 **Who:** Lead (1-2 PRs after first use); decided by the operator
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E62); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) — E62 — 1-2 PRs (estimate)
+**Own slices left:** 2 — V-01's maps profile, the built maps held against A-14's obligations and each divergence fixed (operator, 2026-11-11, placed after the switch-on) (E293); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** V-01's maps profile, the built maps held against A-14's obligations and each divergence fixed (operator, 2026-11-11, placed after the switch-on) — E293 — 2-4 PRs (estimate)
 
-**Switch:** maps.pack_slices — default: off — checked against src/aew/policy/execution.py:STRING_SWITCHES
+**Switch:** maps.pack_slices — default: off (a new project: structural) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
 **Wired:** cli:map generate, cli:map select-architecture, cli:map show, cli:map diff, dashboard:/maps, dashboard:/maps/structural, dashboard:/maps/structural/{root}, dashboard:/maps/structural/{root}/inputs, dashboard:/maps/diff, pack, tool:resume
 

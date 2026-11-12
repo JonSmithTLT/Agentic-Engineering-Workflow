@@ -213,6 +213,8 @@ def test_the_loose_bounds_hold_every_value_the_engine_can_write(mine):
     assert effective_mode >= max(map(len, steering_modes))
     switch_default = controls["switches"]["items"]["properties"]["default"]["maxLength"]
     assert switch_default >= max(len(allowed[0]) for allowed in X.STRING_SWITCHES.values())
+    new_project = controls["switches"]["items"]["properties"]["new_project_default"]["maxLength"]
+    assert new_project >= max(map(len, X.new_project_switches().values()))
     assert len(C.ACTIVITIES) <= at(s, "ConfigurationIndex", "properties", "activities", "maxItems")
 
 

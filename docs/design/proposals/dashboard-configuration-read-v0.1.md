@@ -188,6 +188,7 @@ against the projection's real output (§6). In each case the projection is the o
 | 6 | `FieldValue.path` and the other locators: an RFC 6901 pointer | the same, and an index is accepted only as `0` or `[1-9][0-9]*` in ASCII, after `@` too (F1a review). This rule is descriptive: it is F1a's parser behaviour, and the `ConfigurationPath` pattern does not express it, so `/profiles/01` validates against the schema |
 | 7 | Strings at most 512 bytes "unless stated" | stated per field: shown names and keys 128 bytes, harness names 64, model ids 128, paths 256, everything else 512; `ModelIdentity.harness_ref` (`<provider><separator><model>`) is 257 |
 | 8 | The document state, the digest, a path and a connection id written inline at each use | named once as `ConfigurationDocumentState`, `ConfigurationDigest`, `ConfigurationPath` and `ConnectionId`, with the same shapes, so each bound and pattern has one definition |
+| 9 | A switch's `default` | `default` is what an absent key reads, and `new_project_default` beside it is what `aew init` writes, or null: maps are on for a new project and off for one initialized before, so neither value alone says what an existing project holds (the Lead's ruling of 2026-11-11, register E184) |
 
 ## 8. What stays out until F1c
 
@@ -829,7 +830,13 @@ components:
                   default:
                     type: string
                     maxLength: 64
-                required: [path, value, default]
+                    description: What the switch reads when the file doesn't set it.
+                  new_project_default:
+                    type: [string, 'null']
+                    maxLength: 64
+                    description: What `aew init` writes for a new project, or null when it writes nothing; a project
+                      initialized before then holds `default` until the operator changes it.
+                required: [path, value, default, new_project_default]
                 additionalProperties: false
             notify:
               type: object

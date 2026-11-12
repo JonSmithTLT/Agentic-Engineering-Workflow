@@ -175,6 +175,19 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
 }
 
 
+def new_project_switches() -> dict[tuple[str, str], str]:
+    """Each string switch the template sets, with the value a new project holds. The table's first value is what an
+    absent key reads; a project initialized before the template set a switch holds that until the operator changes
+    it (the Lead's ruling of 2026-11-11 on SYS-07's switch-on: the configuration view and the board show both)."""
+    template = load_yaml(TEMPLATE)
+    out = {}
+    for block, key in STRING_SWITCHES:
+        value = (template.get(block) or {}).get(key) if isinstance(template, dict) else None
+        if isinstance(value, str):
+            out[(block, key)] = value
+    return out
+
+
 def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
     """Refuse a string switch that YAML read as a boolean, before the schema, at parse and at adoption: a
     ``VALIDATION_FAILED`` with ``reason: yaml_boolean``, the ``field`` and a message naming the cause and the fix (the

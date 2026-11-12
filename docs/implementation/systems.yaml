@@ -951,18 +951,25 @@ systems:
   - src/aew/knowledge/manifest.py
   - src/aew/engine/integration_ops.py
   - src/aew/engine/api.py
+  - src/aew/switch_offer.py
+  - src/aew/engine/evidence_ops.py
+  - src/aew/engine/hierarchy_ops.py
+  - src/aew/engine/nonmutating_ops.py
   depends_on:
   - SYS-39
   switch:
     key: maps.pack_slices
     default: 'off'
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: structural
     owner: operator
     turning_on_changes: structural adds a bounded structural-map section to the packs of roles whose context names codebase_map
       (every worker archetype, register E184) and the map's row to the Lead's resume view; `aew init` generates and
-      selects the first map when the branch has a commit, and `aew map generate` makes a later one
+      selects the first map when the branch has a commit, and `aew map generate` makes a later one. A new project holds
+      structural (`aew init`'s template); an existing one without the key reads off and is offered it at the operator's
+      terminal (the switch offer's maps_pack_slices row)
   state:
-    board_state: built_off
+    board_state: partly_built
     built: partly
     wired:
     - cli:map generate
@@ -976,35 +983,33 @@ systems:
     - dashboard:/maps/diff
     - pack
     - tool:resume
-    on_by_default: false
-    used_in_default_flow: 'no'
+    on_by_default: true
+    used_in_default_flow: 'yes'
   finish_line: 'V-01''s agents'' route: in a default V-01 run, the roles the operator names (BOARD v2 §3 recommends investigator
     and planner) get a fresh, bounded structural-map slice in their packs, with the map generated or refreshed without a
     manual step, and each pack''s added bytes measured; no site map view in V-01 (register V-01 milestone, future-work.yaml
     (§1 text, at c11a61ea)).'
   remaining:
-  - slice: maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-      item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 3)
-    row: E62
-    estimate: 1-2 PRs (estimate)
+  - slice: V-01's maps profile, the built maps held against A-14's obligations and each divergence fixed (operator, 2026-11-11,
+      placed after the switch-on)
+    row: E293
+    estimate: 2-4 PRs (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
   who: Lead (1-2 PRs after first use); decided by the operator
-  reason: 'Built and off: the operator''s 2026-10-07 gate (recorded at future-work.yaml (row F22.1, at c11a61ea)) keeps
-    wider serving behind evaluation, while the register''s V-01 milestone says V-01 shows the maps to agents (future-work.yaml
-    (§1 text, at c11a61ea)); the board''s recommendation is to lift the gate for V-01 only, which needs the operator''s
-    decision.'
+  reason: 'On for a new project and offered to an existing one (ADR-0015, amended 2026-11-11, second; register E62
+    and E184), as the reset of 2026-11-06 decided. Left: V-01''s maps profile (E293), then the semantic layer after its
+    benchmark.'
   evidence:
-  - src/aew/policy/execution.py:135 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
-  - src/aew/policy/execution.py:147 STRING_SWITCHES row for maps.pack_slices, first value (the default) off
-  - src/aew/policy/execution.py:185-188 pack_slices() returns off unless set
-  - src/aew/schemas/execution.schema.json:109-111 the schema default off; 'Turning it on is the operator's configuration
-    decision'
-  - src/aew/maps/slices.py:4-5 packs and resume byte-identical to a project without maps while off
+  - src/aew/policy/execution.py NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL, and the template's maps.pack_slices
+    line written from it
+  - src/aew/policy/execution.py STRING_SWITCHES row for maps.pack_slices, first value (an absent key) off
+  - src/aew/policy/execution.py pack_slices() reads an absent key as off
+  - src/aew/switch_offer.py OFFERS row maps_pack_slices, for a project holding the key absent or "off"
+  - src/aew/maps/slices.py for_lead, every engine result's pack as the Lead sees it (slice_bytes, no body)
   - 'src/aew/maps/slices.py:50-55 wanted(): switch structural AND the role''s context names codebase_map'
   - src/aew/engine/context_ops.py:177 the pack slice is pinned only when slices.wanted()
   - src/aew/engine/resume_ops.py:452-467 the resume row behind the same switch
@@ -1021,7 +1026,8 @@ systems:
   - src/aew/cli/map_commands.py:56-93 aew map generate, select-architecture, show, diff
   - src/aew/dashboard/server.py:288-298 the five /maps routes
   - 'importers of aew.maps outside the package (grep): cli/map_commands, dashboard/mapview, dashboard/projections, dashboard/reader,
-    engine/context_ops, engine/resume_ops, knowledge/context; none in integration code, so no regeneration on publish'
+    engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops (slices.for_lead),
+    knowledge/context, switch_offer; none in integration code, so no regeneration on publish'
   - src/aew/surface/readable.py:60-61 the only surface mention of aew map is a code comment; no Lead text names it
   - 'src/aew/maps/store.py:51-52 LOG_REL and LOCK_REL: the registry log and the registry lock'
   - docs/implementation/future-work.yaml (row F22.1, at c11a61ea) F22.1 closed with the switch off and investigator only

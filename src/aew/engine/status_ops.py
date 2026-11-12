@@ -114,6 +114,11 @@ class StatusViews:
             lines.append(f"  operator endpoint: running (pid {endpoint.get('pid')}, guarantee "
                          f"{endpoint.get('guarantee')})" if endpoint.get("running") else
                          "  operator endpoint: not running (`aew operator serve --dev`)")
+            problems = steering.get("run_problems")
+            if problems is not None:  # the RUN readiness walk of 2026-11-11, findings 1 and 6: before and under Run
+                in_force = " (Run is in force, and cannot act)" if steering["effective"] == "run" else ""
+                lines += ["  Run: ready"] if not problems else [f"  Run: not ready{in_force}:",
+                                                                *(f"    - {p}" for p in problems)]
         notifier = report.get("notifier")
         if notifier:  # M4-E E7a: delivery failures are visible here and in the dashboard's attention, and move nothing
             dropped = ", ".join(f"{n} {why}" for why, n in sorted(notifier["dropped"].items()))

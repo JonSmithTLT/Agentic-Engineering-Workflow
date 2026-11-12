@@ -282,6 +282,31 @@ class ProjectAdmin:
                         f"process dumpable: {info.get('dumpable')}; same-uid residuals: "
                         + "; ".join(info.get("residuals") or []))
 
+    def run_problems(self, endpoint_running: bool) -> list[str]:
+        """``steering.run_problems`` for the adopted execution policy; an unreadable one is the problem itself."""
+        try:
+            policy, _ = self.k.execution_policy()
+        except Exception as exc:  # noqa: BLE001  reported as Run's problem, and by policy:execution in doctor
+            return [f"the execution policy cannot be read: {getattr(exc, 'code', type(exc).__name__)}: {exc}"]
+        return steering_mod.run_problems(policy, endpoint_running=endpoint_running)
+
+    def _run_ready_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
+        """`steering:run-ready`: whether a raise to Run would be accepted and could act, and each fix (the RUN readiness
+        walk of 2026-11-11, finding 1). Nothing to report where steering is not configured."""
+        from aew.harness import operator_client
+
+        try:
+            configured = self.steering.policy_default() is not None
+        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
+            configured = False
+        if not configured and "steering" not in state:
+            return "PASS", "steering is not configured: Run is not available until the policy names `steering.mode`"
+        problems = self.run_problems(bool(operator_client.status(self.k.aew_root).get("running")))
+        if problems:
+            return "WARN", "Run is not ready: " + "; ".join(f"({i}) {p}" for i, p in enumerate(problems, 1))
+        return "PASS", ("Run is ready: the notifier can deliver, every profile routing can pick has a deadline_s, and "
+                        "the operator endpoint is running; the operator raises it with `aew lead mode raise run`")
+
     def doctor_checks(self) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
 
@@ -391,6 +416,7 @@ class ProjectAdmin:
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
         add("operator-endpoint", *self._endpoint_doctor(state))
+        add("steering:run-ready", *self._run_ready_doctor(state))
         try:  # absent where messaging was never enabled and no thread exists (F9-A: off means absent)
             coordination = self.coordination.doctor_check(state)
         except Exception as exc:  # report, never crash
@@ -1074,7 +1100,9 @@ class Engine:
             if view["configured"] or "steering" in state:  # legacy/manual projects show nothing new (decision 3)
                 from aew.harness import operator_client
 
-                out["steering"] = view | {"operator_endpoint": operator_client.status(self._k.aew_root)}
+                endpoint = operator_client.status(self._k.aew_root)
+                out["steering"] = view | {"operator_endpoint": endpoint,
+                                          "run_problems": self._project.run_problems(bool(endpoint.get("running")))}
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier

@@ -175,7 +175,10 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source."
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source.
+      `steering:run-ready` (the RUN readiness walk of 2026-11-11, finding 1) says whether a raise to Run would be
+      accepted and could act: the notifier, a deadline_s on every profile routing can pick, and the live operator
+      endpoint, each with its fix; a read, like every doctor check."
   - name: init
     home: product
     users: [operator]
@@ -1536,6 +1539,21 @@ commands:
     note: "register E104 (minimal): the default `notify.command` `aew init` writes, which the operator endpoint runs
       for each event; CAPABILITY_UNAVAILABLE (no_desktop_session) with no desktop session, and AEW_ERROR when the
       desktop's own notifier fails"
+  - name: notify file
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "appends one JSON line for the event on stdin to the operator's own file (rotated past the delivery
+      log's bound), or with --check only says whether the path can take one; opens no project and changes no project
+      or control state"
+    mutates_exempt: "operator-only because the file it writes is the operator's notification channel, which never
+      carries an agent's text (A-44), but it changes no project state"
+    probe: [notify, file, /aew-probe/notified.jsonl, --check]
+    refusals: [CAPABILITY_UNAVAILABLE, USAGE]
+    note: "the headless notifier for an endpoint with no desktop session (the RUN readiness walk of 2026-11-11, finding
+      5; the operator's yes the same day): `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
+      as its own engine, as the default; CAPABILITY_UNAVAILABLE (not_writable) when the path cannot take the event"
   - name: settings show
     home: operator-admin
     users: [operator]

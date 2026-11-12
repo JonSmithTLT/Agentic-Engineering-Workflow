@@ -521,11 +521,10 @@ class SteeringLoop:
             return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
                                           f"notifications, to be live: {exc.message}")
         if t.dispatches:
-            missing = S.profiles_without_deadline(policy)
+            missing = S.deadline_problem(policy)
             if missing:
-                return NO_HARD_DEADLINE, (f"{t.name} would start a run, but execution profile(s) {', '.join(missing)} "
-                                          "set no deadline_s: Run never auto-starts a run without a hard deadline "
-                                          "(A1 §3.2)")
+                return NO_HARD_DEADLINE, (f"{t.name} would start a run, but Run never auto-starts a run without a hard "
+                                          f"deadline (A1 §3.2): {missing}")
         return None
 
     def _do(self, act: Activation, picked: Choice, mode: str, now: dict[str, Any], digests: dict[str, str],

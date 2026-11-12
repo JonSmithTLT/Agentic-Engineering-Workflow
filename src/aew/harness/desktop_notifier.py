@@ -57,7 +57,8 @@ TOAST = (
     ".Show([Windows.UI.Notifications.ToastNotification]::new($x))"
 )
 FIX = ("run the operator endpoint (`aew operator serve`) in your desktop session, or set the execution policy's "
-       "`notify.command` to a notifier of your own")
+       "`notify.command` to a notifier of your own: with no desktop (an ssh login), AEW's headless one, "
+       "`[aew, notify, file, <an absolute path>]`, appends each event to that file")
 
 
 def is_default(command: Any) -> bool:
@@ -69,11 +70,15 @@ def is_default(command: Any) -> bool:
 
 
 def runnable(command: Any) -> list[str]:
-    """The argv the endpoint runs for ``command``: the shipped default as this engine's own (its interpreter,
-    ``-m aew``, as the endpoint's autostart starts the endpoint), so an older or missing ``aew`` on ``PATH`` never
-    passes the gate and then fails each delivery; anything else as written."""
+    """The argv the endpoint runs for ``command``: the shipped default, and ``aew notify file``, as this engine's own
+    (its interpreter, ``-m aew``, as the endpoint's autostart starts the endpoint), so an older or missing ``aew`` on
+    ``PATH`` never passes the gate and then fails each delivery; anything else as written."""
+    from aew.harness import file_notifier
+
     if is_default(command):
         return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", *COMMAND[1:]]
+    if file_notifier.matches(command):  # AEW's headless notifier: its own engine too
+        return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", *map(str, command[1:])]
     return [str(part) for part in command]
 
 

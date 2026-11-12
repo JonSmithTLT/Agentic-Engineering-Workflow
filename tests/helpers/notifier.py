@@ -52,15 +52,39 @@ def received(out: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def adopt(project: Any, *, mode: str | None = "crawl", command: list[str] | None = None, **notify_cfg: Any) -> Engine:
-    """Adopt an execution policy with a steering mode and a notifier, as the operator would."""
+# A profile routing picks, with the hard deadline Run needs, as first configuration writes one (`aew init --model`): the
+# raise to Run refuses a policy in which any profile routing can pick has none (A1 §3.2; the RUN readiness walk of
+# 2026-11-11, finding 2). The model is a name only: these tests launch nothing through it.
+RUN_READY = {"configured": True, "harness": "opencode",
+             "profiles": {"default": {"model": "openai/gpt-test", "deadline_s": 3600, "deadline_scope": "run"}},
+             "routing": {"default": "default", "archetypes": {}, "classes": {}, "cards": {}}}
+
+
+def deadlines(doc: dict[str, Any], *, ready: bool = True) -> dict[str, Any]:
+    """``doc``, an execution policy, with every profile routing can pick bounded (``ready``): ``RUN_READY`` where it
+    has none, and a policy that already bounds them kept as it is. Not ``ready``: unconfigured, so no profile can be
+    routed, for a test of the loop's own rule after a raise (an adopt keeps a raise for its generation)."""
+    if not ready:
+        doc.update({"configured": False, "profiles": {},
+                    "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}}})
+    elif steering.deadline_problem(doc):
+        doc.update(json.loads(json.dumps(RUN_READY)))
+    return doc
+
+
+def adopt(project: Any, *, mode: str | None = "crawl", command: list[str] | None = None, ready: bool = True,
+          **notify_cfg: Any) -> Engine:
+    """Adopt an execution policy with a steering mode, a notifier and (``ready``) a deadline on every profile routing
+    can pick, as the operator would."""
+    import yaml
+
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    text = path.read_text(encoding="utf-8").split("\n# --- e7a test ---\n")[0]
-    extra = f"steering:\n  mode: {mode}\n" if mode else ""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if mode:
+        doc["steering"] = {"mode": mode}
     if command:
-        extra += "notify:\n  command: " + json.dumps(command) + "\n"
-        extra += "".join(f"  {k}: {v}\n" for k, v in notify_cfg.items())
-    path.write_text(text + "\n# --- e7a test ---\n" + extra, encoding="utf-8")
+        doc["notify"] = {"command": list(command), **notify_cfg}
+    path.write_text(yaml.safe_dump(deadlines(doc, ready=ready), sort_keys=False), encoding="utf-8", newline="\n")
     project.adopt_policy()
     return Engine.discover(project.root)
 

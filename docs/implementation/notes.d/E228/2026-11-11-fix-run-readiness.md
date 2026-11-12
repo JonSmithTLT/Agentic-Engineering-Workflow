@@ -1,0 +1,16 @@
+**Built (`fix/run-readiness`), from the RUN readiness walk of 2026-11-11 for the operator's Session B, findings 1 to 6 (the Lead's brief; a row is owed, noted here until it is filed):**
+- **Run's readiness is said before the raise:**
+  - `aew doctor`'s `steering:run-ready` reports what stands between the project and a Run that can act, each with its fix: the notifier (`notifier_problem`), a `deadline_s` on every profile routing can pick (`profiles_without_deadline`), and the live operator endpoint. It passes, saying so, when all three hold, and has nothing to report where steering isn't configured.
+  - `aew status`'s Steering block says `Run: ready`, or lists what is missing, and says when Run is in force and cannot act.
+  - One function serves both: `steering.run_problems`.
+- **The raise to Run refuses a policy in which a routable profile has no deadline** (`no_hard_deadline`). It names the profiles and the route (acquire, edit `.aew/policy/execution.yaml`, adopt). This is the loop's own fail-closed rule (A1 §3.2), applied before the operator is asked. Before, the raise was accepted and the first activation that would dispatch stopped `NO_HARD_DEADLINE`. The loop keeps the rule, because an adopt after the raise keeps the raise for its generation.
+- **An unconfigured policy is said to be one:** "the execution policy is not configured: no profile can be routed, so no run has a deadline", with the route. Before, the loop's stop named a profile `<none>`. `steering.deadline_problem` is that one text, for the raise, the loop and doctor.
+- **`aew notify file PATH`, the headless notifier** (the operator's yes the same day, "right if its small sure"):
+  - It is for an endpoint with no desktop session, such as an ssh login on a Linux host. `notify.command: [aew, notify, file, <absolute path>]`.
+  - It takes the event on stdin, as `aew notify desktop` does, and appends one JSON line per event: the time, the toast's title and body (so a raise names its mode), and the event's kind, subject, project, revision and source. It never writes the event's `reason`.
+  - It rotates like the endpoint's delivery log (`notify.LOG_MAX_BYTES`, `notify.LOG_KEEP`).
+  - `--check` says whether the path can take events and writes nothing. Run's gate (`notifier_problem`) checks only the path, since the endpoint runs it as its own engine, as the default.
+  - A delivery it cannot make is a notifier failure (`unavailable`), not `not_executable`.
+  - The desktop notifier's refusal names it as the fix, so `steering:run-ready` does too.
+- **The quickstart's "Unattended Run" section:** the three needs, the edit route, and the three terminals (endpoint, Lead session, raise), with the headless notifier as the option for an ssh login.
+- **Tests:** `test_run_readiness.py` and `test_file_notifier.py`, eight ablations each killed. The test helpers that raise to Run now adopt a deadline on every routable profile first (`notifier.deadlines`, as first configuration writes one). The two loop tests of `NO_HARD_DEADLINE` drop the deadlines after the raise.

@@ -216,6 +216,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.containment.probe`: `_row5` (Path.exists), `_row5` (Path.read_bytes), `_self_test` (Path.exists), `_self_test` (Path.is_dir), `_self_test` (Path.read_bytes), `_stores` (os.path.isdir)
 - `aew.harness.containment.sockets`: `_comm` (open), `_fds` (os.listdir), `_lines` (open), `_owner` (os.stat), `_socket_files` (Path.stat), `_socket_files` (os.scandir), `_stat` (os.lstat)
 - `aew.harness.event_spool`: `Reader.writers` (Path.stat)
+- `aew.harness.file_notifier`: `append` (Path.exists), `append` (Path.stat), `problem` (Path.exists), `problem` (Path.is_dir), `problem` (os.lstat)
 - `aew.harness.model_list`: `cache_key` (Path.open)
 - `aew.harness.notify`: `_lines` (Path.read_text), `_lines` (os.lstat)
 - `aew.harness.opencode.adapter`: `binary_command` (Path.exists), `default_binary` (Path.exists)

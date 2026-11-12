@@ -241,6 +241,46 @@ def profiles_without_deadline(policy: dict[str, Any] | None) -> list[str]:
     return sorted(n for n in names if not (profiles.get(n) or {}).get("deadline_s"))
 
 
+ENDPOINT_DOWN = ("the operator endpoint is not running: start `aew operator serve --dev` in the operator's own "
+                 "terminal, and keep it up while Run is in force (each Run activation needs it live, and it delivers "
+                 "the notifications)")
+
+
+def run_problems(policy: dict[str, Any] | None, *, endpoint_running: bool) -> list[str]:
+    """What stands between this project and a Run that can act, each with its fix: the notifier, a deadline on every
+    profile routing can pick, and the live operator endpoint. Empty when Run is ready. ``doctor``'s
+    `steering:run-ready` and ``status``'s Run line show it (the RUN readiness walk of 2026-11-11, findings 1 and 6);
+    the raise and each Run activation refuse on the same functions."""
+    out = []
+    notifier = notifier_problem(policy)
+    if notifier:
+        out.append(f"the notifier cannot deliver: {notifier}")
+    deadline = deadline_problem(policy)
+    if deadline:
+        out.append(deadline)
+    if not endpoint_running:
+        out.append(ENDPOINT_DOWN)
+    return out
+
+
+def deadline_problem(policy: dict[str, Any] | None) -> str | None:
+    """Why Run could not auto-start a run under ``policy``, with the route to fix it, or ``None``: the one text the
+    raise to Run, each Run activation and ``doctor`` give for :func:`profiles_without_deadline` (the RUN readiness
+    walk of 2026-11-11, findings 2 and 3)."""
+    from aew.engine.first_configuration import post_pin_route
+    from aew.policy import execution as X
+
+    missing = profiles_without_deadline(policy)
+    if not missing:
+        return None
+    if missing == ["<none>"]:
+        return ("the execution policy is not configured: no profile can be routed, so no run has a deadline. Set the "
+                "workers' model with its deadline the way first configuration does (`aew init --model ...` writes "
+                f"one): {post_pin_route(X.REL_PATH)}, giving the profile `deadline_s` (seconds)")
+    return (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: "
+            f"{post_pin_route(X.REL_PATH)}, giving each a `deadline_s` (seconds)")
+
+
 LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)
 LOOP_SCHEMA = "aew/steering-loop/v1"
 
@@ -281,8 +321,9 @@ def notifier_problem(policy: dict[str, Any] | None) -> str | None:
     ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). The operator endpoint delivers
     through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery. The shipped default,
     ``aew notify desktop``, runs the endpoint's own engine (``desktop_notifier.runnable``), so it needs no lookup; it
-    must find a desktop session in the environment the endpoint gives it (register E104, BOY-12.d). A command the
-    operator wrote keeps the executable check alone."""
+    must find a desktop session in the environment the endpoint gives it (register E104, BOY-12.d). AEW's headless
+    notifier, ``aew notify file PATH``, runs the same way, and needs only a path it can write. A command the operator
+    wrote keeps the executable check alone."""
     from aew.harness import desktop_notifier
 
     command = ((policy or {}).get("notify") or {}).get("command") or []
@@ -296,6 +337,11 @@ def notifier_problem(policy: dict[str, Any] | None) -> str | None:
         if missing:
             return f"the default desktop notifier is unavailable: {missing}. Fix: {desktop_notifier.FIX}"
         return None
+    from aew.harness import file_notifier
+
+    if file_notifier.matches(command):  # AEW's headless notifier: its own engine, so only its path is checked
+        missing = file_notifier.problem(str(command[3]))
+        return f"{missing}. Fix: {file_notifier.FIX}" if missing else None
     found = desktop_notifier.resolve(command)
     if not found or not os.path.isfile(found) or not os.access(found, os.X_OK):
         return f"the notifier `{command[0]}` does not resolve to an executable file"
@@ -442,6 +488,12 @@ class Steering:
             if problem:
                 raise IllegalTransition(f"unattended Run needs an executable notifier: {problem} (operator decision 1)",
                                         reason="notifier_unavailable")
+            # The loop's own fail-closed rule, applied before the operator is asked: a Run in which no run could
+            # start is refused here, not found at its first activation (A1 §3.2; the RUN readiness walk, finding 2).
+            missing = deadline_problem(policy)
+            if missing:
+                raise IllegalTransition(f"Run never auto-starts a run without a hard deadline (A1 §3.2): {missing}",
+                                        reason="no_hard_deadline")
 
     # ------------------------------------------------------------------ the Lead's own (A1 §1.2)
 

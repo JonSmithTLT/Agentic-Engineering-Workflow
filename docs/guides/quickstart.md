@@ -285,6 +285,35 @@ aew harness launch INV-0001 --expect-rev N        # relaunch (a fresh session; t
 
 A run's end moves nothing: the Lead still ingests and transitions, as above. Every run works with **workdir separation only**, not filesystem containment, so use scratch repositories and clones until containment exists.
 
+## Unattended Run
+
+Under Run, the steering loop starts Tickets and requests reviews itself, for one Lead generation, and the operator
+endpoint tells you what stops it. A project starts in crawl. Run needs three things, and `aew doctor`'s
+`steering:run-ready` line says which are missing, each with its fix:
+
+- **a notifier that can deliver.** `aew init` sets the desktop one (`[aew, notify, desktop]`). Check it from the
+  terminal the endpoint will run in: `aew notify desktop --check`. With no desktop session there (an ssh login on a
+  Linux host), use the headless one, which appends each event to a file you watch (`tail -f`):
+  `notify.command: [aew, notify, file, /home/you/aew-events.jsonl]`. Check it with
+  `aew notify file /home/you/aew-events.jsonl --check`.
+- **a `deadline_s` on every profile routing can pick.** `aew init --model <provider/model>` writes one (provisional,
+  bounding only runs started under Run). Without it, the raise is refused and names the profiles.
+- **the operator endpoint, up the whole time.** Each Run activation checks it is live.
+
+Changing `notify.command` or a profile is an edit of a pinned file: `aew lead acquire --expect-rev N`, edit
+`.aew/policy/execution.yaml`, then `aew manifest adopt --reason "..." --expect-rev N` at your own terminal. The acquire
+or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release` gives it up.
+
+Then, in three terminals:
+
+```bash
+aew operator serve --dev        # 1: the endpoint; keep it running. It shows the one-time codes
+aew opencode --acquire          # 2: the Lead session (generation 1)
+aew lead mode raise run         # 3: type the code terminal 1 shows; the raise lasts for this Lead generation
+```
+
+`aew status` then shows `Steering: effective run` and `Run: ready`, or what Run is missing while it cannot act.
+
 ## Losing the session
 
 - If OpenCode took the seat itself, start plain `aew opencode` from your terminal on the same host and as the same

@@ -115,6 +115,26 @@ def test_linux_shows_kind_subject_and_project_never_the_reason(monkeypatch):
     assert "agent wrote" not in json.dumps(call, default=str)
 
 
+def test_a_raise_toast_names_the_mode_asked_for_and_never_the_rationale():
+    """The designer's ruling of 2026-11-11 on SYS-04, part 4(b): a raise's toast names the requested mode, an enum,
+    and never the Lead's rationale (its ``reason``)."""
+    raise_ = {**EVENT, "event": "raise_requested", "subject": "SR-1", "reason": "the Lead's own words", "ref": "run"}
+    assert D.text(raise_) == ("AEW: raise requested to run", "SR-1 (project demo)")
+    assert all("the Lead's own words" not in part for part in D.text(raise_))
+
+
+@pytest.mark.parametrize("event", [
+    {"event": "raise_requested", "ref": "run now, said the agent"},  # not one of steering's modes
+    {"event": "raise_requested", "ref": None},
+    {"event": "confirmation_requested", "ref": "run"},  # only a raise's ref is a mode
+    {"event": "hard_deadline", "ref": "walk"},
+])
+def test_a_toast_names_no_ref_that_is_not_a_raise_s_mode(event):
+    title, body = D.text({**EVENT, **event})
+    assert title == "AEW: " + event["event"].replace("_", " ")
+    assert str(event["ref"]) not in body
+
+
 def test_windows_passes_the_text_as_data_and_opens_no_console(monkeypatch):
     """The title and body reach the toast as environment values that the script escapes, never as script text; the
     child gets CREATE_NO_WINDOW."""

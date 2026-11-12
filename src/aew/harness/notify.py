@@ -19,9 +19,14 @@ operator (N3). Nothing here grants, moves or commits anything: a notification is
   untrusted, at most :data:`RATE_PER_MINUTE` deliveries per writer per minute.
 
 **Once per occurrence.** Each event has a key naming its occurrence; the delivery log
-(``.aew/local/notify/deliveries.jsonl``) records it once, delivered, failed or dropped, and a key it holds is never
-delivered again, across passes and endpoint restarts. An event leaves the watcher's outstanding set only once that
-log records it, so stopping the endpoint loses nothing.
+(``.aew/local/notify/deliveries.jsonl``) records it, delivered, failed or dropped, and a key it holds is never
+delivered again, across passes and endpoint restarts. The one exception is a failure because of the notifier itself
+(not configured, the default desktop notifier unavailable, or not executable: :data:`NOTIFIER_FAILURES`): that key
+stays open and is offered again on the first pass where ``notifier_problem`` is clear, so a request recorded before
+the operator set up the notifier still reaches them (the designer's ruling of 2026-11-11 on SYS-04, part 4(a)). The
+limit: only an event a pass derives again is offered again, so an open condition (the Lead's requests, the breaker,
+an anomaly, a reconcile mark) and liveness are, while a transition or a spool line, read once past its cursor, is not.
+An event leaves the watcher's outstanding set only once that log records it, so stopping the endpoint loses nothing.
 
 **Delivery** (decision 1) on one thread serving two lanes (control state and liveness first; :class:`Watcher`),
 never holding the endpoint's ``_authorizing`` or ``_engine_lock`` (a slow notifier never delays a challenge),
@@ -73,6 +78,9 @@ LOG_MAX_BYTES = 1 << 20
 LOG_KEEP = 2  # rotated delivery logs kept: deliveries.1.jsonl, deliveries.2.jsonl
 STATE_MAX_BYTES = 1 << 20
 REAP_S = 5.0  # how long a delivery waits for its pipes and process tree after the notifier ended or was killed
+# A delivery that failed for one of these reasons failed because of the notifier, not the event: its key stays open and
+# is offered again once `notifier_problem` clears (the designer's ruling of 2026-11-11 on SYS-04, part 4(a)).
+NOTIFIER_FAILURES = frozenset({"not_configured", "unavailable", "not_executable"})
 # The Lead generation ends by these operations, read from the transition log (plan v3 §2.8; crash and stale come from
 # the broker's liveness record).
 GENERATION_OPS = {"lead.takeover": "takeover", "lead.handoff.accept": "handoff", "lead.release": "release"}
@@ -201,31 +209,55 @@ def deliver(command: list[str], event: dict[str, Any], *, timeout_s: float, max_
 # ---------------------------------------------------------------------------------------------- the delivery log
 
 
+def retryable(entry: dict[str, Any]) -> bool:
+    """Whether a delivery-log line leaves its key open: a failure because of the notifier itself
+    (:data:`NOTIFIER_FAILURES`), which the watcher offers again once the notifier can deliver."""
+    return entry.get("outcome") == "failed" and entry.get("reason") in NOTIFIER_FAILURES
+
+
 class DeliveryLog:
     """``deliveries.jsonl``: one line per occurrence (delivered, failed or dropped), keyed; bounded and rotated like
-    the typed-tool log. The keys of every kept file are loaded once, so a restarted endpoint delivers nothing twice."""
+    the typed-tool log. The keys of every kept file are loaded once, oldest line first so a key's latest line decides,
+    and a restarted endpoint delivers nothing twice. A key whose latest line is a notifier failure (:func:`retryable`)
+    is held open, not final."""
 
     def __init__(self, aew_root: Path) -> None:
         self.dir = notify_dir(aew_root)
         self.path = self.dir / DELIVERIES
         self._mu = threading.Lock()
-        self.keys: set[str] = set()
+        self.keys: set[str] = set()  # every key the log holds
+        self.open: set[str] = set()  # of those, the ones whose latest line is retryable
         for p in [*(self._rotated(n) for n in range(LOG_KEEP, 0, -1)), self.path]:
             for line in _lines(p):
                 if isinstance(line.get("key"), str):
-                    self.keys.add(line["key"])
+                    self._note(line)
 
     def _rotated(self, n: int) -> Path:
         return self.dir / f"deliveries.{n}.jsonl"
+
+    def _note(self, entry: dict[str, Any]) -> None:
+        self.keys.add(entry["key"])
+        if retryable(entry):
+            self.open.add(entry["key"])
+        else:
+            self.open.discard(entry["key"])
 
     def seen(self, key: str) -> bool:
         with self._mu:
             return key in self.keys
 
+    def held(self, key: str) -> str | None:
+        """``"final"`` for a key the log closed (delivered, dropped, or failed for any reason but the notifier),
+        ``"open"`` for one whose latest line is a notifier failure, ``None`` for a key it does not hold."""
+        with self._mu:
+            if key not in self.keys:
+                return None
+            return "open" if key in self.open else "final"
+
     def record(self, entry: dict[str, Any]) -> None:
         text = json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n"
         with self._mu:
-            self.keys.add(entry["key"])
+            self._note(entry)
             try:
                 self.dir.mkdir(parents=True, exist_ok=True)
                 try:
@@ -324,8 +356,9 @@ class Watcher:
     counted and shown in ``status`` (``last_pass_error``), and never stops the others.
 
     **Two lanes.** Control-state and liveness events go to the urgent lane, which the delivery thread always serves
-    first, and are never recorded with a non-final outcome: they are bounded by the state they come from (the
-    transition catch-up bound, the open conditions; liveness is rate-bounded). Spool events, untrusted, go to a
+    first, and are never recorded with a non-final outcome, except a failure because of the notifier, which leaves
+    the key open (as the module says): they are bounded by the state they come from (the transition catch-up bound,
+    the open conditions; liveness is rate-bounded). Spool events, untrusted, go to a
     bounded lane, rate-bounded per writer and across writers; past those bounds a line is dropped, recorded and
     counted.
 
@@ -373,6 +406,7 @@ class Watcher:
             "last_pass_error": _dict(saved.get("last_pass_error")) or None,
             "dropped": {str(k)[:32]: _count(v) for k, v in dropped.items()}}
         self._reoffer = _saved_spool_lines(saved.get("outstanding"))
+        self._ready: bool | None = None  # this pass's answer to whether the notifier can deliver
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -451,6 +485,7 @@ class Watcher:
     def _pass(self) -> None:
         failed: list[str] = []
         error = ""
+        self._ready = None  # the notifier is asked again each pass (`_notifier_ready`)
         try:
             state: dict[str, Any] | None = self.engine.store.read_committed()
         except Exception as exc:  # noqa: BLE001  the control file unreadable now: the spool still delivers
@@ -625,11 +660,27 @@ class Watcher:
 
     # ------------------------------------------------------------------ queueing and delivery
 
+    def _notifier_ready(self) -> bool:
+        """Whether the adopted notifier can deliver now: asked at most once a pass, and only when an open key is
+        offered. An unreadable policy is not ready."""
+        if self._ready is None:
+            from aew.engine.steering import notifier_problem
+
+            try:
+                policy, _ = self.engine.execution_policy()
+                self._ready = notifier_problem(policy) is None
+            except Exception:  # noqa: BLE001  a drifted or unreadable policy: the key stays open, offered later
+                self._ready = False
+        return self._ready
+
     def _offer(self, key: str, body: dict[str, Any], *, lane: str, writer: str | None = None,
                rev: int | None = None, line: str | None = None) -> None:
-        with self._mu:
-            if key in self._outstanding or self.log.seen(key):
+        with self._mu:  # the delivery thread records a key before it leaves the outstanding set: never offered twice
+            if key in self._outstanding:
                 return
+            held = self.log.held(key)
+        if held == "final" or (held == "open" and not self._notifier_ready()):
+            return  # an open key is offered again only once the notifier can deliver: no failed line each pass
         if writer is not None and not self._within_rate(writer, RATE_PER_MINUTE):
             self._record(key, body, {"outcome": "dropped", "reason": "rate"})
             self._dropped("rate")

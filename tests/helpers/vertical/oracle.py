@@ -195,7 +195,7 @@ def code_facts() -> Facts:
                            + "; ".join(tied.unresolved))
     routes = frozenset(str(r["route"]) for r in adopted.matrix() if r["api"] == "D01")
     # Both switches on, as every walk that classifies commands builds it (build_parser's docstring).
-    commands_ = cli_commands(build_parser(recall_search=True, coordination_reads=True))
+    commands_ = cli_commands(build_parser(recall_search=True, coordination_reads=True, worker_messaging=True))
     return Facts({a: r["origin"] for a, r in adopted.registry().items()}, reading.origin, reading.action, routes,
                  frozenset(tied.served) & routes, commands_)
 

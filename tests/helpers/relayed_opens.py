@@ -163,7 +163,7 @@ def main() -> None:
         _plant(a.plant)
     engine = Engine.discover(Path(a.root))
     values = (str(Path(a.values) / MARK / "x"), f"../../../../{MARK}/x")
-    parser = cli_main.build_parser(recall_search=True, coordination_reads=True)
+    parser = cli_main.build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     sys.addaudithook(_hook)
     for module, name in ((os, "stat"), (os, "lstat"), (os, "access"), (os.path, "exists"), (os.path, "isfile"),
                          (os.path, "isdir")):

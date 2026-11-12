@@ -394,6 +394,25 @@ def test_a_process_check_that_cannot_answer_is_unprovable_never_an_error(monkeyp
     assert stale is not None and stale.reason == "stale"
 
 
+def test_liveness_judges_implicit_now_before_a_slow_process_check(monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.harness import operator_client
+
+    clock = [100.0]
+    record = _liveness(beat_at=clock[0], watchdog_tick_at=clock[0])
+    monkeypatch.setattr(broker_liveness, "time", SimpleNamespace(time=lambda: clock[0]))
+
+    def delayed_identity(record):
+        clock[0] += 3.0
+        return True
+
+    monkeypatch.setattr(operator_client, "same_process", delayed_identity)
+    assert broker_liveness.judge(record, generation=1, poll_s=1.0) is None
+    monkeypatch.setattr(operator_client, "same_process", lambda record: True)
+    assert broker_liveness.judge(record, generation=1, poll_s=1.0).reason == "stale"
+
+
 def test_a_failing_source_never_stops_the_others_and_shows_in_status(project, tmp_path, monkeypatch):
     """Each source is isolated: the liveness record failing (here as Linux's `os.kill` fails for a pid past
     `pid_t`) never stops control-state or spool notifications, and the failing source is shown in `status`."""

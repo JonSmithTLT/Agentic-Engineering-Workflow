@@ -165,6 +165,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:mark_serving`: no static call chain from any entry point's declaring function reaches this writer

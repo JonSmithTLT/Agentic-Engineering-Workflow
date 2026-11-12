@@ -10,6 +10,8 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.operator_client:sessions_lock`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.operator_endpoint:OperatorEndpoint._within`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.told_messages:record`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.weaker_register:_locked`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.maps.store:select`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.process_kind`: a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed
@@ -145,6 +147,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.supervisor:Supervisor.start`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.supervisor:contain_launch`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.usage_live:Meter._persist`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer

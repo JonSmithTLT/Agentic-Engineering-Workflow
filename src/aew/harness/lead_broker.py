@@ -130,6 +130,8 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
               frozenset({"invoke", "create"}))
 POLL_S = 1.0
+RECEIPT_CLOSE_LOCK_S = 2.0  # let a successful send finish its receipt; a stalled client cannot hold close forever
+# If that bound expires, receipt remains uncertain and the body may be re-shown; never claim an unrecorded receipt.
 
 # The reads a contained Lead relays to its broker, which runs them on the host (STG-05 CS-4 addendum 4, ruling 1). What
 # they read is under `.aew/local`, which the Lead's sandbox masks whole: the runs' records, the notifier's and the
@@ -183,6 +185,9 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("opencode", "the operator's own: it starts a Lead session"),
     ("check run", "a worker run's, through its run's bridge"), ("submit", "a worker run's, through its run's bridge"),
     ("whoami", "a worker run's, through its run's bridge"),
+    ("message reply", "a worker run's, through its run's bridge"),
+    ("message read", "a worker run's, through its run's bridge"),
+    ("message wait", "a worker run's, through its run's bridge"),
     ("integrate custody", "AEW's own custody worker, started by the engine"),
 )}
 
@@ -314,7 +319,12 @@ class LeadBroker:
             return quiet_wake_s(policy)
 
         queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
-                          new_id=poster.new_id,
+                          new_id=poster.new_id, generation=self.generation,
+                          messages=own.message_delivery_view, available=own.message_available_ids,
+                          current=self._receipt_current, serial=self.server.serialized,
+                          verify=own.message_result_ids,
+                          ended_result=lambda run: own.harness_wait(run, timeout=0, triggers=True,
+                                                                   message_after={}, record_return=False),
                           loop_ingests=lambda state, work_id: self.loop is not None and self.loop.will_ingest(
                               dict(state), work_id, own))
 
@@ -345,7 +355,13 @@ class LeadBroker:
     def close(self) -> None:
         if self.loop is not None:  # no new auto-run action once the session starts closing (review of PR #199, F4)
             self.loop.request_stop()
-        self._stop.set()
+        # A typed result sends and records its receipt under this same serialization. Closing immediately after
+        # receiving those bytes must not invalidate the receipt in the gap before its successful-send write.
+        try:
+            with self.server.serialized(timeout=RECEIPT_CLOSE_LOCK_S):
+                self._stop.set()
+        except TimeoutError:
+            self._stop.set()  # a stalled client write must not keep the session alive without a bound
         if self._wakes is not None:
             from aew.harness.wake_queue import clear_serving
 
@@ -403,9 +419,30 @@ class LeadBroker:
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if op == "lead.tool":  # cooperative: it takes the serialization itself
-            return self._tool(args)
+            answer = self._tool(args)
+
+            def deliver_tool(send: Callable[[Any], None]) -> None:
+                from aew.surface import run as surface_run
+
+                with self.server.serialized():
+                    send(answer)
+                    if self._receipt_current() and "stage_result" in answer:
+                        surface_run.record_message_result(self.engine, answer["stage_result"], self._token)
+
+            return bridge.ResultDelivery(deliver_tool)
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
-            return run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track)
+            receipts: list[Callable[[], None]] = []
+            answer = run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
+                              on_result=self._read_receipt_unlocked, defer_receipt=receipts.append)
+
+            def deliver_read(send: Callable[[Any], None]) -> None:
+                with self.server.serialized():
+                    send(answer)
+                    for receipt in receipts:
+                        if self._receipt_current():
+                            receipt()
+
+            return bridge.ResultDelivery(deliver_read)
         problem = self._authority_lost()
         if problem:
             self.superseded = problem
@@ -418,6 +455,45 @@ class LeadBroker:
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
         return run_cli(self.engine, self._token, argv, cwd, stdin, channel="lead_broker")
+
+    def _receipt_current(self) -> bool:
+        if self._stop.is_set() or self.server.closed:
+            return False
+        try:
+            state = self.engine.store.read_committed()
+            require_held_lead(state, self._token)
+            return state["lead"]["generation"] == self.generation
+        except errors.AEWError:
+            return False
+
+    def _read_receipt(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
+        """Only verified complete bodies in this successful host read, in its original request scope.
+        This serialization is shared with the queue's final selection; no control session or durable shown write.
+        Direct-test wrapper only: production lead.read calls the unlocked inner helper under its send lock."""
+        with self.server.serialized():
+            self._read_receipt_unlocked(result, ns)
+
+    def _read_receipt_unlocked(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
+        """Receipt inner path: caller holds broker serialization across the successful send and all receipts."""
+        from aew.harness import told_messages
+
+        path = command_path(ns)
+        if path not in {frozenset({"status"}), frozenset({"resume"}), frozenset({"harness", "status"}),
+                        frozenset({"harness", "wait"})}:
+            return
+        work_id = ns.work_id if path == frozenset({"status"}) else None
+        invocations = ({ns.invocation} if path == frozenset({"harness", "status"}) and ns.invocation else None)
+        if path == frozenset({"harness", "wait"}):
+            # Only registered runs of this project; a caller's string cannot invent an invocation identity.
+            state = self.engine.store.read_committed()
+            invocations = {inv_id for inv_id, inv in state["invocations"].items()
+                           if any(r["run"] in ns.run for r in inv.get("runs") or [])}
+        if not self._receipt_current():
+            return
+        ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
+                                              runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
+        if ids:
+            told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
 
     def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
         with self._reads_lock:
@@ -631,7 +707,9 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
 
 
 def run_read(engine: Any, argv: list[str], cwd: str,
-             track: Callable[[subprocess.Popen[str], bool], None] | None = None) -> dict[str, Any]:
+             track: Callable[[subprocess.Popen[str], bool], None] | None = None, *,
+             on_result: Callable[[dict[str, Any], argparse.Namespace], None] | None = None,
+             defer_receipt: Callable[[Callable[[], None]], None] | None = None) -> dict[str, Any]:
     """Run one read relayed for the contained Lead (``RELAYED_READS``; STG-05 CS-4 addendum 4, ruling 1) on the host,
     and return what it printed, as it printed it, with its exit status. The request is parsed against the command's
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
@@ -641,7 +719,8 @@ def run_read(engine: Any, argv: list[str], cwd: str,
 
     That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
     writer, records that (:func:`record_delivery`), as the Lead's typed wait records it: the triggers it returned are
-    returned once, and an end it returned is no wake."""
+    returned once, and an end it returned is no wake. The live bridge supplies ``defer_receipt`` so both these marks
+    and ``on_result`` message receipts run only after its successful send; direct helper callers complete inline."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
@@ -696,7 +775,13 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
     detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                 else {"start_new_session": True})
-    with subprocess.Popen([sys.executable, "-m", "aew", *argv], cwd=str(target), env=env, stdin=subprocess.DEVNULL,
+    # Read once as a machine envelope, then render those exact bytes' data for the readable forms. Never infer
+    # identities by parsing readable worker text or by running a second, potentially different query.
+    machine = (on_result is not None and path in {frozenset({"status"}), frozenset({"resume"})}
+               and engine.messaging_enabled())
+    child_argv = [*argv, "--json"] if machine and not ns.json else argv
+    with subprocess.Popen([sys.executable, "-m", "aew", *child_argv], cwd=str(target), env=env,
+                          stdin=subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                           **detached) as proc:  # leaving it closes the pipes and reaps the process
         if track is not None:
@@ -712,8 +797,27 @@ def run_read(engine: Any, argv: list[str], cwd: str,
         finally:
             if track is not None:
                 track(proc, False)
+
+    def complete(receipt: Callable[[], None]) -> None:
+        if defer_receipt is None:
+            receipt()  # direct helper compatibility; the live bridge defers until successful send
+        else:
+            defer_receipt(receipt)
+
     if wait:
-        record_delivery(project, list(ns.run), out)
+        wait_out = out
+        complete(lambda: record_delivery(project, list(ns.run), wait_out))
+    if on_result is not None and proc.returncode == 0:
+        try:
+            result = json.loads(out)
+        except ValueError:
+            result = None
+        if isinstance(result, dict):
+            if machine and not ns.json:
+                out = (engine.render_status(result) if ns.command == "status" else engine.render_resume(result))
+                if not out.endswith("\n"):
+                    out += "\n"
+            complete(lambda: on_result(result, ns))
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
 
 
@@ -925,7 +1029,9 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                 opencode_kind: str | None = None, prompt_token: bool = False,
                 env: dict[str, str] | None = None,
                 with_token: Callable[[str], None] | None = None,
-                on_ready: Callable[[], None] | None = None) -> dict[str, Any]:
+                on_ready: Callable[[], None] | None = None,
+                prepare_env: Callable[[dict[str, str], frozenset[str]], dict[str, str]] | None = None
+                ) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -1000,6 +1106,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
 
             if ENV_SWITCHES not in broker_env:
                 child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
+            if prepare_env is not None:
+                child_env = prepare_env(child_env, broker.surface_switches)
             harness = contained(broker.server.private_dir, child_env)
             if harness.poster is not None:
                 broker.start_wakes(harness.poster)

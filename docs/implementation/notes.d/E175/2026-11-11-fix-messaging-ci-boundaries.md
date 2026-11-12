@@ -40,3 +40,13 @@ Merge with main a41a0866 (#447): preserve both seat resume/prompt selection and 
 after the new seat's offer and broker snapshot. A combined regression covers resumed sessions with messaging off/on.
 The merge gate found six test_opencode_selects_the_seat_or_existing_credential cases whose guide_of stub did not
 accept the new snapshot keyword; extend that stub, preserving every seat/credential assertion.
+
+CI b9456c79, run 43135354992: Windows integration 9/13 failed
+test_lead_wake_status.py::test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn,
+at its initial some_broker_posts assertion, before editing policy. The isolated Windows case passed; the exact CI
+schedule is not reproduced. That assertion mixes the policy property with a live heartbeat's two-second freshness
+window and concurrent file replacements. Use the existing clock/idle seams to hold only the heartbeat at its
+synchronous initial record and judge it on the same test clock; the real wake/watchdog threads still detect the
+actual unadopted policy edit. Keep the original positive and negative posting assertions, and additionally prove
+the unmodified liveness judge calls an aged record stale. No production liveness rule, timing threshold, deadline,
+platform skip or retry changes. The failing test ID was reported before another push.

@@ -56,7 +56,7 @@ def anchor_of(handler: Any) -> tuple[str, str] | None:
 def live_commands() -> dict[str, tuple[str, str] | None]:
     from aew.cli.main import build_parser
 
-    parser = build_parser(recall_search=True, coordination_reads=True)
+    parser = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     return {" ".join(path): anchor_of(leaf.get_default("handler")) for path, leaf in leaves(parser)}
 
 

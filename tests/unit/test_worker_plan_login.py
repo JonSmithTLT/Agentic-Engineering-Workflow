@@ -64,7 +64,9 @@ def test_plan_admission_records_only_the_provider_and_pot_and_explain_names_it(s
         monkeypatch.setenv(name, store[name])
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     policy = {"provider_env": ["OPENAI_API_KEY"]}
-    invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)), roles=None)
+    coordination = SimpleNamespace(project_switch=lambda _: "disabled")
+    invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)),
+                              roles=None, coordination=coordination)
     pin = {**PROFILE, "harness": "opencode"}
     inv = {"execution_profile": pin, "status": "active", "token_id": "token-id"}
     inv_id = "INV-0001"

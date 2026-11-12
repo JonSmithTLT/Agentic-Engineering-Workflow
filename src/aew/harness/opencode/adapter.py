@@ -76,7 +76,6 @@ from aew.harness.contract import (
     UNAVAILABLE_TOOLS,
     LaunchContract,
 )
-from aew.harness.harness_capabilities import GAP as CAP_GAP
 from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
@@ -93,6 +92,7 @@ from aew.harness.opencode.client import (
     location,
 )
 from aew.harness.usage_live import Meter
+from aew.harness.wait_binding import Binding, Calls, qualified
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
@@ -388,7 +388,9 @@ class OpenCodeAdapter(HarnessAdapter):
                                                         "there is no role of its own"),
         "read_model_list": Support(CAP_YES, "`GET /api/model` on a server started as a launch starts it, with no "
                                             "session"),
-        "report_step_and_shell_calls": Support(CAP_GAP, "qualification and worker wait lifetime binding not built yet",
+        "report_step_and_shell_calls": Support(CAP_PARTIAL, "call/step/reconnect binding on qualified Linux 2.2.6; "
+                                               "Windows runtime NOT RUN and worker wait refused there; deterministic "
+                                               "fake/process coverage on both hosts is not runtime qualification",
                                                "E175"),
     }
 
@@ -415,6 +417,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self._idle_seen: str | None = None
         self._lead_interrupted = False
         self._lock = threading.RLock()
+        self._wait_calls = Calls()
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._monitor: threading.Thread | None = None
@@ -601,7 +604,7 @@ class OpenCodeAdapter(HarnessAdapter):
         if self.meter is not None:
             self.meter.main_session = self.session
         self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(agent_env)})
-        self.events = EventStream(self.client, self._on_event, self.server.alive)
+        self.events = EventStream(self.client, self._on_event, self.server.alive, on_drop=self._stream_dropped)
         self.events.start()
         self._monitor = threading.Thread(target=self._watch, name="aew-opencode-monitor", daemon=True)
         self._monitor.start()
@@ -637,7 +640,9 @@ class OpenCodeAdapter(HarnessAdapter):
                            pinned_model=projection.model_ref(contract.execution_profile),
                            progress=progress.Tracker(run=self.run_dir.name, workspace=contract.workspace,
                                                      scope_paths=contract.extra.get(progress.SCOPE_PATHS),
-                                                     clock=time.time, changed=_changed_now(contract)),
+                                                      clock=time.time, changed=_changed_now(contract),
+                                                      messaging=(contract.extra.get("coordination") or {}).get(
+                                                          "messaging") == "enabled"),
                            progress_path=self.run_dir / runlog.PROGRESS_FILE)
         try:
             self.meter.set_prompt_state("unsent")
@@ -1013,6 +1018,39 @@ class OpenCodeAdapter(HarnessAdapter):
 
     # ------------------------------------------------------------------ watching
 
+    @property
+    def reports_steps(self) -> bool:
+        # Only the measured platform/version may serve a bound worker wait. Windows remains NOT RUN / GAP.
+        return qualified(sys.platform, str(self.health.get("version")))
+
+    def open_step(self) -> str | None:
+        with self._lock:
+            return self._wait_calls.step
+
+    def open_shell_calls(self) -> list[str]:
+        with self._lock:
+            return sorted(self._wait_calls.calls)
+
+    def wait_binding(self) -> Binding | None:
+        with self._lock:
+            return self._wait_calls.snapshot()
+
+    def wait_binding_valid(self, binding: Binding) -> bool:
+        with self._lock:
+            return not self._stop.is_set() and self._wait_calls.valid(binding)
+
+    def while_wait_bound(self, binding: Binding, action: Callable[[], None]) -> bool:
+        """Final bridge send and the stream's lifetime updates share the adapter lock."""
+        with self._lock:
+            if not self.wait_binding_valid(binding):
+                return False
+            action()
+            return True
+
+    def _stream_dropped(self) -> None:
+        with self._lock:
+            self._wait_calls.clear()
+
     def _on_event(self, frame: dict[str, Any]) -> None:
         kind = str(frame.get("type") or "")
         raw = frame.get("data")
@@ -1025,8 +1063,11 @@ class OpenCodeAdapter(HarnessAdapter):
             return
         if kind == "session.step.started" and isinstance(data.get("model"), dict):
             self.step_models.append(data["model"])
-        if kind == "session.tool.input.started" and data.get("id"):
+        if kind == "session.tool.input.started" and data.get("id") and sid == self.session and self.session is not None:
             self.tool_names[str(data["id"])] = str(data.get("name"))
+        if sid == self.session and self.session is not None:
+            with self._lock:
+                self._wait_calls.event(kind, data, self.tool_names.get(str(data.get("id"))))
         if kind in LOGGED_EVENTS:
             summary: dict[str, Any] = {"event": f"opencode.{kind}"}
             for key in ("finish", "reason", "action", "inboxID", "assistantMessageID"):
@@ -1152,6 +1193,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn == "ended":
                 return
             self.turn, self.exit_code, self.detail, self.reason_code = "ended", code, detail, reason_code
+            self._wait_calls.clear()
         self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail,
                    **({"reason_code": reason_code} if reason_code else {})})
 

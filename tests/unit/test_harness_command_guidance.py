@@ -194,7 +194,6 @@ def _adapter_ended(_monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> str:
 
 
 def _send_route(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> str:
-    monkeypatch.setattr("aew.engine.harness_ops.SNAPSHOT_RECORDED", True)
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         send_route("disabled", "enabled", "next-step", invocation=harness_contract.invocation_of_run("R-INV-0012-1"))
     return str(raised.value)
@@ -276,7 +275,6 @@ def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(mon
     harness = Harness.__new__(Harness)
     harness.coordination = SimpleNamespace(project_switch=lambda _state: "disabled")
     monkeypatch.setattr("aew.engine.harness_ops.run_messaging_snapshot", lambda _entry: "enabled")
-    monkeypatch.setattr("aew.engine.harness_ops.SNAPSHOT_RECORDED", True)
     admitted: list[Callable[[dict[str, object], dict[str, object]], None]] = []
 
     def capture(_token: str, _run: str, _kind: str, _payload: dict[str, str], *, current: bool, admit: Callable[

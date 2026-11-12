@@ -201,6 +201,8 @@ class Harness:
                           "launched_at": utc_now(),
                           "kind": "relaunch" if previous else "launch", "generation": state["lead"]["generation"]}
             runs.append(run_record)
+            if self.coordination.project_switch(state) == X.MESSAGING_ENABLED:
+                runs[-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
@@ -229,16 +231,19 @@ class Harness:
             return False
         return wake_queue.some_broker_posts(self.k.aew_root)
 
-    def _wait_on(self, runs: list[str]) -> str:
+    def _wait_on(self, runs: list[str], state: dict[str, Any] | None = None) -> str:
         """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait, which says when it
-        is the fallback for a broker that isn't posting (steering design r4 §1)."""
+        is the fallback for a broker that isn't posting (steering design r4 §1). Reuse a caller's ``state`` rather
+        than re-parsing control state for guidance (OBX-38)."""
         if self.wakes_reach_lead():
             return K.wake_step(runs)
+        messaging = self.coordination.project_switch(
+            self.k.store.current() if state is None else state) == X.MESSAGING_ENABLED
         try:
             fallback = X.wakes_post_here(self.k.execution_policy()[0])
         except AEWError:
             fallback = False
-        return K.no_broker_step(runs) if fallback else K.wait_step(runs)
+        return K.no_broker_step(runs, messaging=messaging) if fallback else K.wait_step(runs, messaging=messaging)
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -344,6 +349,9 @@ class Harness:
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))
         if inv.get("allowed_operations") is not None:
             ops &= set(inv["allowed_operations"])
+        runs = inv.get("runs") or []
+        if runs and run_messaging_snapshot(runs[-1]) == X.MESSAGING_ENABLED:
+            ops |= {"message.reply", "message.read", "message.wait"}
         return sorted(ops)
 
     def harness_contract(self, state: dict[str, Any], inv_id: str, run: str) -> K.LaunchContract:
@@ -409,6 +417,8 @@ class Harness:
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or []),
+                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
+                       r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
                    K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
@@ -520,7 +530,8 @@ class Harness:
         raise NotFound(f"no run {run}")
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
+                     triggers: bool = False, lead: bool = False,
+                     message_after: dict[str, int] | None = None, record_return: bool = True) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -567,6 +578,23 @@ class Harness:
         for run in names:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
+        messaging = (triggers and K.WORKER_MESSAGE in K.waited_on(
+            self.coordination.project_switch(state) == X.MESSAGING_ENABLED))
+        invocation_ids = {target[0] for target in targets.values()}
+        cursor = message_after
+        if messaging and cursor is None:
+            cursor = (self.coordination.message_cursor(state, invocation_ids)
+                      if process_kind.kind() == process_kind.STORE_WRITER else {})
+
+        def messages(*, ended: bool = False) -> dict[str, Any] | None:
+            view = (self.coordination.delivery_view(self.k.store.current(), invocations=invocation_ids,
+                                                     after=None if ended else cursor, runs=set(names))
+                     if messaging else None)
+            if view is not None:
+                eligible = {m["id"] for m in view["awaiting_lead"]}
+                view["awaiting_lead"] = [m for m in view["awaiting_lead"] if P.holds(
+                    None, {"why": K.WORKER_MESSAGE, "message": m["id"]}, eligible_messages=eligible)]
+            return view
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
         returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
 
@@ -613,6 +641,14 @@ class Harness:
                         status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
                         return ended[0], status, record, ended[1]
             if triggers:  # a live run that needs the Lead (steering PR 1)
+                view = messages()
+                bodies = (view or {}).get("awaiting_lead") or []
+                if bodies:
+                    run = bodies[0]["run"]
+                    woke.update(run=run, triggers=[{"why": K.WORKER_MESSAGE, "message": m["id"]} for m in bodies],
+                                messages=view)
+                    status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+                    return run, status, record, None
                 for run in targets:
                     found, newest = P.pending(runlog.read_progress(runlog.run_dir(self.k.aew_root, run)),
                                               returned[run])
@@ -630,20 +666,25 @@ class Harness:
             # observation.
             woken = wake_queue.some_broker_posts(self.k.aew_root)
             again = {"timed_out": True, "runs": digests(), "run_capabilities": capabilities(),
-                     "next_action": K.wake_step(names) if woken else K.wait_step(names, again=True)}
+                     "next_action": (K.wake_step(names) if woken
+                                     else K.wait_step(names, again=True, messaging=messaging))}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
             return {"statuses": statuses, **again}
         run, status, record, control = found
         if woke:  # a trigger: the run still works, and the wake's shape says what it needs (steering PR 1)
-            shape = P.wake([t["why"] for t in woke["triggers"]], digests())
+            view = woke.get("messages")
+            shape = P.wake([t["why"] for t in woke["triggers"]], digests(),
+                           messages=(view or {}).get("awaiting_lead"))
             others = [r for r in names if r != run]
             result = {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
                       "run_capabilities": capabilities(),
-                      "next_action": K.trigger_step(shape["why"], run, others, then=(
+                       "next_action": K.trigger_step(shape["why"], run, others, then=(
                           K.wake_step([run, *others], after_a_start=False)
-                          if wake_queue.some_broker_posts(self.k.aew_root) else None))}
-            if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+                           if wake_queue.some_broker_posts(self.k.aew_root) else None), messaging=messaging)}
+            if view is not None:
+                result["coordination"] = view
+            if record_return and process_kind.kind() == process_kind.STORE_WRITER:
                 record_told(self.k.aew_root, result, lead=lead)
             return result
         inv = targets[run][1]
@@ -654,8 +695,13 @@ class Harness:
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
-                    **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
-        if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+                     **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
+        view = messages(ended=True)
+        if view is not None:
+            out["coordination"] = view
+            bodies = view["awaiting_lead"]
+            out.update(P.wake([K.RUN_ENDED, *([K.WORKER_MESSAGE] if bodies else [])], digests(), messages=bodies))
+        if record_return and process_kind.kind() == process_kind.STORE_WRITER:
             record_told(self.k.aew_root, out, lead=lead)
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
@@ -683,7 +729,7 @@ class Harness:
         if action is None:  # `aew status` no longer lists the run: say why (E122 review, m1)
             action = self._unlisted_run(current, run, targets[run][0])
         if out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
-            action = f"{action}; then {self._wait_on(out['still_running'])}"
+            action = f"{action}; then {self._wait_on(out['still_running'], current)}"
         out["next_action"] = K.run_ended_step(action)
         return out
 
@@ -772,8 +818,7 @@ class Harness:
         * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
           (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
         * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal. The Lead relaunches
-          the run, except with the project switched on before MS4 records snapshots: then sending needs messaging
-          switched off.
+          the run to record a launch snapshot matching the current adopted switch.
 
         A refusal writes nothing: no request file, no control-state entry, nothing posted. Work and invocation state
         do not change."""
@@ -855,7 +900,7 @@ class Harness:
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: {self._wait_on([run])}"
+                action = f"{run} is running for {inv_id}: {self._wait_on([run], state)}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
@@ -1029,21 +1074,11 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 MAX_SEND_CHARS = 1 << 20
 
 
-# Whether a run can carry a launch snapshot of the messaging switch. False until F9-A's MS4 writes it: MS4 deletes this
-# constant together with the ``run_messaging_snapshot`` stub below, and with it the pre-MS4 remedy in ``send_route``
-# (review of PR #176, finding 1: until then a relaunch never clears the mismatch, so the refusal must not advise one).
-SNAPSHOT_RECORDED = False
-
-
 def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
-    """The messaging switch as the run snapshotted it at launch (F9-A plan v4 D-15): ``enabled`` or ``disabled``.
-
-    F9-A's MS4 writes the snapshot (a run carries ``coordination: {messaging: enabled}`` only when enabled) and is not
-    built yet, so no run can carry one, and every run reads as launched with messaging off, which is what an absent
-    snapshot means. MS4 replaces this with the real read and adds the ``off_on`` case (amendment 2 §3.1, §7: the HS1 and
-    MS4 coupling)."""
-    del run_entry  # read from MS4 on
-    return X.MESSAGING_DISABLED
+    """The immutable launch snapshot; an old or absent snapshot is off, never today's project policy."""
+    snapshot = run_entry.get("coordination")
+    return (X.MESSAGING_ENABLED if isinstance(snapshot, dict) and snapshot.get("messaging") == X.MESSAGING_ENABLED
+            else X.MESSAGING_DISABLED)
 
 
 def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
@@ -1051,17 +1086,11 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
     and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
-    switched off always allows; with the project switched on, a relaunch helps only once MS4 records snapshots, and
-    until then sending needs messaging switched off (``SNAPSHOT_RECORDED``). ``invocation`` is the run's, for the
-    relaunch command the remedy prints."""
+    switched off or on records the matching snapshot. ``invocation`` is the run's, for the relaunch remedy."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
-        if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
-            remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                      f"{K.EXPECT_REV}`) and send to the new run")
-        else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
-            remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
-                      "until then `harness send` needs messaging switched off: ask the operator")
+        remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
+                  f"{K.EXPECT_REV}`) and send to the new run")
         raise MessagingSnapshotMismatch(
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)

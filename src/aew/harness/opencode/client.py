@@ -235,10 +235,11 @@ class EventStream:
     """
 
     def __init__(self, client: Client, on_event: Callable[[dict[str, Any]], None],
-                 alive: Callable[[], bool]) -> None:
+                 alive: Callable[[], bool], *, on_drop: Callable[[], None] | None = None) -> None:
         self.client = client
         self.on_event = on_event
         self.alive = alive
+        self.on_drop = on_drop
         self.connected = threading.Event()
         self.drops = 0
         self.last_error: str | None = None
@@ -286,6 +287,8 @@ class EventStream:
             if self._stop.is_set():
                 return
             self.drops += 1
+            if self.on_drop is not None:
+                self.on_drop()
             self.connected.set()  # a failed first connect must not block start()
             self._stop.wait(backoff)
             backoff = min(backoff * 2, 5.0)

@@ -386,6 +386,11 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
                 "provider_key_admission": {
                   "description": "Stored credential admission metadata. API keys carry the SQLite row ID and update time. Plan logins carry their kind.",
                   "type": "object",

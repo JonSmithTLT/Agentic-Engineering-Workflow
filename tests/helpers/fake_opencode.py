@@ -167,6 +167,7 @@ class Session:
         self.interrupted = threading.Event()
         self.contract_done = False
         self.proc: subprocess.Popen[bytes] | None = None
+        self.tool_failed = False
         self.permissions: dict[str, dict[str, Any]] = {}
         self.replies: dict[str, str] = {}
         self.forms: dict[str, dict[str, Any]] = {}
@@ -248,7 +249,7 @@ class FakeOpenCode:
         return dict(s.info["model"])
 
     def assistant(self, s: Session, i: int, finish: str, tool: str | None = None,
-                  parts: list[dict[str, Any]] | None = None) -> None:
+                  parts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
                "model": self.pin(s, i), "time": {"created": now_ms(), "completed": now_ms()},
                "content": parts or ([{"type": "tool", "name": tool}] if tool else [{"type": "text", "text": "ok"}]),
@@ -266,8 +267,10 @@ class FakeOpenCode:
                 s.messages.append(msg)
         self.emit("session.step.started", {"sessionID": s.info["id"], "model": msg["model"],
                                            "assistantMessageID": msg["id"]})
-        self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"], "finish": finish,
-                                         "tokens": msg["tokens"]})
+        if tool is None:
+            self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"],
+                                             "finish": finish, "tokens": msg["tokens"]})
+        return msg
 
     def _append(self, s: Session, msg: dict[str, Any]) -> None:
         with self.lock:
@@ -363,13 +366,24 @@ class FakeOpenCode:
 
     def run_step(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
-        do = step["do"]
-        self.assistant(s, i, "tool-calls", tool="shell",
-                       parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
+        msg = self.assistant(s, i, "tool-calls", tool="shell",
+                             parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
         call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
-        self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell"})
+        self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell",
+                                                 "assistantMessageID": msg["id"]})
         self.emit("session.tool.called", {"sessionID": s.info["id"], "id": call, "input": {"command": TOOL_INPUT},
-                                          "executed": True})
+                                          "executed": True, "assistantMessageID": msg["id"]})
+        s.tool_failed = False
+        try:
+            return self._run_tool(s, i, step)
+        finally:
+            self.emit("session.tool.failed" if s.interrupted.is_set() or s.tool_failed else "session.tool.success",
+                      {"sessionID": s.info["id"], "id": call, "assistantMessageID": msg["id"]})
+            self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"],
+                                             "finish": "tool-calls", "tokens": msg["tokens"]})
+
+    def _run_tool(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
+        do = step["do"]
         if do == "exit":
             if step.get("code", 0):
                 os._exit(int(step["code"]))  # the harness crashed
@@ -388,6 +402,12 @@ class FakeOpenCode:
                                   cwd=s.info["location"]["directory"], env=env, stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         s.proc.wait()
+        s.tool_failed = s.proc.returncode != 0
+        if do == "shell":
+            rows = [json.loads(line) for line in (self.state / "transcript.jsonl").read_text(
+                encoding="utf-8").splitlines()]
+            result = next(row["result"] for row in reversed(rows) if row["i"] == i)
+            s.tool_failed = bool(result.get("timed_out") or result.get("exit"))
         s.proc = None
         return "interrupted" if s.interrupted.is_set() else None
 

@@ -35,16 +35,25 @@ from aew.workspace import worktrees
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
+    from aew.engine.ports import (
+        ContextPacksPort,
+        CoordinationPort,
+        DispatchPort,
+        InputsPort,
+        InvocationsPort,
+        RolesPort,
+        WorkUnitsPort,
+    )
 
 
 class Invocations:
     """Evaluated snapshots and invocations: issue, pin, complete, the workspace an invocation may act in, and recording
     run 1 of a `--launch` dispatch (ADR-0009)."""
 
-    def __init__(self, k: Kernel, *, roles: RolesPort) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort, coordination: CoordinationPort) -> None:
         self.k = k
         self.roles = roles
+        self.coordination = coordination
 
     def _fingerprint_policy(self) -> dict[str, list[str]]:
         fp = self.k.manifest.get("fingerprint") or {}
@@ -257,6 +266,8 @@ class Invocations:
             "launched_at": utc_now(), "kind": "dispatch", "generation": ctx.state["lead"]["generation"],
             **self.provider_key_admission(inv),
         }]
+        if self.coordination.project_switch(ctx.state) == X.MESSAGING_ENABLED:
+            inv["runs"][-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
         ctx.refs.append(f"run:{run}")
 
     def invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:

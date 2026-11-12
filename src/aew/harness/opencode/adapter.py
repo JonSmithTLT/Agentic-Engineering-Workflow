@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import ContainmentUnavailable, HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
-from aew.harness import agentenv, progress, runlog, weaker_register
+from aew.harness import agentenv, procs, progress, runlog, weaker_register
 from aew.harness import usage as U
 from aew.harness.base import (
     KEY_IN_SANDBOX,
@@ -525,18 +525,22 @@ class OpenCodeAdapter(HarnessAdapter):
 
         # Neither offline command gets the relay shim. SQLite backs up the empty store before the sentinel is inserted.
         def offline(*args: str) -> str:
-            child = self.tree.spawn([*command, *args], cwd=self.directory, env=env,
-                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                    text=True)
+            # Each short-lived command owns its group. The server needs a fresh tree for its own lifetime.
+            offline_tree = procs.ProcessTree(layout=self.tree.layout, require_layout=True)
             try:
-                output, _ = child.communicate(timeout=PLAN_SEED_COMMAND_TIMEOUT_S)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.communicate(timeout=PLAN_SEED_KILL_TIMEOUT_S)
-                raise
-            if child.returncode:
-                raise subprocess.CalledProcessError(child.returncode, args)
-            return output.strip()
+                child = offline_tree.spawn([*command, *args], cwd=self.directory, env=env, stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                try:
+                    output, _ = child.communicate(timeout=PLAN_SEED_COMMAND_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.communicate(timeout=PLAN_SEED_KILL_TIMEOUT_S)
+                    raise
+                if child.returncode:
+                    raise subprocess.CalledProcessError(child.returncode, args)
+                return output.strip()
+            finally:
+                offline_tree.kill()
 
         db = self.state_dir / "xdg-data" / "opencode" / login.DB
         try:

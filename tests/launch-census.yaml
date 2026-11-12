@@ -149,6 +149,11 @@ starts:
   reason: the contained Lead's sandbox (STG-05 CS-4)
   contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/opencode/adapter.py::OpenCodeAdapter._seed_plan_login.offline
+  call: ProcessTree
+  classes: [contained]
+  reason: each short-lived CLI probe uses the worker's required sandbox layout without the relay shim
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/harness/opencode/lead.py::ContainedLead._seed_logins
   call: bwrap_argv
   classes: [contained]

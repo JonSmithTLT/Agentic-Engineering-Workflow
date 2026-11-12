@@ -298,13 +298,14 @@ def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, mon
             con.execute(CREDENTIAL_TABLE)
         return SimpleNamespace(returncode=0, communicate=lambda **_: ("", ""))
 
+    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
     harness = tmp_path / ".aew" / "local" / "harness"
     for name in ("run-one", "run-two"):
         run = harness / "runs" / name
         state = run / "harness"
         state.mkdir(parents=True)
         data = state / "xdg-data"
-        worker = SimpleNamespace(tree=SimpleNamespace(spawn=spawn), run_dir=run, state_dir=state,
+        worker = SimpleNamespace(tree=SimpleNamespace(layout=None), run_dir=run, state_dir=state,
                                  directory=str(tmp_path))
         adapter.OpenCodeAdapter._seed_plan_login(worker, ["fake-opencode"], {"XDG_DATA_HOME": str(data)},
                                                 "openai", name + "-sentinel")
@@ -323,10 +324,14 @@ def test_a_missing_seed_is_a_named_refusal(tmp_path, monkeypatch):
     run = tmp_path / "runs" / "run"
     state = run / "harness"
     state.mkdir(parents=True)
+
+    def spawn(*_args, **_kwargs):
+        return SimpleNamespace(returncode=0, communicate=lambda **_: (capabilities.TESTED_VERSIONS[0], ""))
+
+    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
     worker = SimpleNamespace(
         run_dir=run, state_dir=state, directory=str(tmp_path),
-        tree=SimpleNamespace(spawn=lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, communicate=lambda **_: (capabilities.TESTED_VERSIONS[0], ""))),
+        tree=SimpleNamespace(layout=None),
     )
     with pytest.raises(HarnessIncompatible, match="could not prepare") as failure:
         adapter.OpenCodeAdapter._seed_plan_login(worker, ["fake-opencode"], {}, "openai", "synthetic-sentinel")
@@ -336,10 +341,14 @@ def test_a_missing_seed_is_a_named_refusal(tmp_path, monkeypatch):
 def test_seed_refuses_an_unqualified_binary(tmp_path, monkeypatch):
     monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
     monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("2.3.0",))
+
+    def spawn(*_args, **_kwargs):
+        return SimpleNamespace(returncode=0, communicate=lambda **_: ("v2.3.0", ""))
+
+    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
     worker = SimpleNamespace(
         state_dir=tmp_path, directory=str(tmp_path),
-        tree=SimpleNamespace(spawn=lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, communicate=lambda **_: ("v2.3.0", ""))),
+        tree=SimpleNamespace(layout=None),
     )
     with pytest.raises(HarnessIncompatible, match="binary is not qualified") as failure:
         adapter.OpenCodeAdapter._seed_plan_login(worker, ["fake-opencode"], {}, "openai", "synthetic-sentinel")

@@ -1532,6 +1532,7 @@ None.
 - `aew.harness.opencode.login`
 - `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
+- `aew.harness.procs`
 - `aew.harness.progress`
 - `aew.harness.runlog`
 - `aew.harness.usage`

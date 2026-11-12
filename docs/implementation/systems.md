@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 14 — SYS-19, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+**Members:** 15 — SYS-19, SYS-22, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
 
 ### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
 
@@ -41,6 +41,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
 
 **Wired:** cli:check run, dashboard:/evidence/{id}
+
+### SYS-22 — Specialist skills delivered to runs
+
+**Board state:** staged
+
+**Who:** Lead
+
+**Now:** 24
+
+**Own slices left:** 2 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
+
+**Wired:** pack
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -110,7 +122,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial — E228 — 1 PR and a measured trial (estimate)
+**Own slices left:** 2 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
 
 **Switch:** steering.mode — default: crawl — not read from the code
 
@@ -206,7 +218,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 14 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-22, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 13 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -257,18 +269,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route (E356); Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route — E356 — 1 PR (estimate), with I-6's route
 
 **Wired:** none
-
-### SYS-22 — Specialist skills delivered to runs
-
-**Board state:** staged
-
-**Who:** Lead
-
-**Now:** 23
-
-**Own slices left:** 3 — E142: serve security-review and c-review; being built (E142); E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135) — **Next:** E142: serve security-review and c-review; being built — E142 — 1 PR (estimate)
-
-**Wired:** pack
 
 ### SYS-41 — Lead consult (spawn a non-mutating agent for the Lead's own question)
 

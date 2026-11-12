@@ -54,7 +54,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 20 | closed: E139 | Worker packs made true, each finding with a guard, closed by #333 (its review's follow-ons are E198) |
 | 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling merged as #332 and the rules as #335; the flip is next |
 | 22 | closed: E143 | The relay route's model-family check and its follow-on (one allowlist function, row 1's list and the check on the status line), closed by #338 and #339 |
-| 23 | E142 | Serving `security-review` and `c-review`, after E127 |
+| 23 | closed: E142 | Serving `security-review` and `c-review`, after E127, closed by #457 |
 | 24 | E136 | Serving the other eleven skills, batched, after E142 (unfrozen by the operator, 2026-11-11) |
 | 25 | closed: E137 | A publish that stops stale after its first commit, and the stranded stages like it, closed by #437 |
 | 26 | closed: E156 | Refuse a launch with no provider key, close the Lead's OpenCode provider, and Lead permission tightening, closed by #340 |
@@ -1752,18 +1752,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E141/`, oldest first (`python tools/register.py show E141`).*
 
-### E142
-
-**Work:** Serve `security-review` and `c-review`, the two skills the role cards already request. They need no card change, and go from unavailable to delivered
-
-**Source:** The operator, 2026-11-04; the designer's decisions of 2026-11-04, sections 4 and 6
-
-**When:** **Now.** Item 23 of the Now list, after E127, which has closed; being built
-
-**Notes:** Filed by the Lead. Written and edited on 2026-11-04, and the public-text check passed. Labelled unevaluated: neither has run on a model
-
-*Later notes: `notes.d/E142/`, oldest first (`python tools/register.py show E142`).*
-
 ### E144
 
 **Work:** `explain` with a `work_id`, entrypoint `harness.launch` and no `invocation` answers `-32603` from a `KeyError` at `engine/harness_ops.py:110`. It should be an input error
@@ -2694,7 +2682,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator, 2026-11-08; the designer's check of 2026-11-08 and its correction
 
-**When:** **Unscheduled**, the scheduler's chain: PR 1 merged as #428 and PR 3 as #432; PR 4 is next, then the measured `RUN` trial, which ends SYS-04's finish line (the operator's re-cut of 2026-11-10)
+**When:** **Unscheduled**, the scheduler's chain: PR 1 merged as #428, PR 3 as #432 and PR 4 as #445 (E83 rode it); what is left is the measured `RUN` trial, which ends SYS-04's finish line (the operator's re-cut of 2026-11-10) and which the operator folded into Session B on 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"
 
 **Notes:** Filed by the week's register PR
 
@@ -3822,7 +3810,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), part 3(b), decided by the operator the same day with the code when work is carried or processes are left (decision 3); the operator's answers of 2026-11-10 on the alpha's G3-held steps (design workspace record `2026-11-11-operator-alpha-g3-steps.md`), question 6 and part 1's driver
 
-**When:** **Unscheduled**, the seat and settings chain, after E336; it can be built beside E326 to E328
+**When:** **Unscheduled** as a row: the seat-resume PR #447, open (2026-11-11), in the seat and settings chain, after E336; it can be built beside E326 to E328
 
 **Notes:** Filed by the register PR of 2026-11-10. Takeover keeps its code and its interruption as written. The rest of V2 joins the personal alpha's gate once this merges (the operator, 2026-11-10)
 
@@ -4092,25 +4080,13 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E353/`, oldest first (`python tools/register.py show E353`).*
 
-### E354
-
-**Work:** Which usage pot a worker draws from, PR 1, tightenings only: the stored-login resolver moves to `login.py` and reads one provider's deciding row, with name-only refusal causes and no path in its message; an unreadable store is retried within a named bound, then answered 503 `credential_unreadable`, not 401; a resolve-mode relay refuses any target outside its upstream's path prefix; and the Lead's refreshing login is relayed only to its built-in upstream, never to an override
-
-**Source:** The operator's grant of 2026-11-11: "i wanted teh ability to choose which usage pot is being used"; the designer's ruling of the same day on the usage pot (revision 2, `RULING-usage-pot.md`), part 1
-
-**When:** **Unscheduled**, after E337, which has merged; open as #453
-
-**Notes:** Filed by the register PR of 2026-11-11. `aew-reviewer` reviews it: it touches credentials
-
-*Later notes: `notes.d/E354/`, oldest first (`python tools/register.py show E354`).*
-
 ### E355
 
 **Work:** Which usage pot a worker draws from, PR 2, the worker route for a plan login and the selector: the execution policy gains `credentials: {<provider>: api_key | plan_login}`, which a profile's `credential` overrides, `api_key` when absent, classed `legality_affecting`; a `plan_login` worker reuses the Lead's read-only, per-request route, on the Linux relay route only, with its provider's key variable unused and no fallback to a key. The same PR revises the three E337 texts that become false: `worker_key_issue`'s "which workers never use" (`src/aew/harness/containment/netns.py`), ADR-0009's "workers use the named export" and `login.py`'s "OAuth is never used by workers"
 
 **Source:** The operator's grant of 2026-11-11: "i wanted teh ability to choose which usage pot is being used"; the designer's ruling of the same day on the usage pot (revision 2, `RULING-usage-pot.md`), parts 1 and 2
 
-**When:** **Unscheduled**, after PR 1 (E354); then a keyless qualification the operator is asked for once it is green, and `plan_login` is refused at adoption until it is marked qualified
+**When:** **Unscheduled** as a row: briefed (2026-11-11), after PR 1 (E354, merged as #453); the operator: "yup i think i have a chain that can do it and get it merged before expect rev is done so why not". Then a keyless qualification the operator is asked for once it is green, and `plan_login` is refused at adoption until it is marked qualified
 
 **Notes:** Filed by the register PR of 2026-11-11. `aew-reviewer` reviews it: it touches credentials
 
@@ -4966,6 +4942,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E139/`, oldest first (`python tools/register.py show E139`).*
 
+### E142
+
+**Was:** Serve `security-review` and `c-review`, the two skills the role cards already request. They need no card change, and go from unavailable to delivered
+
+**Closed:** 2026-11-11
+
+**By:** #457 (`6baba0dd`): both ship with the other four, labelled unevaluated and split by the pointer rule inside a skill (ADR-0006, amended 2026-11-11); every built-in card's requested skill ships, and a test keeps it so. The split is unmeasured: neither skill has run on a model, and qualification stays owed (E135)
+
+*Later notes: `notes.d/E142/`, oldest first (`python tools/register.py show E142`).*
+
 ### E143
 
 **Was:** On the relay route, refuse a launch whose pinned model is of a family the relay's one upstream doesn't serve, read `unverified` when nothing decides; then one allowlist function for the self-test and the run, row 1 recording it, and the check on the launch's status line and network label
@@ -5065,6 +5051,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #440 (`35388ef1`), with its follow-ons on #449 (`daf41fcc`): a contained Linux OpenCode worker on the relay route uses its provider's stored API-key login through the built-in upstream, a usable export first, and `aew doctor` names the source, never the value. Windows custody is E341; which usage pot a worker draws from is E354 and E355
 
 *Later notes: `notes.d/E337/`, oldest first (`python tools/register.py show E337`).*
+
+### E354
+
+**Was:** Which usage pot a worker draws from, PR 1, tightenings only: the stored-login resolver moves to `login.py` and reads one provider's deciding row, with name-only refusal causes and no path in its message; an unreadable store is retried within a named bound, then answered 503 `credential_unreadable`, not 401; a resolve-mode relay refuses any target outside its upstream's path prefix; and the Lead's refreshing login is relayed only to its built-in upstream, never to an override
+
+**Closed:** 2026-11-11
+
+**By:** #453 (`739f3a5c`), with the dated ADR-0009 amendment. E355 is the usage pot's PR 2
+
+*Later notes: `notes.d/E354/`, oldest first (`python tools/register.py show E354`).*
 
 ### F1
 

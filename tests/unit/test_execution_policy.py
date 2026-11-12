@@ -114,6 +114,38 @@ def test_worker_plan_login_requires_qualification_and_respects_profile_override(
         check_policy_bytes("execution", raw, source="new adoption")
 
 
+def test_adopting_another_file_does_not_requalify_an_unchanged_plan_policy(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.engine.api import ProjectAdmin
+    from aew.harness.opencode import capabilities
+    from aew.util import sha256_bytes
+
+    policy = configured()
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["credentials"] = {"openai": "plan_login"}
+    execution = tmp_path / X.REL_PATH
+    execution.parent.mkdir(parents=True)
+    execution.write_bytes(dump_yaml(policy).encode())
+    extra_rel = "policy/extra.yaml"
+    extra = tmp_path / extra_rel
+    extra.write_bytes(b"setting: first\n")
+    manifest = {"policy": {"execution": X.REL_PATH, "extra": extra_rel}}
+    admin = SimpleNamespace(k=SimpleNamespace(aew_root=tmp_path))
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    pins = ProjectAdmin._read_policy_pins(admin, manifest, {})
+
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("9.9.9",))
+    extra.write_bytes(b"setting: second\n")
+    updated = ProjectAdmin._read_policy_pins(admin, manifest, pins)
+    assert updated == {X.REL_PATH: pins[X.REL_PATH], extra_rel: sha256_bytes(extra.read_bytes())}
+
+    execution.write_bytes(execution.read_bytes() + b"# edited execution policy\n")
+    with pytest.raises(ValidationFailed) as failure:
+        ProjectAdmin._read_policy_pins(admin, manifest, updated)
+    assert "awaiting qualification" in failure.value.details["violations"][0]
+
+
 @pytest.mark.parametrize(("model", "containment", "reason"), [
     ("anthropic/test", {}, "whose requests it has measured: openai"),
     ("openai/test", {"network": {"upstreams": {"openai": "http://127.0.0.1:9"}}}, "upstreams override"),

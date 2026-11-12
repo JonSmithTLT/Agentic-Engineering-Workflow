@@ -168,7 +168,7 @@ class ProjectAdmin:
             raw = manifest_path.read_bytes()  # pin the exact bytes on disk, not a newline-normalized view
             manifest = load_yaml(raw.decode("utf-8"), source=str(manifest_path))
             validate("project", manifest, source=str(manifest_path))
-            pins = self._read_policy_pins(manifest)
+            pins = self._read_policy_pins(manifest, ctx.state.get(POLICY_PINS) or {})
             changed = ([MANIFEST] if manifest_changed else []) + (drift or [])
             if only is not None and (drift is None or set(changed) != set(only)):
                 raise IllegalTransition(f"this adoption is of {', '.join(sorted(only))} only, and "
@@ -190,7 +190,7 @@ class ProjectAdmin:
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
-    def _read_policy_pins(self, manifest: dict[str, Any]) -> dict[str, str | None]:
+    def _read_policy_pins(self, manifest: dict[str, Any], current: dict[str, str | None]) -> dict[str, str | None]:
         """The policy files' pins, each hashed from the same bytes it is validated from: a file that does not parse or
         match its schema is refused, never pinned."""
         names = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
@@ -205,8 +205,13 @@ class ProjectAdmin:
                 pins[rel] = None
                 continue
             raw = path.read_bytes()
-            check_policy_bytes(names.get(rel, "execution"), raw, source=str(path))
-            pins[rel] = sha256_bytes(raw)
+            digest = sha256_bytes(raw)
+            name = names.get(rel, "execution")
+            if name == "execution" and current.get(rel) == digest:
+                X.parse(raw, source=str(path))  # already adopted, so only the in-force checks apply
+            else:
+                check_policy_bytes(name, raw, source=str(path))
+            pins[rel] = digest
         return pins
 
     def _fresh_manifest(self) -> dict[str, Any]:

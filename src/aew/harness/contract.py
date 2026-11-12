@@ -69,6 +69,7 @@ def plan_login_failure(cause: Any, provider: str, invocation: str) -> str | None
     return (f"the operator's {provider} plan login {detail}. "
             + plan_login_recovery(provider, invocation, retryable=cause == "plan_login_unreadable_retryable"))
 
+
 # Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
 # record, and of the supervisor's acknowledgement and `HarnessLaunchFailed`'s details. A closed set in the same
 # lowercase as the adapter codes above, and disjoint from them: the vocabulary follows the status, so a comparison to

@@ -103,6 +103,34 @@ Deterministic fault points are named code locations, not timings. That is why th
   - AEW's behaviour was correct: it refuses a second implementer while one is live, and the Lead recovers with `aew invoke cancel` followed by a fresh dispatch.
   - Per the policy, the failure became a deterministic CLI test, `test_compositions.py::test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and_redispatch`. The walk now models the recovery. The default merge-gate seeds take step-for-step identical paths before and after that change.
 
+### Flake register
+
+`tests/flake-register.yaml` records a test or a session, its platform scope, lane, suspected cause, owner and dated
+run and job evidence. `python tools/flake_register.py check` validates the file and resolves test functions in source.
+Closing an entry records the merged fix and a deterministic proof by event, fault injection or fixed order. A
+recurrence or a period without a sighting does not close it. Census-only nodes and diagnostic runs do not enter the queue.
+
+A pull request into `main` that modifies only the existing register takes the docs tier when both merge parents and
+the tested register can be verified. Creation, deletion, rename, mixed changes, invalid input and unverifiable history
+take full CI. Core fast and serial both compare against the base. Existing entry IDs and their evidence are retained,
+and changing an open entry's lane or platforms requires a valid closure. A later recurrence can open its own entry
+with a link to the earlier closure.
+
+`python tools/flake_register.py queue` ranks open entries by distinct sightings in the trailing seven days and marks
+counts of three or more. The scheduled `flake-queue` job updates a standing issue on green and red nights. It combines
+committed evidence and cancelled test jobs with no-response annotations or an observed
+five-minute post-cancel stall. A limit reached in setup before pytest is infrastructure. Triage can preserve new
+sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
+
+The second flake PR will publish a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
+`sightings.json` member will contain rows with `entry`, `job`, `at`, and optional `observation`. The run ID will come from
+GitHub artifact metadata. Each row will retain its original timestamp across attempts. The queue accepts indexes from
+this repository's `ci.yml` runs on `main` and reports malformed archives in the issue while reading other indexes.
+
+The queue batches check-suite reads, then fetches details for matching cancelled jobs and active jobs on cancelled runs.
+It records qualifying jobs against each matching session entry. The scheduled job has Checks read access for these
+queries and reports an incomplete seven-day run listing as an error.
+
 ### Coverage (register E2, M4-A)
 
 - **What is measured.** Line and branch coverage of `src/aew`, measured with coverage.py (the `coverage` extra) on the Linux jobs: the `fast` lane in `core`, and every shard of the `integration`, `acceptance`, `regression` and `adversarial` lanes. Every Python subprocess the tests start is measured too: `aew` CLIs, harness supervisors, the Lead broker and xdist workers (`patch = ["subprocess"]`, `parallel = true`, `[tool.coverage.run]` in `pyproject.toml`). The `serial` lane runs without coverage, because its property is timing.

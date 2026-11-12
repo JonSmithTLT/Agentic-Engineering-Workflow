@@ -135,27 +135,35 @@ def created_keys(trees: Mapping[str, ast.Module], packages: frozenset[str], modu
                  literal: ast.Dict, ctx: C.Context | None = None) -> dict[str, tuple[str, str]]:
     """The keys a function adds to the state the initial-state function hands it (``store.create(state, files)`` adds
     ``outbox``), each with the function that adds it: ``state["key"] = ...`` or ``state.setdefault("key", ...)`` on the
-    parameter that receives the dict."""
+    parameter that receives the dict. The dict is followed as it is handed on, positionally, through every call that
+    statically names its function (``steering.seed_at_init`` hands it to ``take_default``, which adds ``steering``)."""
     program = (F.program_of(ctx) if ctx is not None
                else F.Program.of({name: (tree, name in packages) for name, tree in trees.items()}))
     mod = program.modules[module]
     func = mod.funcs[symbol]
     names = {name for name, values in func.assigns.items() if any(v is literal for v in values)}
     out: dict[str, tuple[str, str]] = {}
-    for call in func.calls:
-        handed = [i for i, a in enumerate(call.args)
-                  if a is literal or (isinstance(a, ast.Name) and a.id in names)]
-        target = program.target(mod, func, call.func) if handed else None
-        if target is None:
-            continue
-        params = target.params[1:] if target.params[:1] in (["self"], ["cls"]) and target.cls else target.params
-        for i in handed:
-            if i >= len(params):
+    seen: set[tuple[tuple[str, str], str]] = set()
+    pending: list[tuple[F.Func, set[str], bool]] = [(func, names, True)]  # (function, names of the dict, the origin)
+    while pending:
+        caller, held, origin = pending.pop()
+        caller_mod = program.modules[caller.module]
+        for call in caller.calls:
+            handed = [i for i, a in enumerate(call.args)
+                      if (origin and a is literal) or (isinstance(a, ast.Name) and a.id in held)]
+            target = program.target(caller_mod, caller, call.func) if handed else None
+            if target is None:
                 continue
-            for node in ast.walk(target.node):
-                key = _stored_key(node, params[i])
-                if key is not None:
-                    out.setdefault(key, (target.module, target.qual))
+            params = target.params[1:] if target.params[:1] in (["self"], ["cls"]) and target.cls else target.params
+            for i in handed:
+                if i >= len(params) or (target.key, params[i]) in seen:
+                    continue
+                seen.add((target.key, params[i]))
+                for node in ast.walk(target.node):
+                    key = _stored_key(node, params[i])
+                    if key is not None:
+                        out.setdefault(key, (target.module, target.qual))
+                pending.append((target, {params[i]}, False))
     return out
 
 

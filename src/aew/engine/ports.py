@@ -208,10 +208,12 @@ class StatusViewsPort(Protocol):
 
 
 class SteeringPort(Protocol):
-    """What other collaborators use of ``Steering`` (M4-E E2): adoption records a default that is not a raise, and
-    doctor asks whether steering is configured."""
+    """What other collaborators use of ``Steering`` (M4-E E2): adoption and migration record a default that is not a
+    raise, and doctor asks whether steering is configured."""
 
     def on_adopt(self, ctx: Any, policy: dict[str, Any] | None) -> None: ...
+
+    def register_on_migrate(self, ctx: Any, state: dict[str, Any]) -> None: ...
 
     def policy_default(self) -> str | None: ...
 

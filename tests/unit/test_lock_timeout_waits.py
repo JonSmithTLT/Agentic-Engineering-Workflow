@@ -28,7 +28,8 @@ What the scan does not see (pinned below), each a defect the reviewer reads for:
 - an injection in a helper the test calls, or in a fixture (test_reference_concurrency.py's ``_held`` injects 0.2 for
   its callers, whose one poll is on a constant);
 - a wait on a component with the default lock timeout, 60 s, which no test injects (test_steering_loop.py derives
-  its activation waits from the loop's own lock timeout: ``activation_wait_s``);
+  its four first-activation and repetition windows from the loop's own lock timeout, ``activation_wait_s``; its other
+  waits on what the loop does use ``HANG_S``, a literal 60 s that bounds a hang: a stated limit there);
 - a poller not in ``POLLERS``, a window given through ``**kwargs``, or at a position its definitions under tests/ do
   not give (src's ``outbox.wait_for`` takes it third);
 - a ``POLL_S`` patched by a fixture, or a component whose poll is not ``POLL_S`` (the steering loop's ``poll_s``);

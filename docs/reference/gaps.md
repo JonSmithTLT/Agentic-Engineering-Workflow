@@ -132,6 +132,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.login:StoredLogin._deciding_row`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name

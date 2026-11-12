@@ -104,7 +104,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/maps/structural` (git-ignored, masked by containment); named by `aew.maps.store`: `STRUCTURAL_REL`; written by `aew.maps.store`: `write_artifact`; read by `aew.dashboard.reader`: `MapsReader.roots`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_artifact`, `read_bounded`, `write_artifact`
 - `local/notify` (git-ignored, masked by containment); named by `aew.harness.notify`: `NOTIFY_REL`; written by `aew.harness.notify`: `DeliveryLog.record`, `Watcher._write_state`; read by `aew.harness.notify`: `DeliveryLog.record`, `_lines`, `_saved_state`, `summary`
 - `local/operator` (git-ignored, masked by containment); written by `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; `aew.harness.operator_autostart`: `ensure`; `aew.harness.operator_client`: `name_session`, `no_session_left`, `sessions_lock`, `withdraw_locator`; `aew.harness.operator_endpoint`: `OperatorEndpoint._claim`, `OperatorEndpoint._release`, `OperatorEndpoint._write_locator`; read by `aew.engine.lock`: `FileLock._is_path`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
-- `local/operator/sessions` (git-ignored, masked by containment); named by `aew.harness.operator_client`: `SESSIONS_REL`; written by `aew.harness.operator_client`: `name_session`, `unname_session`; read by `aew.harness.operator_client`: `session_holders_live`
+- `local/operator/sessions` (git-ignored, masked by containment); named by `aew.harness.operator_client`: `SESSIONS_REL`; written by `aew.harness.operator_client`: `name_session`, `unname_session`; read by `aew.harness.operator_client`: `session_holders_live`, `unname_session`
 - `local/packs` (git-ignored, masked by containment); written by none; read by none
 - `local/packs/{}` (git-ignored, masked by containment); written by `aew.engine.context_ops`: `ContextPacks.build_pack`, `ContextPacks.context_pack`; read by `aew.engine.context_ops`: `ContextPacks.context_show`
 - `local/recall` (git-ignored, masked by containment); written by `aew.engine.recall`: `Substrate._connect`, `Substrate._delete`; read by `aew.engine.recall`: `Substrate._open`
@@ -221,7 +221,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.opencode.adapter`: `binary_command` (Path.exists), `default_binary` (Path.exists)
 - `aew.harness.opencode.lead`: `ContainedLead._seed_models` (Path.is_file), `ContainedLead._seed_models` (Path.read_text), `ContainedLead._seed_models` (Path.stat), `operator_mcp_servers` (Path.is_file), `operator_mcp_servers` (Path.read_text), `operator_preferences` (Path.is_file), `operator_preferences` (Path.read_text)
 - `aew.harness.opencode.lead_wake`: `url_of` (Path.read_text)
-- `aew.harness.opencode.login`: `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
+- `aew.harness.opencode.login`: `StoredLogin._deciding_row` (Path.stat), `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
 - `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (Path.read_text), `session_holders_live` (Path.read_text)
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
 - `aew.harness.runlog`: `_open_regular` (os.lstat), `_open_regular` (os.open), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)

@@ -497,8 +497,8 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
              "steering": {**S.empty(), "standing": {"mode": mode, "record": None, "rev": 0}}}
 
     def applied(profile: dict[str, Any], read: Any = state) -> Any:
-        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile},  # type: ignore[arg-type]
-                                                           _committed_state=lambda: read))
+        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile}),  # type: ignore[arg-type]
+                                           read)
 
     first = pin(policy)
     assert first["deadline_s"] == FC.DEADLINE_S and first["deadline_scope"] == "run"
@@ -507,3 +507,11 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
     for scope in ({}, {"deadline_scope": "always"}):
         own = pin({**policy, "profiles": {"default": {"model": "openai/m", "deadline_s": 900, **scope}}})
         assert own.get("deadline_scope") == scope.get("deadline_scope") and applied(own) == 900
+
+
+def test_quickstart_marks_key_export_as_optional_and_points_to_the_shell_forms():
+    quickstart = Path(__file__).resolve().parents[2] / "docs" / "guides" / "quickstart.md"
+    guide = quickstart.read_text(encoding="utf-8")
+    intro = "If you use an exported key (not a saved OpenCode login),"
+    pointer = "use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`."
+    assert guide.index(intro) < guide.index("read -rsp") < guide.index(pointer)

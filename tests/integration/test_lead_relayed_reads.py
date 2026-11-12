@@ -23,9 +23,10 @@ from fake_harness import IMPL_REPORT, HarnessLab
 from harness_conformance import FakeOpenCodeDriver, sync_dir
 
 from aew import process_kind
+from aew.engine import steering
 from aew.engine.api import Engine
 from aew.engine.store import ControlStore
-from aew.harness import bridge, lead_broker, procs, runlog, wake_queue
+from aew.harness import bridge, broker_liveness, lead_broker, procs, runlog, wake_queue
 from aew.harness import contract as K
 from aew.harness import progress as P
 
@@ -34,9 +35,23 @@ IMPLEMENT = [
     {"do": "check", "id": "unit"},
     {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
 ]
-# What the session's own broker writes under `.aew/local` while it serves (its liveness, the steering loop's state):
-# never a relayed read's.
-SESSION_OWN = ("local/lead", "local/steering")
+# What the session's own broker writes under `.aew/local` while it serves, never a relayed read's: its liveness and
+# tool-call log (`local/lead/`), the steering loop's state (`local/steering/`), and the wake queue's two files, each
+# with the temporary file ``util.atomic_write`` publishes it through (`.<name>.<random>.tmp` beside it). A snapshot
+# taken while the broker's wake loop writes catches that temporary file (CI, 2026-11-11: `+local/.lead-wakes.json.
+# zrxsd_zt.tmp` on `main`); any other temporary file under `.aew` is still a change.
+SESSION_DIRS = tuple(rel.rsplit("/", 1)[0] + "/" for rel in (broker_liveness.REL, steering.LOOP_REL))
+SESSION_FILES = (wake_queue.WAKES_REL, wake_queue.SERVING_REL)
+
+
+def session_own(rel: str) -> bool:
+    if rel.startswith(SESSION_DIRS) or rel in SESSION_FILES:
+        return True
+    folder, _, name = rel.rpartition("/")
+    return any(folder == own.rpartition("/")[0] and name.startswith(f".{own.rpartition('/')[2]}.")
+               and name.endswith(".tmp") for own in SESSION_FILES)
+
+
 # The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
 # it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
 # nothing.
@@ -113,7 +128,24 @@ def cases(run: str, invocation: str) -> list[list[str]]:
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
-    return [c for c in worker_surface.changes(before, after) if not c[1:].startswith(SESSION_OWN)]
+    return [c for c in worker_surface.changes(before, after) if not session_own(c[1:])]
+
+
+def test_only_the_wake_files_atomic_temp_siblings_are_exempt(tmp_path):
+    aew = tmp_path / ".aew"
+    wakes, serving = Path(wake_queue.WAKES_REL), Path(wake_queue.SERVING_REL)
+    wake_temp = wakes.with_name(f".{wakes.name}.planted.tmp")
+    siblings = {wake_temp.as_posix(), serving.with_name(f".{serving.name}.planted.tmp").as_posix()}
+    other = {"local/.unrelated.planted.tmp", f"state/{wake_temp.name}", wake_temp.with_suffix(".bak").as_posix(),
+             serving.with_name(f".{serving.name}-other.planted.tmp").as_posix()}
+    for rel in siblings | other:
+        (aew / rel).parent.mkdir(parents=True, exist_ok=True)
+    before = worker_surface.snapshot(aew)
+    for rel in siblings | other:
+        (aew / rel).write_text("planted", encoding="utf-8")
+    after = worker_surface.snapshot(aew)
+    assert set(worker_surface.changes(before, after)) == {f"+{rel}" for rel in siblings | other}
+    assert set(changes(before, after)) == {f"+{rel}" for rel in other}
 
 
 def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, broker, tmp_path, monkeypatch):

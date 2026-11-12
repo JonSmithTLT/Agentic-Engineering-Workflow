@@ -21,6 +21,7 @@ import bounds
 import lanes
 import proctree
 import pytest
+import session_deadline
 from conftest import IS_WINDOWS
 from racing_read import read_text_or_none
 
@@ -102,12 +103,18 @@ def session_dir(hangs: Path) -> Path:
 
 
 def sentinel_ends(session: Path) -> None:
-    """The sentinel has gone (by its pid and start time), so nothing holds the scratch directory open."""
-    started = (session / "session-started.txt").read_text(encoding="utf-8")
-    pid = int(re.search(r"sentinel pid (\d+)", started).group(1))  # type: ignore[union-attr]
-    ident = proctree.identity(pid)
-    if ident is not None:
-        bounds.bounded_wait("test.sentinel_exits", lambda: not proctree.same(ident), seconds=60)
+    """The sentinel has gone (by its pid and start time), so nothing holds the scratch directory open. It is found by
+    its command line, which names the session's folder, and never by reading the folder: until it has gone it may be
+    looking up who holds each of the session's files (``proctree.holders``), and on Windows the Restart Manager's
+    lookup makes a read of that file fail with a sharing violation (`main`, 2026-11-10: ``PermissionError`` reading
+    ``session-started.txt`` just after ``abnormal-exit``).
+
+    Its limit: a sentinel the table lists with no command line is not waited on. The table reads a command line from
+    ``/proc/<pid>/cmdline`` or the process's own handle, and the sentinel is this user's unprotected child started at
+    configure, before the inner session returned, so it is either listed with its command line or already gone. Its pid
+    is not used instead: only the controller knew it, and the controller has exited, leaving it only in the folder."""
+    for ident in [p.identity for p in proctree.table() if "sentinel" in p.cmdline and session.name in p.cmdline]:
+        bounds.bounded_wait("test.sentinel_exits", lambda ident=ident: not proctree.same(ident), seconds=60)
 
 
 def unrelated() -> subprocess.Popen[bytes]:
@@ -233,21 +240,26 @@ def test_a_file_another_process_holds_is_named_with_its_holder(tmp_path):
 
 # ---------------------------------------------------------------------------------------------- the session deadline
 
-OUTLIVES = '''import threading
+OUTLIVES = '''import os, threading
+from pathlib import Path
 
 import pytest
 
 
 @pytest.mark.autopsy
 def test_outlives_the_session():
+    if os.environ.get("G3_TEST_DEADLINE_GATE"):  # running now, so the deadline may act (DEADLINE_GATE_ENV)
+        Path(os.environ["G3_TEST_DEADLINE_GATE"]).write_text("running", encoding="utf-8")
     threading.Event().wait(120)
 '''
 
 
 def test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself(tmp_path):
     hangs = tmp_path / "hangs"
+    # The deadline acts once the test is running (the gate): it counts from configure, and on a loaded Windows runner
+    # the 5 s once passed before the test began, which left no test autopsy to judge (#443, 2026-11-11)
     proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "5", "--session-deadline-margin", MARGIN,
-                 "-p", "no:xdist")
+                 "-p", "no:xdist", extra_env={session_deadline.DEADLINE_GATE_ENV: str(tmp_path / "running")})
     assert proc.returncode == DEADLINE_EXIT, proc.stdout + proc.stderr
     session = session_dir(hangs)
     sentinel_ends(session)
@@ -332,9 +344,9 @@ def test_the_deadline_ends_only_the_sessions_own_processes(tmp_path, monkeypatch
         proc = inner(project(tmp_path, SESSION_SET), hangs, "--session-deadline", deadline,
                      "--session-deadline-margin", MARGIN, *mode)
         session = session_dir(hangs)
+        sentinel_ends(session)  # before the message reads the session's files
         why = f"{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
         assert proc.returncode == DEADLINE_EXIT, why
-        sentinel_ends(session)
         assert (out / "supervisor.pid").exists(), why
         supervisor = int((out / "supervisor.pid").read_text(encoding="utf-8"))
         listed = texts(session, "controller-processes*")
@@ -875,9 +887,10 @@ stale.mkdir(parents=True)
     stale = next(p for name, p in found.items() if (p / f"{marker}.txt").exists()
                  and (p / f"{marker}.txt").read_text(encoding="utf-8") == "planted")
     own = [p for p in found.values() if p != stale]
+    assert len(own) == 1, f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- found: {sorted(found)}"
+    sentinel_ends(own[0])  # before the message reads the session's files
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- found: {sorted(found)}\n{texts(hangs / 'autopsy')}"
-    assert proc.returncode == 0 and len(own) == 1, why
-    sentinel_ends(own[0])
+    assert proc.returncode == 0, why
     assert "planted" not in texts(own[0]), why
     assert not (own[0] / "stuck-after-finish.txt").exists(), why
 

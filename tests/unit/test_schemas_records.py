@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from jsonschema import Draft202012Validator
 
@@ -106,6 +108,37 @@ def test_evidence_schema_requires_snapshot():
     with pytest.raises(ValidationFailed) as exc:
         validate("evidence", evidence, source="e")
     assert any("evaluated_snapshot" in v for v in exc.value.details["violations"])
+
+
+def test_legacy_evidence_snapshot_with_empty_artifact_digests_validates():
+    validate("evidence", {
+        "schema": "aew/evidence/v1",
+        "id": "INV-0001-review-1",
+        "kind": "review",
+        "work_unit": "T-0001",
+        "producer": {"role": "reviewer", "invocation": "INV-0001"},
+        "created_at": "2026-09-25T00:00:00Z",
+        "evaluated_snapshot": {
+            "base_revision": "a" * 40,
+            "workspace_id": "T-0001-1",
+            "relevant_inputs_fingerprint": "git-tree:" + "b" * 40,
+            "artifact_digests": [],
+        },
+        "method": {},
+        "claim": "Reviewed the implementation.",
+        "result": "pass",
+        "review": {"independence": "R1", "disposition": "pass", "findings": []},
+    }, source="legacy evidence")
+
+
+def test_only_the_dashboard_projection_uses_artifact_digests_in_backend_source():
+    src = Path(__file__).resolve().parents[2] / "src"
+    matches = {}
+    for path in src.rglob("*.py"):
+        count = path.read_bytes().count(b"artifact_digests")
+        if count:
+            matches[path.relative_to(src).as_posix()] = count
+    assert matches == {"aew/dashboard/projections.py": 2}
 
 
 def test_gates_schema_requires_all_risk_classes():

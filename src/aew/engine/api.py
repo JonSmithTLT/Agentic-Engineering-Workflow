@@ -20,9 +20,10 @@ from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
 from aew.engine import approval, gate_ops, transitions, usage_ops
+from aew.engine import steering as steering_mod
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
-from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
+from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_digests_of, policy_files
 from aew.engine.configuration import CLI_ENVIRONMENT, Configuration
 from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
@@ -548,7 +549,8 @@ class Engine:
         self._steering = steering = Steering(k)
         self._configuration = Configuration(k)  # the configuration read projection (F46.1)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
-        self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
+        self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination,
+                                    steering=steering)
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
         self._dispositions = dispositions = Dispositions(k, gates=gates, archive=archive, views=views)
         self._stages = stages = StageIntents(
@@ -684,6 +686,13 @@ class Engine:
                 "refs": [], "txn": None,
             },
         }
+        # The pinned policy's steering default is recorded where the pin is first written, as adopt and migrate record
+        # theirs, so a later adopt acts only on a real change of it (#432's merge check, M1).
+        raws = {rel: files[rel].encode("utf-8") if rel in files else None for rel in policy_files(manifest)}
+        rel = (manifest.get("policy") or {}).get("execution") or X.REL_PATH
+        raw = raws.get(rel)
+        policy = X.parse(raw, source=f"{AEW_DIR}/{rel}") if raw is not None else None
+        files.update(steering_mod.seed_at_init(state, policy, policy_digests_of(manifest, raws, aew_root)))
         ControlStore(aew_root).create(state, files)
         return cls(repo_root, aew_root)
 

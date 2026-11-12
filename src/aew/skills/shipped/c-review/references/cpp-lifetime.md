@@ -1,0 +1,3 @@
+# C++ lifetime and unwinding
+
+**Check C++ lifetime and unwinding explicitly.** Distinguish an owning object from a view/reference/iterator into it. RAII protects a resource only after an owning object's construction succeeds; examine exceptions between raw acquisition and adoption, partially constructed members and custom deleters. Check whether a by-reference capture outlives the captured object's scope. Follow copy/move operations when they change ownership or leave aliases. For container mutation, establish whether this operation invalidates this reference under the supplied size/capacity and operation contract. `reserve` is neither automatically a bug nor a universal lifetime fix. Avoid predicting a moved-from object's value beyond its documented guarantees.

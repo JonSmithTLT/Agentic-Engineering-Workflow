@@ -20,6 +20,7 @@ from notifier import adopt, hidden, raise_to, received, recorder, script, until
 
 from aew import errors
 from aew.engine.api import Engine
+from aew.engine.lock import FileLock
 from aew.harness import broker_liveness, notify, operator_client, operator_endpoint, procs
 from aew.harness import operator_autostart as A
 
@@ -53,6 +54,12 @@ def _holder(aew_root: Path, pid: int) -> Path:
     path.write_text(json.dumps({"pid": pid, "start_id": procs.start_id(pid),
                                 "process_started": procs.started_at(pid)}), encoding="utf-8")
     return path
+
+
+def _leave(aew_root: Path, holder: Path) -> None:
+    """A session leaving, as its own end removes its file: under the lock the endpoint's looks read the files under,
+    so the removal never meets the look's open file (Windows refuses that with WinError 32; CI, 2026-11-11)."""
+    operator_client.unname_session(aew_root, holder)
 
 
 def _still_serving(aew_root: Path, out: threading.Thread, why: str) -> None:
@@ -151,7 +158,7 @@ def test_a_background_endpoint_stays_while_any_session_it_serves_lives(project):
     out.start()
     try:
         _still_serving(engine.aew_root, out, "a session is live")
-        holder.unlink()
+        _leave(engine.aew_root, holder)
         out.join(HANG_GUARD_S)
         assert not out.is_alive(), "no session is live"
         assert operator_client.read_locator(operator_client.locator_path(engine.aew_root)) is None
@@ -208,7 +215,7 @@ def test_a_background_endpoint_with_no_terminal_says_run_serve_and_gives_up_its_
         again.start()
         again.close()
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -225,7 +232,7 @@ def test_a_capability_change_with_no_terminal_says_the_same_and_shows_nothing(pr
         out.join(HANG_GUARD_S)
         assert not out.is_alive()
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -256,7 +263,7 @@ def test_a_challenge_in_hand_finishes_before_the_endpoint_stops(project):
     ep, out = _background(engine, console=shown.append)
     try:
         def code(prompt: str) -> str:
-            holder.unlink()
+            _leave(engine.aew_root, holder)
             _still_serving(engine.aew_root, out, "a challenge is in hand")
             return re.findall(r"confirmation code ([0-9A-F]{6})", "".join(shown))[-1]
 
@@ -264,7 +271,7 @@ def test_a_challenge_in_hand_finishes_before_the_endpoint_stops(project):
         out.join(HANG_GUARD_S)
         assert not out.is_alive(), "then no session is live"
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -279,7 +286,7 @@ def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint
     assert old.watcher is not None
     close_watcher = old.watcher.close
     monkeypatch.setattr(old.watcher, "close", lambda bound: (let_go.wait(HANG_GUARD_S), close_watcher(bound)))
-    holder.unlink()
+    _leave(engine.aew_root, holder)
     locator = operator_client.locator_path(engine.aew_root)
     _until("the endpoint decided to stop", lambda: operator_client.read_locator(locator) is None)
 
@@ -314,7 +321,7 @@ def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint
         let_go.set()
         new.close()
         old.close()
-        (engine.aew_root / operator_client.SESSIONS_REL / f"{os.getpid()}.json").unlink(missing_ok=True)
+        _leave(engine.aew_root, engine.aew_root / operator_client.SESSIONS_REL / f"{os.getpid()}.json")
 
 
 def test_a_session_naming_itself_during_the_endpoints_last_look_is_seen(project):
@@ -331,7 +338,7 @@ def test_a_session_naming_itself_during_the_endpoints_last_look_is_seen(project)
         _still_serving(engine.aew_root, out, "the session is seen")
         assert A.ensure(engine, provider_env=[], base={}) is None
         assert operator_client.ping(engine.aew_root)["alive"]
-        arriving.unlink()
+        _leave(engine.aew_root, arriving)
         out.join(HANG_GUARD_S)
         assert not out.is_alive()
     finally:
@@ -519,19 +526,34 @@ def test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoin
 
 
 def test_a_hung_notifier_never_keeps_the_endpoint_up(project, tmp_path, monkeypatch):
-    """The flush is bounded by the notifier's own timeout, and what is left stays outstanding."""
+    """The flush is bounded by the notifier's own timeout, and what is left stays outstanding. The notifier hangs until
+    the test lets it go, so the delivery is in flight for the whole flush by construction: with a real 1 s timeout,
+    a flush whose own pass took longer than that found the delivery already recorded (CI, Windows, 2026-11-10 and
+    2026-11-11)."""
     command = [sys.executable, "-I", script(tmp_path, "hang", "import time\ntime.sleep(300)\n")]
     engine = adopt(project, command=command, timeout_s=1)
+    in_flight, let_go = threading.Event(), threading.Event()
+
+    def hung(*_args, **_kw) -> dict:  # the notifier that never answers, until the test ends
+        in_flight.set()
+        let_go.wait(HANG_GUARD_S)
+        return {"outcome": "failed", "reason": "timeout", "exit_code": None, "timed_out": True, "output_bytes": 0,
+                "discarded_bytes": 0}
+
+    monkeypatch.setattr(notify, "deliver", hung)
     ep = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True)
     ep.start()
     try:
         assert ep.watcher is not None
         monkeypatch.setattr(notify, "FLUSH_DELIVERIES", 0)
         ep.watcher._offer("test:one", {"event": "test", "source": "test"}, lane="urgent")
+        assert in_flight.wait(HANG_GUARD_S), "the delivery to begin"
         started = time.monotonic()
         assert ep.watcher.flush() is False, "nothing waits past the bound"
         assert time.monotonic() - started < HANG_GUARD_S
+        assert "test:one" in ep.watcher._outstanding, "what is left stays outstanding"
     finally:
+        let_go.set()
         ep.close()
 
 
@@ -545,13 +567,13 @@ def test_a_hand_over_ends_a_flush_so_the_command_it_names_can_start(project, tmp
         assert ep.watcher is not None
         ep.watcher._offer("test:one", {"event": "test", "source": "test"}, lane="urgent")
         until(lambda: ep.watcher._busy, HANG_GUARD_S, "the delivery to begin")
-        holder.unlink()
+        _leave(engine.aew_root, holder)
         time.sleep(1.0)  # its look has found nobody, and it is flushing
         ep._retired.set()
         out.join(operator_endpoint.STOPPING_S)
         assert not out.is_alive(), "still flushing"
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -586,7 +608,7 @@ def test_the_real_background_command_makes_no_code_and_the_command_it_names_star
         if proc.poll() is None:
             proc.kill()
             proc.wait(HANG_GUARD_S)
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
 
 
 @pytest.mark.skipif(IS_WINDOWS, reason="a hardened session is Linux's")
@@ -659,7 +681,7 @@ def test_a_challenge_that_cannot_be_written_refuses_and_hands_over(project):
         out.join(HANG_GUARD_S)
         assert not out.is_alive()
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -716,7 +738,7 @@ def test_a_terminal_serve_beside_a_background_endpoint_says_what_it_is_and_what_
         assert "aew opencode" in told and "stops when the Lead sessions" in told and "stop it first" not in told
         assert ("own window" if IS_WINDOWS else "hands over") in told
     finally:
-        holder.unlink(missing_ok=True)
+        _leave(engine.aew_root, holder)
         ep.close()
 
 
@@ -731,7 +753,10 @@ def test_two_starts_keep_both_lines_in_the_log(project, monkeypatch):
 
 
 def test_a_session_file_that_cannot_be_removed_costs_the_session_nothing(project, monkeypatch):
-    class Held:
+    class Held:  # a session's file that is there, and that the endpoint's look holds open
+        def exists(self) -> bool:
+            return True
+
         def unlink(self, missing_ok: bool = False) -> None:
             raise PermissionError("in use by the endpoint's look")
 
@@ -742,6 +767,96 @@ def test_a_session_file_that_cannot_be_removed_costs_the_session_nothing(project
     with A.for_session(Engine.discover(project.root), provider_env=[]):
         ran.append(True)
     assert ran == [True]
+
+
+HELD_SESSION = """
+import sys
+from pathlib import Path
+from aew.engine.api import Engine
+from aew.harness import operator_autostart
+operator_autostart.ensure = lambda engine, provider_env: None  # its file is what this checks, not the endpoint
+with operator_autostart.for_session(Engine.discover(Path(sys.argv[1])), provider_env=[]):
+    print("session", flush=True)
+    sys.stdin.readline()
+print("ended", flush=True)
+"""
+
+
+def test_a_real_sessions_file_held_open_at_its_end_costs_it_nothing_and_goes_with_it(project):
+    """The product's side of the WinError 32 the tests above met (CI, 2026-11-11): a real session's own end removes
+    its file while another process holds it open. On Windows the removal is refused; the session still ends cleanly,
+    and the endpoint's next look removes the file once that process has gone."""
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    root = project.root / ".aew"
+    session = subprocess.Popen([sys.executable, "-c", HELD_SESSION, str(project.root)], env=env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               creationflags=procs.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+    try:
+        assert session.stdout is not None and session.stdout.readline().strip() == "session", session.stderr
+        [named] = list((root / operator_client.SESSIONS_REL).glob("*.json"))  # by glob: a venv's launcher on Windows
+        with open(named, "rb"):  # held as the endpoint's look holds it, across the session's end
+            said, told = session.communicate("\n", timeout=HANG_GUARD_S)
+            assert session.returncode == 0 and said.split() == ["ended"], told
+            assert named.exists() == IS_WINDOWS, "Windows refuses to remove a file another process has open"
+        with operator_client.sessions_lock(root):
+            assert not operator_client.session_holders_live(root)
+        assert not named.exists(), "its process has gone, so the look removed it"
+    finally:
+        if session.poll() is None:
+            session.kill()
+            session.communicate()
+
+
+def _queued(lock: Path) -> bool:
+    """Whether a taker is waiting on ``lock``: it holds the lock's turnstile (``<lock>.queue``) while it waits."""
+    try:
+        with FileLock(lock.with_name(lock.name + ".queue"), timeout=0):
+            return False
+    except errors.LockTimeout:
+        return True
+
+
+def test_a_sessions_end_removes_its_file_only_under_the_lock_every_look_holds(project):
+    """The product fix behind the WinError 32 above (#451's review): a session's end waits for the sessions lock
+    before it removes its file, so it never meets a look's open file. The test holds the lock and the file as a look
+    does, and sees the session queue for the lock with its file still there: a removal without the lock removes it at
+    once on Linux, and on Windows is refused and the session ends without ever queueing. Then the look ends, and the
+    session's end removes the file."""
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    root = project.root / ".aew"
+    session = subprocess.Popen([sys.executable, "-c", HELD_SESSION, str(project.root)], env=env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               creationflags=procs.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+    try:
+        assert session.stdout is not None and session.stdout.readline().strip() == "session", session.stderr
+        [named] = list((root / operator_client.SESSIONS_REL).glob("*.json"))  # by glob: a venv's launcher on Windows
+        look = operator_client.sessions_lock(root)
+        with look:
+            with open(named, "rb"):
+                assert session.stdin is not None
+                session.stdin.write("\n")
+                session.stdin.flush()
+                until(lambda: _queued(look.path) or session.poll() is not None, HANG_GUARD_S, "the session's end")
+                assert session.poll() is None, "the session ended without waiting for the sessions lock"
+                assert named.exists(), "the session removed its file while a look held the lock"
+        said, told = session.communicate(timeout=HANG_GUARD_S)
+        assert session.returncode == 0 and said.split() == ["ended"], told
+        assert not named.exists(), "the session's end removed its file once the look let the lock go"
+    finally:
+        if session.poll() is None:
+            session.kill()
+            session.communicate()
+
+
+def test_a_session_whose_file_is_already_gone_ends_without_making_the_operator_folder(tmp_path):
+    """#451's review: removing a file that is already gone needs no lock, and taking it would create
+    ``local/operator`` and its lock files for nothing."""
+    aew_root = tmp_path / ".aew"
+    aew_root.mkdir()
+    operator_client.unname_session(aew_root, aew_root / operator_client.SESSIONS_REL / "1.json")
+    assert list(aew_root.iterdir()) == []
 
 
 @pytest.mark.skipif(IS_WINDOWS, reason="the walk reads /proc")

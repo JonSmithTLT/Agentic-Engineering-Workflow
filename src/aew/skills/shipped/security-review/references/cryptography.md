@@ -1,0 +1,3 @@
+# Cryptographic contracts
+
+**Check the chosen cryptographic contract.** Determine the actual primitive, mode, library version/contract, key origin and verification policy. Trace attacker influence over algorithm and key selection, error handling and release of authenticated data. For nonce/IV requirements, inspect the pair of key and nonce across restart, retry, concurrency, cloning and rotation only where reachable. A counter is not inherently weak; uniqueness and unpredictability requirements depend on the primitive. Repeated decryption inputs are not evidence of repeated encryption nonces. Do not claim a break from the word `random`, a short sample or a primitive name alone.

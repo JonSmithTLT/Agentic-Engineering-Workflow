@@ -130,6 +130,10 @@ SENTINEL_READY_S = 20.0  # the bound on the sentinel opening the job before the 
 HOLDER_FILES = 200
 REAP_POLL_S = 0.1
 REAP_GATE_ENV = "G3_TEST_REAP_GATE"  # tests only: the reaper starts polling once this file exists
+# Tests only: the controller's deadline acts once this file exists as well, so a test of a running test's autopsy at the
+# deadline has its test running then. The deadline counts from configure, and a loaded Windows runner once took longer
+# than a 5 s deadline to reach the test (#443, 2026-11-11). The sentinel's times are unchanged.
+DEADLINE_GATE_ENV = "G3_TEST_DEADLINE_GATE"
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
@@ -437,8 +441,13 @@ class Controller:
 
     def _watch(self) -> None:
         act_at = self.mono + (self.margin if self.distributed else 0.0)
+        gate = os.environ.get(DEADLINE_GATE_ENV)
         while not self._finished.wait(max(0.0, min(act_at - time.monotonic(), 60.0))):
             if time.monotonic() >= act_at:
+                # a test's gate: bounded by the sentinel, which acts two margins after the deadline whatever this does
+                while gate and not os.path.exists(gate):
+                    if self._finished.wait(0.05):
+                        return
                 self.expire(from_thread=True)
                 return
 

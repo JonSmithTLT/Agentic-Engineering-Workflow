@@ -28,6 +28,14 @@ starts:
   reason: the general Lead command, refused under required in its handler before any credential read or seat move
     (WeakerLead.precheck); elsewhere it runs labelled not contained
   registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: src/aew/kit/__init__.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: Git for the operator's seeded repository or AEW's own source revision; no sample program runs
+- site: src/aew/kit/__main__.py::main
+  call: call
+  classes: [not_agent_context]
+  reason: starts AEW's operator CLI on its terminal; that CLI owns the Lead launch and its containment
 - site: src/aew/doctor.py::_git
   call: run
   classes: [not_agent_context]
@@ -427,6 +435,9 @@ token_only:
     Validation.establish): a method, which the AST detector resolves by import only"
 
 handlers:
+- site: src/aew/kit/__main__.py::main
+  catches: [AEWError]
+  does: returns
 - site: eval/aew_eval/raw.py::RawArm.run
   catches: [Exception]
   does: goes_on

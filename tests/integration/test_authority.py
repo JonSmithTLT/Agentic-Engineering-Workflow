@@ -15,6 +15,7 @@ from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
 from aew.errors import IllegalTransition, ValidationFailed
 from aew.harness import contract as K
+from aew.util import dump_yaml, read_yaml
 
 
 def control_bytes(p: Project) -> bytes:
@@ -65,13 +66,15 @@ def test_accept_and_reject_candidates(project):
 
 def test_manifest_edit_outside_engine_detected_and_adopted(project):
     manifest = project.root / ".aew/project.yaml"
-    manifest.write_text(manifest.read_text().replace("profile: base", "profile: python"))
+    data = read_yaml(manifest)
+    data["project"]["name"] = "Renamed by operator"
+    manifest.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
     cands = project.ok("authority", "list")["candidates"]
     res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation",
                       "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR"
     assert project.ok("status", "--json")["contradictions"]
-    project.adopt_policy("profile corrected by operator")
+    project.adopt_policy("project renamed by operator")
     assert project.ok("status", "--json")["contradictions"] == []
 
 

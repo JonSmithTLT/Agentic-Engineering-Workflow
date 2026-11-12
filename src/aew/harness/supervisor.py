@@ -470,14 +470,15 @@ class Supervisor:
         label records what the run has."""
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
+        pin = self.record.get("execution_profile") or {}
         try:
             contained = contain_launch(
-                policy, adapter_cls, provider=(self.record.get("execution_profile") or {}).get("provider"),
+                policy, adapter_cls, provider=pin.get("provider"),
                 provider_env=[str(n) for n in contract.extra.get("provider_env") or []], role=contract.role,
                 scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
                 bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
                  aew_root=self.engine.aew_root, kind="worker_run", key_admission=key_admission,
-                execution_profile=contract.execution_profile,
+                execution_profile=pin,
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             self.layout = None

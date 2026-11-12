@@ -435,6 +435,10 @@ token_only:
     Validation.establish): a method, which the AST detector resolves by import only"
 
 handlers:
+- site: src/aew/harness/opencode/adapter.py::OpenCodeAdapter._seed_plan_login
+  catches: [ContainmentUnavailable]
+  does: raises
+  reason: failure to verify the private seed refuses the launch before the server starts
 - site: src/aew/kit/__main__.py::main
   catches: [AEWError]
   does: returns

@@ -88,14 +88,18 @@ Deterministic fault points are named code locations, not timings. That is why th
 - **The merge gate is the `assurance` job.** It fails unless, per OS and from the lane reports:
   - every job collected the same test set;
   - every collected test ran exactly once across all lanes and shards;
-  - no session failed, which includes the isolation guard (§5);
-  - no test failed or errored;
+  - any failed session meets the flake policy below, which excludes isolation guard failures (§5);
+  - any failed or errored test has independently verified isolated re-run evidence under an open entry;
   - the skipped tests are exactly those pinned in `tests/platform-skips.yaml`;
   - no xfail/xpass occurred unless pinned.
 
   It also fails if any test job the tier requires, or `static`, did not succeed. Mark `assurance` as a **required status check** on `main`.
 
-  It judges each shard's latest run attempt only (`check_assurance.latest_attempts`). A re-run job uploads its lane report under an artifact name of its own attempt (`-attempt-<n>`), because `download-artifact` keeps one artifact of a name, the one with the highest id, which is not always the newest. On 2026-10-24 the gate of PR #243's run 40059454181 read attempt 1's failed report after its re-run had passed. Per platform and lane, the latest attempt sets the shard plan: Re-run all jobs runs the tier job again, which may re-plan the shards, and the earlier plan's shards are then superseded whole. Per shard of that plan, every report of its latest attempt counts, so two reports of one attempt still run their tests twice. D2's ratchet (`discovery_ratchet.py`) leaves out the reports it supersedes and the findings files beside them (a findings file beside no report is still read), so an earlier attempt's capture error does not outlive the re-run that passed.
+  It checks collection and shard coverage on the latest run attempt of each shard (`check_assurance.latest_attempts`).
+  Earlier failures and hangs remain subject to the flake policy. A re-run job uploads its lane report under its own
+  attempt name (`-attempt-<n>`). The latest attempt of each platform and lane sets the shard plan, since Re-run all
+  jobs may re-plan the shards. Each report of a shard's latest attempt counts, so duplicate reports still count twice.
+  D2's ratchet (`discovery_ratchet.py`) leaves out superseded reports and their findings files.
 - **The dashboard joins the same gate** (F20.1, 2026-10-03). `ci.yml` calls `web.yml`, whose `changes` job decides whether `web/`, the shared contract (`docs/design/dashboard-api-v1-provisional.yaml`) or `web.yml` changed (merge base for pull requests and merge groups; it fails closed). If so, `checks` runs: locked install, the contract's acceptance digest, generated-artifact consistency, typecheck, lint, the frontend tests, the production build with its mock exclusion, the demo build and the compiled browser checks. Its `result` job passes only when the checks passed, or when nothing they cover changed, and `assurance` requires it. The Python lanes never need Node, and the web jobs never need Python.
 - **The gate has already caught one gap.** On its first run it found that the frozen-spec tag `aew-spec-frozen-2026-09-25` had never been pushed to GitHub. So `test_spec_pin.py::test_tagged_revision_carries_pinned_blobs` had skipped silently in every earlier CI run. The tag was pushed on 2026-09-27, and the test now runs on both OSes.
 - **The nightly lane has already found one gap.** On its first run (150 steps, fault rate 0.15), seeds 1014 and 1034 failed on both OSes, and the failure was in the walk harness, not in AEW.
@@ -122,10 +126,18 @@ committed evidence and cancelled test jobs with no-response annotations or an ob
 five-minute post-cancel stall. A limit reached in setup before pytest is infrastructure. Triage can preserve new
 sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
 
-The second flake PR will publish a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
-`sightings.json` member will contain rows with `entry`, `job`, `at`, and optional `observation`. The run ID will come from
-GitHub artifact metadata. Each row will retain its original timestamp across attempts. The queue accepts indexes from
+CI publishes a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
+`sightings.json` member contains rows with `entry`, `job`, `at`, and optional `observation`. The run ID comes from
+GitHub artifact metadata. Each row retains its original timestamp across attempts. The queue accepts indexes from
 this repository's `ci.yml` runs on `main` and reports malformed archives in the issue while reading other indexes.
+
+Assurance compares a PR's unchanged test files against its preceding CI run. A test that failed there and now passes
+without an open entry appears as a likely new flake. When the earlier run is unreadable, the summary records that.
+The nightly queue reads a separate `flake-pr-candidates` artifact only from this repository's own PR runs. A candidate
+has a test node and platform and carries no authority to forgive failures or modify the register. The queue marks it
+for triage at two distinct PRs or three runs in seven days. It reports expiry after 14 days without a listing, with
+seven days of additional artifact retention so expiry can be seen. An open register entry closes the candidate with
+a pointer to the entry. Triage adds entries through the register-only tier, including during a priority merge hold.
 
 The queue batches check-suite reads, then fetches details for matching cancelled jobs and active jobs on cancelled runs.
 It records qualifying jobs against each matching session entry. The scheduled job has Checks read access for these
@@ -172,7 +184,17 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 ### Failure and merge-blocking policy
 
 - **A merge also needs a clear independent review** at the same head commit ([`AGENTS.md`](../../AGENTS.md), rules 1 and 4).
-- **Red `assurance` means no merge.** Re-running a failed job is allowed only to rule out runner infrastructure (network, image). A test that fails and then passes on re-run is a defect to investigate, not a flake to ignore. A re-run decides: `assurance` judges each shard's latest attempt (§3, the merge gate), so Re-run failed jobs can turn it green. An earlier attempt never decides either way (an earlier run's reports decide only under the pin-only rule of §3): its pass cannot hide a later attempt's failure, and a `lanes` or `core` job that failed in the latest attempt fails the gate by its result as well (`tier.py --jobs-for`). Once the gate is green, the earlier attempt's failure is no longer in its summary: its report stays in the run as the artifact `lane-report-<os>-<lane>-<k>-attempt-<n>` (`core`'s: `lane-report-<os>-core-attempt-<n>`), kept 14 days.
+- **Red `assurance` means no merge.** CI may re-run a failed test alone once when an open entry at the tip of
+  `main` covers its test, lane and platform. A job can pass when every failed test qualifies and passes alone
+  within the existing deadline, with no session problem. The job keeps the original lane report. Assurance
+  checks each re-run record independently and names the accepted tests and their entries in its summary.
+  Files changed by the PR are ineligible. Up to three unregistered failures may each be re-run alone once for
+  evidence. They keep the job red.
+- **Earlier attempts remain visible.** Re-run failed jobs still works for runner infrastructure. A test that
+  failed in an earlier attempt needs an applicable open entry even if it now passes or moved shards. An
+  earlier hang needs an open session entry for its lane and platform. Assurance links the hung job and
+  records a sighting. A hang that names a test also needs an applicable open test entry. A timeout before
+  pytest starts is infrastructure. Earlier runs supply gate evidence only under the pin-only rule in §3.
 - **A test that hangs fails by name.** CI's lane and `core` steps pass `--test-timeout 600` (`tests/helpers/watchdog.py`). A test still running after 600 s gets every thread's stack written to a dump file beside the lane report, which is uploaded even when the job fails. On POSIX a `SIGALRM` then raises inside the test, so it fails in place with the stack in its report, and the shard carries on. Windows has no `SIGALRM`, so there the stack is only recorded and the test runs on. The limit sits well above the slowest recorded test (about 325 s), and a test growing towards it is a regression to find, never a reason to raise it. Before this, a hung test held its job until GitHub cancelled it at 30 minutes. A cancelled job writes no lane report, so the run named nothing: nine Linux integration jobs ended that way between 2026-10-06 and 2026-10-08. The one found was the dashboard control channel's `close`, which waited forever on a wake connection that the serving thread would no longer accept (fixed with a bounded wake).
 - **A hang or a deadline leaves an autopsy** (the hang-and-flake diagnosis plan, G3a). Every pytest step in every workflow also passes `--session-deadline`, below its job's `timeout-minutes` with `bounds.JOB_MARGIN_S` to spare (`tests/helpers/bounds.py`; the plan requires at least 3 minutes, and `test_ci_tools` pins that), so a session ends itself, keeping its evidence, before GitHub cancels the job and nothing is written. Each such job's first step also sets `AEW_JOB_DEADLINE`, its own start plus its timeout less `JOB_MARGIN_S` and two `DEADLINE_MARGIN_S`, which caps every session in the job, so sessions that run one after another (`core`'s fast and serial lanes, a loop of serial runs) all end in time. Under xdist the deadline is absolute: each worker collects and exits at it, and the lanes run with `--max-worker-restart 0`, so a crashed worker now ends the run instead of being replaced (a crash is evidence). The session's processes are its own job object on Windows and a subreaper with (pid, start time) on Linux, and a sentinel outside them ends them if the controller is wedged or dies without finishing; nothing of this exists without `--session-deadline`. When the watchdog fires, at the deadline, or when a test marked `@pytest.mark.autopsy` fails, `tests/helpers/autopsy.py` writes `<hang dir>/autopsy/<test>/`: every thread's stack, the processes under the test, each helper child's periodic stacks, uncaught exceptions and output (`tests/helpers/childdiag.py`), the flight recorder (`tests/helpers/flight_recorder.py`), who holds the files of the last failed I/O, and a copy of the test's `tmp_path`. It writes only through `harness_diagnostics` (redacted, capped, never `.json`), and `check_assurance` and `update_durations` skip the `autopsy` directory as well. Every lane uploads its hang directory under `if: always()`. A failed test's `tmp_path` stays kept by pytest's default retention (the last 3 sessions). Every bound nests, pinned in `tests/unit/test_ci_tools.py` (`tests/helpers/bounds.py`): inner helper bound < scenario bound < `--test-timeout` < `--session-deadline` < the job's timeout.
 - **A step lasts until its output closes, and a job at its timeout uploads nothing.** So ending in time comes first, and the sentinel doesn't take `session-finished` for the end: it ends a controller that hasn't exited a margin later (`stuck-after-finish`) and whatever of the session then still runs a margin on, since a child holding the step's output keeps the step open after pytest has exited 0 (`left-running`). A thread of its own ends the set if collecting evidence hangs (`sentinel-backstop`). A hang in native code holding the GIL stops the Python threads that would describe it, so `faulthandler`'s timer writes the stacks (`*-deadline-stacks`, `controller-after-finish-stacks`). What this can't do: end a process stuck in a kernel wait, or survive a dead runner. On Linux the set is a snapshot, so a child started as the controller exits can be missed. On Windows a test whose own timeout comes first has that one timer, so its stacks are written then, to the watchdog's file, rather than at the deadline.

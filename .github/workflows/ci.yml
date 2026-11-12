@@ -193,7 +193,9 @@ jobs:
       # Under xdist (strategy §5: everything but the serial lane may run in parallel). `--durations-file=` is one word,
       # as in the lanes job.
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
+        id: fast_lane
         if: matrix.lane == 'fast'
+        continue-on-error: true
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
@@ -202,13 +204,26 @@ jobs:
           --test-timeout 600 --session-deadline 1200
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
+        id: serial_lane
         if: matrix.lane == 'serial'
+        continue-on-error: true
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
           --shard ${{ matrix.shard }}/${{ matrix.of }}
           "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1200
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
+      - name: Judge the fast lane and record isolated re-runs
+        if: always() && matrix.lane == 'fast'
+        run: >-
+          python tools/ci/flake_rerun.py --outcome ${{ steps.fast_lane.outcome }} --evidence
+          --report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
+          ${{ runner.os == 'Linux' && '--coverage' || '' }}
+      - name: Judge the serial lane and record isolated re-runs
+        if: always() && matrix.lane == 'serial'
+        run: >-
+          python tools/ci/flake_rerun.py --outcome ${{ steps.serial_lane.outcome }} --evidence
+          --report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       # Named per run attempt: `download-artifact` keeps one artifact of a name, not always the newest, so a re-run's
       # report must not share its earlier attempt's name (assurance keeps each shard's latest attempt).
       - uses: actions/upload-artifact@v7
@@ -248,6 +263,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2  # the tested merge commit and its first parent, for the PR-own test rule
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -265,6 +282,8 @@ jobs:
       # an existing file given as a separate word counts as a test path, and the rootdir becomes its common ancestor
       # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
+        id: lane
+        continue-on-error: true
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
@@ -272,6 +291,12 @@ jobs:
           "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+      - name: Judge the lane and record isolated re-runs
+        if: always()
+        run: >-
+          python tools/ci/flake_rerun.py --outcome ${{ steps.lane.outcome }} --evidence
+          --report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+          ${{ runner.os == 'Linux' && '--coverage' || '' }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -410,6 +435,7 @@ jobs:
     permissions:
       contents: read
       actions: read  # the run's jobs, for the cost record's queue and runner times; an earlier run's reports
+      checks: read  # no-response annotations for earlier cancelled pytest jobs
       pull-requests: read  # the recompute reads the `full-ci` label live
     steps:
       - uses: actions/checkout@v7
@@ -488,10 +514,35 @@ jobs:
         env:
           TIER: ${{ steps.tier.outputs.tier }}
           EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN: ${{ needs.changes.outputs.reuse_run }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
           --require linux,win32 --tier "$TIER" --event "$EVENT"
           --changed-modules "$RUNNER_TEMP/changed-modules.txt" --summary "$GITHUB_STEP_SUMMARY"
+          --flake-policy --sightings "$RUNNER_TEMP/flake-sighting-index/sightings.json"
+          --candidates "$RUNNER_TEMP/flake-pr-candidates/candidates.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: flake-sighting-index
+          path: ${{ runner.temp }}/flake-sighting-index/sightings.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        with:
+          name: flake-pr-candidates
+          path: ${{ runner.temp }}/flake-pr-candidates/candidates.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 21
       # The shard-durations history (register E44; tools/ci/shard_plan.py sizes every run's lanes from it). Only a
       # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
       # session never moves a duration. How long the run took plays no part: a slow green run is recorded too, so a

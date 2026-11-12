@@ -61,6 +61,11 @@ CHECK_DETAILS = """query($ids: [ID!]!) {
 }"""
 IDENTIFIER = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 INDEX_ARTIFACT = "flake-sighting-index"
+CANDIDATE_ARTIFACT = "flake-pr-candidates"
+CANDIDATE_SCHEMA = "aew/flake-candidate/v1"
+CANDIDATE_MEMBER = "candidates.json"
+CANDIDATE_EXPIRY = timedelta(days=14)
+CANDIDATE_RETENTION = timedelta(days=21)
 INDEX_MEMBER = "sightings.json"
 MAX_INDEX_BYTES = 1024 * 1024
 TEST_NAME = re.compile(r"test_\w+\Z")
@@ -416,6 +421,92 @@ def _index_warning(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _candidate_prs(repo: str, run: dict[str, Any]) -> set[int]:
+    if (run.get("path") != ".github/workflows/ci.yml" or run.get("event") != "pull_request"
+            or not all(((run.get(key) or {}).get("full_name") or "").casefold() == repo.casefold()
+                       for key in ("repository", "head_repository"))):
+        return set()
+    return {row["number"] for row in run.get("pull_requests") or []
+            if type(row.get("number")) is int and row["number"] > 0}
+
+
+def candidate_nodes(data: bytes, prs: set[int]) -> tuple[int, list[tuple[str, str]]]:
+    if len(data) > MAX_INDEX_BYTES:
+        raise InvalidRegister("oversized candidate archive")
+    try:
+        with ZipFile(io.BytesIO(data)) as archive:
+            if (archive.namelist() != [CANDIDATE_MEMBER]
+                    or archive.getinfo(CANDIDATE_MEMBER).file_size > MAX_INDEX_BYTES):
+                raise InvalidRegister("invalid candidate archive member")
+            doc = json.loads(archive.read(CANDIDATE_MEMBER))
+    except (BadZipFile, CompressionError, EOFError, RuntimeError, NotImplementedError) as exc:
+        raise InvalidRegister("invalid candidate archive") from exc
+    if (not isinstance(doc, dict) or doc.keys() != {"schema", "pr", "candidates"}
+            or doc["schema"] != CANDIDATE_SCHEMA or type(doc["pr"]) is not int or doc["pr"] not in prs
+            or not isinstance(doc["candidates"], list)):
+        raise InvalidRegister("invalid candidate listing or PR")
+    rows = []
+    for row in doc["candidates"]:
+        if (not isinstance(row, dict) or row.keys() != {"test", "platform"}
+                or not isinstance(row["platform"], str) or row["platform"] not in PLATFORMS
+                or not isinstance(row["test"], str) or len(row["test"]) > 1000
+                or not re.fullmatch(r"tests/[\w./-]+\.py::[^\x00-\x1f\x7f`]+", row["test"])):
+            raise InvalidRegister("invalid candidate node or platform")
+        rows.append((row["test"], row["platform"]))
+    return doc["pr"], rows
+
+
+def recent_candidates(repo: str, now: datetime, warn: Callable[[str], None] = _index_warning
+                      ) -> Iterable[tuple[str, str, int, int, datetime]]:
+    trusted: dict[int, set[int]] = {}
+    for artifact in _pages(repo, f"actions/artifacts?per_page=100&name={CANDIDATE_ARTIFACT}", "artifacts"):
+        try:
+            at = _time(artifact["created_at"])
+            if artifact["expired"] or not now - CANDIDATE_RETENTION <= at <= now:
+                continue
+            run = artifact["workflow_run"]["id"]
+            artifact_id = artifact["id"]
+            if type(run) is not int or run < 1 or type(artifact_id) is not int or artifact_id < 1:
+                raise InvalidRegister("invalid candidate artifact metadata")
+            if run not in trusted:
+                trusted[run] = _candidate_prs(repo, _api(repo, f"actions/runs/{run}"))
+            if not trusted[run]:
+                continue
+            if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
+                raise InvalidRegister("invalid candidate archive size")
+            pr, rows = candidate_nodes(_gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip"), trusted[run])
+        except (ValueError, KeyError, TypeError):
+            warn("Skipped a malformed PR flake candidate archive or its metadata.")
+            continue
+        yield from ((node, platform, pr, run, at) for node, platform in rows)
+
+
+def candidate_queue(doc: dict[str, Any], listings: Iterable[tuple[str, str, int, int, datetime]],
+                    now: datetime) -> list[str]:
+    grouped: dict[tuple[str, str], dict[int, tuple[int, datetime]]] = {}
+    for node, platform, pr, run, at in listings:
+        runs = grouped.setdefault((node, platform), {})
+        if run not in runs or at > runs[run][1]:
+            runs[run] = (pr, at)
+    registered = {(row["test"], platform): row["id"] for row in doc["entries"]
+                  if row["status"] == "open" and row["scope"] == "test" for platform in row["platforms"]}
+    lines = []
+    for (node, platform), runs in sorted(grouped.items()):
+        label = f"`{node}` ({platform})"
+        if entry := registered.get((node, platform)):
+            lines.append(f"- {label}: closed by register entry `{entry}`.")
+        elif max(at for _, at in runs.values()) < now - CANDIDATE_EXPIRY:
+            lines.append(f"- {label}: expired after 14 days without a listing.")
+        else:
+            week = {run: pr for run, (pr, at) in runs.items() if now - WINDOW <= at <= now}
+            prs = set(week.values())
+            status = " **triage now**" if len(prs) >= 2 or len(week) >= 3 else ""
+            refs = (f" (PRs {', '.join(f'#{pr}' for pr in sorted(prs))}, "
+                    f"runs {', '.join(map(str, sorted(week)))})") if week else ""
+            lines.append(f"- {label}: {len(prs)} PR(s), {len(week)} listing(s) in seven days{refs}.{status}")
+    return lines
+
+
 def recent_index_sightings(
     repo: str, cutoff: datetime, warn: Callable[[str], None] = _index_warning,
 ) -> Iterable[tuple[str, dict[str, Any]]]:
@@ -586,6 +677,10 @@ def main(argv: list[str] | None = None) -> int:
             print("## Flake queue · last seven days\n")
             for ident, count, repeated in rows:
                 print(f"- `{ident}`: {count}" + (" **repeat offender**" if repeated else ""))
+            if args.repo:
+                candidates = candidate_queue(doc, recent_candidates(args.repo, now, warnings.append), now)
+                print("\n### PR flake candidates\n")
+                print("\n".join(candidates) if candidates else "No recent candidates.")
             for warning in warnings:
                 print(f"\n{warning}")
         else:

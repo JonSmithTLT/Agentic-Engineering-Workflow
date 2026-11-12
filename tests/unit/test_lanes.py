@@ -223,8 +223,26 @@ def test_a_session_that_writes_into_the_checkout_fails_the_isolation_guard(tmp_p
     for args in (["init", "-q"], ["add", "-A"],
                  ["-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-qm", "i"]):
         subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
-    proc = inner_pytest(root, "tests/unit/test_w.py")
+    path = tmp_path / "lane.json"
+    proc = inner_pytest(root, "tests/unit/test_w.py", f"--lane-report={path}")
     assert proc.returncode == 1 and "isolation guard" in proc.stdout
+    assert json.loads(path.read_text(encoding="utf-8"))["session_problems"] == ["checkout isolation guard"]
+
+
+@pytest.mark.parametrize("exitstatus,expected", [(1, ["xdist worker stopped unexpectedly"]), (70, [])])
+def test_a_worker_ended_by_the_session_deadline_uses_the_deadline_evidence(exitstatus, expected):
+    from types import SimpleNamespace
+    from typing import cast
+
+    plugin = object.__new__(lanes.LanePlugin)
+    plugin.config = cast(pytest.Config, SimpleNamespace())
+    plugin.worker_crashed = False
+    plugin.guard_before = None
+    plugin.report_path = plugin.rerun_path = None
+    plugin.session_problems = []
+    plugin.pytest_testnodedown(SimpleNamespace(), "worker exited")
+    plugin.pytest_sessionfinish(cast(pytest.Session, SimpleNamespace(exitstatus=exitstatus)), exitstatus)
+    assert plugin.session_problems == expected
 
 
 @pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="pytest-xdist not installed (extra: parallel)")

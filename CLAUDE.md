@@ -53,7 +53,10 @@ The lanes, the CI tiers, the static checks and the local commands are in
 - **CI is the matrix.** Locally, run the tests you touched and their neighbours, then push. Do not edit a checkout
   while its test run is in progress.
 - **Never mark a test xfail or skip it to get green.** A test that fails and then passes on re-run is a defect to
-  investigate. A slower test is a regression to find, not a timeout to raise.
+  investigate. A slower test is a regression to find. Keep its timeout.
+- **CI has two re-run exceptions.** The operator allows one isolated re-run of a known flake under an open
+  register entry. CI records a passing re-run as a sighting. CI can also re-run up to three unregistered
+  failures once each for evidence. Those failures keep the job red.
 - **Fix what the static checks report;** a `# noqa` is only for a reviewed false positive, and names the rule and the
   reason (strategy §3).
 - **New behaviour comes with the test that proves it**, named for the guarantee (`test_a_diagnostic_run_never_...`).

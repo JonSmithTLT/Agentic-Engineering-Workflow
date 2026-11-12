@@ -6,12 +6,12 @@ For every required platform it proves, from the lane reports written by ``pytest
 * every job collected the same test set;
 * every collected test ran exactly once across all lanes and shards;
 * every shard of a sharded lane reported (a dropped shard is a problem even before its tests show as missing);
-* no session failed (including the isolation guard) and no test failed or errored;
+* no session or test failed without the evidence required by the flake policy;
 * the skipped tests are exactly the pinned platform skips (``tests/platform-skips.yaml``);
 * no xfail/xpass occurred unless pinned there.
 
-It judges each shard's latest run attempt only (``latest_attempts``): a re-run job's report supersedes its earlier
-attempt's, whichever of them failed.
+It checks collection and coverage of the test set at each shard's latest attempt. Earlier test failures and hangs
+still have to satisfy the flake policy.
 
 The change's tier (CI redesign P1, ``tools/ci/tier.py``) says which lanes are required. ``full`` requires every
 collected test; a reduced tier requires every collected test of its lanes, by the lane each report records for every
@@ -39,6 +39,7 @@ from typing import Any
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import flake_assurance  # noqa: E402
 import tier as tiers  # noqa: E402  (tools/ci/tier.py: the tiers and the lanes each requires)
 
 REPORT_SCHEMA = "aew/lane-report/v1"
@@ -51,15 +52,19 @@ REQUIRED_PLATFORMS = ("linux", "win32")
 
 def load_reports(root: Path) -> list[dict[str, Any]]:
     """The lane reports under ``root``, each shard's latest attempt only (``latest_attempts``)."""
+    return latest_attempts(all_reports(root))
+
+
+def all_reports(root: Path) -> list[dict[str, Any]]:
     reports = []
     for path in sorted(root.rglob("*.json")):
-        if AUTOPSY_DIR in path.relative_to(root).parts:
+        if any(part == AUTOPSY_DIR or part.endswith("-reruns") for part in path.relative_to(root).parts[:-1]):
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("schema") == REPORT_SCHEMA:
             data["_source"] = str(path.relative_to(root))
             reports.append(data)
-    return latest_attempts(reports)
+    return reports
 
 
 def latest_attempts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -137,7 +142,8 @@ def shard_gaps(group: list[dict[str, Any]]) -> list[str]:
 
 
 def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
-          required: list[str], tier: str = "full") -> tuple[list[str], dict[str, Any]]:
+          required: list[str], tier: str = "full",
+          forgiven: dict[str, set[str]] | None = None) -> tuple[list[str], dict[str, Any]]:
     """Return (problems, per-platform facts). No problems means the platform's assurance envelope is complete for
     ``tier``: every collected test of the tier's lanes ran exactly once and passed."""
     problems: list[str] = []
@@ -169,7 +175,7 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             collected = {nid for nid in collected if lane_of.get(nid) in lanes}
         runs = Counter(nid for r in group for nid in r["results"])
         for r in group:
-            if r.get("exitstatus") != 0:
+            if r.get("exitstatus") != 0 and not (forgiven or {}).get(r.get("_source", "")):
                 problems.append(f"{platform}: session {_label(r)} exited {r.get('exitstatus')} "
                                 "(failed tests, a usage error, or the isolation guard)")
         for nid in sorted(collected - set(runs)):
@@ -183,7 +189,8 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
         for r in group:
             for nid, res in r["results"].items():
                 outcomes[nid] = res["outcome"]
-                if res["outcome"] in ("failed", "error"):
+                if (res["outcome"] in ("failed", "error")
+                        and nid not in (forgiven or {}).get(r.get("_source", ""), set())):
                     problems.append(f"{platform}: {res['outcome']}: {nid} ({_label(r)})")
                 elif res["outcome"] == "skipped" and nid not in pinned_skips:
                     problems.append(f"{platform}: unexpected skip: {nid} (pin it in platform-skips.yaml with a reason, "
@@ -267,10 +274,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--changed-modules", type=Path,
                     help="the changed fast-lane test modules, one per line (tier.py --modules-out): in a reduced tier, "
                          "each one's tests must all be fast or serial")
+    ap.add_argument("--flake-policy", action="store_true", help="judge isolated re-runs and earlier attempts")
+    ap.add_argument("--sightings", type=Path, help="write the run's flake sighting index")
+    ap.add_argument("--candidates", type=Path, help="write the PR run's flake candidates")
     args = ap.parse_args(argv)
     required = [p for p in args.require.split(",") if p]
-    reports = load_reports(args.reports)
-    problems, facts = check(reports, load_expectations(args.skips), required, args.tier)
+    history = all_reports(args.reports)
+    reports = latest_attempts(history)
+    flakes = flake_assurance.assess(args.reports, history, reports, args.event) if args.flake_policy else None
+    problems, facts = check(reports, load_expectations(args.skips), required, args.tier,
+                            flakes.forgiven if flakes else None)
+    if flakes:
+        problems += flakes.problems
     if args.tier != "full" and args.changed_modules:
         modules = [line.strip() for line in args.changed_modules.read_text(encoding="utf-8").splitlines()
                    if line.strip()]
@@ -278,7 +293,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
         problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
                            "reduced tier; a push to main and a merge group are always full")
+    if flakes:
+        if args.sightings:
+            try:
+                flake_assurance.publish(args.sightings, flakes)
+            except flake_assurance.ERRORS as exc:
+                problems.append(f"Flake sightings could not be preserved ({type(exc).__name__}).")
+        if args.candidates:
+            try:
+                flake_assurance.publish_candidates(args.candidates, flakes)
+            except flake_assurance.ERRORS as exc:
+                flakes.notes.append(f"PR flake candidates could not be written ({type(exc).__name__}).")
     text = summary(problems, facts, args.tier)
+    if flakes:
+        text += flakes.summary()
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write(text)

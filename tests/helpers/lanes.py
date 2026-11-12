@@ -32,6 +32,7 @@ VERTICAL_PATH = "tests/acceptance/test_vertical_path.py"
 DISCOVERY_DIR = "tests/discovery/"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
+RERUN_SCHEMA = "aew/flake-rerun/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
 # `aew` processes each test started through the test helper (`conftest.run_aew`), by node id: the cost record's
 # "CLI calls per test" (CI redesign P4, register E43). Counted in the process that runs the test, carried to the
@@ -221,6 +222,10 @@ class LanePlugin:
         spec = config.getoption("aew_shard")
         self.shard = parse_shard(spec) if spec else None
         self.report_path = config.getoption("aew_lane_report")
+        self.rerun_path = config.getoption("aew_rerun_report")
+        self.session_problems: list[str] = []
+        self.worker_crashed = False
+        self.positions: dict[str, tuple[str, int | None]] = {}
         self.collected: list[str] = []
         self.lanes: dict[str, str] = {}  # every collected test's lane: assurance requires only the tier's lanes (P1)
         self.phases: dict[str, dict[str, str]] = {}
@@ -296,6 +301,9 @@ class LanePlugin:
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         self.phases.setdefault(report.nodeid, {})[report.when] = _report_outcome(report)
+        if report.nodeid not in self.positions:
+            self.positions[report.nodeid] = (getattr(report, "worker_id", "controller"),
+                                             getattr(report, "item_index", len(self.positions)))
         self.durations[report.nodeid] = self.durations.get(report.nodeid, 0.0) + report.duration
         for name, value in report.user_properties:
             if name == CLI_CALLS_PROPERTY and report.when == "teardown":
@@ -303,6 +311,8 @@ class LanePlugin:
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
+        if error:
+            self.worker_crashed = True
         collected = getattr(node, "workeroutput", {}).get("aew_collected")
         if collected and not self.collected:
             self.collected = list(collected)
@@ -315,7 +325,7 @@ class LanePlugin:
     def _own_outputs(self) -> list[Path]:
         """What the session itself writes, and may write inside the checkout: the reports, and the directory a failed
         harness test's evidence is copied to (everything under it; #136 review, F4)."""
-        outs = [self.report_path, getattr(self.config.option, "xmlpath", None)]
+        outs = [self.report_path, self.rerun_path, getattr(self.config.option, "xmlpath", None)]
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
@@ -330,10 +340,18 @@ class LanePlugin:
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
         if _is_worker(self.config):
             return
+        if self.worker_crashed:
+            from session_deadline import DEADLINE_EXIT
+
+            # The deadline has its own exit status and markers, including when it ends a worker.
+            if session.exitstatus != DEADLINE_EXIT:
+                self.session_problems.append("xdist worker stopped unexpectedly")
         if self.guard_before is not None:
             changes = describe_change(self.guard_before, _checkout_state(self.root, self._own_outputs()))
             if changes:
-                session.exitstatus = pytest.ExitCode.TESTS_FAILED
+                self.session_problems.append("checkout isolation guard")
+                if session.exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED):
+                    session.exitstatus = pytest.ExitCode.TESTS_FAILED
                 tr = self.config.pluginmanager.get_plugin("terminalreporter")
                 if tr:
                     tr.write_sep("!", "isolation guard: the test session changed shared state", red=True)
@@ -343,6 +361,19 @@ class LanePlugin:
                                   "if you edited the checkout during the run, rerun)")
         if self.report_path:
             self._write_report(int(session.exitstatus))
+        if self.rerun_path:
+            self._write_rerun(Path(self.rerun_path), int(session.exitstatus))
+
+    def _write_rerun(self, path: Path, exitstatus: int) -> None:
+        report = {
+            "schema": RERUN_SCHEMA,
+            "platform": sys.platform,
+            "exitstatus": exitstatus,
+            "session_problems": self.session_problems,
+            "collected": self.collected,
+            "results": {nid: outcome_of(phases) for nid, phases in self.phases.items()},
+        }
+        path.write_text(json.dumps(report) + "\n", encoding="utf-8")
 
     def _write_report(self, exitstatus: int) -> None:
         xdist = self.config.getoption("numprocesses", None) if self.config.pluginmanager.hasplugin("xdist") else None
@@ -356,11 +387,13 @@ class LanePlugin:
             "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 1),
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
+            "session_problems": self.session_problems,
             "wall_s": round(time.perf_counter() - self.started, 2),
             "job_remaining_s": self.job_remaining_s,
             "collected": sorted(self.collected),
             "lanes": dict(sorted(self.lanes.items())),
-            "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
+            "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3),
+                              "worker": self.positions[nid][0], "index": self.positions[nid][1]}
                         for nid, ph in sorted(self.phases.items())},
             "cli_calls": dict(sorted(self.cli_calls.items())),
         }
@@ -420,6 +453,8 @@ def addoption(parser: pytest.Parser) -> None:
                     help="recorded test durations used to balance shards (default tests/durations.json)")
     group.addoption("--lane-report", dest="aew_lane_report", default=None, metavar="PATH",
                     help="write the collected set and per-test outcomes as JSON (read by tools/ci/check_assurance.py)")
+    group.addoption("--rerun-report", dest="aew_rerun_report", default=None, metavar="PATH",
+                    help="write isolated flake re-run evidence without a second lane report")
 
 
 def configure(config: pytest.Config) -> None:

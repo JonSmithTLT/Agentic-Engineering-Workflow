@@ -258,6 +258,46 @@ def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
     assert json.loads(report.read_text(encoding="utf-8"))["attempt"] == 3
 
 
+def test_only_ci_core_and_lanes_use_isolated_reruns_before_coverage_upload():
+    workflows = ROOT / ".github" / "workflows"
+    ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    expected = {"core": {"fast_lane", "serial_lane"}, "lanes": {"lane"}}
+    for name, job in ci.items():
+        steps = job.get("steps", [])
+        decisions = [step for step in steps if "tools/ci/flake_rerun.py" in step.get("run", "")]
+        continued = [step for step in steps if step.get("continue-on-error") and "--lane-report=" in
+                     step.get("run", "")]
+        assert {step["id"] for step in continued} == expected.get(name, set())
+        assert len(decisions) == len(continued)
+        for original in continued:
+            matched = [step for step in decisions if f"steps.{original['id']}.outcome" in step["run"]]
+            assert len(matched) == 1
+            decision = matched[0]
+            assert decision["if"].startswith("always()")
+            assert steps.index(original) < steps.index(decision)
+            assert "--evidence" in decision["run"]
+            assert ("--coverage" in decision["run"]) == (original["id"] != "serial_lane")
+            for upload in steps:
+                if upload.get("with", {}).get("name", "").startswith("coverage-"):
+                    assert steps.index(decision) < steps.index(upload)
+        if name == "lanes":
+            checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+            assert checkout["with"]["fetch-depth"] == 2
+    assert "flake_rerun.py" not in (workflows / "vertical.yml").read_text(encoding="utf-8")
+    gate = ci["assurance"]["steps"]
+    judge = next(step for step in gate if step.get("id") == "assure")
+    index = next(step for step in gate if step.get("with", {}).get("name") == "flake-sighting-index")
+    candidates = next(step for step in gate if step.get("with", {}).get("name") == "flake-pr-candidates")
+    assert "--flake-policy" in judge["run"] and "--sightings" in judge["run"]
+    assert gate.index(judge) < gate.index(index) and index["if"] == "always()"
+    assert index["with"]["retention-days"] == 14
+    assert "--candidates" in judge["run"] and gate.index(judge) < gate.index(candidates)
+    assert candidates["continue-on-error"] is True
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in candidates["if"]
+    assert candidates["with"]["retention-days"] == 21
+    assert ci["assurance"]["permissions"]["checks"] == "read"
+
+
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
     """Structure of .github/workflows/nightly.yml: `reference-plan` sizes the shards (shard_plan.py --reference), every
     OS gets shards 1..N of one N, each under its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance)
@@ -2295,7 +2335,7 @@ def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest
     # continue-on-error does not cover the job timeout: the step's own timeout keeps a hang from cancelling the gate
     assert cost.get("timeout-minutes") and cost["timeout-minutes"] < workflow["jobs"]["assurance"]["timeout-minutes"]
     assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read",
-                                                             "pull-requests": "read"}
+                                                             "checks": "read", "pull-requests": "read"}
     assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)
 
 

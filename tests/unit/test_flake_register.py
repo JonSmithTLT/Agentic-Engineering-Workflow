@@ -247,8 +247,61 @@ def test_queue_prints_index_warnings_in_the_issue_body(monkeypatch, capsys):
         return []
 
     monkeypatch.setattr(flake, "github_sightings", sightings)
+    monkeypatch.setattr(flake, "recent_candidates", lambda *_args: [])
     assert flake.main(["queue", "--repo", "o/r"]) == 0
     assert warning in capsys.readouterr().out
+
+
+def test_candidate_artifacts_are_from_own_prs_and_never_enter_the_sighting_queue(monkeypatch):
+    now = datetime(2026, 11, 11, tzinfo=UTC)
+    repo = "o/r"
+    artifacts = [
+        {"id": ident, "workflow_run": {"id": ident}, "expired": False, "size_in_bytes": 100,
+         "created_at": now.isoformat()} for ident in (1, 2, 3)
+    ]
+    runs = {
+        1: {"head_repository": {"full_name": repo}, "event": "pull_request"},
+        2: {"head_repository": {"full_name": "fork/r"}, "event": "pull_request"},
+        3: {"head_repository": {"full_name": repo}, "event": "push"},
+    }
+    for run in runs.values():
+        run.update(path=".github/workflows/ci.yml", repository={"full_name": repo}, pull_requests=[{"number": 4}])
+    monkeypatch.setattr(flake, "_pages", lambda *_args: artifacts)
+    monkeypatch.setattr(flake, "_api", lambda _, endpoint: runs[int(endpoint.rsplit("/", 1)[-1])])
+    downloads = []
+    node = "tests/unit/test_example.py::test_example"
+
+    def download(endpoint):
+        downloads.append(int(endpoint.split("/")[-2]))
+        content = io.BytesIO()
+        with ZipFile(content, "w") as archive:
+            archive.writestr(flake.CANDIDATE_MEMBER, json.dumps(
+                {"schema": flake.CANDIDATE_SCHEMA, "pr": 4, "candidates": [{"test": node, "platform": "linux"}]}
+            ))
+        return content.getvalue()
+
+    monkeypatch.setattr(flake, "_gh_read", download)
+    candidates = list(flake.recent_candidates(repo, now))
+    assert downloads == [1]
+    assert candidates == [(node, "linux", 4, 1, now)]
+    assert "1 PR(s), 1 listing(s)" in flake.candidate_queue({"entries": []}, candidates, now)[0]
+    assert list(flake.recent_index_sightings(repo, now - flake.WINDOW)) == []
+
+
+def test_candidate_queue_counts_distinct_prs_and_runs_and_says_when_rows_leave():
+    now = datetime(2026, 11, 11, tzinfo=UTC)
+    fresh = now - timedelta(days=1)
+    node = "tests/unit/test_example.py::test_example"
+    listings = [(node, "linux", 1, 2, fresh), (node, "linux", 2, 3, fresh),
+                (node, "linux", 1, 2, fresh), (node, "windows", 4, 5, now - timedelta(days=15))]
+    rows = flake.candidate_queue({"entries": []}, listings, now)
+    assert "2 PR(s), 2 listing(s)" in rows[0] and "triage now" in rows[0]
+    assert "windows" in rows[1] and "expired after 14 days" in rows[1]
+    more = [(node, "linux", 1, run, fresh) for run in (2, 3, 4)]
+    assert "1 PR(s), 3 listing(s)" in flake.candidate_queue({"entries": []}, more, now)[0]
+    assert "triage now" in flake.candidate_queue({"entries": []}, more, now)[0]
+    entry = {"scope": "test", "status": "open", "platforms": ["linux"], "test": node, "id": "example"}
+    assert "closed by register entry `example`" in flake.candidate_queue({"entries": [entry]}, more, now)[0]
 
 
 @pytest.mark.parametrize(("listed", "expected"), [(999, 1001), (1000, 1000)])

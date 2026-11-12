@@ -219,7 +219,11 @@ class Tripwire:
     def pytest_sessionfinish(self, session: pytest.Session) -> None:
         found, unread = self.changes()
         if found:
-            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            lanes = self.config.pluginmanager.get_plugin("aew-lanes")
+            if lanes is not None:
+                lanes.session_problems.append("git isolation tripwire")
+            if session.exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED):
+                session.exitstatus = pytest.ExitCode.TESTS_FAILED
         reporter = self.config.pluginmanager.get_plugin("terminalreporter")
         if reporter is None:
             return

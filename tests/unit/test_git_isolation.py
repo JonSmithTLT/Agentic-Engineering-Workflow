@@ -367,7 +367,9 @@ def test_a_session_the_tripwire_failed_says_so_in_the_lane_report_assurance_read
                            "--lane-report", str(report)], cwd=root, env={**clean, "SESSION_ROOT": str(root)},
                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, **NO_WINDOW)
     assert proc.returncode == pytest.ExitCode.TESTS_FAILED and "1 passed" in proc.stdout, proc.stdout + proc.stderr
-    assert json.loads(report.read_text(encoding="utf-8"))["exitstatus"] == pytest.ExitCode.TESTS_FAILED
+    written = json.loads(report.read_text(encoding="utf-8"))
+    assert written["exitstatus"] == pytest.ExitCode.TESTS_FAILED
+    assert written["session_problems"] == ["git isolation tripwire"]
 
 
 def test_every_identity_the_tests_and_tools_configure_is_a_test_identity():

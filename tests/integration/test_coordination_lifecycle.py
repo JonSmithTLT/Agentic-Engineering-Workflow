@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from invariants import assert_control_invariants, coordination_violations, load_control, with_cold
+from invariants import assert_control_invariants, baseline_control, coordination_violations, load_control, with_cold
 from jsonschema import Draft202012Validator
 from test_coordination_store import CP, OPERATOR, World, set_messaging, world
 
@@ -734,8 +734,8 @@ def test_an_engine_before_ms2_refuses_a_state_holding_the_coordination_keys(tmp_
     control state that holds any coordination key, at its first read, so it can never end a messaged invocation
     without a seal. Its schema leaves a unit's keys open, so a state with the unit's pointer is refused through the
     registration key, which every such state holds (C6: a thread implies it)."""
-    s = _with_keys(tmp_path, key)
     baseline = json.loads(PRE_MS2_SCHEMA.read_text(encoding="utf-8"))
+    s = baseline_control(_with_keys(tmp_path, key), baseline)
     old = pre_ms2_validator(baseline)
     errors = [e.message for e in old.iter_errors(s)]
     top = "coordination_unseen" if key == "coordination_unseen" else "coordination_store"

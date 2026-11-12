@@ -55,7 +55,8 @@ from typing import Any
 from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
-from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
+from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
+from aew.harness.contract import EXPECT_REV
 from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -910,17 +911,18 @@ class WeakerLead:
                        entry=entry)
 
 
-def require_credential(acquire: bool) -> None:
+def require_credential(acquire: bool, *, prompt_token: bool = False) -> None:
     """A Lead session needs the Lead credential, from the operator (``lead_credential.required``: the variable, removed
     from the session's environment, or the hidden prompt) or a vacant seat (``--acquire``): refused before anything
     starts. ``aew opencode`` asks this before its contained Lead's own checks (U29)."""
     if not acquire:
         lead_credential.required(instead="take a vacant seat with --acquire (the credential then exists only inside "
-                                         "this session)")
+                                         "this session)", force_prompt=prompt_token)
 
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
+                opencode_kind: str | None = None, prompt_token: bool = False,
                 env: dict[str, str] | None = None,
                 with_token: Callable[[str], None] | None = None,
                 on_ready: Callable[[], None] | None = None) -> dict[str, Any]:
@@ -955,71 +957,108 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     if precheck is not None:
         precheck()
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
-    require_credential(acquire)
+    require_credential(acquire, prompt_token=prompt_token)
     # in memory only: never inherited by git, hooks or any child
-    held = os.environ.pop(lead_credential.ENV, "") or lead_credential.take_prompted()
+    exported = os.environ.pop(lead_credential.ENV, "")
+    held = ("" if prompt_token else exported) or lead_credential.take_prompted()
+    del exported
+    previous: seat.Leftovers = seat.empty_leftovers()
+    generation = None
     if acquire:
-        token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
+        state = engine.store.current()
+        if opencode_kind is not None and state["lead"]["status"] != "vacant":
+            result = engine.lead_resume(session_label=session_label)
+            previous = result["leftovers"]
+            carried = ", ".join(result["carried_invocations"]) or "none"
+            sys.stderr.write(f"aew opencode: resumed the Lead seat, generation {result['previous_generation']} -> "
+                             f"{result['generation']}; carried: {carried}; processes left: "
+                             f"{seat.describe_leftovers(previous)}\n")
+        else:
+            result = engine.lead_acquire(expect_rev=state["revision"], session_label=session_label,
+                                         kind=opencode_kind or seat.LEAD_ACQUIRE)
+        token = result.pop("token")
+        generation = result["generation"]
     else:
         token = held
-    if with_token is not None:
-        with_token(token)
-    broker = LeadBroker(engine, token)
+    broker = None
+    harness = None
+    survivors: list[tuple[int, str | None]] = []
+    ownership = "clean"
+    seat_outcome = "superseded"
+    failed = False
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
-    with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
-        broker.start()
-        broker_env = broker.env
-        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker_env}
-        from aew.surface.contract import ENV_SWITCHES
+    try:
+        if with_token is not None:
+            with_token(token)
+        broker = LeadBroker(engine, token)
+        with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
+            broker.start()
+            broker_env = broker.env
+            child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker_env}
+            from aew.surface.contract import ENV_SWITCHES
 
-        if ENV_SWITCHES not in broker_env:
-            child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
-        try:
+            if ENV_SWITCHES not in broker_env:
+                child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
             harness = contained(broker.server.private_dir, child_env)
-        except BaseException:
-            broker.close()
-            if acquire and not broker.superseded:  # nothing ran: the seat this session took is free again
-                with contextlib.suppress(errors.AEWError):
-                    engine.lead_release(token=token, expect_rev=engine.store.current()["revision"])
-            raise
-        survivors: list[tuple[int, str | None]] = []
-        ownership = None
-        if harness.poster is not None:
-            broker.start_wakes(harness.poster)
-        try:
+            if harness.poster is not None:
+                broker.start_wakes(harness.poster)
             if on_ready is not None:
                 on_ready()
             if harness.entry is not None:
                 harness.entry.started()
+            ownership = None
             code, ownership = run_session_tree(harness.argv, env=harness.env, cwd=str(engine.repo_root),
                                                relay=harness.relay, survivors=survivors)
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        try:
+            if harness is not None:
+                try:
+                    if harness.entry is not None:
+                        harness.entry.end(survivors if ownership in ("clean", "survivors") else None,
+                                          ownership=None if ownership in ("clean", "survivors") else "unowned")
+                finally:
+                    harness.close()
         finally:
-            if harness.entry is not None:  # an outcome the reaper never gave is an unknown one: unowned
-                harness.entry.end(survivors if ownership in ("clean", "survivors") else None,
-                                  ownership=None if ownership in ("clean", "survivors") else "unowned")
-            harness.close()
-            broker.close()
-    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership,
-                           "containment": harness.label}
+            try:
+                if broker is not None:
+                    broker.close()
+            finally:
+                if generation is not None and (broker is None or not broker.superseded):
+                    cleanup_errors = (errors.AEWError, OSError) if failed else ()
+                    with contextlib.suppress(*cleanup_errors):
+                        seat_outcome = _end_acquired_seat(engine, token, generation, opencode=opencode_kind is not None,
+                                                          keep_seat=keep_seat and not failed, previous=previous,
+                                                          ownership=ownership, survivors=survivors)
+                elif generation is None and broker is not None and not broker.superseded:
+                    seat_outcome = "held by your AEW_LEAD_TOKEN"
+    assert broker is not None and harness is not None
+    return {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership,
+            "containment": harness.label, "seat": seat_outcome}
+
+
+def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bool, keep_seat: bool,
+                       previous: seat.Leftovers, ownership: str | None, survivors: list[tuple[int, str | None]]) -> str:
     state = engine.store.current()
-    if acquire and not broker.superseded:
-        active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
-        if ownership != "clean":
-            out["seat"] = ("held; "
-                           + ("processes started by the Lead's harness could not all be ended"
-                              if ownership == "survivors" else "this platform cannot prove that no process started by "
-                              "the Lead's harness is still running")
-                           + ", so the seat stays held and none of them can take it; continue with `aew lead "
-                           "takeover` at your own terminal")
-        elif keep_seat or active:
-            out["seat"] = ("held; the Lead credential existed only inside this session, so continuing needs "
-                           "`aew lead takeover` at your own terminal" + (f" (active: {', '.join(active)})"
-                                                                         if active else ""))
-        else:
-            engine.lead_release(token=token, expect_rev=state["revision"])
-            out["seat"] = "released"
-    else:
-        out["seat"] = "held by your AEW_LEAD_TOKEN" if not broker.superseded else "superseded"
-    del token, held
-    return out
+    if state["lead"]["generation"] != generation or state["lead"]["status"] == "vacant":
+        return "superseded"
+    active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
+    left = seat.remaining(previous, survivors, ownership)
+    if not (keep_seat or active or left is None or left) and state["lead"]["status"] == "active":
+        engine.lead_release(token=token, expect_rev=state["revision"])
+        return "released"
+    if opencode:
+        seat.write_leftovers(engine.aew_root, generation, left)
+    continuation = ("the next `aew opencode` resumes it from this host and user if eligible; otherwise use "
+                    "`aew lead takeover` at your own terminal" if opencode else
+                    "continue with `aew lead takeover` at your own terminal")
+    if left is None or left:
+        outcome = f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
+        if left is None or isinstance(left, int):
+            outcome += (f"; to free the seat instead, run `aew lead takeover --reason <reason> {EXPECT_REV}` "
+                        f"at your own terminal, then `aew lead release {EXPECT_REV}` with the new revision")
+        return outcome
+    return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

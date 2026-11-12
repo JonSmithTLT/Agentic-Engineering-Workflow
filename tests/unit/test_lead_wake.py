@@ -171,7 +171,7 @@ def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> 
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
     assert 'set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`' in guide
     assert "`aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`" in guide
-    assert "A session started with `--acquire` holds the only credential, so end that session first" in guide
+    assert "A session that took the seat itself holds the only credential, so end that session first" in guide
 
 
 def test_what_every_linux_lead_gets_is_the_lead_text_with_the_wait_taken_out_and_the_wake_text_added() -> None:

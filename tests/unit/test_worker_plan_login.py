@@ -286,6 +286,8 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
 def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, monkeypatch):
     monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
     commands = []
+    tree_kwargs = []
+    layout = object()
 
     def spawn(argv, *, env, **_):
         commands.append(argv[1:])
@@ -298,14 +300,18 @@ def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, mon
             con.execute(CREDENTIAL_TABLE)
         return SimpleNamespace(returncode=0, communicate=lambda **_: ("", ""))
 
-    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
+    def make_tree(**kwargs):
+        tree_kwargs.append(kwargs)
+        return SimpleNamespace(spawn=spawn, close=lambda: None)
+
+    monkeypatch.setattr(adapter.procs, "ProcessTree", make_tree)
     harness = tmp_path / ".aew" / "local" / "harness"
     for name in ("run-one", "run-two"):
         run = harness / "runs" / name
         state = run / "harness"
         state.mkdir(parents=True)
         data = state / "xdg-data"
-        worker = SimpleNamespace(tree=SimpleNamespace(layout=None), run_dir=run, state_dir=state,
+        worker = SimpleNamespace(tree=SimpleNamespace(layout=layout), run_dir=run, state_dir=state,
                                  directory=str(tmp_path))
         adapter.OpenCodeAdapter._seed_plan_login(worker, ["fake-opencode"], {"XDG_DATA_HOME": str(data)},
                                                 "openai", name + "-sentinel")
@@ -314,6 +320,7 @@ def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, mon
         assert row_id == "cred_aew_openai"
         assert json.loads(value)["access"] == name + "-sentinel"
     assert commands.count(["session", "list"]) == 1
+    assert tree_kwargs == [{"layout": layout, "require_layout": True}] * len(commands)
     seed, = (harness / "plan-login-seeds").glob("*.db")
     with sqlite3.connect(seed) as con:
         assert con.execute("SELECT id FROM credential").fetchall() == []
@@ -328,7 +335,7 @@ def test_a_missing_seed_is_a_named_refusal(tmp_path, monkeypatch):
     def spawn(*_args, **_kwargs):
         return SimpleNamespace(returncode=0, communicate=lambda **_: (capabilities.TESTED_VERSIONS[0], ""))
 
-    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
+    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, close=lambda: None))
     worker = SimpleNamespace(
         run_dir=run, state_dir=state, directory=str(tmp_path),
         tree=SimpleNamespace(layout=None),
@@ -345,7 +352,7 @@ def test_seed_refuses_an_unqualified_binary(tmp_path, monkeypatch):
     def spawn(*_args, **_kwargs):
         return SimpleNamespace(returncode=0, communicate=lambda **_: ("v2.3.0", ""))
 
-    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, kill=lambda: None))
+    monkeypatch.setattr(adapter.procs, "ProcessTree", lambda **_: SimpleNamespace(spawn=spawn, close=lambda: None))
     worker = SimpleNamespace(
         state_dir=tmp_path, directory=str(tmp_path),
         tree=SimpleNamespace(layout=None),

@@ -540,7 +540,7 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise subprocess.CalledProcessError(child.returncode, args)
                 return output.strip()
             finally:
-                offline_tree.kill()
+                offline_tree.close()
 
         db = self.state_dir / "xdg-data" / "opencode" / login.DB
         try:

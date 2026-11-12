@@ -14,6 +14,10 @@ aew doctor
 
 Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py311 offline wheelhouse.
 
+AEW's Git commands ignore settings injected through `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
+pairs, `GIT_CONFIG_PARAMETERS`, and `GIT_CONFIG`. Put settings such as `safe.directory` in your global or system Git
+configuration file.
+
 ## Operator: initialize a project
 
 ```bash
@@ -43,7 +47,7 @@ $s = Read-Host "OPENAI_API_KEY" -AsSecureString; $env:OPENAI_API_KEY = [Runtime.
 
 ```bash
 aew doctor
-aew opencode --acquire --provider-env OPENAI_API_KEY
+aew opencode --provider-env OPENAI_API_KEY
 ```
 
 This command uses the exported key for the Lead's own model. To use the Lead's existing login, start with
@@ -85,18 +89,22 @@ A certificate-only provider skips key setup.
 
 ### Edit pinned settings or classify authority candidates
 
-After the Lead session exits and releases the seat, use `aew lead acquire` at your terminal and keep the Lead
-credential it shows. For each mutation in this section, pass `--expect-rev` with the current revision from
-`aew status`.
+After the Lead session exits and releases the seat, acquire it at your terminal and keep the credential it shows.
+Fill in the current revision from `aew status` before each command. For a pinned edit, review the changes
+under `.aew/` and give a reason. Adopt asks for the credential and a one-time code. Authority candidates can wait
+while the Lead works. Replace the example candidate ID with one from `aew authority list`. Run the middle command
+or commands you need, then release the seat.
 
-- For a pinned edit, review the changes under `.aew/`. Run `aew manifest adopt` at your terminal, passing
-  `--reason` with a quoted description of the change. Adopt asks for the Lead credential and a one-time code.
-- Authority candidates can wait while the Lead works. See the IDs in `aew authority list`. To classify one as
-  decisions authority, give its ID and `--class decisions` to `aew authority accept`.
+```bash
+aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
+aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
+aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
+aew lead release --expect-rev <revision from aew status>
+```
 
-The credential route holds the seat. When you're done, use `aew lead release`, then start the Lead with
-`aew opencode --acquire`. If work is still in flight and the old session kept the seat, follow the takeover
-instructions it printed.
+The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
+plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
+explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
 
 ### Giving AEW the Lead credential
 
@@ -118,7 +126,8 @@ $s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.Inte
 
 Set it for this shell session only: a persistent variable reaches every process you start, and a startup file is a
 plain file in your home directory, like history. A Lead session removes it from its harness's environment and holds
-the credential in its broker's memory; `--acquire` takes a vacant seat instead. The credential is never written to disk.
+the credential in its broker's memory. Plain `aew opencode` without an exported credential takes or resumes the
+seat. `--prompt-token` opens the hidden prompt for an existing credential. The credential is never written to disk.
 Once a Lead session (`aew opencode`, `aew lead session`) is running, AEW never asks for the Lead credential inside the
 Lead's own window: a prompt there is not AEW's.
 
@@ -129,7 +138,7 @@ a Lead session refuses that flag.
 
 ## Lead: one Ticket, end to end
 
-With `aew opencode --acquire`, the Lead performs the Ticket steps below through its own tools.
+With `aew opencode`, the Lead performs the Ticket steps below through its own tools.
 
 Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew status`, and each command returns the new one.
 
@@ -268,7 +277,7 @@ Configure `.aew/policy/execution.yaml` (which harness, provider, model and effor
 
 ```bash
 aew doctor                      # policy:execution PASS; containment WARN (workdir separation only)
-aew opencode --acquire          # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
+aew opencode                    # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
 ```
 
 In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <id>` takes one step at a time. Dispatches carry `--launch`, so each role runs in its own private OpenCode server and acts through a run-scoped bridge:
@@ -283,9 +292,13 @@ A run's end moves nothing: the Lead still ingests and transitions, as above. Eve
 
 ## Losing the session
 
-- Run `aew resume` in a fresh session. It is read-only and rebuilds everything from `.aew/`.
-- If the old Lead is gone, **the operator** runs `aew lead takeover --reason "..." --expect-rev N` at an interactive terminal and types the challenge code. Agents cannot do this for themselves.
-- **With OpenCode:** losing the TUI or its state loses nothing. Run `aew opencode` again and `/aew-resume`. Harness runs keep going, and a lost run is relaunched with `aew harness launch`. A lost harness is not an interruption: the Ticket and its invocation are unchanged.
+- If OpenCode took the seat itself, start plain `aew opencode` from your terminal on the same host and as the same
+  user. The previous session must be gone and no handoff can be pending. If active work is carried or processes may
+  still be running, AEW names them and asks for one confirmation code. A successful resume leaves carried runs active.
+- If resume is refused and you need to replace the holder, run `aew lead takeover --reason "..." --expect-rev N` at
+  your own terminal and type its confirmation code.
+- In the new session, run `/aew-resume` or `aew resume` to rebuild context from `.aew/`. A lost run can be relaunched
+  with `aew harness launch`. Losing the harness leaves the Ticket and its invocation unchanged.
 - After a takeover, in-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
 
 ## Useful views

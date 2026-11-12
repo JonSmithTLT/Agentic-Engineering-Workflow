@@ -146,6 +146,31 @@ def test_adopting_another_file_does_not_requalify_an_unchanged_plan_policy(tmp_p
     assert "awaiting qualification" in failure.value.details["violations"][0]
 
 
+def test_manifest_adopt_keeps_the_existing_execution_pin_after_a_version_bump(project, monkeypatch):
+    from aew.engine.api import Engine
+    from aew.engine.base import POLICY_PINS
+    from aew.harness.opencode import capabilities
+
+    engine = Engine.discover(project.root)
+    policy = configured()
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["credentials"] = {"openai": "plan_login"}
+    execution = engine.aew_root / X.REL_PATH
+    execution.write_bytes(dump_yaml(policy).encode())
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    project.adopt_policy()
+    adopted = engine.store.current()[POLICY_PINS]
+
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("9.9.9",))
+    other_rel = next(rel for rel, digest in adopted.items() if rel != X.REL_PATH and digest is not None)
+    other = engine.aew_root / other_rel
+    other.write_bytes(other.read_bytes() + b"\n# unrelated policy edit\n")
+    assert project.adopt_policy()["adopted"] == [other_rel]
+    updated = engine.store.current()[POLICY_PINS]
+    assert updated[X.REL_PATH] == adopted[X.REL_PATH]
+    assert updated[other_rel] != adopted[other_rel]
+
+
 @pytest.mark.parametrize(("model", "containment", "reason"), [
     ("anthropic/test", {}, "whose requests it has measured: openai"),
     ("openai/test", {"network": {"upstreams": {"openai": "http://127.0.0.1:9"}}}, "upstreams override"),

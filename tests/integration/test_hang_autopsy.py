@@ -949,6 +949,40 @@ atexit.register(time.sleep, 2)  # past the timer's half margin, and inside the s
     assert not (session / "controller-after-finish-stacks.txt").exists(), why
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the after-finish stack request uses a Linux process signal")
+def test_a_blocked_atexit_callback_leaves_its_frame_threads_and_children_in_the_autopsy(tmp_path):
+    extra = '''
+
+import atexit, subprocess, sys, threading, time
+
+
+def background_during_atexit():
+    time.sleep(120)  # bounded
+
+
+def blocks_during_atexit():
+    threading.Thread(target=background_during_atexit, daemon=True).start()
+    subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)", "atexit-autopsy-child"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(120)  # bounded
+
+
+atexit.register(blocks_during_atexit)
+'''
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=extra), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "4", "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (-9, 137) and "1 passed" in proc.stdout, why
+    assert (session / "stuck-after-finish.txt").exists(), why
+    assert "atexit-autopsy-child" in texts(session, "sentinel-processes-after-finish.txt"), why
+    stacks = texts(session, "controller-after-finish-stacks.txt")
+    assert "in blocks_during_atexit" in stacks, why
+    assert "in background_during_atexit" in stacks, why
+
+
 # The controller's last Python: registered early, so it runs after `finish`'s own callback. What it lists is what an
 # upload starting the moment the step ends could list.
 LISTS_THE_FOLDER_LAST = '''

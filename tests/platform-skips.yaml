@@ -4,6 +4,8 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/integration/test_seat_resume.py::test_v2_driver_answers_and_counts_the_resume_prompt: >-
+      V2 supplies a controlling pseudo-terminal on Linux. The Windows driver has no console and exercises the counted takeover fallback instead.
     tests/unit/test_capability_consent.py::test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer: >-
       A pseudo-terminal is POSIX's (the tool-consent screen read at the controlling terminal). Its answers are driven on every platform through consent.read_terminal in the same module. Covered on Linux.
     tests/integration/test_capability_bind.py::test_the_roles_here_are_every_role_a_layout_has: >-
@@ -132,6 +134,8 @@ skipped:
     tests/unit/test_process_identity.py::test_a_comm_neither_breaks_nor_forges_a_line_of_proc_status_on_linux: >-
       /proc/<pid>/status and its Name line are Linux's (review of #250, M1); on Windows procs.host_pid returns its
       argument and reads no file. Covered on Linux.
+    tests/integration/test_hang_autopsy.py::test_a_blocked_atexit_callback_leaves_its_frame_threads_and_children_in_the_autopsy: >-
+      the post-finish stack request uses Linux's process descriptor and SIGUSR2. Covered on Linux.
     tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
       the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
       session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).

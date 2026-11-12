@@ -2062,6 +2062,28 @@ or an exported API key.
 The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
 an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.
 
+## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
+
+- **Lead session exit (former line 122).** When `aew opencode` took the seat itself, the seat is released at
+  exit when nothing is in flight. Otherwise it stays held, and the next `aew opencode` resumes it under the
+  conditions in [ADR-0005's resume amendment](0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume).
+  A seat held by a live Lead, or by the operator's own token, still needs a terminal takeover. The 2026-10-04
+  condition that release waits until no process the session started is running still applies.
+- **Owned process tree (former lines 481–482).** The seat stays held against leftover processes, and the operator
+  can resume it under ADR-0005's resume conditions. An unknown outcome keeps the seat held. To free it, take it
+  over at the operator's terminal and then release it.
+- **Lead session lifetime (former line 650).** The harness process holds the session (when `aew opencode` takes
+  the seat itself, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it).
+
+A failed start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+The next generation's held-exit evidence carries those processes forward. The local evidence records
+process identities on Linux and a count on Windows. An unknown result or missing evidence requires
+acknowledgement. Local process evidence is dev-grade on both platforms.
+
+Each new generation records `lead.start` in the seat operation's commit, with `generation`, `kind`, `at`,
+`host`, `user`, `pid` and `start_id`. The resumable kinds are `opencode_acquire`, `vacant_start` and
+`seat_resume`. The other routes record `lead_acquire`, `takeover` or `handoff`.
+
 ## Amendment 2026-11-11 — workers may draw from the operator's plan login (the operator's choice of usage pot)
 
 The operator's grant, relayed by the Lead: “right that was teh plan wheter througha  asetting or whatever mechaism i wanted teh ability to choose which usage pot is being used.”

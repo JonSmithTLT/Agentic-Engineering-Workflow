@@ -56,3 +56,11 @@ Quick-check follow-ons: q1 adds a lead.run regression for each contained/weaker 
 run_session_tree environment after the switch offer, with messaging off/on. q2 names RECEIPT_CLOSE_LOCK_S with
 the two-second bound's reason and the possible re-shown outcome. q3 identifies _read_receipt as the direct-test
 wrapper: the live production route calls the unlocked inner helper under its send lock.
+
+Orphan-wait CI recurrence: first hit at 0282a0db (admission barrier fix in d05f27d7), second at 083632ed,
+run 43142595377, Windows integration 5/13 job 130933729588. The shell exited 1 without reaching the binding barrier.
+The job log and retained lane artifact omit shell-2.stdout (which combines stdout/stderr), so the exit's cause
+remains open. One sequential local Windows diagnostic at 083632ed passed; that does not explain or waive CI.
+The Lead authorized a diagnostics-only push: permanent assertion evidence now includes the last 40 redacted lines
+of each shell output file, exit code, barrier error and harness directory, including failures after admission.
+This module has only one shell-orphan scenario. No src behavior, assertion, timeout, retry or qualification change.

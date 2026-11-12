@@ -10,6 +10,7 @@ import pytest
 from aewflow import create_planned_ticket
 from fake_harness import credential_hits
 from harness_conformance import IMPLEMENT, FakeOpenCodeDriver, sync_dir
+from harness_diagnostics import describe_shell
 from racing_read import read_text_or_none
 from test_harness_send_when import enable_messaging
 
@@ -106,18 +107,22 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
          "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
     shell = steps_done(lab, run, 2)
-    assert not shell.get("barrier_error"), shell
-    assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
-    assert shell["timed_out"]
-    send(lab)
-    output = Path(shell["stdout_file"])
-    lab.until(lambda: "ended_early" in (read_text_or_none(output) or ""),
-              what="orphaned wait exits early after its shell call ends")
-    thread = Engine.discover(lab.root).message_thread("INV-0001")
-    assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
-    assert shell["shell_pid"] != lab.record(run)["supervisor_pid"]
-    (sync / "end").touch()
-    lab.wait(run)
+    try:
+        assert not shell.get("barrier_error"), shell
+        assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
+        assert shell["timed_out"]
+        send(lab)
+        output = Path(shell["stdout_file"])
+        lab.until(lambda: "ended_early" in (read_text_or_none(output) or ""),
+                  what="orphaned wait exits early after its shell call ends")
+        thread = Engine.discover(lab.root).message_thread("INV-0001")
+        assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
+        assert shell["shell_pid"] != lab.record(run)["supervisor_pid"]
+        (sync / "end").touch()
+        lab.wait(run)
+    except AssertionError as exc:
+        directory = lab.aew_root / "local/harness/runs" / run / "harness"
+        raise AssertionError(f"{exc}\n{describe_shell(directory, shell)}") from exc
 
 
 def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tmp_path):

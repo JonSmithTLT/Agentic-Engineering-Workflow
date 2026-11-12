@@ -90,7 +90,9 @@ def test_plan_worker_uses_a_synthetic_store_through_the_fake_upstream(lab, tmp_p
     fake_target = lab.provider.url.removesuffix("/v1") + "/backend-api/codex"
     monkeypatch.setitem(netns.REFRESHING_UPSTREAMS, "openai", fake_target)
     monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", TESTED_VERSIONS)
-    policy = {"provider_env": ["OPENAI_API_KEY"]}
+    lab_policy = load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
+    policy = {"provider_env": ["OPENAI_API_KEY"],
+              "containment": {"writable": lab_policy["containment"]["writable"]}}
     pin = {"profile": "impl", "harness": "opencode", "provider": "openai", "model": "synthetic-model",
            "credential": "plan_login"}
     script(lab, [], models=[{"id": "synthetic-model", "providerID": "openai", "enabled": True, "variants": []}],

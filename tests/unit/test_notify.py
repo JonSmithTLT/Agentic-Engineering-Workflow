@@ -640,3 +640,154 @@ def test_reoffered_spool_events_are_validated_like_fresh_ones(project, tmp_path)
     assert expected is not None and line["key"] == f"hard_deadline:{expected.key}"  # rebuilt, never chosen
     dropped = notify.summary(root)["dropped"]
     assert dropped["invalid"] == 2 and dropped["unknown_run"] == 1
+
+
+# ---------------------------------------------------------------------------------------------- retry once configured
+# The designer's ruling of 2026-11-11 on SYS-04, part 4(a): a delivery that failed because of the notifier itself is
+# offered again once `notifier_problem` clears; every other outcome stays once per key.
+
+
+def _lines_for(root: Path, event_name: str) -> list[tuple[str, str | None]]:
+    return [(x["outcome"], x.get("reason")) for x in notify.deliveries(root) if x["event"] == event_name]
+
+
+def _no_notifier(project) -> None:
+    """A steering mode and no notifier at all: the policy as it was before the template shipped the desktop default."""
+    from aew.harness import desktop_notifier as D
+
+    adopt(project)
+    path = project.root / ".aew" / "policy" / "execution.yaml"
+    text = path.read_text(encoding="utf-8")
+    default = "notify:\n  command: [" + ", ".join(D.COMMAND) + "]\n"
+    assert text.count(default) == 1, "the template's notifier lines moved"
+    path.write_bytes(text.replace(default, "").encode("utf-8"))
+    project.adopt_policy()
+
+
+def _settle(watcher: notify.Watcher, passes: int = 3) -> None:
+    for _ in range(passes):
+        watcher.pass_once()
+        assert watcher.drain()
+
+
+def test_a_request_recorded_before_the_notifier_is_delivered_once_it_is(project, tmp_path):
+    """A raise asked for while no notifier is configured fails as `not_configured`, once however many passes run, and
+    is delivered on the first pass after the operator configures one: once, across passes and a restarted endpoint.
+    Its toast names the mode asked for, never the Lead's rationale (part 4(b))."""
+    from aew.harness import desktop_notifier
+
+    _no_notifier(project)
+    root = project.root / ".aew"
+    request(project, "raise")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher)
+        assert _lines_for(root, "raise_requested") == [("failed", "not_configured")]  # not one failure a pass
+        command, out = recorder(tmp_path)
+        adopt(project, command=command)
+        _settle(watcher)
+        assert [e["event"] for e in received(out)] == ["raise_requested"]
+    finally:
+        watcher.close()
+    again = notify.Watcher(project.root, root)
+    again.start()
+    try:
+        _settle(again)
+    finally:
+        again.close()
+    [got] = received(out)
+    assert _lines_for(root, "raise_requested") == [("failed", "not_configured"), ("delivered", None)]
+    title, body = desktop_notifier.text(got)
+    assert title == "AEW: raise requested to walk" and got["reason"] == "the test asks"
+    assert "the test asks" not in title + body
+
+
+def test_a_request_recorded_while_the_default_desktop_notifier_was_unavailable_is_delivered_once_it_is(
+        project, monkeypatch):
+    """The shipped default, configured but with no desktop to show on (conftest makes it so in every test), fails as
+    `unavailable`; once a desktop could show it, the next pass delivers the request through it, once. `deliver` is
+    replaced, so nothing is shown."""
+    from aew.harness import desktop_notifier as D
+
+    adopt(project, command=list(D.COMMAND))
+    root = project.root / ".aew"
+    request(project, "raise")
+    sent: list[dict[str, Any]] = []
+
+    def deliver(command: list[str], body: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        sent.append(body)
+        return {"outcome": "delivered", "reason": None, "exit_code": 0, "timed_out": False, "output_bytes": 0,
+                "discarded_bytes": 0}
+
+    monkeypatch.setattr(notify, "deliver", deliver)
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher)
+        assert _lines_for(root, "raise_requested") == [("failed", "unavailable")] and sent == []
+        monkeypatch.setattr(D, "problem", lambda env, platform=None: None)  # a desktop that could show it
+        _settle(watcher)
+    finally:
+        watcher.close()
+    assert [b["event"] for b in sent] == ["raise_requested"]
+    assert _lines_for(root, "raise_requested") == [("failed", "unavailable"), ("delivered", None)]
+
+
+def test_a_delivery_that_failed_for_another_reason_is_never_offered_again(project, tmp_path):
+    """A notifier that ran and failed (here, a non-zero exit) is the event's one delivery: a working notifier
+    configured afterwards does not send it again."""
+    adopt(project, command=[sys.executable, "-I", "-c", "import sys; sys.exit(3)"])
+    root = project.root / ".aew"
+    request(project, "raise")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher)
+        command, out = recorder(tmp_path)
+        adopt(project, command=command)
+        _settle(watcher)
+    finally:
+        watcher.close()
+    assert received(out) == []
+    assert _lines_for(root, "raise_requested") == [("failed", "exit_code")]
+
+
+def test_passes_racing_the_delivery_of_a_reopened_request_send_it_once(project, tmp_path):
+    """Passes on several threads while the delivery thread sends a reopened key: the key leaves the outstanding set
+    only after the log records it, so no pass offers it a second time."""
+    import threading
+
+    _no_notifier(project)
+    root = project.root / ".aew"
+    request(project, "raise")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher, passes=1)
+        command, out = recorder(tmp_path)
+        adopt(project, command=command)
+        threads = [threading.Thread(target=lambda: [watcher.pass_once() for _ in range(5)]) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+        assert watcher.drain()
+        _settle(watcher)
+    finally:
+        watcher.close()
+    assert [e["event"] for e in received(out)] == ["raise_requested"]
+    assert _lines_for(root, "raise_requested") == [("failed", "not_configured"), ("delivered", None)]
+
+
+def test_a_key_s_latest_line_decides_whether_it_is_open(tmp_path):
+    """The log is read oldest first: a notifier failure leaves a key open, and any later line closes it."""
+    log = notify.DeliveryLog(tmp_path)
+    for key, outcome, reason in [("a", "failed", "not_configured"), ("a", "delivered", None),
+                                 ("b", "failed", "unavailable"), ("c", "failed", "exit_code"),
+                                 ("d", "dropped", "rate"), ("e", "failed", "not_executable")]:
+        log.record({"key": key, "event": "raise_requested", "source": "control_state", "outcome": outcome,
+                    "reason": reason})
+    for again in (log, notify.DeliveryLog(tmp_path)):  # as recorded, and as a restarted endpoint loads it
+        assert {k: again.held(k) for k in "abcdef"} == {"a": "final", "b": "open", "c": "final", "d": "final",
+                                                         "e": "open", "f": None}

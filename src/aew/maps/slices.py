@@ -1,8 +1,10 @@
 """The structural map in context: the bounded pack slice and the resume row (register F22.1 plan §5.3, §5.4;
 design v0.5 §11; T5-INV-01, T5-INV-07, T5-INV-10).
 
-Both exist only behind the execution policy's ``maps.pack_slices: structural`` (off by default, so packs and the
-resume view are byte-identical to a project without maps), and only for roles whose context names ``codebase_map``.
+Both exist only behind the execution policy's ``maps.pack_slices: structural`` (a new project's value; off, as an
+absent key reads, packs and the resume view are byte-identical to a project without maps), and only for roles whose
+context names ``codebase_map``. A result that gives a pack to the Lead carries the slice's bytes, never its body
+(:func:`for_lead`).
 
 * **Never raising.** Everything here reads ``.aew/local/maps/`` through ``store.read_selected`` and catches whatever
   else goes wrong: a missing, corrupt or stale map, or a malformed registry, becomes one labelled line, never a refused
@@ -156,6 +158,25 @@ def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:
 def pinned(sources: list[dict[str, Any]] | None) -> dict[str, Any] | None:
     """The map entry a built pack recorded, if any (none when the switch was off)."""
     return next((s for s in sources or [] if s.get("name") == NAME), None)
+
+
+def for_lead(pack: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A pack as a result gives it to the Lead (register E184, owed since its review of 2026-11-08): the map's pinned
+    entry keeps its path, hashes and freshness, and its slice body becomes ``slice_bytes``, the UTF-8 bytes of the
+    section the worker reads. A result stays in the Lead's context for every later request, and the body is the
+    worker's navigation, not the Lead's. The pin in control state keeps the body: a regenerated pack is rendered from
+    it (:func:`lines`). Any other pack, or none, is returned as it is."""
+    sources = (pack or {}).get("sources")
+    if not isinstance(sources, list) or not any(isinstance(s, dict) and "slice" in s for s in sources):
+        return pack
+    out = []
+    for source in sources:
+        if isinstance(source, dict) and "slice" in source:
+            body = source["slice"] if isinstance(source["slice"], list) else []
+            source = {**{k: v for k, v in source.items() if k != "slice"},
+                      "slice_bytes": len("\n".join(frame([str(line) for line in body])).encode("utf-8"))}
+        out.append(source)
+    return {**pack, "sources": out}  # type: ignore[dict-item]
 
 
 def pinned_record(aew_root: Path, repo_root: Path, entry: dict[str, Any]) -> dict[str, Any] | None:

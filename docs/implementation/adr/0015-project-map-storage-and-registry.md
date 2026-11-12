@@ -112,3 +112,20 @@ This amendment follows the Lead's rulings of 2026-11-10 on SYS-07 (maps on for e
   - the dispatch result returning `pack` without the pinned slice body;
   - the notice to a project whose switch was already on;
   - the default itself.
+
+## Amendment of 2026-11-11, second: maps on for a new project (registers E62 and E184)
+
+This amendment lands the three items the amendment above left for this step. It follows the Lead's brief for SYS-07's switch-on (2026-11-11). It changes no decision above except the switch's default for a new project.
+
+- **The default, for a new project.** `aew init` writes `maps.pack_slices: structural`: the execution policy's template holds it, from one owner, `NEW_PROJECT_PACK_SLICES` (`aew.policy.execution`).
+  - An absent key still reads as `"off"` (`pack_slices()`), so a project initialized before this default keeps its packs and its resume view exactly as they were. Nothing changes under it without the operator's decision.
+  - So every dispatch in a new project uses the map: the refresh at use above runs there by default, with the added latency it states, paid on the first pack after a base change.
+- **An existing project is offered it.** The shared switch offer (`aew.switch_offer`, rule 1: only at the operator's own terminal, in `aew opencode`'s start) gains a row, `maps_pack_slices`. It is offered to a project that names the execution policy and holds the key absent or `"off"`; a value AEW never shipped is never offered.
+  - Its screen says what the slice is and bounds it (`SLICE_MAX_BYTES`, `REFRESH_S`, read from their owners), and that it is a legality setting: `maps.pack_slices` is `legality_affecting`, so a stage open when it is adopted stops as STALE_POLICY. A test holds the flag to the digest.
+  - Taking it needs the code; Enter alone is a remembered no, and `aew doctor` names the answer and the hand route.
+- **No notice to a project whose switch was already on.** Such a project holds `structural`, which the offer reads as nothing to switch, and a key the operator set is never offered (rule 2). Its workers have had the slice on every card since the 2026-11-07 amendment, and the slice in each pack says what it is. A notice outside the offer would be a new mechanism for one past change, so none is added.
+- **The Lead's results carry the slice's bytes, never its body.** A dispatch's result, and `aew invoke show`, give the Lead the pack's sources. Those stay in the Lead's context for every later request, while the slice body is the worker's navigation. The map's entry there keeps its path, hashes and freshness, and its body becomes `slice_bytes`, the UTF-8 bytes of the section the worker reads (`slices.for_lead`).
+  - Every engine result that returns a pack passes it through that one helper, and a test reads the engine's source to keep it so.
+  - Measured on this repository at `f1ff2dd3`, the map's entry in a result falls from 2,302 to 3,627 bytes to 558, by scope (whole source, a typical Ticket's, none declared).
+- **Control state keeps the body.** Each invocation's pinned entry holds its slice body in `control.yaml`, which every transaction rewrites, until its unit is archived. A regenerated pack (the `launch.pack` guard) is rendered from it whatever has happened to `local/maps/` since. Each pinned entry is bounded by `SLICE_MAX_BYTES`, 9 KiB, and measures 2.1 to 3.4 KB here.
+- **The resume row.** With the switch on, the Lead's resume view carries the map's row in place of the manifest's: 373 bytes of compact JSON here, a CURRENT map. It is a tool result, not part of the Lead context pool's system, guide or tool schemas.

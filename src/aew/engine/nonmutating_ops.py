@@ -55,6 +55,7 @@ from aew.errors import (
 from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
+from aew.maps import slices
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import parse_frontmatter, render_frontmatter, sha256_text, utc_now
 from aew.workspace import git, worktrees
@@ -512,7 +513,7 @@ class NonMutating:
             self.units.before_commit(ctx)
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "work_id": work_id, "invocation": inv_id, "invocation_token": inv_token,
-                "execution": execution, "observation": inv["observation"], "pack": inv.get("pack"),
+                "execution": execution, "observation": inv["observation"], "pack": slices.for_lead(inv.get("pack")),
                 "transition": change, "dispatch": decision.to_dict(), "revision": ctx.session.committed_revision}
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
@@ -818,7 +819,8 @@ class NonMutating:
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
                 "role_card": chosen.id, "scope": "observation", "subject": inv["subject"],
-                "evaluated_snapshot": snapshot, "observation": inv["observation"], "pack": inv.get("pack"),
+                "evaluated_snapshot": snapshot, "observation": inv["observation"],
+                "pack": slices.for_lead(inv.get("pack")),
                 "revision": ctx.session.committed_revision}
 
     @staticmethod

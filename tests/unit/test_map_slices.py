@@ -32,17 +32,55 @@ def sealed(files: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------------------------------- the switch
 
 
-def test_the_switch_is_off_unless_the_operator_sets_it():
+def test_a_new_project_holds_the_switch_on_and_an_absent_key_is_off():
+    """A new project's policy is the template, which holds :data:`X.NEW_PROJECT_PACK_SLICES`; a policy without the key
+    (a project initialized before that default) reads as off, so it changes no pack until the operator takes the switch
+    offer (register E184)."""
     assert X.pack_slices(None) == X.pack_slices({}) == X.pack_slices({"maps": {}}) == "off"
     assert X.pack_slices({"maps": {"pack_slices": "structural"}}) == "structural"
-    on = X.parse(X.TEMPLATE.encode() + b"maps: {pack_slices: structural}\n", source="t")
-    assert X.pack_slices(on) == "structural" and X.pack_slices(X.parse(X.TEMPLATE.encode(), source="t")) == "off"
+    assert X.NEW_PROJECT_PACK_SLICES == X.PACK_SLICES_STRUCTURAL
+    assert X.pack_slices(X.parse(X.TEMPLATE.encode(), source="t")) == X.NEW_PROJECT_PACK_SLICES
+    before = X.TEMPLATE[:X.TEMPLATE.index("\nmaps:\n") + 1]  # the template as a project before the default had it
+    assert "pack_slices" not in before and X.pack_slices(X.parse(before.encode(), source="t")) == "off"
     assert X.pack_slices(X.parse(X.TEMPLATE.encode() + b'maps: {pack_slices: "off"}\n', source="t")) == "off"
     for bad, violation in ((b"maps: {pack_slices: everything}\n", "'everything' is not one of"),
                            (b'maps: {pack_slices: "off", extra: 1}\n', "'extra' was unexpected")):
         with pytest.raises(ValidationFailed) as refused:
             X.parse(X.TEMPLATE.encode() + bad, source="t")
         assert violation in str(refused.value.details), refused.value.details
+
+
+def test_the_lead_gets_the_slices_bytes_in_place_of_its_body_and_every_other_pack_as_it_is():
+    """Register E184: :func:`slices.for_lead` replaces only the body; nothing else in the pack or the entry moves."""
+    rows = ["map 0123456789ab: CURRENT", "calc/  2 files"]
+    entry = {"name": slices.NAME, "path": "local/maps/x", "sha256": "a" * 64, "freshness": {"status": "CURRENT"}}
+    other = {"name": "guardrails", "path": "policy/guardrails.yaml", "sha256": "b" * 64}
+    pack = {"path": "local/packs/INV-1/pack.md", "sha256": "c" * 64, "sources": [other, {**entry, "slice": rows}]}
+    shown = slices.for_lead(pack)
+    assert shown == {**pack, "sources": [other, {**entry, "slice_bytes": len("\n".join(slices.frame(rows)).encode())}]}
+    assert pack["sources"][1]["slice"] == rows, "the pinned entry itself is never changed"
+    unavailable = {"path": "p", "sha256": "d" * 64, "sources": [other, {"name": slices.NAME, "unavailable": "none"}]}
+    for unchanged in (None, {}, {"path": "p", "sha256": "e" * 64, "sources": [other]}, unavailable):
+        assert slices.for_lead(unchanged) == unchanged
+
+
+def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it():
+    """Register E184: a result's ``pack`` stays in the Lead's context, so every engine result that returns one passes
+    it through :func:`slices.for_lead`. Read from the source, so a new result can't return the body unnoticed."""
+    import ast
+
+    engine = Path(slices.__file__).resolve().parents[1] / "engine"
+    unwrapped = []
+    for path in sorted(engine.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
+                continue
+            for key, value in zip(node.value.keys, node.value.values, strict=True):
+                if isinstance(key, ast.Constant) and key.value == "pack" and not (
+                        isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
+                        and value.func.attr == "for_lead"):
+                    unwrapped.append(f"{path.name}:{node.lineno}")
+    assert unwrapped == []
 
 
 @pytest.mark.parametrize("body", [b"maps: {pack_slices: off}\n", b"maps:\n  pack_slices: off\n",

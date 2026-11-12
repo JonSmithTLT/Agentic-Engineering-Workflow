@@ -267,6 +267,28 @@ def _mutating_effective(value: Any) -> int:
     return mutating_cap({} if value is ABSENT else {"mutating_concurrency": value})
 
 
+def _maps_effective(value: Any) -> str:
+    from aew.policy import execution as X
+
+    return X.pack_slices({} if value is ABSENT else {"maps": {"pack_slices": value}})
+
+
+def _maps_to() -> str:
+    from aew.policy import execution as X
+
+    return X.NEW_PROJECT_PACK_SLICES
+
+
+def _maps_text(opening: Opening) -> str:
+    from aew.maps import service, slices
+
+    return (f"AEW's default for project maps has moved from {opening.held} to {opening.to}: each worker's pack "
+            "carries a bounded slice of the repository's structural map, made from its Git objects, as navigation and "
+            f"never authority (at most {slices.SLICE_MAX_BYTES // 1024} KiB a pack), and the Lead's resume view shows "
+            "the map's freshness. A dispatch whose map is stale against its work makes it first, within "
+            f"{service.REFRESH_S:g} s, and never fails over a map. This project holds {opening.held}.")
+
+
 OFFERS: tuple[SwitchOffer, ...] = (
     key_offer("mutating_concurrency", label="mutating concurrency", file=_policy_rel("gates"), policy_key="gates",
               key_path=("mutating_concurrency",), old_values=(1,),
@@ -283,6 +305,12 @@ OFFERS: tuple[SwitchOffer, ...] = (
                 done=lambda o: (f"the price table is now in force at .aew/{_table_rel()}, adopted as your decision. To "
                                 f"change it, edit that file; {THEN_ADOPT}."),
                 by_hand=_table_by_hand),
+    # Register E184: a project initialized before maps were on by default holds `"off"` or no key at all.
+    key_offer("maps_pack_slices", label="project maps", file=_policy_rel("execution"), policy_key="execution",
+              key_path=("maps", "pack_slices"), old_values=("off",), to_value=_maps_to, effective=_maps_effective,
+              legality=True, schema="execution", text=_maps_text,
+              done=lambda o: (f"project maps are now {o.to}, adopted as your decision. To change it, edit "
+                              f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
 )
 
 

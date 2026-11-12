@@ -212,7 +212,7 @@ def world(tmp_path_factory) -> Iterator[World]:
     the architecture reference."""
     w = World()
     w.tmp = tmp_path_factory.mktemp("maps")
-    w.p = sample_project(w.tmp)
+    w.p = sample_project(w.tmp, maps="off")  # so no dispatch makes a map
     shutil.rmtree(maps_dir(w.p))  # the world builds its own map states: start where init's map never was (D1; E184)
     first = git("rev-parse", "HEAD", cwd=w.p.root)
     w.discovery = complete_investigation(w.p, create_investigation(w.p, w.tmp, title="Architecture survey"))
@@ -509,8 +509,9 @@ def test_a_warm_read_spawns_only_the_partial_clone_check_and_the_head_resolve(wo
 @pytest.fixture
 def lab(tmp_path) -> Iterator[tuple[Project, Path]]:
     """A fresh project for a test that changes its maps or its repository, before any map: `aew init` selected one
-    (register E184), and removing local/maps/ is the same as never having had it (ADR-0015 D1)."""
-    p = sample_project(tmp_path)
+    (register E184), and removing local/maps/ is the same as never having had it (ADR-0015 D1). The switch is off, so
+    no dispatch makes one either: each test builds the map states it shows."""
+    p = sample_project(tmp_path, maps="off")
     shutil.rmtree(maps_dir(p))
     yield p, tmp_path
 

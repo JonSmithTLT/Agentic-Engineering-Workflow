@@ -15,6 +15,8 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
+- `aew.maps`
+- `aew.policy`
 - `aew.schemas`
 - `aew.stg02`
 
@@ -106,7 +108,10 @@ None.
 - `aew.harness.contract`
 - `aew.harness.operator_client`
 - `aew.knowledge.manifest`
+- `aew.maps.service`
+- `aew.maps.slices`
 - `aew.operator`
+- `aew.policy.execution`
 - `aew.process_kind`
 - `aew.schemas`
 - `aew.util`
@@ -780,6 +785,7 @@ None.
 - `aew.harness.weaker_register`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.policy.checks`
 - `aew.policy.guardrails`
 - `aew.schemas`
@@ -897,6 +903,7 @@ None.
 - `aew.harness.contract`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.policy.validation`
 - `aew.schemas`
 - `aew.util`
@@ -999,6 +1006,7 @@ None.
 - `aew.harness.contract`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`

@@ -14,6 +14,7 @@ from typing import Any
 from conftest import Project, make_git_repo, run_aew
 
 from aew.knowledge.manifest import DEFAULT_GATES
+from aew.policy import execution as X
 from aew.util import dump_yaml, glob_any, load_yaml
 
 SAMPLE_FILES = {
@@ -87,11 +88,19 @@ def lead_project(tmp_path: Path, **kw: Any) -> Project:
 
 
 def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
-                   checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None) -> Project:
+                   checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None,
+                   maps: str | None = None) -> Project:
+    """``maps``: the project's ``maps.pack_slices`` in place of a new project's (``X.NEW_PROJECT_PACK_SLICES``), for a
+    test whose subject needs the switch off, as a project initialized before maps were on by default reads it."""
     repo = make_git_repo(tmp_path / "repo", SAMPLE_FILES)
     p = Project(repo)
     p.ok("init", "--project-id", "calc")
     policy = repo / ".aew/policy"
+    if maps is not None:
+        execution = policy / "execution.yaml"
+        text, on = execution.read_text(encoding="utf-8"), f"\n  pack_slices: {X.NEW_PROJECT_PACK_SLICES}\n"
+        assert text.count(on) == 1, "the template's maps.pack_slices line moved"
+        execution.write_text(text.replace(on, f'\n  pack_slices: "{maps}"\n'), encoding="utf-8", newline="\n")
     (policy / "checks.yaml").write_text(dump_yaml(checks or {
         "schema": "aew/checks/v1",
         "checks": {"unit": {"configured": True, "command": unit_check_command(), "cwd": ".", "timeout_s": 300,

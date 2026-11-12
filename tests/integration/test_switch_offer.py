@@ -34,9 +34,11 @@ from aew.harness import lead_broker, procs
 from aew.harness.opencode import lead
 from aew.knowledge.manifest import DEFAULT_GATES
 from aew.maps import service as maps
+from aew.policy import execution as X
 
 ZERO = "0" * 64
-MUTATING, TABLE = (o.switch for o in switch_offer.OFFERS)
+MUTATING, TABLE, MAPS = (o.switch for o in switch_offer.OFFERS)
+EXECUTION = "policy/execution.yaml"
 GATES, PRICES, MANIFEST = "policy/gates.yaml", "policy/pricing.yaml", "project.yaml"
 BOTH = [MUTATING, TABLE]
 FROZEN = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
@@ -70,6 +72,18 @@ def old(tmp_path):
     (p.root / ".aew" / PRICES).unlink()
     p.adopt_policy()
     return p
+
+
+@pytest.fixture
+def before_maps(old):
+    """``old`` initialized before maps were on by default as well (register E184): its execution policy is the
+    template of then, with no ``maps`` key at all, so all three rows are pending."""
+    policy = old.root / ".aew" / EXECUTION
+    text = policy.read_text(encoding="utf-8")
+    assert text.count("\n# Project maps") == 1 and text.rstrip().endswith(f"pack_slices: {X.NEW_PROJECT_PACK_SLICES}")
+    policy.write_text(text[:text.index("\n# Project maps") + 1], encoding="utf-8", newline="\n")
+    old.adopt_policy()
+    return old
 
 
 def _manifest(p, change) -> None:
@@ -222,6 +236,44 @@ def test_an_absent_key_whose_default_already_holds_is_not_offered(old):
                      newline="\n")
     old.adopt_policy()
     assert f"switch-offer:{MUTATING}" not in doctor(old)
+
+
+def test_a_project_from_before_maps_is_offered_them_once_and_keeps_its_answer(before_maps, at_terminal, monkeypatch):
+    """Register E184: a project with no ``maps`` key reads off, so maps reach it only through the offer. Enter alone is
+    a remembered no: the next start asks nothing, the switch stays off, and doctor names the no and the hand route."""
+    only_row(monkeypatch, MAPS)
+    assert doctor(before_maps) == {f"switch-offer:{MAPS}": "INFO: Switch offer: project maps, off -> structural. "
+                                                           "Answered at `aew opencode`'s start."}
+    term = at_terminal("")
+    start(before_maps)
+    assert len(term.prompts) == 1 and "This project holds off." in term.prompts[0]
+    assert "a stage open when it is adopted stops as STALE_POLICY" in term.prompts[0]  # a legality setting
+    again = at_terminal()
+    start(before_maps)
+    assert again.prompts == []
+    assert "pack_slices" not in (before_maps.root / ".aew" / EXECUTION).read_text(encoding="utf-8")
+    declined = doctor(before_maps)[f"switch-offer:{MAPS}"]
+    assert "Declined switch: project maps keeps off" in declined and "set maps.pack_slices to structural" in declined
+
+
+@pytest.mark.parametrize("held", [None, '"off"'])
+def test_taking_maps_turns_them_on_as_a_new_project_has_them(before_maps, at_terminal, monkeypatch, held):
+    """A key absent or set to off takes a new project's value, as text with the rest of the file kept, adopted as the
+    operator's; a value AEW never shipped (the template's own, here) is never offered."""
+    only_row(monkeypatch, MAPS)
+    policy = before_maps.root / ".aew" / EXECUTION
+    if held is not None:
+        policy.write_text(policy.read_text(encoding="utf-8") + f"maps:\n  pack_slices: {held}\n", encoding="utf-8",
+                          newline="\n")
+        before_maps.adopt_policy()
+    text = policy.read_text(encoding="utf-8")
+    _, said = take(before_maps, "CODE", at_terminal=at_terminal)
+    assert "project maps are now structural, adopted as your decision" in said
+    taken = policy.read_text(encoding="utf-8")
+    assert X.pack_slices(X.parse(taken.encode("utf-8"), source="t")) == X.NEW_PROJECT_PACK_SLICES
+    assert taken.startswith(text if held is None else text[:text.index("maps:\n")])
+    assert doctor(before_maps) == {}
+    assert decisions(before_maps)[-1]["type"] == "manifest_adoption"
 
 
 def _operational_row(**kw: Any) -> switch_offer.SwitchOffer:
@@ -840,13 +892,13 @@ def test_taking_the_cap_through_the_real_offer_stops_an_open_stage_as_the_screen
 
 
 @pytest.mark.parametrize("row", switch_offer.OFFERS, ids=lambda o: o.switch)
-def test_each_offers_legality_flag_matches_the_digest(old, at_terminal, monkeypatch, row):
+def test_each_offers_legality_flag_matches_the_digest(before_maps, at_terminal, monkeypatch, row):
     monkeypatch.setattr(switch_offer, "OFFERS", (row,))
-    before = engine(old).policy_digests()
-    take(old, "CODE", at_terminal=at_terminal)
-    after = engine(old).policy_digests()
+    before = engine(before_maps).policy_digests()
+    take(before_maps, "CODE", at_terminal=at_terminal)
+    after = engine(before_maps).policy_digests()
     assert (after["legality_digest"] != before["legality_digest"]) is row.legality
-    assert doctor(old) == {}  # it was really taken, so the flag was really tested
+    assert doctor(before_maps) == {}  # it was really taken, so the flag was really tested
 
 
 # ------------------------------------------------------------------------------------------ the start (rule 5)
@@ -1031,7 +1083,7 @@ def test_nothing_about_the_offer_stops_the_start(old, at_terminal, monkeypatch):
 
 
 def test_a_row_that_breaks_ends_that_row_and_not_the_next(old, at_terminal, monkeypatch):
-    first, second = switch_offer.OFFERS
+    first, second = _rows(MUTATING, TABLE)  # the two `old` holds pending
 
     def boom(_opening: Any) -> str:
         raise RuntimeError("a row's text")

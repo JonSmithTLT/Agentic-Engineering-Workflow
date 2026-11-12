@@ -97,7 +97,7 @@ def test_with_the_switch_off_every_pack_and_the_resume_view_are_byte_identical_m
     """Plan §5.4 and SMQ-01: the Q7/M4-H treatment is unchanged by default. Packs built before a map existed
     regenerate to the same bytes once one is selected, a pack built with a map selected is the pack without it, and
     the resume view's derived knowledge does not move."""
-    p = without_map(sample_project(tmp_path))
+    p = without_map(sample_project(tmp_path, maps="off"))
     to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
     _, investigator = dispatch(p, create_investigation(p, tmp_path, title="Survey"))
     dispatch(p, create_investigation(p, tmp_path, title="Research", card="researcher"))
@@ -163,6 +163,33 @@ def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(
     (p.root / ".aew" / store.artifact_rel(first["root"])).unlink()
     assert regenerate(p, inv)["matches_recorded"] and pack_text(p, inv) == text
     assert not (p.root / ".aew" / store.artifact_rel(first["root"])).exists()  # regeneration only reads
+
+
+def test_the_leads_results_carry_the_slices_bytes_and_never_its_body(tmp_path):
+    """Register E184 (owed since its review of 2026-11-08): a dispatch's result, and `aew invoke show`, stay in the
+    Lead's context, so the map's entry there names the pinned map and the section's bytes, never the body, which is
+    the worker's. Control state keeps the body: a regenerated pack is rendered from it."""
+    p = sample_project(tmp_path)  # maps on: a new project's default
+    _, out = dispatch(p, create_investigation(p, tmp_path))
+    to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
+    packed = {k: i for k, i in invocations(p).items() if i.get("pack")}
+    assert {i["role"] for i in packed.values()} >= {"implementer", "reviewer", "verifier", "investigator"}
+
+    def lead_sees(result: dict[str, Any]) -> dict[str, Any]:
+        entry = slices.pinned((result.get("pack") or {}).get("sources"))
+        assert entry is not None and "slice" not in entry, entry
+        return entry
+
+    assert lead_sees(out)["slice_bytes"] > 0  # `aew work dispatch`
+    for inv, record in packed.items():
+        pinned = slices.pinned(record["pack"]["sources"])
+        assert pinned is not None and pinned["slice"], record["role"]  # the pin keeps the body
+        shown = lead_sees(p.ok("invoke", "show", inv))
+        section = "\n".join(slices.frame(pinned["slice"]))
+        assert section in pack_text(p, inv) and shown["slice_bytes"] == len(section.encode("utf-8")), record["role"]
+        assert {k: v for k, v in shown.items() if k != "slice_bytes"} == {
+            k: v for k, v in pinned.items() if k != "slice"}, "only the body is replaced"
+        assert regenerate(p, inv)["matches_recorded"], record["role"]
 
 
 def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_with_the_switch_on(tmp_path):
@@ -263,7 +290,7 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
 
 
 def test_architecture_selection_records_an_existing_discovery_record_and_refuses_anything_else(tmp_path):
-    p = without_map(sample_project(tmp_path))  # "no structural map yet" below
+    p = without_map(sample_project(tmp_path, maps="off"))  # "no structural map yet" below: no dispatch makes one
     discovery = complete_investigation(p, create_investigation(p, tmp_path, title="Architecture survey"))
     research = complete_investigation(p, create_investigation(p, tmp_path, title="Library", card="researcher"),
                                       kind="research_record")
@@ -336,11 +363,13 @@ def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(t
 
 def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
     p = without_map(sample_project(tmp_path))
-    role, _ = dispatch(p, create_investigation(p, tmp_path))
+    role, _ = dispatch(p, create_investigation(p, tmp_path))  # with maps on, this dispatch makes and selects a map
     record = submit_record(role, "discovery_record")["evidence"]
+    registry = p.root / MAPS / "registry.json"
+    before = registry.read_bytes() if registry.exists() else None
     res = p.aew("map", "select-architecture", record, "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
-    assert not (p.root / MAPS / "registry.json").exists()
+    assert (registry.read_bytes() if registry.exists() else None) == before
 
 
 # ------------------------------------------------------------------------------------------- the no-authority walk

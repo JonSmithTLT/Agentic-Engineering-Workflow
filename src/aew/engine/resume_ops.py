@@ -475,7 +475,8 @@ class Resume:
     def _derived_knowledge(self) -> list[dict[str, Any]]:
         """The derived knowledge rows. With the execution policy's ``maps.pack_slices`` on (register F22.1 plan
         §5.4), the codebase_map row is the selected structural map with its freshness and qualification (T5-INV-10);
-        off (the default), the rows are exactly what they were before maps existed. Never raises for a map."""
+        off (a project initialized before maps were on by default, until it takes the switch offer), the rows are
+        exactly what they were before maps existed. Never raises for a map."""
         rows = [self._freshness(n, r) for n, r in sorted(self.k.manifest["knowledge"].items())]
         try:
             policy, _ = self.k.execution_policy()

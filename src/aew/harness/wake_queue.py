@@ -46,6 +46,7 @@ Verified coordination bodies additionally have escaped readable data frames; per
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
@@ -159,13 +160,15 @@ def serving(aew_root: Path) -> int | None:
 
 
 def broker_posts(aew_root: Path, generation: int) -> bool:
-    """Whether this generation's broker is live and posts wakes: its mark, and its liveness record's verdict."""
+    """Whether this generation's broker is live and posts wakes: its mark, and its liveness record's verdict at the
+    observation's start. A slow file/process check must not age the snapshot it just sampled."""
     from aew.harness import broker_liveness
     from aew.harness.lead_broker import POLL_S
 
+    observed_at = time.time()  # judge this snapshot at observation, not after potentially slow file/process checks
     record = broker_liveness.read(aew_root)
     return (serving(aew_root) == generation and record is not None and record.get("generation") == generation
-            and broker_liveness.judge(record, generation=generation, poll_s=POLL_S) is None)
+            and broker_liveness.judge(record, generation=generation, poll_s=POLL_S, now=observed_at) is None)
 
 
 def some_broker_posts(aew_root: Path) -> bool:

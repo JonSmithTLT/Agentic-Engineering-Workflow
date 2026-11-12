@@ -240,34 +240,17 @@ def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_th
         broker.close()
 
 
-def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn(project, monkeypatch):
+def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn(project):
     """Every pass fails on a policy that doesn't match its pin, so nothing may say a wake will come (review, m7)."""
-    from notifier import Clock, Steps
-
-    from aew.harness import broker_liveness
-    from aew.harness.lead_broker import POLL_S, LeadBroker
+    from aew.harness.lead_broker import LeadBroker
     from aew.policy import execution as X
 
     root = project.root / ".aew"
-    # This tests policy drift, not beat freshness under the host scheduler. Keep the synchronous initial beat
-    # stable, using the broker's existing clock/idle seams: real stop/wake/watchdog waits, stepped beat only.
-    # Otherwise its 2 x POLL_S liveness window (or a racing Windows beat rewrite) can fail before the policy edit.
-    clock = Clock()
-    idles = iter([threading.Event(), Steps()])
-    broker = LeadBroker(_engine_of(project), project.token, clock=clock, idle=lambda: next(idles))
-    judge = broker_liveness.judge
-
-    def at_test_clock(record, **kwargs):
-        return judge(record, **{**kwargs, "now": clock()})
-
-    monkeypatch.setattr(broker_liveness, "judge", at_test_clock)
+    broker = LeadBroker(_engine_of(project), project.token)
     broker.start()
     try:
         broker.start_wakes(_CountingPoster())
         assert Q.some_broker_posts(root)
-        record = broker_liveness.read(root)
-        assert record is not None
-        assert judge(record, generation=broker.generation, poll_s=POLL_S, now=clock() + 3 * POLL_S).reason == "stale"
         path = root / X.REL_PATH
         path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
         deadline = time.monotonic() + 30
@@ -276,6 +259,43 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
         assert Q.serving(root) is None and Q.some_broker_posts(root) is False
     finally:
         broker.close()
+
+
+def test_broker_posting_does_not_age_its_snapshot_during_the_process_identity_check(project, monkeypatch):
+    """A delayed identity check must not compare an earlier heartbeat snapshot with a later clock."""
+    from notifier import Clock, Steps
+
+    from aew.harness import broker_liveness, operator_client
+    from aew.harness.lead_broker import POLL_S
+
+    root = project.root / ".aew"
+    generation = _engine_of(project).lead_show()["generation"]
+    clock = Clock()
+    beat = broker_liveness.Beat(root, generation=generation, poll_s=POLL_S, wedge_after_s=62.0,
+                                clock=clock, idle=Steps)
+    beat.start()
+    Q.mark_serving(root, generation)
+    same_process = operator_client.same_process
+    monkeypatch.setattr(Q, "time", SimpleNamespace(time=clock), raising=False)
+    monkeypatch.setattr(broker_liveness, "time", SimpleNamespace(time=clock))
+    checked = []
+
+    def delayed_identity(record):
+        alive = same_process(record)  # the actual host's process check, including Windows' native checks
+        checked.append(alive)
+        clock.advance(3 * POLL_S)  # force preemption/slow identity observation without sleeping or retries
+        return alive
+
+    monkeypatch.setattr(operator_client, "same_process", delayed_identity)
+    try:
+        assert Q.some_broker_posts(root)
+        assert checked == [True]
+        # At the next observation the unchanged record really is stale; the threshold is not widened.
+        monkeypatch.setattr(operator_client, "same_process", same_process)
+        assert Q.some_broker_posts(root) is False
+    finally:
+        beat.close()
+        Q.clear_serving(root, generation)
 
 
 def test_a_project_with_wakes_off_shows_only_that_and_no_stale_wake(project):

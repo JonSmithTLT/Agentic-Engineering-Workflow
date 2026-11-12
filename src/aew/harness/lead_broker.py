@@ -130,6 +130,8 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
               frozenset({"invoke", "create"}))
 POLL_S = 1.0
+RECEIPT_CLOSE_LOCK_S = 2.0  # let a successful send finish its receipt; a stalled client cannot hold close forever
+# If that bound expires, receipt remains uncertain and the body may be re-shown; never claim an unrecorded receipt.
 
 # The reads a contained Lead relays to its broker, which runs them on the host (STG-05 CS-4 addendum 4, ruling 1). What
 # they read is under `.aew/local`, which the Lead's sandbox masks whole: the runs' records, the notifier's and the
@@ -356,7 +358,7 @@ class LeadBroker:
         # A typed result sends and records its receipt under this same serialization. Closing immediately after
         # receiving those bytes must not invalidate the receipt in the gap before its successful-send write.
         try:
-            with self.server.serialized(timeout=2.0):
+            with self.server.serialized(timeout=RECEIPT_CLOSE_LOCK_S):
                 self._stop.set()
         except TimeoutError:
             self._stop.set()  # a stalled client write must not keep the session alive without a bound
@@ -466,7 +468,8 @@ class LeadBroker:
 
     def _read_receipt(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
         """Only verified complete bodies in this successful host read, in its original request scope.
-        This serialization is shared with the queue's final selection; no control session or durable shown write."""
+        This serialization is shared with the queue's final selection; no control session or durable shown write.
+        Direct-test wrapper only: production lead.read calls the unlocked inner helper under its send lock."""
         with self.server.serialized():
             self._read_receipt_unlocked(result, ns)
 

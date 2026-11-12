@@ -43,10 +43,16 @@ accept the new snapshot keyword; extend that stub, preserving every seat/credent
 
 CI b9456c79, run 43135354992: Windows integration 9/13 failed
 test_lead_wake_status.py::test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn,
-at its initial some_broker_posts assertion, before editing policy. The isolated Windows case passed; the exact CI
-schedule is not reproduced. That assertion mixes the policy property with a live heartbeat's two-second freshness
-window and concurrent file replacements. Use the existing clock/idle seams to hold only the heartbeat at its
-synchronous initial record and judge it on the same test clock; the real wake/watchdog threads still detect the
-actual unadopted policy edit. Keep the original positive and negative posting assertions, and additionally prove
-the unmodified liveness judge calls an aged record stale. No production liveness rule, timing threshold, deadline,
-platform skip or retry changes. The failing test ID was reported before another push.
+at its initial some_broker_posts assertion, before editing policy. The isolated Windows case passed. The initial,
+unpublished c39b7974 test-clock change passed but did not establish a production cause; it is superseded, and the
+original test is restored unchanged. A forced Windows regression against b9456c79's production implementation
+reproduces a real observation race: a heartbeat is fresh when sampled, but a delayed native process-identity check
+makes judge compare that old snapshot to a later clock. Capture the observation time before file/process checks,
+and judge the snapshot at that time. The same unrefreshed record is still stale on the next observation; the
+two-poll freshness/wedge rules are unchanged. The exact CI schedule remains unknown, not labelled a known flake.
+No deadline, platform skip or retry change. The failing test ID was reported before another push.
+
+Quick-check follow-ons: q1 adds a lead.run regression for each contained/weaker TUI path, capturing the actual
+run_session_tree environment after the switch offer, with messaging off/on. q2 names RECEIPT_CLOSE_LOCK_S with
+the two-second bound's reason and the possible re-shown outcome. q3 identifies _read_receipt as the direct-test
+wrapper: the live production route calls the unlocked inner helper under its send lock.

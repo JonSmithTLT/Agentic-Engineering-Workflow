@@ -220,11 +220,16 @@ class BridgeServer:
                 self._idle.notify_all()
 
     @contextmanager
-    def serialized(self) -> Iterator[None]:
+    def serialized(self, *, timeout: float | None = None) -> Iterator[None]:
         """The one-request-at-a-time section, for a cooperative operation's engine calls. It does not refuse a closed
         bridge: a request already being handled may still answer from committed state (its handler checks)."""
-        with self._serial:
+        acquired = self._serial.acquire() if timeout is None else self._serial.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError("the bridge's serialization remained busy")
+        try:
             yield
+        finally:
+            self._serial.release()
 
     def drain(self, timeout: float) -> bool:
         """Wait for requests already being handled to finish (each is refused or completed by the engine)."""

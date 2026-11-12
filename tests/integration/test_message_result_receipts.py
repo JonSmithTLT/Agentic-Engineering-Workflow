@@ -150,43 +150,48 @@ def test_typed_broker_status_records_only_carried_messages_durably(w, sealed):
 
 
 @pytest.mark.parametrize("sealed", [False, True])
-def test_typed_send_and_receipt_exclude_wake_selection_and_session_close(w, sealed):
+@pytest.mark.parametrize("route", ["typed", "relayed"])
+def test_send_and_receipt_exclude_wake_selection_and_session_close(w, sealed, route):
     """Force the post-send scheduling boundary instead of relying on which bridge thread runs next."""
     mid = reply(w)
     if sealed:
         w.lead("invoke_cancel", invocation=w.inv, reason="sealed body at the send boundary")
     with broker(w) as b:
-        delivery = b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
-                                          "arguments": json.dumps({"work_id": w.wid})})
+        delivery = (b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
+                                           "arguments": json.dumps({"work_id": w.wid})}) if route == "typed" else
+                    b.handle("lead.read", {"argv": ["status", "--json"], "cwd": str(w.root)}))
 
         def send(answer):
-            assert answer["stage_result"]["ok"]
+            assert answer["stage_result"]["ok"] if route == "typed" else answer["exit"] == 0
             # Another thread could take this same lock for the wake's final check or close. It must not
             # enter between output becoming visible and its successful-send receipt being recorded.
             acquired = b.server._serial.acquire(blocking=False)
             if acquired:
                 b.server._serial.release()
-            assert not acquired, "typed send exposed a scheduling gap before its receipt"
+            assert not acquired, f"{route} send exposed a scheduling gap before its receipt"
             assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
 
         delivery.deliver(send)
-        assert w.e.message_attention()["awaiting_lead"] == []
+        assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if route == "typed" else [mid])
+        assert T.read(w.root / ".aew", b.generation) == ({mid} if route == "relayed" else set())
 
 
-def test_broker_close_cannot_discard_a_successfully_sent_typed_receipt(w, monkeypatch):
-    reply(w)
+@pytest.mark.parametrize("route", ["typed", "relayed"])
+def test_broker_close_cannot_discard_a_successfully_sent_receipt(w, monkeypatch, route):
+    mid = reply(w)
     with broker(w) as b:
-        delivery = b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
-                                          "arguments": json.dumps({"work_id": w.wid})})
+        delivery = (b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
+                                           "arguments": json.dumps({"work_id": w.wid})}) if route == "typed" else
+                    b.handle("lead.read", {"argv": ["status", "--json"], "cwd": str(w.root)}))
         boundary = threading.Event()
         errors = []
         serial = b.server.serialized
 
         @contextmanager
-        def serialized():
+        def serialized(**kwargs):
             if threading.current_thread() is closer:
                 boundary.set()  # close reached the serialization held by delivery
-            with serial():
+            with serial(**kwargs):
                 yield
 
         monkeypatch.setattr(b.server, "serialized", serialized)
@@ -202,7 +207,7 @@ def test_broker_close_cannot_discard_a_successfully_sent_typed_receipt(w, monkey
         closer = threading.Thread(target=close)
 
         def send(answer):
-            assert answer["stage_result"]["ok"]
+            assert answer["stage_result"]["ok"] if route == "typed" else answer["exit"] == 0
             closer.start()  # the client closes its session immediately after receiving the output
             assert boundary.wait(10)
 
@@ -211,7 +216,30 @@ def test_broker_close_cannot_discard_a_successfully_sent_typed_receipt(w, monkey
         finally:
             closer.join(60)
         assert not closer.is_alive() and not errors
-    assert w.e.message_attention()["awaiting_lead"] == []
+        assert T.read(w.root / ".aew", b.generation) == ({mid} if route == "relayed" else set())
+    assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if route == "typed" else [mid])
+
+
+def test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock(w):
+    with broker(w) as b:
+        errors = []
+
+        def close():
+            try:
+                b.close()
+            except BaseException as exc:
+                errors.append(exc)
+
+        b.server._serial.acquire()  # the lock a send holds while its bridge client stops reading
+        closer = threading.Thread(target=close)
+        closer.start()
+        try:
+            closer.join(10)
+            finished_while_busy = not closer.is_alive()
+        finally:
+            b.server._serial.release()
+            closer.join(60)
+        assert finished_while_busy and not errors, "closing waited without a bound for the stalled send"
 
 
 def test_own_shell_lead_tool_consumes_but_plain_operator_status_does_not(w):

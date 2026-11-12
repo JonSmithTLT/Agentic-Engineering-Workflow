@@ -435,7 +435,7 @@ def test_opencode_selects_the_seat_or_existing_credential(acquired, monkeypatch,
     monkeypatch.setattr(operator, "ask_hidden", hidden)
     monkeypatch.setattr(lead, "contained_here", lambda: False)
     monkeypatch.setattr(lead, "check_version", lambda: "test")
-    monkeypatch.setattr(lead, "guide_of", lambda _: "")
+    monkeypatch.setattr(lead, "guide_of", lambda _, **__: "")
     monkeypatch.setattr(lead, "command", lambda *_: ["synthetic"])
     monkeypatch.setattr(lead, "_readiness", lambda _: None)
     monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **_: None)

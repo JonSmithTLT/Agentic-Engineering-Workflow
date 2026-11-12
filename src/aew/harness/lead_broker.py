@@ -355,8 +355,11 @@ class LeadBroker:
             self.loop.request_stop()
         # A typed result sends and records its receipt under this same serialization. Closing immediately after
         # receiving those bytes must not invalidate the receipt in the gap before its successful-send write.
-        with self.server.serialized():
-            self._stop.set()
+        try:
+            with self.server.serialized(timeout=2.0):
+                self._stop.set()
+        except TimeoutError:
+            self._stop.set()  # a stalled client write must not keep the session alive without a bound
         if self._wakes is not None:
             from aew.harness.wake_queue import clear_serving
 
@@ -428,13 +431,14 @@ class LeadBroker:
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
             receipts: list[Callable[[], None]] = []
             answer = run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
-                              on_result=self._read_receipt, defer_receipt=receipts.append)
+                              on_result=self._read_receipt_unlocked, defer_receipt=receipts.append)
 
             def deliver_read(send: Callable[[Any], None]) -> None:
-                send(answer)
-                for receipt in receipts:
-                    if self._receipt_current():
-                        receipt()
+                with self.server.serialized():
+                    send(answer)
+                    for receipt in receipts:
+                        if self._receipt_current():
+                            receipt()
 
             return bridge.ResultDelivery(deliver_read)
         problem = self._authority_lost()
@@ -463,6 +467,11 @@ class LeadBroker:
     def _read_receipt(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
         """Only verified complete bodies in this successful host read, in its original request scope.
         This serialization is shared with the queue's final selection; no control session or durable shown write."""
+        with self.server.serialized():
+            self._read_receipt_unlocked(result, ns)
+
+    def _read_receipt_unlocked(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
+        """Receipt inner path: caller holds broker serialization across the successful send and all receipts."""
         from aew.harness import told_messages
 
         path = command_path(ns)
@@ -476,13 +485,12 @@ class LeadBroker:
             state = self.engine.store.read_committed()
             invocations = {inv_id for inv_id, inv in state["invocations"].items()
                            if any(r["run"] in ns.run for r in inv.get("runs") or [])}
-        with self.server.serialized():
-            if not self._receipt_current():
-                return
-            ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
-                                                 runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
-            if ids:
-                told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
+        if not self._receipt_current():
+            return
+        ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
+                                              runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
+        if ids:
+            told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
 
     def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
         with self._reads_lock:

@@ -106,6 +106,7 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
          "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
     shell = steps_done(lab, run, 2)
+    assert not shell.get("barrier_error"), shell
     assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
     assert shell["timed_out"]
     send(lab)

@@ -1,6 +1,7 @@
 CI at 0282a0db after merging main 5c51e388 exposed three boundary problems (run 43115381438). The affected
-implementation and orphan-test files are byte-identical between fb2947b0 and 0282a0db; this is not evidence that
-#445's scheduler logic introduced them. The previous named gate omitted test_harness_wait_any.py.
+paths harness_ops.py, lead_broker.py, worker_messages.py and the orphan test/helpers are byte-identical between
+fb2947b0 and 0282a0db; this is not evidence that #445 introduced these particular defects. wake_queue.py did change:
+#445 added its loop-stop filter. The previous named gate omitted test_harness_wait_any.py.
 
 - OBX-38: harness_wait's final snapshot was read again by _wait_on, once for every still-running run whose
   guidance harness_resume renders and once for the follow-on wait. Pass that snapshot through both paths. Preserve
@@ -26,3 +27,16 @@ harness directory. Keep its behavior unchanged and put the file barrier in an or
 That gate passed the originally reported cases but failed five neighboring helper consumers; it is not a green gate.
 The serial Windows four-module diagnostic hit its 600-second session bound after nine passes (exit 70): incomplete,
 not a Windows pass. Do not retry that run or raise its bound; final qualification requires the new head's CI.
+
+Delta review CLEAR at d05f27d7, m1: extend successful-send serialization to lead.read and every deferred receipt.
+The locked public receipt wrapper calls an unlocked inner helper, so the live bridge never re-enters its Lock.
+The forced-boundary send/close pair now covers relayed reads too: they write only generation-local told IDs,
+never durable shown facts. n1: close waits at most two seconds for the send lock, then stops even if a client write
+stalls; a held-lock regression proves the bound. n2: the attribution above names the unchanged paths and explicitly
+excludes wake_queue.py's merged loop-stop change. n3: the orphan barrier's guard is now thirty seconds, below
+steps_done's sixty; a barrier failure is returned in the transcript and asserted directly, not lost on child stderr.
+
+Merge with main a41a0866 (#447): preserve both seat resume/prompt selection and the messaging prepare_env callback,
+after the new seat's offer and broker snapshot. A combined regression covers resumed sessions with messaging off/on.
+The merge gate found six test_opencode_selects_the_seat_or_existing_credential cases whose guide_of stub did not
+accept the new snapshot keyword; extend that stub, preserving every seat/credential assertion.

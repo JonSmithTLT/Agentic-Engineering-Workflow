@@ -153,13 +153,42 @@ def decisions(p) -> list[dict[str, Any]]:
 # ------------------------------------------------------------------------------------------ who is asked (rule 1)
 
 def test_a_switch_offer_is_asked_only_at_the_operators_terminal_in_aew_opencode(old, at_terminal):
-    silent, out = start(old)  # the suite's stub: no terminal
-    assert silent.taken == [] and out.getvalue() == ""
+    silent, out = start(old)  # the suite's stub: no terminal; one line names what was skipped (rule 1, 2026-11-12)
+    assert silent.taken == [] and out.getvalue() == ("aew opencode: switch offer pending (mutating concurrency, the "
+                                                     "price table); answer it at your own terminal, or see `aew "
+                                                     "doctor`.\n")
     assert set(doctor(old)) == {f"switch-offer:{MUTATING}", f"switch-offer:{TABLE}"}
     term = at_terminal("CODE", "CODE")
     decision, _ = start(old)
     assert len(term.prompts) == 2 and [t[0].switch for t in decision.taken] == BOTH
     assert snapshot(old, PRICES)[PRICES] is None  # asking writes nothing: it is applied with the credential
+
+
+def test_a_start_with_no_terminal_names_the_pending_offers_in_one_line_and_never_waits(before_maps, monkeypatch):
+    """Rule 1's addition (2026-11-12): a project initialized before maps, started with no terminal to ask at, is never
+    asked and never waits; one line names every pending offer, and the start goes on with nothing taken."""
+    monkeypatch.setattr(operator, "ask", lambda *a, **k: pytest.fail("a start with no terminal asked"))
+    monkeypatch.setattr(operator, "answer", lambda *a, **k: pytest.fail("a start with no terminal asked"))
+    decision, out = start(before_maps)
+    assert decision.taken == []
+    assert out.getvalue().splitlines() == ["aew opencode: switch offer pending (mutating concurrency, the price "
+                                           "table, project maps); answer it at your own terminal, or see `aew "
+                                           "doctor`."]
+    assert set(doctor(before_maps)) == {f"switch-offer:{r}" for r in (MUTATING, TABLE, MAPS)}  # still pending
+
+
+def test_a_start_with_no_terminal_and_nothing_pending_says_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(operator, "ask", lambda *a, **k: pytest.fail("a start with no terminal asked"))
+    p = sample_project(tmp_path)  # a new project: every default already holds
+    decision, out = start(p)
+    assert decision.taken == [] and out.getvalue() == ""
+
+
+def test_a_lead_session_with_no_terminal_says_nothing_about_offers(old, monkeypatch):
+    """Only the operator's own start names them: a Lead session's `aew` has no path to the offer (rule 1)."""
+    monkeypatch.setenv("AEW_LEAD_BROKER", "synthetic-broker")
+    _, out = start(old)
+    assert out.getvalue() == ""
 
 
 def test_aew_lead_session_never_offers(old, at_terminal, monkeypatch):

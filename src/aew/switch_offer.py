@@ -5,7 +5,8 @@ projects only. The offer is how an existing project gets it, by the operator's d
 (:data:`OFFERS`) is one switch. The rules:
 
 1. **It asks only at the operator's own terminal, in `aew opencode`'s start.** A Lead session and an agent's own `aew`
-   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer.
+   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer. (2026-11-12, the Lead's
+   ruling on SYS-07's switch-on: the skip also prints one line naming the pending offers.)
 2. **It decides by the key, and never over the operator's value.** A value AEW never shipped, a table the project
    already names or a file already there is never offered, and no line anywhere mentions it.
 3. **It adopts only its own change.** Anything else drifted means it doesn't ask, and lists what. The adoption takes
@@ -474,6 +475,8 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
     decision = Decision(engine, out)
     try:
         if not _may_ask():
+            if _askable_but_for_the_terminal():
+                _say_pending(engine, out)
             return decision
     except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
         _say(out, f"the switch offers could not be read ({type(exc).__name__}: {exc}); see `aew doctor`.")
@@ -492,6 +495,21 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
         except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
             _say(out, f"the offer for {offer.label} could not be read ({type(exc).__name__}: {exc}); see `aew doctor`.")
     return decision
+
+
+def _askable_but_for_the_terminal() -> bool:
+    """`_may_ask`'s other checks pass (the operator's own start: not a Lead session, a writer), but no terminal does."""
+    from aew.harness.operator_client import lead_session_problem
+
+    return lead_session_problem() is None and process_kind.kind() != process_kind.NON_WRITER and not terminal()
+
+
+def _say_pending(engine: Any, out: Any) -> None:
+    """One line naming every offer this start skipped for want of a terminal (rule 1's addition of 2026-11-12), so a
+    start with no terminal never waits on an offer and never leaves it unsaid. Nothing when none is pending."""
+    pending = [s.offer.label for s in standings(engine) if s.declined_at is None]
+    if pending:
+        _say(out, f"switch offer pending ({', '.join(pending)}); answer it at your own terminal, or see `aew doctor`.")
 
 
 def _ask_one(engine: Any, standing: Standing, decision: Decision, out: Any) -> None:

@@ -26,6 +26,7 @@ from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, TERMINAL, LaunchContract
+from aew.policy import execution as X
 from aew.util import dump_yaml
 
 HERE = Path(__file__).resolve().parent
@@ -184,6 +185,10 @@ class HarnessLab:
         scripts.mkdir(parents=True, exist_ok=True)
         (tmp / "sync").mkdir(exist_ok=True)
         policy = dict(policy or POLICY)
+        # The lab's policy replaces the one `aew init` wrote, so it keeps init's maps switch (register E184) unless the
+        # test names one: a lab project is a new project, and without the key it would read off and be offered maps at
+        # `aew opencode`'s start, which a Lead session's test runs on a relayed terminal, where it waits for an answer.
+        policy.setdefault("maps", {"pack_slices": X.NEW_PROJECT_PACK_SLICES})
         # Contained runs (Linux, M4-B) can write only their own roots and see a private /tmp: the fake agent reads its
         # script and tests exchange pid and sync files through these two directories, so the lab's policy adds them
         # as operator-declared writable roots (recorded on every run's label, like any operator addition).

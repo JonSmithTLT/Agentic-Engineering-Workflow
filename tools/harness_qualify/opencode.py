@@ -689,6 +689,9 @@ class OpenCodePack:
         return {
             "login.oauth_shape": "an OAuth row needs a real login flow with a provider; the key row is measured "
                                  "(login.store), the OAuth shape stays login.py's citation",
+            "login.worker_plan_route": "requires the separate keyless Linux qualification at the pinned version "
+                                       "against a local fake upstream: paths, sentinel and account substitution, "
+                                       "no key environment, model listing, cost, 503 retry and expiry refusal",
             "lead.tui_preferences": "cli.json is read by the TUI, which needs a terminal and a person; not run "
                                     "offline",
             "readable.tui_display": "what OpenCode's TUI shows a person is seen, not served",

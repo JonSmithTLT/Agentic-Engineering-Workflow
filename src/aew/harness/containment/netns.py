@@ -31,12 +31,13 @@ import socket
 import ssl
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from aew.errors import AEWError, ContainmentUnavailable
+from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness.containment import client_cert, egress, relay
 from aew.harness.containment.layout import ISOLATED, NET_SHIM, NETWORK_MODES, PROXY_ONLY, SHARED, Layout
@@ -112,6 +113,66 @@ def mode(policy: Mapping[str, Any] | None) -> str:
     if sys.platform == "win32":
         return NOT_PROVIDED
     return str(settings(policy).get("mode") or PROXY_ONLY)
+
+
+def require_plan_route(profile: Mapping[str, Any], policy: Mapping[str, Any] | None, *, on_relay_route: bool) -> None:
+    provider = str(profile["provider"])
+    name = profile["profile"]
+    label = f"profile {name} uses your {provider} plan"
+    if stored_key_override(provider, policy):
+        raise HarnessIncompatible(f"{label}, but a provider upstream override is set. Remove the override "
+                                  f"or set `credential: api_key` on {name}.",
+                                  reason="plan_login_override")
+    if not on_relay_route or not sys.platform.startswith("linux") or provider not in REFRESHING_UPSTREAMS:
+        route = ("the plan login isn't served on Windows yet (E341); set `credential: api_key` "
+                 f"and export {PROVIDER_KEY_ENV.get(provider, 'the provider key')}" if sys.platform == "win32" else
+                 "the plan login needs the provider relay on Linux")
+        raise HarnessIncompatible(f"{label}, but {route}.", reason="plan_login_route")
+
+
+def check_plan_login(profile: Mapping[str, Any], policy: Mapping[str, Any] | None,
+                     env: Mapping[str, str], *, on_relay_route: bool) -> tuple[login.StoredLogin, login.Login]:
+    from aew.harness.opencode.lead import login_warning_h
+    from aew.policy import execution
+
+    require_plan_route(profile, policy, on_relay_route=on_relay_route)
+    provider = str(profile["provider"])
+    name = profile["profile"]
+    use_key = f"Or set `credential: api_key` on {name}."
+    renew = f"log in again with ChatGPT at your own terminal (`opencode auth login {provider}`)"
+    label = f"profile {name} uses your {provider} plan"
+    resolver = login.StoredLogin(provider, env)
+    try:
+        entry = resolver.deciding_login()
+    except relay.Unavailable as exc:
+        action = "Try again once the store is available." if exc.retryable else f"To use the plan, {renew}."
+        raise HarnessIncompatible(f"{label}, but the stored login could not be read. {action} {use_key}",
+                                  reason="plan_login_unreadable") from None
+    if entry is None:
+        raise HarnessIncompatible(f"{label}, but you have no stored {provider} login. "
+                                  f"To use the plan, {renew}. {use_key}",
+                                  reason="plan_login_missing")
+    if entry.kind == "key":
+        key_profiles = sorted(n for n, p in ((policy or {}).get("profiles") or {}).items()
+                              if n != name and p["provider"] == provider
+                              and execution.profile_credential(dict(policy or {}), p, provider) == execution.API_KEY)
+        needs_export = (f" Profiles {', '.join(key_profiles)} on {provider} use an API key and will then need "
+                        f"{PROVIDER_KEY_ENV[provider]} set where AEW starts." if key_profiles else "")
+        raise HarnessIncompatible(
+            f"{label}, but your stored {provider} login is an API key. To use the plan, log in with ChatGPT "
+            f"at your own terminal (`opencode auth login {provider}`).{needs_export} {use_key}",
+            reason="plan_login_kind_changed")
+    if entry.kind != "oauth" or not entry.secret or entry.expires is None:
+        raise HarnessIncompatible(f"{label}, but your stored {provider} login has a shape AEW doesn't read. "
+                                  f"Log in again at your own terminal. {use_key}", reason="plan_login_unknown_shape")
+    remaining = entry.expires / 1000 - time.time()
+    deadline = profile.get("deadline_s")
+    minimum = deadline + login.EXPIRY_MARGIN_S if deadline is not None else max(
+        login_warning_h(policy) * 3600, login.EXPIRY_MARGIN_S)
+    if remaining <= minimum:
+        raise HarnessIncompatible(f"{label}, but the login has {max(0, remaining) / 3600:.2f} h left and cannot "
+                                  f"cover this launch. To continue, {renew}.", reason="plan_login_expired")
+    return resolver, entry
 
 
 def relay_route(policy: Mapping[str, Any] | None, provider_relay: bool) -> bool:
@@ -212,8 +273,12 @@ STORED_REQUIRES_BUILTIN = "the stored OpenCode login is used only with the built
 def worker_key_issue(provider: str, issue: str) -> str:
     if issue == login.REFRESHING_LOGIN:
         kind = "ChatGPT" if provider == "openai" else "OAuth"
-        return (f"the stored login is a refreshing ({kind}) login, which workers never use; "
-                f"set {PROVIDER_KEY_ENV[provider]} where AEW starts, for workers")
+        detail = (f"the stored login is a refreshing ({kind}) login; set {PROVIDER_KEY_ENV[provider]} "
+                  "where AEW starts for API-key workers")
+        if provider in REFRESHING_UPSTREAMS:
+            detail += (f", or set `credential: plan_login` on the profile or "
+                       f"`credentials: {{{provider}: plan_login}}` to use your plan once qualified")
+        return detail
     return issue
 
 
@@ -389,7 +454,8 @@ class RunNetwork:
     @classmethod
     def start(cls, layout: Layout, *, provider: str | None, provider_env: Iterable[str],
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
-              allow: egress.Allowlist | None = None, stored: login.WorkerKey | None = None) -> RunNetwork:
+              allow: egress.Allowlist | None = None, stored: login.WorkerKey | None = None,
+              plan: tuple[login.StoredLogin, login.Login] | None = None) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
         ``relay_needed``) and the egress proxy with ``allow``, the run's allowlist (``egress_policy``), when there is
         one. The caller builds that allowlist once and gives the same one to the run's self-test, so the self-test
@@ -399,12 +465,30 @@ class RunNetwork:
         secret = [n for n in names if n.upper() not in PROXY_NAMES]
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
         sentinels = {n: relay.sentinel() for n in secret}
+        if plan is not None:
+            variable = PROVIDER_KEY_ENV[plan[0].integration]
+            values[variable] = agentenv.lookup(env, variable) or ""
+            sentinels.pop(variable, None)
         net = cls(layout, sentinels=sentinels, values=values)
         net.provider = provider
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
         try:
-            if relay_needed:
+            if plan is not None:
+                resolver, initial = plan
+                target = relay.Upstream(REFRESHING_UPSTREAMS[resolver.integration])
+                token = relay.sentinel()
+                net._values[f"{resolver.integration} login"] = initial.secret
+                net.login_sentinels[resolver.integration] = token
+                net.key_source = "plan login"
+                try:
+                    proxy = operator_proxy(target, names, env)
+                except AEWError as exc:
+                    raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
+                net.relay = relay.ProviderRelay(
+                    target, {}, proxy=proxy, resolve=functools.partial(_grant, token, resolver.worker_grant),
+                    listener=listen(os.path.join(layout.net_dir, RELAY))).start()
+            elif relay_needed:
                 target = upstream(provider, policy)
                 if stored is not None and stored_key_candidate(provider, names, env, policy, on_relay_route=True):
                     variable = PROVIDER_KEY_ENV[provider or ""]

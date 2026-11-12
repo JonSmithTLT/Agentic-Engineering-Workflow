@@ -65,7 +65,7 @@ def test_pin_carries_profile_fields_policy_hash_and_harness_precedence():
     pin = resolve(configured(archetypes={"implementer": "careful"}))
     assert pin == {"profile": "careful", "harness": "other", "provider": "q", "model": "m-care", "effort": None,
                    "max_steps": None, "deadline_s": 900, "selected_by": "policy", "rule": "archetype:implementer",
-                   "policy_sha256": SHA}
+                   "policy_sha256": SHA, "credential": "api_key"}
     assert resolve(configured())["harness"] == "opencode"  # the policy-level harness when the profile has none
 
 
@@ -86,6 +86,39 @@ def test_lead_overrides_are_recorded_as_lead_selections():
 def test_explicit_model_works_without_a_configured_policy():
     pin = resolve(None, request={"model": "prov/m"})
     assert pin["harness"] == X.DEFAULT_HARNESS and pin["selected_by"] == "lead" and pin["policy_sha256"] == SHA
+
+
+def test_worker_plan_login_requires_qualification_and_respects_profile_override(monkeypatch):
+    from aew.harness.opencode import capabilities
+
+    policy = configured()
+    policy["credentials"] = {"openai": "plan_login"}
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["profiles"]["light"].update(provider="openai", credential="api_key")
+    with pytest.raises(ValidationFailed) as failure:
+        X.parse(dump_yaml(policy).encode(), source="test")
+    assert "awaiting qualification" in failure.value.details["violations"][0]
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    parsed = X.parse(dump_yaml(policy).encode(), source="test")
+    assert resolve(parsed)["credential"] == "plan_login"
+    assert resolve(parsed, request={"profile": "light"})["credential"] == "api_key"
+    assert resolve(parsed, request={"model": "openai/test-model"})["credential"] == "api_key"
+
+
+@pytest.mark.parametrize(("model", "containment", "reason"), [
+    ("anthropic/test", {}, "whose requests it has measured: openai"),
+    ("openai/test", {"network": {"upstreams": {"openai": "http://127.0.0.1:9"}}}, "upstreams override"),
+])
+def test_plan_adoption_validates_the_provider_and_override_for_a_model_prefix(monkeypatch, model, containment, reason):
+    from aew.harness.opencode import capabilities
+
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    policy = configured()
+    policy["containment"] = containment
+    policy["profiles"]["standard"] = {"model": model, "credential": "plan_login"}
+    with pytest.raises(ValidationFailed) as failure:
+        X.parse(dump_yaml(policy).encode(), source="test")
+    assert reason in failure.value.details["violations"][0]
 
 
 @pytest.mark.parametrize("request_, why", [

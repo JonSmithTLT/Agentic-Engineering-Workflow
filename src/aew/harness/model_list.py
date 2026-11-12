@@ -55,8 +55,8 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
     found: list[str] = []
     problems: list[str] = []
     unread: list[str] = []
-    read: dict[tuple[str, str], tuple[dict[str, Any], str]] = {}
-    waited: dict[tuple[str, str], str] = {}  # the sources a read waited on for nothing, by the profile that waited
+    read: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
+    waited: dict[tuple[str, str, str], str] = {}  # the sources a read waited on for nothing, by the profile that waited
     for name in sorted(policy["profiles"]):
         try:
             pin = X.resolve(policy, sha, archetype=ROLE, card_id=None, risk_class=None, request={"profile": name},
@@ -68,7 +68,7 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
             continue
         if not hasattr(adapter_cls, "read_model_list"):  # a harness without the capability (harness_capabilities)
             continue
-        source = (str(pin["harness"]), str(pin["provider"]))
+        source = (str(pin["harness"]), str(pin["provider"]), pin.get("credential", "api_key"))
         shared = read.get(source)
         if shared is not None and any(m["providerID"] == pin["provider"] and m["id"] == pin["model"]
                                       for m in shared[0].get("models") or []):
@@ -162,7 +162,8 @@ def cache_key(adapter_cls: Any, policy: dict[str, Any], pin: dict[str, Any]) -> 
             digest.update(block)
     projected = adapter_cls.projected_config(_contract(Path("/aew-doctor/run"), pin, policy))
     rule = {k: policy.get(k) for k in ("containment", "provider_env")}  # the network rule is containment's
-    config = hashlib.sha256(json.dumps([projected, rule, 2], sort_keys=True, default=str).encode()).hexdigest()
+    config = hashlib.sha256(json.dumps([projected, rule, pin.get("credential", "api_key"), 2],
+                                      sort_keys=True, default=str).encode()).hexdigest()
     return f"{digest.hexdigest()}:{config}"
 
 
@@ -249,14 +250,14 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
                 policy, adapter_cls, provider=pin.get("provider"), provider_env=contract.extra["provider_env"],
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=run_dir,
                 scratch=contract.scratch, bridge_dir=None, bridge=None, project=engine.repo_root,
-                aew_root=engine.aew_root, kind="doctor_model_list", marker=marker)
+                aew_root=engine.aew_root, kind="doctor_model_list", marker=marker, execution_profile=pin)
         except HarnessIncompatible as exc:  # a launch is refused for it, so the row is red (#367, F4)
             reason = exc.details.get("reason")
             weaker_allowed = (policy.get("containment") or {}).get("mode") == "allow_weaker"
             raise _Unread(f"a launch would be refused{' (' + str(reason) + ')' if reason else ''}: {exc.message}"
                           + ("; the provider-key row says the same"
                              if reason == netns.PROVIDER_KEY_MISSING and not weaker_allowed else ""),
-                          red=True) from None
+                           red=not (reason == "plan_login_route" and weaker_allowed)) from None
         except ContainmentUnavailable as exc:
             raise _Unread(f"a launch's containment was not established here, so the list was not read: {exc.message}",
                           red=False) from None

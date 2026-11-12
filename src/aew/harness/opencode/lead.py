@@ -900,7 +900,7 @@ class ContainedLead:
                     entry = self.refreshing[provider]
                     meta = {k: "aew-relay-placeholder" for k in login.LOGIN_HEADERS.get(provider, {}).values()
                             if entry.metadata.get(k)}
-                    value = {"type": "oauth", "methodID": entry.method, "refresh": "aew-relay-no-refresh",
+                    value = {"type": "oauth", "methodID": entry.method, "refresh": login.RELAY_NO_REFRESH,
                              "access": token, "expires": now + INSIDE_LOGIN_S * 1000, "metadata": meta}
                     con.execute("UPDATE credential SET active = 0 WHERE integration_id = ?", (provider,))
                     row = (f"cred_aew_{provider}", provider, "AEW relay", json.dumps(value), entry.method, 1, now, now)

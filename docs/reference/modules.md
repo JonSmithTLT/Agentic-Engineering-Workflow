@@ -1051,6 +1051,7 @@ None.
 - `aew.harness.agentenv`
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
+- `aew.harness.opencode.lead`
 - `aew.harness.registry`
 - `aew.policy.execution`
 
@@ -1366,7 +1367,9 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
+- `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
+- `aew.policy.execution`
 
 ### `aew.harness.containment.peer`
 
@@ -1516,6 +1519,7 @@ None.
 
 ### `aew.harness.opencode.adapter`
 
+- `aew.engine.lock`
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.base`
@@ -1524,6 +1528,7 @@ None.
 - `aew.harness.harness_capabilities`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
+- `aew.harness.opencode.login`
 - `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
 - `aew.harness.progress`
@@ -1672,6 +1677,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.event_spool`
 - `aew.harness.operator_client`
+- `aew.harness.runlog`
 - `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
@@ -1996,7 +2002,9 @@ None.
 ### `aew.policy.execution`
 
 - `aew.errors`
+- `aew.harness.containment.netns`
 - `aew.harness.models`
+- `aew.harness.opencode.capabilities`
 - `aew.schemas`
 - `aew.util`
 

@@ -85,7 +85,7 @@ class Unavailable(Exception):
 
     def __init__(self, message: str, *, cause: CredentialCause, retryable: bool = False) -> None:
         super().__init__(message)
-        self.cause = cause
+        self.cause: CredentialCause = cause
         self.retryable = retryable
 
 

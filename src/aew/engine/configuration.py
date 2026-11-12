@@ -116,7 +116,8 @@ UNPROCESSABLE = "UNPROCESSABLE"
 UNPROCESSABLE_VIOLATION = {"path": "", "code": UNPROCESSABLE, "expected": None, "extra_key": None}
 # A schema violation's code is the keyword that failed: every validation keyword the execution schema uses.
 SCHEMA_KEYWORD_CODES = frozenset(Draft202012Validator.VALIDATORS) & frozenset(_schema_keys(schema(EXECUTION)))
-DATA_CODES = frozenset({YAML_SYNTAX, UNPROCESSABLE, X.NO_SUCH_PROFILE, X.NO_DEFAULT_ROUTE, *SCHEMA_KEYWORD_CODES})
+DATA_CODES = frozenset({YAML_SYNTAX, UNPROCESSABLE, X.NO_SUCH_PROFILE, X.NO_DEFAULT_ROUTE, X.PLAN_PROVIDER,
+                        X.PLAN_OVERRIDE, X.PLAN_QUALIFICATION, *SCHEMA_KEYWORD_CODES})
 
 
 def too_long(value: Any) -> bool:

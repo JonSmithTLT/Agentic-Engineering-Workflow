@@ -72,6 +72,57 @@ def fake_db(lab: HarnessLab, run: str = RUN) -> dict[str, Any]:
     return fake_opencode.read_db(harness_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json")
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the worker plan login requires the Linux relay")
+def test_plan_worker_uses_a_synthetic_store_through_the_fake_upstream(lab, tmp_path, monkeypatch):
+    from aew.harness import containment, model_list, procs, supervisor
+    from aew.harness.opencode import capabilities
+
+    access = "synthetic-plan-worker-access-1111"
+    home = lead_session.synthetic_home(tmp_path / "operator", oauth={"openai": {
+        "type": "oauth", "methodID": "chatgpt-browser", "access": access, "refresh": "synthetic-refresh",
+        "expires": int((time.time() + 86400 * 5) * 1000), "metadata": {"accountID": "synthetic-account"},
+    }})
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("OPENCODE_DB", str(home / ".local/share/opencode/opencode.db"))
+    monkeypatch.setenv("AEW_OPENCODE_BIN", lab.env["AEW_OPENCODE_BIN"])
+    monkeypatch.setenv("OPENAI_API_KEY", PROVIDER_SECRET)
+    fake_target = lab.provider.url.removesuffix("/v1") + "/backend-api/codex"
+    monkeypatch.setitem(netns.REFRESHING_UPSTREAMS, "openai", fake_target)
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", TESTED_VERSIONS)
+    policy = {"provider_env": ["OPENAI_API_KEY"]}
+    pin = {"profile": "impl", "harness": "opencode", "provider": "openai", "model": "synthetic-model",
+           "credential": "plan_login"}
+    script(lab, [], models=[{"id": "synthetic-model", "providerID": "openai", "enabled": True, "variants": []}],
+           plan_credentials=True,
+           provider_auth={"plan_login": True, "require_sentinel": True, "rejected_sha256": []})
+    run_dir = runlog.run_dir(lab.aew_root, RUN)
+    contract = model_list._contract(run_dir, pin, policy)
+    Path(contract.workspace).mkdir(parents=True)
+    Path(contract.scratch).mkdir()
+    cls = opencode_adapter.OpenCodeAdapter
+    layout, label, network, _ = supervisor.contain_launch(
+        policy, cls, provider="openai", provider_env=policy["provider_env"], role=contract.role, scope=contract.scope,
+        workspace=contract.workspace, run_dir=run_dir, scratch=contract.scratch, bridge_dir=None, bridge=None,
+        project=lab.root, aew_root=lab.aew_root, kind="worker_run", execution_profile=pin,
+    )
+    tree = procs.ProcessTree(layout=layout, network=network)
+    events = []
+    worker = cls(tree, run_dir, events.append)
+    try:
+        result = worker.launch(contract, {})
+        assert label["network"]["provider_key_source"] == "plan login"
+        assert result["health"]["stored_credentials"] == 1
+        deadline = time.monotonic() + 10
+        while not lab.provider.seen and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert lab.provider.seen == [hashlib.sha256(access.encode()).hexdigest()]
+        assert access not in json.dumps(events)
+    finally:
+        worker.terminate()
+        tree.kill()
+        containment.retire_private_git(run_dir)
+
+
 def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:
     """The run's event log so far; a last line still being written is skipped."""
     path = runlog.run_dir(lab.aew_root, run) / "events.jsonl"

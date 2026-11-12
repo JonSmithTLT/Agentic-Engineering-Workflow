@@ -6,6 +6,7 @@ only. Its one owner, for ``aew doctor`` (the engine facade's ``doctor_checks``),
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 from aew.errors import AEWError
@@ -32,8 +33,12 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR, *,
         return []
     from aew.harness.containment import netns
 
-    providers, profiles = _provider_profiles(execution)
+    providers, relay_profiles = _provider_profiles(execution)
     names = execution.get("provider_env") or []
+    plan_profiles = {name: provider for name, provider in providers.items()
+                     if X.profile_credential(execution, execution["profiles"][name], provider) == X.PLAN_LOGIN}
+    profiles = {name: provider for name, provider in relay_profiles.items() if name not in plan_profiles}
+    providers = {name: provider for name, provider in providers.items() if name not in plan_profiles}
     candidates = {provider for provider in profiles.values()
                   if netns.stored_key_candidate(provider, names, os.environ, execution, on_relay_route=True)}
     if admitted is None:
@@ -48,20 +53,55 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR, *,
         providers = {name: provider for name, provider in providers.items() if provider not in unassessed}
         profiles = {name: provider for name, provider in profiles.items() if provider not in unassessed}
     supplied = {netns.PROVIDER_KEY_ENV[p] for p in stored}
-    provider_scope = list(providers.values()) if providers or (admitted is not None and candidates) else [None]
+    provider_scope = (list(providers.values())
+                      if providers or plan_profiles or (admitted is not None and candidates) else [None])
     required = {name for provider in provider_scope
                 for name in netns.worker_provider_names(provider, names)
                 if provider not in stored or name != netns.PROVIDER_KEY_ENV.get(provider or "")}
+    required.update(name for provider in plan_profiles.values() for name in netns.worker_provider_names(provider, names)
+                    if name != netns.PROVIDER_KEY_ENV.get(provider))
     rows: list[dict[str, str]] = []
     if execution.get("profiles"):
         rows.append(_row("model-refs", *_model_refs_doctor(execution)))
     if execution.get("provider_env"):
         status, detail = _provider_env_doctor([name for name in names if name in required], site, supplied=supplied)
-        rows.append(_row("provider-env", *_warn_for_weaker(execution, status, detail, bool(stored))))
+        status, detail = _warn_for_weaker(execution, status, detail, bool(stored))
+        if plan_profiles and (execution.get("containment") or {}).get("mode") == "allow_weaker":
+            detail += ". Plan profiles require the provider relay and are refused if containment falls back."
+            if status == "PASS":
+                status = "WARN"
+        rows.append(_row("provider-env", status, detail))
     if execution.get("profiles"):
         found = _provider_key_doctor(execution, profiles, stored, unavailable)
         if found is not None:
             rows.append(_row("provider-key", *_warn_for_weaker(execution, *found, bool(stored))))
+    if plan_profiles and admitted is None:
+        from aew.harness.opencode.lead import login_warning_h
+
+        for name, provider in sorted(plan_profiles.items()):
+            pin = {"profile": name, "provider": provider, "deadline_s": execution["profiles"][name].get("deadline_s")}
+            weaker = (execution.get("containment") or {}).get("mode") == "allow_weaker"
+            try:
+                _, login = netns.check_plan_login(pin, execution, os.environ, on_relay_route=name in relay_profiles)
+            except AEWError as exc:
+                reason = exc.details.get("reason")
+                warn = reason == "plan_login_expired" or (weaker and reason == "plan_login_route")
+                status = "WARN" if warn else "FAIL"
+                rows.append(_row("provider-key", status, exc.message))
+                continue
+            assert login.expires is not None  # check_plan_login only accepts a bounded OAuth expiry
+            hours = (login.expires / 1000 - time.time()) / 3600
+            detail = (f"{name}: {provider} via plan login (ChatGPT), {hours:.1f} h left. "
+                      "The operator's plan is shared with any Lead on the same login.")
+            warn = hours <= login_warning_h(execution) or weaker
+            if hours <= login_warning_h(execution):
+                detail += f" Renew it at the operator's terminal (`opencode auth login {provider}`)."
+            if weaker:
+                detail += " If the sandbox cannot be established, a plan launch is refused (plan_login_route)."
+            if provider in providers.values():
+                detail += " API-key profiles on this provider still need a separate export."
+            detail += " Select an adopted profile with `--profile`."
+            rows.append(_row("provider-key", "WARN" if warn else "PASS", detail))
     found = _client_cert_doctor(execution)
     if found is not None:
         rows.append(_row("client-cert", *found))

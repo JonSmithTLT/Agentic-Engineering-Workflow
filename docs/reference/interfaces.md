@@ -73,14 +73,14 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
 | `checks` | `checks.schema.json` | 12 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
-| `control` | `control.schema.json` | 507 | 281 |
+| `control` | `control.schema.json` | 509 | 280 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
 | `coordination-message` | `coordination-message.schema.json` | 18 | 17 |
 | `coordination-seal` | `coordination-seal.schema.json` | 19 | 16 |
 | `decision` | `decision.schema.json` | 17 | 10 |
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 174 | 66 |
-| `execution` | `execution.schema.json` | 67 | 10 |
+| `execution` | `execution.schema.json` | 70 | 10 |
 | `gate-correction` | `gate-correction.schema.json` | 20 | 17 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |

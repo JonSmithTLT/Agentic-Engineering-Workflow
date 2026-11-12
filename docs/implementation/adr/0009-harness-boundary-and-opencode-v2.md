@@ -2061,3 +2061,23 @@ or an exported API key.
 
 The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
 an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.
+
+## Amendment 2026-11-11 — workers may draw from the operator's plan login (the operator's choice of usage pot)
+
+The operator's grant, relayed by the Lead: “right that was teh plan wheter througha  asetting or whatever mechaism i wanted teh ability to choose which usage pot is being used.”
+
+This amends the E337 stored-key amendment, the E17 worker credential check, and the contained Lead's refreshing relay.
+A worker's usage pot is the operator's choice: `credentials.<provider>` in the execution policy, overridden by a
+profile's `credential`, either `api_key` (the default, as the E337 amendment describes) or `plan_login`. Under
+`plan_login` the worker reaches its provider only through the established `proxy_only` relay, to the provider's
+built-in refreshing upstream (`netns.REFRESHING_UPSTREAMS`) and only under its path, never to a configured override.
+The provider's key variable is not passed. The relay resolves the credential for each request with the Lead's
+read-only resolver (`login.StoredLogin`): the operator's deciding row for that provider, read in memory, never
+refreshed and never written. The worker's own store holds one synthetic row whose access token is the run's
+sentinel. E17 verifies the row's id, this run's sentinel and the refresh placeholder. A missing credential endpoint,
+a missing row or an additional row refuses the launch.
+
+A dispatch the login cannot outlive is refused. An expiry, a changed kind or an unreadable store is answered by the
+relay with its cause and connects nothing. No other credential is tried, and the run's end names the cause. Plan
+workers share the plan's usage limits. Doctor and the launch record name the pot. The same upstream and path rule
+applies to the Lead's relayed login. Adopted as the operator's choice, 2026-11-11.

@@ -13,6 +13,8 @@ from typing import Any
 
 SUPPORTED_MAJOR = 2
 TESTED_VERSIONS = ("2.2.6",)
+# Adoption stays closed until the separate keyless worker route qualification records a pinned version.
+PLAN_LOGIN_QUALIFIED_VERSIONS: tuple[str, ...] = ()
 # The scripted Lead probe checks the binary before executing it. Frozen eval pins are separate.
 LEAD_PROBE_LINUX_X64_SHA256 = {
     "2.2.6": "50503d24577fa4117a7c95ee85b2cd679606a87eacf20ca54ed5db5c9e1cf895",

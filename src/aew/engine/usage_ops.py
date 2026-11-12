@@ -609,7 +609,7 @@ class Reader:
             self._snapshots[sha] = read_pricing_snapshot(self.aew_root, sha)
         return self._snapshots[sha]
 
-    def run_row(self, entry: Mapping[str, Any], inv_id: str) -> dict[str, Any]:
+    def run_row(self, entry: Mapping[str, Any], inv_id: str, *, plan_login: bool = False) -> dict[str, Any]:
         """One run: its record and where it came from (R6: ``recorded`` in control state, ``provisional`` from the run
         directory, ``missing`` from neither), both derived figures, and the provider's cost with its trust."""
         record = entry.get("usage")
@@ -626,9 +626,11 @@ class Reader:
         else:
             run_record = self._read_run(entry["run"])
             if run_record is None:
+                reason = "plan_login" if plan_login else UNPRICED_USAGE_MISSING
                 return {"run": entry["run"], "invocation": inv_id, "state": "missing", "usage": None,
-                        "pricing_sha256": None, "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
-                        "estimated_under_current_prices": {"unpriced": UNPRICED_USAGE_MISSING},
+                        "pricing_sha256": None, "estimated_at_record": {"unpriced": reason},
+                        "estimated_under_current_prices": {"unpriced": reason},
+                        **({"credential": "plan_login"} if plan_login else {}),
                         "provider_cost": {"usd": None, "trust": "absent"}, "prices_as_of": {}, "at_record_source": None,
                         "_parts": ([], [])}
             result = run_record.get("result")
@@ -638,6 +640,9 @@ class Reader:
             at_record, at_parts = {"unpriced": UNPRICED_NOT_RECORDED}, []
         current, current_parts = derive(record, self.current) if not self.unusable else (
             {"unpriced": UNPRICED_TABLE_UNUSABLE}, [])
+        if plan_login:
+            at_record = current = {"unpriced": "plan_login"}
+            at_parts, current_parts = [], []
         recorded = self.snapshot(sha) if sha else None
         source = recorded.table.get("source") if recorded else None
         current_source = self.current.table.get("source") if self.current and not self.unusable else None
@@ -645,6 +650,7 @@ class Reader:
                  "estimated_under_current_prices": self.current.table["as_of"]
                  if self.current and not self.unusable else None}
         return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
+                **({"credential": "plan_login"} if plan_login else {}),
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
                 "prices_as_of": as_of, "at_record_source": source if source != current_source else None,
@@ -653,7 +659,8 @@ class Reader:
     def invocation(self, inv_id: str, inv: Mapping[str, Any]) -> dict[str, Any]:
         """One invocation: its rows and their sum. An invocation without runs (a custody invocation, or one not yet
         launched) is normal: counted in ``invocations_without_runs`` and nothing else (R7)."""
-        rows = [self.run_row(entry, inv_id) for entry in inv.get("runs") or []]
+        plan_login = (inv.get("execution_profile") or {}).get("credential") == "plan_login"
+        rows = [self.run_row(entry, inv_id, plan_login=plan_login) for entry in inv.get("runs") or []]
         totals = empty_totals()
         totals["invocations"] = 1
         totals["invocations_without_runs"] = 0 if rows else 1
@@ -982,6 +989,9 @@ def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
     tokens = tokens_text(record.get("tokens") or {}) if record else "none"
     trust = record.get("tokens_trust", "absent") if record else "missing"
     fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    if row.get("credential") == "plan_login":
+        return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
+                f"{indent}  plan login: not billed per token"]
     as_of = row["prices_as_of"]
     return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
             f"{indent}  cost at record prices "

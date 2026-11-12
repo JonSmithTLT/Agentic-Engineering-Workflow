@@ -275,10 +275,10 @@ def deadline_problem(policy: dict[str, Any] | None) -> str | None:
         return None
     if missing == ["<none>"]:
         return ("the execution policy is not configured: no profile can be routed, so no run has a deadline. Set the "
-                "workers' model with its deadline the way first configuration does (`aew init --model ...` writes "
-                f"one): {post_pin_route(X.REL_PATH)}, giving the profile `deadline_s` (seconds)")
+                "workers' model with its deadline, as first configuration (`aew init` with --model) writes them: "
+                f"{post_pin_route(X.REL_PATH)}, giving the profile a deadline_s (seconds)")
     return (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: "
-            f"{post_pin_route(X.REL_PATH)}, giving each a `deadline_s` (seconds)")
+            f"{post_pin_route(X.REL_PATH)}, giving each a deadline_s (seconds)")
 
 
 LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)

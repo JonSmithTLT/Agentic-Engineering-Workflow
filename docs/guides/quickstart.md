@@ -296,13 +296,12 @@ endpoint tells you what stops it. A project starts in crawl. Run needs three thi
   Linux host), use the headless one, which appends each event to a file you watch (`tail -f`):
   `notify.command: [aew, notify, file, /home/you/aew-events.jsonl]`. Check it with
   `aew notify file /home/you/aew-events.jsonl --check`.
-- **a `deadline_s` on every profile routing can pick.** `aew init --model <provider/model>` writes one (provisional,
-  bounding only runs started under Run). Without it, the raise is refused and names the profiles.
+- **a `deadline_s` on every profile routing can pick.** First configuration (`aew init` with `--model`) writes one
+  (provisional, bounding only runs started under Run). Without it, the raise is refused and names the profiles.
 - **the operator endpoint, up the whole time.** Each Run activation checks it is live.
 
-Changing `notify.command` or a profile is an edit of a pinned file: `aew lead acquire --expect-rev N`, edit
-`.aew/policy/execution.yaml`, then `aew manifest adopt --reason "..." --expect-rev N` at your own terminal. The acquire
-or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release` gives it up.
+Changing `notify.command` or a profile is an edit of `.aew/policy/execution.yaml`, a pinned file: the commands are in
+"Edit pinned settings or classify authority candidates" above.
 
 Then, in three terminals:
 

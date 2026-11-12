@@ -46,7 +46,7 @@ def problem(path: str) -> str | None:
         return f"the file notifier's path `{path}` is not absolute"
     try:
         info = os.lstat(target)
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):  # absent, or under a file (POSIX): judged by its parent
         info = None
     except OSError as exc:
         return f"the file notifier's path `{path}` cannot be read: {exc.strerror or exc}"

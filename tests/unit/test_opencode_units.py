@@ -228,14 +228,14 @@ def test_only_the_runs_own_opencode_output_is_readable_outside_the_workspace():
 
 
 def test_requested_skills_not_shipped_are_reported_unavailable_and_stay_denied():
-    c = contract(skills=["python-development", "security-review"])
+    c = contract(skills=["python-development", "never-shipped"])
     planned = projection.skills(c)
     assert (planned["requested"], planned["exposed"], planned["unavailable"]) == (
-        ["python-development", "security-review"], ["python-development"], ["security-review"])
-    assert planned["reasons"] == {"security-review": "not_shipped"}
+        ["never-shipped", "python-development"], ["python-development"], ["never-shipped"])
+    assert planned["reasons"] == {"never-shipped": "not_shipped"}
     config = config_of(c)
-    assert "does not provide: security-review." in config["agents"][projection.AGENT]["system"]
-    assert effect(config["permissions"], "skill", "security-review") == "deny"
+    assert "does not provide: never-shipped." in config["agents"][projection.AGENT]["system"]
+    assert effect(config["permissions"], "skill", "never-shipped") == "deny"
     assert effect(config["permissions"], "skill", "python-development") == "allow"
 
 

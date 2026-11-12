@@ -23,7 +23,7 @@ from aewflow import create_planned_ticket, sample_project
 from clock_step import STEP_S, stepper
 from fake_harness import HarnessLab
 from harness_conformance import harness_processes, supervisor_gone
-from invariants import load_control
+from invariants import baseline_control, load_control
 from jsonschema import Draft202012Validator
 from test_integration_stages import checks_mode, engine, lease, prepared
 
@@ -58,6 +58,7 @@ def test_a_custody_worker_registers_its_start_id_additively_and_is_not_lost_acro
     # Additive: the schema stays v2 and takes it; an engine from before it refuses the state, for the start id alone.
     assert state["schema"] == "aew/control/v2" and schemas.iter_errors("control", state) == []
     old = pre_start_id_validator()
+    state = baseline_control(state, old.schema)
     errors = [err.message for err in old.iter_errors(state)]
     assert errors == ["Additional properties are not allowed ('start_id' was unexpected)"], errors
     del state["invocations"][custodian]["worker"]["start_id"]
@@ -81,7 +82,8 @@ def test_a_state_from_before_start_ids_loads_and_the_run_its_worker_executes_rec
         engine(p).custody_register(custody[custodian])
     state = load_control(p.root)
     assert "start_id" not in state["invocations"][custodian]["worker"]
-    assert [err.message for err in pre_start_id_validator().iter_errors(state)] == []
+    old = pre_start_id_validator()
+    assert [err.message for err in old.iter_errors(baseline_control(state, old.schema))] == []
     e = engine(p)  # loads the state from disk, validated by the current schema
     e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
     held = lease(p)

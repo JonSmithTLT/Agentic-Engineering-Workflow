@@ -147,13 +147,17 @@ installed tool: its variables are not the operator's.
   entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
   approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never
-  counted. Until the step lands, the operator opens the Lead the way `aew init`'s `next` says
-  (`aew opencode --acquire`), counted as a fallback. V4 and the same-shell V2 extra keep the credential route (an
+  counted. Until the step lands, the alpha evaluator's path is plain `aew opencode`, which takes a vacant seat
+  or resumes one under [ADR-0005's resume conditions](adr/0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume),
+  counted as a fallback. A typed `--acquire` is still counted where typed.
+  V4 and the same-shell V2 extra keep the credential route (an
   acquire, the credential in `AEW_LEAD_TOKEN`, then `aew opencode`), every step counted. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
   and no PIN. The steering `raise` (step 13, `SET_STEERING_MODE`) is a decision on every platform.
 - **V2's reopen.** The step is L03 (`REATTACH_LEAD`), with the reads that say where things stand, from a fresh
-  terminal with nothing carried over. Until it lands, the operator opens the Lead the way `docs/guides/opencode.md`
-  documents (`aew opencode --acquire`), and when that is refused, takes the seat over at their own terminal and hands
+  terminal with nothing carried over. Until it lands, plain `aew opencode` starts or resumes an eligible seat under
+  [ADR-0005's resume conditions](adr/0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume).
+  The operator's resume code is counted when the terminal asks for it. When resume is refused, takeover
+  stays the strict instrument's counted fallback. The operator takes the seat over at their own terminal and hands
   the new credential to the session (quickstart, "Losing the session"):
   every step counted, and an INTERRUPTED Ticket or a reconcile recorded as evidence. A reopen from the same shell,
   where the first open's exported credential is still set, is an extra measurement (its own test), never V2's

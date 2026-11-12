@@ -139,6 +139,23 @@ def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
     return [c for c in worker_surface.changes(before, after) if not session_own(c[1:])]
 
 
+def test_only_the_wake_files_atomic_temp_siblings_are_exempt(tmp_path):
+    aew = tmp_path / ".aew"
+    wakes, serving = Path(wake_queue.WAKES_REL), Path(wake_queue.SERVING_REL)
+    wake_temp = wakes.with_name(f".{wakes.name}.planted.tmp")
+    siblings = {wake_temp.as_posix(), serving.with_name(f".{serving.name}.planted.tmp").as_posix()}
+    other = {"local/.unrelated.planted.tmp", f"state/{wake_temp.name}", wake_temp.with_suffix(".bak").as_posix(),
+             serving.with_name(f".{serving.name}-other.planted.tmp").as_posix()}
+    for rel in siblings | other:
+        (aew / rel).parent.mkdir(parents=True, exist_ok=True)
+    before = worker_surface.snapshot(aew)
+    for rel in siblings | other:
+        (aew / rel).write_text("planted", encoding="utf-8")
+    after = worker_surface.snapshot(aew)
+    assert set(worker_surface.changes(before, after)) == {f"+{rel}" for rel in siblings | other}
+    assert set(changes(before, after)) == {f"+{rel}" for rel in other}
+
+
 def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, broker, tmp_path, monkeypatch):
     """Conditions 2 and 7: through the broker, each read prints what the Lead's shell printed before CS-4, byte for
     byte (apart from a heartbeat's age, read from the clock as it runs), with its exit status, and leaves the store

@@ -540,7 +540,7 @@ class OpenCodeAdapter(HarnessAdapter):
 
         db = self.state_dir / "xdg-data" / "opencode" / login.DB
         try:
-            version = offline("--version").removeprefix("v")
+            version = capabilities.cli_version(offline("--version"))
             if version not in capabilities.TESTED_VERSIONS or version not in capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS:
                 raise HarnessIncompatible("this OpenCode binary is not qualified for a worker plan login",
                                           reason="plan_login_version")

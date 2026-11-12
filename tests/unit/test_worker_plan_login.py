@@ -290,7 +290,8 @@ def test_seed_is_built_once_and_only_private_copies_hold_sentinels(tmp_path, mon
     def spawn(argv, *, env, **_):
         commands.append(argv[1:])
         if argv[1:] == ["--version"]:
-            return SimpleNamespace(returncode=0, communicate=lambda **_: (capabilities.TESTED_VERSIONS[0], ""))
+            return SimpleNamespace(returncode=0,
+                                   communicate=lambda **_: (f"opencode v{capabilities.TESTED_VERSIONS[0]}", ""))
         db = login.db_path(env)
         db.parent.mkdir(parents=True)
         with sqlite3.connect(db) as con:

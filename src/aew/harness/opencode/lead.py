@@ -202,7 +202,7 @@ def check_version() -> str:
     kwargs: dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
     out = subprocess.run([*binary_command(), "--version"], capture_output=True, text=True, timeout=60,
                          stdin=subprocess.DEVNULL, **kwargs)
-    version = (out.stdout or "").strip().split()[-1].lstrip("v") if out.stdout.strip() else ""
+    version = capabilities.cli_version(out.stdout)
     gaps = capabilities.version_problems(version)
     if out.returncode != 0 or gaps:
         raise HarnessIncompatible(f"the OpenCode CLI is not usable for the Lead: {gaps or out.stderr.strip()[-300:]}",

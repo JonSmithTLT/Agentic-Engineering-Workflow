@@ -21,6 +21,12 @@ LEAD_PROBE_LINUX_X64_SHA256 = {
 }
 
 
+def cli_version(stdout: str) -> str:
+    """The CLI's version, whether it prints a bare version or prefixes it with its name."""
+    words = stdout.split()
+    return words[-1].removeprefix("v") if words else ""
+
+
 @dataclass(frozen=True)
 class Op:
     method: str

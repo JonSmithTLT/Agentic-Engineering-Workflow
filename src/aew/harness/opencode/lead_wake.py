@@ -119,3 +119,41 @@ class LeadPoster:
         except (OpenCodeError, OpenCodeUnavailable):
             return WAITING
         return DELIVERED if any(isinstance(m, dict) and m.get("id") == wake_id for m in messages) else UNKNOWN
+
+    def busy_in(self, session: str) -> bool:
+        """The pinned target, not whichever session becomes newest between selection and admission."""
+        try:
+            return session in (self._call(ACTIVE) or {})
+        except (OpenCodeError, OpenCodeUnavailable):
+            return True
+
+    def post_to(self, session: str, wake_id: str, text: str) -> str:
+        """Admit one immutable recorded envelope to its recorded target."""
+        from aew.harness.wake_queue import PostRejected
+
+        try:
+            self._call(PROMPT, session, {"id": wake_id, "text": text, "delivery": "queue"})
+        except OpenCodeError as exc:
+            if exc.status in (400, 401, 403, 404, 422):
+                raise PostRejected(f"wake input was refused with HTTP {exc.status}") from exc
+            raise  # a conflict, server failure or missing response is not a non-admission guarantee
+        return session
+
+    def landed_in(self, session: str, wake_id: str) -> str:
+        """Only observed admission counts. An unavailable read is not confirmed pending admission."""
+        from aew.harness.wake_queue import SESSION_GONE, UNAVAILABLE
+
+        try:
+            inbox = self._call(INBOX, session)
+            if not isinstance(inbox, list):
+                return UNAVAILABLE
+            if any(isinstance(i, dict) and i.get("id") == wake_id for i in inbox):
+                return WAITING
+            messages = self._call(MESSAGES, session)
+            if not isinstance(messages, list):
+                return UNAVAILABLE
+        except OpenCodeError as exc:
+            return SESSION_GONE if exc.status == 404 else UNAVAILABLE
+        except OpenCodeUnavailable:
+            return UNAVAILABLE
+        return DELIVERED if any(isinstance(m, dict) and m.get("id") == wake_id for m in messages) else UNKNOWN

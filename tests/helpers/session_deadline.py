@@ -79,9 +79,11 @@ thread reads thread state without the GIL, so firing while threads start and end
 violation, seen on Windows). So the first thing a deadline's own thread does is drop the timer: if that thread runs,
 the GIL is free and the timer has no job left. The cost is that a collector that hangs leaves no stacks from the timer;
 the sentinel still ends it. In a process holding the GIL that thread can't run, and nothing else is running to race
-with. As the after-finish timer has to stop before finalization does, ``finish`` cancels it at exit, after the
-interpreter has joined its non-daemon threads; an ``atexit`` callback registered earlier that hangs then leaves no
-stacks, and is ended all the same.
+with. ``finish`` cancels the after-finish timer at interpreter exit, after non-daemon threads have joined. On Linux,
+if the controller is still alive at the end of the margin, the sentinel uses a pidfd to request a fresh native
+all-thread dump before ending it. This also captures a blocked ``atexit`` callback after the timer was cancelled.
+The sentinel refreshes and names the live children before ending the set. The request is best effort on kernels
+without pidfds, and the sentinel's backstop still bounds collection.
 
 The timer also runs in Linux test processes. A forked child that reaches finalization would wait forever on
 ``faulthandler``'s lock (inferred, not run). Every fork in the tests today either ``exec``s or calls ``os._exit``.
@@ -95,6 +97,7 @@ import faulthandler
 import json
 import os
 import secrets
+import signal
 import subprocess
 import sys
 import tempfile
@@ -122,6 +125,7 @@ MARGIN_KEY = "aew_session_margin"
 STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "session-finished", "abnormal-exit"
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
+AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -516,7 +520,12 @@ class Controller:
             self.reaper.stop.set()
         self.stacks.drop()
         # For an exit that hangs from here on: half way to the sentinel's ending it, which brings it in (docstring)
-        Stacks(self.after_finish_file, time.monotonic() + self.margin / 2).arm()
+        stacks = Stacks(self.after_finish_file, time.monotonic() + self.margin / 2)
+        stacks.arm()
+        if sys.platform == "linux" and stacks.file is not None:
+            # The signal handler keeps the file open even after the timed dump is cancelled at atexit.
+            faulthandler.register(signal.SIGUSR2, file=stacks.file, all_threads=True)
+            _write(self.dir, AFTER_FINISH_SIGNAL_READY, _stamp("the Linux controller armed its stack request"))
         atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
 
@@ -772,12 +781,40 @@ class Sentinel:
             time.sleep(SENTINEL_POLL_S)  # bounded: until
         return True
 
-    def _bring_in_stacks(self) -> None:
+    def _request_stacks(self) -> None:
+        """Ask the exact Linux controller for a fresh dump without involving a Python callback in that process."""
+        send = getattr(signal, "pidfd_send_signal", None)
+        if sys.platform != "linux" or send is None or not marker(self.dir, AFTER_FINISH_SIGNAL_READY).exists():
+            return
+        with contextlib.suppress(OSError):
+            # pidfd_send_signal(2) accepts a /proc/<pid> fd, even on Python builds without os.pidfd_open.
+            pidfd = os.open(f"/proc/{self.controller[0]}", os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                if not proctree.same(self.controller):
+                    return
+                size = self.after_finish_file.stat().st_size
+                send(pidfd, signal.SIGUSR2)
+                until = time.monotonic() + min(self.margin / 2, 1.0)
+                # The native handler writes a regular file in several writes. Wait for growth and one quiet poll.
+                grew = False
+                while (left := until - time.monotonic()) > 0 and proctree.same(self.controller):
+                    time.sleep(min(left, 0.05))
+                    now = self.after_finish_file.stat().st_size
+                    if grew and now == size:
+                        break
+                    grew |= now > size
+                    size = now
+            finally:
+                os.close(pidfd)
+
+    def _bring_in_stacks(self) -> bool:
         """The after-finish timer's stacks into the session's folder, if it wrote any. Under its own name from the first
         byte, with no temporary file that could vanish from an upload's listing."""
         with contextlib.suppress(OSError):
             if text := self.after_finish_file.read_text(encoding="utf-8", errors="replace"):
                 _write(self.dir, AFTER_FINISH_STACKS, text)
+                return True
+        return False
 
     def _drop_stacks_file(self) -> None:
         with contextlib.suppress(OSError):  # still held on Windows just after an ending: one small file in the temp dir
@@ -789,10 +826,12 @@ class Sentinel:
         self.backstop_at = time.monotonic() + 3 * self.margin  # the two waits below, and what ending them collects
         self.refresh()  # the last snapshot can be seconds old: a child just started is what this has to see (m3)
         if not self._wait(lambda: proctree.same(self.controller)):
-            self._bring_in_stacks()  # a margin on, past the timer's half: first, in case the ending is what hangs
+            self.refresh()  # a shutdown callback may have started a child after the first snapshot
+            self._request_stacks()
+            kept = self._bring_in_stacks()  # first, in case the ending is what hangs
+            stacks = f"its stacks: {AFTER_FINISH_STACKS}" if kept else "no stack dump was captured"
             _write(self.dir, STUCK, _stamp("the session finished, but its controller had not exited a margin later: "
-                                           f"ending the session's process set; its stacks: {AFTER_FINISH_STACKS}"))
-            self.refresh()
+                                           f"ending the session's process set; {stacks}"))
             self.end_set("after-finish")
             self._drop_stacks_file()
             return 0

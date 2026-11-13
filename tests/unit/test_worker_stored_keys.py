@@ -198,7 +198,7 @@ def test_admission_explains_the_stored_login_remedy_and_override(store, monkeypa
     monkeypatch.setenv("OPENCODE_DB", str(store.path.with_name("absent.db")))
     policy = {"harness": "opencode", "provider_env": [VARIABLE]}
     invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)),
-                              roles=None)  # type: ignore[arg-type]
+                              roles=None, coordination=None)  # type: ignore[arg-type]
     state = {"invocations": {"INV-1": {"status": "active", "execution_profile": {
         "harness": "opencode", "provider": "openai", "model": "synthetic-model",
     }}}}
@@ -226,7 +226,7 @@ def test_refreshing_login_decides_for_both_readers_and_only_recommends_an_export
     issue = "the stored login is a refreshing (ChatGPT) login, which workers never use; set OPENAI_API_KEY"
     assert issue in rows["provider-key"]["detail"]
     invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)),
-                              roles=None)  # type: ignore[arg-type]
+                              roles=None, coordination=None)  # type: ignore[arg-type]
     state = {"invocations": {"INV-1": {"status": "active", "execution_profile": {
         "harness": "opencode", **policy["profiles"]["standard"],
     }}}}
@@ -246,7 +246,7 @@ def test_a_two_provider_policy_with_both_logins_stored_starts_each_from_its_own_
         provider: {"provider": provider, "model": "synthetic-model"} for provider in ("openai", "anthropic")
     }}
     invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)),
-                              roles=None)  # type: ignore[arg-type]
+                              roles=None, coordination=None)  # type: ignore[arg-type]
     rows = {row["check"]: row for row in readiness.readiness_checks(policy)}
     assert rows["provider-env"]["status"] == rows["provider-key"]["status"] == "PASS"
     assert readiness.readiness_findings(policy, admitted={"openai"}) == []
@@ -287,7 +287,7 @@ def test_each_launch_read_asks_only_for_the_pinned_provider(store, monkeypatch, 
     inv = {"status": "active", "execution_profile": profile}
     state = {"invocations": {"INV-1": inv}}
     kernel = SimpleNamespace(execution_policy=lambda: (policy, None), store=SimpleNamespace(current=lambda: state))
-    invocations = Invocations(kernel, roles=None)  # type: ignore[arg-type]
+    invocations = Invocations(kernel, roles=None, coordination=None)  # type: ignore[arg-type]
     worker_keys = login.worker_keys
     calls = []
 

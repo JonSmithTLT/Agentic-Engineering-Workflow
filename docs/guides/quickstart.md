@@ -14,6 +14,10 @@ aew doctor
 
 Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py311 offline wheelhouse.
 
+AEW's Git commands ignore settings injected through `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
+pairs, `GIT_CONFIG_PARAMETERS`, and `GIT_CONFIG`. Put settings such as `safe.directory` in your global or system Git
+configuration file.
+
 ## Operator: initialize a project
 
 ```bash

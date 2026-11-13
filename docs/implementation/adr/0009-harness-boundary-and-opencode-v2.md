@@ -1641,7 +1641,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   addendum 15, "A test runs each relayed command against a project and finds the store and `.aew/local/` unchanged,
   apart from any derived cache the read already rebuilds today and the broker's delivery records, each of which the
   test names by its exact path" (the delivery records: `local/harness/runs/<run>/progress.returned.json` and
-  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned), one
+  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned; messaging's local
+  told-ID record and its synchronization files are specified in the 2026-11-11 amendment below), one
   answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
   server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
@@ -2012,6 +2013,42 @@ runs where the Lead's shell runs, and arrive as text.
   which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
+
+## Amendment 2026-11-11 — local message delivery receipts are not durable shown facts
+
+The delivery-record exception to relayed reads' no-write rule is constrained as a class:
+
+1. The broker writes, never the relayed non-writer process.
+2. Only identities actually carried in the successful result, verified against the project's data and request scope,
+   qualify. Worker text is data, not a recursively searched source of IDs; omitted or partial bodies qualify for none.
+3. Every destination is named exactly by the tests. Existing wait records remain
+   `local/harness/runs/<run>/progress.returned.json` and `local/harness/runs/<run>/progress.end-returned`.
+   Message receipts use `local/lead/told-messages.json`, a closed object with only `generation` and `messages`
+   (sorted unique complete IDs). Its stable empty synchronization files are `local/lead/told-messages.lock` and
+   `local/lead/told-messages.lock.queue`. Atomic replacement's transient temporary file is utility-owned in that
+   same directory, not another delivery destination. The stable lock files are not replaced or deleted by the writer.
+4. Normal message updates grow by union within the held generation; an old broker cannot regress a newer generation.
+   Invalid or missing disposable records suppress nothing. They are not a claim of exactly-once model receipt.
+5. Records carry only their declared identity/sequence/flag payload, never bodies, credentials or control state.
+6. **Every member of this delivery-record class writes only under `.aew/local/`.** No thread, seal, registration,
+   lead-seen log, control/history file or advisory `local/wake` bump is part of relayed message consumption.
+
+Typed broker tools and own-shell `aew lead tool` keep the existing durable shown writer for verified bodies in a
+successful result; credentialed `message unseen` keeps its recovery semantics. Plain operator and contained-local
+reads consume nothing. A relayed status/resume uses a single machine result, rendering that same result for readable
+output, then after the successful bridge send the broker records only its verified bodies locally. Relayed wait
+sequence/end marks use that same send-success boundary. Own-shell typed consumption follows successful stdout emit
+and flush. A failed send/write/flush records no message receipt. Local receipts do not clear durable attention or
+the worker inbox cap. Receipt of a successful response is not proof the model read or understood it, and a process
+loss between successful output and receipt recording may cause re-listing rather than exactly-once delivery.
+
+**Bounded uncertain wake recovery (2026-11-11, review M1).** `wake_queue.UNCERTAIN_HOLD_S` is a **60-second** local
+reconciliation deadline starting at the first recorded POSTING attempt, preserved across reads, `/new` and broker
+restart. It is a liveness/recovery bound, not evidence of non-admission. A pinned-session 404 or expiry clears the
+uncertain selection without marking any selected ID posted or advancing its news marks. The same queue can gather
+fresh news again; a delayed earlier admission may repeat news, the accepted disposable-state re-listing cost. The
+status line names the uncertain hold and its deadline. Confirmed admission still records only its exact verified IDs.
+This recovery bound applies to message and steering-loop wakes, not only one kind of news.
 
 ## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
 

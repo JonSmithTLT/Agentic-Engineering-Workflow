@@ -398,6 +398,11 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
                 "provider_key_admission": {
                   "description": "Stored key admission metadata. The generation contains the SQLite row ID and update time.",
                   "type": "object",

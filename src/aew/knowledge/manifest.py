@@ -90,7 +90,7 @@ DEFAULT_GUARDRAILS: dict[str, Any] = {
 def default_manifest(project_id: str, name: str, branch: str, workspaces_root: str) -> dict[str, Any]:
     manifest = {
         "schema": "aew/project/v1",
-        "project": {"id": project_id, "name": name, "profile": "base"},
+        "project": {"id": project_id, "name": name},
         "repository": {"root": "..", "vcs": "git", "authoritative_branch": branch},
         "workspaces": {"root": workspaces_root},
         "knowledge": {

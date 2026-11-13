@@ -258,6 +258,95 @@ def synthetic_harness(_dir, env):
     return lead_broker.Harness(argv=["synthetic"], env=env, relay=False, label={}, close=lambda: None)
 
 
+@pytest.mark.parametrize("messaging", [False, True])
+def test_resumed_session_refreshes_presentation_after_the_new_seats_switch_offer(acquired, monkeypatch, messaging):
+    from test_coordination_store import set_messaging
+
+    from aew.harness.opencode import projection
+
+    project, engine, old, prompts = acquired
+    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
+    monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
+    observed = []
+
+    def offer(token):
+        project.token = token
+        if messaging:
+            set_messaging(project.root, "enabled")
+            project.adopt_policy("enable messaging in the resumed session's offer")
+
+    def contained(directory, env):
+        observed.append(engine.lead_show()["generation"])
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        system = config["agents"][projection.LEAD_AGENT]["system"]
+        assert ("`worker_message`" in system) is messaging
+        assert ("`message_send`" in system) is messaging
+        return synthetic_harness(directory, env)
+
+    result = lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="new", keep_seat=False,
+                                     contained=contained, opencode_kind=seat.VACANT_START, with_token=offer,
+                                     prepare_env=lead.session_presentation(engine, provider_env=[]))
+    assert observed == [old["generation"] + 1] and not prompts
+    assert result["seat"] == "released"
+
+
+@pytest.mark.parametrize("contained_here", [False, True], ids=["weaker", "contained"])
+@pytest.mark.parametrize("messaging", [False, True])
+def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monkeypatch, contained_here, messaging):
+    from test_coordination_store import set_messaging
+
+    from aew.harness.opencode import projection
+
+    project, engine, _, _ = acquired
+    captured = []
+
+    def offer(token):
+        project.token = token
+        if messaging:
+            set_messaging(project.root, "enabled")
+            project.adopt_policy("enable messaging at the real lead.run offer boundary")
+
+    class Harness:
+        def __init__(self, *_, **__):
+            pass
+
+        def announce(self, out):
+            pass
+
+        def require_provider(self):
+            pass
+
+        def precheck(self):
+            pass
+
+        def __call__(self, directory, env):
+            return synthetic_harness(directory, env)
+
+    def run_tree(argv, *, env, **kwargs):
+        captured.append(env)
+        return 0, "clean"
+
+    monkeypatch.setattr(lead, "contained_here", lambda: contained_here)
+    monkeypatch.setattr(lead, "ContainedLead", Harness)
+    monkeypatch.setattr(lead, "WeakerOpenCode", Harness)
+    monkeypatch.setattr(lead, "check_version", lambda: "test")
+    monkeypatch.setattr(lead, "command", lambda *_: ["synthetic"])
+    monkeypatch.setattr(lead, "_readiness", lambda _: None)
+    monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **_: None)
+    monkeypatch.setattr(lead, "_unrelayed", lambda _: None)
+    monkeypatch.setattr(lead, "no_provider_line", lambda *_: None)
+    monkeypatch.setattr(lead, "_switch_offers", lambda _: SimpleNamespace(apply=offer))
+    monkeypatch.setattr(lead, "session_services", lambda *_, **__: contextlib.nullcontext(lambda: None))
+    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
+    monkeypatch.setattr(procs, "run_session_tree", run_tree)
+    result = lead.run(engine, acquire=True, session_label="new", keep_seat=False, provider_env=[], extra_args=[],
+                      print_config=False)
+    assert result["ok"] and len(captured) == 1
+    system = json.loads(captured[0]["OPENCODE_CONFIG_CONTENT"])["agents"][projection.LEAD_AGENT]["system"]
+    assert ("`worker_message`" in system) is messaging
+    assert ("`message_send`" in system) is messaging
+
+
 @pytest.mark.parametrize(("keep_seat", "failed_start"), [(False, False), (True, False), (True, True)])
 def test_resumed_empty_seat_releases_or_stays_held_as_requested(acquired, monkeypatch, keep_seat, failed_start):
     _, engine, old, prompts = acquired
@@ -403,7 +492,7 @@ def test_opencode_selects_the_seat_or_existing_credential(acquired, monkeypatch,
     monkeypatch.setattr(operator, "ask_hidden", hidden)
     monkeypatch.setattr(lead, "contained_here", lambda: False)
     monkeypatch.setattr(lead, "check_version", lambda: "test")
-    monkeypatch.setattr(lead, "guide_of", lambda _: "")
+    monkeypatch.setattr(lead, "guide_of", lambda _, **__: "")
     monkeypatch.setattr(lead, "command", lambda *_: ["synthetic"])
     monkeypatch.setattr(lead, "_readiness", lambda _: None)
     monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **_: None)

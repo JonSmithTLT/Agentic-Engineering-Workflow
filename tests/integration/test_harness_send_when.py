@@ -80,11 +80,11 @@ def written(lab: HarnessLab, run: str) -> tuple[bytes, list[str], list[Any]]:
     return control, files, list(entry.get("requests") or [])
 
 
-def enable_messaging(lab: HarnessLab) -> None:
+def enable_messaging(lab: HarnessLab, value: str = X.MESSAGING_ENABLED) -> None:
     """The operator adopts `coordination.messaging: enabled` (D-15; the adoption registers the project, D-39)."""
     policy = lab.root / EXECUTION
     data = util.load_yaml(policy.read_text(encoding="utf-8"))
-    data["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+    data["coordination"] = {"messaging": value}
     policy.write_text(util.dump_yaml(data), encoding="utf-8", newline="\n")
     lab.project.adopt_policy(reason="coordination messaging on")
 
@@ -190,42 +190,39 @@ def test_with_messaging_off_no_lead_path_posts_queue(lab, tmp_path, monkeypatch)
 # ---------------------------------------------------------------------------------------------- messaging on
 
 
-@pytest.mark.parametrize("case", ["on_off"])  # `off_on` lands with MS4, which writes the run's snapshot (§3.1, §7)
+@pytest.mark.parametrize("case", ["on_off", "off_on"])
 def test_harness_send_refuses_when_the_project_switch_and_the_runs_snapshot_disagree(lab, tmp_path, case):
     """§3.1: the run launched with messaging off and the operator then switched it on. Neither path is safe (a record
     would never be delivered live; a request file would be the unrecorded path G4 forbids), so every send is refused
     `MESSAGING_SNAPSHOT_MISMATCH`, with no request file, no control-state change and no POST."""
+    if case == "off_on":
+        enable_messaging(lab)
     run = launch_held_open(lab, tmp_path)
-    enable_messaging(lab)
+    enable_messaging(lab, X.MESSAGING_ENABLED if case == "on_off" else X.MESSAGING_DISABLED)
     before = written(lab, run)
     for when in ("next-step", "turn-end"):
         res = send(lab, run, "--text", "Check the shutdown path.", "--when", when)
         assert res.returncode != 0 and res.error["code"] == "MESSAGING_SNAPSHOT_MISMATCH", (when, res.stderr)
-        assert "relaunch" not in res.error["message"].lower() and "needs messaging switched off" in res.error["message"]
-        assert res.error["details"] == {"project": "enabled", "snapshot": "disabled", "when": when}
+        assert "relaunch" in res.error["message"].lower()
+        assert res.error["details"] == {"project": "enabled" if case == "on_off" else "disabled",
+                                         "snapshot": "disabled" if case == "on_off" else "enabled", "when": when}
         assert written(lab, run) == before
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)
     assert lead_posts(lab, run) == []
 
 
-def test_before_ms4_a_run_launched_after_messaging_was_switched_on_is_refused_alike_and_no_relaunch_is_advised(
-        lab, tmp_path):
-    """Review of PR #176, finding 1: until MS4 writes the run's snapshot, every run reads as launched off, so a run
-    launched after the operator switched messaging on is refused `MESSAGING_SNAPSHOT_MISMATCH` exactly like one
-    launched before. The refusal must not send the Lead to relaunch (it costs a working run and never helps): it says
-    that sending needs messaging switched off. MS4 replaces this test when it deletes `SNAPSHOT_RECORDED`."""
-    assert harness_ops.SNAPSHOT_RECORDED is False
+def test_a_run_launched_with_messaging_on_keeps_its_snapshot_and_refuses_unrecorded_send(lab, tmp_path):
     enable_messaging(lab)  # the operator adopts messaging BEFORE the run is launched
     run = launch_held_open(lab, tmp_path)
     before = written(lab, run)
     res = send(lab, run, "--text", "Check the shutdown path.")
-    assert res.returncode != 0 and res.error["code"] == "MESSAGING_SNAPSHOT_MISMATCH", res.stderr
-    assert res.error["details"] == {"project": "enabled", "snapshot": "disabled", "when": "next-step"}
-    message = res.error["message"]
-    assert "relaunch" not in message.lower() and "aew harness launch" not in message
-    assert "cannot yet launch a run with coordination messaging on" in message
-    assert "needs messaging switched off" in message
+    assert res.returncode != 0 and res.error["code"] == "HARNESS_SEND_NEEDS_STORE", res.stderr
+    state = Engine.discover(lab.root).store.read()
+    entry = state["invocations"]["INV-0001"]["runs"][-1]
+    assert entry["coordination"] == {"messaging": "enabled"}
+    contract = Engine.discover(lab.root).harness_contract(state, "INV-0001", run)
+    assert contract.extra["coordination"] == {"messaging": "enabled"}
     assert written(lab, run) == before
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)
@@ -257,14 +254,13 @@ def test_snapshot_mismatch_takes_precedence_over_turn_end_needs_messaging(lab, t
 
 
 @pytest.mark.parametrize("when", ["next-step", "turn-end"])
-def test_with_messaging_on_before_ms5b_harness_send_is_refused_needs_store(lab, tmp_path, monkeypatch, when):
+def test_with_messaging_on_before_ms5b_harness_send_is_refused_needs_store(lab, tmp_path, when):
     """G4, fail-closed (§3.1): with messaging on, every `harness send` is recorded in the message store or refused,
     never the unrecorded request file. Until MS5b builds the store path it is refused `HARNESS_SEND_NEEDS_STORE` in
     both timings: no request file, no control-state change, no POST. Both values are on: the project's adopted switch,
     and the run's launch snapshot, which MS4 will write and the snapshot read stands in for here."""
-    run = launch_held_open(lab, tmp_path)
     enable_messaging(lab)
-    monkeypatch.setattr(harness_ops, "run_messaging_snapshot", lambda entry: X.MESSAGING_ENABLED)
+    run = launch_held_open(lab, tmp_path)
     before = written(lab, run)
     with pytest.raises(AEWError) as refused:
         Engine.discover(lab.root).harness_send(token=lab.project.token, run=run, text="Check the shutdown path.",

@@ -69,7 +69,7 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
-             coordination_reads: bool = False) -> None:
+             coordination_reads: bool = False, worker_messaging: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",
@@ -95,7 +95,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     # The tools AEW brings: downloaded only as the operator chooses (the operator, 2026-11-05; aew.capability.consent)
     p.add_argument("--fetch-tool", action="append", metavar="TOOL",
                    help="download this tool AEW brings (`aew capability list` names them), as your choice, with no "
-                        "screen; repeat for more. "
+                        "screen; repeat for more. Use `--fetch-tool none` by itself to skip the screen and downloads "
+                        "without recording an answer. "
                         "With none named, a screen asks at a terminal, and elsewhere nothing downloads")
     p.set_defaults(handler=_init)
 
@@ -161,10 +162,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
     notify_commands.register(sub)  # the notifiers AEW ships (register E104)
-    if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
+    if coordination_reads or worker_messaging:
         from aew.cli import message_commands
 
-        message_commands.register(sub)
+        message_commands.register(sub, operator=coordination_reads, worker=worker_messaging)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:
@@ -387,7 +388,7 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.harness.containment import netns
     from aew.policy import execution
 
-    consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
+    consent.check_names(args.fetch_tool)  # an invalid tool choice refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
                                                    model=args.model, provider=args.provider)
     engine = Engine.initialize(
@@ -472,9 +473,10 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
 
-    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
-                        args.name, arguments,
-                        token=token or None, run_cli=cli)
+    result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
+                          args.name, arguments, token=token or None, run_cli=cli)
+    args._after_emit = lambda: run.record_message_result(engine, result, token or None)
+    return result
 
 
 def _lead_mcp(args: argparse.Namespace) -> Any:

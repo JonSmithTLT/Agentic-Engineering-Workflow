@@ -503,7 +503,7 @@ class Engine:
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
         self._history = history = HistoryCommands(k, units=units, archive=archive, coordination=coordination)
         self._roles = roles = Roles(k, units=units)
-        self._invocations = invocations = Invocations(k, roles=roles)
+        self._invocations = invocations = Invocations(k, roles=roles, coordination=coordination)
         self._queue = queue = Queue(k, invocations=invocations)
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
@@ -935,14 +935,18 @@ class Engine:
         return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
-        return self._harness.harness_status(invocation)
+        out = self._harness.harness_status(invocation)
+        view = self.message_attention(invocations={invocation} if invocation is not None else None)
+        return out | {"coordination": view} if view is not None else out
 
     def harness_stop(self, *, token: str, run: str, reason: str) -> dict[str, Any]:
         return self._harness.harness_stop(token=token, run=run, reason=reason)
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
-        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead)
+                     triggers: bool = False, lead: bool = False,
+                     message_after: dict[str, int] | None = None, record_return: bool = True) -> dict[str, Any]:
+        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead,
+                                          message_after=message_after, record_return=record_return)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
@@ -1033,8 +1037,8 @@ class Engine:
                      kind: str = "lead_acquire") -> dict[str, Any]:
         return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label, kind=kind)
 
-    def lead_guide(self, stages: Sequence[Any]) -> str:
-        return self._resume.lead_guide(stages)
+    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False) -> str:
+        return self._resume.lead_guide(stages, messaging=messaging)
 
     def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)
@@ -1100,6 +1104,32 @@ class Engine:
     def message_thread(self, invocation: str) -> dict[str, Any]:
         return self._coordination.message_thread(invocation)
 
+    def message_read_worker(self, *, invocation_token: str) -> dict[str, Any]:
+        return self._coordination.message_read_worker(invocation_token=invocation_token)
+
+    def message_attention(self, *, work_id: str | None = None,
+                          invocations: set[str] | None = None) -> dict[str, Any] | None:
+        return self._coordination.attention(self._k.store.read_committed(), work_id=work_id, invocations=invocations)
+
+    def message_result_ids(self, result: Any, *, work_id: str | None = None,
+                           invocations: set[str] | None = None, runs: set[str] | None = None) -> list[str]:
+        return self._coordination.result_messages(result, work_id=work_id, invocations=invocations, runs=runs)
+
+    def message_delivery_view(self, *, invocations: set[str] | None = None,
+                              after: dict[str, int] | None = None,
+                              runs: set[str] | None = None) -> dict[str, Any] | None:
+        return self._coordination.delivery_view(self._k.store.read_committed(), invocations=invocations,
+                                                after=after, runs=runs)
+
+    def message_available_ids(self, ids: set[str]) -> set[str]:
+        return self._coordination.available_message_ids(self._k.store.read_committed(), ids)
+
+    def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
+        return self._coordination.message_waiting(invocation_token=invocation_token, after=after)
+
+    def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
+        self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
+
     def message_list(self, work_id: str) -> dict[str, Any]:
         return self._coordination.message_list(work_id)
 
@@ -1162,13 +1192,23 @@ class Engine:
         return self._k.project_id
 
     def render_resume(self, r: dict[str, Any]) -> str:
-        return self._resume.render_resume(r)
+        text = self._resume.render_resume(r)
+        return self._with_coordination_text(text, r)
 
     def render_status(self, report: dict[str, Any]) -> str:
-        return self._views.render_status(report)
+        return self._with_coordination_text(self._views.render_status(report), report)
+
+    @staticmethod
+    def _with_coordination_text(text: str, report: dict[str, Any]) -> str:
+        from aew.coordination.render import attention_text
+
+        view = report.get("coordination")
+        return text + "\n\n" + attention_text(view) if view is not None else text
 
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._resume.resume(session)
+        out = self._resume.resume(session)
+        view = self.message_attention()
+        return out | {"coordination": view} if view is not None else out
 
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         return self._evidence.review_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
@@ -1204,7 +1244,8 @@ class Engine:
                 out["notifier"] = notifier
             if usage:
                 out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
-        return out
+        coordination = self.message_attention(work_id=work_id)
+        return out | {"coordination": coordination} if coordination is not None else out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
 

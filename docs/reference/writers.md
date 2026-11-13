@@ -216,13 +216,16 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
 - `local/harness/runs/{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/history.sqlite`, named by `aew.history.index:INDEX_REL`: written or removed by `aew.engine.history_ops:HistoryCommands.history_reindex` (direct: Path.unlink); `aew.history.index:HistoryIndex._db` (direct: sqlite3.connect); `aew.history.index:HistoryIndex._rebuild` (direct: Path.unlink); `aew.history.index:HistoryIndex.sync` (direct: Path.unlink)
-- `local/lead`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.seat:write_leftovers` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
+- `local/lead`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.seat:write_leftovers` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
 - `local/lead-wakes.json`, named by `aew.harness.wake_queue:WAKES_REL`: written or removed by `aew.harness.wake_queue:WakeQueue._save` (direct: atomic_write)
 - `local/lead-wakes.serving`, named by `aew.harness.wake_queue:SERVING_REL`: written or removed by `aew.harness.wake_queue:clear_serving` (direct: Path.unlink); `aew.harness.wake_queue:mark_serving` (direct: atomic_write)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
 - `local/lead/defects.jsonl`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/defects.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/lead/leftovers-{}.json`: written or removed by `aew.harness.seat:write_leftovers` (direct: atomic_write)
+- `local/lead/told-messages.json`, named by `aew.harness.told_messages:REL`: written or removed by `aew.harness.told_messages:record` (direct: atomic_write)
+- `local/lead/told-messages.lock`, named by `aew.harness.told_messages:LOCK_REL`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
+- `local/lead/told-messages.lock.queue`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: open)
 - `local/lead/tool-calls.jsonl`, named by `aew.harness.tool_calls:LOG_REL`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/tool-calls.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/maps`, named by `aew.maps.store:MAPS_REL`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.maps.store:_append_log` (direct: Path.mkdir)
@@ -351,7 +354,7 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.
 
-The parser cut: 115 registrations of a command handler; handlers by role (`aew`: 112, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
+The parser cut: 118 registrations of a command handler; handlers by role (`aew`: 115, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.

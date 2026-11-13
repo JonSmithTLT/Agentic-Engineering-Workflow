@@ -13,7 +13,7 @@
       "properties": {
         "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
         "name": {"type": "string"},
-        "profile": {"type": "string"}
+        "profile": {"type": "string", "description": "Legacy field accepted for existing projects."}
       }
     },
     "repository": {

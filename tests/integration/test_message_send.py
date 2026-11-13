@@ -188,10 +188,30 @@ def test_turn_end_is_refused_before_recording_and_names_the_available_timing(tmp
 
 def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     w = world(tmp_path)
-    assert lead_text.guide_for(w.e) == str(w.e.lead_guide(lead_text.stages()))
-    standard = contract.catalog(contract.ALL_SWITCHES, presentation="standard")
-    assert all(s.description == standard[s.tool].description
-               for s in lead_text.stages(switches=contract.ALL_SWITCHES))
+    text = lead_text.guide_for(w.e)
+    assert text.startswith(lead_text.guide_for(w.e, switches=frozenset()))
+    assert "`message_send`" in text
+    # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
+    expected = {
+        "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
+        "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
+                    "Requests grant nothing.",
+        "resolve": "Resolve a shown decision.",
+        "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
+                        "(proposed, not accepted).",
+        "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
+        "ticket_request_review": "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the "
+                                 "reviewers policy requires.",
+        "ticket_request_verification": "Accept the review report, if one is due, move the Ticket to VERIFY_PENDING "
+                                       "and launch the verifiers policy requires.",
+        "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
+                          "Publication stays a separate decision.",
+        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        "message_send": "Record a coordination message for an active worker, not a scope change. "
+                        "Delivery not built; turn-end refused.",
+    }
+    assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
+    assert expected["ticket_start"] in text
 
 
 def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp_path, monkeypatch):

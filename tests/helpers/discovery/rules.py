@@ -164,7 +164,7 @@ def _build_parser() -> argparse.ArgumentParser:
     action's type and choices)."""
     from aew.cli.main import build_parser
 
-    parser = build_parser(recall_search=True, coordination_reads=True)
+    parser = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     for p in _all_parsers(parser):
         p.error = _raise  # type: ignore[method-assign]
         p.exit = _exit  # type: ignore[method-assign]

@@ -37,7 +37,7 @@ def parse(**flags: Any) -> FC.FirstConfiguration:
 
 
 def init_parser() -> argparse.ArgumentParser:
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     subs = next(a for a in root._actions if isinstance(a, argparse._SubParsersAction))
     return subs.choices["init"]
 
@@ -434,7 +434,7 @@ def test_inits_option_set_is_exactly_these():
 
 def test_no_sibling_command_takes_a_first_configuration_flag():
     """On `init` only: a sibling that writes after the pin is the credential-free adopt that was rejected."""
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     found = []
 
     def walk(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
@@ -497,8 +497,8 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
              "steering": {**S.empty(), "standing": {"mode": mode, "record": None, "rev": 0}}}
 
     def applied(profile: dict[str, Any], read: Any = state) -> Any:
-        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile},  # type: ignore[arg-type]
-                                                           _committed_state=lambda: read))
+        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile}),  # type: ignore[arg-type]
+                                           read)
 
     first = pin(policy)
     assert first["deadline_s"] == FC.DEADLINE_S and first["deadline_scope"] == "run"

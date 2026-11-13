@@ -109,8 +109,8 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
 
 
 def open_session(op: Operator, step: str, *, steering: bool = False, credential_path: bool = False):
-    """Step 3 (open), or step 10 (reopen) from the same shell, today's way while it has not landed: ``aew opencode
-    --acquire``, as `aew init`'s ``next`` says. ``credential_path``: an acquire, the credential in AEW_LEAD_TOKEN, then
+    """Step 3 (open), or step 10 (reopen) from the same shell, today's way while it has not landed: ``aew opencode``.
+    ``credential_path``: an acquire, the credential in AEW_LEAD_TOKEN, then
     ``aew opencode`` (quickstart), all counted, for a scenario that measures that path: V4, whose adopt needs the
     credential (a takeover would turn its Lead read-only), and the same-shell reopen. The operator's terminal is one
     shell: a variable exported earlier is still set."""
@@ -127,8 +127,8 @@ def open_session(op: Operator, step: str, *, steering: bool = False, credential_
             op.export(step, "AEW_LEAD_TOKEN", op.credential)
         argv = ["opencode"]
     else:
-        op.workaround("open", "aew opencode --acquire", step=step)
-        argv = ["opencode", "--acquire"]
+        op.workaround("open", "aew opencode", step=step)
+        argv = ["opencode"]
     session = op.open_session(step, argv, lead_spec(op.lab, steering=steering))
     first = op.first_words(session)
     console_opened(op, step)
@@ -570,18 +570,16 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
 
 
 def reopen(op: Operator, *, steering: bool):
-    """Step 10 (reopen) from a fresh terminal, nothing carried over, today's way while it has not landed: the way
-    opencode.md documents starting the Lead (`aew opencode --acquire`); when that is refused, the takeover the refusal
-    asks for, at the operator's own terminal, with its new credential handed to the session (quickstart, "Losing the
-    session")."""
+    """Step 10 (reopen) from a fresh terminal: a plain start resumes an eligible seat. If refused, keep the
+    strict instrument's counted takeover, with its new credential handed to the session."""
     op.shell_env.clear()
     op.typed("reopen:terminal", "(a new terminal)")
-    op.workaround("reopen", "aew opencode --acquire (opencode.md)")
-    session = op.open_session("reopen:acquire", ["opencode", "--acquire"], lead_spec(op.lab, steering=steering))
-    first = op.first_words(session)
+    op.workaround("reopen", "aew opencode (opencode.md)")
+    session = op.open_session("reopen:start", ["opencode"], lead_spec(op.lab, steering=steering), resume_prompt=True)
+    first = op.first_words(session, resume_step="reopen:start")
     if first is not None:
         return session, first
-    op.fallback("reopen:acquire", "aew opencode --acquire", session.output(),
+    op.fallback("reopen:start", "aew opencode", session.output(),
                 "aew lead takeover; export AEW_LEAD_TOKEN=<credential>; aew opencode")
     op.takeover("reopen:takeover", "the Lead session ended with work in flight")
     op.export("reopen:takeover", "AEW_LEAD_TOKEN", op.credential)
@@ -611,11 +609,11 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
 def test_v2_forced_kill_mid_stage_reaches_a_result(tmp_path, world, request):
     """V2 with the session killed while a stage is half done, every run on every platform: the implementer's launch
     (the second step of `ticket_start`, after `work.assign` committed) is held by the fake harness's hook until the
-    test has killed the session; nothing depends on timing. Today reopening needs the takeover, which moves the
-    stage's subject: continuing it is refused, the Lead abandons it, reconciles the Ticket and dispatches a new
-    implementer attempt (spec §2). That chain is recorded in the ledger, not asserted: `reconcile` is offered only at
-    INTERRUPTED, which this test also fails on, so asserting both could never pass (the operator, 2026-11-04, on the
-    designer's position of 2026-11-02). V2's zeros are the verdict."""
+    test has killed the session; nothing depends on timing. When resume is refused and the operator falls back to
+    takeover, the stage's subject moves: continuing it is refused, the Lead abandons it, reconciles the Ticket and
+    dispatches a new implementer attempt (spec §2). That chain is recorded in the ledger, not asserted:
+    `reconcile` is offered only at INTERRUPTED, which this test also fails on, so asserting both could never pass
+    (the operator, 2026-11-04, on the designer's position of 2026-11-02). V2's zeros are the verdict."""
     op = setup_operator(tmp_path, "V2-forced-mid-stage")
     world.append(op)
     scripts = Path(op.lab.env["AEW_FAKE_SCRIPTS"])

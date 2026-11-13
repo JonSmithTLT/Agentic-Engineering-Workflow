@@ -122,6 +122,22 @@
           "type": "integer",
           "minimum": 0
         },
+        "start": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generation", "kind", "at", "host", "user", "pid", "start_id"],
+          "properties": {
+            "generation": {"type": "integer", "minimum": 1},
+            "kind": {"enum": ["opencode_acquire", "vacant_start", "lead_acquire", "takeover", "handoff", "seat_resume"]},
+            "at": {"type": "string", "format": "date-time"},
+            "host": {"type": "string", "minLength": 1},
+            "user": {"type": ["integer", "string"], "minimum": 0, "minLength": 1},
+            "pid": {"type": "integer", "minimum": 1},
+            "start_id": {"type": ["string", "null"], "minLength": 1}
+          },
+          "if": {"properties": {"kind": {"enum": ["opencode_acquire", "seat_resume", "vacant_start"]}}},
+          "then": {"properties": {"start_id": {"type": "string"}}}
+        },
         "handoff": {
           "type": [
             "object",
@@ -370,6 +386,11 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
                 "provider_key_admission": {
                   "description": "Stored key admission metadata. The generation contains the SQLite row ID and update time.",
                   "type": "object",
@@ -538,7 +559,7 @@
       }
     },
     "steering": {
-      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (an adopted default that is not a raise); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
+      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (a pinned default that is not a raise, recorded where the pin is written: init, adopt or migrate); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
       "type": "object",
       "required": ["default", "standing", "override", "requests"],
       "additionalProperties": false,

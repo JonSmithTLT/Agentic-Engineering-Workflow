@@ -72,7 +72,8 @@ def test_the_refusal_quotes_the_published_rule_and_names_both_steps():
 # ------------------------------------------------------------------------------------------------ the engine's check
 
 def engine_invocations(policy: dict[str, Any]) -> Invocations:
-    return Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)), roles=None)  # type: ignore[arg-type]
+    return Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)), roles=None,
+                       coordination=None)  # type: ignore[arg-type]
 
 
 def launchable_state(provider: str) -> dict[str, Any]:

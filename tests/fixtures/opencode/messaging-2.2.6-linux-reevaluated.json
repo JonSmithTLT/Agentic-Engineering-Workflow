@@ -72,10 +72,10 @@
     "messaging.wait_binding (pass, run)",
     "messaging.shell_timeout (pass, run)"
    ],
-   "declared": "gap",
-   "depth": null,
+   "declared": "partial",
+   "depth": "run",
    "register": "E175",
-   "status": "gap"
+   "status": "pass"
   },
   "steer_running_turn": {
    "checks": [

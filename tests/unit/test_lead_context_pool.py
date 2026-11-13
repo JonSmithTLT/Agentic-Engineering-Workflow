@@ -91,7 +91,7 @@ def render_pool(label: dict, switches: frozenset[str]) -> Pool:
     tools = capability.placed(label, contained=True)
     assert tools["tools"], "the fixture must exercise the placed-tool line"
     guide = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
-    config = projection.lead_config(guide, contained=label, tools=tools, push_wake=True)
+    config = projection.lead_config(guide, contained=label, tools=tools, push_wake=True, switches=switches)
     full = config["agents"][projection.LEAD_AGENT]["system"]
     system = full.removesuffix("\n\n" + guide)
     assert system != full, "lead_config must append the guide with its separator"
@@ -180,7 +180,9 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     with pytest.raises(AssertionError, match=message):
         check_pool(smaller, record, switches=MESSAGING_ON)
     check_pool(render_pool(label, frozenset()), record, switches=frozenset())
-    record["baseline"]["guide_bytes"] = smaller.guide_bytes
+    # Measured allocations already account for growth beyond the baseline; retain that accounting and remove
+    # only this saving, rather than copying the grown rendered guide into the baseline and counting growth twice.
+    record["baseline"]["guide_bytes"] -= freed
     with pytest.raises(AssertionError, match=rf"{cap} B cap.*{freed} B saving.*{RECORD_PATH}"):
         check_pool(smaller, record, switches=MESSAGING_ON)
     record["approval"]["ceiling_bytes"] -= freed

@@ -31,6 +31,8 @@ import contextlib
 import io
 import json
 import os
+import re
+import select
 import shlex
 import subprocess
 import sys
@@ -78,7 +80,7 @@ EXIT_S = bounds.declare("vertical.exit", 120, within="vertical.conversation", la
 
 
 def start_on_terminal(argv: list[str], *, env: dict[str, str], stdout: Any,
-                      stderr: Any) -> tuple[subprocess.Popen[bytes], int | None]:
+                      stderr: Any, resume_prompt: bool = False) -> tuple[subprocess.Popen[bytes], int | None]:
     """Start what the operator types at their terminal, and return it with the master of its terminal (None on
     Windows). On Linux the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4, ``os.isatty(0)``), so the
     operator's terminal is a pseudo-terminal this test owns, as an operator's terminal is theirs: its slave is the
@@ -87,6 +89,12 @@ def start_on_terminal(argv: list[str], *, env: dict[str, str], stdout: Any,
     stdout), so the master needs no reader. The process leads its own session (POSIX), so the lab ends its whole tree.
     On Windows it has no terminal (no relay; the Lead is not contained there) and opens no console window."""
     master, stdin = os.openpty() if not IS_WINDOWS else (None, subprocess.DEVNULL)
+    if master is not None and resume_prompt:
+        # Popen starts a session, but inherited stdin alone doesn't make its slave the controlling terminal.
+        argv = [sys.executable, "-c",
+                "import fcntl, os, sys, termios; fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
+                "os.execv(sys.argv[1], sys.argv[1:])",
+                *argv]
     kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
                               else {"start_new_session": True})
     try:
@@ -273,7 +281,8 @@ class Operator:
         (Path(self.lab.env[SCRIPTS_ENV]) / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
         return lead_spec
 
-    def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any]) -> Session:
+    def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any],
+                     *, resume_prompt: bool = False) -> Session:
         lead_spec = self.new_session(lead_spec)
         n = len(self.lab.sessions)
         out, err = self.tmp / f"session-{n}.out", self.tmp / f"session-{n}.err"
@@ -282,17 +291,39 @@ class Operator:
         autopsy.register_workdir(err)
         with out.open("wb") as o, err.open("wb") as e:
             proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
-                                             stdout=o, stderr=e)
+                                             stdout=o, stderr=e, resume_prompt=resume_prompt)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
         session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
         self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
 
-    def first_words(self, session: Session) -> dict[str, Any] | None:
+    def first_words(self, session: Session, *, resume_step: str | None = None) -> dict[str, Any] | None:
         """The session's first message (the Lead's status line), or None when the session ended without one."""
+        prompt = b""
+        answered = False
+
+        def ended() -> bool:
+            nonlocal prompt, answered
+            tty = session.tty
+            if session.ended():
+                return True
+            if resume_step is not None and tty is not None and not answered and select.select([tty], [], [], 0)[0]:
+                try:
+                    prompt = (prompt + os.read(tty, 4096))[-8192:]
+                except OSError:
+                    return session.ended()
+                if b"RESUME Lead seat" in prompt:
+                    code = re.search(rb"Type the confirmation code ([0-9A-F]{6}) and press Enter", prompt)
+                    if code is not None:
+                        os.write(tty, code[1] + b"\n")
+                        self.ledger.console_challenge("seat_resume", step=resume_step)
+                        answered = True
+                        prompt = b""
+            return False
+
         try:
-            msg = self.chat.receive(SESSION_START_S, gone=session.ended)
+            msg = self.chat.receive(SESSION_START_S, gone=ended if resume_step is not None else session.ended)
         except Gone:
             if not session.ended():
                 self.lead_silent("first words", SESSION_START_S)

@@ -68,7 +68,7 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
-             coordination_reads: bool = False) -> None:
+             coordination_reads: bool = False, worker_messaging: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",
@@ -162,10 +162,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
     notify_commands.register(sub)  # the notifiers AEW ships (register E104)
-    if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
+    if coordination_reads or worker_messaging:
         from aew.cli import message_commands
 
-        message_commands.register(sub)
+        message_commands.register(sub, operator=coordination_reads, worker=worker_messaging)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:
@@ -247,10 +247,13 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
                                         "credential or, by default, any provider key (ADR-0009); on Linux it runs "
                                         "contained, at a terminal (STG-05 CS-4)")
-    p.add_argument("--acquire", action="store_true",
-                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    seat_mode = p.add_mutually_exclusive_group()
+    seat_mode.add_argument("--acquire", action="store_true",
+                           help="take a vacant seat or resume an eligible seat in-process")
+    seat_mode.add_argument("--prompt-token", action="store_true",
+                           help="use the hidden prompt for an existing Lead credential")
     p.add_argument("--session-label")
-    p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    p.add_argument("--keep-seat", action="store_true", help="keep a seat this session took or resumed at exit")
     p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
                    help="use this provider variable for the Lead's model: on Linux it feeds that provider's relay on "
                         "the host and the Lead's shell sees a placeholder; elsewhere it is passed to the Lead's "
@@ -432,9 +435,10 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
 
-    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
-                        args.name, arguments,
-                        token=token or None, run_cli=cli)
+    result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
+                          args.name, arguments, token=token or None, run_cli=cli)
+    args._after_emit = lambda: run.record_message_result(engine, result, token or None)
+    return result
 
 
 def _lead_mcp(args: argparse.Namespace) -> Any:
@@ -467,7 +471,7 @@ def _opencode(args: argparse.Namespace) -> Any:
 
     return lead.run(_engine(args), acquire=args.acquire, session_label=args.session_label, keep_seat=args.keep_seat,
                     provider_env=list(args.provider_env), extra_args=list(args.opencode_args),
-                    print_config=args.print_config)
+                    print_config=args.print_config, prompt_token=args.prompt_token)
 
 
 def _resume(args: argparse.Namespace) -> Any:

@@ -19,7 +19,7 @@ from aew.harness.opencode import lead as L
 from aew.harness.opencode import lead_wake as W
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
-from aew.harness.opencode.client import OpenCodeUnavailable
+from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 from aew.policy import execution as X
 
 OPENAPI = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" /
@@ -130,6 +130,62 @@ def test_a_server_that_does_not_answer_never_reads_as_a_wake_to_post_again() -> 
     assert W.LeadPoster(lambda: client).landed("msg_1") == Q.WAITING
 
 
+def test_message_admission_and_reconciliation_use_the_frozen_target_after_the_latest_session_changes(monkeypatch):
+    client = FakeClient()
+    poster = W.LeadPoster(lambda: client)
+    target = poster.session()
+    assert target == "ses_new"
+    client.sessions = [{"id": "ses_later", "time": {"viewed": 300}}]
+    assert poster.post_to(target, "msg_fixed", "fixed bytes") == target
+    assert client.posts == [("/api/session/ses_new/prompt", {
+        "id": "msg_fixed", "text": "fixed bytes", "delivery": "queue"})]
+    reads = []
+    original = client.get
+
+    def get(path):
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(client, "get", get)
+    client.messages = [{"id": "msg_fixed"}]
+    assert poster.landed_in(target, "msg_fixed") == Q.DELIVERED
+    assert reads == ["/api/session/ses_new/inbox", "/api/session/ses_new/message"]
+
+
+def test_unavailable_target_reads_are_not_confirmed_admission_and_a_missing_target_is_unknown(monkeypatch):
+    client = FakeClient()
+    poster = W.LeadPoster(lambda: client)
+    client.down = True
+    assert poster.landed_in("ses_new", "msg_fixed") == Q.UNAVAILABLE
+    assert poster.busy_in("ses_new") is True
+
+    def missing(path):
+        raise OpenCodeError("GET", path, 404, {})
+
+    monkeypatch.setattr(client, "get", missing)
+    assert poster.landed_in("ses_new", "msg_fixed") == Q.SESSION_GONE
+
+
+@pytest.mark.parametrize("malformed", [None, {}, "not a list"])
+def test_malformed_target_reads_are_unknown_not_proof_of_absence(monkeypatch, malformed):
+    client = FakeClient()
+    monkeypatch.setattr(client, "get", lambda path: {"data": malformed})
+    assert W.LeadPoster(lambda: client).landed_in("ses_new", "msg_fixed") == Q.UNAVAILABLE
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 500])
+def test_only_explicit_non_admission_responses_release_a_message_post_attempt(monkeypatch, status):
+    client = FakeClient()
+
+    def refused(path, body):
+        raise OpenCodeError("POST", path, status, {})
+
+    monkeypatch.setattr(client, "post", refused)
+    expected = Q.PostRejected if status in (400, 401, 403, 404, 422) else OpenCodeError
+    with pytest.raises(expected):
+        W.LeadPoster(lambda: client).post_to("ses_new", "msg_fixed", "unchanged body")
+
+
 def test_the_announced_address_is_read_and_a_bad_file_is_no_address(tmp_path: Path) -> None:
     path = tmp_path / "lead-server.json"
     assert W.url_of(path) is None
@@ -171,7 +227,7 @@ def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> 
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
     assert 'set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`' in guide
     assert "`aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`" in guide
-    assert "A session started with `--acquire` holds the only credential, so end that session first" in guide
+    assert "A session that took the seat itself holds the only credential, so end that session first" in guide
 
 
 def test_what_every_linux_lead_gets_is_the_lead_text_with_the_wait_taken_out_and_the_wake_text_added() -> None:

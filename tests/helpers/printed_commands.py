@@ -70,6 +70,7 @@ SRC = ROOT / "src" / "aew"
 PLACEHOLDERS: dict[str, str] = {
     K.REVISION: "17",
     "<invocation from aew harness status>": "INV-0012",
+    "<message from aew message read>": "MSG-INV-0007-1",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
     "<T>": "T-0007",  # a Ticket
     "<mode>": "walk",  # a steering mode
@@ -160,7 +161,7 @@ def parser() -> argparse.ArgumentParser:
     choices and required options are the CLI's own."""
     from aew.cli.main import build_parser
 
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     todo, seen = [root], []
     while todo:
         p = todo.pop()

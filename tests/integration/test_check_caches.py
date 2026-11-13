@@ -198,7 +198,7 @@ def test_reader_and_writer_fingerprints_agree_with_a_declared_cache_present(tmp_
     assert F.relevant_inputs_fingerprint(repo, cache_patterns=(CACHES,)) == expected
 
 
-def test_ticket_commit_with_many_declared_cache_paths(tmp_path):
+def test_ticket_commit_with_many_declared_cache_paths(tmp_path, monkeypatch):
     repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n"})
     head = git.out("rev-parse", "HEAD", cwd=repo)
     cache_dir = (repo / CACHE).parent
@@ -208,11 +208,21 @@ def test_ticket_commit_with_many_declared_cache_paths(tmp_path):
     for index in range(count):
         (cache_dir / f"cached-result-{index:03d}.bin").write_bytes(b"cache")
     options = {"cache_patterns": (CACHES,)}
+    status_calls = []
+    original_out = git.out
+
+    def record_status(*args, **kwargs):
+        if args and args[0] == "status":
+            status_calls.append(args)
+        return original_out(*args, **kwargs)
+
+    monkeypatch.setattr(git, "out", record_status)
     assert integration.commit_workspace(repo, "cache only", **options) == head
     (repo / "source.py").write_bytes(b"value = 1\n")
     new = integration.commit_workspace(repo, "commit source", **options)
     assert git.out("diff", "--name-only", head, new, cwd=repo).splitlines() == ["source.py"]
     assert f"Excluded {count} declared cache path(s)." in git.out("log", "--format=%B", new, cwd=repo)
+    assert status_calls == [("status", "--porcelain", "--untracked-files=no", "--", ".", integration.AEW_EXCLUDE)] * 2
 
 
 def test_cache_only_commit_and_existing_git_ignores(tmp_path):

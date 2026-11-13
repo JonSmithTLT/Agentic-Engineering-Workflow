@@ -88,7 +88,8 @@ def test_policy_routing_is_pinned_per_invocation_and_stamped_on_evidence(tmp_pat
     impl_inv = p.ok("work", "show", wid)["control"]["implementer_invocation"]
     assert pin(p, impl_inv) == {"profile": "standard", "harness": "opencode", "provider": "prov",
                                 "model": "m-standard", "effort": "high", "max_steps": None, "deadline_s": None,
-                                "selected_by": "policy", "rule": "default", "policy_sha256": sha}
+                                "selected_by": "policy", "rule": "default", "policy_sha256": sha,
+                                "credential": "api_key"}
     implement(impl)
     records, problems = E.scan(p.root / ".aew", wid)
     assert not problems

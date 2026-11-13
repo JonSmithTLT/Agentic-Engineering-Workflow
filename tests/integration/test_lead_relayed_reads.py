@@ -313,7 +313,12 @@ def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab,
         started = time.monotonic()
         via = relayed(lab, broker, "status", "--json")
         took = time.monotonic() - started
-    assert (via.returncode, via.stdout) == (here.returncode, here.stdout) and took < 30, via.stderr
+    assert via.returncode == here.returncode == 0 and took < 30, via.stderr
+    expected, actual = here.json, via.json
+    # The broker can publish its first steering tick between the two reads.
+    for status in (expected, actual):
+        status["steering"].pop("loop", None)
+    assert actual == expected
 
 
 def test_no_relayed_read_carries_a_runs_password_bridge_key_or_token(lab, broker, tmp_path):

@@ -30,8 +30,8 @@ REASONS: dict[str, str] = {
                            "enable history"),
     "HISTORY_INDEX_UNAVAILABLE": "the history index could not be read or synced",
     "NOT_IN_CONTRACT_0_1_2": "no route of contract 0.1.2 projects this; a later contract version may",
-    "AWAITS_ACTION_PROJECTION": "the action projection arrives with the typed Lead surface (register F15.1); until "
-                                "then this capability is unsupported",
+    "AWAITS_ACTION_PROJECTION": "this dashboard route does not project actions. The typed Lead surface provides its "
+                                "own action projection (register F15.1)",
     # raw-history search (register F20.8, S2): the capability, then the coverage of one search
     "FTS5_UNAVAILABLE": "this Python's SQLite has no usable FTS5, which raw-history search needs; nothing else is "
                         "affected",

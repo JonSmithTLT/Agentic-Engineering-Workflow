@@ -233,9 +233,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         if given:
             return (f"`aew init` with {', '.join(given)} sets what is pinned at setup, which the operator does at "
                     "their own console (register E119); a Lead session cannot: ask the operator")
-    if path == frozenset({"init"}) and getattr(ns, "fetch_tool", None):  # downloading a tool is the operator's choice
-        return ("`aew init` with --fetch-tool downloads a tool, which only the operator chooses, at their own "
-                "terminal (the operator, 2026-11-05); a Lead session cannot: ask the operator")
+    if path == frozenset({"init"}) and getattr(ns, "fetch_tool", None):  # init's tool choice belongs to the operator
+        return ("`aew init` with --fetch-tool sets the tool download choice, which only the operator makes at "
+                "their own terminal (the operator, 2026-11-05); a Lead session cannot: ask the operator")
     dest, value = OPERATOR_ATTRIBUTED.get(path, ("", None))
     if value is not None and getattr(ns, dest, None) == value:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "

@@ -199,7 +199,7 @@ class KindRegistry:
 
 
 class TxnFinalizers:
-    """Steps every Lead transaction runs just before its commit, in order (empty until ADR-0011's archival)."""
+    """Steps the engine installs in order for every Lead transaction to run just before commit, ending with archival."""
 
     def __init__(self) -> None:
         self.steps: list[Callable[[TxnContext], None]] = []

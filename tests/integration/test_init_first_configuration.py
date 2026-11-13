@@ -42,6 +42,21 @@ def tree(root: Path) -> dict[str, bytes]:
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in (root / ".aew").rglob("*") if p.is_file()}
 
 
+def test_init_accepts_fetch_none_without_recording_a_tool_answer(tmp_path):
+    root = repo(tmp_path)
+    res = init(root, "--fetch-tool", "none")
+    assert res.returncode == 0, res.stderr
+    tools = res.json["tools"]
+    assert tools["answer"] is None and tools["downloaded"] == {} and tools["declined"] == []
+
+
+def test_init_refuses_mixing_fetch_none_with_a_tool_before_writing(tmp_path):
+    root = repo(tmp_path)
+    res = init(root, "--fetch-tool", "none", "--fetch-tool", "ripgrep")
+    assert res.error["code"] == "USAGE" and "by itself" in res.error["message"]
+    assert not (root / ".aew").exists()
+
+
 def test_init_omits_the_legacy_project_profile(tmp_path):
     root = repo(tmp_path)
     res = init(root)

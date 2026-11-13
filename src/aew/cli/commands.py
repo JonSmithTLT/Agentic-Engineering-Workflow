@@ -94,7 +94,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     # The tools AEW brings: downloaded only as the operator chooses (the operator, 2026-11-05; aew.capability.consent)
     p.add_argument("--fetch-tool", action="append", metavar="TOOL",
                    help="download this tool AEW brings (`aew capability list` names them), as your choice, with no "
-                        "screen; repeat for more. "
+                        "screen; repeat for more. Use `--fetch-tool none` by itself to skip the screen and downloads "
+                        "without recording an answer. "
                         "With none named, a screen asks at a terminal, and elsewhere nothing downloads")
     p.set_defaults(handler=_init)
 
@@ -350,7 +351,7 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.harness.containment import netns
     from aew.policy import execution
 
-    consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
+    consent.check_names(args.fetch_tool)  # an invalid tool choice refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
                                                    model=args.model, provider=args.provider)
     engine = Engine.initialize(

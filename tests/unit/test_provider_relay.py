@@ -8,6 +8,7 @@ credential here is a synthetic value. Every socket has a timeout and is closed i
 
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 import sqlite3
@@ -19,6 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tcp_pair import tcp_pair
 
 from aew.errors import ValidationFailed
 from aew.harness.containment import netns, relay
@@ -273,7 +275,7 @@ def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, ca
         raise relay.Unavailable(f"planted {cause} credential", cause=cause, retryable=retryable)
 
     service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve)
-    client, served = socket.socketpair()
+    client, served = tcp_pair(TIMEOUT)
     client.settimeout(TIMEOUT)
 
     class SplitRequest:
@@ -313,39 +315,25 @@ def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, ca
     assert not thread.is_alive()
 
 
-@pytest.mark.parametrize("limit", ["time", "bytes"])
-def test_a_refusal_drain_is_bounded_even_when_the_sender_keeps_sending(monkeypatch, limit):
-    now = [0.0]
-    waits, sizes, shutdowns = [], [], []
+@pytest.mark.parametrize("status,cause,retryable", [(401, "expired", False), (503, "unreadable", True)],
+                         ids=["expired-401", "retryable-503"])
+def test_a_provider_sized_http_post_gets_its_complete_refusal(status, cause, retryable):
+    """8 MiB is inside the review's measured provider-body range; no tiny-body or AF_UNIX-only proxy proof."""
+    seam = Seam(OSError("a refusal must connect nothing"))
 
-    class Sender:
-        def settimeout(self, seconds):
-            waits.append(seconds)
+    def resolve():
+        raise relay.Unavailable(f"planted {cause} credential", cause=cause, retryable=retryable)
 
-        def sendall(self, data):
-            assert data.startswith(b"HTTP/1.1 401 ")
-
-        def shutdown(self, how):
-            shutdowns.append(how)
-
-        def recv(self, size):
-            sizes.append(size)
-            if limit == "time":
-                now[0] += relay.REFUSAL_DRAIN_S / 2
-            return b"x" * size
-
-    monkeypatch.setattr(relay, "time", SimpleNamespace(monotonic=lambda: now[0]))
-    service = ProviderRelay(Upstream(UPSTREAM), {})
-    try:
-        service._answer(Sender(), relay._Refused(401, "credential_unavailable", "planted expired credential"))
-    finally:
-        service.close()
-    assert shutdowns == [socket.SHUT_WR]
-    assert waits[1] == relay.REFUSAL_DRAIN_S  # first timeout is the existing response-send/head bound
-    if limit == "time":
-        assert len(sizes) == 2 and waits[-1] < waits[1]
-    else:
-        assert sum(sizes) == relay.REFUSAL_DRAIN_MAX_BYTES
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        with ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve, listener=listener) as service:
+            with http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT) as client:
+                client.request("POST", "/v1/responses", b"x" * (8 * 1024 * 1024))
+                answer = client.getresponse()
+                assert answer.status == status and answer.read() == f"planted {cause} credential".encode()
+            assert seam.calls == [] and service.counts().get("credential_unavailable" if status == 401
+                                                            else "credential_unreadable") == 1
 
 
 @pytest.mark.parametrize("target", [

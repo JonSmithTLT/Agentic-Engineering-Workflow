@@ -1039,6 +1039,12 @@ def raw(port: int, method: str, path: str, headers: dict[str, str] | list[tuple[
         c.close()
 
 
+def test_a_pre_body_refusal_with_large_input_closes_without_reusing_body_bytes(live: Live):
+    status, headers, body = live.request("POST", "/o01/v0/command-sets", {"Host": "foreign.example"},
+                                         {"padding": "x" * (128 * 1024)})
+    assert status == 400 and headers["connection"] == "close" and body
+
+
 def test_a_foreign_host_or_origin_is_refused_with_the_route_familys_own_problem(live: Live):
     host = f"127.0.0.1:{live.port}"
     for hdr in ({"Host": "evil.example:80", **D01}, {"Host": host, "Origin": "http://evil.example", **D01}):

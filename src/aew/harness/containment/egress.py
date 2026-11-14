@@ -53,6 +53,7 @@ from typing import Any, Protocol
 
 from aew.errors import ValidationFailed
 from aew.harness.containment import peer
+from aew.http_close import REFUSAL_DRAIN_S, close_after_response
 
 # Implementation bounds, not policy. A CONNECT from Bun or curl is under 200 bytes; 8 KiB is Apache httpd's default
 # request-line and header-field limit (LimitRequestLine, LimitRequestFieldSize: 8190 bytes), rounded up.
@@ -408,6 +409,7 @@ class EgressProxy(Service):
         try:
             conn.settimeout(self.header_timeout)
             conn.sendall(refused.response())
+            close_after_response(conn, REFUSAL_DRAIN_S)
         except OSError:
             pass
 

@@ -333,24 +333,25 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             bound = cast(Any, self.server).server_port
             origin = h.get("origin")
             if any(len(self.headers.get_all(name) or []) > 1 for name in SINGLE_HEADERS):
-                self._send(refusal(self.path), method, t0)  # an ambiguous selection is refused, never last-wins
+                self._send(refusal(self.path), method, t0, close=True)  # unread body: never reuse this connection
                 return
             if h.get("host") not in (f"{HOST}:{bound}", f"localhost:{bound}") or len(self.path) > MAX_PATH:
-                self._send(refusal(self.path), method, t0)  # DNS rebinding, oversize
+                self._send(refusal(self.path), method, t0, close=True)  # DNS rebinding, oversize
                 return
             if origin is not None and origin not in s.allow_origins:
-                self._send(refusal(self.path), method, t0)  # a page on another origin, not allowed by CORS
+                self._send(refusal(self.path), method, t0, close=True)  # a page on another origin, not allowed by CORS
                 return
             if method == "OPTIONS":
                 # a CORS preflight, only from an allowed origin: it carries no data and needs no wire header
-                self._send(Answer(204, None, {}) if origin else refusal(self.path), method, t0, preflight=True)
+                self._send(Answer(204, None, {}) if origin else refusal(self.path), method, t0,
+                           preflight=True, close=True)
                 return
             try:
                 n = int(h.get("content-length") or 0)
             except ValueError:
                 n = -1
             if n < 0 or n > MAX_BODY:
-                self._send(refusal(self.path), method, t0)
+                self._send(refusal(self.path), method, t0, close=True)
                 return
             body = self.rfile.read(n) if n else None
             try:
@@ -363,7 +364,7 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
                 answer = failure(self.path)
             self._send(answer, method, t0)
 
-        def _send(self, a: Answer, method: str, t0: float, *, preflight: bool = False) -> None:
+        def _send(self, a: Answer, method: str, t0: float, *, preflight: bool = False, close: bool = False) -> None:
             raw = b"" if a.body is None else json.dumps(a.body, ensure_ascii=False, sort_keys=True).encode("utf-8")
             self.send_response(a.status)
             for k, v in a.headers.items():
@@ -380,6 +381,9 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
                     self.send_header("Access-Control-Allow-Headers",
                                      f"{W.D01_HEADER}, {W.O01_HEADER}, Authorization, Content-Type")
             self.send_header("Content-Length", str(len(raw)))
+            if close:
+                self.send_header("Connection", "close")
+                self.close_connection = True  # ExclusiveServer owns the staged close after finish/flush
             self.end_headers()
             if method != "HEAD":  # a HEAD answer has the headers of the GET it stands for, and no body
                 self.wfile.write(raw)

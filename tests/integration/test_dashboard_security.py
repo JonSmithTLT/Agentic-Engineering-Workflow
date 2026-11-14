@@ -799,10 +799,9 @@ def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second
     assert status == 503 and error_code(raw) == "SERVER_BUSY" and headers.get("retry-after") == "1"
 
 
-def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):
-    """R23 bounds the drain too: with its deadline out of reach, a refused client sending without end is still cut
-    off once ``DRAIN_MAX_BYTES`` are read, never read for as long as it cares to send."""
-    monkeypatch.setattr(SV, "REFUSAL_DRAIN_S", 60.0)
+def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_absolute_drain_deadline(live):
+    """R23 still bounds the drain: continuous input cannot renew its absolute deadline. No byte-count cutoff may
+    discard a refusal for a body that can be drained within that deadline."""
     chunk = b"w" * 65536
     with socket.create_connection(("127.0.0.1", live.server.port), timeout=10) as s:
         started = time.monotonic()

@@ -55,6 +55,9 @@ MAX_HEAD = 32 * 1024
 HEAD_TIMEOUT = 30.0     # the whole request head, from when the relay starts reading it
 CONNECT_TIMEOUT = 10.0  # a SYN nobody answers, and the TLS handshake
 BODY_TIMEOUT = 60.0     # a pause inside the request body; the response stream itself has no idle bound (see above)
+# RFC 9112 §9.6 staged close: use the dashboard.server refusal drain's existing time/byte budgets, not a body wait.
+REFUSAL_DRAIN_S = 0.5
+REFUSAL_DRAIN_MAX_BYTES = 256 * 1024
 TLS_MINIMUM = ssl.TLSVersion.TLSv1_2  # every upstream context's floor, a client certificate's included
 SENTINEL_PREFIX = "aew-relay-"
 # The headers a provider SDK carries its key in: OpenAI's and most others' bearer token, Anthropic's, Azure OpenAI's
@@ -267,6 +270,16 @@ class ProviderRelay(Service):
         try:
             conn.settimeout(self.head_timeout)
             conn.sendall(refused.response())
+            # A close with unread request data can reset TCP and discard the refusal (notably on Windows).
+            # Half-close the answer first, then discard input locally; this never connects to the upstream.
+            conn.shutdown(socket.SHUT_WR)
+            end, left = time.monotonic() + REFUSAL_DRAIN_S, REFUSAL_DRAIN_MAX_BYTES
+            while left > 0 and (wait := end - time.monotonic()) > 0:
+                conn.settimeout(wait)  # absolute deadline, not an idle timeout a trickling sender can extend
+                got = conn.recv(min(CHUNK, left))
+                if not got:
+                    break
+                left -= len(got)
         except OSError:
             pass
 

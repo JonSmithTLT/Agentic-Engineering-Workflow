@@ -261,6 +261,93 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     assert service.counts().get("credential:expired") == 1
 
 
+@pytest.mark.parametrize("status,cause,retryable", [(401, "expired", False), (503, "unreadable", True)],
+                         ids=["expired-401", "retryable-503"])
+def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, cause, retryable):
+    """Force body bytes to arrive only after the refusal is sent, and read only after the relay closes.
+    Without the drain Windows resets this unread-data close; no sleep or probabilistic repetition is needed."""
+    seam = Seam(OSError("a refusal must connect nothing"))
+    answer_sent, body_sent, ended = threading.Event(), threading.Event(), threading.Event()
+
+    def resolve():
+        raise relay.Unavailable(f"planted {cause} credential", cause=cause, retryable=retryable)
+
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve)
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+
+    class SplitRequest:
+        def __getattr__(self, name):
+            return getattr(served, name)
+
+        def sendall(self, data):
+            served.sendall(data)
+            answer_sent.set()
+            assert body_sent.wait(TIMEOUT), "the client never supplied the delayed body"
+
+    def handle():
+        try:
+            service.handle(SplitRequest())
+        finally:
+            ended.set()
+
+    thread = threading.Thread(target=handle, daemon=True)
+    thread.start()
+    try:
+        client.sendall(b"POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\n\r\n")
+        assert answer_sent.wait(TIMEOUT), "the relay did not send its pre-body refusal"
+        client.sendall(b"{}")  # a distinct write, after the relay rejected the head
+        client.shutdown(socket.SHUT_WR)
+        body_sent.set()
+        assert ended.wait(TIMEOUT), "the relay did not end after draining the refused request"
+        answer = read_all(client)  # must be a complete HTTP answer, never WinError 10054
+        assert answer.startswith(f"HTTP/1.1 {status} ".encode()), answer
+        assert answer.endswith(f"planted {cause} credential".encode()), answer
+        assert seam.calls == [], "a pre-body refusal connected upstream"
+        assert service.counts().get(f"credential:{cause}" + ("_retryable" if retryable else "")) == 1
+    finally:
+        body_sent.set()
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+    assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("limit", ["time", "bytes"])
+def test_a_refusal_drain_is_bounded_even_when_the_sender_keeps_sending(monkeypatch, limit):
+    now = [0.0]
+    waits, sizes, shutdowns = [], [], []
+
+    class Sender:
+        def settimeout(self, seconds):
+            waits.append(seconds)
+
+        def sendall(self, data):
+            assert data.startswith(b"HTTP/1.1 401 ")
+
+        def shutdown(self, how):
+            shutdowns.append(how)
+
+        def recv(self, size):
+            sizes.append(size)
+            if limit == "time":
+                now[0] += relay.REFUSAL_DRAIN_S / 2
+            return b"x" * size
+
+    monkeypatch.setattr(relay, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    service = ProviderRelay(Upstream(UPSTREAM), {})
+    try:
+        service._answer(Sender(), relay._Refused(401, "credential_unavailable", "planted expired credential"))
+    finally:
+        service.close()
+    assert shutdowns == [socket.SHUT_WR]
+    assert waits[1] == relay.REFUSAL_DRAIN_S  # first timeout is the existing response-send/head bound
+    if limit == "time":
+        assert len(sizes) == 2 and waits[-1] < waits[1]
+    else:
+        assert sum(sizes) == relay.REFUSAL_DRAIN_MAX_BYTES
+
+
 @pytest.mark.parametrize("target", [
     "/v1/models",
     "*",

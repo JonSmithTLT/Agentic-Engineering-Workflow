@@ -27,6 +27,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import proctree
+
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 CRED = r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}"
 EVIDENCE_REF = re.compile(r"\{evidence:([A-Za-z0-9_-]+)\}")
@@ -96,6 +98,44 @@ def wait_file(path: str, timeout: float) -> bool:
     return False
 
 
+def wait_shell_binding(proc: subprocess.Popen, path: str, evidence: Path) -> bool:
+    """Wait for admission or a natural shell exit, never a startup deadline. The pytest watchdog owns the bound.
+    Persist observed descendants while waiting, so even a watchdog failure keeps pre-admission process evidence.
+    A short-lived/unreadable child can be missed: absence is NOT OBSERVED, never proof that aew did not start."""
+    start = proctree.start_time(proc.pid) or 0
+    observed: dict[tuple[int, int], proctree.Proc] = {}
+    next_snapshot = 0.0
+    while True:
+        bound = os.path.exists(path)
+        exited = proc.poll() is not None
+        if bound:
+            # Do not delay the short post-binding shell clock for another process-table collection.
+            with evidence.open("a", encoding="utf-8") as fh:
+                fh.write("bound: True\n")
+            return True
+        now = time.monotonic()
+        if now >= next_snapshot or exited:
+            try:
+                table = proctree.table()
+                root = next((p for p in table if p.identity == (proc.pid, start)), None)
+                members = ([root] if root else []) + proctree.descendants((proc.pid, start), table)
+                observed.update((p.identity, p) for p in members)
+                aew = [p.pid for p in observed.values() if p.pid != proc.pid and (
+                    Path(p.exe).name.lower() in ("aew", "aew.exe")
+                    or re.search(r"(?:[\\/]|\s-m\s+)aew(?:\.exe)?(?:[\s\"']|$)", p.cmdline))]
+                status = 'OBSERVED pids ' + str(aew) if aew else 'NOT OBSERVED (not proof of absence)'
+                tree = proctree.describe(observed.values(), title="observed shell process tree (pid/start identities)")
+                text = (f"shell_pid: {proc.pid}; shell_start: {start}; exit: {proc.returncode}; bound: {bound}\n"
+                        f"aew child started: {status}\n" + tree)
+            except OSError as exc:
+                text = f"shell_pid: {proc.pid}; process observation unavailable: {type(exc).__name__}: {exc}\n"
+            evidence.write_text(text, encoding="utf-8")
+            next_snapshot = now + 1.0  # observation cadence, not an admission deadline
+        if exited:
+            return False
+        time.sleep(0.05)
+
+
 CHILD_DUMP = ("import json, os, sys; json.dump(dict(os.environ), open(sys.argv[1], 'w', encoding='utf-8'))")
 SCAN = ("import os, re, sys\n"
         "pat = re.compile(sys.argv[1]); hits = []\n"
@@ -136,6 +176,7 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         argv = (["powershell", "-NoProfile", "-NonInteractive", "-Command", command] if sys.platform == "win32"
                 else ["sh", "-c", command + "; :"])
         output = Path(state["tmp"]) / f"shell-{state['n']}.stdout"
+        admission = output.with_suffix(".admission")
         timed_out = False
         with output.open("wb") as fh:
             proc = subprocess.Popen(argv, env={**os.environ, **(env or {})}, stdout=fh, stderr=fh,
@@ -145,18 +186,18 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
             if s.get("timeout_after_file"):
                 # The orphan test starts its short shell clock only once the bridge wait has bound to this call.
                 # Process/shell/CLI startup is not the event the test is trying to race.
-                if not wait_file(s["timeout_after_file"], 30):
-                    proc.kill()
-                    proc.wait()
+                if not wait_shell_binding(proc, s["timeout_after_file"], admission):
                     return {"exit": proc.returncode, "timed_out": False, "shell_pid": proc.pid,
-                            "stdout_file": str(output), "barrier_error": "shell timeout barrier was never reached"}
+                            "stdout_file": str(output), "admission_file": str(admission),
+                            "barrier_error": "shell exited before wait binding"}
             try:
                 proc.wait(timeout=s.get("timeout_s"))
             except subprocess.TimeoutExpired:
                 timed_out = True
                 proc.kill()  # deliberately ONLY the shell, not its descendants: exercise the orphan worst case
                 proc.wait()
-        return {"exit": proc.returncode, "timed_out": timed_out, "shell_pid": proc.pid, "stdout_file": str(output)}
+        return {"exit": proc.returncode, "timed_out": timed_out, "shell_pid": proc.pid, "stdout_file": str(output),
+                **({"admission_file": str(admission)} if s.get("timeout_after_file") else {})}
     if do == "check":
         return aew("check", "run", s["id"])
     if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)

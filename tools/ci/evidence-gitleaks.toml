@@ -7,5 +7,5 @@ targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = [
   '''^token_id['"]?[ \t]*:[ \t]*['"]?tk_[0-9a-f]{16}['"]?[ \t\r\n]*$''',
-  '''^(?:[a-zA-Z0-9_]+_sha256|(?:[a-zA-Z0-9_]+_)?digest)['"]?[ \t]*:[ \t]*['"]?[0-9a-f]{64}['"]?[ \t\r\n]*$''',
+  '''^openapi_sha256['"]?[ \t]*:[ \t]*['"]?[0-9a-f]{64}['"]?[ \t\r\n]*$''',
 ]

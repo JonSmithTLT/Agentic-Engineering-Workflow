@@ -9,6 +9,7 @@ runs:
         raw="$RUNNER_TEMP/evidence-proof-source/autopsy"
         mkdir -p "$raw"
         printf 'token=%s%s # gitleaks:allow\n' ghp_ A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 > "$raw/failure.txt"
+        printf 'client_secret_sha256: %s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$raw/digest.txt"
     - name: Plant an unmarked pytest failure and retain its child stdout
       shell: bash
       env:
@@ -56,8 +57,11 @@ runs:
             assert list(real.rglob(name)), name
         listing = (root / "inventory.txt").read_text(encoding="utf-8")
         assert "masked autopsy/failure.txt:1 (github-pat)" in listing
+        assert "masked autopsy/digest.txt:1 (generic-api-key)" in listing
         assert all(not line.startswith(("masked real/", "withheld real/")) for line in listing.splitlines())
         assert "<redacted:" in (root / "autopsy/failure.txt").read_text(encoding="utf-8")
+        [provider] = list((root / "autopsy").rglob("provider.stderr.txt"))
+        assert provider.read_text(encoding="utf-8").strip() == "<redacted>"
         secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
         assert all(secret not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
         scanner_plant = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"

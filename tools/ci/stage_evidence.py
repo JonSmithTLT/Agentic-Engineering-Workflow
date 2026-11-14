@@ -39,9 +39,7 @@ def is_link(path: Path) -> bool:
 class Hit:
     rule: str
     line: int
-    end_line: int
-    column: int
-    match: str
+    value: bytes
 
 
 def findings(report: Path, candidate: Path, staged: set[Path]) -> dict[Path, list[Hit]]:
@@ -64,16 +62,16 @@ def findings(report: Path, candidate: Path, staged: set[Path]) -> dict[Path, lis
         line = hit.get("StartLine")
         if type(line) is not int or line < 1:
             raise ValueError("missing gitleaks line")
-        end = hit.get("EndLine")
-        column = hit.get("StartColumn")
-        match = hit.get("Match")
-        withheld.setdefault(path, []).append(Hit(rule, line, end if type(end) is int else 0,
-                                               column if type(column) is int else 0,
-                                               match if isinstance(match, str) else ""))
+        value = hit.get("Secret") or hit.get("Match")
+        if not isinstance(value, str) or not value:
+            raise ValueError("missing gitleaks value")
+        withheld.setdefault(path, []).append(Hit(rule, line, value.encode()))
     return withheld
 
 
 def scan(candidate: Path, report: Path, staged: set[Path]) -> dict[Path, list[Hit]]:
+    # Match and Secret are needed for masking. This unredacted report stays
+    # outside the upload directory, and the captured scanner output is never printed.
     report.unlink(missing_ok=True)
     result = subprocess.run(
         ["gitleaks", "dir", "--no-banner", "--ignore-gitleaks-allow", "--report-format", "json",
@@ -88,23 +86,30 @@ def scan(candidate: Path, report: Path, staged: set[Path]) -> dict[Path, list[Hi
     return findings(report, candidate, staged)
 
 
-def mask(file: Path, hits: list[Hit]) -> bool:
-    """Use byte offsets and exact reported matches. Uncertain spans stay private."""
+TOKEN_TAIL = re.compile(rb"[A-Za-z0-9_./+=-]*")
+
+
+def values(group: dict[Path, list[Hit]]) -> dict[bytes, str]:
+    return {hit.value: hit.rule for path in sorted(group) for hit in group[path]}
+
+
+def occurrences(data: bytes, secrets: dict[bytes, str]):
+    for value, rule in secrets.items():
+        start = data.find(value)
+        while start >= 0:
+            yield start, rule, value
+            start = data.find(value, start + 1)
+
+
+def mask(file: Path, secrets: dict[bytes, str]) -> set[tuple[str, int]]:
     original = file.read_bytes()
-    offsets = [0, *(match.end() for match in re.finditer(b"\n", original)), len(original)]
     spans = []
-    for hit in hits:
-        if not (hit.match and hit.column > 0 and hit.line <= hit.end_line < len(offsets)):
-            return False
-        # The pinned scanner can report a column one byte late on lines after the first.
-        start = offsets[hit.line - 1] + max(0, hit.column - 2)
-        raw = hit.match.encode()
-        # Some rules report the secret inside the match at the reported column.
-        window = original[start:offsets[hit.end_line]]
-        if window.count(raw) != 1:
-            return False
-        start += window.index(raw)
-        spans.append((start, start + len(raw), hit.rule))
+    notes = set()
+    for start, rule, value in occurrences(original, secrets):
+        tail = TOKEN_TAIL.match(original, start + len(value))
+        assert tail is not None
+        spans.append((start, tail.end(), rule))
+        notes.add((rule, original.count(b"\n", 0, start) + 1))
     merged: list[tuple[int, int, str]] = []
     for start, end, rule in sorted(spans):
         if merged and start < merged[-1][1]:
@@ -112,11 +117,18 @@ def mask(file: Path, hits: list[Hit]) -> bool:
             merged.append((left, max(right, end), first_rule))
         else:
             merged.append((start, end, rule))
-    for start, end, rule in reversed(merged):
-        replacement = f"<redacted:{rule}>".encode() + b"\n" * original[start:end].count(b"\n")
-        original = original[:start] + replacement + original[end:]
-    file.write_bytes(original)
-    return True
+    if merged:
+        chunks = []
+        cursor = 0
+        for start, end, rule in merged:
+            marker = f"<redacted:{rule}>"
+            if file.suffix == ".xml":
+                marker = marker.replace("<", "&lt;").replace(">", "&gt;")
+            chunks.extend((original[cursor:start], marker.encode(),
+                           b"\n" * original.count(b"\n", start, end)))
+            cursor = end
+        file.write_bytes(b"".join([*chunks, original[cursor:]]))
+    return notes
 
 
 def stage(source: Path, destination: Path) -> str:
@@ -160,7 +172,14 @@ def stage(source: Path, destination: Path) -> str:
                         continue
                 with file.open("rb") as stream:
                     data = stream.read(min(left, 4 * 1024 * 1024) + 1)
-                data.decode("utf-8")
+                content = data.decode("utf-8")
+                if file.name in {"junit.xml", "vertical-summary.txt"}:
+                    from aew.harness.defects import redact_text
+
+                    content = redact_text(content)
+                    if file.suffix == ".xml":
+                        content = content.replace("<redacted>", "&lt;redacted&gt;")
+                    data = content.encode("utf-8")
             except (OSError, UnicodeError):
                 omitted += 1
                 continue
@@ -188,20 +207,25 @@ def stage(source: Path, destination: Path) -> str:
         publish = False
         try:
             initial = scan(candidate, report, staged)
-            masked = {path for path, hits in initial.items() if mask(candidate / path, hits)}
-            withheld = {path: hits for path, hits in initial.items() if path not in masked}
+            secrets = values(initial)
+            masked = {path: mask(candidate / path, secrets) for path in sorted(staged)} if initial else {}
+            remaining = scan(candidate, report, staged) if initial else {}
+            secrets.update(values(remaining))
+            withheld = {path: {(hit.rule, hit.line) for hit in hits} for path, hits in remaining.items()}
+            for path in sorted(staged) if initial else ():
+                data = (candidate / path).read_bytes()
+                for offset, rule, _ in occurrences(data, secrets):
+                    withheld.setdefault(path, set()).add((rule, data.count(b"\n", 0, offset) + 1))
+                for _, rule, _ in occurrences(path.as_posix().encode(), secrets):
+                    withheld.setdefault(path, set()).add((rule, 0))
             for path in withheld:
                 (candidate / path).unlink()
-            if masked:
-                remaining = scan(candidate, report, staged - withheld.keys())
-                withheld.update(remaining)
-                for path in remaining:
-                    (candidate / path).unlink()
             entries = {
-                (path.as_posix(), hit.rule, hit.line, action)
-                for action, group in (("masked", {p: initial[p] for p in masked - withheld.keys()}),
-                                      ("withheld", withheld))
-                for path, hits in group.items() for hit in hits
+                ("<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix(),
+                 rule, line, action)
+                for action, group in (("masked", masked), ("withheld", withheld))
+                for path, notes in group.items() if action == "withheld" or path not in withheld
+                for rule, line in notes
             }
             listing = "".join(f"{action} {path}:{line} ({rule})\n"
                               for path, rule, line, action in sorted(entries)).encode()
@@ -211,7 +235,8 @@ def stage(source: Path, destination: Path) -> str:
                 raise ValueError("masked evidence exceeds job cap")
             if initial:
                 inventory = bytearray(listing)
-            status = (f"gitleaks masked {len(masked - withheld.keys())} files; withheld {len(withheld)} files"
+            masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
+            status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
                       if initial else "gitleaks clean")
             publish = True
         except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -225,9 +250,13 @@ def stage(source: Path, destination: Path) -> str:
         return status
 
 
-if __name__ == "__main__":
-    destination = Path(sys.argv[2])
-    print(stage(Path(sys.argv[1]), destination))
+def main(argv: list[str]) -> None:
+    source, destination = map(Path, argv)
+    print(stage(source, destination))
     for line in (destination / "inventory.txt").read_text(encoding="utf-8").splitlines():
         if line.startswith(("masked ", "withheld ")):
             print(line, file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

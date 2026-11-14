@@ -296,42 +296,74 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         assert proof["if"] == condition
 
 
-@pytest.mark.parametrize("scan_result", ["findings", "unknown-file", "error"])
-def test_evidence_withholds_only_attributed_findings_and_fails_closed_on_scan_errors(tmp_path, monkeypatch,
-                                                                                    scan_result):
+def evidence_hit(path):
+    return {"File": str(path), "StartLine": 1, "EndLine": 1, "StartColumn": 1, "EndColumn": 16,
+            "Match": "private contents", "Secret": "private contents", "RuleID": "planted-rule"}
+
+
+def test_evidence_findings_reject_unattributed_paths(tmp_path):
+    stage = _load("stage_evidence")
+    report = tmp_path / "scan.json"
+    candidate = tmp_path / "contents"
+    known = Path("autopsy/failure.txt")
+    report.write_text(json.dumps([evidence_hit(candidate / known)]), encoding="utf-8")
+    assert set(stage.findings(report, candidate, {known})) == {known}
+    with pytest.raises(ValueError, match="unattributable"):
+        stage.findings(report, candidate, {Path("other.txt")})
+
+
+def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
 
-    stage_evidence = _load("stage_evidence")
+    stage = _load("stage_evidence")
     source = tmp_path / "raw"
     autopsy = source / "autopsy"
     autopsy.mkdir(parents=True)
-    (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
-    harness = autopsy / "harness"
-    harness.mkdir()
-    clean = {"shell-2.stdout.txt": "shell output", "supervisor.log.txt": "supervisor output"}
-    for name, contents in clean.items():
-        (harness / name).write_text(contents, encoding="utf-8")
-    destination = tmp_path / "public"
+    (autopsy / "failure.txt").write_text("private contentsTAIL\nprivate contents\n", encoding="utf-8")
+    (autopsy / "other.txt").write_text("context private contents", encoding="utf-8")
+    (source / "junit.xml").write_text("<failure>private contents</failure>", encoding="utf-8")
+    (source / "vertical-summary.txt").write_text("private contents", encoding="utf-8")
+    (autopsy / "still-dirty.txt").write_text("other value", encoding="utf-8")
+    (autopsy / "copy-of-dirty.txt").write_text("copy of other value", encoding="utf-8")
+    calls = []
 
     def scan(argv, **kwargs):
-        assert "--ignore-gitleaks-allow" in argv
+        assert kwargs["capture_output"]
+        candidate = Path(argv[-1])
+        name = "failure.txt" if not calls else "still-dirty.txt"
+        calls.append(name)
+        hit = evidence_hit(candidate / "autopsy" / name)
+        if name == "still-dirty.txt":
+            hit.update(Match="other value", Secret="other value")
         report = Path(argv[argv.index("--report-path") + 1])
-        name = "unknown.txt" if scan_result == "unknown-file" else "failure.txt"
-        report.write_text(json.dumps([{"File": str(Path(argv[-1]) / "autopsy" / name),
-                                       "StartLine": 1, "RuleID": "planted-rule",
-                                       "Secret": "private contents"}]), encoding="utf-8")
-        return SimpleNamespace(returncode=1 if scan_result == "error" else stage_evidence.FINDINGS_EXIT)
+        report.write_text(json.dumps([hit]), encoding="utf-8")
+        return SimpleNamespace(returncode=stage.FINDINGS_EXIT, stderr="private contents")
 
-    monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
-    stage_evidence.stage(source, destination)
-    listing = (destination / "inventory.txt").read_text(encoding="utf-8")
-    assert "private contents" not in listing
-    if scan_result == "findings":
-        assert "withheld autopsy/failure.txt:1 (planted-rule)" in listing
-        assert not (destination / "autopsy/failure.txt").exists()
-        assert {p.name: p.read_text(encoding="utf-8") for p in (destination / "autopsy/harness").iterdir()} == clean
-    else:
-        assert sorted(p.name for p in destination.iterdir()) == ["inventory.txt"]
+    monkeypatch.setattr(stage.subprocess, "run", scan)
+    destination = tmp_path / "public"
+    stage.main([str(source), str(destination)])
+    assert calls == ["failure.txt", "still-dirty.txt"]
+    assert not (destination / "autopsy/still-dirty.txt").exists()
+    assert not (destination / "autopsy/copy-of-dirty.txt").exists()
+    expected = {
+        "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
+        "autopsy/other.txt": "context <redacted:planted-rule>",
+        "junit.xml": "<failure>&lt;redacted:planted-rule&gt;</failure>",
+        "vertical-summary.txt": "<redacted:planted-rule>",
+    }
+    for path, content in expected.items():
+        assert (destination / path).read_text(encoding="utf-8") == content
+    log = capsys.readouterr().err
+    assert log.splitlines() == [
+        "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:2 (planted-rule)",
+        "masked autopsy/other.txt:1 (planted-rule)",
+        "withheld autopsy/still-dirty.txt:1 (planted-rule)",
+        "masked junit.xml:1 (planted-rule)",
+        "masked vertical-summary.txt:1 (planted-rule)",
+    ]
+    assert log in (destination / "inventory.txt").read_text(encoding="utf-8")
 
 
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):

@@ -176,20 +176,29 @@ def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_valida
 
 @pytest.mark.parametrize("argv", [
     ("authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "operator", "--expect-rev", "1"),
+    ("authority", "accept", "C-0001", "--class", "decisions", "--expect-rev", "1"),
     ("authority", "reject", "C-0001", "--expect-rev", "1"),
     ("manifest", "adopt", "--reason", "reviewed", "--expect-rev", "1"),
     ("migrate", "--expect-rev", "1"),
 ])
 def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
-    """A Lead session may not record the operator's authority sign-off, approve an
+    """Operator, 2026-10-06: a Lead session may not accept authority (or record the operator's sign-off), approve an
     edit to project.yaml it could have made itself, or migrate the control state; the broker refuses them too."""
     refusal = lead_broker.refuses_locally(_ns(*argv))
     name = " ".join(a for a in argv if not a.startswith("-") and a not in {"C-0001", "decisions", "operator",
                                                                            "reviewed", "1"})
-    assert refusal and refusal.startswith(f"`aew {name}`") and "the operator's" in refusal, refusal
+    assert refusal and refusal.startswith(f"`aew {name}` is the operator's decision"), refusal
     assert "credential" not in refusal
     with pytest.raises(errors.PermissionDenied):
         lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
+
+
+def test_a_bound_lead_attributed_authority_accept_is_refused():
+    argv = ["authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "lead",
+            "--approval-digest", "a" * 64, "--expect-rev", "1"]
+    assert lead_broker.refuses_locally(_ns(*argv)).startswith("`aew authority accept` is the operator's decision")
+    with pytest.raises(errors.PermissionDenied):
+        lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
 
 
 def operator_decided_commands() -> list[str]:
@@ -228,11 +237,7 @@ def test_a_lead_session_never_records_a_decision_as_the_operators():
     assert lead_broker.refuses_locally(_ns(*(a for a in argv if a not in {"--by", "operator"}))) is None
     refusal = lead_broker.refuses_locally(_ns("authority", "accept", "C-0001", "--class", "decisions",
                                               "--decided-by", "operator", "--expect-rev", "1"))
-    assert refusal and "operator" in refusal
-    assert lead_broker.refuses_locally(_ns(
-        "authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "lead", "--expect-rev", "1",
-        "--approval-digest", "a" * 64,
-    )) is None
+    assert refusal and "operator" in refusal  # authority accept is the operator's in any form
 
 
 @pytest.mark.parametrize("argv", [

@@ -716,10 +716,10 @@ class Hierarchy:
             raise UsageError("a hierarchy change needs a reason")
         with self.k.lead_txn(token, expect_rev, "work.move", reason=reason) as ctx:
             unit = self.units.view(ctx.state, work_id)
+            parent_changed = approval.parent_change(work_id)
             approval.prior("work.move", work_id, "parent", prior_value, approval.parent_value(unit),
                            root=self.k.aew_root, state=ctx.state,
-                           event=lambda e: e["kind"] == "work.binding"
-                               and e["id"] == work_id and e["field"] == "parent")
+                           event=parent_changed)
             old = unit.get("parent")
             decision = self.k.new_decision(ctx, "hierarchy_change", f"{work_id} moved from {old} to {parent}",
                                          work_unit=work_id, reason=reason)
@@ -746,10 +746,10 @@ class Hierarchy:
                 raise UsageError(reason_required)
             state = ctx.state
             unit = self.units.unit(state, work_id)
+            parent_changed = approval.parent_change(work_id)
             approval.prior("work.promote", work_id, "kind and parent", prior_value, approval.promotion_value(unit),
                            root=self.k.aew_root, state=ctx.state,
-                           event=lambda e: e["kind"] == "work.binding"
-                               and e["id"] == work_id and e["field"] == "parent")
+                           event=parent_changed)
             if to not in PROMOTION.get(unit["kind"], set()):
                 raise UsageError(f"a {unit['kind']} cannot be promoted to a {to}")
             if unit["state"] in H.TERMINAL or unit["state"] == "VERIFICATION_FAILED":

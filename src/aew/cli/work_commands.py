@@ -262,9 +262,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--reason", required=True)
     q.add_argument("--class", dest="risk_class", type=int, choices=range(0, 5))
     _add_prior(q, "kind:parent (for example ticket:S-0001 or ticket:none)")
-    q.set_defaults(handler=lambda a: _bound_prior(a, "work_promote",
-        work_id=a.work_id, to=a.to, title=a.title,
-        reason=a.reason, risk_class=a.risk_class))
+    q.set_defaults(handler=_promote)
     q = wsub.add_parser("reclassify", help="raise a unit's risk class; recorded decision (Lead)")
     q.add_argument("work_id")
     q.add_argument("--class", dest="risk_class", type=int, required=True, choices=range(0, 5))
@@ -590,6 +588,16 @@ def _approved(a: argparse.Namespace, op: str, method: str, **kwargs: Any) -> Any
                   file=sys.stderr, flush=True)
     return getattr(engine, method)(token=token, expect_rev=a.expect_rev, work_id=a.work_id,
                                    binding=binding, **kwargs)
+
+
+def _promote(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    prior = a.prior_value
+    if prior is None and _approval_terminal(a):
+        prior = engine.prior_value("work_promote", a.work_id)
+    return engine.work_promote(token=token, expect_rev=a.expect_rev, work_id=a.work_id, to=a.to,
+                               title=a.title, reason=a.reason, risk_class=a.risk_class, prior_value=prior)
 
 
 def _bound_prior(a: argparse.Namespace, method: str, **kwargs: Any) -> Any:

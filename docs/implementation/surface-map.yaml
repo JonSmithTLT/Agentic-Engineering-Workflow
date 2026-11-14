@@ -408,21 +408,12 @@ commands:
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: authority accept
     home: operator-admin
-    users: [operator, lead]
-    door: "shell-only (pending A2/A4)"
-    lead_disposition: undecided
-    planned:
-      disposition: undecided
-      homes: []
-      primitive: none
-      lands: A2
-      reason: "the Lead can record its own bound decision through the relay"
-    owner: lead
+    users: [operator]
     journeys: []
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "optional --approval-digest binds the value shown by the preceding read"
+    note: "optional --approval-digest binds the candidate shown to the operator"
   - name: authority reject
     home: operator-admin
     users: [operator]

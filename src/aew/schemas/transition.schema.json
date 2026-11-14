@@ -340,6 +340,7 @@
             "kind": {
               "const": "queue.entry"
             },
+            "work": {"type": "string"},
             "id": {
               "type": "string"
             },

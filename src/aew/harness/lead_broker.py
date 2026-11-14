@@ -85,7 +85,7 @@ OPERATOR_CONFIRMED = (frozenset({"integrate", "breaker", "reset"}),)
 # sign-off; `manifest adopt` is the approval of an edit to project.yaml, which the actor that can edit the file must not
 # also hold; `migrate` restructures the control state and is not easily reverted. Waivers, history loads and audits
 # stay the Lead's: policy bounds a waiver, and the others only add reference context or verify.
-OPERATOR_DECIDED = (frozenset({"authority", "reject"}),
+OPERATOR_DECIDED = (frozenset({"authority", "accept"}), frozenset({"authority", "reject"}),
                     frozenset({"manifest", "adopt"}), frozenset({"migrate"}))
 # Arguments that record a decision as the operator's (operator, 2026-10-06: "if my name is attached to it I should have
 # actually approved"): the command asks the operator at their own terminal (`operator.require_operator_attribution`),
@@ -110,7 +110,7 @@ NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
 # here and from OPERATOR_ONLY is refused until someone classifies it (a test walks the parser).
 LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
-    "authority accept", "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
+    "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
     "harness launch", "harness send", "harness stop", "history audit", "history load", "integrate defer",
     "integrate prepare", "integrate publish", "integrate reconcile", "integrate reorder", "integrate requeue",
     "integrate validate",

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from aew.errors import ChangedSinceRead
+from aew.errors import ChangedSinceRead, IntegrityError
 from aew.util import sha256_text
 
 
@@ -14,23 +14,44 @@ def digest(value: Any) -> str:
     return sha256_text(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
+PRIOR_LOG_WINDOW = 64
+
+
+def prior_state(op: str, subject: str, expected: str, current: str, *, root: Path, state: dict[str, Any]) -> None:
+    prior(op, subject, "state", expected, current, root=root, state=state,
+          event=lambda row: row["kind"] == "work.state" and row["id"] == subject)
+
+
 def prior(op: str, subject: str, field: str, expected: str | None, current: str, *,
           root: Path, state: dict[str, Any], event: Callable[[dict[str, Any]], bool] | None = None,
           record: str | None = None) -> None:
     if expected is None or expected == current:
         return
+    source = ""
     if record is None and event is not None:
         from aew.engine.outbox import LogView
 
         since = (state.get("outbox") or {}).get("since")
         if since is not None:
-            log = LogView(root, since)
-            for revision in range(state["revision"], since - 1, -1):
-                if any(event(row) for row in log.events(log.record(revision)) or ()):
+            log = LogView(root, since, retries=0)
+            through = state["revision"]
+            for revision in range(through, max(since - 1, through - PRIOR_LOG_WINDOW), -1):
+                try:
+                    rows = log.events(log.record(revision)) or ()
+                except IntegrityError:
+                    source = "The change record could not be read. "
+                    break
+                if any(event(row) for row in rows):
                     record = f"control revision {revision}"
                     break
+        if record is None and not source:
+            source = f"No matching change record in the last {PRIOR_LOG_WINDOW} commits. "
     refuse_change(op, subject, field, expected, current, changed_by=record,
-                  next_step="Read the current value before deciding whether to try again.")
+                  next_step=source + "Read the current value before deciding whether to try again.")
+
+
+def parent_change(work_id: str) -> Callable[[dict[str, Any]], bool]:
+    return lambda row: row["kind"] == "work.binding" and row["id"] == work_id and row["field"] == "parent"
 
 
 def parent_value(unit: dict[str, Any]) -> str:
@@ -71,6 +92,7 @@ def refuse_change(op: str, subject: str, field: str, expected: Any, current: Any
 
 def compare(op: str, subject: str, expected: str | None, current: str | None, *,
             next_step: str = "Read the subject again and decide anew.", **details: Any) -> None:
+    """A digest mismatch may include uncommitted file edits, so it has no general change-record lookup."""
     if expected != current:
         refuse_change(op, subject, "approval subject", expected, current, next_step=next_step, **details)
 

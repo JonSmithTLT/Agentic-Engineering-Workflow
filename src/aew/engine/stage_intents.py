@@ -203,6 +203,9 @@ class StageIntents:
             state = ctx.state
             if subject is not None and subject not in state["work"]:
                 raise NotFound(f"no hot work unit {subject}: a stage's subject is a unit in flight", work_id=subject)
+            if subject is not None and (prior := arguments.get("prior_value")) is not None:
+                approval.prior_state(tool, subject, prior, state["work"][subject]["state"],
+                                     root=self.k.aew_root, state=state)
             for other in (state.get("stage_intents") or {}).values():
                 if other["subject"]["id"] == subject:  # one per unit, and one with no unit (§2.7: bounded)
                     raise IllegalTransition(

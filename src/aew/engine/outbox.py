@@ -128,7 +128,8 @@ def _queue_events(before: dict[str, Any], after: dict[str, Any]) -> list[dict[st
     for qid in sorted(set(old) | set(new)):
         was, now = (old.get(qid) or {}).get("state"), (new.get(qid) or {}).get("state")
         if was != now:
-            events.append({"kind": "queue.entry", "id": qid, "from": was, "to": now})
+            entry = new[qid] if qid in new else old[qid]
+            events.append({"kind": "queue.entry", "id": qid, "work": entry["work"], "from": was, "to": now})
     old_lease, new_lease = before.get("lease") or {}, after.get("lease") or {}
     if (old_lease.get("entry"), old_lease.get("custodian")) != (new_lease.get("entry"), new_lease.get("custodian")):
         events.append({"kind": "queue.lease", "entry": new_lease.get("entry"), "custodian": new_lease.get("custodian")})

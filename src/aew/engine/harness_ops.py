@@ -517,7 +517,7 @@ class Harness:
 
     @staticmethod
     def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:
-        launch = f"aew harness launch {invocation} {K.EXPECT_REV}"
+        launch = f"aew harness launch {invocation} {K.EXPECT_REV} --prior-value {run['run']}"
         if runlog.possibly_live(K.UNCONFIRMED, run["launched_at"]):
             return (f"Wait for the {runlog.UNCONFIRMED_GRACE_S:g}-second launch grace period. "
                     f"If the run is still unconfirmed, relaunch with `{launch}`.")

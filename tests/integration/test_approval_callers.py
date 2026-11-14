@@ -29,20 +29,15 @@ OPS = ["work.cancel", "plan.reconfirm", "work.accept", "verify.classify", "waive
        "verify.classify.ticket", "input.acknowledge", "work.dispose.projection"]
 
 
-@pytest.mark.parametrize("command", ["plan", "authority"])
-def test_relay_accepts_the_binding_prefilled_by_the_read(project, command):
+def test_relay_accepts_the_plan_binding_prefilled_by_the_read(project):
     from aew.errors import ChangedSinceRead
     from aew.harness.lead_broker import run_cli
 
     engine = Engine.discover(project.root)
-    if command == "plan":
-        wid = create_unit(project, "story", "Reviewed plan", cls=0)
-        engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
-                            body="Reviewed plan.", no_assurance=True)
-        argv = engine.status(wid)["plan_accept_argv"][1]
-    else:
-        candidate = next(c for c in engine.authority_list()["candidates"] if c["path"] == "README.md")
-        argv = candidate["accept_argv"]
+    wid = create_unit(project, "story", "Reviewed plan", cls=0)
+    engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+                        body="Reviewed plan.", no_assurance=True)
+    argv = engine.status(wid)["plan_accept_argv"][1]
     revision = project.rev()
     with pytest.raises(ChangedSinceRead):
         run_cli(engine, project.token, [*argv[:-1], "0" * 64], str(project.root), "", channel="lead.cli")

@@ -368,7 +368,6 @@ def test_reject_of_a_candidate_whose_file_is_gone(project, monkeypatch, capsys, 
 
     engine = Engine.discover(project.root)
     candidate = next(c for c in engine.authority_list()["candidates"] if c["path"] == "README.md")
-    candidate.pop("accept_argv", None)  # The projection's command is outside the stored candidate record.
     path = project.root / candidate["path"]
     path.unlink()
     if replacement == "directory":

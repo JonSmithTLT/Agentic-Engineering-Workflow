@@ -101,20 +101,9 @@ class ProjectAdmin:
         self.coordination = coordination
 
     def authority_list(self) -> dict[str, Any]:
-        state = self.k.store.current()
-        manifest = self._fresh_manifest()
-        candidates = []
-        for candidate in manifest["authority"]["candidates"]:
-            row = dict(candidate)
-            if candidate["status"] == "proposed":
-                shown = self._candidate_subject(candidate)
-                if shown["kind"] != "file, missing":
-                    row["accept_argv"] = approval.command(
-                        "authority.accept", candidate["id"], state["revision"], shown["digest"],
-                        "--class", candidate["suggested_class"], "--decided-by", "lead",
-                    )
-            candidates.append(row)
-        return {"accepted": manifest["authority"]["accepted"], "candidates": candidates}
+        self.k.store.current()  # recovery + integrity
+        return {"accepted": self.k.manifest["authority"]["accepted"],
+                "candidates": self.k.manifest["authority"]["candidates"]}
 
     def _rewrite_manifest(self, ctx, manifest: dict[str, Any]) -> None:
         validate("project", manifest, source="updated manifest")

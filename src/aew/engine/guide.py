@@ -449,8 +449,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
         f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
-        "- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew "
-        f"harness status> {EXPECT_REV}` (its credential rotates) or cancel it.",
+        "- **A lost harness run** is not an interruption: use the invocation's launch_argv from "
+        "`aew harness status <invocation>` to relaunch it (its credential rotates), or cancel it.",
         "",
         "## Non-mutating Tickets: investigation, research, planning",
         "",

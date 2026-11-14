@@ -8,9 +8,98 @@ from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.queue_ops import empty as empty_queue
 from aew.engine.store import Transition
 from aew.errors import ChangedSinceRead
+from aew.harness.lead_broker import run_cli
+from aew.surface.context import SurfaceContext
+from aew.surface.projection import project as projected
 
 B_OPS = sorted(op for op, specs in CONTROL_OP_SPECS.items()
                if any(spec.revision_class == "B" for spec in specs))
+
+
+@pytest.mark.parametrize("route", ["move", "promote", "staff", "defer", "requeue", "requeue_text", "lower"])
+def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, route):
+    import shlex
+
+    from aew.surface.run import run_tool
+
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    parent = create_unit(p, "story", "Parent", cls=0)
+    wid = create_unit(p, "ticket", "Child", cls=0, parent=parent)
+    if route == "lower":
+        _change_prior(engine, "steering.lower", wid, parent, {})
+        monkeypatch.setattr(engine._steering, "policy_default", lambda: "crawl")
+        args = engine.steering_view()["lower_arguments"]
+        assert args["prior_value"] == "SM-0099"
+        result = run_tool(engine, SurfaceContext.outside_session(), "steering", {**args, "mode": "crawl"},
+                          token=p.token)["result"]
+        assert result["mode"] == "crawl"
+        return
+    if route in {"move", "promote"}:
+        argv = engine.status(wid)["hierarchy_argv"][f"work.{route}"]
+    elif route == "staff":
+        argv = engine.work_roles(wid)["staff_argv"]
+    else:
+        _change_prior(engine, "integrate.defer", wid, parent, {})
+        with engine.store.session() as session:
+            [entry] = session.state["queue"]["entries"].values()
+            entry["state"] = "VALIDATED" if route == "defer" else "DEFERRED"
+            session.commit(Transition(op="test.queue_state", actor={"kind": "test"}, summary="set queue state"))
+        if route == "requeue_text":
+            hint = engine._resume._queue_wait(engine.store.current(), wid)
+            argv = shlex.split(hint.split("`")[1].replace("<revision from aew status>", str(p.rev())))[1:]
+        else:
+            argv = projected(engine, SurfaceContext.outside_session(), wid)["cli_fallback"][f"integrate.{route}"]
+    values = {"<parent>": "none", "<kind>": "story", "<title>": "Promoted", "<reason>": "reviewed"}
+    before = p.rev()
+    result = run_cli(engine, p.token, [values.get(arg, arg) for arg in argv], str(p.root), "",
+                     channel="lead.cli")["result"]
+    assert result["ok"] and p.rev() == before + 1
+    if route == "defer":
+        assert result["from"] == "VALIDATED" and result["to"] == "DEFERRED"
+    elif route.startswith("requeue"):
+        assert result["to"] == "QUEUED"
+    elif route == "staff":
+        assert result["staff_argv"][-1] == result["role_plan_digest"]
+
+
+def test_a_retired_queue_entry_names_the_commit(tmp_path):
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    wid = create_unit(p, "ticket", "Queued", cls=0)
+    _change_prior(engine, "integrate.defer", wid, "", {})
+    prior = engine.prior_value("integrate_defer", wid)
+    assert prior == "QUEUED"
+    with engine.store.session() as session:
+        session.state["work"][wid]["state"] = "READY"
+        engine._integration.queue.sync(session.state)
+        rev = session.commit(Transition(op="test.retire", actor={"kind": "test"}, summary="retire queue entry"))
+    with pytest.raises(ChangedSinceRead) as refused:
+        engine.integrate_defer(token=p.token, expect_rev=rev, work_id=wid, reason="reviewed", prior_value=prior)
+    assert refused.value.details["changed_by"] == f"control revision {rev}"
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_a_missing_change_record_leaves_the_prior_refusal(tmp_path, monkeypatch, missing):
+    from aew.engine import approval
+    from aew.engine.outbox import LogView
+    from aew.errors import IntegrityError
+
+    reads = []
+
+    def record(_self, rev):
+        reads.append(rev)
+        if missing:
+            raise IntegrityError("missing transition")
+        return {"events": []}
+
+    monkeypatch.setattr(LogView, "record", record)
+    with pytest.raises(ChangedSinceRead) as refused:
+        approval.prior("work.move", "T-0001", "parent", "S-0001", "none", root=tmp_path,
+                       state={"revision": 1000, "outbox": {"since": 1}}, event=lambda _: False)
+    assert len(reads) == (1 if missing else approval.PRIOR_LOG_WINDOW)
+    assert refused.value.details["changed_by"] is None
+    assert ("could not be read" if missing else "last 64 commits") in str(refused.value)
 
 
 @pytest.mark.parametrize("op", B_OPS)

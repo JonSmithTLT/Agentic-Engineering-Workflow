@@ -206,7 +206,7 @@ def _plan_start(a: dict[str, Any]) -> list[dict[str, Any]]:
     execution = {"execution": a["execution"]} if "execution" in a else {}
     return [{"primitive": "work.assign", "args": {**(assign or {}), **execution}},
             {"primitive": "dispatch.launch", "args": launch},
-            {"primitive": "work.transition", "args": {**(transition or {}), "prior_value": "ASSIGNED"}}]
+            {"primitive": "work.transition", "args": transition}]
 
 
 def _per_card(a: dict[str, Any], dispatch: dict[str, Any] | None, launch: dict[str, Any] | None,
@@ -227,8 +227,7 @@ def _plan_request_review(a: dict[str, Any], cards: list[str | None] | None = Non
     """``ticket_request_review`` (M4-E E5b): RUNNING -> REVIEW_PENDING, then a reviewer per card the effective gates
     require, each launched."""
     transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_review"])
-    prior = {"prior_value": a["prior_value"]} if "prior_value" in a else {}
-    return [{"primitive": "work.transition", "args": {**(transition or {}), **prior}},
+    return [{"primitive": "work.transition", "args": transition},
             *_per_card(a, dispatch, launch, cards)]
 
 
@@ -239,8 +238,7 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
     effective gates require, each launched. From REVIEW_PASSED (``shape``, E133) the review is already accepted."""
     ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
     accept = [{"primitive": "review.ingest", "args": ingest}] if (shape or {}).get(1, True) else []
-    prior = {"prior_value": "REVIEW_PASSED"} if accept else {k: a[k] for k in ("prior_value",) if k in a}
-    return [*accept, {"primitive": "work.transition", "args": {**(transition or {}), **prior}},
+    return [*accept, {"primitive": "work.transition", "args": transition},
             *_per_card(a, dispatch, launch, cards)]
 
 
@@ -253,7 +251,7 @@ def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> li
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
     plan: list[dict[str, Any]] = [*([{"primitive": "verify.ingest", "args": ingest}] if shape.get(1, True) else []),
                                   *([{"primitive": "work.transition",
-                                      "args": {**(transition or {}), "prior_value": "VERIFIED"}}] if shape.get(2, True)
+                                      "args": transition}] if shape.get(2, True)
                                     else []),
                                   {"primitive": "integrate.prepare", "args": prepare}]
     if shape.get(4):

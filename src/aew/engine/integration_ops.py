@@ -485,7 +485,8 @@ class Integration:
             approval.prior("integrate.defer", qid or work_id, "queue entry state", prior_value,
                            entry["state"] if entry else "none",
                            root=self.k.aew_root, state=ctx.state,
-                           event=lambda e: e["kind"] == "queue.entry" and e["id"] == qid)
+                           event=lambda e: e["kind"] == "queue.entry"
+                               and (e.get("work") == work_id or e["id"] == qid))
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
@@ -513,7 +514,8 @@ class Integration:
             approval.prior("integrate.requeue", qid or work_id, "queue entry state", prior_value,
                            entry["state"] if entry else "none",
                            root=self.k.aew_root, state=ctx.state,
-                           event=lambda e: e["kind"] == "queue.entry" and e["id"] == qid)
+                           event=lambda e: e["kind"] == "queue.entry"
+                               and (e.get("work") == work_id or e["id"] == qid))
             moved = self.queue.requeue(ctx.state, work_id, reason=reason)
             ctx.summary = f"{work_id} queue entry {moved['entry']} requeued from {moved['from']}: {reason}"
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),

@@ -1938,7 +1938,8 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "--lane vertical tests/acceptance/test_vertical_path.py" in run["run"] and "continue-on-error" not in run
     assert run["env"]["AEW_VERTICAL_OUT"] == "${{ runner.temp }}/vertical"
     upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
-    assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
+    assert upload["if"] == "always()"
+    assert "${{ runner.temp }}/vertical/*/vertical-ledger.json" in upload["with"]["path"].splitlines()
     # The lane's report leads the run's summary with the not-measured count, then each ledger's summary (STG-13,
     # addendum 1); its scenarios are the JUnit report's test cases.
     summaries = next(s for s in job["steps"] if "python -m vertical.report" in str(s.get("run", "")))

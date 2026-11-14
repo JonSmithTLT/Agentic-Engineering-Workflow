@@ -15,6 +15,7 @@ SAFE_PART = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*\Z")
 
 
 def stage(source: Path, destination: Path) -> str:
+    source, destination = source.resolve(), destination.resolve()
     if destination.exists():
         raise FileExistsError(destination)
     with TemporaryDirectory(dir=destination.parent) as temporary:
@@ -59,7 +60,7 @@ def stage(source: Path, destination: Path) -> str:
             result = subprocess.run(
                 ["gitleaks", "dir", "--redact", "--no-banner", "--report-format", "json",
                  "--report-path", str(report), str(candidate)],
-                capture_output=True, timeout=60, check=False,
+                cwd=temporary, capture_output=True, timeout=60, check=False,
             )
             if result.returncode == 0:
                 status = "gitleaks clean"

@@ -23,7 +23,7 @@ TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shap
 def test_defect_message_redacts_provider_keys_and_keeps_public_identifiers():
     from aew.harness.defects import bounded_message
 
-    key = "ghp_" + "Ab3" * 12
+    key = "sk-" + "lowercase"
     public = f"token_id: tk_{0x0123456789ABCDEF:016x} openapi_sha256: " + "ab012345" * 8
     assert bounded_message(f"{key} {public}") == f"<redacted> {public}"
 

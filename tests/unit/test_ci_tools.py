@@ -321,8 +321,10 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     autopsy.mkdir(parents=True)
     (autopsy / "failure.txt").write_text("private contentsTAIL\nprivate contents\n", encoding="utf-8")
     (autopsy / "other.txt").write_text("context private contents", encoding="utf-8")
-    (source / "junit.xml").write_text("<failure>private contents</failure>", encoding="utf-8")
-    (source / "vertical-summary.txt").write_text("private contents", encoding="utf-8")
+    # This short provider shape is covered by redact_text, outside gitleaks' OpenAI rule.
+    provider_key = "sk-" + "lowercase"
+    (source / "junit.xml").write_text(f"<failure>private contents {provider_key}</failure>", encoding="utf-8")
+    (source / "vertical-summary.txt").write_text(f"private contents {provider_key}", encoding="utf-8")
     (autopsy / "still-dirty.txt").write_text("other value", encoding="utf-8")
     (autopsy / "copy-of-dirty.txt").write_text("copy of other value", encoding="utf-8")
     calls = []
@@ -348,8 +350,8 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     expected = {
         "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
         "autopsy/other.txt": "context <redacted:planted-rule>",
-        "junit.xml": "<failure>&lt;redacted:planted-rule&gt;</failure>",
-        "vertical-summary.txt": "<redacted:planted-rule>",
+        "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
+        "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
     }
     for path, content in expected.items():
         assert (destination / path).read_text(encoding="utf-8") == content

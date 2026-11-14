@@ -32,7 +32,9 @@ from harness_qualify import (  # noqa: E402
 from harness_qualify import opencode as OC  # noqa: E402
 
 
-def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials(tmp_path, monkeypatch):
+@pytest.mark.parametrize("send_request", [True, False], ids=["relay", "no-model-request"])
+def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials(
+        tmp_path, monkeypatch, send_request):
     from aew.engine.base import check_policy_bytes
     from aew.errors import ValidationFailed
     from aew.policy import execution
@@ -53,6 +55,16 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
         from aew.harness.opencode import login
 
         assert "OPENAI_API_KEY" not in child_env
+        assert child_env["OPENCODE_DISABLE_MODELS_FETCH"] == "1"
+        catalog_path = Path(child_env["OPENCODE_MODELS_PATH"])
+        assert catalog_path.is_relative_to(work.resolve())
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        entry = catalog["openai"]["models"][worker_plan.MODEL]
+        assert entry["id"] == worker_plan.MODEL
+        config = _oc.server_config(base, model_id=worker_plan.MODEL)
+        assert config["agents"][_oc.AGENT]["model"] == {"providerID": "openai", "model": entry["id"]}
+        if not send_request:
+            return False, []
         with sqlite3.connect(login.db_path(child_env)) as con:
             sentinel = json.loads(con.execute("SELECT value FROM credential").fetchone()[0])["access"]
         url = urlsplit(base)
@@ -80,11 +92,17 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
 
     assert any(c.id == worker_plan.FACT for c in OC.OpenCodePack(FIXTURES).checks())
     outcome = worker_plan.check(ctx, fake_upstream=fake_upstream)
-    assert outcome.status == core.PASS and len(targets) == 1
+    assert len(targets) == 1
     fact = outcome.facts[worker_plan.FACT]
+    assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}
+    if not send_request:
+        assert outcome.status == core.FAIL
+        assert outcome.notes == ["No model request reached the plan relay"]
+        assert not fact["paths"] and not fact["saw_503"]
+        return
+    assert outcome.status == core.PASS
     assert fact["retried_503"] and fact["authorization_substituted"] and fact["account_id_substituted"]
     assert fact["paths"] == ["/backend-api/codex/responses"]
-    assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}
     assert worker_plan.ACCESS not in json.dumps(fact) and worker_plan.ACCOUNT not in json.dumps(fact)
     with pytest.raises(ValidationFailed):
         check_policy_bytes("execution", (execution.TEMPLATE + "\nfake_upstream: " + targets[0]).encode(),
@@ -1146,6 +1164,48 @@ def test_the_cli_writes_the_record_diff_and_report(tmp_path):
     assert record["schema"] == core.SCHEMA and record["harness"] == "opencode" and record["binary_sha256"]
     assert (out / "diff.txt").read_text(encoding="utf-8").startswith("~ openapi.min.x-aew-fixture.full_sha256")
     assert "Capabilities (declared by the adapter):" in (out / "report.txt").read_text(encoding="utf-8")
+
+
+def test_worker_plan_cli_runs_the_documented_command_through_network_reentry(tmp_path, monkeypatch):
+    import runpy
+    import subprocess
+
+    from harness_qualify import __main__ as cli
+
+    binary = fake_binary(tmp_path)
+    out = tmp_path / "out"
+    inner = ["--binary", str(binary), "--out", str(out), "--only", worker_plan.FACT]
+    monkeypatch.delenv(core.NETWORK_BLOCKED_ENV, raising=False)
+    monkeypatch.setattr(cli, "has_bubblewrap", lambda: True)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: name if name == "bwrap" else None)
+
+    def observed_network():
+        assert cli.os.environ[core.NETWORK_BLOCKED_ENV] == "1"
+        return "blocked: run under the fake qualification test"
+
+    def fake_check(ctx):
+        assert ctx.binary == binary.resolve()
+        return core.Outcome(core.FAIL, notes=["synthetic worker plan result"])
+
+    monkeypatch.setattr(core, "network_state", observed_network)
+    monkeypatch.setattr(worker_plan, "check", fake_check)
+    real_run = subprocess.run
+
+    def bwrap(cmd, **kwargs):
+        if cmd[0] != "bwrap":
+            return real_run(cmd, **kwargs)
+        assert cmd == ["bwrap", "--unshare-net", "--dev-bind", "/", "/", "--proc", "/proc", "--",
+                       sys.executable, str(TOOL), *inner]
+        with monkeypatch.context() as child:
+            child.setenv(core.NETWORK_BLOCKED_ENV, kwargs["env"][core.NETWORK_BLOCKED_ENV])
+            child.setattr(sys, "argv", cmd[9:])
+            with pytest.raises(SystemExit) as stopped:
+                runpy.run_path(str(TOOL), run_name="__main__")
+        return subprocess.CompletedProcess(cmd, stopped.value.code)
+
+    monkeypatch.setattr(subprocess, "run", bwrap)
+    assert cli.main([*inner, "--no-network"]) == 1
+    assert "synthetic worker plan result" in (out / "report.txt").read_text(encoding="utf-8")
 
 
 def HQ_main(argv: list[str]) -> int:  # noqa: N802

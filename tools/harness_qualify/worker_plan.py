@@ -26,6 +26,24 @@ PATH = "/backend-api/codex"
 ACCESS = "synthetic-qualify-plan-access"
 ACCOUNT = "synthetic-qualify-plan-account"
 FACT = "login.worker_plan_route"
+MODEL = "gpt-5.5"  # OpenCode 2.2.6's ChatGPT integration filters models by id.
+NO_RELAY_REQUEST = "No model request reached the plan relay"
+
+
+def _seed_catalog(ctx: Context, env: dict[str, str]) -> None:
+    """Supply the pinned OpenCode catalog shape locally for the offline probe."""
+    path = ctx.work / "synthetic-models.json"
+    path.write_text(json.dumps({"openai": {
+        "id": "openai", "name": "OpenAI", "env": ["OPENAI_API_KEY"],
+        "models": {MODEL: {
+            "id": MODEL, "name": MODEL, "type": "chat", "release_date": "2026-04-23",
+            "modalities": {"input": ["text"], "output": ["text"]},
+            "capabilities": {"tools": {"supported": False}, "reasoning": {"supported": False}},
+            "limit": {"context": 128_000, "output": 4096},
+            "api": {"responses": {"sdk": {"opencodeai": "@opencode/ai/providers/openai/responses"}}},
+        }},
+    }}), encoding="utf-8")
+    env.update(OPENCODE_MODELS_PATH=str(path.resolve()), OPENCODE_DISABLE_MODELS_FETCH="1")
 
 
 def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = model.ResponsesModel) -> Outcome:
@@ -41,6 +59,7 @@ def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = 
     ctx.work.mkdir(parents=True, exist_ok=True)
     if not login.db_path(env).resolve().is_relative_to(ctx.work.resolve()):
         return Outcome(FAIL, notes=["the synthetic worker database must be inside the private probe directory"])
+    _seed_catalog(ctx, env)
     subprocess.run([*oc.command(ctx.binary), "session", "list"], cwd=ctx.work, env=env, check=True,
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
     worker_db = login.db_path(env)
@@ -96,12 +115,17 @@ def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = 
             listener.listen()
             port = listener.getsockname()[1]
             with relay.ProviderRelay(target, {}, listener=listener, connect=connect, resolve=grant) as service:
-                catalog, cost = _turn(oc, ctx, env, f"http://127.0.0.1:{port}{PATH}")
+                base = f"http://127.0.0.1:{port}{PATH}"
+                catalog, cost = _turn(oc, ctx, env, base)
+                reached_relay = bool(service.counts())
                 requests_before_retry = len(upstream.requests)
-                busy = True
-                _turn(oc, ctx, env, f"http://127.0.0.1:{port}{PATH}")
-                retry_count = service.counts().get("credential:unreadable_retryable", 0)
+                retry_count = 0
+                if requests_before_retry:
+                    busy = True
+                    _turn(oc, ctx, env, base)
+                    retry_count = service.counts().get("credential:unreadable_retryable", 0)
                 retry = retry_count == 1 and len(upstream.requests) > requests_before_retry
+                busy = False
                 before = len(destinations)
                 expires = int(time.time() * 1000) + 60_000
                 with closing(sqlite3.connect(host_db)) as db, db:
@@ -125,27 +149,28 @@ def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = 
               and facts["only_fake_upstream"] and not facts["key_in_environment"] and catalog and cost
               and facts["saw_503"]
               and expiry == {"status": 401, "expired": True, "connected": False})
-        return Outcome(PASS if ok else FAIL, {FACT: facts})
+        notes = [] if reached_relay else [NO_RELAY_REQUEST]
+        return Outcome(PASS if ok else FAIL, {FACT: facts}, notes=notes)
     finally:
         upstream.close()
 
 
 def _turn(oc: Any, ctx: Context, env: dict[str, str], base: str) -> tuple[bool, list[Any]]:
     work = ctx.work / "worker"
-    with oc.serve(ctx.binary, work, env, oc.server_config(base)) as server:
+    with oc.serve(ctx.binary, work, env, oc.server_config(base, model_id=MODEL)) as server:
         loc = oc.location(str((work / "project").resolve()))
         deadline = time.monotonic() + oc.TURN_S
         listed = False
         while time.monotonic() < deadline:
             catalog = (server.client.get("/api/model", loc) or {}).get("data") or []
-            listed = any(m.get("providerID") == "openai" and m.get("id") == oc.MODEL for m in catalog)
+            listed = any(m.get("providerID") == "openai" and m.get("id") == MODEL for m in catalog)
             if listed:
                 break
             time.sleep(0.25)
         if not listed:
             return False, []
         session = server.client.post("/api/session", {
-            "title": "worker plan qualification", "agent": oc.AGENT, "model": {"providerID": "openai", "id": oc.MODEL},
+            "title": "worker plan qualification", "agent": oc.AGENT, "model": {"providerID": "openai", "id": MODEL},
             "location": {"directory": str((work / "project").resolve())}, "permissions": oc._ALL_ALLOWED})
         sid = (session.get("data") or session)["id"]
         mid = "msg_" + oc.secrets.token_hex(12)

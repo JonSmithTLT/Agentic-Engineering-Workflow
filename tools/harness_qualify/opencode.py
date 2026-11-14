@@ -56,17 +56,17 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # ------------------------------------------------------------------------------------------------ starting the server
 
-def server_config(base_url: str | None = None) -> dict[str, Any]:
+def server_config(base_url: str | None = None, *, model_id: str = MODEL) -> dict[str, Any]:
     config: dict[str, Any] = {"snapshots": False, "update": "disable", "share": "disabled", "lsp": False,
                               "formatter": False}
     if base_url is not None:
-        ref = {"providerID": "openai", "model": MODEL}
+        ref = {"providerID": "openai", "model": model_id}
         agent = {"model": ref, "mode": "primary", "system": "Do exactly what the scripted model says.",
                  "permissions": _ALL_ALLOWED}
         config.update({"default_agent": AGENT, "agents": {AGENT: agent, **{a: {"model": ref} for a in
                                                                            ("title", "summary", "compaction")}},
                        "providers": {"openai": {"settings": {"baseURL": base_url, "transport": "http"},
-                                                "models": {MODEL: {"settings": {"baseURL": base_url}}}}}})
+                                                "models": {model_id: {"settings": {"baseURL": base_url}}}}}})
     return config
 
 

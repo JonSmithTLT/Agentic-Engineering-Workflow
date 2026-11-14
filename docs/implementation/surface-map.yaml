@@ -187,8 +187,8 @@ commands:
       capability register"
     refusals: [INTEGRITY_ERROR, NOT_FOUND, USAGE, VALIDATION_FAILED]
     note: "its first configuration's flags are refused under AEW_LEAD_BROKER (register E119), and so is --fetch-tool
-      (the operator's decision of 2026-11-05: AEW downloads no tool unless the operator chooses it); NOT_FOUND: an
-      unknown --fetch-tool, refused before anything is written"
+      (the operator's decision of 2026-11-05). --fetch-tool none by itself skips consent and downloads without
+      recording an answer (E191). Unknown tools and combinations with none are refused before anything is written."
   - name: status
     home: product
     users: [operator, lead]
@@ -628,9 +628,9 @@ commands:
       primitive: work.accept
       lands: A2
       reason: "evidence acceptance is the Lead's judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work close
     home: product
     users: [lead]
@@ -645,9 +645,9 @@ commands:
       primitive: work.close
       lands: A2
       reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work cancel
     home: product
     users: [lead]
@@ -662,9 +662,9 @@ commands:
       primitive: work.cancel
       lands: A2
       reason: "cancelling a unit is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work move
     home: product
     users: [lead]
@@ -747,9 +747,9 @@ commands:
       primitive: work.acknowledge-input
       lands: A2
       reason: "acknowledging an input is judgment"
-      options: {work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
     home: product
     users: [operator, lead]
@@ -908,9 +908,9 @@ commands:
       primitive: plan.reconfirm
       lands: A2
       reason: "reconfirming a plan is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke create
     home: product
     users: [lead]
@@ -1137,13 +1137,13 @@ commands:
       primitive: gate.waive
       lands: A2
       reason: "waiving a gate is the Lead's (operator, 2026-10-06); `R(waive)` pairs only a gate, so waiving a required finding (`--finding`) has no typed home yet (`uncovered`, the A1-0 review's F2)"
-      options: {work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
       uncovered:
         lands: A2
         uses:
           - "option --finding"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: evidence ingest
     home: product
     users: [lead]
@@ -1198,9 +1198,9 @@ commands:
       primitive: verify.classify
       lands: A2
       reason: "classifying a verification failure is judgment"
-      options: {work_id: homes, "--as": homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate prepare
     home: product
     users: [lead]

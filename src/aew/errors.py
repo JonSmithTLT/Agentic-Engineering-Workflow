@@ -100,6 +100,10 @@ class IllegalTransition(AEWError):
     exit_code = 5
 
 
+class ApprovalSubjectChanged(IllegalTransition):
+    code = "APPROVAL_SUBJECT_CHANGED"
+
+
 class GateUnsatisfied(IllegalTransition):
     code = "GATE_UNSATISFIED"
 

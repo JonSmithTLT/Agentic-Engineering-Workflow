@@ -42,6 +42,21 @@ def tree(root: Path) -> dict[str, bytes]:
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in (root / ".aew").rglob("*") if p.is_file()}
 
 
+def test_init_accepts_fetch_none_without_recording_a_tool_answer(tmp_path):
+    root = repo(tmp_path)
+    res = init(root, "--fetch-tool", "none")
+    assert res.returncode == 0, res.stderr
+    tools = res.json["tools"]
+    assert tools["answer"] is None and tools["downloaded"] == {} and tools["declined"] == []
+
+
+def test_init_refuses_mixing_fetch_none_with_a_tool_before_writing(tmp_path):
+    root = repo(tmp_path)
+    res = init(root, "--fetch-tool", "none", "--fetch-tool", "ripgrep")
+    assert res.error["code"] == "USAGE" and "by itself" in res.error["message"]
+    assert not (root / ".aew").exists()
+
+
 def test_init_omits_the_legacy_project_profile(tmp_path):
     root = repo(tmp_path)
     res = init(root)
@@ -156,8 +171,8 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     assert classify and f"aew lead release {K.EXPECT_REV}" in classify[0]
     token = run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").json["token"]
     env = {"AEW_LEAD_TOKEN": token}
-    accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation", "--expect-rev", "1",
-                       env=env)
+    accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation",
+                       "--decided-by", "lead", "--expect-rev", "1", env=env)
     assert accepted.returncode == 0, accepted.stderr
     take = ("-C", str(root), "lead", "acquire", "--expect-rev", "2")
     held = run_aew(*take)

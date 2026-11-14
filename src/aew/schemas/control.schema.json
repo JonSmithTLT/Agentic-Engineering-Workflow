@@ -56,6 +56,18 @@
                 "digest": {"$ref": "#/$defs/sha256"},
                 "unit": {"type": "string"},
                 "ref": {"type": "string"},
+                "metadata": {
+                  "description": "Credential-free result fields that cannot be reconstructed from the referenced record.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                    "decision": {"type": "string"},
+                    "execution": {"type": "object"},
+                    "superseded": {"type": "object"},
+                    "dispatch": {"type": "object"}
+                  }
+                },
                 "revision": {"type": "integer", "minimum": 1}
               }
             }

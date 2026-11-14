@@ -19,6 +19,7 @@ from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
 from aew import operator
+from aew.engine import approval
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
 from aew.engine.request_ids import INDEX
@@ -400,7 +401,9 @@ class Lead:
         )
         with self.k.store.session() as s:
             state = s.state
-            if s.revision != snapshot["revision"] or state["lead"]["generation"] != lead["generation"]:
+            approval.compare("lead.takeover", "Lead generation", str(lead["generation"]),
+                             str(state["lead"]["generation"]), next_step="Re-run takeover.")
+            if s.revision != snapshot["revision"]:
                 raise StaleRevision("control state changed during operator authorization; re-run takeover",
                                     expected=snapshot["revision"], current=s.revision)
             previous = {"generation": state["lead"]["generation"], "session_label": state["lead"]["session_label"]}
@@ -416,7 +419,7 @@ class Lead:
                 f"Operator-authorized Lead takeover: generation {previous['generation']} -> {new_gen}",
                 decided_by={"kind": "operator", "authorized_by": auth["authorized_by"],
                             "new_session_label": session_label},
-                reason=reason,
+                reason=reason, evidence_refs=[f"lead@record:generation:{lead['generation']}"],
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
             self.queue.sync(s.state)  # the takeover ended every custodian: their leases await reconcile

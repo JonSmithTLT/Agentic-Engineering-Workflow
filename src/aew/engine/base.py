@@ -138,6 +138,7 @@ class TxnContext:
     dispatch_decisions: list[Any] = field(default_factory=list)
     replayed: dict[str, Any] | None = None
     request_ref: tuple[str, str] | None = None
+    request_metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -437,7 +438,7 @@ class Kernel:
                 try:
                     ctx = TxnContext(session=s, actor=actor, txn_op=op)
                     if request is not None:
-                        ctx.replayed = request.replay(s.state, actor["generation"], op)
+                        ctx.replayed = request.replay(s.state, actor["generation"], op, aew_root=self.aew_root)
                         if ctx.replayed is not None:
                             yield ctx
                             return
@@ -445,7 +446,8 @@ class Kernel:
                     self.finalizers.run(ctx)
                     if request is not None:
                         projected = s.state if ctx.commit_state is None else ctx.commit_state
-                        request.remember(projected, actor["generation"], op, ctx.request_ref, s.revision + 1)
+                        request.remember(projected, actor["generation"], op, ctx.request_ref, s.revision + 1,
+                                         ctx.request_metadata)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
                              expect_rev=expect_rev, state=ctx.commit_state)

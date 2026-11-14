@@ -19,9 +19,10 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-OFF_LIST_SHA = {"normal": "48afb5063f03ee0fd7bc3d7a11c8bf6bfaab6f71c31048132c6e4e1313242a48",
-                "recovery": "7bf05654630eb33df51161c11cc8db475797aa1ecc490107712549d2dcb9d8c6"}
-OFF_CLI_SHA = "da1c7adb3e31ec1579573637d0770778fb3f6db1a359c8c580d2f813bcbce904"
+# Full catalogs with messaging off, including E327's optional resolve approval digest.
+OFF_LIST_SHA = {"normal": "34786d9f407b2e7bf3f05cab3e4ecbbf2d55438b905ca0e56dbdbf1588b838d0",
+                "recovery": "ac57b66069f8001c25b94984975c351e16eddaf02f7e8869eafa0b0eefc80567"}
+OFF_CLI_SHA = "c104c7de0b9b070d205ffb3fd03d78f4df1efc07127242b57bf9393843eb8c91"
 
 
 def digest(value):
@@ -60,7 +61,6 @@ def cli(w, *arguments):
 
 @pytest.mark.parametrize("profile", ["normal", "recovery"])
 def test_with_messaging_off_tools_list_is_byte_identical_on_both_profiles(profile):
-    # Independently captured from main b2a7a287 after its priority schema; full tools/list, not only bytes or names.
     assert digest(mcp.tools_list(profile)) == OFF_LIST_SHA[profile]
 
 
@@ -196,8 +196,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
         "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
                     "Requests grant nothing.",
-        "resolve": "Settle what resume or a decision lists: continue or abandon an active stage; dispose of a finding "
-                   "or anomaly.",
+        "resolve": "Resolve a shown decision.",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

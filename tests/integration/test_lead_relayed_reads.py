@@ -97,6 +97,23 @@ def broker(lab, monkeypatch):
     b.close()
 
 
+def settled(lab: HarnessLab, broker: lead_broker.LeadBroker) -> None:
+    """Wait until the broker's steering loop has recorded its look at the committed state, which `status` shows.
+
+    The loop runs on its own thread and activates once the broker starts, and again after each commit. Its record
+    holds the activation's id and times, so a `status` read before the record and one read after it differ (CI,
+    2026-11-12: the relayed `status --json` carried a `steering.loop` block the direct one before it lacked). Once
+    the loop has recorded the current revision, only a commit or a wake starts another activation (``SteeringLoop.
+    _run_forever``), and a read makes neither. So two reads after this barrier see the same record."""
+    revision = int(ControlStore(lab.aew_root).read_committed()["revision"])
+
+    def recorded() -> bool:
+        stop = (steering.loop_state(lab.aew_root, broker.generation) or {}).get("stop")
+        return isinstance(stop, dict) and stop.get("revision") == str(revision)  # shown as `status` shows it
+
+    lab.until(recorded, what=f"the steering loop's record of revision {revision}")
+
+
 def contained(lab: HarnessLab, broker: lead_broker.LeadBroker) -> dict[str, str]:
     return {**lab.env, **broker.env, process_kind.LEAD_CONTAINED_ENV: "1"}
 
@@ -163,6 +180,7 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
     names). One write follows a read, and it is the broker's: a wait told the Lead the run's end, which it records in
     its delivery records, each named by its exact path (``delivery_records``; what it records is the next tests')."""
     run, invocation = worked(lab, tmp_path)
+    settled(lab, broker)  # the loop's look at the work's last commit, before the first pair of reads
     served: list[list[str]] = []
     run_read = lead_broker.run_read
 
@@ -308,6 +326,7 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
     """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
     are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""
+    settled(lab, broker)
     here = direct(lab, "status", "--json")
     with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
         started = time.monotonic()

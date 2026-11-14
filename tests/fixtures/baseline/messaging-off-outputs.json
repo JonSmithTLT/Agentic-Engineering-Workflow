@@ -283,6 +283,23 @@
     },
     "resume_text": "# AEW resume \u2014 repo (control revision 6)\n\nLead: active (generation 1)\nLead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\n\n## Hierarchy\n\n```text\nTicket T-0001 [RUNNING] Add subtract()\n```\n\n## Work\n- T-0001 [RUNNING] Add subtract()\n    roles: execute: engineer; review: code_reviewer; verify: verifier\n    unmet gates: {'local_checks': 'MISSING', 'self_review': 'MISSING', 'review_r1': 'MISSING', 'verification_goal_backwards': 'MISSING', 'verification_contract': 'MISSING'}\n\n## Next actions\n- classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\n- configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\n- T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)",
     "status": {
+      "approval_subjects": {
+        "plan.reconfirm": {
+          "ancestors": {},
+          "argv": [
+            "plan",
+            "reconfirm",
+            "T-0001",
+            "--reason",
+            "<reason>",
+            "--expect-rev",
+            "6",
+            "--approval-digest",
+            "<digest>"
+          ],
+          "digest": "<digest>"
+        }
+      },
       "coverage": {
         "summary": {
           "headline": "Validation: not yet validated",
@@ -813,6 +830,23 @@
           "subject": "T-0001"
         },
         "result": {
+          "approval_subjects": {
+            "plan.reconfirm": {
+              "ancestors": {},
+              "argv": [
+                "plan",
+                "reconfirm",
+                "T-0001",
+                "--reason",
+                "<reason>",
+                "--expect-rev",
+                "6",
+                "--approval-digest",
+                "<digest>"
+              ],
+              "digest": "<digest>"
+            }
+          },
           "coverage": {
             "summary": {
               "headline": "Validation: not yet validated",
@@ -907,7 +941,7 @@
         "surface": "aew/surface/v1",
         "tool": "status"
       },
-      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":6,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"6\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":6,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":6,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":6,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":6,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"6\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":6,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"approval_subjects\":{\"plan.reconfirm\":{\"ancestors\":{},\"digest\":\"<digest>\",\"argv\":[\"plan\",\"reconfirm\",\"T-0001\",\"--reason\",\"<reason>\",\"--expect-rev\",\"6\",\"--approval-digest\",\"<digest>\"]}},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
     },
     "typed_work_show": {
       "json": {
@@ -1449,6 +1483,23 @@
     },
     "resume_text": "# AEW resume \u2014 repo (control revision 7)\n\nLead: active (generation 1)\nLead authority is held by generation 1 (lead-a). This session must not act as Lead unless authority is transferred: a cooperative `aew lead handoff accept`, or \u2014 if the previous session is lost \u2014 an operator-authorized `aew lead takeover` run by the operator at an interactive terminal.\n\n## Hierarchy\n\n```text\nTicket T-0001 [RUNNING] Add subtract()\n```\n\n## Work\n- T-0001 [RUNNING] Add subtract()\n    roles: execute: engineer; review: code_reviewer; verify: verifier\n    unmet gates: {'local_checks': 'MISSING', 'self_review': 'MISSING', 'review_r1': 'MISSING', 'verification_goal_backwards': 'MISSING', 'verification_contract': 'MISSING'}\n\n## Next actions\n- classify authority candidates (the operator, at their own terminal; a Lead session is refused it, and it blocks nothing). A session started with `aew opencode --acquire` doesn't ask: that path shows no credential, and a takeover would turn the live Lead read-only, so the operator classifies after it exits, at their own terminal. First they take the seat: `aew lead acquire --expect-rev <revision from aew status>` when the exit reported it released, or `aew lead takeover --expect-rev <revision from aew status> --reason <reason>` when it reported it held. When it reported superseded, the Lead that took the seat classifies. Then `aew authority list`, and for each `aew authority accept <candidate> --class <contracts|decisions|schemas|source|orientation> --expect-rev <revision from aew status>` or `aew authority reject <candidate> --reason <reason> --expect-rev <revision from aew status>`. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release --expect-rev <revision from aew status>` gives it up\n- configure checks ['unit'] in .aew/policy/checks.yaml (gates needing them stay blocked); the operator then accepts the edit with `aew manifest adopt --reason <reason> --expect-rev <revision from aew status>`\n- T-0001: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)",
     "status": {
+      "approval_subjects": {
+        "plan.reconfirm": {
+          "ancestors": {},
+          "argv": [
+            "plan",
+            "reconfirm",
+            "T-0001",
+            "--reason",
+            "<reason>",
+            "--expect-rev",
+            "7",
+            "--approval-digest",
+            "<digest>"
+          ],
+          "digest": "<digest>"
+        }
+      },
       "coverage": {
         "summary": {
           "headline": "Validation: not yet validated",
@@ -1979,6 +2030,23 @@
           "subject": "T-0001"
         },
         "result": {
+          "approval_subjects": {
+            "plan.reconfirm": {
+              "ancestors": {},
+              "argv": [
+                "plan",
+                "reconfirm",
+                "T-0001",
+                "--reason",
+                "<reason>",
+                "--expect-rev",
+                "7",
+                "--approval-digest",
+                "<digest>"
+              ],
+              "digest": "<digest>"
+            }
+          },
           "coverage": {
             "summary": {
               "headline": "Validation: not yet validated",
@@ -2073,7 +2141,7 @@
         "surface": "aew/surface/v1",
         "tool": "status"
       },
-      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":7,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"7\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":7,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
+      "text": "status: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\ncoverage: Validation: not yet validated\nblocker: GATE_UNSATISFIED: RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\n\nFor the Lead, the result as JSON on the next line.\n{\"ok\":true,\"tool\":\"status\",\"revision\":7,\"generation\":1,\"stage_intent_id\":null,\"stopped\":null,\"projection\":{\"revision\":7,\"generation\":1,\"subject\":\"T-0001\",\"state\":\"RUNNING\",\"actions\":[{\"action\":\"ticket_request_review\",\"kind\":\"stage\",\"arguments\":{\"expect_rev\":7,\"work_id\":\"T-0001\"},\"operation_class\":\"POLICY_RESOLVED\",\"availability\":\"BLOCKED\",\"callable\":true,\"auto_runnable\":false,\"reason_codes\":[\"GATE_UNSATISFIED\"],\"cli_fallback\":[\"work\",\"transition\",\"T-0001\",\"--to\",\"REVIEW_PENDING\",\"--expect-rev\",\"7\"]}],\"decisions_required\":[],\"blockers\":[{\"code\":\"GATE_UNSATISFIED\",\"message\":\"RUNNING -> REVIEW_PENDING: gates not satisfied for the current evaluated snapshot\",\"details\":{\"unmet\":{\"local_checks\":\"MISSING\",\"self_review\":\"MISSING\"},\"fingerprint\":\"git-tree:<digest>\"}}],\"anomalies\":[],\"hints\":[\"implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)\"],\"runs\":[]},\"completed_steps\":[],\"result\":{\"revision\":7,\"work_unit\":{\"kind\":\"ticket\",\"title\":\"Add subtract()\",\"record\":\"work/T-0001/ticket.md\",\"parent\":null,\"state\":\"RUNNING\",\"state_reason\":null,\"risk_class\":1,\"mutating\":true,\"depends_on\":[],\"policy\":null,\"created_at\":\"<time>\",\"plan\":{\"accepted\":1,\"path\":\"work/T-0001/plan-v1.md\",\"ancestor_plans\":{}},\"plans\":[{\"revision\":1,\"path\":\"work/T-0001/plan-v1.md\",\"supersedes\":null,\"status\":\"accepted\",\"assurance\":{\"review\":[],\"verify\":[]}}],\"blocked_by\":[],\"workspace\":{\"id\":\"ws-T-0001-1\",\"path\":\"<project>/.aew-workspaces/calc/T-0001-1\",\"branch\":\"aew/T-0001-1\",\"base_commit\":\"<digest>\",\"allocated_at\":\"<time>\",\"status\":\"active\",\"base_snapshot\":{\"base_revision\":\"<digest>\",\"workspace_id\":\"ws-T-0001-1\",\"relevant_inputs_fingerprint\":\"git-tree:<digest>\"},\"dependencies\":[]},\"invocations\":[\"INV-0001\"],\"implementer_invocation\":\"INV-0001\",\"evidence\":[],\"classifications\":[],\"waivers\":[],\"integration\":null,\"role_plan\":{\"execute\":[],\"review\":[],\"verify\":[],\"forbidden\":[]},\"attempts\":1,\"history\":[{\"from\":\"READY\",\"to\":\"ASSIGNED\",\"at\":\"<time>\",\"reason\":\"assigned to INV-0001 in ws-T-0001-1\"},{\"from\":\"ASSIGNED\",\"to\":\"RUNNING\",\"at\":\"<time>\",\"reason\":null}],\"id\":\"T-0001\"},\"approval_subjects\":{\"plan.reconfirm\":{\"ancestors\":{},\"digest\":\"<digest>\",\"argv\":[\"plan\",\"reconfirm\",\"T-0001\",\"--reason\",\"<reason>\",\"--expect-rev\",\"7\",\"--approval-digest\",\"<digest>\"]}},\"coverage\":{\"summary\":{\"verdict\":\"not yet validated\",\"headline\":\"Validation: not yet validated\",\"known_gaps\":{},\"lines\":[]}}}}\n\ncoverage: Validation: not yet validated\nstatus: done (T-0001: RUNNING)\nnext: implementer INV-0001 in progress; when its report and checks are in, advance to REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"
     },
     "typed_work_show": {
       "json": {

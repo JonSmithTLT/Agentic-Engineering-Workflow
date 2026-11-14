@@ -526,6 +526,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `OBSERVATION_MUTATED` | A read-only invocation changed its observation workspace | `observation_mutated` | Lead |
 | `WORKSPACE_MUTATED` | An evaluated workspace no longer holds what it was dispatched to evaluate | `workspace_mutated` | Lead |
 | `ILLEGAL_TRANSITION` | Only a transition-table refusal, naming the state | `transition_refused` | Lead |
+| `APPROVAL_SUBJECT_CHANGED` | The approval subject changed since it was shown. Read it again and make a new decision. | `approval_subject_changed` | Lead |
 | `GATE_UNSATISFIED` | A gate the transition requires is not met | `gate_unmet` | Lead |
 | `DISPOSITION_REQUIRED` | A finding or claim that policy marks for disposition has none | `disposition_missing` | Lead |
 | `CARD_CHOICE_REQUIRED` | A stage cannot choose the card a required gate needs | `card_ambiguous`, `card_missing` | Lead |

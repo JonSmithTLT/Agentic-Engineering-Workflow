@@ -63,6 +63,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from aew.engine import approval
 from aew.engine import primitives as P
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
@@ -329,7 +330,7 @@ class StageIntents:
         return {"intent": intent, "status": ABANDONED, "revision": revision}
 
     def continue_(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
-                  plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+                  plan: list[dict[str, Any]] | None, rationale: str, binding: str | None = None) -> dict[str, Any]:
         """The current Lead's explicit continue (rule 8; F18 §14): every recheck must pass now, or nothing commits and
         the intent stays ACTIVE for another choice. ``contract_digest`` and ``plan`` are the stage contract and plan
         the surface re-resolved from its catalog now (``None``: it has none for this tool any more).
@@ -346,6 +347,8 @@ class StageIntents:
             state = ctx.state
             si = self._active(state, intent)
             check = self.recheck(state, si, contract_digest=contract_digest, plan=plan)
+            if binding is not None:
+                approval.compare("stage.continue", intent, binding, check["approval"]["digest"])
             _refuse_unless_continuable(si, check)
             rev = ctx.session.revision + 1
             generation = state["lead"]["generation"]
@@ -355,6 +358,9 @@ class StageIntents:
             si["generation"] = generation
             si["resolution"] = {"choice": "continue", "rationale": rationale.strip()[:2000], "generation": generation,
                                  "rev": rev, "at": at}
+            if binding is not None:
+                si["rebound"][-1]["approval_ref"] = f"{intent}@record:{binding}"
+                si["resolution"]["approval_ref"] = f"{intent}@record:{binding}"
             # The renewed judgment supersedes a recoverable stale stop; its original transaction remains in history.
             si["stopped"] = None
             done, planned = len(si["steps"]), len(si["plan"])
@@ -414,10 +420,10 @@ class StageIntents:
         else:
             checks["contract"] = {"status": OK, "message": "the stage contract and plan re-resolve unchanged"}
         subject = si["subject"]
+        unit = state["work"].get(subject["id"]) if subject["kind"] == "unit" else None
         if subject["kind"] != "unit":
             checks["subject"] = {"status": NOT_APPLICABLE, "message": "a project stage"}
         else:
-            unit = state["work"].get(subject["id"])
             expected = steps[-1]["subject_after"] if steps else subject["start"]
             if unit is None:
                 checks["subject"] = {"status": "gone", "message": f"{subject['id']} is no longer in flight"}
@@ -443,7 +449,12 @@ class StageIntents:
             boundary = "launch_failed"
         elif nxt is None:
             boundary = "completed"
-        return {"intent": si["id"], "checks": checks, "owner_generation": si["generation"],
+        approval_subject = {"intent": si["id"], "contract": contract_digest, "plan": _plan_of(plan) if plan else plan,
+                            "subject": subject,
+                            "state": unit_state(unit),
+                            "owner_generation": si["generation"], "steps_committed": len(steps)}
+        return {"approval": {"subject": approval_subject, "digest": approval.digest(approval_subject)},
+                "intent": si["id"], "checks": checks, "owner_generation": si["generation"],
                 "current_generation": state["lead"]["generation"],
                 "rebind": si["generation"] != state["lead"]["generation"],
                 "next_step": None if nxt is None else {k: nxt[k] for k in ("n", "primitive", "operation_class", "key")}

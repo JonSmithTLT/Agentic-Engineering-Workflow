@@ -166,6 +166,9 @@ class _Tee(io.TextIOBase):
     def flush(self) -> None:
         self.inner.flush()
 
+    def isatty(self) -> bool:
+        return bool(self.inner.isatty())
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
 

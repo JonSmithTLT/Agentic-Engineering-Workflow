@@ -171,8 +171,8 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     assert classify and f"aew lead release {K.EXPECT_REV}" in classify[0]
     token = run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").json["token"]
     env = {"AEW_LEAD_TOKEN": token}
-    accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation", "--expect-rev", "1",
-                       env=env)
+    accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation",
+                       "--decided-by", "lead", "--expect-rev", "1", env=env)
     assert accepted.returncode == 0, accepted.stderr
     take = ("-C", str(root), "lead", "acquire", "--expect-rev", "2")
     held = run_aew(*take)

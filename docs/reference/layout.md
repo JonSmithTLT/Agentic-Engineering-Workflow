@@ -128,7 +128,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `project.yaml`
 
-- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; written by `aew.engine.api`: `ProjectAdmin._rewrite_manifest`; `aew.engine.store`: `ControlStore.create`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin.manifest_adopt`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
+- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; written by `aew.engine.api`: `ProjectAdmin._rewrite_manifest`; `aew.engine.store`: `ControlStore.create`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin._manifest_subject`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
 
 ## `records`
 
@@ -206,7 +206,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
 - `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
 - `aew.engine.validation_ops`: `Validation._coverage_record` (Path.read_text), `Validation._coverage_record` (sha256_file)
-- `aew.engine.work_ops`: `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
+- `aew.engine.work_ops`: `WorkCommands.plan_accept` (sha256_file), `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
 - `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)
 - `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_once` (Path.is_file), `run_once` (shutil.copyfile)

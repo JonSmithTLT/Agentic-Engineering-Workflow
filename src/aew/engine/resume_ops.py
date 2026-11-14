@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
+from aew.engine import approval, gate_ops
 from aew.engine import coverage as CV
-from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
@@ -70,6 +70,10 @@ def _priority(unit: dict[str, Any]) -> dict[str, Any]:
     if waited is not None:
         found["age"] = waited
     return {"priority": found}
+
+
+def _bound_command(command: str, digest: str | None) -> str:
+    return f"{command} --approval-digest {digest}" if digest else command
 
 
 class Resume:
@@ -165,33 +169,38 @@ class Resume:
         if u["state"] in H.TERMINAL:
             return out
         if self.units.plan_binding_problem(state, wid):
-            out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid} --reason "
-                           f"<reason> {EXPECT_REV}` or a "
-                       "new plan revision")
+            reconfirm = _bound_command(f"aew plan reconfirm {wid} --reason <reason> {EXPECT_REV}",
+                                       approval.digest(self.units.ancestor_plan_snapshot(state, wid)))
+            out.append(f"an ancestor's plan changed after this plan was accepted: `{reconfirm}` or a new plan revision")
         if self.units.dispatch_binding_problem(state, wid):
             out.append("this attempt was dispatched with other dependencies than the Ticket now has: a new dispatch "
                        "is required (REPLAN_REQUIRED and a plan revision, or `aew work redispatch` if non-mutating)")
         if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
             for i in self.inputs.input_status(state, wid):
                 if i["blocks_dispatch"]:
+                    command = _bound_command(f"aew work acknowledge-input {wid} --input {i['id']} "
+                                             f"--from {i['from']} --reason <reason> {EXPECT_REV}",
+                                             i.get("approval_digest"))
                     out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: the next executor dispatch "
-                               f"is refused until it is refreshed or acknowledged (`aew work acknowledge-input {wid} "
-                               f"--input {i['id']} --from {i['from']} --reason <reason> {EXPECT_REV}`)")
+                               f"is refused until it is refreshed or acknowledged (`{command}`)")
         return out
 
     def _nm_ticket_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         st = u["state"]
         execution = u.get("execution") or {}
+        record = execution.get("record")
+        accept = _bound_command(f"aew work accept {wid} {EXPECT_REV}",
+                                approval.execution_record_digest(record) if record else None)
         executor = state["invocations"].get(execution.get("invocation") or "", {})
         if st in {"BLOCKED", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED", "VERIFY_PENDING",
                   "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "INTERRUPTED", "REPLAN_REQUIRED", "ESCALATED"}:
             actions = self._ticket_actions(state, wid, u)
             if st == "REVIEW_PASSED":
                 actions = [f"advance to VERIFY_PENDING (`aew work transition {wid} --to VERIFY_PENDING "
-                           f"{EXPECT_REV}`), or accept the record (`aew work accept {wid} {EXPECT_REV}`) "
+                           f"{EXPECT_REV}`), or accept the record (`{accept}`) "
                            "if no verification applies"]
             if st == "VERIFIED":
-                actions = [f"accept the record (`aew work accept {wid} {EXPECT_REV}`)"]
+                actions = [f"accept the record (`{accept}`)"]
             if st == "INTERRUPTED":
                 actions.append("then start a new attempt (`aew work redispatch`)")
             return actions
@@ -209,7 +218,7 @@ class Resume:
                     return [f"record {execution['record']['id']} ingested; unmet gates {unmet}"]
                 return [f"advance to review or verification (`aew work transition {wid} "
                         f"--to REVIEW_PENDING|VERIFY_PENDING {EXPECT_REV}`), "
-                        f"or accept the record (`aew work accept {wid} {EXPECT_REV}`)"]
+                        f"or accept the record (`{accept}`)"]
             if executor.get("status") == "active":
                 pending = self._submitted(state, wid, u, execution.get("expected_kind") or "")
                 if pending:
@@ -218,7 +227,7 @@ class Resume:
             return [f"no live executor for the current attempt: start a new one (`aew work redispatch {wid} --reason "
                     f"<reason> {EXPECT_REV}`)"]
         if st == "VERIFIED":
-            return [f"accept the record (`aew work accept {wid} {EXPECT_REV}`)"]
+            return [f"accept the record (`{accept}`)"]
         return []
 
     def _parent_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -227,8 +236,9 @@ class Resume:
         if st in H.TERMINAL:
             return []
         if self.units.plan_binding_problem(state, wid):
-            out.append(f"an ancestor's plan changed after this plan was accepted: `aew plan reconfirm {wid} --reason "
-                           f"<reason> {EXPECT_REV}`")
+            reconfirm = _bound_command(f"aew plan reconfirm {wid} --reason <reason> {EXPECT_REV}",
+                                       approval.digest(self.units.ancestor_plan_snapshot(state, wid)))
+            out.append(f"an ancestor's plan changed after this plan was accepted: `{reconfirm}`")
         if st in {"PLANNING", "OPEN"}:
             out.append(f"plan it and create its children (`aew plan propose {wid} --file - "
                        f"--assurance none|--review <card>|--verify <card> {EXPECT_REV}`, "
@@ -245,9 +255,11 @@ class Resume:
             waiting = dependency_blockers(state, u, repo_root=self.k.repo_root,
                                           base_commit=self.k.authoritative_commit(),
                                           work_id=wid)
-            if (u.get("parent_verification") or {}).get("awaiting_classification"):
-                out.append(f"classify the failed parent verification (`aew verify classify {wid} --as <CLASS> "
-                           f"--reason <reason> {EXPECT_REV}`)")
+            closeout = _bound_command(f"aew work close {wid} {EXPECT_REV}", approval.closeout_digest(gc["snapshot"]))
+            if failed := (u.get("parent_verification") or {}).get("awaiting_classification"):
+                classification = _bound_command(f"aew verify classify {wid} --as <CLASS> --reason <reason> "
+                                                f"{EXPECT_REV}", approval.failure_digest(u, failed))
+                out.append(f"classify the failed parent verification (`{classification}`)")
             elif waiting:  # acceptance is a downstream assignment: review, verification and closeout all wait
                 pass
             elif unmet:
@@ -257,9 +269,9 @@ class Resume:
                 out.append("resolve parent-level findings before closeout")
             elif u["kind"] == "epic" and self.history.audit_backlog(state):
                 out.append(f"all parent gates are CURRENT: audit the history through the current root "
-                           f"(`aew history audit {EXPECT_REV}`), then close it (`aew work close {wid} {EXPECT_REV}`)")
+                           f"(`aew history audit {EXPECT_REV}`), then close it (`{closeout}`)")
             else:
-                out.append(f"all parent gates are CURRENT: close it (`aew work close {wid} {EXPECT_REV}`)")
+                out.append(f"all parent gates are CURRENT: close it (`{closeout}`)")
             out += [f"waiting on {b['id']} ({b['reason']}) before its acceptance review, verification and closeout"
                     for b in waiting]
         return out
@@ -283,8 +295,9 @@ class Resume:
                                f"--assurance none|--review <card>|--verify <card> {EXPECT_REV}`, the plan "
                                f"in a quoted heredoc, then `aew plan accept {wid} --revision <n> {EXPECT_REV}`)")
                 elif b["kind"] == "plan_binding_stale":
-                    out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid} --reason <reason> "
-                               f"{EXPECT_REV}` or a new plan revision")
+                    reconfirm = _bound_command(f"aew plan reconfirm {wid} --reason <reason> {EXPECT_REV}",
+                                       approval.digest(self.units.ancestor_plan_snapshot(state, wid)))
+                    out.append(f"an ancestor's plan changed: `{reconfirm}` or a new plan revision")
                 else:
                     out.append(f"waiting on {b['id']} ({b['reason']})")
             return out
@@ -329,8 +342,10 @@ class Resume:
                 return [f"verification in progress ({', '.join(active)})"]
             return ["dispatch the next planned verifier card (`aew invoke create`)"]
         if st == "VERIFICATION_FAILED":
-            return [f"classify the failure (Lead only): `aew verify classify {wid} --as <CLASS> --reason <reason> "
-                    f"{EXPECT_REV}`"]
+            failure = (u.get("last_verification") or {}).get("evidence")
+            classification = _bound_command(f"aew verify classify {wid} --as <CLASS> --reason <reason> "
+                                            f"{EXPECT_REV}", approval.failure_digest(u, failure) if failure else None)
+            return [f"classify the failure (Lead only): `{classification}`"]
         if st == "VERIFICATION_INCONCLUSIVE":
             return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING"]
         if st == "VERIFIED":
@@ -678,7 +693,33 @@ class Resume:
         state = self.k.store.current()
         if work_id:
             unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
+            subjects = {}
+            if work_id in state["work"]:
+                if integration := (unit.get("integration") or {}).get("candidate"):
+                    subjects["integrate.publishing"] = {"candidate": integration, "digest": integration}
+                if unit["kind"] != "ticket":
+                    subjects["work.cancel"] = self.hierarchy.cancellation_subject(state, work_id)
+                if record := (unit.get("execution") or {}).get("record"):
+                    subjects["work.accept"] = {"record": record, "digest": approval.execution_record_digest(record)}
+                parent_failure = (unit.get("parent_verification") or {}).get("awaiting_classification")
+                ticket_failure = (unit.get("last_verification") or {}).get("evidence") \
+                    if unit["state"] == "VERIFICATION_FAILED" else None
+                if failure := parent_failure or ticket_failure:
+                    subjects["verify.classify"] = {"evidence": failure,
+                                                   "digest": approval.failure_digest(unit, failure)}
+                if (unit.get("plan") or {}).get("accepted"):
+                    snapshot = self.units.ancestor_plan_snapshot(state, work_id)
+                    subjects["plan.reconfirm"] = {"ancestors": snapshot, "digest": approval.digest(snapshot)}
+            for op, shown in subjects.items():
+                if op == "integrate.publishing":
+                    continue
+                options = ("--as", "<CLASS>", "--reason", "<reason>") if op == "verify.classify" else (
+                    ("--reason", "<reason>") if op in {"work.cancel", "plan.reconfirm"} else ())
+                shown["argv"] = approval.command(op, work_id, state["revision"], shown["digest"], *options)
+            inputs = self.inputs.input_status(state, work_id) if work_id in state["work"] else []
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id),
+                    **({"approval_subjects": subjects} if subjects else {}),
+                    **({"inputs": inputs} if inputs else {}),
                     **({"coverage": CV.for_unit(self.k.aew_root, unit, full=True)}
                        if unit["kind"] == "ticket" and unit.get("mutating") else {})}
         lead = state["lead"]

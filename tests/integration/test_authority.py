@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 
 import printed_commands as P
@@ -56,12 +57,32 @@ def test_accept_and_reject_candidates(project):
                               decided_by="operator")
     decision = project.root / f".aew/decisions/{res['decision']}.md"
     assert decision.exists() and "authority_acceptance" in decision.read_text()
-    project.lead("authority", "reject", cands["README.md"], "--reason", "orientation only")
+    project.as_operator("authority_reject", candidate_id=cands["README.md"], decided_by="operator",
+                        reason="orientation only")
     listing = project.ok("authority", "list")
     assert [a["path"] for a in listing["accepted"]] == ["docs/adr/"]
     status = {c["path"]: c["status"] for c in listing["candidates"]}
     assert status["README.md"] == "rejected"
     assert project.ok("status", "--json")["contradictions"] == []
+
+
+def test_lead_authority_accept_shows_the_bound_digest_on_a_terminal(project, monkeypatch, capsys):
+    from aew.cli.main import main
+    from aew.engine.api import Engine
+
+    candidate = next(c for c in project.ok("authority", "list")["candidates"] if c["path"] == "README.md")
+    shown = Engine.discover(project.root).authority_candidate(candidate["id"])
+    terminal = StringIO()
+    monkeypatch.setattr(terminal, "isatty", lambda: True)
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    argv = ["-C", str(project.root), "authority", "accept", candidate["id"], "--class", "orientation",
+            "--decided-by", "lead", "--expect-rev", str(project.rev())]
+    with monkeypatch.context() as streams:
+        streams.setattr(sys, "stderr", terminal)
+        assert main(argv) == 0
+    assert f"README.md (file, SHA-256 {shown['digest']})" in terminal.getvalue()
+    decision = json.loads(capsys.readouterr().out)["decision"]
+    assert shown["ref"] in (project.root / f".aew/decisions/{decision}.md").read_text(encoding="utf-8")
 
 
 def test_manifest_edit_outside_engine_detected_and_adopted(project):
@@ -70,7 +91,7 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     data["project"]["name"] = "Renamed by operator"
     manifest.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
     cands = project.ok("authority", "list")["candidates"]
-    res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation",
+    res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation", "--decided-by", "lead",
                       "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR"
     assert project.ok("status", "--json")["contradictions"]
@@ -383,7 +404,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
 def test_token_issued_in_one_process_verified_in_another(project):
     # project.token came from a separate `aew lead acquire` process; this is another process.
     cands = project.ok("authority", "list")["candidates"]
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.parametrize("mangle", ["tamper", "malformed", "empty-secret"])
@@ -435,14 +456,19 @@ def test_superseded_lead_rejected_after_handoff(project):
     assert (project.root / ".aew/state/HANDOFF.md").exists()
 
 
-def test_pending_handoff_freezes_outgoing_lead(project):
+def test_pending_handoff_freezes_outgoing_lead(project, monkeypatch, capsys):
+    from aew import operator
+    from aew.cli.main import main
+
     project.lead("lead", "handoff", "offer")
     cands = project.ok("authority", "list")["candidates"]
-    res = project.aew("authority", "reject", cands[0]["id"],
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
-    assert res.returncode == 4
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    monkeypatch.setattr(operator, "authorize", lambda _: {"authorized_by": "operator-tty"})
+    assert main(["-C", str(project.root), "authority", "reject", cands[0]["id"],
+                 "--expect-rev", str(project.rev())]) == 4
+    assert "a Lead handoff is pending" in capsys.readouterr().err
     project.lead("lead", "handoff", "cancel")
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.acceptance("AT-4b")
@@ -534,7 +560,7 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     assert "operator-tty" in decision and "Lead session lost" in decision
     cands = project.ok("authority", "list")["candidates"]
     project.token = c_token
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.acceptance("AT-7")

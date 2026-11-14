@@ -107,6 +107,22 @@
         "availability": {"$ref": "#/$defs/availability"},
         "default": {"const": "NONE"},
         "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]},
+        "approval_options": {
+          "description": "Arguments for the selected replacement, including the digest shown for that choice.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["expect_rev", "subject", "choice", "replacement", "approval_digest"],
+            "additionalProperties": false,
+            "properties": {
+              "expect_rev": {"type": "integer", "minimum": 0},
+              "subject": {"type": "string"},
+              "choice": {"const": "replace_gate"},
+              "replacement": {"type": "string"},
+              "approval_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        },
         "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]}
       }
     },

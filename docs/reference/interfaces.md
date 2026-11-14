@@ -71,7 +71,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | Schema | File | Paths | Required |
 |---|---|---|---|
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
-| `checks` | `checks.schema.json` | 12 | 3 |
+| `checks` | `checks.schema.json` | 14 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
 | `control` | `control.schema.json` | 526 | 289 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |

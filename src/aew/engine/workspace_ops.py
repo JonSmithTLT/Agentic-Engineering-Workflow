@@ -55,12 +55,10 @@ class Invocations:
         self.roles = roles
         self.coordination = coordination
 
-    def _fingerprint_policy(self) -> dict[str, list[str]]:
-        fp = self.k.manifest.get("fingerprint") or {}
-        return {"exclude": list(fp.get("exclude", [])), "include_ignored": list(fp.get("include_ignored", []))}
-
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
-        return fingerprint.evaluated_snapshot(Path(path), workspace_id, **self._fingerprint_policy())
+        fp = self.k.manifest.get("fingerprint") or {}
+        return fingerprint.evaluated_snapshot(Path(path), workspace_id, exclude=list(fp.get("exclude", [])),
+                                              **self.k.check_cache_inputs())
 
     def current_snapshot(self, unit: dict[str, Any]) -> dict[str, Any] | None:
         ws = unit.get("workspace")
@@ -151,7 +149,7 @@ class Invocations:
         ws = unit.get("workspace")
         if not ws:
             return {"workspace": "none"}
-        found = worktrees.inspect(ws["path"], ws.get("base_commit"))
+        found = worktrees.inspect(ws["path"], ws.get("base_commit"), **self.k.check_cache_inputs())
         out = {"workspace": ws["id"], **found}
         if found.get("exists"):
             snap = self.snapshot_of(ws["path"], ws["id"])

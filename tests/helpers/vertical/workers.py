@@ -62,7 +62,6 @@ SAMPLE = {
     "tests/test_money.py": ("from ledger.money import format_amount\n\n\n"
                             "def test_positive():\n    assert format_amount(1500) == \"$15.00\"\n"),
 }
-GITIGNORE = "__pycache__/\n.pytest_cache/\n*.pyc\n"
 FIX = {"ledger/money.py": FIXED,
        "tests/test_money.py": SAMPLE["tests/test_money.py"]
        + "\n\ndef test_negative():\n    assert format_amount(-1500) == \"-$15.00\"\n"}

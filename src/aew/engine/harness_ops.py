@@ -367,7 +367,7 @@ class Harness:
             changed = None
             if inv["role"] == "implementer" and base:
                 try:
-                    changed = changed_paths(workspace, base)
+                    changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
                 except Exception:
                     changed = None
             # Evidence evaluated on a workspace state that is no longer the current one satisfies no gate: say so,
@@ -419,7 +419,8 @@ class Harness:
                    "provider_env": list((policy or {}).get("provider_env") or []),
                    **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
                        r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
-                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
+                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base,
+                   **(self.k.check_cache_inputs() if base else {})})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         """Why a run may no longer act (None while it may). The engine's credential checks remain authoritative;

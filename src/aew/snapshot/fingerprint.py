@@ -49,13 +49,20 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from aew.errors import GitError, IntegrityError
 from aew.workspace import git
 
 AEW_ROOT_REL = ".aew"
 NUL = "\x00"
+
+
+class CacheInputs(TypedDict):
+    cache_patterns: tuple[tuple[str, ...], ...]
+    include_ignored: list[str]
+
+
 # Windows device names: a file with one of these names (any extension, any case) cannot be read
 # through the ordinary path, so ``git add`` fails on it ("short read"). Usually made by a bash
 # ``> nul`` redirect on Windows.
@@ -103,8 +110,35 @@ class _Index:
         return _tree_id(self.workspace, self.env, intent_to_add=intent_to_add)
 
 
+def untracked_caches(workspace: Path, cache_patterns: tuple[tuple[str, ...], ...],
+                     include_ignored: list[str] | None = None, *, env: dict[str, str] | None = None) -> list[str]:
+    """Untracked staging candidates matched by any configured check, except explicitly included inputs."""
+    if not cache_patterns:
+        return []
+    # A staged deletion must not hide a working file that is still tracked at HEAD.
+    with_head = ["--with-tree=HEAD"] if git.rev_parse("HEAD", cwd=workspace) else []
+    matches: set[bytes] = set()
+    with tempfile.TemporaryDirectory(prefix="aew-cache-patterns-") as directory:
+        rulefile = Path(directory) / "patterns"
+        for patterns in cache_patterns:
+            rulefile.write_text("\n".join(patterns) + "\n", encoding="utf-8", newline="\n")
+            result = git.git("ls-files", "-z", "--others", "--ignored", *with_head,
+                             f"--exclude-from={rulefile}", cwd=workspace, env=env)
+            matches.update(path for path in result.stdout.split(b"\0") if path)
+    if matches:
+        # Exclude only paths Git would stage. Giving add an ignored pathspec can make it refuse the whole add.
+        visible = git.git("ls-files", "-z", "--others", "--exclude-standard", cwd=workspace, env=env).stdout
+        matches.intersection_update(visible.split(b"\0"))
+    if include_ignored and matches:
+        includes = git.git("ls-files", "-z", "--others", "--", *include_ignored, cwd=workspace, env=env).stdout
+        matches.difference_update(includes.split(b"\0"))
+    return sorted(path.decode("utf-8", "surrogateescape").rstrip("/") for path in matches)
+
+
 @contextmanager
-def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | None = None) -> Iterator[_Index]:
+def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | None = None,
+                   cache_patterns: tuple[tuple[str, ...], ...] = (),
+                   include_ignored: list[str] | None = None) -> Iterator[_Index]:
     """A throwaway index holding the complete working state (tracked + untracked-not-ignored). With ``skip_aew``,
     ``.aew/``'s working files are not read at all (the caller removes ``.aew/`` from the tree anyway): in the
     authoritative checkout it can hold thousands of uncommitted records (ADR-0011 investigation §8.1). Its blobs are
@@ -120,11 +154,17 @@ def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | No
         env = {"GIT_INDEX_FILE": str(tmp_index), **READ_ALL_CONTENT}
         _neutralize_index_flags(workspace, env)
         spec = ["--", ".", *([f":(exclude){AEW_ROOT_REL}"] if skip_aew else [])]
+        caches = untracked_caches(workspace, cache_patterns, include_ignored, env=env)
         try:
-            if stores:
+            if stores and caches:
+                pathspecs = [*spec[1:], *(f":(exclude,literal){path}" for path in caches)]
+                data = ("\0".join(pathspecs) + "\0").encode("utf-8", "surrogateescape")
+                git.git("add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul",
+                        cwd=workspace, env=env, input=data)
+            elif stores:
                 git.git("add", "-A", *spec, cwd=workspace, env=env)
             else:
-                _stage(workspace, env, spec)
+                _stage(workspace, env, spec, caches)
         except GitError:
             _refuse_reserved_names(workspace, env)
             raise
@@ -133,7 +173,7 @@ def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | No
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _stage(workspace: Path, env: dict[str, str], spec: list[str]) -> None:
+def _stage(workspace: Path, env: dict[str, str], spec: list[str], caches: list[str]) -> None:
     """What ``git add -A <spec>`` does to the index in ``env``, writing no object (D-CS2-1). The tracked paths come with
     the statuses ``add -A`` acts on (``diff-files``, which reports a file replaced by a directory, or a directory's
     files replaced by a file, as deleted): a deleted one is removed first, so no path added after it conflicts with an
@@ -149,7 +189,9 @@ def _stage(workspace: Path, env: dict[str, str], spec: list[str]) -> None:
         git.git("update-index", "--force-remove", "-z", "--stdin", cwd=workspace, env=env,
                 input=b"\0".join(gone) + b"\0")
     others = git.git("ls-files", "-z", "--others", "--exclude-standard", *spec, cwd=workspace, env=env).stdout
-    _add(workspace, env, [*(p for p, s in status.items() if s != b"D"), *others.split(b"\0")])
+    excluded = {p.encode("utf-8", "surrogateescape") for p in caches}
+    _add(workspace, env, [*(p for p, s in status.items() if s != b"D"),
+                          *(p for p in others.split(b"\0") if p.rstrip(b"/") not in excluded)])
 
 
 def _add(workspace: Path, env: dict[str, str], paths: list[bytes]) -> None:
@@ -214,9 +256,11 @@ def relevant_inputs_fingerprint(
     *,
     exclude: list[str] | None = None,
     include_ignored: list[str] | None = None,
+    cache_patterns: tuple[tuple[str, ...], ...] = (),
 ) -> str:
     workspace = workspace.resolve()
-    with _working_index(workspace, skip_aew=True) as idx:
+    with _working_index(workspace, skip_aew=True, cache_patterns=cache_patterns,
+                        include_ignored=include_ignored) as idx:
         for path in [AEW_ROOT_REL, *(exclude or [])]:
             git.git("rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", path, cwd=workspace, env=idx.env)
         for path in include_ignored or []:
@@ -226,7 +270,8 @@ def relevant_inputs_fingerprint(
     return f"git-tree:{tree}"
 
 
-def working_tree_id(workspace: Path) -> str:
+def working_tree_id(workspace: Path, *, cache_patterns: tuple[tuple[str, ...], ...] = (),
+                    include_ignored: list[str] | None = None) -> str:
     """Tree id of everything Git would keep in a workspace, read from content.
 
     Tracked plus untracked-not-ignored files — nothing excluded, ``.aew/`` included — built in the
@@ -236,7 +281,7 @@ def working_tree_id(workspace: Path) -> str:
     whose content is absent and so cannot be compared; callers must treat that as "unknown".
     """
     workspace = workspace.resolve()
-    with _working_index(workspace) as idx:
+    with _working_index(workspace, cache_patterns=cache_patterns, include_ignored=include_ignored) as idx:
         return idx.tree()
 
 
@@ -366,7 +411,8 @@ def _head_entries(workspace: Path) -> dict[bytes, tuple[bytes, bytes]]:
     return out
 
 
-def index_only_paths(workspace: Path) -> list[str]:
+def index_only_paths(workspace: Path, *, cache_patterns: tuple[tuple[str, ...], ...] = (),
+                     include_ignored: list[str] | None = None) -> list[str]:
     """Paths whose staged index entry matches neither HEAD nor the working copy.
 
     That staged content exists nowhere else: ``git add`` of the working state would overwrite it and
@@ -375,7 +421,7 @@ def index_only_paths(workspace: Path) -> list[str]:
     workspace = workspace.resolve()
     with _staged_index(workspace) as idx:
         index = _entries(workspace, idx.env, intent_to_add=True)
-    with _working_index(workspace) as idx:
+    with _working_index(workspace, cache_patterns=cache_patterns, include_ignored=include_ignored) as idx:
         work = _entries(workspace, idx.env)
     return sorted(_changed(_head_entries(workspace), index) & _changed(index, work))
 
@@ -386,16 +432,19 @@ def evaluated_snapshot(
     *,
     exclude: list[str] | None = None,
     include_ignored: list[str] | None = None,
+    cache_patterns: tuple[tuple[str, ...], ...] = (),
 ) -> dict[str, Any]:
     return {
         "base_revision": git.rev_parse("HEAD", cwd=workspace),
         "workspace_id": workspace_id,
         "relevant_inputs_fingerprint": relevant_inputs_fingerprint(
-            workspace, exclude=exclude, include_ignored=include_ignored),
+            workspace, exclude=exclude, include_ignored=include_ignored, cache_patterns=cache_patterns),
     }
 
 
-def changed_paths(workspace: Path, base: str, *, stores: bool | None = None) -> list[str]:
+def changed_paths(workspace: Path, base: str, *, stores: bool | None = None,
+                  cache_patterns: tuple[tuple[str, ...], ...] = (),
+                  include_ignored: list[str] | None = None) -> list[str]:
     """Paths differing between ``base`` and the working state, including untracked files.
 
     Deliberately *includes* the AEW root so guardrails can reject a Ticket that touches it. ``stores=False`` hashes the
@@ -403,6 +452,8 @@ def changed_paths(workspace: Path, base: str, *, stores: bool | None = None) -> 
     another worker's workspace); the default is :func:`_stores_objects`.
     """
     workspace = workspace.resolve()
-    with _working_index(workspace, stores=stores) as idx:  # the names only: the diff reads no blob, stored or not
+    # The names only: the diff reads no blob, stored or not.
+    with _working_index(workspace, stores=stores, cache_patterns=cache_patterns,
+                        include_ignored=include_ignored) as idx:
         raw = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
     return [p for p in raw.split(NUL) if p]

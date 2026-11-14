@@ -1,0 +1,3 @@
+The operator can declare disposable check caches in `checks.<id>.caches`. The adopted rules exclude matching untracked cache paths from working snapshots, scope and coverage reads, and the Ticket commit. Tracked paths and inputs named by `fingerprint.include_ignored` take precedence. The policy refuses patterns that match general-purpose probe paths or files tracked at the authoritative commit. A check that writes other inputs still yields inconclusive evidence.
+
+The scripted vertical declares pytest caches in its check policy and drops the U14 operator fallback. ADR-0002 records the change in its 2026-11-11 amendment.

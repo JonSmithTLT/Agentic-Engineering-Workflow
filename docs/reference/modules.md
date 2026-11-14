@@ -598,6 +598,7 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.operator`
+- `aew.policy.checks`
 - `aew.policy.execution`
 - `aew.schemas`
 - `aew.util`
@@ -664,10 +665,12 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.knowledge.render`
+- `aew.policy.checks`
 - `aew.policy.classes`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.schemas`
+- `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
 
@@ -1884,6 +1887,7 @@ Imports from the groups:
 - `aew.harness.models`
 - `aew.harness.opencode.projection`
 - `aew.maps.service`
+- `aew.policy.checks`
 - `aew.policy.execution`
 - `aew.util`
 
@@ -2044,6 +2048,7 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.schemas`
+- `aew.workspace`
 
 ### `aew.policy`
 
@@ -2058,6 +2063,7 @@ None.
 - `aew.harness.containment.layout`
 - `aew.harness.contract`
 - `aew.harness.procs`
+- `aew.workspace.git`
 
 ### `aew.policy.classes`
 

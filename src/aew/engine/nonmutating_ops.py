@@ -311,7 +311,7 @@ class NonMutating:
             raise ObservationMutated(
                 f"{inv_id} changed its read-only observation workspace; a non-mutating invocation may not mutate "
                 "source (the Lead redispatches the attempt, or dispatches another reviewer or verifier)",
-                changed=changed_paths(path, obs["commit"]), invocation=inv_id)
+                changed=changed_paths(path, obs["commit"], **self.k.check_cache_inputs()), invocation=inv_id)
 
     def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                source: str, reason: str, binding: str | None = None) -> dict[str, Any]:

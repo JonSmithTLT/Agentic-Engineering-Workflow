@@ -569,7 +569,7 @@ def _retryable(c: Call, intent: str, primitive: str, args: dict[str, Any]) -> bo
     from aew.surface.run import _stale  # the runner's own authority check (run imports this module)
 
     si = c.engine.stage_intent(intent)
-    if "prior_value" in args or JUDGMENT_BEARING in (spec_for(primitive).operation_class, si["effective_class"]):
+    if JUDGMENT_BEARING in (spec_for(primitive).operation_class, si["effective_class"]):
         return False
     if c.engine.policy_digests()["legality_digest"] != si["binding"]["legality_digest"]:
         return False

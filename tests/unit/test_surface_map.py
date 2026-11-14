@@ -2011,9 +2011,11 @@ def proposal_pin_problems(reg: dict[str, Any]) -> list[str]:
     """The registry's planned rows and proposals are exactly the pinned lists less what graduated (the A1 slice plan
     §2.1 item 1): one may leave the registry only by graduating, and nothing is added."""
     out = []
+    # E328 moves this existing command onto the Lead relay for Lead-attributed decisions.
+    relay_follow_ons = {"cli:authority accept"}
     for section, have, pinned in (
             ("planned rows", {baseline_key("cli", n) for n, _, _ in planned_rows(reg)},
-             PLANNED_FROZEN - PLANNED_GRADUATED),
+             (PLANNED_FROZEN - PLANNED_GRADUATED) | relay_follow_ons),
             ("proposed_tools", set(proposals(reg, "proposed_tools")), PROPOSED_TOOLS - PROPOSED_TOOLS_GRADUATED),
             ("proposed_choices", set(proposals(reg, "proposed_choices")),
              PROPOSED_CHOICES - PROPOSED_CHOICES_GRADUATED)):

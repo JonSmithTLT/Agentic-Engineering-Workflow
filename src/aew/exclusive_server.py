@@ -18,6 +18,7 @@ from __future__ import annotations
 import socket
 import sys
 from http.server import ThreadingHTTPServer
+from typing import Any
 
 from aew.http_close import close_after_response
 
@@ -33,7 +34,7 @@ class ExclusiveServer(ThreadingHTTPServer):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
-    def shutdown_request(self, request: socket.socket) -> None:
+    def shutdown_request(self, request: Any) -> None:
         """Also stage stdlib parser refusals and early replies from HTTP handler subclasses.
         A handler (the dashboard) that already staged its close has nothing left to drain."""
         if request.fileno() >= 0:

@@ -296,7 +296,9 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         assert proof["if"] == condition
 
 
-def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scan_result", ["findings", "unknown-file", "error"])
+def test_evidence_withholds_only_attributed_findings_and_fails_closed_on_scan_errors(tmp_path, monkeypatch,
+                                                                                    scan_result):
     from types import SimpleNamespace
 
     stage_evidence = _load("stage_evidence")
@@ -304,19 +306,31 @@ def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch
     autopsy = source / "autopsy"
     autopsy.mkdir(parents=True)
     (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
+    harness = autopsy / "harness"
+    harness.mkdir()
+    clean = {"shell-2.stdout.txt": "shell output", "supervisor.log.txt": "supervisor output"}
+    for name, contents in clean.items():
+        (harness / name).write_text(contents, encoding="utf-8")
     destination = tmp_path / "public"
 
     def scan(argv, **kwargs):
         assert "--ignore-gitleaks-allow" in argv
         report = Path(argv[argv.index("--report-path") + 1])
-        report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
-        return SimpleNamespace(returncode=1)
+        name = "unknown.txt" if scan_result == "unknown-file" else "failure.txt"
+        report.write_text(json.dumps([{"File": str(Path(argv[-1]) / "autopsy" / name),
+                                       "RuleID": "planted-rule", "Secret": "private contents"}]), encoding="utf-8")
+        return SimpleNamespace(returncode=1 if scan_result == "error" else stage_evidence.FINDINGS_EXIT)
 
     monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
-    assert "planted-rule" in stage_evidence.stage(source, destination)
-    [listing] = list(destination.iterdir())
-    assert listing.name == "inventory.txt"
-    assert "private contents" not in listing.read_text(encoding="utf-8")
+    stage_evidence.stage(source, destination)
+    listing = (destination / "inventory.txt").read_text(encoding="utf-8")
+    assert "private contents" not in listing
+    if scan_result == "findings":
+        assert "withheld autopsy/failure.txt (planted-rule)" in listing
+        assert not (destination / "autopsy/failure.txt").exists()
+        assert {p.name: p.read_text(encoding="utf-8") for p in (destination / "autopsy/harness").iterdir()} == clean
+    else:
+        assert sorted(p.name for p in destination.iterdir()) == ["inventory.txt"]
 
 
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):

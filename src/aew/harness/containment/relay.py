@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
+from aew.http_close import REFUSAL_DRAIN_S, close_after_response
 
 if TYPE_CHECKING:
     from aew.harness.containment.client_cert import ClientCert
@@ -267,6 +268,7 @@ class ProviderRelay(Service):
         try:
             conn.settimeout(self.head_timeout)
             conn.sendall(refused.response())
+            close_after_response(conn, REFUSAL_DRAIN_S)
         except OSError:
             pass
 

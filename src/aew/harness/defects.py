@@ -26,7 +26,9 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9_.-]+\Z")
 # Four labels of this size leave room in the message for the record ID, recovery step and cause.
 _MESSAGE_FIELD = 48
 log = logging.getLogger(__name__)
-_FORMS = [(re.compile(form.pattern), form.applies) for form in REDACTION_FORMS.values()]
+_TOKEN_START = {"masked": r"(?<!\S)", "long_token": r"(?<![A-Za-z0-9_-])"}
+_FORMS = [(re.compile(_TOKEN_START.get(name, "") + form.pattern), form.applies)
+          for name, form in REDACTION_FORMS.items()]
 
 
 def redact_text(text: str) -> str:

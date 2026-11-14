@@ -1,0 +1,1 @@
+E328 adds optional prior-value bindings to the eight class-B transaction entries. The engine compares under the control lock and reports CHANGED_SINCE_READ for changed subjects. Class-C mismatches share the error and continue to stop at the refusal boundary. The project revision check remains in force.

@@ -105,7 +105,7 @@ def _propose(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 
 def _transition(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return c.engine.work_transition(token=c.token(), expect_rev=rev, work_id=a["work_id"], to=a["to"],
-                                    reason=a.get("reason"))
+                                    reason=a.get("reason"), prior_value=a.get("prior_value"))
 
 
 def _invoke(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
@@ -206,7 +206,7 @@ def _plan_start(a: dict[str, Any]) -> list[dict[str, Any]]:
     execution = {"execution": a["execution"]} if "execution" in a else {}
     return [{"primitive": "work.assign", "args": {**(assign or {}), **execution}},
             {"primitive": "dispatch.launch", "args": launch},
-            {"primitive": "work.transition", "args": transition}]
+            {"primitive": "work.transition", "args": {**(transition or {}), "prior_value": "ASSIGNED"}}]
 
 
 def _per_card(a: dict[str, Any], dispatch: dict[str, Any] | None, launch: dict[str, Any] | None,
@@ -227,7 +227,9 @@ def _plan_request_review(a: dict[str, Any], cards: list[str | None] | None = Non
     """``ticket_request_review`` (M4-E E5b): RUNNING -> REVIEW_PENDING, then a reviewer per card the effective gates
     require, each launched."""
     transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_review"])
-    return [{"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
+    prior = {"prior_value": a["prior_value"]} if "prior_value" in a else {}
+    return [{"primitive": "work.transition", "args": {**(transition or {}), **prior}},
+            *_per_card(a, dispatch, launch, cards)]
 
 
 def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None = None,
@@ -237,7 +239,9 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
     effective gates require, each launched. From REVIEW_PASSED (``shape``, E133) the review is already accepted."""
     ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
     accept = [{"primitive": "review.ingest", "args": ingest}] if (shape or {}).get(1, True) else []
-    return [*accept, {"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
+    prior = {"prior_value": "REVIEW_PASSED"} if accept else {k: a[k] for k in ("prior_value",) if k in a}
+    return [*accept, {"primitive": "work.transition", "args": {**(transition or {}), **prior}},
+            *_per_card(a, dispatch, launch, cards)]
 
 
 def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
@@ -248,7 +252,8 @@ def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> li
     shape = shape or {}
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
     plan: list[dict[str, Any]] = [*([{"primitive": "verify.ingest", "args": ingest}] if shape.get(1, True) else []),
-                                  *([{"primitive": "work.transition", "args": transition}] if shape.get(2, True)
+                                  *([{"primitive": "work.transition",
+                                      "args": {**(transition or {}), "prior_value": "VERIFIED"}}] if shape.get(2, True)
                                     else []),
                                   {"primitive": "integrate.prepare", "args": prepare}]
     if shape.get(4):
@@ -564,7 +569,7 @@ def _retryable(c: Call, intent: str, primitive: str, args: dict[str, Any]) -> bo
     from aew.surface.run import _stale  # the runner's own authority check (run imports this module)
 
     si = c.engine.stage_intent(intent)
-    if JUDGMENT_BEARING in (spec_for(primitive).operation_class, si["effective_class"]):
+    if "prior_value" in args or JUDGMENT_BEARING in (spec_for(primitive).operation_class, si["effective_class"]):
         return False
     if c.engine.policy_digests()["legality_digest"] != si["binding"]["legality_digest"]:
         return False

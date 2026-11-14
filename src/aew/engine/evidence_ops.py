@@ -719,6 +719,8 @@ class Gates:
         state = self.k.store.current()
         gc = self.gate_context(state, work_id)
         out = self.roles.effective_role_plan(state, work_id, gc)
+        out["staff_argv"] = approval.bound_argv(("work", "staff", work_id), state["revision"],
+                                               out["role_plan_digest"])
         out["plan_gates"] = self.roles.plan_gates(self.units.unit(state, work_id))
         return out
 

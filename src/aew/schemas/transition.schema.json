@@ -136,6 +136,16 @@
         {
           "type": "object",
           "additionalProperties": false,
+          "required": ["kind", "id", "field"],
+          "properties": {
+            "kind": {"const": "work.binding"},
+            "id": {"type": "string"},
+            "field": {"enum": ["parent", "role_plan"]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
           "required": [
             "kind",
             "id",

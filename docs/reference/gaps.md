@@ -91,6 +91,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.faults:pause`: open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.hierarchy_ops:Hierarchy._create_promoted`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.lock:FileLock._join_queue`: Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name

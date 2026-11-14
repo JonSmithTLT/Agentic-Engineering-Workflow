@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import process_kind
-from aew.engine import faults, outbox
+from aew.engine import approval, faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -166,7 +166,7 @@ class Harness:
         return None
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
-                       request_id: str | None = None) -> dict[str, Any]:
+                       request_id: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
         request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
@@ -188,6 +188,9 @@ class Harness:
             target = state["invocations"].get(invocation)
             if target is None:
                 raise NotFound(f"no invocation {invocation}")
+            approval.prior("harness.launch", invocation, "run", prior_value, approval.run_value(target),
+                           root=self.k.aew_root, state=ctx.state,
+                           event=lambda e: e["kind"] == "run.added" and e["invocation"] == invocation)
             self.dispatch.decide_in(ctx, "harness.launch", target["work_unit"], invocation=invocation,
                                     replace=replace)
             inv = state["invocations"][invocation]
@@ -506,7 +509,11 @@ class Harness:
                                if current and observed == K.UNCONFIRMED else {})})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
-        return {"runs": out}
+        answer = {"runs": out}
+        if invocation and state["invocations"][invocation]["status"] == "active":
+            prior = approval.run_value(state["invocations"][invocation])
+            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), state["revision"], prior)
+        return answer
 
     @staticmethod
     def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:

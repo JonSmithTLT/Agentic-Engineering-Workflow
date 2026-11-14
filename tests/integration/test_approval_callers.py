@@ -29,6 +29,44 @@ OPS = ["work.cancel", "plan.reconfirm", "work.accept", "verify.classify", "waive
        "verify.classify.ticket", "input.acknowledge", "work.dispose.projection"]
 
 
+@pytest.mark.parametrize("command", ["plan", "authority"])
+def test_relay_accepts_the_binding_prefilled_by_the_read(project, command):
+    from aew.errors import ChangedSinceRead
+    from aew.harness.lead_broker import run_cli
+
+    engine = Engine.discover(project.root)
+    if command == "plan":
+        wid = create_unit(project, "story", "Reviewed plan", cls=0)
+        engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+                            body="Reviewed plan.", no_assurance=True)
+        argv = engine.status(wid)["plan_accept_argv"][1]
+    else:
+        candidate = next(c for c in engine.authority_list()["candidates"] if c["path"] == "README.md")
+        argv = candidate["accept_argv"]
+    revision = project.rev()
+    with pytest.raises(ChangedSinceRead):
+        run_cli(engine, project.token, [*argv[:-1], "0" * 64], str(project.root), "", channel="lead.cli")
+    assert project.rev() == revision
+    result = run_cli(engine, project.token, argv, str(project.root), "", channel="lead.cli")
+    assert result["result"]["ok"] and project.rev() == revision + 1
+
+
+def test_plan_accept_prints_the_terminal_binding(project, monkeypatch, capsys):
+    import sys
+
+    from aew.cli.main import main
+
+    engine = Engine.discover(project.root)
+    wid = create_unit(project, "story", "Reviewed plan", cls=0)
+    engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+                        body="Reviewed plan.", no_assurance=True)
+    argv = engine.status(wid)["plan_accept_argv"][1]
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    assert main(["-C", str(project.root), *argv[:-2]]) == 0
+    assert argv[-1] in capsys.readouterr().err
+
+
 def _call(engine, project, method, **args):
     wid = args["work_id"]
     if method == "work_acknowledge_input":
@@ -48,7 +86,7 @@ def _call(engine, project, method, **args):
 
 @pytest.mark.parametrize("op", OPS)
 @pytest.mark.parametrize("caller", ["relay", "terminal"])
-def test_a_shown_digest_lets_an_unchanged_subject_commit(project, tmp_path, monkeypatch, op, caller):
+def test_a_shown_digest_lets_an_unchanged_subject_commit(project, tmp_path, monkeypatch, capsys, op, caller):
     if op in {"verify.classify", "work.accept", "work.close", "verify.classify.ticket"}:
         project = sample_project(tmp_path / "workflow")
     engine = Engine.discover(project.root)
@@ -128,25 +166,21 @@ def test_a_shown_digest_lets_an_unchanged_subject_commit(project, tmp_path, monk
         complete_investigation(project, create_investigation(project, tmp_path, cls=0, parent=wid))
         binding = engine.gate_show(wid)["closeout_approval_digest"]
         out = _call(engine, project, "work_close", work_id=wid, reason="r", binding=binding)
+    import sys
+
     from aew import operator
     from aew.cli.main import main
 
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
-    monkeypatch.setattr(operator, "has_terminal", lambda: caller == "terminal")
-    prompts = []
-
-    def confirm(prompt):
-        prompts.append(prompt)
-        return {"authorized_by": "operator-tty"}
-
-    monkeypatch.setattr(operator, "authorize", confirm)
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: caller == "terminal")
+    monkeypatch.setattr(operator, "authorize", lambda _: pytest.fail("approval preview must not ask for a code"))
     rev = project.rev()
     if caller == "relay":
-        from aew.errors import ApprovalSubjectChanged
+        from aew.errors import ChangedSinceRead
         from aew.harness.lead_broker import run_cli
 
         stale = [*out[:-1], "0" * 64]
-        with pytest.raises(ApprovalSubjectChanged):
+        with pytest.raises(ChangedSinceRead):
             run_cli(engine, project.token, stale, str(project.root), "", channel="lead.cli")
         assert project.rev() == rev
         result = run_cli(engine, project.token, out, str(project.root), "", channel="lead.cli")
@@ -155,6 +189,4 @@ def test_a_shown_digest_lets_an_unchanged_subject_commit(project, tmp_path, monk
         assert main(["-C", str(project.root), *out[:-2]]) == 0
     assert project.rev() == rev + 1
     if caller == "terminal":
-        assert len(prompts) == 1 and binding in prompts[0]
-    else:
-        assert not prompts
+        assert binding in capsys.readouterr().err

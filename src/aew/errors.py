@@ -100,8 +100,8 @@ class IllegalTransition(AEWError):
     exit_code = 5
 
 
-class ApprovalSubjectChanged(IllegalTransition):
-    code = "APPROVAL_SUBJECT_CHANGED"
+class ChangedSinceRead(IllegalTransition):
+    code = "CHANGED_SINCE_READ"
 
 
 class GateUnsatisfied(IllegalTransition):

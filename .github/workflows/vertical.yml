@@ -97,14 +97,11 @@ jobs:
           path: |
             ${{ runner.temp }}/vertical/*.json
             ${{ runner.temp }}/vertical/*.jsonl
-            ${{ runner.temp }}/vertical/*.xml
-            ${{ runner.temp }}/vertical/*.txt
             ${{ runner.temp }}/vertical/*/vertical-ledger.json
-            ${{ runner.temp }}/vertical/*/vertical-summary.txt
           if-no-files-found: warn
           retention-days: 30
       - uses: ./.github/actions/publish-evidence
         if: failure() || cancelled()
         with:
-          source: ${{ runner.temp }}/vertical/hangs
-          artifact: evidence-vertical-ledger-${{ runner.os }}-attempt-${ github.run_attempt }
+          source: ${{ runner.temp }}/vertical/
+          artifact: evidence-vertical-ledger-${{ runner.os }}-attempt-${{ github.run_attempt }}

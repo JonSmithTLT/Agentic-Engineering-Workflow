@@ -85,7 +85,7 @@ jobs:
         if: failure() || cancelled()
         with:
           source: ${{ runner.temp }}/audit/hangs
-          artifact: evidence-unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}-attempt-${ github.run_attempt }
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
 
   serial:
     name: audit serial (${{ matrix.os }})
@@ -130,7 +130,7 @@ jobs:
         if: failure() || cancelled()
         with:
           source: ${{ runner.temp }}/audit/hangs
-          artifact: evidence-unit-isolation-audit-${{ runner.os }}-serial-attempt-${ github.run_attempt }
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-serial-attempt-${{ github.run_attempt }}
 
   result:
     # Clean means: every job reported, and no report holds a violation.

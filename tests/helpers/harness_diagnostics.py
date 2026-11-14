@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,7 @@ def _tail(path: Path, lines: int = TAIL_LINES) -> str:
         text = _redacted(path)
     except OSError as exc:
         return f"<unreadable: {type(exc).__name__}>"
-    return "\n".join(line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " …"
+    return "\n".join(line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " â€¦"
                      for line in text.splitlines()[-lines:])
 
 
@@ -149,7 +150,7 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
                     if len(text) > MAX_COPY_BYTES:  # the tail, from a line boundary when one leaves anything
                         cut = text[-MAX_COPY_BYTES:]
                         _, sep, rest = cut.partition("\n")
-                        text = "[… earlier text not copied]\n" + (rest if sep and rest else cut)
+                        text = "[â€¦ earlier text not copied]\n" + (rest if sep and rest else cut)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8", newline="")  # the source's own line ends, untranslated
                 copied.append(target)
@@ -204,65 +205,70 @@ CHEAP_FILE = 64 * 1024
 CHEAP_TOTAL = 2 * 1024 * 1024
 OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
 TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
-TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
+TRUNCATED = "[â€¦ earlier text not copied: the autopsy's per-file cap]\n"
 
 
 def evidence_text(path: Path) -> bool:
-    return (path.suffix.lower() in TEXT_SUFFIXES and not path.is_symlink()
-            and not any(word in path.name.lower() for word in ("credential", "secret", "auth.json", ".env")))
+    return (path.suffix.lower() in TEXT_SUFFIXES or path.name == "heartbeat") and not any(
+        word in path.name.lower() for word in ("credential", "secret", "auth.json", ".env"))
 
 
-def copy_test_evidence(src: Path, dest: Path, label: str, *, budget: Budget, cheap: bool) -> list[str]:
-    """Keep an inventory and copy only fixture-owned text. Publish harness output at visible paths."""
-    cap = CHEAP_FILE if cheap else AUTOPSY_FILE_CAP
-    limit = 256 if cheap else 2000
+def is_link(path: Path) -> bool:
+    info = path.lstat()
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def copy_test_file(path: Path, target: Path, budget: Budget) -> str:
+    with path.open("rb") as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - CHEAP_FILE))
+        data = stream.read(CHEAP_FILE)
+    if b"\x00" in data:
+        return "binary source"
+    text = data.decode("utf-8", errors="strict" if size <= CHEAP_FILE else "replace")
+    if size > CHEAP_FILE:
+        _, separator, remainder = text.partition("\n")
+        text = TRUNCATED + (remainder if separator and remainder else text)
+    out = write_text(target, path.name, text, budget=budget, cap=CHEAP_FILE)
+    return f"copied to {out.name}" if out else "budget exhausted"
+
+
+def copy_test_evidence(src: Path, dest: Path, label: str, *, budget: Budget) -> list[str]:
+    """Copy bounded fixture text, including text below hidden AEW state directories."""
     inventory = []
     pending = [src]
-    visited = 0
-    while pending and visited < limit:
+    if is_link(src):
+        return [f"{label}: link skipped"]
+    while pending and budget.paths_left:
         directory = pending.pop()
         for path in directory.iterdir():
-            if visited >= limit:
+            if not budget.paths_left:
                 break
-            visited += 1
+            budget.paths_left -= 1
             rel = path.relative_to(src)
-            parts = rel.parts
-            is_harness = any(parts[i:i + 4] == (".aew", "local", "harness", "runs")
-                             and len(parts) > i + 6 and parts[i + 5] == "harness"
-                             for i in range(len(parts)))
+            hidden = any(part.startswith(".") for part in rel.parts)
             try:
-                if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                if is_link(path):
                     outcome = "link skipped"
                 elif path.is_dir():
                     if not path.name.startswith(".") or path.name == ".aew":
                         pending.append(path)
                     outcome = "directory"
                 elif (not path.is_file() or not evidence_text(path)
-                      or (cheap and not is_harness and path.suffix.lower() not in OUTPUT_SUFFIXES)):
+                      or any(word in part.lower() for part in rel.parts[:-1]
+                             for word in ("credential", "secret", ".env", ".git"))
+                      or (not hidden and path.suffix.lower() not in OUTPUT_SUFFIXES)):
                     outcome = "excluded"
-                elif path.stat().st_size > cap:
-                    outcome = "oversized source"
                 else:
-                    with path.open("rb") as stream:
-                        data = stream.read(cap + 1)
-                    if len(data) > cap or b"\x00" in data:
-                        outcome = "oversized or binary source"
-                    else:
-                        text = data.decode("utf-8")
-                        if is_harness:
-                            target = dest / "harness" / safe_dir(f"{label}/{rel.parent.as_posix()}")
-                        elif any(part.startswith(".") for part in parts):
-                            inventory.append(f"{label}/{rel.as_posix()}: hidden source excluded")
-                            continue
-                        else:
-                            target = dest / "workdir" / label / rel.parent
-                        out = write_text(target, rel.name, text, budget=budget, cap=cap)
-                        outcome = f"copied to {out.relative_to(dest).as_posix()}" if out else "budget exhausted"
+                    target = (dest / "harness" / safe_dir(f"{label}/{rel.parent.as_posix()}") if hidden
+                              else dest / "workdir" / label / rel.parent)
+                    outcome = copy_test_file(path, target, budget)
             except (OSError, UnicodeError) as exc:
                 outcome = f"unavailable ({type(exc).__name__})"
             inventory.append(f"{label}/{rel.as_posix()}: {outcome}")
-    if visited >= limit:
-        inventory.append(f"{label}: inventory capped at {limit} paths")
+    if not budget.paths_left:
+        inventory.append(f"{label}: test inventory capped at 256 paths")
     return inventory
 
 
@@ -270,6 +276,7 @@ class Budget:
     """The bytes an autopsy may still write (shared by every writer of one autopsy directory)."""
 
     def __init__(self, total: int = AUTOPSY_TOTAL_CAP) -> None:
+        self.paths_left = 256
         self.left = total
         self.refused: list[str] = []
 
@@ -306,6 +313,10 @@ def write_text(dest_dir: Path, name: str, text: str, *, budget: Budget | None = 
     """Write ``text`` redacted, capped and safely named under ``dest_dir``. Returns the path, or None when the
     autopsy's total budget refused it (the refusal is kept in the budget, and reported by its writer)."""
     body = capped(K.redact(text), cap)
+    encoded = body.encode("utf-8", "replace")
+    if cap == CHEAP_FILE and len(encoded) > cap:
+        prefix = TRUNCATED.encode("utf-8")
+        body = TRUNCATED + encoded[-(cap - len(prefix)):].decode("utf-8", "ignore")
     target = dest_dir / safe_name(name)
     if budget is not None and not budget.take(target.name, len(body.encode("utf-8", "replace"))):
         return None

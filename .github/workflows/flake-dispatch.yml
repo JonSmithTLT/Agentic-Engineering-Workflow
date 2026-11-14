@@ -63,12 +63,10 @@ jobs:
         with:
           name: flake-dispatch-evidence
           path: |
-            ${{ runner.temp }}/flake-dispatch/*.txt
             ${{ runner.temp }}/flake-dispatch/**/report.json
-            ${{ runner.temp }}/flake-dispatch/**/junit.xml
           retention-days: 14
       - uses: ./.github/actions/publish-evidence
         if: failure() || cancelled()
         with:
           source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-attempt-${ github.run_attempt }
+          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-attempt-${{ github.run_attempt }}

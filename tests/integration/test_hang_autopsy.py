@@ -106,6 +106,9 @@ def test_fails(tmp_path):
     harness.mkdir(parents=True)
     with (harness / "shell-2.stdout").open("w") as output:
         subprocess.run([sys.executable, "-c", "print('planted shell diagnostic')"], stdout=output, check=True)
+    (harness.parent / "supervisor.log").write_text("x" * 70000 + "\\nplanted supervisor diagnostic\\n")
+    (harness.parent / "run.json").write_text('{"status": "lost"}')
+    (harness.parent / "events.jsonl").write_text('{"event": "exit"}')
     secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
     subprocess.run([sys.executable, "-c", "import sys; print(sys.argv[1], file=sys.stderr)", secret],
                    stderr=subprocess.DEVNULL, check=True)
@@ -118,9 +121,37 @@ def test_fails(tmp_path):
     bundle = autopsy_of(hangs, "test_fails")
     [output] = list((bundle / "harness").rglob("shell-2.stdout.txt"))
     assert "planted shell diagnostic" in output.read_text(encoding="utf-8")
+    [supervisor] = list((bundle / "harness").rglob("supervisor.log.txt"))
+    assert "planted supervisor diagnostic" in supervisor.read_text(encoding="utf-8")
+    assert list((bundle / "harness").rglob("run.json.txt"))
+    assert list((bundle / "harness").rglob("events.jsonl.txt"))
     assert "planted assertion failure" in texts(bundle, "failure.*.txt")
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in texts(bundle, "*.txt")
     assert not list(bundle.rglob("*.db*"))
+
+
+@pytest.mark.parametrize("phase", ["setup", "teardown"])
+def test_a_fixture_failure_keeps_the_tests_own_temp_tree(tmp_path, phase):
+    planted = f"""
+import pytest
+
+@pytest.fixture
+def broken(tmp_path):
+    if {phase!r} == "teardown":
+        yield
+    (tmp_path / "fixture.log").write_text("planted {phase} diagnostic")
+    raise RuntimeError("planted {phase} failure")
+
+def test_fails(broken):
+    pass
+"""
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, planted), hangs, "-p", "no:xdist")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    bundle = autopsy_of(hangs, "test_fails")
+    assert f"failed in {phase}" in texts(bundle, "reason.txt")
+    assert f"planted {phase} failure" in texts(bundle, "failure.*.txt")
+    assert f"planted {phase} diagnostic" in texts(bundle, "fixture.log.txt")
 
 
 def session_dir(hangs: Path) -> Path:

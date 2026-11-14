@@ -254,22 +254,46 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
     assert upload["with"]["retention-days"] == 14
     assert upload["with"]["path"] == "${{ steps.stage.outputs.directory }}"
     assert not upload["with"].get("include-hidden-files")
-    for name in ("ci", "nightly", "vertical", "unit-isolation-audit", "flake-dispatch", "discovery"):
-        workflow = yaml.safe_load((workflows / f"{name}.yml").read_text(encoding="utf-8"))
-        for job in workflow["jobs"].values():
-            job_steps = job.get("steps", [])
-            tests = [step for step in job_steps if " -m pytest" in step.get("run", "")]
-            if not tests:
-                continue
-            publishers = [step for step in job_steps if step.get("uses") == "./.github/actions/publish-evidence"]
-            assert len(publishers) == 1 and publishers[0]["if"] == "failure() || cancelled()"
-            for step in tests:
-                variables = {**workflow.get("env", {}), **job.get("env", {}), **step.get("env", {})}
-                assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys()
-                assert all(not re.search(r"\b(secrets\.|github\.token\b)", str(value))
-                           for value in variables.values())
-            assert all(step.get("with", {}).get("persist-credentials") is False
-                       for step in job_steps if step.get("uses", "").startswith("actions/checkout@"))
+    proof_uses = "./.github/actions/prove-evidence"
+    publisher = "./.github/actions/publish-evidence"
+    workflow_docs = {path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+                     for path in workflows.glob("*.yml")}
+    action_docs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))["runs"]
+                   for path in action.parents[1].glob("*/action.y*ml")}
+    groups = [
+        (f"{name}/{key}", {**doc.get("env", {}), **job.get("env", {})}, job.get("steps", []))
+        for name, doc in workflow_docs.items() for key, job in doc["jobs"].items()
+    ] + [(name, {}, runs.get("steps", [])) for name, runs in action_docs.items()]
+    for label, inherited, job_steps in groups:
+        tests = [step for step in job_steps if " -m pytest" in step.get("run", "")]
+        publishers = [step for step in job_steps if step.get("uses") == publisher]
+        for step in publishers:
+            artifact = step["with"]["artifact"]
+            assert artifact.endswith("attempt-${{ github.run_attempt }}") and "${ " not in artifact, (label, artifact)
+        if not tests:
+            continue
+        assert len(publishers) == 1, label
+        if "/" in label:
+            assert publishers[0]["if"] == "failure() || cancelled()", label
+        for step in tests:
+            variables = {**inherited, **step.get("env", {})}
+            assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys(), label
+            assert all(not re.search(r"\b(secrets\.|github\.token\b)", str(value))
+                       for value in variables.values()), label
+            assert all(not ("GITHUB_ENV" in earlier.get("run", "") and
+                            re.search(r"GH_TOKEN|GITHUB_TOKEN|secrets\.|github\.token", str(earlier)))
+                       for earlier in job_steps[:job_steps.index(step)]), label
+        assert all(step.get("with", {}).get("persist-credentials") is False
+                   for step in job_steps if step.get("uses", "").startswith("actions/checkout@")), label
+    proof_steps = action_docs["prove-evidence"]["steps"]
+    pytest_step = next(step for step in proof_steps if " -m pytest" in step.get("run", ""))
+    assert all(flag in pytest_step["run"] for flag in ("--session-deadline ", "--test-timeout ", "--hang-dir="))
+    for workflow, job, condition in (
+        ("ci.yml", "core", "needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1"),
+        ("nightly.yml", "reference", "matrix.shard == 1"),
+    ):
+        [proof] = [step for step in workflow_docs[workflow]["jobs"][job]["steps"] if step.get("uses") == proof_uses]
+        assert proof["if"] == condition
 
 
 def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
@@ -283,6 +307,7 @@ def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch
     destination = tmp_path / "public"
 
     def scan(argv, **kwargs):
+        assert "--ignore-gitleaks-allow" in argv
         report = Path(argv[argv.index("--report-path") + 1])
         report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
         return SimpleNamespace(returncode=1)

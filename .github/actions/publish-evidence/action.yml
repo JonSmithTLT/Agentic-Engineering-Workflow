@@ -12,7 +12,9 @@ runs:
   steps:
     - name: Install the evidence scanner
       shell: bash
-      run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
+      run: |
+        go install github.com/zricethezav/gitleaks/v8@v8.28.0
+        go env GOPATH | tr -d '\r' | sed 's|$|/bin|' >> "$GITHUB_PATH"
       continue-on-error: true
     - name: Stage and scan test evidence
       id: stage
@@ -21,7 +23,9 @@ runs:
         SOURCE: ${{ inputs.source }}
         ARTIFACT: ${{ inputs.artifact }}
       run: |
-        export PATH="$(go env GOPATH)/bin:$PATH"
+        bin="$(go env GOPATH)/bin"
+        if command -v cygpath >/dev/null; then bin="$(cygpath -u "$bin")"; fi
+        export PATH="$bin:$PATH"
         dir="$RUNNER_TEMP/$ARTIFACT"
         result=$(python tools/ci/stage_evidence.py "$SOURCE" "$dir")
         echo "directory=$dir" >> "$GITHUB_OUTPUT"

@@ -74,6 +74,7 @@ class AutopsyPlugin:
         self._child_root_path: Path | None = None
         self.item: pytest.Item | None = None
         self.workdirs: list[Path] = []
+        self.fixture_tmp: Path | None = None
         self.collected: dict[str, Path] = {}
         self.counts: dict[str, int] = {}
         self.budgets: dict[str, hd.Budget] = {}
@@ -110,6 +111,7 @@ class AutopsyPlugin:
         with self._lock:
             self.item = item
             self.workdirs = []
+            self.fixture_tmp = None
         flight_recorder.record("test_start", test=item.nodeid)
         try:
             yield
@@ -119,6 +121,15 @@ class AutopsyPlugin:
             with self._lock:
                 self.item = None
                 self.workdirs = []
+                self.fixture_tmp = None
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(self, fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest):
+        value = yield
+        # Record the owned basetemp child before a later fixture can abort setup.
+        if fixturedef.argname == "tmp_path" and request.node is self.item and isinstance(value, Path):
+            self.fixture_tmp = value
+        return value
 
     def child_dir(self) -> Path:
         name = self.item.nodeid if self.item is not None else f"outside-a-test-{os.getpid()}"
@@ -242,6 +253,8 @@ class AutopsyPlugin:
                   *, cheap: bool = False) -> None:
         dirs: list[tuple[str, Path]] = []
         tmp = getattr(item, "funcargs", {}).get("tmp_path") if item is not None else None
+        if tmp is None and item is self.item:
+            tmp = self.fixture_tmp
         mark = item.get_closest_marker(MARKER) if item is not None else None
         whole = mark is None or mark.kwargs.get("tmp_path", True)  # autopsy(tmp_path=False): the registered parts only
         if isinstance(tmp, Path) and whole:
@@ -249,10 +262,18 @@ class AutopsyPlugin:
         dirs += [(hd.safe_dir(str(p)), p) for p in self.workdirs if not (tmp and whole and Path(p) == tmp)]
         for name, path in dirs:
             if path.is_dir():
-                errors += hd.copy_test_evidence(path, dest, name, budget=budget, cheap=cheap)
-            elif not cheap and path.is_file() and hd.evidence_text(path):
+                if cheap:
+                    errors += hd.copy_test_evidence(path, dest, name, budget=budget)
+                else:
+                    errors += hd.copy_tree(path, dest / "workdir" / name, budget=budget)[1]
+            elif path.is_file() and (not cheap or (hd.evidence_text(path) and not hd.is_link(path))):
                 try:
-                    hd.copy_file(path, dest / "workdir", path.name, budget=budget)
+                    if cheap:
+                        if budget.paths_left:
+                            budget.paths_left -= 1
+                            errors.append(hd.copy_test_file(path, dest / "workdir", budget))
+                    else:
+                        hd.copy_file(path, dest / "workdir", path.name, budget=budget)
                 except OSError as exc:
                     errors.append(f"{path.name}: {type(exc).__name__}: {exc}")
 

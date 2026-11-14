@@ -8,6 +8,7 @@
                "at", "stale_invocations"],
   "additionalProperties": false,
   "properties": {
+    "approval_ref": {"type": "string"},
     "schema": {"const": "aew/gate-correction/v1"},
     "id": {"type": "string", "pattern": "^GC-[0-9]{4,}$"},
     "work_unit": {"description": "The Story or Epic whose mandatory gate was replaced.", "type": "string", "minLength": 1},

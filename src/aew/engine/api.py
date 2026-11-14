@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
-from aew.engine import gate_ops, transitions, usage_ops
+from aew.engine import approval, gate_ops, transitions, usage_ops
 from aew.engine import steering as steering_mod
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
@@ -54,7 +54,7 @@ from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
-from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.errors import AEWError, ApprovalSubjectChanged, IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -111,23 +111,54 @@ class ProjectAdmin:
         ctx.session.write(MANIFEST, text, immutable=False)
         ctx.state["manifest_sha256"] = sha256_text(text)
 
+    def authority_candidate(self, candidate_id: str) -> dict[str, Any]:
+        return self._candidate_subject(self._candidate(self._fresh_manifest(), candidate_id))
+
+    def _candidate_subject(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        path = candidate["path"]
+        if path.endswith("/"):
+            digest = approval.digest(candidate)
+            return {"path": path, "kind": "directory", "digest": digest, "ref": f"{path}@record:{digest}"}
+        source = self.k.repo_root / path
+        try:
+            if source.is_file():
+                digest = sha256_bytes(source.read_bytes())
+                return {"path": path, "kind": "file", "digest": digest, "ref": f"{path}@{digest}"}
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            if source.is_file():
+                raise
+        digest = approval.digest(candidate)
+        return {"path": path, "kind": "file, missing", "digest": digest, "ref": f"{path}@record:{digest}"}
+
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str,
-                         decided_by: str = "lead", reason: str | None = None,
-                         authorization: dict[str, str] | None = None) -> dict[str, Any]:
+                         decided_by: str, reason: str | None = None,
+                         authorization: dict[str, str] | None = None,
+                         binding: str | None = None) -> dict[str, Any]:
         if klass not in AUTHORITY_CLASSES:
             raise UsageError(f"class must be one of {AUTHORITY_CLASSES}")
+        if decided_by not in {"lead", "operator"}:
+            raise UsageError("an authority decision must name lead or operator as the decider")
         require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
         with self.k.lead_txn(token, expect_rev, "authority.accept", reason=reason) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
                 raise IllegalTransition(f"{candidate_id} is already {candidate['status']}")
+            path = candidate["path"]
+            if path.endswith("/") and not (self.k.repo_root / path).is_dir():
+                raise IllegalTransition(f"authority candidate {path} is no longer a directory", path=path)
+            ref = path
+            if binding is not None:
+                subject = self._candidate_subject(candidate)
+                approval.compare("authority.accept", path, binding,
+                                 subject["digest"] if subject["kind"] != "file, missing" else None)
+                ref = subject["ref"]
             by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
                       recorded_by_lead=True, **(authorization or {}))
             decision = self.k.new_decision(
                 ctx, "authority_acceptance",
                 f"Accepted {candidate['path']} as {klass} authority",
-                decided_by=by, reason=reason, evidence_refs=[candidate["path"]],
+                decided_by=by, reason=reason, evidence_refs=[ref],
             )
             candidate["status"] = "accepted"
             manifest["authority"]["accepted"].append(
@@ -136,51 +167,98 @@ class ProjectAdmin:
             ctx.summary = f"authority accepted: {candidate['path']} ({klass})"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
-    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str,
-                         reason: str | None = None) -> dict[str, Any]:
+    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str, decided_by: str,
+                         reason: str | None = None, authorization: dict[str, str] | None = None,
+                         binding: str | None = None) -> dict[str, Any]:
+        if decided_by not in {"lead", "operator"}:
+            raise UsageError("an authority decision must name lead or operator as the decider")
+        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
         with self.k.lead_txn(token, expect_rev, "authority.reject", reason=reason) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
                 raise IllegalTransition(f"{candidate_id} is already {candidate['status']}")
+            path = candidate["path"]
+            ref = path
+            if binding is not None:
+                subject = self._candidate_subject(candidate)
+                approval.compare("authority.reject", path, binding, subject["digest"])
+                ref = subject["ref"]
+            by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
+                      recorded_by_lead=True, **(authorization or {}))
             decision = self.k.new_decision(ctx, "authority_rejection",
-                                         f"Rejected {candidate['path']} as project authority", reason=reason)
+                                         f"Rejected {path} as project authority", reason=reason,
+                                         decided_by=by, evidence_refs=[ref])
             candidate["status"] = "rejected"
             self._rewrite_manifest(ctx, manifest)
             ctx.summary = f"authority candidate rejected: {candidate['path']}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
+    def manifest_approval(self) -> dict[str, str | None]:
+        """The paths and byte SHAs the operator is about to approve."""
+        _, current, changed, first_pin = self._manifest_subject(self.k.store.current())
+        return current if first_pin else {rel: current.get(rel) for rel in changed}
+
+    def _manifest_subject(
+        self, state: dict[str, Any], binding: dict[str, str | None] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str | None], list[str], bool]:
+        path = self.k.aew_root / MANIFEST
+        raw = path.read_bytes()
+        sha = sha256_bytes(raw)
+        if binding is not None and MANIFEST in binding:
+            approval.compare("manifest.adopt", MANIFEST, binding[MANIFEST], sha)
+        manifest = load_yaml(raw.decode("utf-8"), source=str(path))
+        validate("project", manifest, source=str(path))
+        previous = state.get(POLICY_PINS)
+        pins = self._read_policy_pins(manifest, previous or {}, binding)
+        current = {MANIFEST: sha, **pins}
+        drift = [] if previous is None else sorted(
+            rel for rel in previous.keys() | pins.keys() if previous.get(rel) != pins.get(rel)
+        )
+        changed = ([MANIFEST] if current[MANIFEST] != state["manifest_sha256"] else []) + drift
+        return manifest, current, changed, previous is None
+
     def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
-                       only: list[str] | None = None) -> dict[str, Any]:
+                       only: list[str] | None = None,
+                       binding: dict[str, str | None] | None = None) -> dict[str, Any]:
         """Accept a reviewed manual edit of project.yaml or of the policy files it names by re-pinning them (recorded
         decision). A project whose policy files were never pinned has them pinned here. The operator's decision, always
         confirmed at their own terminal: whoever can edit the policy must not also approve the edit, and a Lead holding
         the raw credential is refused like a Lead session (PR #118 review, finding 1). ``only`` is the switch offer's:
         the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen."""
         require_operator_attribution(True, authorization, "adopting an edit of project.yaml or the policy files")
-        manifest_path = self.k.aew_root / MANIFEST
         # Credential and revision are checked by lead_txn before any state-dependent answer.
         with self.k.lead_txn(token, expect_rev, "manifest.adopt", reason=reason, _adopting_manifest=True) as ctx:
-            manifest_changed = not self.k.manifest_pin_ok(ctx.state)
-            drift = self.k.policy_pin_drift(ctx.state)
-            if not manifest_changed and drift == []:
+            manifest, current, changed, first_pin = self._manifest_subject(ctx.state, binding)
+            manifest_sha = current[MANIFEST]
+            pins = {rel: sha for rel, sha in current.items() if rel != MANIFEST}
+            if binding is not None:
+                required = current.keys() if first_pin else set(changed)
+                for rel in sorted(required | binding.keys()):
+                    expected = binding.get(rel)
+                    actual = current.get(rel)
+                    if rel not in binding or rel not in required:
+                        raise ApprovalSubjectChanged(
+                            f"manifest.adopt: the adoption set changed at {rel}",
+                            op="manifest.adopt", subject=rel, expected=expected, current=actual,
+                        )
+                    if rel not in current:
+                        approval.compare("manifest.adopt", rel, expected, actual)
+            if not changed and not first_pin:
                 raise IllegalTransition("project.yaml and the policy files match their pins; nothing to adopt")
-            raw = manifest_path.read_bytes()  # pin the exact bytes on disk, not a newline-normalized view
-            manifest = load_yaml(raw.decode("utf-8"), source=str(manifest_path))
-            validate("project", manifest, source=str(manifest_path))
-            pins = self._read_policy_pins(manifest, ctx.state.get(POLICY_PINS) or {})
-            changed = ([MANIFEST] if manifest_changed else []) + (drift or [])
-            if only is not None and (drift is None or set(changed) != set(only)):
+            if only is not None and (first_pin or set(changed) != set(only)):
                 raise IllegalTransition(f"this adoption is of {', '.join(sorted(only))} only, and "
-                                        f"{'no file was ever pinned' if drift is None else ', '.join(changed)} differ; "
+                                        f"{'no file was ever pinned' if first_pin else ', '.join(changed)} differ; "
                                         "nothing is adopted", reason="other_files_changed", changed=changed)
-            what = ", ".join(changed) + (" (policy files pinned for the first time)" if drift is None else "")
+            what = ", ".join(changed) + (" (policy files pinned for the first time)" if first_pin else "")
             title = f"Adopted {what} at the switch offer" if only is not None \
                 else f"Adopted a reviewed manual edit of {what}"
             decision = self.k.new_decision(ctx, "manifest_adoption", title,
                                          reason=reason, decided_by=dict(ctx.actor, kind="operator",
-                                                                        recorded_by_lead=True, **(authorization or {})))
-            ctx.state["manifest_sha256"] = sha256_bytes(raw)
+                                                                        recorded_by_lead=True, **(authorization or {})),
+                                         evidence_refs=[f"{rel}@{sha if sha is not None else 'missing'}"
+                                                        for rel, sha in sorted((binding or {}).items())])
+            ctx.state["manifest_sha256"] = manifest_sha
             ctx.state[POLICY_PINS] = pins
             policy = self.k._execution_policy(manifest, pins)[0]
             # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
@@ -190,7 +268,8 @@ class ProjectAdmin:
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
-    def _read_policy_pins(self, manifest: dict[str, Any], current: dict[str, str | None]) -> dict[str, str | None]:
+    def _read_policy_pins(self, manifest: dict[str, Any], current: dict[str, str | None],
+                          binding: dict[str, str | None] | None = None) -> dict[str, str | None]:
         """The policy files' pins, each hashed from the same bytes it is validated from: a file that does not parse or
         match its schema is refused, never pinned."""
         names = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
@@ -198,20 +277,22 @@ class ProjectAdmin:
         optional = X.policy_path(self.k.aew_root, manifest).relative_to(self.k.aew_root).as_posix()
         for rel in policy_files(manifest):
             path = self.k.aew_root / rel
-            if not path.is_file():
+            raw = path.read_bytes() if path.is_file() else None
+            sha = sha256_bytes(raw) if raw is not None else None
+            if binding is not None and rel in binding:
+                approval.compare("manifest.adopt", rel, binding[rel], sha)
+            if raw is None:
                 if rel != optional:  # only the execution policy may be absent (PR #118 review, finding 3)
                     raise IntegrityError(f"{AEW_DIR}/{rel} is missing: project.yaml names it as required policy; "
                                          "restore it or change project.yaml before adopting", files=[rel])
                 pins[rel] = None
                 continue
-            raw = path.read_bytes()
-            digest = sha256_bytes(raw)
             name = names.get(rel, "execution")
-            if name == "execution" and current.get(rel) == digest:
+            if name == "execution" and current.get(rel) == sha:
                 X.parse(raw, source=str(path))  # already adopted, so only the in-force checks apply
             else:
                 check_policy_bytes(name, raw, source=str(path))
-            pins[rel] = digest
+            pins[rel] = sha
         return pins
 
     def _fresh_manifest(self) -> dict[str, Any]:
@@ -643,19 +724,25 @@ class Engine:
     def workspaces_root(self) -> Path:
         return self._k.workspaces_root()
 
-    def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str = "lead",
-                         reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
+    def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str,
+                         reason: str | None = None, authorization: dict[str, str] | None = None,
+                         binding: str | None = None) -> dict[str, Any]:
         return self._project.authority_accept(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
                                               klass=klass, decided_by=decided_by, reason=reason,
-                                              authorization=authorization)
+                                              authorization=authorization, binding=binding)
+
+    def authority_candidate(self, candidate_id: str) -> dict[str, Any]:
+        return self._project.authority_candidate(candidate_id)
 
     def authority_list(self) -> dict[str, Any]:
         return self._project.authority_list()
 
-    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str,
-                         reason: str | None = None) -> dict[str, Any]:
+    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str, decided_by: str,
+                         reason: str | None = None, authorization: dict[str, str] | None = None,
+                         binding: str | None = None) -> dict[str, Any]:
         return self._project.authority_reject(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
-                                              reason=reason)
+                                              decided_by=decided_by, reason=reason, authorization=authorization,
+                                              binding=binding)
 
     def check_manifest_pin(self, state: dict[str, Any]) -> None:
         return self._k.check_manifest_pin(state)
@@ -671,9 +758,10 @@ class Engine:
         return self._resume.checkpoint(token=token, expect_rev=expect_rev, note=note, next_action=next_action)
 
     def classify_parent_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                                     reason: str) -> dict[str, Any]:
+                                     reason: str, binding: str | None = None) -> dict[str, Any]:
         return self._hierarchy.classify_parent_verification(token=token, expect_rev=expect_rev, work_id=work_id,
-                                                            classification=classification, reason=reason)
+                                                            classification=classification, reason=reason,
+                                                            binding=binding)
 
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         return self._packs.context_pack(inv_id)
@@ -794,6 +882,33 @@ class Engine:
                 "clean": not findings, "errors": [f for f in findings if f["severity"] == "error"],
                 "warnings": [f for f in findings if f["severity"] == "warning"]}
 
+    def approval_subject(self, work_id: str, op: str, *, gate: str | None = None,
+                         evidence: str | None = None, source: str | None = None) -> dict[str, Any] | None:
+        if op == "input.acknowledge":
+            rows = self.input_status(self.store.current(), work_id)
+            for row in rows:
+                if row["id"] == evidence and row["from"] == source and "approval_digest" in row:
+                    return {"subject": row["acknowledgement_subject"], "digest": row["approval_digest"]}
+            if evidence is None or source is None:
+                return None
+            try:
+                report = self._inputs.find_unit_evidence(source, evidence)
+            except AEWError:
+                return None
+            return approval.input_subject(evidence, report["_sha256"], self.authoritative_commit())
+        if op in {"work.close", "waive"}:
+            view = self.gate_show(work_id)
+            if op == "work.close":
+                digest = view.get("closeout_approval_digest")
+                subject = view.get("snapshot")
+            else:
+                digest = view["gate_approval_digests"].get(gate)
+                subject = {"gate": gate, "result": view["gates"].get(gate), "snapshot": view.get("snapshot")}
+            return {"subject": subject, "digest": digest} if digest else None
+        shown = self.status(work_id, usage=False).get("approval_subjects", {}).get(op)
+        return {"subject": {k: v for k, v in shown.items() if k not in {"digest", "argv"}},
+                "digest": shown["digest"]} if shown else None
+
     def gate_show(self, work_id: str) -> dict[str, Any]:
         return self._gates.gate_show(work_id)
 
@@ -881,9 +996,9 @@ class Engine:
         return self._validation.breaker_status()
 
     def integrate_breaker_reset(self, *, token: str, expect_rev: int, reason: str,
-                                authorization: dict[str, str]) -> dict[str, Any]:
+                                authorization: dict[str, str], binding: str | None = None) -> dict[str, Any]:
         return self._validation.breaker_reset(token=token, expect_rev=expect_rev, reason=reason,
-                                              authorization=authorization)
+                                              authorization=authorization, binding=binding)
 
     def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
         return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
@@ -961,10 +1076,14 @@ class Engine:
     def manifest(self) -> Any:
         return self._k.manifest
 
+    def manifest_approval(self) -> dict[str, str | None]:
+        return self._project.manifest_approval()
+
     def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
-                       only: list[str] | None = None) -> dict[str, Any]:
+                       only: list[str] | None = None,
+                       binding: dict[str, str | None] | None = None) -> dict[str, Any]:
         return self._project.manifest_adopt(token=token, expect_rev=expect_rev, reason=reason,
-                                            authorization=authorization, only=only)
+                                            authorization=authorization, only=only, binding=binding)
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return self._k.manifest_pin_ok(state)
@@ -1041,8 +1160,10 @@ class Engine:
                                     evidence_refs=evidence_refs, resulting_transition=resulting_transition,
                                     reason=reason, decided_by=decided_by, body=body)
 
-    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
-        return self._work.plan_accept(token=token, expect_rev=expect_rev, work_id=work_id, revision=revision)
+    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int,
+                    binding: str | None = None) -> dict[str, Any]:
+        return self._work.plan_accept(token=token, expect_rev=expect_rev, work_id=work_id, revision=revision,
+                                      binding=binding)
 
     def plan_adopt(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
                    reason: str | None = None, review: list[str] | None = None, verify: list[str] | None = None,
@@ -1062,8 +1183,10 @@ class Engine:
                                        affected_paths=affected_paths, review=review, verify=verify,
                                        no_assurance=no_assurance, request_id=request_id)
 
-    def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._nm.plan_reconfirm(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                       binding: str | None = None) -> dict[str, Any]:
+        return self._nm.plan_reconfirm(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                       binding=binding)
 
     def policy(self, name: str) -> dict[str, Any]:
         return self._k.policy(name)
@@ -1175,9 +1298,9 @@ class Engine:
         return self._stages.abandon(token=token, expect_rev=expect_rev, intent=intent, rationale=rationale)
 
     def stage_continue(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
-                       plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+                       plan: list[dict[str, Any]] | None, rationale: str, binding: str | None = None) -> dict[str, Any]:
         return self._stages.continue_(token=token, expect_rev=expect_rev, intent=intent,
-                                      contract_digest=contract_digest, plan=plan, rationale=rationale)
+                                      contract_digest=contract_digest, plan=plan, rationale=rationale, binding=binding)
 
     def stage_recheck(self, intent: str, *, contract_digest: str | None,
                       plan: list[dict[str, Any]] | None) -> dict[str, Any]:
@@ -1187,11 +1310,14 @@ class Engine:
 
     # ---------------------------------------------------------------- dispositions and anomalies (M4-E E5b)
 
+    def disposition_approval(self, subject: str, *, state: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._dispositions.approval_subject(self._k.store.current() if state is None else state, subject)
+
     def work_dispose(self, *, token: str, expect_rev: int, subject: str, choice: str, rationale: str,
-                     follow_up: str | None = None) -> dict[str, Any]:
+                     follow_up: str | None = None, binding: str | None = None) -> dict[str, Any]:
         """The Lead's disposition of a finding or claim policy marks ``requires_disposition``, or of an anomaly."""
         return self._dispositions.dispose(token=token, expect_rev=expect_rev, subject=subject, choice=choice,
-                                          rationale=rationale, follow_up=follow_up)
+                                          rationale=rationale, follow_up=follow_up, binding=binding)
 
     def disposition(self, ref: str) -> dict[str, Any]:
         """A disposition record, by its id or its subject (TIS-35: found without scanning)."""
@@ -1388,9 +1514,9 @@ class Engine:
         return self._archive.archived_credential(state, token_id)
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                        reason: str) -> dict[str, Any]:
+                        reason: str, binding: str | None = None) -> dict[str, Any]:
         return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
-                                              classification=classification, reason=reason)
+                                              classification=classification, reason=reason, binding=binding)
 
     def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                       scope: str | None = None) -> dict[str, Any]:
@@ -1400,28 +1526,33 @@ class Engine:
                                             evidence_id=evidence_id, scope=scope)
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
-              finding: str | None = None) -> dict[str, Any]:
+              finding: str | None = None, binding: str | None = None) -> dict[str, Any]:
         return self._evidence.waive(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, gate=gate,
-                                    finding=finding)
+                                    finding=finding, binding=binding)
 
-    def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
-        return self._nm.work_accept(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+                    binding: str | None = None) -> dict[str, Any]:
+        return self._nm.work_accept(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, binding=binding)
 
     def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
-                               reason: str) -> dict[str, Any]:
+                               reason: str, binding: str | None = None) -> dict[str, Any]:
         return self._nm.work_acknowledge_input(token=token, expect_rev=expect_rev, work_id=work_id,
-                                               evidence_id=evidence_id, source=source, reason=reason)
+                                               evidence_id=evidence_id, source=source, reason=reason, binding=binding)
 
     def work_assign(self, *, token: str, expect_rev: int, work_id: str, execution_profile: dict[str, Any] | None = None,
                     launch: bool = False) -> dict[str, Any]:
         return self._assignment.work_assign(token=token, expect_rev=expect_rev, work_id=work_id,
                                             execution_profile=execution_profile, launch=launch)
 
-    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._hierarchy.work_cancel(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                    binding: str | None = None) -> dict[str, Any]:
+        return self._hierarchy.work_cancel(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                           binding=binding)
 
-    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
-        return self._hierarchy.work_close(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+                   binding: str | None = None) -> dict[str, Any]:
+        return self._hierarchy.work_close(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                          binding=binding)
 
     def work_create(self, *, token: str, expect_rev: int, kind: str, title: str, risk_class: int,
                     mutating: bool | None = None, parent: str | None = None, depends_on: list[str] | None = None,
@@ -1466,11 +1597,11 @@ class Engine:
                                             reason=reason, risk_class=risk_class, request_id=request_id)
 
     def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
-                          rationale: str) -> dict[str, Any]:
+                          rationale: str, binding: str | None = None) -> dict[str, Any]:
         """Replace a parent's mandatory gate that can never be satisfied, on the record (ITEMS 55, option (b)): the
         `resolve` tool's `replace_gate`."""
         return self._gate_repair.gate_replace(token=token, expect_rev=expect_rev, subject=subject,
-                                              replacement=replacement, rationale=rationale)
+                                              replacement=replacement, rationale=rationale, binding=binding)
 
     def gate_items(self, subject: str | None = None, *, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open stuck-gate items (ITEMS 55): resume, status and doctor name them; `resolve` settles them."""

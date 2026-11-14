@@ -362,8 +362,10 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.contract`
 - `aew.harness.delivery`
+- `aew.harness.operator_client`
 - `aew.operator`
 - `aew.priority_levels`
+- `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -546,6 +548,7 @@ None.
 
 - `aew`
 - `aew.coordination.render`
+- `aew.engine.approval`
 - `aew.engine.archive_ops`
 - `aew.engine.assurance`
 - `aew.engine.assurance_ops`
@@ -599,6 +602,11 @@ None.
 - `aew.schemas`
 - `aew.util`
 - `aew.workspace.git`
+
+### `aew.engine.approval`
+
+- `aew.errors`
+- `aew.util`
 
 ### `aew.engine.archive_ops`
 
@@ -763,6 +771,7 @@ None.
 
 ### `aew.engine.disposition_ops`
 
+- `aew.engine.approval`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.store`
@@ -774,6 +783,7 @@ None.
 
 ### `aew.engine.evidence_ops`
 
+- `aew.engine.approval`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.coverage`
@@ -824,6 +834,7 @@ None.
 
 ### `aew.engine.gate_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.dispatch`
 - `aew.engine.gates`
@@ -895,6 +906,7 @@ None.
 
 ### `aew.engine.hierarchy_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`
@@ -932,6 +944,7 @@ None.
 
 ### `aew.engine.integration_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.coverage`
 - `aew.engine.dispatch`
@@ -954,6 +967,7 @@ None.
 
 ### `aew.engine.lead_ops`
 
+- `aew.engine.approval`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.ports`
@@ -1001,6 +1015,7 @@ None.
 
 ### `aew.engine.nonmutating_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`
@@ -1092,6 +1107,7 @@ None.
 
 ### `aew.engine.request_ids`
 
+- `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.util`
@@ -1099,6 +1115,7 @@ None.
 ### `aew.engine.resume_ops`
 
 - `aew`
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.coverage`
 - `aew.engine.dependencies`
@@ -1145,6 +1162,7 @@ None.
 
 ### `aew.engine.stage_intents`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.primitives`
 - `aew.errors`
@@ -1218,6 +1236,7 @@ None.
 
 ### `aew.engine.validation_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.coverage`
 - `aew.engine.faults`
@@ -1239,6 +1258,7 @@ None.
 
 ### `aew.engine.work_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`

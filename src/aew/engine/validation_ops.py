@@ -47,8 +47,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from aew.engine import approval, faults, transitions
 from aew.engine import coverage as CV
-from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.errors import (
     AEWError,
@@ -982,17 +982,23 @@ class Validation:
     def breaker_status(self) -> dict[str, Any]:
         state = self.k.store.current()
         breaker = ((state.get("queue") or {}).get("validation_breaker")) or {"failures": [], "open": None}
-        return {"open": breaker["open"] is not None, **breaker, "threshold": V.BREAKER_THRESHOLD,
-                "window_s": V.BREAKER_WINDOW_S}
+        return {**breaker, "approval_digest": approval.digest(breaker["failures"]),
+                "threshold": V.BREAKER_THRESHOLD, "window_s": V.BREAKER_WINDOW_S}
 
-    def breaker_reset(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str]
-                      ) -> dict[str, Any]:
+    def breaker_reset(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str],
+                      binding: str | None = None) -> dict[str, Any]:
         """Close the breaker: the operator's explicit reset (``authorization`` comes from the operator's terminal)."""
         if not (reason and reason.strip()):
             raise AEWError("resetting the validation breaker needs a reason")
         with self.k.lead_txn(token, expect_rev, "integrate.breaker_reset", reason=reason) as ctx:
             breaker = self._breaker(ctx.state)
+            if binding is not None:
+                approval.compare("integrate.breaker_reset", "validation breaker failures", binding,
+                                 approval.digest(breaker["failures"]))
             was = breaker["open"]
-            breaker.update(open=None, failures=[], reset={"at": utc_now(), **authorization})
+            reset = {"at": utc_now(), **authorization}
+            if binding is not None:
+                reset["approval_ref"] = f"validation-breaker@record:{binding}"
+            breaker.update(open=None, failures=[], reset=reset)
             ctx.summary = "validation circuit breaker reset by the operator" + ("" if was else " (it was closed)")
         return {"ok": True, "was_open": was is not None, "revision": ctx.session.committed_revision}

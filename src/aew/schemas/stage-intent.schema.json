@@ -129,7 +129,7 @@
       "type": "array", "maxItems": 16,
       "items": {
         "type": "object", "required": ["from_generation", "to_generation", "rev", "at", "rationale"], "additionalProperties": false,
-        "properties": {"from_generation": {"type": "integer", "minimum": 1}, "to_generation": {"type": "integer", "minimum": 1}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}}
+        "properties": {"approval_ref": {"type": "string"}, "from_generation": {"type": "integer", "minimum": 1}, "to_generation": {"type": "integer", "minimum": 1}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}}
       }
     },
     "resolution": {
@@ -138,7 +138,7 @@
         {"type": "null"},
         {
           "type": "object", "required": ["choice", "rationale", "generation", "rev", "at"], "additionalProperties": false,
-          "properties": {"choice": {"enum": ["continue", "abandon"]}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}, "generation": {"type": "integer"}, "rev": {"type": "integer"}, "at": {"type": "string"}}
+          "properties": {"approval_ref": {"type": "string"}, "choice": {"enum": ["continue", "abandon"]}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}, "generation": {"type": "integer"}, "rev": {"type": "integer"}, "at": {"type": "string"}}
         }
       ]
     },

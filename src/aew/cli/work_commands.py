@@ -230,21 +230,21 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = wsub.add_parser("accept", help="accept a non-mutating Ticket's record: -> DONE (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_accept(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                           work_id=a.work_id, reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "work.accept", "work_accept",
+                                               reason=a.reason))
     q = wsub.add_parser("close", help="close a Story/Epic after its children and its own gates (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_close(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                          work_id=a.work_id, reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "work.close", "work_close",
+                                               reason=a.reason))
     q = wsub.add_parser("cancel", help="cancel a Story/Epic and its open descendants (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_cancel(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                           work_id=a.work_id, reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "work.cancel", "work_cancel",
+                                               reason=a.reason))
     q = wsub.add_parser("move", help="move a unit under another parent (or none); recorded decision (Lead)")
     q.add_argument("work_id")
     q.add_argument("--parent", required=True, help="new parent id, or `none`")
@@ -284,10 +284,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--input", dest="evidence", required=True, help="the consumed record's evidence id")
     q.add_argument("--from", dest="source", required=True, help="the Ticket that produced it")
     q.add_argument("--reason", required=True, help="what was rechecked against the current source")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_acknowledge_input(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
-        source=a.source, reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "input.acknowledge", "work_acknowledge_input",
+                                               evidence_id=a.evidence, source=a.source, reason=a.reason))
     q = wsub.add_parser("tree", help="the Epic -> Story -> Ticket tree with derived parent state")
     q.add_argument("work_id", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).work_tree(a.work_id))
@@ -369,8 +368,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).plan_accept(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision))
+    q.set_defaults(handler=_plan_accept)
     q = psub.add_parser("adopt", help="propose a plan revision from an accepted Planner plan_proposal (Lead)")
     q.add_argument("work_id", help="the unit whose plan it becomes")
     q.add_argument("--evidence", required=True)
@@ -384,9 +382,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = psub.add_parser("reconfirm", help="rebind an accepted plan after an ancestor's plan changed (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).plan_reconfirm(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "plan.reconfirm", "plan_reconfirm",
+                                               reason=a.reason))
 
     _register_later_steps(sub)
 
@@ -521,10 +519,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     r.add_argument("--gate")
     r.add_argument("--finding")
     r.add_argument("--reason", required=True)
-    _add_lead(r)
-    r.set_defaults(handler=lambda a: _engine(a).waive(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason, gate=a.gate,
-        finding=a.finding))
+    _add_approval(r)
+    r.set_defaults(handler=lambda a: _approved(a, "waive", "waive",
+                                               reason=a.reason, gate=a.gate, finding=a.finding))
 
     p = sub.add_parser("evidence", help="Lead: ingest a non-mutating Ticket's execute record")
     esub = p.add_subparsers(dest="evidence_cmd", required=True)
@@ -558,10 +555,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
                    choices=["LOCAL_IMPLEMENTATION_DEFECT", "PLAN_OR_DESIGN_DEFECT", "CONTRACT_VIOLATION",
                             "ENVIRONMENT_OR_EVIDENCE_BLOCKED"])
     q.add_argument("--reason", required=True)
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).verify_classify(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, classification=a.classification,
-        reason=a.reason))
+    _add_approval(q)
+    q.set_defaults(handler=lambda a: _approved(a, "verify.classify", "verify_classify",
+                                               classification=a.classification, reason=a.reason))
 
     _register_integration(sub)
 
@@ -573,14 +569,58 @@ def _staffing(a: argparse.Namespace) -> str:
     return f"{a.work_id} " + (", ".join(parts) or "(no change)") + (" (pinned)" if a.pin else "")
 
 
+def _add_approval(parser: argparse.ArgumentParser) -> None:
+    _add_lead(parser)
+    parser.add_argument("--approval-digest", help="the digest shown in the last result")
+
+
+def _approved(a: argparse.Namespace, op: str, method: str, **kwargs: Any) -> Any:
+    from aew import operator, process_kind
+    from aew.harness.operator_client import lead_session_problem
+
+    engine = _engine(a)
+    token = _lead_token(a)
+    binding = a.approval_digest
+    operator_here = (not getattr(a, "relayed", False) and lead_session_problem() is None
+                     and process_kind.kind() != process_kind.NON_WRITER and operator.has_terminal())
+    if operator_here and (op != "waive" or (a.gate and not a.finding)):
+        shown = engine.approval_subject(a.work_id, op, gate=getattr(a, "gate", None),
+                                        evidence=getattr(a, "evidence", None), source=getattr(a, "source", None))
+        if shown:
+            if binding is None:
+                binding = shown["digest"]
+            operator.authorize(f"{op} {a.work_id}: {shown['subject']}\nShown SHA-256 {shown['digest']}")
+    return getattr(engine, method)(token=token, expect_rev=a.expect_rev, work_id=a.work_id,
+                                   binding=binding, **kwargs)
+
+
+def _plan_accept(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    unit = engine.status(a.work_id)["work_unit"]
+    shown = next((plan for plan in unit.get("plans", []) if plan["revision"] == a.revision), None)
+    binding = None
+    if shown and not getattr(a, "relayed", False) and sys.stderr.isatty():
+        binding = shown["sha256"]
+        print(f"Accept plan {shown['path']} (SHA-256 {binding})", file=sys.stderr, flush=True)
+    return engine.plan_accept(token=token, expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision,
+                              binding=binding)
+
+
 def _breaker_reset(a: argparse.Namespace) -> Any:
     from aew import operator
 
     # The operator's own decision, typed back at the controlling terminal: never available to an agent shell.
+    engine = _engine(a)
+    token = _lead_token(a)
+    shown = engine.integrate_breaker_status()
+    binding = shown["approval_digest"]
+    failures = "\n".join(f"  {row['run']} on {row['work']}: {row['code']} ({row['at']})" for row in shown["failures"])
     authorization = operator.authorize("RESET the validation circuit breaker: automatic infrastructure retries of "
-                                       f"post-integration validation resume ({a.reason})")
-    return _engine(a).integrate_breaker_reset(token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason,
-                                              authorization=authorization)
+                                       f"post-integration validation resume ({a.reason})\n"
+                                       f"Failures (SHA-256 {binding}):\n{failures or '  none'}")
+    return engine.integrate_breaker_reset(token=token, expect_rev=a.expect_rev, reason=a.reason,
+                                          authorization=authorization, binding=binding)
 
 
 def _custody(a: argparse.Namespace) -> Any:

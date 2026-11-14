@@ -114,7 +114,7 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
                             "blockers": [], "anomalies": _anomalies(state, subject)}
     _stage_decisions(part, state, subject)
-    _anomaly_decisions(part)
+    _anomaly_decisions(part, engine, state)
     _gate_decisions(part, engine, state, subject)
     if subject == "project":
         return part
@@ -131,7 +131,7 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     if unit.get("kind") == "ticket":
         _ticket_actions(part, subject, int(part["revision"]))
         if subject in state["work"]:  # the marked findings the Ticket records and the Lead has not disposed of (E5b)
-            part["decisions"].extend(_dispose(item, int(part["revision"]))
+            part["decisions"].extend(_dispose(item, int(part["revision"]), engine, state=state)
                                      for item in _items(engine, subject, state=state))
     return part
 
@@ -158,12 +158,19 @@ def _anomalies(state: dict[str, Any], subject: str) -> list[dict[str, Any]]:
             if subject == "project" or a.get("subject") in (subject, None)]
 
 
-def _anomaly_decisions(part: dict[str, Any]) -> None:
+def _anomaly_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any]) -> None:
     """An open anomaly is the Lead's to dispose of (plan v3 §2.4): a decision with no default."""
     r = str(part["revision"])
     for a in part["anomalies"]:
+        try:
+            shown = engine.disposition_approval(a["id"], state=state)
+        except AEWError:
+            shown = None
+        args = {"expect_rev": part["revision"], "subject": a["id"]}
+        if shown is not None:
+            args["approval_digest"] = shown["digest"]
         part["decisions"].append({"decision": "DISPOSE_ANOMALY", "tool": "resolve", "evidence": [a["id"]],
-                                  "arguments": {"expect_rev": part["revision"], "subject": a["id"]},
+                                  "arguments": args,
                                   "cli": ["work", "dispose", a["id"], "--choice",
                                           "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
                                           "--expect-rev", r]})
@@ -180,22 +187,35 @@ def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], su
     except AEWError:  # the catalogue or policy cannot be read now: doctor says so
         items = []
     for i in items:
+        args = {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"}
+        choices = {name: {**args, "replacement": name, "approval_digest": shown["digest"]}
+                   for name, shown in i["approval_subjects"].items()}
+        if len(choices) == 1:
+            args = next(iter(choices.values()))
         part["decisions"].append({
             "decision": "REPLACE_GATE", "tool": "resolve", "evidence": [i["id"]],
-            "arguments": {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"},
-            "availability": AVAILABLE if i["replaceable"] else BLOCKED,
-            "cli": ["lead", "tool", "resolve", "--arguments", "-"]})
+            "arguments": args, "availability": AVAILABLE if i["replaceable"] else BLOCKED,
+            "approval_options": choices, "cli": ["lead", "tool", "resolve", "--arguments", "-"]})
         part["blockers"].append(_blocker(
             "GATE_UNSATISFIABLE",
             f"{i['work_id']}'s mandatory gate `{i['gate']}` {i['verdict']}: {i['why']}; {i['route']}",
             {k: i[k] for k in ("id", "work_id", "gate", "candidates", "replaceable", "satisfiable_by", "stranded_by",
-                               "stuck_units", "stale_invocations")}))
+                               "stuck_units", "stale_invocations")}
+            | {"approval_digests": {name: row["digest"] for name, row in i["approval_subjects"].items()}}))
 
 
-def _dispose(item: dict[str, Any], rev: int) -> dict[str, Any]:
+def _dispose(item: dict[str, Any], rev: int, engine: Any, *,
+             state: dict[str, Any] | None = None) -> dict[str, Any]:
     """A finding or claim policy marks ``requires_disposition``, not disposed of yet: the Lead's decision (§2.4)."""
+    args = {"expect_rev": rev, "subject": item["id"]}
+    try:
+        shown = engine.disposition_approval(item["id"], state=state)
+    except AEWError:
+        pass
+    else:
+        args["approval_digest"] = shown["digest"]
     return {"decision": "DISPOSE_FINDING" if item["kind"] == "finding" else "DISPOSE_CLAIM", "tool": "resolve",
-            "evidence": [item["id"]], "arguments": {"expect_rev": rev, "subject": item["id"]},
+            "evidence": [item["id"]], "arguments": args,
             "availability": AVAILABLE,
             "cli": ["work", "dispose", item["id"], "--choice", "<accept_risk|follow_up|not_applicable>", "--rationale",
                     "<why>", "--expect-rev", str(rev)]}
@@ -414,11 +434,19 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     ``blockers``."""
     out = []
     listed = {e for d in part["decisions"] for e in d.get("evidence") or [] if d["decision"].startswith("DISPOSE")}
-    fit = engine.stage_fit(engine.store.current(), subject) if part["state"] else None
+    state = engine.store.current() if part["state"] else None
+    fit = engine.stage_fit(state, subject) if state is not None else None
     for d in map(lambda d: _fitting(d, fit), part["decisions"]):
         if "role" not in d:
             arguments = d.get("arguments")
             found = d.get("availability", UNKNOWN)
+            if d["decision"] == "RESOLVE_STAGE" and arguments:
+                try:
+                    shown = stage.assess(engine, engine.stage_intent(arguments["subject"]))["approval"]
+                except AEWError:
+                    pass
+                else:
+                    arguments = {**arguments, "approval_digest": shown["digest"]}
             if d["decision"] == "DISPOSE_ANOMALY":  # the disposal's own query, read now: a live contradiction (m4)
                 refused = _disposal_refusal(engine, d["evidence"][0])
                 found = BLOCKED if refused else AVAILABLE
@@ -433,6 +461,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                                  cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
             if "stopped" in d:
                 out[-1]["stopped"] = d["stopped"]
+            if "approval_options" in d:
+                out[-1]["approval_options"] = d["approval_options"]
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e, **d.get("with", {})}
@@ -444,10 +474,10 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
             out.append(_decision(d["decision"], subject, tool=d["tool"], evidence=[e], arguments=arguments,
                                  cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]], availability=found))
             # The report's own marked items, which its acceptance would refuse to advance past (M4-E E5b, §2.4).
-            for item in _items(engine, subject, evidence=[e]):
+            for item in _items(engine, subject, evidence=[e], state=state):
                 if item["evidence"] == e and item["id"] not in listed:
                     listed.add(item["id"])
-                    x = _dispose(item, int(part["revision"]))
+                    x = _dispose(item, int(part["revision"]), engine, state=state)
                     out.append(_decision(x["decision"], subject, tool=x["tool"], evidence=x["evidence"],
                                          arguments=x["arguments"], cli_fallback=x["cli"], availability=AVAILABLE))
     return out

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -136,9 +137,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
                                          "(the operator, confirmed at their own terminal)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
-    q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(
-        token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
-            "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
+    q.set_defaults(handler=_manifest_adopt)
 
     from aew.cli import (
         capability_commands,
@@ -312,21 +311,59 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("candidate")
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
-    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead",
+    q.add_argument("--decided-by", choices=["lead", "operator"], default="operator",
                    help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
                         "typed back)")
     q.add_argument("--reason")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).authority_accept(
-        token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, klass=a.klass,
-        decided_by=a.decided_by, reason=a.reason, authorization=operator_attribution(
-            a.decided_by, f"RECORD as YOUR decision: accept {a.candidate} as {a.klass} authority")))
+    q.set_defaults(handler=_authority_decide)
     q = asub.add_parser("reject")
     q.add_argument("candidate")
     q.add_argument("--reason")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).authority_reject(
-        token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, reason=a.reason))
+    q.set_defaults(handler=_authority_decide, decided_by="operator")
+
+
+def _manifest_adopt(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    binding = engine.manifest_approval()
+    files = "\n".join(f"  {rel}@{sha if sha is not None else 'missing'}" for rel, sha in sorted(binding.items()))
+    authorization = operator_attribution("operator", f"ADOPT as YOUR decision: project settings\n{files}")
+    return engine.manifest_adopt(token=token, expect_rev=a.expect_rev, reason=a.reason,
+                                 authorization=authorization, binding=binding)
+
+
+def _authority_decide(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    subject = engine.authority_candidate(a.candidate)
+    action = a.authority_cmd
+    digest = subject["digest"]
+    if action == "accept" and subject["kind"] == "file, missing":
+        from aew.errors import NotFound
+        from aew.harness.contract import EXPECT_REV
+
+        raise NotFound(f"authority candidate file {subject['path']} is missing. "
+                       f"The operator can reject it with `aew authority reject {a.candidate} {EXPECT_REV}`.",
+                       path=subject["path"])
+    summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
+    if action == "accept":
+        summary += f" as {a.klass} authority"
+    authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
+    binding = digest
+    if a.decided_by == "lead":
+        if sys.stderr.isatty():
+            print(summary, file=sys.stderr, flush=True)
+        else:
+            # Redirected commands reserve stderr for the JSON refusal.
+            binding = None
+    args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
+                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
+                            "authorization": authorization}
+    if action == "accept":
+        return engine.authority_accept(klass=a.klass, **args)
+    return engine.authority_reject(**args)
 
 
 # ---------------------------------------------------------------------- handlers

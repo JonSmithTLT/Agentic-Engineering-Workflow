@@ -18,10 +18,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, transitions
 from aew.engine import coverage as CV
 from aew.engine import disposition_ops as DO
 from aew.engine import gates as G
-from aew.engine import transitions
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import Blocker, blocker_from, checked
@@ -284,6 +284,18 @@ class Gates:
             state = self.archive.rehydrate(state, work_id) or state
         gc = self.gate_context(state, work_id)
         gc.pop("evidence")
+        digests = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
+        gc["gate_approval_digests"] = digests
+        gc["gate_approval_argv"] = {
+            gate: approval.command("waive", work_id, state["revision"], digest,
+                                   "--gate", gate, "--reason", "<reason>")
+            for gate, digest in digests.items()
+        }
+        snapshot = gc.get("snapshot")
+        if snapshot and "children_digest" in snapshot:
+            digest = approval.closeout_digest(snapshot)
+            gc["closeout_approval_digest"] = digest
+            gc["closeout_approval_argv"] = approval.command("work.close", work_id, state["revision"], digest)
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
         if gc.get("plan_binding"):
@@ -764,6 +776,8 @@ class EvidenceCommands:
                       execution_profile: dict[str, Any] | None = None, launch: bool = False,
                       request_id: str | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation, by the handler registered for the unit's kind."""
+        if scope not in {"ticket", "integration"}:
+            raise UsageError("--scope must be ticket or integration")
         if request_id is not None:
             return self._invoke_request(token, expect_rev, request_id, evidence_only=False, work_id=work_id,
                                         role=role, card=card, scope=scope, execution_profile=execution_profile,
@@ -788,6 +802,8 @@ class EvidenceCommands:
             handler = resolve(INVOKE, unit)
             out = handler(token=token, expect_rev=expect_rev, **arguments, _ctx=ctx)
             ctx.request_ref = (work_id, out["invocation"])
+            if "dispatch" in out:
+                ctx.request_metadata = {"dispatch": out["dispatch"]}
         return out | {"revision": ctx.session.committed_revision}
 
     # ---- the dispatch guards of ``invoke create`` for a mutating Ticket (M4-A), in the order the route checked
@@ -1584,16 +1600,18 @@ class EvidenceCommands:
                 "coverage": ev.get("coverage") or CV.legacy()}
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                        reason: str) -> dict[str, Any]:
+                        reason: str, binding: str | None = None) -> dict[str, Any]:
         if classification not in transitions.VERIFICATION_CLASSIFICATIONS:
             raise UsageError(f"classification must be one of {sorted(transitions.VERIFICATION_CLASSIFICATIONS)}")
         if not (reason and reason.strip()):
             raise UsageError("a classification needs a reason")
-        return self._handler(CLASSIFY_VERIFICATION, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
-                                                             classification=classification, reason=reason)
+        return self._handler(CLASSIFY_VERIFICATION, work_id)(
+            token=token, expect_rev=expect_rev, work_id=work_id, classification=classification, reason=reason,
+            binding=binding,
+        )
 
     def _classify_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                                      reason: str) -> dict[str, Any]:
+                                      reason: str, binding: str | None = None) -> dict[str, Any]:
         """A Ticket's failed verification, classified (WC §6); a parent's is the hierarchy's."""
         with self.k.lead_txn(token, expect_rev, "verify.classify", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
@@ -1602,11 +1620,12 @@ class EvidenceCommands:
             to = transitions.VERIFICATION_CLASSIFICATIONS[classification]
             transitions.check("VERIFICATION_FAILED", to, "verify.classify")
             failing = (unit.get("last_verification") or {}).get("evidence")
+            ref = approval.failure_ref("verify.classify", unit, failing, binding)
             change = {"from": "VERIFICATION_FAILED", "to": to}
             decision = self.k.new_decision(
                 ctx, "verification_failure_classification",
                 f"{work_id} verification failure classified {classification}", work_unit=work_id,
-                classification=classification, evidence_refs=[failing] if failing else [],
+                classification=classification, evidence_refs=[ref] if ref else [],
                 resulting_transition=change, reason=reason)
             unit.setdefault("classifications", []).append(
                 {"decision": decision, "classification": classification, "evidence": failing})
@@ -1623,14 +1642,18 @@ class EvidenceCommands:
                 "revision": ctx.session.committed_revision}
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
-              finding: str | None = None) -> dict[str, Any]:
+              finding: str | None = None, binding: str | None = None) -> dict[str, Any]:
         if bool(gate) == bool(finding):
             raise UsageError("waive exactly one gate or one finding")
         with self.k.lead_txn(token, expect_rev, "waive", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             policy = self.k.policy("gates")
+            ref = []
             if gate:
                 gc = self.gates.gate_context(ctx.state, work_id)
+                if binding is not None:
+                    approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate))
+                    ref = [f"{work_id}/{gate}@record:{binding}"]
                 if gate in gc["obligations"]["non_waivable"]:
                     raise GateUnsatisfied(f"{gate} is inherited as non-waivable")
                 if gate not in policy.get("waivable_gates", []):
@@ -1642,7 +1665,7 @@ class EvidenceCommands:
                 if target["severity"] not in policy.get("waivable_finding_severities", []):
                     raise GateUnsatisfied(f"project policy does not allow waiving {target['severity']} findings")
             decision = self.k.new_decision(ctx, "waiver", f"waived {gate or finding} on {work_id}", work_unit=work_id,
-                                         reason=reason)
+                                         reason=reason, evidence_refs=ref)
             unit.setdefault("waivers", []).append({"gate": gate, "finding": finding, "decision": decision})
             ctx.summary = f"{work_id}: waived {gate or finding}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}

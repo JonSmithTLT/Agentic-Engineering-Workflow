@@ -1,4 +1,6 @@
-"""Consolidated seeded JSON/text/projection off pin, captured from merged main f1ff2dd3.
+"""Consolidated seeded JSON/text/projection off pin.
+
+Originally captured from merged main f1ff2dd3 and refreshed for E327's plan.reconfirm approval fields.
 
 This seed has an active assignment and no harness run: its wait refusal is pinned, not a fabricated run result.
 Real ended-run behavior is covered by run_progress_digest and lead_relayed_reads. Normalized volatile values and

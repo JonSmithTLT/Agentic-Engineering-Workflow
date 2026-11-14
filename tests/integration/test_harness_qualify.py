@@ -115,6 +115,8 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
     if mode in ("no-model-request", "refused"):
         assert calls == 1 and outcome.status == core.FAIL
         assert "No scripted model request reached the fake upstream through the plan relay" in outcome.notes
+        assert "No scripted model turn ran, so there is no turn cost to verify" in outcome.notes
+        assert "OpenCode did not report zero cost for the priced synthetic turn" not in outcome.notes
         assert not fact["paths"] and not fact["saw_503"]
         if mode == "refused":
             assert fact["relay_counts"]["outside_upstream_path"] == 1

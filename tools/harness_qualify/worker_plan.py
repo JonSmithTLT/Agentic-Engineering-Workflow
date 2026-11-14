@@ -168,8 +168,9 @@ def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = 
             (not key_in_env, "OPENAI_API_KEY was present in the worker environment"),
             (listing_problem is None, listing_problem),
             (all(rate > 0 for rate in seed["prices_per_million"].values()), "The catalog seed did not price usage"),
-            (bool(cost) and all(type(value) in (int, float) and value == 0 for value in cost),
-             "OpenCode did not report zero cost for the priced synthetic turn"),
+            (baseline and bool(cost) and all(type(value) in (int, float) and value == 0 for value in cost),
+             "OpenCode did not report zero cost for the priced synthetic turn" if baseline
+             else "No scripted model turn ran, so there is no turn cost to verify"),
             (retry_count == 1, "The relay did not deliver exactly one retryable credential 503"),
             (expiry == {"status": 401, "expired": True, "connected": False},
              "The one-minute expiry did not return 401 (expired) without an upstream connection"),

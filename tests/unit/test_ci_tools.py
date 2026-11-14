@@ -318,7 +318,8 @@ def test_evidence_withholds_only_attributed_findings_and_fails_closed_on_scan_er
         report = Path(argv[argv.index("--report-path") + 1])
         name = "unknown.txt" if scan_result == "unknown-file" else "failure.txt"
         report.write_text(json.dumps([{"File": str(Path(argv[-1]) / "autopsy" / name),
-                                       "RuleID": "planted-rule", "Secret": "private contents"}]), encoding="utf-8")
+                                       "StartLine": 1, "RuleID": "planted-rule",
+                                       "Secret": "private contents"}]), encoding="utf-8")
         return SimpleNamespace(returncode=1 if scan_result == "error" else stage_evidence.FINDINGS_EXIT)
 
     monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
@@ -326,7 +327,7 @@ def test_evidence_withholds_only_attributed_findings_and_fails_closed_on_scan_er
     listing = (destination / "inventory.txt").read_text(encoding="utf-8")
     assert "private contents" not in listing
     if scan_result == "findings":
-        assert "withheld autopsy/failure.txt (planted-rule)" in listing
+        assert "withheld autopsy/failure.txt:1 (planted-rule)" in listing
         assert not (destination / "autopsy/failure.txt").exists()
         assert {p.name: p.read_text(encoding="utf-8") for p in (destination / "autopsy/harness").iterdir()} == clean
     else:

@@ -25,8 +25,8 @@ from typing import Any
 
 import pytest
 
-from aew.harness import contract as K
 from aew.harness import runlog
+from aew.harness.defects import redact_text
 
 # The labs created by the test that is running (one process runs one test at a time, xdist included).
 LABS: list[Any] = []
@@ -71,7 +71,7 @@ def _read(path: Path) -> bytes:
 def _redacted(path: Path) -> str:
     """The whole file, redacted before anything is cut: a cut through a credential leaves a piece the pattern no
     longer matches (#136 review, F1)."""
-    return K.redact(_read(path).decode("utf-8", "replace"))
+    return redact_text(_read(path).decode("utf-8", "replace"))
 
 
 def _tail(path: Path, lines: int = TAIL_LINES) -> str:
@@ -191,7 +191,7 @@ def forget() -> None:
 # The hang-and-flake autopsy (tests/helpers/autopsy.py, the session deadline and its sentinel) writes only through the
 # functions below, so there is one evidence path with one set of rules:
 #
-# - **redaction:** every text is passed through ``K.redact`` whole, before anything is cut;
+# - **redaction:** every text is passed through ``redact_text`` whole, before anything is cut;
 # - **size:** each file is capped (its tail kept, from a line boundary, with a note), and the whole autopsy too, by a
 #   :class:`Budget` its writer shares;
 # - **names:** nothing written ends in ``.json``: every file name gets ``.txt`` appended unless it already ends so
@@ -312,7 +312,7 @@ def write_text(dest_dir: Path, name: str, text: str, *, budget: Budget | None = 
                cap: int = AUTOPSY_FILE_CAP) -> Path | None:
     """Write ``text`` redacted, capped and safely named under ``dest_dir``. Returns the path, or None when the
     autopsy's total budget refused it (the refusal is kept in the budget, and reported by its writer)."""
-    body = capped(K.redact(text), cap)
+    body = capped(redact_text(text), cap)
     encoded = body.encode("utf-8", "replace")
     if cap == CHEAP_FILE and len(encoded) > cap:
         prefix = TRUNCATED.encode("utf-8")

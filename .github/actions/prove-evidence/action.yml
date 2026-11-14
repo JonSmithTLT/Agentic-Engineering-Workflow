@@ -18,6 +18,18 @@ runs:
         --session-deadline 120 --test-timeout 60 "--hang-dir=${{ runner.temp }}/evidence-proof-outer"
         tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
         tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+    - name: Capture the real orphaned-wait test's failure evidence
+      shell: bash
+      env:
+        AEW_EVIDENCE_PLANT_ORPHANED_WAIT: "1"
+      run: |
+        status=0
+        python -m pytest -q -p no:cacheprovider -p no:xdist --session-deadline 120 --test-timeout 90 \
+          "--hang-dir=$RUNNER_TEMP/evidence-proof-source/real" \
+          tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery \
+          > "$RUNNER_TEMP/evidence-real.log" 2>&1 || status=$?
+        test "$status" = 1
+        grep -q 'Failed: planted failure after the orphaned wait completed' "$RUNNER_TEMP/evidence-real.log"
     - uses: ./.github/actions/publish-evidence
       with:
         source: ${{ runner.temp }}/evidence-proof-source
@@ -33,15 +45,19 @@ runs:
         import os
         from pathlib import Path
         root = Path(os.environ["RUNNER_TEMP"]) / "evidence-proof-download"
-        [stdout] = list(root.rglob("harness/*/shell-2.stdout.txt"))
+        [stdout] = list((root / "autopsy").rglob("harness/*/shell-2.stdout.txt"))
         assert "planted shell diagnostic" in stdout.read_text(encoding="utf-8")
-        [supervisor] = list(root.rglob("harness/*/supervisor.log.txt"))
+        [supervisor] = list((root / "autopsy").rglob("harness/*/supervisor.log.txt"))
         assert "planted supervisor diagnostic" in supervisor.read_text(encoding="utf-8")
         [deadline] = list(root.rglob("session-deadline.txt"))
         assert "deadline (5s) passed" in deadline.read_text(encoding="utf-8")
-        assert not (root / "autopsy/failure.txt").exists()
+        real = root / "real"
+        for name in ("shell-2.stdout.txt", "supervisor.log.txt", "control.yaml.txt", "run.json.txt"):
+            assert list(real.rglob(name)), name
         listing = (root / "inventory.txt").read_text(encoding="utf-8")
-        assert "withheld autopsy/failure.txt (github-pat)" in listing
+        assert "masked autopsy/failure.txt:1 (github-pat)" in listing
+        assert all(not line.startswith(("masked real/", "withheld real/")) for line in listing.splitlines())
+        assert "<redacted:" in (root / "autopsy/failure.txt").read_text(encoding="utf-8")
         secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
         assert all(secret not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
         scanner_plant = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"

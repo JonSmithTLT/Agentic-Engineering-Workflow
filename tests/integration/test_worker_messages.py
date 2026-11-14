@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -123,6 +124,8 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     except AssertionError as exc:
         directory = lab.aew_root / "local/harness/runs" / run / "harness"
         raise AssertionError(f"{exc}\n{describe_shell(directory, shell)}") from exc
+    if os.environ.get("AEW_EVIDENCE_PLANT_ORPHANED_WAIT") == "1":
+        pytest.fail("planted failure after the orphaned wait completed")
 
 
 def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tmp_path):

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from aew import errors
 from aew.harness import tool_calls
-from aew.harness.contract import CREDENTIAL_SHAPED, redact
+from aew.harness.contract import CREDENTIAL_SHAPED, REDACTION_FORMS, redact
 from aew.util import utc_now
 
 # Keep the most recent end of the traceback, including the exception, within a small fraction of one rotated file.
@@ -26,10 +26,15 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9_.-]+\Z")
 # Four labels of this size leave room in the message for the record ID, recovery step and cause.
 _MESSAGE_FIELD = 48
 log = logging.getLogger(__name__)
+_FORMS = [(re.compile(form.pattern), form.applies) for form in REDACTION_FORMS.values()]
 
 
 def redact_text(text: str) -> str:
-    return CREDENTIAL_SHAPED.sub("<redacted>", redact(text))
+    text = CREDENTIAL_SHAPED.sub("<redacted>", redact(text))
+    for pattern, applies in _FORMS:
+        text = pattern.sub(lambda match, predicate=applies:
+                           "<redacted>" if predicate is None or predicate(match[0]) else match[0], text)
+    return text
 
 
 def field(value: str | None) -> str | None:

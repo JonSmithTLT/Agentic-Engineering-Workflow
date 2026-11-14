@@ -9,7 +9,7 @@ timer is the watchdog's). :meth:`AutopsyPlugin.collect` runs:
   GIL the thread cannot run: the evidence is then the watchdog's faulthandler dump and the session sentinel's output
   (``session_deadline.py``), and no more is claimed;
 - **at the session deadline** (``session_deadline.py``), for the test still running;
-- **for any failure of a test marked** ``@pytest.mark.autopsy``;
+- **for any failed test phase**; ``@pytest.mark.autopsy`` retains the deeper diagnostics;
 - **for a crashed xdist worker**, from the controller (``pytest_handlecrashitem`` and ``pytest_testnodedown``).
 
 It writes ``<hang-dir>/autopsy/<test>/``, only through ``harness_diagnostics`` (redacted, capped, never ``.json``):
@@ -70,7 +70,6 @@ def thread_stacks() -> str:
 class AutopsyPlugin:
     def __init__(self, config: pytest.Config) -> None:
         self.config = config
-        self.root = _hang_dir(config) / hd.AUTOPSY_DIR
         self.worker = getattr(config, "workerinput", {}).get("workerid", "main")
         self._child_root_path: Path | None = None
         self.item: pytest.Item | None = None
@@ -156,15 +155,21 @@ class AutopsyPlugin:
 
     # ------------------------------------------------------------------ the autopsy
 
+    @property
+    def root(self) -> Path:
+        return _hang_dir(self.config) / hd.AUTOPSY_DIR
+
     def dest(self, test_id: str) -> Path:
         return self.root / hd.safe_dir(test_id)
 
     def collect(self, test_id: str, reason: str, *, item: pytest.Item | None = None, failure: str | None = None,
-                own_stacks: bool = True) -> Path:
+                own_stacks: bool = True, cheap: bool = False) -> Path:
         """Write this test's autopsy. Never raises: an error is itself written down, and the rest carries on."""
         with self._lock:
             dest = self.dest(test_id)
-            budget = self.budgets.setdefault(test_id, hd.Budget())  # one total cap for the test's whole autopsy
+            cap = hd.CHEAP_FILE if cheap else hd.AUTOPSY_FILE_CAP
+            budget = self.budgets.setdefault(test_id, hd.Budget(
+                hd.CHEAP_TOTAL - hd.CHEAP_FILE if cheap else hd.AUTOPSY_TOTAL_CAP))
             errors: list[str] = []
             self.counts[test_id] = n = self.counts.get(test_id, 0) + 1
             # Each collect keeps its own files: a deadline after a watchdog fire, or the controller's collect for a
@@ -182,9 +187,18 @@ class AutopsyPlugin:
 
             step("reason", lambda: hd.write_text(dest, "reason", f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
                                                  f"[{self.worker} pid {os.getpid()}] {test_id}: {reason}\n",
-                                                 budget=budget, append=True))
+                                                 budget=budget, append=True, cap=cap))
             if failure:
-                step("failure", lambda: hd.write_text(dest, name("failure"), failure, budget=budget))
+                step("failure", lambda: hd.write_text(dest, name("failure"), failure, budget=budget,
+                                                      cap=cap))
+            if cheap:
+                step("processes", lambda: hd.write_text(
+                    dest, name("processes"), self._processes(), budget=budget, cap=hd.CHEAP_FILE))
+                step("workdirs", lambda: self._workdirs(item, dest, budget, errors, cheap=True))
+                step("inventory", lambda: hd.write_text(dest, name("inventory"),
+                                                        "\n".join(errors + budget.refused), cap=hd.CHEAP_FILE))
+                self.collected[test_id] = dest
+                return dest
             if own_stacks:
                 step("stacks", lambda: hd.write_text(dest, name("stacks"), thread_stacks(), budget=budget))
             step("watchdog dump", lambda: self._watchdog_dump(test_id, dest, budget))
@@ -224,7 +238,8 @@ class AutopsyPlugin:
         if src.is_dir():
             errors += hd.copy_tree(src, dest / "children", budget=budget)[1]
 
-    def _workdirs(self, item: pytest.Item | None, dest: Path, budget: hd.Budget, errors: list[str]) -> None:
+    def _workdirs(self, item: pytest.Item | None, dest: Path, budget: hd.Budget, errors: list[str],
+                  *, cheap: bool = False) -> None:
         dirs: list[tuple[str, Path]] = []
         tmp = getattr(item, "funcargs", {}).get("tmp_path") if item is not None else None
         mark = item.get_closest_marker(MARKER) if item is not None else None
@@ -234,8 +249,8 @@ class AutopsyPlugin:
         dirs += [(hd.safe_dir(str(p)), p) for p in self.workdirs if not (tmp and whole and Path(p) == tmp)]
         for name, path in dirs:
             if path.is_dir():
-                errors += hd.copy_tree(path, dest / "workdir" / name, budget=budget)[1]
-            elif path.is_file():
+                errors += hd.copy_test_evidence(path, dest, name, budget=budget, cheap=cheap)
+            elif not cheap and path.is_file() and hd.evidence_text(path):
                 try:
                     hd.copy_file(path, dest / "workdir", path.name, budget=budget)
                 except OSError as exc:
@@ -247,8 +262,9 @@ class AutopsyPlugin:
     def pytest_runtest_makereport(self, item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
         outcome = yield
         rep: pytest.TestReport = outcome.get_result()
-        if rep.failed and item.get_closest_marker(MARKER) is not None:
-            self.collect(item.nodeid, f"failed in {rep.when}", item=item, failure=str(rep.longrepr))
+        if rep.failed:
+            self.collect(item.nodeid, f"failed in {rep.when}", item=item, failure=str(rep.longrepr),
+                         cheap=item.get_closest_marker(MARKER) is None)
         dest = self.collected.get(item.nodeid)
         if dest is not None and (rep.failed or rep.when == "call"):
             rep.sections.append(("aew autopsy", f"the autopsy is kept in {dest}"))

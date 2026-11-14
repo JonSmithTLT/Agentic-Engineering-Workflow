@@ -200,7 +200,70 @@ def forget() -> None:
 AUTOPSY_DIR = "autopsy"  # under the hang directory; tools/ci/check_assurance.py and update_durations.py skip it
 AUTOPSY_FILE_CAP = 512 * 1024
 AUTOPSY_TOTAL_CAP = 64 * 1024 * 1024
+CHEAP_FILE = 64 * 1024
+CHEAP_TOTAL = 2 * 1024 * 1024
+OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
+TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
 TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
+
+
+def evidence_text(path: Path) -> bool:
+    return (path.suffix.lower() in TEXT_SUFFIXES and not path.is_symlink()
+            and not any(word in path.name.lower() for word in ("credential", "secret", "auth.json", ".env")))
+
+
+def copy_test_evidence(src: Path, dest: Path, label: str, *, budget: Budget, cheap: bool) -> list[str]:
+    """Keep an inventory and copy only fixture-owned text. Publish harness output at visible paths."""
+    cap = CHEAP_FILE if cheap else AUTOPSY_FILE_CAP
+    limit = 256 if cheap else 2000
+    inventory = []
+    pending = [src]
+    visited = 0
+    while pending and visited < limit:
+        directory = pending.pop()
+        for path in directory.iterdir():
+            if visited >= limit:
+                break
+            visited += 1
+            rel = path.relative_to(src)
+            parts = rel.parts
+            is_harness = any(parts[i:i + 4] == (".aew", "local", "harness", "runs")
+                             and len(parts) > i + 6 and parts[i + 5] == "harness"
+                             for i in range(len(parts)))
+            try:
+                if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                    outcome = "link skipped"
+                elif path.is_dir():
+                    if not path.name.startswith(".") or path.name == ".aew":
+                        pending.append(path)
+                    outcome = "directory"
+                elif (not path.is_file() or not evidence_text(path)
+                      or (cheap and not is_harness and path.suffix.lower() not in OUTPUT_SUFFIXES)):
+                    outcome = "excluded"
+                elif path.stat().st_size > cap:
+                    outcome = "oversized source"
+                else:
+                    with path.open("rb") as stream:
+                        data = stream.read(cap + 1)
+                    if len(data) > cap or b"\x00" in data:
+                        outcome = "oversized or binary source"
+                    else:
+                        text = data.decode("utf-8")
+                        if is_harness:
+                            target = dest / "harness" / safe_dir(f"{label}/{rel.parent.as_posix()}")
+                        elif any(part.startswith(".") for part in parts):
+                            inventory.append(f"{label}/{rel.as_posix()}: hidden source excluded")
+                            continue
+                        else:
+                            target = dest / "workdir" / label / rel.parent
+                        out = write_text(target, rel.name, text, budget=budget, cap=cap)
+                        outcome = f"copied to {out.relative_to(dest).as_posix()}" if out else "budget exhausted"
+            except (OSError, UnicodeError) as exc:
+                outcome = f"unavailable ({type(exc).__name__})"
+            inventory.append(f"{label}/{rel.as_posix()}: {outcome}")
+    if visited >= limit:
+        inventory.append(f"{label}: inventory capped at {limit} paths")
+    return inventory
 
 
 class Budget:

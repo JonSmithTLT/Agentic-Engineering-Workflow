@@ -59,6 +59,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2400 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -76,8 +78,14 @@ jobs:
         if: always()
         with:
           name: unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/audit/
+          path: |
+            ${{ runner.temp }}/audit/*.json
           retention-days: 14
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/audit/hangs
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}-attempt-${ github.run_attempt }
 
   serial:
     name: audit serial (${{ matrix.os }})
@@ -97,6 +105,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2400 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -113,8 +123,14 @@ jobs:
         if: always()
         with:
           name: unit-isolation-audit-${{ runner.os }}-serial
-          path: ${{ runner.temp }}/audit/
+          path: |
+            ${{ runner.temp }}/audit/*.json
           retention-days: 14
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/audit/hangs
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-serial-attempt-${ github.run_attempt }
 
   result:
     # Clean means: every job reported, and no report holds a violation.
@@ -124,6 +140,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"

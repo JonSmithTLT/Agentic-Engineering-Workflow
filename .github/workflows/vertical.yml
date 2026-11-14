@@ -45,6 +45,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2700 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -92,6 +94,17 @@ jobs:
         if: always()
         with:
           name: vertical-ledger-${{ runner.os }}
-          path: ${{ runner.temp }}/vertical/
+          path: |
+            ${{ runner.temp }}/vertical/*.json
+            ${{ runner.temp }}/vertical/*.jsonl
+            ${{ runner.temp }}/vertical/*.xml
+            ${{ runner.temp }}/vertical/*.txt
+            ${{ runner.temp }}/vertical/*/vertical-ledger.json
+            ${{ runner.temp }}/vertical/*/vertical-summary.txt
           if-no-files-found: warn
           retention-days: 30
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/vertical/hangs
+          artifact: evidence-vertical-ledger-${{ runner.os }}-attempt-${ github.run_attempt }

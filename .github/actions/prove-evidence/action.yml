@@ -1,0 +1,35 @@
+name: Prove test evidence publication
+description: Plant a child error under a hidden path and verify the downloaded artifact.
+runs:
+  using: composite
+  steps:
+    - name: Plant an unmarked pytest failure and retain its child stdout
+      shell: bash
+      env:
+        AEW_EVIDENCE_PROOF_DIR: ${{ runner.temp }}/evidence-proof-source
+      run: >-
+        python -m pytest -q -p no:cacheprovider -p no:xdist
+        tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
+        tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+    - uses: ./.github/actions/publish-evidence
+      with:
+        source: ${{ runner.temp }}/evidence-proof-source
+        artifact: evidence-proof-${{ runner.os }}-${{ github.run_attempt }}
+    - uses: actions/download-artifact@v8
+      with:
+        name: evidence-proof-${{ runner.os }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/evidence-proof-download
+    - name: Verify the published artifact
+      shell: bash
+      run: |
+        python - <<'PY'
+        import os
+        from pathlib import Path
+        root = Path(os.environ["RUNNER_TEMP"]) / "evidence-proof-download"
+        [stdout] = list(root.rglob("harness/*/shell-2.stdout.txt"))
+        assert "planted shell diagnostic" in stdout.read_text(encoding="utf-8")
+        [deadline] = list(root.rglob("session-deadline.txt"))
+        assert "deadline (5s) passed" in deadline.read_text(encoding="utf-8")
+        secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
+        assert all(secret not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
+        PY

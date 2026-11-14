@@ -120,10 +120,17 @@ def parse(raw: bytes, *, source: str) -> dict[str, Any]:
 
 
 NO_SUCH_PROFILE, NO_DEFAULT_ROUTE = "NO_SUCH_PROFILE", "NO_DEFAULT_ROUTE"
+PLAN_PROVIDER, PLAN_OVERRIDE, PLAN_QUALIFICATION = "PLAN_PROVIDER", "PLAN_OVERRIDE", "PLAN_QUALIFICATION"
 ROUTE_TABLES = ("archetypes", "classes", "cards")
+API_KEY, PLAN_LOGIN = "api_key", "plan_login"
 
 
-def semantic_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str, str | None]]:
+def profile_credential(policy: dict[str, Any], profile: dict[str, Any], provider: str) -> str:
+    return profile.get("credential") or (policy.get("credentials") or {}).get(provider, API_KEY)
+
+
+def semantic_problems(policy: dict[str, Any], *, adoption: bool = False
+                      ) -> list[tuple[tuple[str, ...], str, str | None]]:
     """The policy's semantic problems, as structure: ``(location, code, target)`` with the location as keys from the
     document's root, the code (``NO_SUCH_PROFILE``, ``NO_DEFAULT_ROUTE``) and the route's target profile name (None for
     a missing default). For a schema-valid policy. ``check_semantics`` words them; the configuration projection
@@ -137,15 +144,51 @@ def semantic_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str
         (where, NO_SUCH_PROFILE, name) for where, name in targets if name not in profiles]
     if policy["configured"] and not routing.get("default"):
         out.append((("routing", "default"), NO_DEFAULT_ROUTE, None))
+    out.extend(_plan_login_problems(policy, adoption=adoption))
     return out
 
 
-def check_semantics(policy: dict[str, Any], *, source: str) -> None:
-    problems = [f"{'.'.join(where)}: no profile {name!r}" if code == NO_SUCH_PROFILE
-                else f"{'.'.join(where)}: a configured policy needs a default route"
-                for where, code, name in semantic_problems(policy)]
+def check_semantics(policy: dict[str, Any], *, source: str, adoption: bool = False) -> None:
+    problems = []
+    for where, code, detail in semantic_problems(policy, adoption=adoption):
+        if code == NO_SUCH_PROFILE:
+            detail = f"no profile {detail!r}"
+        elif code == NO_DEFAULT_ROUTE:
+            detail = "a configured policy needs a default route"
+        problems.append(f"{'.'.join(where)}: {detail}")
     if problems:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
+
+
+def _plan_login_problems(policy: dict[str, Any], *, adoption: bool) -> list[tuple[tuple[str, ...], str, str]]:
+    providers: list[tuple[tuple[str, ...], str]] = [
+        (("credentials", provider), provider) for provider, value in (policy.get("credentials") or {}).items()
+        if value == PLAN_LOGIN
+    ]
+    for name, profile in policy["profiles"].items():
+        if profile.get("credential") == PLAN_LOGIN:
+            inferred, sep, _ = profile["model"].partition("/")
+            providers.append((("profiles", name, "credential"), profile.get("provider") or (inferred if sep else "")))
+    if not providers:
+        return []
+
+    from aew.harness.containment import netns
+    from aew.harness.opencode import capabilities
+
+    problems = []
+    for where, provider in sorted(providers):
+        if provider not in netns.REFRESHING_UPSTREAMS:
+            measured = ", ".join(sorted(netns.REFRESHING_UPSTREAMS))
+            problems.append((where, PLAN_PROVIDER,
+                             f"AEW serves the plan logins whose requests it has measured: {measured}"))
+        elif netns.stored_key_override(provider, policy):
+            problems.append((where, PLAN_OVERRIDE,
+                             f"plan_login for {provider} cannot be used with a containment.network.upstreams override"))
+        elif adoption and not set(capabilities.TESTED_VERSIONS).issubset(capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS):
+            versions = ", ".join(capabilities.TESTED_VERSIONS)
+            problems.append((where, PLAN_QUALIFICATION,
+                             f"plan_login for {provider} is awaiting qualification for pinned OpenCode {versions}"))
+    return problems
 
 
 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
@@ -280,6 +323,7 @@ def _pin(policy: dict[str, Any], name: str, *, selected_by: str, rule: str, sha:
     scope = {"deadline_scope": profile["deadline_scope"]} if profile.get("deadline_scope") else {}
     return {"profile": name, "harness": profile_harness(policy, profile),
             "provider": pair.provider, "model": pair.model, "effort": profile.get("effort"),
+            "credential": profile_credential(policy, profile, pair.provider),
             "max_steps": profile.get("max_steps"), "deadline_s": profile.get("deadline_s"), **scope,
             "selected_by": selected_by, "rule": rule, "policy_sha256": sha}
 
@@ -310,6 +354,7 @@ def resolve(policy: dict[str, Any] | None, sha: str | None, *, archetype: str, c
             raise UsageError(f"--model is PROVIDER/MODEL, exactly as the harness lists it ({exc.message})",
                              **exc.details) from None
         return {"profile": None, "harness": harness, "provider": pair.provider,
+                "credential": API_KEY,
                 "model": pair.model, "effort": request.get("effort"), "max_steps": None, "deadline_s": None,
                 "selected_by": "lead", "rule": "lead:model", "policy_sha256": sha}
     if "profile" in request:

@@ -27,6 +27,7 @@ import http.server
 import itertools
 import json
 import threading
+from collections.abc import Callable
 from typing import Any, Protocol
 
 ZERO_USAGE = {"input_tokens": 0, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 0,
@@ -65,7 +66,8 @@ class ResponsesModel:
 
     mode = "responses"
 
-    def __init__(self, script: list[dict[str, Any]], *, capture_wire: bool = False) -> None:
+    def __init__(self, script: list[dict[str, Any]], *, capture_wire: bool = False,
+                 observe_headers: Callable[[Any], None] | None = None) -> None:
         self.script = list(script)
         self.requests: list[dict[str, Any]] = []
         self.upgrades = 0
@@ -102,6 +104,8 @@ class ResponsesModel:
                 self._plain(404, {"error": {"message": "not found"}})
 
             def do_POST(self) -> None:  # noqa: N802
+                if observe_headers is not None:
+                    observe_headers(self.headers)
                 length = int(self.headers.get("Content-Length") or 0)
                 wire = self.rfile.read(length)
                 body = json.loads(wire or b"{}")

@@ -67,7 +67,7 @@ from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
 from aew.harness import contract as K
-from aew.harness import event_spool
+from aew.harness import event_spool, runlog
 from aew.util import replace_with_retry, sha256_bytes, utc_now
 
 # Stop codes. The first group returns control to the Lead in the ordinary way; the rest need attention (notified).
@@ -96,6 +96,7 @@ REPETITION = "REPETITION"
 SIDE_EFFECT_UNDECLARED = "SIDE_EFFECT_UNDECLARED"
 DECLARATION_UNCHECKED = "DECLARATION_UNCHECKED"  # a step commit SAE-07 could not check: never passed (F5)
 ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch_failed): the Lead reads its result
+PLAN_LOGIN_FAILED = "PLAN_LOGIN_FAILED"
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
 STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
@@ -462,6 +463,17 @@ class SteeringLoop:
         mode = now["mode"]
         if mode is None:
             return Stop(OFF, "no steering mode is in force (legacy/manual behaviour)")
+        for inv_id, inv in state.get("invocations", {}).items():
+            runs = inv.get("runs") or []
+            if (inv.get("status") != "active" or not runs or runs[-1].get("token_id") != inv.get("token_id")
+                    or (inv.get("execution_profile") or {}).get("credential") != "plan_login"):
+                continue
+            run = runs[-1]["run"]
+            record = runlog.read_record(runlog.run_dir(self.aew_root, run)) or {}
+            if record.get("status") not in (K.CRASHED, K.ENDED_WITHOUT_EVIDENCE, K.LAUNCH_FAILED):
+                continue
+            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id):
+                return Stop(PLAN_LOGIN_FAILED, f"{run}: {failure}", subject=inv["work_unit"])
         if act.last_own_rev is not None and int(state["revision"]) != act.last_own_rev:
             act.counts.clear()  # a commit the loop did not make: progress the repetition key cannot see
         act.last_own_rev = None

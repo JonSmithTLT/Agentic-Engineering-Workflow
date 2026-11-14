@@ -210,9 +210,9 @@ class ProjectAdmin:
             approval.compare("manifest.adopt", MANIFEST, binding[MANIFEST], sha)
         manifest = load_yaml(raw.decode("utf-8"), source=str(path))
         validate("project", manifest, source=str(path))
-        pins = self._read_policy_pins(manifest, binding)
-        current = {MANIFEST: sha, **pins}
         previous = state.get(POLICY_PINS)
+        pins = self._read_policy_pins(manifest, previous or {}, binding)
+        current = {MANIFEST: sha, **pins}
         drift = [] if previous is None else sorted(
             rel for rel in previous.keys() | pins.keys() if previous.get(rel) != pins.get(rel)
         )
@@ -269,8 +269,8 @@ class ProjectAdmin:
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
-    def _read_policy_pins(self, manifest: dict[str, Any], binding: dict[str, str | None] | None
-                          ) -> dict[str, str | None]:
+    def _read_policy_pins(self, manifest: dict[str, Any], current: dict[str, str | None],
+                          binding: dict[str, str | None] | None = None) -> dict[str, str | None]:
         """The policy files' pins, each hashed from the same bytes it is validated from: a file that does not parse or
         match its schema is refused, never pinned."""
         names = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
@@ -289,11 +289,14 @@ class ProjectAdmin:
                 pins[rel] = None
                 continue
             name = names.get(rel, "execution")
-            data = check_policy_bytes(name, raw, source=str(path))
-            if name == "checks":
-                commit = git.rev_parse(f"refs/heads/{manifest['repository']['authoritative_branch']}",
-                                       cwd=self.k.repo_root)
-                C.validate_caches(data, repo=self.k.repo_root, commit=commit, source=str(path))
+            if name == "execution" and current.get(rel) == sha:
+                X.parse(raw, source=str(path))  # already adopted, so only the in-force checks apply
+            else:
+                data = check_policy_bytes(name, raw, source=str(path))
+                if name == "checks":
+                    commit = git.rev_parse(f"refs/heads/{manifest['repository']['authoritative_branch']}",
+                                           cwd=self.k.repo_root)
+                    C.validate_caches(data, repo=self.k.repo_root, commit=commit, source=str(path))
             pins[rel] = sha
         return pins
 

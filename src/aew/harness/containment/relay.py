@@ -85,7 +85,7 @@ class Unavailable(Exception):
 
     def __init__(self, message: str, *, cause: CredentialCause, retryable: bool = False) -> None:
         super().__init__(message)
-        self.cause = cause
+        self.cause: CredentialCause = cause
         self.retryable = retryable
 
 
@@ -177,6 +177,7 @@ class ProviderRelay(Service):
         self.upstream, self.proxy = upstream, proxy
         self._credentials = dict(credentials)
         self._resolve = resolve
+        self._retryable_pending = False
         self._connect, self._tls = connect, tls
         self.client = client
         self.head_timeout, self.connect_timeout, self.body_timeout = head_timeout, connect_timeout, body_timeout
@@ -195,12 +196,21 @@ class ProviderRelay(Service):
         if resolve is None:
             return self._credentials, {}
         try:
-            return resolve()
+            grant = resolve()
+            with self._lock:
+                self._retryable_pending = False
+            return grant
         except Unavailable as exc:
-            self._count(f"credential:{exc.cause}")
+            self._count(f"credential:{exc.cause}" + ("_retryable" if exc.retryable else ""))
+            with self._lock:
+                self._retryable_pending = exc.retryable
             if exc.cause == "unreadable" and exc.retryable:
                 raise _Refused(503, "credential_unreadable", str(exc)) from None
             raise _Refused(401, "credential_unavailable", str(exc)) from None
+
+    def retryable_pending(self) -> bool:
+        with self._lock:
+            return self._retryable_pending
 
     def _check_resolved_target(self, target: str) -> None:
         path = target.partition("?")[0]

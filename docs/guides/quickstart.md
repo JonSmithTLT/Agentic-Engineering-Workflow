@@ -60,8 +60,9 @@ the missing provider variable under `provider-env` and shows how to supply it.
 
 On contained Linux a worker uses the saved API-key login through the built-in provider relay when the policy names
 that provider's variable and its other names are set or are other built-in providers' key variables. One login
-decides per provider for the Lead and workers. If the Lead uses a refreshing login for a provider, keep it and
-export that provider's API key for workers. For an explicit override or a legacy launch,
+decides per provider for the Lead and workers. API-key workers use an export when the deciding login is refreshing.
+Once the pinned OpenCode version is qualified, an adopted `plan_login` profile can use the operator's plan on
+contained Linux. For an explicit override or a legacy launch,
 use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`.
 A certificate-only provider skips key setup.
 

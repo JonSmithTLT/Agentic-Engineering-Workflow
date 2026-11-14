@@ -296,7 +296,9 @@ class Dispatch:
 
     def explain(self, entrypoint: str, work_id: str, **args: Any) -> dict[str, Any]:
         decision = self.decide(self.k.store.current(), entrypoint, work_id, **args)
-        return {"ok": True, **decision.to_dict(), "channel": decision.channel}
+        pin = (decision.facts.get("inv") or {}).get("execution_profile") or {}
+        source = {"provider_key_source": "plan login"} if pin.get("credential") == "plan_login" else {}
+        return {"ok": True, **decision.to_dict(), "channel": decision.channel, **source}
 
     # ---- the commit check (a transaction finalizer)
 

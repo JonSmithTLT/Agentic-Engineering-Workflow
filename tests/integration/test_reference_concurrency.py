@@ -73,8 +73,7 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     constructions = sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for src in CTX.sources().values())
     sites = CO.lock_sites(PROGRAM, F.Evaluator(PROGRAM))
     placed = sum(len(r.fact["openers"]) for r in BUILT.records if r.key.startswith("lock:"))
-    # 8 includes messaging's stable told-message lock, beside the registers and operator sessions.
-    assert constructions == len(sites) == placed == 8, (constructions, len(sites), placed)
+    assert constructions == len(sites) == placed == 1 + len(KNOWN_LOCKS), (constructions, len(sites), placed)
 
 
 def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
@@ -136,6 +135,8 @@ def _initialized(tmp_path: Path) -> tuple[Path, Path]:
 # -------------------------------------------------------------------------------------------- the other locks
 
 KNOWN_LOCKS = {
+    "unplaced:aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login": (
+        "aew.harness.opencode.adapter", "OpenCodeAdapter._seed_plan_login", {"OpenCodeAdapter._seed_plan_login"}),
     "local/lead/told-messages.lock": ("aew.harness.told_messages", "record", {"record"}),
     "local/dashboard/endpoint.lock": ("aew.dashboard.service", "Service._lock",
                                       {"Service.start", "Service._remove_endpoint"}),

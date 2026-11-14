@@ -223,7 +223,7 @@ def test_refreshing_login_decides_for_both_readers_and_only_recommends_an_export
     policy = {"harness": "opencode", "provider_env": [VARIABLE],
               "profiles": {"standard": {"provider": "openai", "model": "synthetic-model"}}}
     rows = {row["check"]: row for row in readiness.readiness_checks(policy)}
-    issue = "the stored login is a refreshing (ChatGPT) login, which workers never use; set OPENAI_API_KEY"
+    issue = "the stored login is a refreshing (ChatGPT) login; set OPENAI_API_KEY"
     assert issue in rows["provider-key"]["detail"]
     invocations = Invocations(SimpleNamespace(execution_policy=lambda: (policy, None)),
                               roles=None, coordination=None)  # type: ignore[arg-type]

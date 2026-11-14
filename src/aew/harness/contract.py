@@ -44,6 +44,31 @@ LOST = "lost"                # a supervisor took custody and stopped reporting (
 # and `reason`. Telemetry like the rest of the record, so it never decides anything.
 PROVIDER_AUTH_FAILED = "provider_auth_failed"  # the model provider rejected the credential (register V1)
 ADAPTER_REASON_CODES = frozenset({PROVIDER_AUTH_FAILED})  # what an adapter reports; never on a `launch_failed` record
+# Optional local run-end `cause`. Older records omit it. It can stop unattended steering but grants no authority.
+PLAN_LOGIN_FAILURES = {
+    "plan_login_expired": "expired",
+    "plan_login_kind_changed": "changed to an API key",
+    "plan_login_unknown_shape": "has a shape AEW doesn't read",
+    "plan_login_missing": "is missing",
+    "plan_login_unreadable": "could not be read",
+    "plan_login_unreadable_retryable": "could not be read because the store is busy or locked",
+}
+
+
+def plan_login_recovery(provider: str, invocation: str, *, retryable: bool = False) -> str:
+    step = ("Wait until the store is available" if retryable else
+            f"AEW never refreshes this login. Renew it at the operator's terminal (`opencode auth login {provider}`)")
+    cancel = fields_command(f"aew invoke cancel {invocation} {EXPECT_REV}", "reason", "plan login unavailable")
+    return f"{step}, then relaunch with `aew harness launch {invocation} {EXPECT_REV}`, or cancel it with:\n\n{cancel}"
+
+
+def plan_login_failure(cause: Any, provider: str, invocation: str) -> str | None:
+    detail = PLAN_LOGIN_FAILURES.get(cause) if isinstance(cause, str) else None
+    if detail is None:
+        return None
+    return (f"the operator's {provider} plan login {detail}. "
+            + plan_login_recovery(provider, invocation, retryable=cause == "plan_login_unreadable_retryable"))
+
 
 # Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
 # record, and of the supervisor's acknowledgement and `HarnessLaunchFailed`'s details. A closed set in the same

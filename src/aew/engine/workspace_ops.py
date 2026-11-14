@@ -212,6 +212,10 @@ class Invocations:
         relayed = netns.relay_route(policy, provider_relay)
         provider = profile.get("provider")
         names = netns.worker_provider_names(provider, map(str, (policy or {}).get("provider_env") or []))
+        if profile.get("credential") == "plan_login":
+            netns.check_plan_login(profile, policy, os.environ, on_relay_route=relayed)
+            self._require_provider_env([name for name in names if name != netns.PROVIDER_KEY_ENV.get(str(provider))])
+            return {"provider": provider, "credential": "plan_login"}
         stored, unavailable = netns.resolve_worker_key(provider, names, os.environ, policy, on_relay_route=relayed)
         selected = netns.PROVIDER_KEY_ENV.get(str(provider))
         needs_relay = selected in names and selected is not None and not relayed and not agentenv.lookup(
@@ -227,6 +231,8 @@ class Invocations:
                                               stored=stored is not None)
         if missing is not None:
             message = netns.provider_key_message(str(provider), missing, stored_detail=unavailable)
+            if profile.get("rule") == "lead:model" and provider in netns.REFRESHING_UPSTREAMS:
+                message += ". To use a plan login, dispatch with `--profile <a plan_login profile>`."
             raise HarnessIncompatible(message,
                                       reason=netns.PROVIDER_KEY_MISSING, variable=missing)
         no_relay = client_cert.no_relay(profile.get("provider"), policy, on_relay_route=relayed)
@@ -243,7 +249,10 @@ class Invocations:
         launch = result.get("launch") or result
         inv = self.k.store.current()["invocations"].get(launch.get("invocation")) or {}
         entry = next((row for row in inv.get("runs", []) if row["run"] == launch.get("run")), {})
-        provider = (entry.get("provider_key_admission") or {}).get("provider")
+        admission = entry.get("provider_key_admission") or {}
+        if admission.get("credential") == "plan_login":
+            return set()
+        provider = admission.get("provider")
         return {provider} if isinstance(provider, str) else set()
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:

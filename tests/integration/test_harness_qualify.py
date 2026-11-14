@@ -24,8 +24,71 @@ if str(TOOL.parent) not in sys.path:
     sys.path.append(str(TOOL.parent))
 
 import harness_qualify as HQ  # noqa: E402
-from harness_qualify import core, model  # noqa: E402
+from harness_qualify import (  # noqa: E402
+    core,
+    model,
+    worker_plan,  # noqa: E402
+)
 from harness_qualify import opencode as OC  # noqa: E402
+
+
+def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials(tmp_path, monkeypatch):
+    from aew.engine.base import check_policy_bytes
+    from aew.errors import ValidationFailed
+    from aew.policy import execution
+
+    work = tmp_path / "probe"
+    work.mkdir()
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    binary = fake_opencode.write_launcher(scripts / "fake-opencode", scripts)
+    env = core.private_env(work, harness="opencode")
+    ctx = core.Context(binary, work, {**env, "OPENAI_API_KEY": "synthetic-unused-export"}, OC.C.TESTED_VERSIONS[0])
+    monkeypatch.setattr(worker_plan, "network_state", lambda: "blocked: run under the fake qualification test")
+
+    def fake_worker(_oc, _ctx, child_env, base):
+        import sqlite3
+        from urllib.parse import urlsplit
+
+        from aew.harness.opencode import login
+
+        assert "OPENAI_API_KEY" not in child_env
+        with sqlite3.connect(login.db_path(child_env)) as con:
+            sentinel = json.loads(con.execute("SELECT value FROM credential").fetchone()[0])["access"]
+        url = urlsplit(base)
+        for _ in range(2):
+            conn = http.client.HTTPConnection(url.hostname, url.port, timeout=5)
+            try:
+                conn.request("POST", url.path + "/responses", '{"input":"test"}',
+                             {"Authorization": f"Bearer {sentinel}", "Content-Type": "application/json"})
+                answer = conn.getresponse()
+                answer.read()
+                if answer.status == 200:
+                    return True, [0]
+                assert answer.status == 503
+            finally:
+                conn.close()
+        raise AssertionError("the fake worker did not get a response after retrying")
+
+    monkeypatch.setattr(worker_plan, "_turn", fake_worker)
+    targets = []
+
+    def fake_upstream(*args, **kwargs):
+        upstream = model.ResponsesModel(*args, **kwargs)
+        targets.append(upstream.base_url)
+        return upstream
+
+    assert any(c.id == worker_plan.FACT for c in OC.OpenCodePack(FIXTURES).checks())
+    outcome = worker_plan.check(ctx, fake_upstream=fake_upstream)
+    assert outcome.status == core.PASS and len(targets) == 1
+    fact = outcome.facts[worker_plan.FACT]
+    assert fact["retried_503"] and fact["authorization_substituted"] and fact["account_id_substituted"]
+    assert fact["paths"] == ["/backend-api/codex/responses"]
+    assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}
+    assert worker_plan.ACCESS not in json.dumps(fact) and worker_plan.ACCOUNT not in json.dumps(fact)
+    with pytest.raises(ValidationFailed):
+        check_policy_bytes("execution", (execution.TEMPLATE + "\nfake_upstream: " + targets[0]).encode(),
+                           source="policy")
 
 # ------------------------------------------------------------------------------------------------- the stub pack
 

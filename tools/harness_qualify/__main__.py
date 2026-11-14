@@ -80,9 +80,10 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_USAGE
     if args.ruling is not None:
         p.error("--ruling is only for --reevaluate")
-    if "login.worker_plan_route" in (args.only or ()) and not args.no_network:
+    network_wrapped = os.environ.get(NETWORK_BLOCKED_ENV) == "1"
+    if "login.worker_plan_route" in (args.only or ()) and not (args.no_network or network_wrapped):
         p.error("login.worker_plan_route requires --no-network")
-    if args.no_network and os.environ.get(NETWORK_BLOCKED_ENV) != "1":
+    if args.no_network and not network_wrapped:
         if not has_bubblewrap() or not shutil.which("bwrap"):
             sys.stderr.write("--no-network needs bubblewrap (bwrap) on Linux; run without it, and the record says "
                              "egress was not blocked\n")

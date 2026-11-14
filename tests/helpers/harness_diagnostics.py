@@ -79,7 +79,7 @@ def _tail(path: Path, lines: int = TAIL_LINES) -> str:
         text = _redacted(path)
     except OSError as exc:
         return f"<unreadable: {type(exc).__name__}>"
-    return "\n".join(line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " â€¦"
+    return "\n".join(line if len(line) <= LINE_CHARS else line[:LINE_CHARS] + " …"
                      for line in text.splitlines()[-lines:])
 
 
@@ -150,7 +150,7 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
                     if len(text) > MAX_COPY_BYTES:  # the tail, from a line boundary when one leaves anything
                         cut = text[-MAX_COPY_BYTES:]
                         _, sep, rest = cut.partition("\n")
-                        text = "[â€¦ earlier text not copied]\n" + (rest if sep and rest else cut)
+                        text = "[… earlier text not copied]\n" + (rest if sep and rest else cut)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8", newline="")  # the source's own line ends, untranslated
                 copied.append(target)
@@ -205,7 +205,7 @@ CHEAP_FILE = 64 * 1024
 CHEAP_TOTAL = 2 * 1024 * 1024
 OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
 TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
-TRUNCATED = "[â€¦ earlier text not copied: the autopsy's per-file cap]\n"
+TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
 
 
 def evidence_text(path: Path) -> bool:

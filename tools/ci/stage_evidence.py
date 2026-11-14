@@ -42,6 +42,7 @@ def stage(source: Path, destination: Path) -> str:
         left = JOB_CAP - INDEX_CAP
         kept = omitted = 0
         inventory = bytearray()
+
         def files():
             if not source.is_dir() or is_link(source):
                 return

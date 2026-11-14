@@ -48,3 +48,8 @@ limits in test_exclusive_server.py's inventory. No other ExclusiveServer subclas
 The dashboard endless-input regression now pins the absolute deadline rather than imposing its old byte cap.
 STG-02 has a real TCP pre-body refusal/body-reuse regression. No retries, deadline raises, platform skips or
 unbounded reads. This branch is fresh from origin/main, separate from #472.
+
+Local quick-check minor: the ordinary egress http.client smoke case passed once with only its staged-close call
+removed, so it was not a sensitive negative control. Keep that case and add an event-synchronized TCP case: send
+body only after the 405 send, then wait for handler close before reading. This forces unread-body close if the
+egress staged-close call is removed, rather than claiming the smoke case proves deterministic sensitivity.

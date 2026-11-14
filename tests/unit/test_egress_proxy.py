@@ -21,6 +21,7 @@ from contextlib import closing, contextmanager
 from typing import Any
 
 import pytest
+from tcp_pair import tcp_pair
 
 from aew.errors import ValidationFailed
 from aew.harness.containment import egress, peer
@@ -41,6 +42,49 @@ def test_a_plain_http_post_with_a_body_gets_405_without_a_tcp_reset():
                 answer = client.getresponse()
                 assert answer.status == 405 and b"https://" in answer.read()
             assert not resolver.calls and not connect.calls
+
+
+def test_an_egress_405_survives_a_delayed_body_before_the_client_reads():
+    """Force the missing-drain defect, rather than relying on the ordinary http.client POST's packet timing."""
+    resolver, connect = Resolver(), ConnectSpy()
+    proxy = EgressProxy(AnyPublic(), resolve=resolver, connect=connect)
+    client, server = tcp_pair(TIMEOUT)
+    answer_sent, body_sent, finished = threading.Event(), threading.Event(), threading.Event()
+
+    class DelayedBody:
+        def __getattr__(self, name):
+            return getattr(server, name)
+
+        def sendall(self, data):
+            server.sendall(data)
+            answer_sent.set()
+            assert body_sent.wait(TIMEOUT), "the client never supplied its delayed body"
+
+    def handle():
+        try:
+            proxy.handle(DelayedBody())
+        finally:
+            finished.set()
+
+    thread = threading.Thread(target=handle, daemon=True)
+    thread.start()
+    try:
+        client.sendall(b"POST http://provider.example/v1/responses HTTP/1.1\r\n"
+                       b"Host: provider.example\r\nContent-Length: 65536\r\n\r\n")
+        assert answer_sent.wait(TIMEOUT), "the proxy did not send its pre-body 405"
+        client.sendall(b"x" * (64 * 1024))
+        client.shutdown(socket.SHUT_WR)
+        body_sent.set()
+        assert finished.wait(TIMEOUT), "the proxy did not finish its staged close"
+        status, _, body = response(client)  # after close, the unread-data reset must not discard the 405
+        assert status == 405 and b"https://" in body
+        assert not resolver.calls and not connect.calls
+    finally:
+        body_sent.set()
+        client.close()
+        thread.join(TIMEOUT)
+        proxy.close()
+    assert not thread.is_alive()
 
 
 def never_local(ip: peer.IP) -> bool:

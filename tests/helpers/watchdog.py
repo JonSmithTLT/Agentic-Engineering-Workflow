@@ -54,7 +54,10 @@ def hang_dir(config: pytest.Config) -> Path:
     if explicit:
         return Path(explicit)
     report = config.getoption("aew_lane_report", None)
-    return Path(report).resolve().parent if report else Path(tempfile.gettempdir())
+    if report:
+        return Path(report).resolve().parent
+    factory = getattr(config, "_tmp_path_factory", None)
+    return Path(factory.getbasetemp()) if factory is not None else Path(tempfile.gettempdir())
 
 
 class HungTest(BaseException):

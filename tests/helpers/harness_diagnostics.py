@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -200,13 +201,82 @@ def forget() -> None:
 AUTOPSY_DIR = "autopsy"  # under the hang directory; tools/ci/check_assurance.py and update_durations.py skip it
 AUTOPSY_FILE_CAP = 512 * 1024
 AUTOPSY_TOTAL_CAP = 64 * 1024 * 1024
+CHEAP_FILE = 64 * 1024
+CHEAP_TOTAL = 2 * 1024 * 1024
+OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
+TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
 TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
+
+
+def evidence_text(path: Path) -> bool:
+    return (path.suffix.lower() in TEXT_SUFFIXES or path.name == "heartbeat") and not any(
+        word in path.name.lower() for word in ("credential", "secret", "auth.json", ".env"))
+
+
+def is_link(path: Path) -> bool:
+    info = path.lstat()
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def copy_test_file(path: Path, target: Path, budget: Budget) -> str:
+    with path.open("rb") as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - CHEAP_FILE))
+        data = stream.read(CHEAP_FILE)
+    if b"\x00" in data:
+        return "binary source"
+    text = data.decode("utf-8", errors="strict" if size <= CHEAP_FILE else "replace")
+    if size > CHEAP_FILE:
+        _, separator, remainder = text.partition("\n")
+        text = TRUNCATED + (remainder if separator and remainder else text)
+    out = write_text(target, path.name, text, budget=budget, cap=CHEAP_FILE)
+    return f"copied to {out.name}" if out else "budget exhausted"
+
+
+def copy_test_evidence(src: Path, dest: Path, label: str, *, budget: Budget) -> list[str]:
+    """Copy bounded fixture text, including text below hidden AEW state directories."""
+    inventory = []
+    pending = [src]
+    if is_link(src):
+        return [f"{label}: link skipped"]
+    while pending and budget.paths_left:
+        directory = pending.pop()
+        for path in directory.iterdir():
+            if not budget.paths_left:
+                break
+            budget.paths_left -= 1
+            rel = path.relative_to(src)
+            hidden = any(part.startswith(".") for part in rel.parts)
+            try:
+                if is_link(path):
+                    outcome = "link skipped"
+                elif path.is_dir():
+                    if not path.name.startswith(".") or path.name == ".aew":
+                        pending.append(path)
+                    outcome = "directory"
+                elif (not path.is_file() or not evidence_text(path)
+                      or any(word in part.lower() for part in rel.parts[:-1]
+                             for word in ("credential", "secret", ".env", ".git"))
+                      or (not hidden and path.suffix.lower() not in OUTPUT_SUFFIXES)):
+                    outcome = "excluded"
+                else:
+                    target = (dest / "harness" / safe_dir(f"{label}/{rel.parent.as_posix()}") if hidden
+                              else dest / "workdir" / label / rel.parent)
+                    outcome = copy_test_file(path, target, budget)
+            except (OSError, UnicodeError) as exc:
+                outcome = f"unavailable ({type(exc).__name__})"
+            inventory.append(f"{label}/{rel.as_posix()}: {outcome}")
+    if not budget.paths_left:
+        inventory.append(f"{label}: test inventory capped at 256 paths")
+    return inventory
 
 
 class Budget:
     """The bytes an autopsy may still write (shared by every writer of one autopsy directory)."""
 
     def __init__(self, total: int = AUTOPSY_TOTAL_CAP) -> None:
+        self.paths_left = 256
         self.left = total
         self.refused: list[str] = []
 
@@ -243,6 +313,10 @@ def write_text(dest_dir: Path, name: str, text: str, *, budget: Budget | None = 
     """Write ``text`` redacted, capped and safely named under ``dest_dir``. Returns the path, or None when the
     autopsy's total budget refused it (the refusal is kept in the budget, and reported by its writer)."""
     body = capped(K.redact(text), cap)
+    encoded = body.encode("utf-8", "replace")
+    if cap == CHEAP_FILE and len(encoded) > cap:
+        prefix = TRUNCATED.encode("utf-8")
+        body = TRUNCATED + encoded[-(cap - len(prefix)):].decode("utf-8", "ignore")
     target = dest_dir / safe_name(name)
     if budget is not None and not budget.take(target.name, len(body.encode("utf-8", "replace"))):
         return None

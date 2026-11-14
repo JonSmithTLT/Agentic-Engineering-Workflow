@@ -68,6 +68,8 @@ jobs:
       extra-matrix: ${{ steps.plan.outputs.extra_matrix }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -123,6 +125,7 @@ jobs:
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - run: git fetch --tags --force
       - uses: ./.github/actions/setup-aew
@@ -143,8 +146,17 @@ jobs:
         if: always()
         with:
           name: nightly-reference-${{ runner.os }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/nightly-reports/
+          path: |
+            ${{ runner.temp }}/nightly-reports/*.json
           retention-days: 30
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/nightly-reports/
+          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+      - uses: ./.github/actions/prove-evidence
+        if: matrix.shard == 1
 
   reference-assurance:
     # The unsharded reference run's guarantee, rebuilt from its shards: every shard reported, every collected test
@@ -156,6 +168,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -238,6 +252,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -253,13 +269,11 @@ jobs:
       - run: >-
           python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
           --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
         with:
-          name: nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}
-          path: ${{ runner.temp }}/hangs/
-          if-no-files-found: ignore
-          retention-days: 14
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-attempt-${{ github.run_attempt }}
 
   race-repeat:
     name: race and kill repetition (${{ matrix.os }})
@@ -279,6 +293,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -298,13 +314,11 @@ jobs:
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
           --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
         with:
-          name: nightly-race-hangs-${{ runner.os }}
-          path: ${{ runner.temp }}/hangs/
-          if-no-files-found: ignore
-          retention-days: 14
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
 
   crash-extended:
     name: randomized store crashes (${{ matrix.os }})
@@ -326,6 +340,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -336,13 +352,11 @@ jobs:
           AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
             --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
             "tests/unit/test_store.py::test_randomized_crash_iterations"
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
         with:
-          name: nightly-crash-hangs-${{ runner.os }}
-          path: ${{ runner.temp }}/hangs/
-          if-no-files-found: ignore
-          retention-days: 14
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
 
   matrix-extra:
     # The interpreter each OS does not use on pull requests: the whole suite, in duration-balanced shards like ci.yml's
@@ -367,6 +381,7 @@ jobs:
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - run: git fetch --tags --force
       - uses: ./.github/actions/setup-aew
@@ -387,8 +402,15 @@ jobs:
         if: always()
         with:
           name: nightly-extra-${{ runner.os }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/nightly-extra/
+          path: |
+            ${{ runner.temp }}/nightly-extra/*.json
           retention-days: 30
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/nightly-extra/
+          artifact: evidence-nightly-extra-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
 
   matrix-extra-serial:
     # matrix-extra's serial lane, once per OS and never parallel, in a job of its own: it ran after shard 1's sharded
@@ -413,6 +435,7 @@ jobs:
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - run: git fetch --tags --force
       - uses: ./.github/actions/setup-aew
@@ -427,8 +450,15 @@ jobs:
         if: always()
         with:
           name: nightly-extra-${{ runner.os }}-serial
-          path: ${{ runner.temp }}/nightly-extra/
+          path: |
+            ${{ runner.temp }}/nightly-extra/*.json
           retention-days: 30
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/nightly-extra/
+          artifact: evidence-nightly-extra-${{ runner.os }}-serial-attempt-${{ github.run_attempt }}
 
   matrix-extra-assurance:
     # As reference-assurance, for the extra interpreters: every shard and the serial lane reported, and every collected
@@ -439,6 +469,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -497,6 +529,8 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"

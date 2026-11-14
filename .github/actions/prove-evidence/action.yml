@@ -1,0 +1,47 @@
+name: Prove test evidence publication
+description: Plant a child error under a hidden path and verify the downloaded artifact.
+runs:
+  using: composite
+  steps:
+    - name: Plant a scanner allow-comment
+      shell: bash
+      run: |
+        raw="$RUNNER_TEMP/evidence-scan-plant/autopsy"
+        mkdir -p "$raw"
+        printf 'token=%s%s # gitleaks:allow\n' ghp_ A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 > "$raw/failure.txt"
+    - name: Plant an unmarked pytest failure and retain its child stdout
+      shell: bash
+      env:
+        AEW_EVIDENCE_PROOF_DIR: ${{ runner.temp }}/evidence-proof-source
+      run: >-
+        python -m pytest -q -p no:cacheprovider -p no:xdist
+        --session-deadline 120 --test-timeout 60 "--hang-dir=${{ runner.temp }}/evidence-proof-outer"
+        tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
+        tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+    - uses: ./.github/actions/publish-evidence
+      with:
+        source: ${{ runner.temp }}/evidence-proof-source
+        artifact: evidence-proof-${{ runner.os }}-attempt-${{ github.run_attempt }}
+    - uses: actions/download-artifact@v8
+      with:
+        name: evidence-proof-${{ runner.os }}-attempt-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/evidence-proof-download
+    - name: Verify the published artifact
+      shell: bash
+      run: |
+        python - <<'PY'
+        import os
+        from pathlib import Path
+        root = Path(os.environ["RUNNER_TEMP"]) / "evidence-proof-download"
+        [stdout] = list(root.rglob("harness/*/shell-2.stdout.txt"))
+        assert "planted shell diagnostic" in stdout.read_text(encoding="utf-8")
+        [supervisor] = list(root.rglob("harness/*/supervisor.log.txt"))
+        assert "planted supervisor diagnostic" in supervisor.read_text(encoding="utf-8")
+        [deadline] = list(root.rglob("session-deadline.txt"))
+        assert "deadline (5s) passed" in deadline.read_text(encoding="utf-8")
+        secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
+        assert all(secret not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
+        PY
+        python tools/ci/stage_evidence.py "$RUNNER_TEMP/evidence-scan-plant" "$RUNNER_TEMP/evidence-scan-check"
+        test ! -e "$RUNNER_TEMP/evidence-scan-check/autopsy/failure.txt"
+        grep -q 'github-pat' "$RUNNER_TEMP/evidence-scan-check/inventory.txt"

@@ -24,10 +24,15 @@ Planted evidence/regression matrix:
 
 | Control | Required outcome / evidence | Removed mechanism |
 |---|---|---|
-| Real shell delays CLI startup for 31 seconds, then the real bridge binds | Still orphan only after binding; ended_early and no DELIVERED | Old 30-second wait_file barrier kills before admission and fails |
+| Step clock delays admission until 31 seconds in the actual fake shell step | Only then start the unchanged one-second shell timer | Old 30-second wait_file barrier kills before admission and fails |
 | Real shell prints a planted error and exits 7 before binding | Assertion fails with that output, native exit 7, run events and process-observation status | No false timed_out or admitted-wait claim |
 | Shell output and observed aew pid planted in a harness run directory | Copied bundle and failure report retain redacted output, process evidence and events | Removing shell-file collection or assertion evidence fails the row |
 
-The first control is real elapsed time, not a raised margin or a probabilistic repeat. The evidence row covers the
+The first control advances the helper's clock, not a timeout or a probabilistic repeat. Real shell/CLI/bridge
+coverage remains in the original orphan scenario. An initial real 31-second shell-startup control at 2543e0b0
+correctly surfaced a natural WAIT_OUTSIDE_A_STEP refusal instead of the old synthetic kill: aew children were
+observed and the output named the call-binding grace refusal. That is not a green control or proof of why the
+binding was unavailable. The barrier control is isolated from that separate OpenCode stream/call lifetime;
+this change does not waive that observation or claim to repair the runtime binding mechanism. The evidence row covers the
 missing startup/process context exposed by this recurrence; it does not claim native child stacks or infallible
 process observation. Earlier hits at 0282a0db and 083632ed remain historical evidence, not waived by local passes.

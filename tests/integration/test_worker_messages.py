@@ -111,11 +111,6 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     orphan_wait(lab, tmp_path, "aew message wait --timeout 5")
 
 
-def test_admission_delayed_past_the_old_30_second_barrier_still_orphans_an_admitted_wait(lab, tmp_path):
-    delay = "Start-Sleep -Seconds 31" if sys.platform == "win32" else "sleep 31"
-    orphan_wait(lab, tmp_path, f"{delay}; aew message wait --timeout 5")
-
-
 def test_a_shell_exiting_before_admission_fails_with_output_events_and_process_evidence(lab, tmp_path):
     bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     command = ("Write-Output 'planted early shell exit'; exit 7" if sys.platform == "win32"

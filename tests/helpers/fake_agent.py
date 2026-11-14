@@ -108,8 +108,13 @@ def wait_shell_binding(proc: subprocess.Popen, path: str, evidence: Path) -> boo
     while True:
         bound = os.path.exists(path)
         exited = proc.poll() is not None
+        if bound:
+            # Do not delay the short post-binding shell clock for another process-table collection.
+            with evidence.open("a", encoding="utf-8") as fh:
+                fh.write("bound: True\n")
+            return True
         now = time.monotonic()
-        if now >= next_snapshot or bound or exited:
+        if now >= next_snapshot or exited:
             try:
                 table = proctree.table()
                 root = next((p for p in table if p.identity == (proc.pid, start)), None)
@@ -126,8 +131,6 @@ def wait_shell_binding(proc: subprocess.Popen, path: str, evidence: Path) -> boo
                 text = f"shell_pid: {proc.pid}; process observation unavailable: {type(exc).__name__}: {exc}\n"
             evidence.write_text(text, encoding="utf-8")
             next_snapshot = now + 1.0  # observation cadence, not an admission deadline
-        if bound:
-            return True
         if exited:
             return False
         time.sleep(0.05)

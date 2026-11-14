@@ -74,6 +74,28 @@ def test_shell_failure_names_the_directory_exit_and_redacted_last_40_lines(tmp_p
     assert "<unreadable: FileNotFoundError>" in D.describe_shell(tmp_path, result)
 
 
+def test_shell_admission_process_evidence_and_output_survive_the_harness_bundle(tmp_path):
+    lab = Lab(tmp_path / "project")
+    directory = a_run(lab, "R-INV-0001-1")
+    output = directory / "harness/shell-2.stdout"
+    admission = output.with_suffix(".admission")
+    output.write_text(f"planted startup refusal {TOKEN}\n", encoding="utf-8")
+    admission.write_text("shell_pid: 12; exit: 7\naew child started: OBSERVED pids [13]\n"
+                         f"13 12 aew.exe message wait {TOKEN}\n", encoding="utf-8")
+    (directory / "events.jsonl").write_text('{"event": "opencode.session.tool.called"}\n', encoding="utf-8")
+    text = D.describe_shell(directory / "harness", {"exit": 7, "timed_out": False,
+                            "stdout_file": str(output), "admission_file": str(admission)})
+    assert "planted startup refusal" in text and "OBSERVED pids [13]" in text and "run events" in text
+    copied, failed = D.copy_evidence(lab, tmp_path / "bundle")
+    assert not failed
+    kept = {p.name: p.read_text(encoding="utf-8") for p in copied}
+    assert "planted startup refusal" in kept["harness__shell-2.stdout.txt"]
+    assert "aew child started: OBSERVED pids [13]" in kept["harness__shell-2.admission.txt"]
+    assert "opencode.session.tool.called" in kept["events.jsonl.txt"]
+    assert TOKEN not in text and all(TOKEN not in value for value in kept.values())
+    assert "aew child started: OBSERVED pids [13]" in D.describe_run(directory)
+
+
 def test_a_credential_cut_by_a_bound_is_still_redacted(tmp_path):
     """#136 review, F1: redaction runs on the whole text before a line is cut to its bound or a file to its tail, so
     a credential straddling the cut never leaves a piece the pattern no longer matches."""

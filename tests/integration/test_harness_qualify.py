@@ -32,9 +32,10 @@ from harness_qualify import (  # noqa: E402
 from harness_qualify import opencode as OC  # noqa: E402
 
 
-@pytest.mark.parametrize("send_request", [True, False], ids=["relay", "no-model-request"])
-def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials(
-        tmp_path, monkeypatch, send_request):
+@pytest.mark.parametrize("mode", ["relay", "no-model-request", "refused", "no-retry-request", "priced"])
+def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials(tmp_path, monkeypatch, mode):
+    import hashlib
+
     from aew.engine.base import check_policy_bytes
     from aew.errors import ValidationFailed
     from aew.policy import execution
@@ -47,39 +48,49 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
     env = core.private_env(work, harness="opencode")
     ctx = core.Context(binary, work, {**env, "OPENAI_API_KEY": "synthetic-unused-export"}, OC.C.TESTED_VERSIONS[0])
     monkeypatch.setattr(worker_plan, "network_state", lambda: "blocked: run under the fake qualification test")
+    calls = 0
 
     def fake_worker(_oc, _ctx, child_env, base):
         import sqlite3
+        from contextlib import closing
         from urllib.parse import urlsplit
 
         from aew.harness.opencode import login
 
+        nonlocal calls
+        calls += 1
         assert "OPENAI_API_KEY" not in child_env
         assert child_env["OPENCODE_DISABLE_MODELS_FETCH"] == "1"
         catalog_path = Path(child_env["OPENCODE_MODELS_PATH"])
         assert catalog_path.is_relative_to(work.resolve())
-        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-        entry = catalog["openai"]["models"][worker_plan.MODEL]
-        assert entry["id"] == worker_plan.MODEL
-        config = _oc.server_config(base, model_id=worker_plan.MODEL)
-        assert config["agents"][_oc.AGENT]["model"] == {"providerID": "openai", "model": entry["id"]}
-        if not send_request:
-            return False, []
-        with sqlite3.connect(login.db_path(child_env)) as con:
+        catalog = json.loads(catalog_path.read_bytes())
+        captured = json.loads(worker_plan.CAPTURE.read_bytes())
+        entry = catalog["openai"]["models"]["gpt-5.5"]
+        assert {**entry, "cost": captured["openai"]["models"]["gpt-5.5"]["cost"]} == (
+            captured["openai"]["models"]["gpt-5.5"])
+        if mode == "no-model-request":
+            return "The pinned model was never offered by the OAuth catalog", []
+        if mode == "no-retry-request" and calls == 2:
+            return None, []
+        with closing(sqlite3.connect(login.db_path(child_env))) as con:
             sentinel = json.loads(con.execute("SELECT value FROM credential").fetchone()[0])["access"]
         url = urlsplit(base)
+        path = "/v1/responses" if mode == "refused" else url.path + "/responses"
         for _ in range(2):
-            conn = http.client.HTTPConnection(url.hostname, url.port, timeout=5)
-            try:
-                conn.request("POST", url.path + "/responses", '{"input":"test"}',
+            with closing(http.client.HTTPConnection(url.hostname, url.port, timeout=5)) as conn:
+                conn.request("POST", path, '{"input":"test","tools":[{"name":"read"}]}',
                              {"Authorization": f"Bearer {sentinel}", "Content-Type": "application/json"})
                 answer = conn.getresponse()
-                answer.read()
+                body = answer.read()
+                if mode == "refused":
+                    assert answer.status == 403
+                    return None, []
                 if answer.status == 200:
-                    return True, [0]
+                    scripted = [json.loads(line[6:])["response"]["usage"] for line in body.splitlines()
+                                if line.startswith(b'data: {"type": "response.completed"')]
+                    assert [(u["input_tokens"], u["output_tokens"]) for u in scripted] == [(1000, 100)]
+                    return None, [0.01 if mode == "priced" else 0]
                 assert answer.status == 503
-            finally:
-                conn.close()
         raise AssertionError("the fake worker did not get a response after retrying")
 
     monkeypatch.setattr(worker_plan, "_turn", fake_worker)
@@ -95,18 +106,65 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
     assert len(targets) == 1
     fact = outcome.facts[worker_plan.FACT]
     assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}
-    if not send_request:
-        assert outcome.status == core.FAIL
-        assert outcome.notes == ["No model request reached the plan relay"]
-        assert not fact["paths"] and not fact["saw_503"]
-        return
-    assert outcome.status == core.PASS
-    assert fact["retried_503"] and fact["authorization_substituted"] and fact["account_id_substituted"]
-    assert fact["paths"] == ["/backend-api/codex/responses"]
+    assert fact["relay_counts"]["credential:expired"] == 1
+    seed = work / "synthetic-models.json"
+    assert fact["catalog"]["sha256"] == hashlib.sha256(seed.read_bytes()).hexdigest()
+    assert fact["catalog"]["seeded"] is True and fact["catalog"]["source"].endswith("/v2.0/api.json")
+    assert fact["model"] == {"providerID": "openai", "id": "gpt-5.5", "variant": "medium"}
     assert worker_plan.ACCESS not in json.dumps(fact) and worker_plan.ACCOUNT not in json.dumps(fact)
+    if mode in ("no-model-request", "refused"):
+        assert calls == 1 and outcome.status == core.FAIL
+        assert "No scripted model request reached the fake upstream through the plan relay" in outcome.notes
+        assert not fact["paths"] and not fact["saw_503"]
+        if mode == "refused":
+            assert fact["relay_counts"]["outside_upstream_path"] == 1
+        return
+    assert calls == 2
+    assert fact["authorization_substituted"] and fact["account_id_substituted"]
+    assert fact["paths"] == ["/backend-api/codex/responses"]
+    if mode == "no-retry-request":
+        assert outcome.status == core.FAIL and not fact["saw_503"]
+        assert outcome.notes == ["The relay did not deliver exactly one retryable credential 503"]
+        return
+    assert fact["retried_503"]
+    if mode == "priced":
+        assert outcome.status == core.FAIL and fact["reported_cost"] == [0.01]
+        assert outcome.notes == ["OpenCode did not report zero cost for the priced synthetic turn"]
+        return
+    assert outcome.status == core.PASS and outcome.notes == []
     with pytest.raises(ValidationFailed):
         check_policy_bytes("execution", (execution.TEMPLATE + "\nfake_upstream: " + targets[0]).encode(),
                            source="policy")
+
+
+@pytest.mark.parametrize(("model_fields", "expected"), [
+    ({"name": "gpt-5.5"}, "The pinned model was never offered by the OAuth catalog"),
+    ({"family": "gpt", "variants": [{"id": "low"}]}, "The pinned model did not offer the medium variant"),
+    ({"family": "gpt", "variants": [{"id": "medium"}], "enabled": False}, "The pinned model was disabled"),
+])
+def test_worker_plan_turn_rejects_an_unusable_catalog_entry(tmp_path, monkeypatch, model_fields, expected):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    class Client:
+        def get(self, path, _location):
+            assert path == "/api/model"
+            return {"data": [{"providerID": "openai", "id": "gpt-5.5", **model_fields}]}
+
+        def post(self, *_args, **_kwargs):
+            pytest.fail("the worker started a session with an unusable model")
+
+    @contextmanager
+    def serve(_binary, _work, _env, _config):
+        yield SimpleNamespace(client=Client())
+
+    ticks = iter((0, 0, 1))
+    monkeypatch.setattr(worker_plan, "time", SimpleNamespace(monotonic=lambda: next(ticks), sleep=lambda _: None))
+    monkeypatch.setattr(OC, "TURN_S", 1)
+    monkeypatch.setattr(OC, "serve", serve)
+    ctx = core.Context(tmp_path / "unused", tmp_path, {}, OC.C.TESTED_VERSIONS[0])
+    assert worker_plan._turn(OC, ctx, {}, "http://127.0.0.1:1/backend-api/codex") == (expected, [])
+
 
 # ------------------------------------------------------------------------------------------------- the stub pack
 

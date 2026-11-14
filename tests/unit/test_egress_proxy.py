@@ -17,7 +17,7 @@ import threading
 import time
 import types
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from typing import Any
 
 import pytest
@@ -36,7 +36,7 @@ def test_a_plain_http_post_with_a_body_gets_405_without_a_tcp_reset():
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         with EgressProxy(AnyPublic(), listener=listener, resolve=resolver, connect=connect):
-            with http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT) as client:
+            with closing(http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT)) as client:
                 client.request("POST", "http://provider.example/v1/responses", b"x" * (64 * 1024))
                 answer = client.getresponse()
                 assert answer.status == 405 and b"https://" in answer.read()

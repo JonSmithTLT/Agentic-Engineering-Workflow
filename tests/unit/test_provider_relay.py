@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from types import SimpleNamespace
 from typing import Any
 
@@ -328,7 +328,7 @@ def test_a_provider_sized_http_post_gets_its_complete_refusal(status, cause, ret
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         with ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve, listener=listener) as service:
-            with http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT) as client:
+            with closing(http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT)) as client:
                 client.request("POST", "/v1/responses", b"x" * (8 * 1024 * 1024))
                 answer = client.getresponse()
                 assert answer.status == status and answer.read() == f"planted {cause} credential".encode()

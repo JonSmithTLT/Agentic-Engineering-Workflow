@@ -1118,7 +1118,6 @@ class Engine:
 def session_parts(monkeypatch):
     runs: list[dict[str, Any]] = []
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree",
                         lambda argv, *, env, cwd, relay=False, survivors=None:
                         runs.append({"argv": argv, "env": env, "relay": relay}) or (0, "clean"))

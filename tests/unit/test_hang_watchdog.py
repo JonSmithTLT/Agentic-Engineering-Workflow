@@ -116,6 +116,34 @@ def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
     assert dumps(tmp_path / "hangs") == []
 
 
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_path):
+    planted = HANGS.replace("def test_hangs_forever():",
+                            "import pytest\nimport subprocess\nimport sys\n\n"
+                            "@pytest.mark.parametrize('value', [1], ids=['private-parameter'])\n"
+                            "def test_hangs_forever(value):\n"
+                            "    subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])")
+    root = project(tmp_path, planted)
+    progress = tmp_path / "progress"
+    runner = HELPERS.parents[1] / "tools" / "ci" / "windows_lane.py"
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
+    # The venv launcher can kill leaked descendants by itself. Use the base interpreter as CI does.
+    clean_env["PYTHONPATH"] = os.pathsep.join(path for path in sys.path if path)
+    # Shorten the outer cutoff and leave the inner deadline off to plant a stuck pytest session.
+    bootstrap = ("import runpy,sys,time; "
+                 "supervise=runpy.run_path(sys.argv[1])['supervise']; "
+                 "from pathlib import Path; "
+                 "raise SystemExit(supervise(Path(sys.argv[2]), sys.argv[3:], time.monotonic()+15))")
+    proc = subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q",
+                           "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",
+                           f"--hang-dir={tmp_path / 'hangs'}", "tests"],
+                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35)
+    assert proc.returncode == 70, proc.stdout + proc.stderr
+    assert "outlived the independent step cutoff" in (progress / "step.txt").read_text(encoding="utf-8")
+    [running] = progress.glob("running-*.txt")
+    assert running.read_text(encoding="utf-8").splitlines() == ["tests/unit/test_w.py::test_hangs_forever"]
+
+
 @pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])
 def test_a_clean_run_with_its_dumps_inside_the_checkout_passes_the_isolation_guard(tmp_path, mode):
     """#132 review: the isolation guard checks the checkout at sessionfinish. A clean test's dump file, kept until

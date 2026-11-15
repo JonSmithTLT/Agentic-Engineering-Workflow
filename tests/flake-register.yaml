@@ -135,8 +135,12 @@ entries:
   platforms:
   - windows
   status: open
-  class: no response
-  cause: Unestablished. The hostile-repository test appears on all 13 never-ran lists as a shard-membership lead.
+  class: job time limit
+  cause: >-
+    Unestablished; evidence now captured. The hostile-repository test appears on all 13 never-ran lists as a
+    shard-membership lead. The last confirmed overrun already included PR 451. PR 455 changed operator-session
+    cleanup locking and test timing. The original jobs
+    have no surviving deadline markers or running-test evidence to connect that change to the overruns.
   owner: CI flake triage
   row: E3
   evidence:
@@ -201,6 +205,10 @@ entries:
     at: '2026-11-11T16:02:42Z'
     kind: diagnostic
     note: Diagnostic passed and uploaded evidence. A clean run establishes no cause.
+  - run: 43118136554
+    job: 130852966198
+    at: '2026-11-11T23:40:26Z'
+    note: Regression 3/3 exceeded 34 minutes on 739f3a5c immediately before PR 455. GitHub recorded no upload step start.
 - id: windows-integration-no-response
   scope: session
   lane: integration

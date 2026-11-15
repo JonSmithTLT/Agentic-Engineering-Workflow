@@ -279,12 +279,22 @@ jobs:
       # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
-          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
+          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || matrix.lane == 'regression' && 'python tools/ci/windows_lane.py' || 'python -m pytest' }}
+          ${{ runner.os == 'Windows' && matrix.lane == 'regression' && format('"{0}/running-tests"', runner.temp) || '' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
           "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+      # Publish source test names before scanner setup or full autopsy staging can consume the remaining budget.
+      - uses: actions/upload-artifact@v7
+        if: always() && runner.os == 'Windows' && matrix.lane == 'regression'
+        with:
+          name: running-tests-Windows-regression-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/running-tests/step.txt
+            ${{ runner.temp }}/running-tests/running-*.txt
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         if: always()
         with:

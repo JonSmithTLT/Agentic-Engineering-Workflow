@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import faulthandler
 import os
+import re
 import signal
 import tempfile
 from collections.abc import Generator
@@ -39,6 +40,8 @@ import pytest
 
 HEADER = "aew hang watchdog: "
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
+# Publish source identifiers only. Parametrization IDs and stacks go through the scanned evidence path.
+SOURCE_TEST = re.compile(r"tests/(?:[\w-]+/)*[\w-]+\.py(?:::[\w]+)+", re.ASCII)
 
 
 def addoption(parser: pytest.Parser) -> None:
@@ -47,6 +50,8 @@ def addoption(parser: pytest.Parser) -> None:
                     help="fail a test still running after SECONDS, with every thread's stack (0: off)")
     group.addoption("--hang-dir", dest="aew_hang_dir", default=None, metavar="DIR",
                     help="where the watchdog writes stack dumps (default: the lane report's directory)")
+    group.addoption("--running-tests-dir", default=None, metavar="DIR",
+                    help="where the Windows regression supervisor keeps active test names")
 
 
 def hang_dir(config: pytest.Config) -> Path:
@@ -71,6 +76,8 @@ class HangWatchdog:
         self.dir = hang_dir(config)
         worker = getattr(config, "workerinput", {}).get("workerid", "main")
         self.path = self.dir / f"hang-{worker}-{os.getpid()}.txt"
+        progress = config.getoption("running_tests_dir", None)
+        self.running = Path(progress) / f"running-{os.getpid()}.txt" if progress else None
         self._file: IO[str] | None = None
         self._fired = 0
         self._hangs = 0
@@ -119,6 +126,12 @@ class HangWatchdog:
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
+        if self.running is not None:
+            node = item.nodeid.split("[", 1)[0]
+            pending = self.running.with_suffix(".tmp")
+            pending.write_text((node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>") + "\n",
+                               encoding="utf-8")
+            pending.replace(self.running)
         self._fired = 0
         f = self._reset(self._header(item))
         armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
@@ -160,6 +173,8 @@ class HangWatchdog:
                 self._hangs += 1
             else:
                 self._discard()  # a test that finished leaves no dump
+            if self.running is not None:
+                self.running.unlink(missing_ok=True)
 
     def _discard(self) -> None:
         """Remove the dump file between tests, not only at exit: the isolation guard (lanes.py) checks the checkout

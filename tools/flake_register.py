@@ -41,7 +41,6 @@ CHECK_QUERY = """query($ids: [ID!]!) {
         cancelled: checkRuns(first: 100, filterBy: {checkType: ALL, conclusions: [CANCELLED, TIMED_OUT]}) {
           ...Checks
         }
-        active: checkRuns(first: 100, filterBy: {checkType: ALL, statuses: [IN_PROGRESS]}) { ...Checks }
       }
     }
   }
@@ -64,7 +63,9 @@ INDEX_ARTIFACT = "flake-sighting-index"
 INDEX_MEMBER = "sightings.json"
 MAX_INDEX_BYTES = 1024 * 1024
 TEST_NAME = re.compile(r"test_\w+\Z")
-NO_RESPONSE = re.compile(r"stopped hearing from|not responding|has exceeded the maximum execution time", re.I)
+JOB_TIME_LIMIT = re.compile(r"has exceeded the maximum execution time", re.I)
+RUNNER_LOST = re.compile(r"stopped hearing from|not responding", re.I)
+CONCURRENCY_CANCEL = re.compile(r"canceling since a higher priority waiting request", re.I)
 PYTEST_STEP = re.compile(
     r"pytest|(?:fast|serial) lane|racing writers|randomized crash iterations|deadline plants", re.I,
 )
@@ -318,13 +319,13 @@ def _started_pytest(steps: list[dict[str, Any]]) -> bool:
         and not step["name"].startswith("The job's deadline") for step in steps)
 
 
-def session_problem(run: dict[str, Any], job: dict[str, Any], annotations: list[dict[str, Any]], now: datetime) -> bool:
-    if not _started_pytest(job.get("steps") or []):
+def session_problem(entry: dict[str, Any], job: dict[str, Any], annotations: list[dict[str, Any]]) -> bool:
+    messages = [annotation["message"] for annotation in annotations]
+    if any(CONCURRENCY_CANCEL.search(message) for message in messages):
         return False
-    if any(NO_RESPONSE.search(annotation["message"]) for annotation in annotations):
+    if job["conclusion"] == "timed_out" or any(JOB_TIME_LIMIT.search(message) for message in messages):
         return True
-    return (run["conclusion"] == "cancelled" and job["status"] == "in_progress"
-            and now - _time(run["updated_at"]) >= timedelta(minutes=5))
+    return entry["class"] != "job time limit" and any(RUNNER_LOST.search(message) for message in messages)
 
 
 def _platform(name: str) -> str | None:
@@ -348,22 +349,21 @@ def _candidate_run(run: dict[str, Any]) -> bool:
 
 def session_sightings(doc: dict[str, Any], runs: Iterable[dict[str, Any]],
                       jobs: Callable[[dict[str, Any]], Iterable[dict[str, Any]]],
-                      annotations: Callable[[int], list[dict[str, Any]]],
-                      now: datetime) -> Iterable[tuple[str, dict[str, Any]]]:
+                      annotations: Callable[[int], list[dict[str, Any]]]) -> Iterable[tuple[str, dict[str, Any]]]:
     entries = [entry for entry in doc["entries"] if entry["scope"] == "session" and entry["status"] == "open"]
     for run in runs:
         if not _candidate_run(run):
             continue
         for job in jobs(run):
             cancelled = job["conclusion"] in ("cancelled", "timed_out")
-            if not cancelled and job["status"] != "in_progress":
+            if not cancelled:
                 continue
             matched = [entry for entry in entries if _matches_session(entry, job["name"])]
             if not matched or not job.get("started_at") or not _started_pytest(job.get("steps") or []):
                 continue
-            notes = annotations(job["id"]) if cancelled else []
-            if session_problem(run, job, notes, now):
-                for entry in matched:
+            notes = annotations(job["id"])
+            for entry in matched:
+                if session_problem(entry, job, notes):
                     yield entry["id"], {"run": run["id"], "job": job["id"], "at": job["started_at"]}
 
 
@@ -461,18 +461,14 @@ def _check_nodes(query: str, ids: list[str]) -> dict[str, Any]:
 def _checks_to_jobs(
     repo: str, run: dict[str, Any], suite: dict[str, Any], names: Callable[[str], bool],
 ) -> Iterable[dict[str, Any]]:
-    connections = [suite["cancelled"]]
-    if run["conclusion"] == "cancelled":
-        connections.append(suite["active"])
-    if any(conn["pageInfo"]["hasNextPage"] for conn in connections):
+    checks = suite["cancelled"]
+    if checks["pageInfo"]["hasNextPage"]:
         yield from _pages(repo, f"actions/runs/{run['id']}/jobs?filter=all&per_page=100", "jobs")
         return
-    for conn in connections:
-        for check in conn["nodes"]:
-            if check["startedAt"] and names(check["name"]):
-                yield {"id": check["databaseId"], "name": check["name"], "started_at": check["startedAt"],
-                       "conclusion": (check["conclusion"] or "").lower(), "status": check["status"].lower(),
-                       "check_id": check["id"]}
+    for check in checks["nodes"]:
+        if check["startedAt"] and names(check["name"]):
+            yield {"id": check["databaseId"], "name": check["name"], "started_at": check["startedAt"],
+                   "conclusion": (check["conclusion"] or "").lower(), "check_id": check["id"]}
 
 
 def _apply_check_details(repo: str, job: dict[str, Any], detail: dict[str, Any]) -> None:
@@ -487,7 +483,7 @@ def _apply_check_details(repo: str, job: dict[str, Any], detail: dict[str, Any])
 
 
 def _github_sessions(
-    doc: dict[str, Any], repo: str, runs: list[dict[str, Any]], now: datetime,
+    doc: dict[str, Any], repo: str, runs: list[dict[str, Any]],
 ) -> Iterable[tuple[str, dict[str, Any]]]:
     open_sessions = [entry for entry in doc["entries"] if entry["status"] == "open" and entry["scope"] == "session"]
 
@@ -508,7 +504,7 @@ def _github_sessions(
             return notes[job]
         return list(_pages(repo, f"check-runs/{job}/annotations?per_page=100"))
 
-    yield from session_sightings(doc, runs, lambda run: jobs_by_run[run["id"]], annotations, now)
+    yield from session_sightings(doc, runs, lambda run: jobs_by_run[run["id"]], annotations)
 
 
 def _workflow_runs(repo: str, workflow: str, now: datetime) -> list[dict[str, Any]]:
@@ -535,7 +531,7 @@ def github_sightings(
     yield from recent_index_sightings(repo, now - WINDOW, warn)
     for workflow in ("ci.yml", "nightly.yml"):
         runs = _workflow_runs(repo, workflow, now)
-        yield from _github_sessions(doc, repo, [run for run in runs if _candidate_run(run)], now)
+        yield from _github_sessions(doc, repo, [run for run in runs if _candidate_run(run)])
 
 
 def record(doc: dict[str, Any], recent: Iterable[tuple[str, dict[str, Any]]], now: datetime) -> int:

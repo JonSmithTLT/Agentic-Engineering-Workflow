@@ -3499,6 +3499,26 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
     assert found and all(v == "0" for _, v in found), found
 
 
+def test_windows_regression_uploads_active_test_names_before_scanning_autopsies():
+    import bounds
+
+    lane = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))["jobs"]["lanes"]
+    steps = lane["steps"]
+    deadline = bounds.JOB_DEADLINE_RE.search(steps[0]["run"])
+    assert deadline
+    supervisor = _load("windows_lane")
+    assert lane["timeout-minutes"] * 60 - int(deadline[1]) - supervisor.CUTOFF_GRACE_S >= 120
+    run, upload, lane_report, scan = steps[5:9]
+    assert "matrix.lane == 'regression' && 'python tools/ci/windows_lane.py'" in run["run"]
+    assert 'format(\'"{0}/running-tests"\', runner.temp)' in run["run"]
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["if"] == "always() && runner.os == 'Windows' && matrix.lane == 'regression'"
+    assert "runner.temp }}/running-tests/step.txt" in upload["with"]["path"]
+    assert "runner.temp }}/running-tests/running-*.txt" in upload["with"]["path"]
+    assert lane_report["with"]["name"].startswith("lane-report-")
+    assert scan["uses"] == "./.github/actions/publish-evidence"
+
+
 def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     """The runner can end the pytest step before the job expires, with an unconditional evidence upload next."""
     import bounds

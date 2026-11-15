@@ -55,7 +55,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from aew.harness import broker_liveness, desktop_notifier, event_spool, procs, runlog
+from aew.harness import broker_liveness, desktop_notifier, event_spool, file_notifier, procs, runlog
 from aew.harness import contract as K
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
 from aew.util import replace_with_retry, utc_now
@@ -750,8 +750,9 @@ class Watcher:
             config = (policy or {}).get("notify") or {}
             problem = notifier_problem(policy)
             if problem:
-                reason = ("not_configured" if not config.get("command") else "unavailable"
-                          if desktop_notifier.is_default(config["command"]) else "not_executable")
+                command = config.get("command")
+                ours = desktop_notifier.is_default(command) or file_notifier.matches(command)  # AEW's: not ready
+                reason = "not_configured" if not command else "unavailable" if ours else "not_executable"
                 outcome = {"outcome": "failed", "reason": reason, "detail": problem}
             else:
                 self._tree = procs.ProcessTree()

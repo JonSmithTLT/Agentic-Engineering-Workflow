@@ -175,7 +175,12 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source. The execution policy's credentials provider default and profile credential override select the worker's pot. For a plan login, provider-key names its time left and model-list uses the same route and seed as launch."
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source. The
+      execution policy's credentials provider default and profile credential override select the worker's pot. For a
+      plan login, provider-key names its time left and model-list uses the same route and seed as launch.
+      `steering:run-ready` says whether a raise to Run would be accepted and could act (A1 §3.2): a Lead in the seat, the
+      notifier, a deadline_s on every profile routing can pick, and an operator endpoint that answers a ping, each with
+      its fix; a read, like every doctor check."
   - name: init
     home: product
     users: [operator]
@@ -1536,6 +1541,21 @@ commands:
     note: "register E104 (minimal): the default `notify.command` `aew init` writes, which the operator endpoint runs
       for each event; CAPABILITY_UNAVAILABLE (no_desktop_session) with no desktop session, and AEW_ERROR when the
       desktop's own notifier fails"
+  - name: notify file
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "appends one JSON line for the event on stdin to the operator's own file (rotated past the delivery
+      log's bound), or with --check only says whether the path can take one; opens no project and changes no project
+      or control state"
+    mutates_exempt: "operator-only because the file it writes is the operator's notification channel, which never
+      carries an agent's text (A-44), but it changes no project state"
+    probe: [notify, file, /aew-probe/notified.jsonl, --check]
+    refusals: [CAPABILITY_UNAVAILABLE, USAGE]
+    note: "the headless notifier for an endpoint with no desktop session (an ssh login on a Linux host):
+      `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
+      as its own engine, as the default; CAPABILITY_UNAVAILABLE (not_writable) when the path cannot take the event"
   - name: settings show
     home: operator-admin
     users: [operator]

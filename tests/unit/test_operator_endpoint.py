@@ -21,6 +21,7 @@ import yaml
 from aewflow import without_steering
 from conftest import IS_WINDOWS, run_aew
 from invariants import assert_control_invariants
+from notifier import deadlines
 
 from aew import errors
 from aew.cli.main import build_parser
@@ -38,7 +39,8 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 
 def _policy(project, **steering: Any) -> Path:
     """The execution policy with exactly the steering mode and notifier given: none given, none at all (`aew init`'s
-    template has the standing crawl mode and the desktop notifier, register E228)."""
+    template has the standing crawl mode and the desktop notifier, register E228). With a mode, every profile routing
+    can pick has a deadline, which a raise to Run needs (`notifier.deadlines`)."""
     path = project.root / ".aew" / "policy" / "execution.yaml"
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     doc.pop("steering", None)
@@ -47,6 +49,8 @@ def _policy(project, **steering: Any) -> Path:
         doc["steering"] = {"mode": steering["mode"]}
     if steering.get("notify"):
         doc["notify"] = {"command": list(steering["notify"])}
+    if steering.get("mode"):
+        deadlines(doc)
     path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
     return path
 

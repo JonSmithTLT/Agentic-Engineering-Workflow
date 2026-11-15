@@ -60,7 +60,8 @@ TOAST = (
     ".Show([Windows.UI.Notifications.ToastNotification]::new($x))"
 )
 FIX = ("run the operator endpoint (`aew operator serve`) in your desktop session, or set the execution policy's "
-       "`notify.command` to a notifier of your own")
+       "`notify.command` to a notifier of your own: with no desktop (an ssh login), AEW's headless one, "
+       "`[aew, notify, file, <an absolute path>]`, appends each event to that file")
 
 
 def is_default(command: Any) -> bool:
@@ -72,11 +73,15 @@ def is_default(command: Any) -> bool:
 
 
 def runnable(command: Any) -> list[str]:
-    """The argv the endpoint runs for ``command``: the shipped default as this engine's own (its interpreter,
-    ``-m aew``, as the endpoint's autostart starts the endpoint), so an older or missing ``aew`` on ``PATH`` never
-    passes the gate and then fails each delivery; anything else as written."""
+    """The argv the endpoint runs for ``command``: the shipped default, and ``aew notify file``, as this engine's own
+    (its interpreter, ``-m aew``, as the endpoint's autostart starts the endpoint), so an older or missing ``aew`` on
+    ``PATH`` never passes the gate and then fails each delivery; anything else as written."""
+    from aew.harness import file_notifier
+
     if is_default(command):
         return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", *COMMAND[1:]]
+    if file_notifier.matches(command):  # AEW's headless notifier: its own engine too
+        return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", *map(str, command[1:])]
     return [str(part) for part in command]
 
 
@@ -119,7 +124,8 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     return None
 
 
-def _clean(value: Any) -> str:
+def clean(value: Any) -> str:
+    """``value`` as a notification shows it: its printable characters, at most ``MAX_TEXT`` of them."""
     text = "" if value is None else str(value)
     return "".join(c if c.isprintable() else " " for c in text)[:MAX_TEXT]
 
@@ -128,10 +134,10 @@ def text(event: Mapping[str, Any]) -> tuple[str, str]:
     """The title and body for ``event``: its kind, subject and project, never its reason. A ``raise_requested``
     also names the mode asked for (its ``ref``), and only when that is one of steering's modes: a mode is an enum, not
     agent text, while the reason is the Lead's rationale (the designer's ruling of 2026-11-11 on SYS-04, part 4(b))."""
-    kind = _clean(event.get("event")).replace("_", " ") or "event"
+    kind = clean(event.get("event")).replace("_", " ") or "event"
     if event.get("event") == "raise_requested" and event.get("ref") in MODES:
         kind = f"{kind} to {event['ref']}"
-    subject, project = _clean(event.get("subject")), _clean(event.get("project_id"))
+    subject, project = clean(event.get("subject")), clean(event.get("project_id"))
     body = " ".join(p for p in (subject, f"(project {project})" if project else "") if p)
     return f"AEW: {kind}", body or "the operator endpoint has news for you"
 
@@ -183,7 +189,7 @@ def show(event: Mapping[str, Any], *, env: Mapping[str, str] | None = None, plat
     except OSError as exc:
         raise AEWError(f"the desktop notifier could not start: {exc}") from None
     if done.returncode != 0:
-        tail = _clean((done.stdout or b"").decode("utf-8", "replace").strip()[-MAX_TEXT:])
+        tail = clean((done.stdout or b"").decode("utf-8", "replace").strip()[-MAX_TEXT:])
         raise AEWError(f"the desktop notifier exited {done.returncode}: {tail or 'no output'}")
     return {"ok": True, "shown": {"title": title, "body": body}}
 

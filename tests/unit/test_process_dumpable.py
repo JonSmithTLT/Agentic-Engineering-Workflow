@@ -75,4 +75,5 @@ def test_the_guard_errors_the_test_that_cleared_the_flag_by_name_and_the_next_te
         return
     assert "ERROR test_inner.py::test_a_clears_the_flag" in out, out
     assert "test_inner.py::test_a_clears_the_flag left the test process non-dumpable" in out, out
-    assert "PASSED test_inner.py::test_b_runs_after_it" in out and "1 passed, 1 error" in out, out
+    # the clearing test's body passed, then its teardown errored: 2 passed (its call and the next test), 1 error
+    assert "PASSED test_inner.py::test_b_runs_after_it" in out and "2 passed, 1 error" in out, out

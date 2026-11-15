@@ -3566,3 +3566,111 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
         f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
     source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text
+
+
+def test_the_proof_wires_its_upload_id_and_records_a_bounded_visibility_wait(tmp_path, monkeypatch):
+    from hashlib import sha256
+    from types import SimpleNamespace
+    from zipfile import ZipFile
+
+    actions = ROOT / ".github/actions"
+    publish = yaml.safe_load((actions / "publish-evidence/action.yml").read_text(encoding="utf-8"))
+    proof = yaml.safe_load((actions / "prove-evidence/action.yml").read_text(encoding="utf-8"))
+    [upload] = [step for step in publish["runs"]["steps"] if step.get("id") == "upload"]
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert publish["outputs"]["artifact-id"]["value"] == "${{ steps.upload.outputs.artifact-id }}"
+    [publisher] = [step for step in proof["runs"]["steps"] if step.get("id") == "evidence"]
+    assert publisher["uses"] == "./.github/actions/publish-evidence"
+    [download] = [step for step in proof["runs"]["steps"] if step.get("run") == "python tools/ci/fetch_evidence.py"]
+    assert download["env"]["ARTIFACT_ID"] == "${{ steps.evidence.outputs.artifact-id }}"
+
+    assert download["env"]["ARTIFACT_DIGEST"] == "${{ steps.evidence.outputs.artifact-digest }}"
+    assert publish["outputs"]["artifact-digest"]["value"] == "${{ steps.upload.outputs.artifact-digest }}"
+    callers = []
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for name, job in workflow["jobs"].items():
+            if any(step.get("uses") == "./.github/actions/prove-evidence" for step in job.get("steps", [])):
+                callers.append((path.name, name))
+                assert job.get("permissions", {}).get("actions") == "read", (path.name, name)
+    assert callers
+
+    fetch_evidence = _load("fetch_evidence")
+    archive = tmp_path / "test.zip"
+    with ZipFile(archive, "w") as bundle:
+        bundle.writestr("report.txt", "synthetic evidence")
+    data = archive.read_bytes()
+    digest = sha256(data).hexdigest()
+    token = "synthetic-token"
+    responses = []
+    waits = []
+    elapsed = 0.0
+    summary = tmp_path / "summary.md"
+    url = "https://example.invalid/repos/org/repo/actions/artifacts/42/zip"
+
+    def request(argv, **kwargs):
+        nonlocal elapsed
+        assert argv[-1] == url
+        assert argv[argv.index("--connect-timeout") + 1] == "5"
+        assert argv[argv.index("--max-time") + 1] == "30"
+        assert all(token not in arg for arg in argv)
+        assert argv[argv.index("--header") + 1] == "@-"
+        assert kwargs["input"] == f"Authorization: Bearer {token}\n"
+        status, returncode, body, stderr = responses.pop(0)
+        Path(argv[argv.index("--output") + 1]).write_bytes(body)
+        elapsed += 0.125
+        return SimpleNamespace(returncode=returncode, stdout=status, stderr=stderr)
+
+    def pause(seconds):
+        nonlocal elapsed
+        waits.append(seconds)
+        elapsed += seconds
+
+    monkeypatch.setattr(fetch_evidence.subprocess, "run", request)
+    monkeypatch.setattr(fetch_evidence, "sleep", pause)
+    monkeypatch.setattr(fetch_evidence, "monotonic", lambda: elapsed)
+    missing = ("404", 0, b"", "")
+    ready = ("200", 0, data, "")
+
+    def fetch(expected_digest=digest):
+        fetch_evidence.fetch("42", "proof", expected_digest, url, token, tmp_path, summary)
+        assert not responses
+
+    def outcome(details):
+        assert summary.read_text().splitlines()[-1] == f"Evidence visibility for proof (ID 42): {details}"
+
+    responses[:] = [missing, ready]
+    fetch()
+    downloaded = tmp_path / "evidence-proof-download/report.txt"
+    assert downloaded.read_text() == "synthetic evidence"
+    downloaded.unlink()
+    outcome("attempts=2, elapsed=1.25s, outcome=visible")
+    assert waits == [1]
+
+    responses[:] = [missing] * 5
+    waits.clear()
+    with pytest.raises(SystemExit, match=r"proof \(ID 42\).*after 5 attempts in 5\.00s"):
+        fetch()
+    assert not responses
+    assert waits == [1, 1, 1, 1, 0.375]
+    outcome("attempts=5, elapsed=5.00s, outcome=timeout")
+
+    waits.clear()
+    responses[:] = [("403", 0, b"Resource not accessible by integration " + token.encode() + b"!" * 500 + b"tail", "")]
+    with pytest.raises(SystemExit, match="HTTP 403: .*Resource not accessible by integration") as forbidden:
+        fetch()
+    assert token not in str(forbidden.value) and "[redacted]" in str(forbidden.value)
+    assert "tail" not in str(forbidden.value)
+    assert not responses and not waits
+    outcome("attempts=1, elapsed=0.12s, outcome=error")
+
+    responses[:] = [("000", 28, b"", "  Operation timed out  ")]
+    with pytest.raises(SystemExit, match="curl exit 28: .*Operation timed out"):
+        fetch()
+    assert not responses and not waits
+    outcome("attempts=1, elapsed=0.12s, outcome=error")
+
+    responses[:] = [ready]
+    with pytest.raises(SystemExit, match=r"digest mismatch for proof \(ID 42\)"):
+        fetch("0" * 64)
+    assert not downloaded.exists()

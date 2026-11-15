@@ -19,13 +19,18 @@ runs:
         tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
         tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
     - uses: ./.github/actions/publish-evidence
+      id: evidence
       with:
         source: ${{ runner.temp }}/evidence-proof-source
         artifact: evidence-proof-${{ runner.os }}-attempt-${{ github.run_attempt }}
-    - uses: actions/download-artifact@v8
-      with:
-        name: evidence-proof-${{ runner.os }}-attempt-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/evidence-proof-download
+    - name: Fetch the uploaded evidence by ID
+      shell: bash
+      env:
+        ARTIFACT_ID: ${{ steps.evidence.outputs.artifact-id }}
+        ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
+        ARTIFACT_NAME: evidence-proof-${{ runner.os }}-attempt-${{ github.run_attempt }}
+        ARTIFACT_TOKEN: ${{ github.token }}
+      run: python tools/ci/fetch_evidence.py
     - name: Verify the published artifact
       shell: bash
       run: |

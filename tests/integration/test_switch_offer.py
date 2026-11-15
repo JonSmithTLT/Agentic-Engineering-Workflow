@@ -554,7 +554,7 @@ def test_an_edit_to_the_offered_file_after_the_write_is_never_pinned(old, at_ter
     monkeypatch.setattr(Engine, "manifest_adopt", changed_after_write)
     decision.apply(old.token)
     assert f"{GATES}@" in str(terminal.prompts)
-    assert "changed since approval" in out.getvalue()
+    assert "changed since read" in out.getvalue()
     assert (old.root / ".aew" / GATES).read_bytes() == changed
     assert old.rev() == rev
 

@@ -151,9 +151,8 @@ def test_doctor_and_status_never_say_run_is_ready_while_no_lead_holds_the_seat(p
         engine.steering_raise_preview("run")
 
 
-def test_doctor_pings_the_endpoint_as_each_run_activation_does(project, tmp_path, monkeypatch):
-    """A live process that does not answer is no endpoint for Run, whose activations ping it before each action: doctor
-    pings within its short bound and says so; status keeps the cheap read of the locator and process, and says that."""
+def test_doctor_pings_a_hung_endpoint_once_and_both_checks_report_it(project, tmp_path, monkeypatch):
+    """Doctor shares one short ping between its two rows. Status only checks whether the process is alive."""
     command, _ = recorder(tmp_path)
     engine = adopt(project, command=command)
     monkeypatch.setattr(operator_client, "status", lambda aew_root: RUNNING)
@@ -164,10 +163,27 @@ def test_doctor_pings_the_endpoint_as_each_run_activation_does(project, tmp_path
         raise errors.NotFound(f"the operator endpoint did not answer a ping within {timeout_s:g} s")
 
     monkeypatch.setattr(operator_client, "ping", silent)
-    check = run_ready(engine)
-    assert check["status"] == "WARN" and DOCTOR_PING_S in asked, check
-    assert check["detail"] == ("Run is not ready: (1) " + S.endpoint_silent(
-        f"the operator endpoint did not answer a ping within {DOCTOR_PING_S:g} s")), check
+    rows = {row["check"]: row for row in engine.doctor_checks()}
+    assert asked == [DOCTOR_PING_S]
+    problem = S.endpoint_silent(f"the operator endpoint did not answer a ping within {DOCTOR_PING_S:g} s")
+    assert rows["operator-endpoint"]["status"] == rows["steering:run-ready"]["status"] == "WARN"
+    assert rows["operator-endpoint"]["detail"] == problem
+    assert rows["steering:run-ready"]["detail"] == f"Run is not ready: (1) {problem}"
     asked.clear()
     text = engine.render_status(engine.status())
     assert "its process is alive, and `aew doctor` checks it answers" in text and asked == [], "status never pings"
+
+
+def test_doctor_reports_a_stopped_endpoint_in_both_rows_without_pinging(project, tmp_path, monkeypatch):
+    command, _ = recorder(tmp_path)
+    engine = adopt(project, command=command)
+    monkeypatch.setattr(operator_client, "status", lambda aew_root: {"running": False})
+
+    def unexpected_ping(*args, **kwargs):
+        pytest.fail("doctor pinged an endpoint whose process was stopped")
+
+    monkeypatch.setattr(operator_client, "ping", unexpected_ping)
+    rows = {row["check"]: row for row in engine.doctor_checks()}
+    assert rows["operator-endpoint"]["status"] == rows["steering:run-ready"]["status"] == "WARN"
+    assert rows["operator-endpoint"]["detail"] == S.ENDPOINT_DOWN
+    assert rows["steering:run-ready"]["detail"] == f"Run is not ready: (1) {S.ENDPOINT_DOWN}"

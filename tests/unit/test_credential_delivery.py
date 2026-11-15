@@ -114,6 +114,26 @@ def test_the_process_chain_starts_at_this_process():
     assert chain and chain[0].endswith(f"({os.getpid()})")
 
 
+def test_the_operator_prompt_escapes_ancestor_and_supplied_requesters(monkeypatch):
+    raw = "shell\x1b[0m\x9b0m\nnext\u202e"
+    shown = r"shell\u001b[0m\u009b0m\nnext\u202e"
+    monkeypatch.setattr(procs, "process_chain", lambda: ["aew (3)", f"{raw} (2)"])
+    local = operator.challenge("ABC123", "Confirm this operation")
+    remote = operator.challenge("ABC123", "Confirm this operation", requested_by=raw)
+    assert f"  requested by   : aew (3) <- {shown} (2)\n" in local
+    assert f"  requested by   : {shown}\n" in remote
+    for prompt in (local, remote):
+        assert "If you did not start this command yourself" in prompt.splitlines()[-3]
+        assert prompt.splitlines()[-1] == operator.RELAY_WARNING
+        assert all(c.isprintable() or c == "\n" for c in prompt)
+
+
+def test_the_windows_process_chain_stops_at_a_reused_parent_pid():
+    snapshot = {30: (20, "aew"), 20: (10, "shell"), 10: (0, "unrelated")}
+    created = {30: 300, 20: 200, 10: 250}
+    assert procs._render_process_chain(snapshot, 30, 6, created=created.get) == ["aew (30)", "shell (20)"]
+
+
 def test_host_side_git_never_inherits_a_credential(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("AEW_LEAD_TOKEN", CRED)
     monkeypatch.setenv("SOMETHING_ELSE", f"carries {CRED}")

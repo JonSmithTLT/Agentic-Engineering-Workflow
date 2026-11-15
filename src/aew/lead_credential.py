@@ -124,9 +124,8 @@ def required(*, instead: str = "", force_prompt: bool = False) -> str:
         raise UsageError(f"Lead credential required: {how_to_set()}{alternative}",
                          reason="lead_credential_required", forms=dict(SECURE_FORMS))
     from aew import operator
-    from aew.harness.procs import process_chain
 
-    who = " <- ".join(process_chain()) or "unknown"
+    who = operator.render_requester()
     typed = operator.ask_hidden(
         "\n==== AEW: THE LEAD CREDENTIAL ====\n"
         "This command needs the Lead credential, for this command only. What you type is not shown.\n"

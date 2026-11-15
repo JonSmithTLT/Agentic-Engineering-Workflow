@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,13 @@ CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 if sys.platform == "win32":  # pragma: windows-only
     import ctypes
     from ctypes import wintypes
+
+    class _ProcessEntry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_wchar * 260)]
 
     _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _ntdll = ctypes.WinDLL("ntdll")
@@ -63,6 +71,10 @@ if sys.platform == "win32":  # pragma: windows-only
     _k32.TerminateProcess.restype = wintypes.BOOL
     _k32.CloseHandle.argtypes = [wintypes.HANDLE]
     _k32.CloseHandle.restype = wintypes.BOOL
+    _k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    _k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    _k32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ProcessEntry)]
+    _k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ProcessEntry)]
     _k32.GetProcessTimes.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME),
                                      ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
                                      ctypes.POINTER(wintypes.FILETIME)]
@@ -579,26 +591,17 @@ def process_chain(limit: int = 6) -> list[str]:
     that a request from an unexpected process (an agent's shell inside a harness) is recognisable. Best effort."""
     parents: dict[int, tuple[int, str]] = {}
     if sys.platform == "win32":  # pragma: windows-only
-        class _Entry(ctypes.Structure):
-            _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
-                        ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
-                        ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
-                        ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
-                        ("szExeFile", ctypes.c_wchar * 260)]
-
-        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-        snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+        snap = _k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
         if snap and snap != wintypes.HANDLE(-1).value:
             try:
-                entry = _Entry()
-                entry.dwSize = ctypes.sizeof(_Entry)
-                ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+                entry = _ProcessEntry()
+                entry.dwSize = ctypes.sizeof(_ProcessEntry)
+                ok = _k32.Process32FirstW(snap, ctypes.byref(entry))
                 while ok:
                     parents[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile)
-                    ok = k32.Process32NextW(snap, ctypes.byref(entry))
+                    ok = _k32.Process32NextW(snap, ctypes.byref(entry))
             finally:
-                k32.CloseHandle(snap)
+                _k32.CloseHandle(snap)
     elif sys.platform.startswith("linux"):  # pragma: posix-only
         def describe(pid: int) -> tuple[int, str] | None:
             try:
@@ -615,12 +618,23 @@ def process_chain(limit: int = 6) -> list[str]:
                 break
             parents[pid] = found
             pid = found[0]
-    chain, pid = [], os.getpid()
+    return _render_process_chain(parents, os.getpid(), limit, created=_created if sys.platform == "win32" else None)
+
+
+def _render_process_chain(parents: dict[int, tuple[int, str]], pid: int, limit: int, *,
+                          created: Callable[[int], int | None] | None = None) -> list[str]:
+    chain: list[str] = []
+    child_created = created(pid) if created is not None else None
     while pid in parents and len(chain) < limit:
         ppid, name = parents[pid]
         chain.append(f"{name[:80]} ({pid})")
-        if ppid == pid:
+        if ppid == pid or ppid not in parents or len(chain) == limit:
             break
+        if created is not None:
+            parent_created = created(ppid)
+            if child_created is None or parent_created is None or parent_created >= child_created:
+                break  # an unverified or reused parent PID cannot establish ancestry
+            child_created = parent_created
         pid = ppid
     return chain
 

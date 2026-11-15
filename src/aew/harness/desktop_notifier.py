@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Literal
 
 from aew.harness import procs
 
@@ -124,10 +124,25 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     return None
 
 
-def clean(value: Any) -> str:
-    """``value`` as a notification shows it: its printable characters, at most ``MAX_TEXT`` of them."""
+_VISIBLE_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+_YAML_ESCAPES = {**_VISIBLE_ESCAPES, "\\": "\\\\", '"': '\\"'}
+
+
+def clean(value: Any, *, escape: Literal["visible", "yaml"] | None = None) -> str:
+    """Render plain notification text or escape non-printables without shortening the value.
+
+    The YAML form also escapes quotes and backslashes for a double-quoted scalar.
+    """
     text = "" if value is None else str(value)
-    return "".join(c if c.isprintable() else " " for c in text)[:MAX_TEXT]
+    if escape is None:
+        return "".join(c if c.isprintable() else " " for c in text)[:MAX_TEXT]
+    escapes = _YAML_ESCAPES if escape == "yaml" else _VISIBLE_ESCAPES
+    return "".join(escapes.get(c) or (c if c.isprintable() else _escape_character(c)) for c in text)
+
+
+def _escape_character(c: str) -> str:
+    code = ord(c)
+    return f"\\u{code:04x}" if code < 0x10000 else f"\\U{code:08x}"
 
 
 def text(event: Mapping[str, Any]) -> tuple[str, str]:

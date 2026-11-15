@@ -75,13 +75,13 @@ None.
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
-- `aew.harness.procs`
 - `aew.operator`
 - `aew.process_kind`
 
 ### `aew.operator`
 
 - `aew.errors`
+- `aew.harness.desktop_notifier`
 - `aew.harness.procs`
 - `aew.util`
 
@@ -1446,6 +1446,7 @@ None.
 
 ### `aew.harness.contract`
 
+- `aew.harness.desktop_notifier`
 - `aew.harness.wait_binding`
 
 ### `aew.harness.dashboard_autostart`

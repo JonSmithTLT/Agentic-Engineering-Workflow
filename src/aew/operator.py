@@ -41,15 +41,22 @@ def new_code() -> str:
     return _code()
 
 
+def render_requester(requested_by: str | None = None) -> str:
+    """Render the requester as one terminal line."""
+    from aew.harness.desktop_notifier import clean
+    from aew.harness.procs import process_chain
+
+    who = requested_by if requested_by is not None else (" <- ".join(process_chain()) or "unknown")
+    return clean(who, escape="visible")
+
+
 def challenge(code: str, text: str, *, requested_by: str | None = None, destination: str | None = None,
               instruction: str | None = None, purpose: str | None = None) -> str:
     """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
     back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
     (F20.3), naming the requester that process reported and where the code is to be typed. ``purpose`` is for a prompt
     that releases no credential: it names what changes, in place of the credential's destination."""
-    from aew.harness.procs import process_chain
-
-    who = requested_by if requested_by is not None else (" <- ".join(process_chain()) or "unknown")
+    who = render_requester(requested_by)
     where = destination if destination is not None else credential_destination.get()
     typed = instruction or f"Type the confirmation code {code} and press Enter to authorize; anything else refuses."
     target = f"  changes        : {purpose}\n" if purpose is not None else f"  credential to  : {where}\n"

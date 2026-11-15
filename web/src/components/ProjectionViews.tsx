@@ -1,7 +1,7 @@
 import { RecordInspection } from './Investigation';
 import type { EntityKind } from '../client/investigation-model';
 import { accessRefused } from '../api/transport';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import {
   Link,
   useLocation,
@@ -10,8 +10,7 @@ import {
 } from 'react-router-dom';
 import type { z } from 'zod';
 import type { Projection } from '../api/transport';
-import { useQueryClient } from '@tanstack/react-query';
-import { useProjection, comparisonScope, projectionKey } from '../client/queries';
+import { useProjection, comparisonScope } from '../client/queries';
 import {
   CapabilityGate,
   PageSnapshot,
@@ -36,6 +35,7 @@ type Envelope<T> = {
   data: T;
 };
 type List<T> = { items: T[]; next_cursor: string | null };
+type PageHistory = { scope: string; cursor: string; previous: string[] };
 export function listRoute(
   path: string,
   params: URLSearchParams,
@@ -53,24 +53,25 @@ export function Pager({
   next,
   cursorKey = 'cursor',
   resetKey = '',
-  onFirstPage,
+  history,
   children,
 }: {
   next: string | null;
   cursorKey?: string;
   resetKey?: string;
-  onFirstPage?: () => void;
+  history?: RefObject<PageHistory | null>;
   children?: ReactNode;
 }) {
   const [params, setParams] = useSearchParams();
-  const [history, setHistory] = useState<{ scope: string; values: string[] }>({
-    scope: resetKey,
-    values: [],
-  });
-  const previous = history.scope === resetKey ? history.values : [];
+  const localHistory = useRef<PageHistory | null>(null);
+  const pageHistory = history ?? localHistory;
   const current = params.get(cursorKey) ?? '';
+  function previousPages() {
+    const entry = pageHistory.current;
+    return entry?.scope === resetKey && entry.cursor === current ? entry.previous : [];
+  }
   function page(value: string, values: string[]) {
-    setHistory({ scope: resetKey, values });
+    pageHistory.current = { scope: resetKey, cursor: value, previous: values };
     setParams((old) => {
       const p = new URLSearchParams(old);
       if (value) p.set(cursorKey, value);
@@ -80,18 +81,21 @@ export function Pager({
   }
   return (
     <div className="pagination">
-      <button disabled={!current} onClick={() => { onFirstPage?.(); page('', []); }}>
+      <button disabled={!current} onClick={() => page('', [])}>
         First page
       </button>
       <button
         disabled={!current}
-        onClick={() => page(previous.at(-1) ?? '', previous.slice(0, -1))}
+        onClick={() => {
+          const previous = previousPages();
+          page(previous.at(-1) ?? '', previous.slice(0, -1));
+        }}
       >
         Previous page
       </button>
       <button
         disabled={!next}
-        onClick={() => page(next!, [...previous, current])}
+        onClick={() => page(next!, [...previousPages(), current])}
       >
         Next page
       </button>
@@ -135,7 +139,6 @@ export function CollectionView<T>({
 }) {
   const [params] = useSearchParams();
   const available = useCapability(name).available;
-  const queryClient = useQueryClient();
   const route = listRoute(path, params, filters, pageSize);
   const query = useProjection(
     route,
@@ -145,10 +148,12 @@ export function CollectionView<T>({
     true,
     undefined,
     automaticRevalidation,
+    refreshFirstPage && !params.has('cursor'),
   );
   const scope = new URLSearchParams(params);
   scope.delete('cursor');
   const heading = useRef<HTMLHeadingElement>(null);
+  const pageHistory = useRef<PageHistory | null>(null);
   const lastDisplayedRoute = useRef(route);
   useEffect(() => {
     if (focusOnPageChange && route !== lastDisplayedRoute.current && query.data && !query.isFetching) {
@@ -211,11 +216,8 @@ export function CollectionView<T>({
               )}
               <Pager
                 next={query.data.value.data.next_cursor}
-                resetKey={scope.toString()}
-                onFirstPage={refreshFirstPage ? () => {
-                  const first = listRoute(path, scope, filters, pageSize);
-                  void queryClient.invalidateQueries({ queryKey: projectionKey(first), exact: true, refetchType: 'none' });
-                } : undefined}
+                resetKey={JSON.stringify([path, locationScope(), query.data.value.project_id, scope.toString()])}
+                history={pageHistory}
               >
                 <button
                   onClick={() => {

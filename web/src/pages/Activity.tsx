@@ -20,8 +20,11 @@ export function ActivityPage() {
           <h3>{item.title}</h3>
           <dl className="activity-facts">
             <div><dt>Activity ID</dt><dd><code>{item.id}</code></dd></div>
-            <div><dt>Occurred UTC</dt><dd><time dateTime={item.occurred_at}>{new Date(item.occurred_at).toISOString()}</time></dd></div>
-            <div><dt>Subject</dt><dd><EntityAnchor entity={item.subject} />{!entityLink(item.subject) && <p className="muted">No detail view available.</p>}</dd></div>
+            <div><dt>Occurred UTC</dt><dd><time dateTime={item.occurred_at}>{item.occurred_at}</time></dd></div>
+            <div><dt>Subject</dt><dd><EntityAnchor entity={item.subject} />{!entityLink(item.subject) && <>
+              {item.subject.title && item.subject.title !== item.subject.id && <> · <code>{item.subject.id}</code></>}
+              <p className="muted">No detail view available.</p>
+            </>}</dd></div>
           </dl>
           {item.reason ? <details><summary>Supplied reason</summary><Reasons values={[item.reason]} /></details> : <p className="muted">No reason supplied.</p>}
         </article>

@@ -1305,11 +1305,11 @@ summary {
   margin: 0 16px;
 }
 .developer-requests summary::before {
-  content: 'â–¸';
+  content: '▸';
   color: var(--muted);
 }
 .developer-requests details[open] summary::before {
-  content: 'â–¾';
+  content: '▾';
 }
 
 .lab-tabs {

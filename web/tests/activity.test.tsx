@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { DashboardProvider } from '../src/client/dashboard';
 import { ActivityPage } from '../src/pages/Activity';
@@ -11,13 +11,13 @@ import f7 from '../src/api/mock/fixtures/F7.json';
 import { setReadClock } from '../src/client/clock';
 import { installVisibility } from '../src/client/queries';
 
-function mount({ denied = false, empty = false, search = '', keepCache = false } = {}) {
+function mount({ denied = false, empty = false, search = '', keepCache = false, recordCount = 61 } = {}) {
   const world = structuredClone(f1) as World;
   const envelope = world.responses['/activity'] as { data: { items: unknown[] } };
-  envelope.data.items = empty ? [] : Array.from({ length: 61 }, (_, index) => ({
-    id: `R${61 - index}`, occurred_at: '2026-10-12T12:00:00Z',
-    title: `Supplied activity ${61 - index}`,
-    subject: index === 0 ? { id: 'T-0001', kind: 'work', title: 'Supplied ticket' } : { id: 'R1', kind: 'transition', title: 'Supplied transition' },
+  envelope.data.items = empty ? [] : Array.from({ length: recordCount }, (_, index) => ({
+    id: `R${recordCount - index}`, occurred_at: '2026-10-12T12:00:00.123456Z',
+    title: `Supplied activity ${recordCount - index}`,
+    subject: index === 0 ? { id: 'T-0001', kind: 'work', title: 'Supplied ticket' } : { id: `S${index}`, kind: 'transition', title: 'Supplied transition' },
     reason: index === 0 ? { code: 'SUPPLIED_REASON', message: '<script>hostile()</script>' } : null,
   }));
   if (denied) (world.responses['/capabilities'] as { data: Record<string, unknown> }).data.activity = { state: 'UNSUPPORTED', reasons: [{ code: 'NOT_ENABLED', message: 'Activity unavailable.' }] };
@@ -28,7 +28,12 @@ function mount({ denied = false, empty = false, search = '', keepCache = false }
   });
   setReadClock({ manual: true, now: () => new Date('2026-10-12T12:00:00Z'), monotonic: () => 0, visible: () => true, subscribe: () => () => {} });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: keepCache ? Infinity : 0 } } });
-  const view = render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/activity' + search]}><DashboardProvider><ActivityPage /></DashboardProvider></MemoryRouter></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/activity' + search]}><DashboardProvider>
+    <Routes>
+      <Route path="/activity" element={<><Link to="/">Overview</Link><ActivityPage /></>} />
+      <Route path="/" element={<Link to="/activity">View all activity</Link>} />
+    </Routes>
+  </DashboardProvider></MemoryRouter></QueryClientProvider>);
   return { request, client, view };
 }
 
@@ -46,25 +51,47 @@ it('uses 50-record pages, preserves supplied order and replaces rows when paging
   await screen.findByText('Supplied activity 61');
 });
 
-it('fetches latest when returning to a cached first page', async () => {
+it('returns through uncached pages in order', async () => {
+  mount({ recordCount: 111 });
+  await screen.findByText('Supplied activity 111');
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('Supplied activity 61');
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('Supplied activity 11');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+  await screen.findByText('Supplied activity 61');
+  expect(screen.queryByText('Supplied activity 111')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+  await screen.findByText('Supplied activity 111');
+  expect(screen.getByRole('button', { name: 'Previous page' })).toHaveProperty('disabled', true);
+});
+
+it('fetches latest when paging or navigating back to a cached first page', async () => {
   const { request, client, view } = mount({ keepCache: true });
   try {
     await screen.findByText('Supplied activity 61');
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await screen.findByText('Supplied activity 11');
     const original = request.getMockImplementation()!;
+    let newest = 62;
     request.mockImplementation(async (input, init) => {
       const response = await original(input, init);
       if (!String(input).endsWith('/activity?limit=50')) return response;
       const payload = await response.json();
       const items = payload.data.items;
-      payload.data.items = [{ ...items[0], id: 'R62', title: 'New activity 62' }, ...items.slice(0, 49)];
+      payload.data.items = [{ ...items[0], id: `R${newest}`, title: `New activity ${newest}` }, ...items.slice(0, 49)];
       return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     fireEvent.click(screen.getByRole('button', { name: 'First page' }));
     await screen.findByText('New activity 62');
     expect(request.mock.calls.filter(([url]) => String(url).endsWith('/activity?limit=50'))).toHaveLength(2);
     expect(screen.getAllByTestId('activity-record')).toHaveLength(50);
+    fireEvent.click(screen.getByRole('link', { name: 'Overview' }));
+    newest = 63;
+    fireEvent.click(screen.getByRole('link', { name: 'View all activity' }));
+    await screen.findByText('New activity 63');
+    expect(request.mock.calls.filter(([url]) => String(url).endsWith('/activity?limit=50'))).toHaveLength(3);
   } finally {
     view.unmount();
     client.clear();
@@ -76,7 +103,9 @@ it('shows full UTC timestamps, supplied reasons, safe text and explicit unavaila
   await screen.findByText('Supplied activity 61');
   expect(screen.getByRole('link', { name: 'Supplied ticket' }).getAttribute('href')).toBe('/work/T-0001');
   expect(screen.getAllByText('No detail view available.').length).toBeGreaterThan(0);
-  for (const row of screen.getAllByRole('article', { name: /^Activity / })) expect(within(row).getByText('2026-10-12T12:00:00.000Z')).toBeTruthy();
+  for (const row of screen.getAllByRole('article', { name: /^Activity / })) expect(within(row).getByText('2026-10-12T12:00:00.123456Z')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: 'Activity R60' })).getByText('S1')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: 'Activity R59' })).getByText('S2')).toBeTruthy();
   expect(screen.getByText('<script>hostile()</script>')).toBeTruthy();
   expect(view.container.querySelector('script')).toBeNull();
   expect(screen.getAllByText('No reason supplied.').length).toBe(49);

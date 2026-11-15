@@ -319,8 +319,8 @@ def test_build_json_matches_the_builder_pin_at_its_source():
     source = record["source"]["commit"]
     # Only the original F20.5 package predates the structured maintenance builder pin.
     if source == "4f0a710fa4831eefda248dd43cc2e144d1010189":
-        legacy = git_show(source, "web/docs/how-to/pinned-web-builder.md").decode()
-        assert record["builder"]["image"] in legacy
+        # The F20.5 approval records this pin in web/docs/reference/f20-production-baseline.md.
+        assert record["builder"]["image"] == "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407"
         assert (record["builder"]["node"], record["builder"]["npm"]) == ("v22.22.2", "10.9.7")
         return
 

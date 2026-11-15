@@ -186,4 +186,38 @@ def test_doctor_reports_a_stopped_endpoint_in_both_rows_without_pinging(project,
     rows = {row["check"]: row for row in engine.doctor_checks()}
     assert rows["operator-endpoint"]["status"] == rows["steering:run-ready"]["status"] == "WARN"
     assert rows["operator-endpoint"]["detail"] == S.ENDPOINT_DOWN
+    assert "Raising the Lead's steering mode" in S.ENDPOINT_DOWN and "each Run activation" in S.ENDPOINT_DOWN
     assert rows["steering:run-ready"]["detail"] == f"Run is not ready: (1) {S.ENDPOINT_DOWN}"
+
+
+def test_doctor_pings_a_healthy_endpoint_once_with_the_shared_timeout(project, tmp_path, monkeypatch):
+    command, _ = recorder(tmp_path)
+    engine = adopt(project, command=command)
+    monkeypatch.setattr(operator_client, "status", lambda aew_root: RUNNING)
+    asked = []
+
+    def ping(aew_root, *, timeout_s):
+        asked.append(timeout_s)
+        return {"ok": True, "pid": 1, "guarantee": "dev"}
+
+    monkeypatch.setattr(operator_client, "ping", ping)
+    rows = {row["check"]: row for row in engine.doctor_checks()}
+    assert asked == [DOCTOR_PING_S]
+    assert rows["operator-endpoint"]["detail"].startswith("running (pid 1)")
+    assert rows["steering:run-ready"]["status"] == "PASS"
+
+
+def test_doctor_reports_the_endpoint_permission_refusal_in_both_rows(project, tmp_path, monkeypatch):
+    command, _ = recorder(tmp_path)
+    engine = adopt(project, command=command)
+    monkeypatch.setattr(operator_client, "status", lambda aew_root: RUNNING)
+    message = "the operator endpoint refused the connection: the peer is a different user"
+
+    def denied(aew_root, *, timeout_s):
+        raise errors.PermissionDenied(message, reason="peer_check")
+
+    monkeypatch.setattr(operator_client, "ping", denied)
+    rows = {row["check"]: row for row in engine.doctor_checks()}
+    assert rows["operator-endpoint"]["status"] == rows["steering:run-ready"]["status"] == "WARN"
+    assert rows["operator-endpoint"]["detail"] == message
+    assert rows["steering:run-ready"]["detail"] == f"Run is not ready: (1) {message}"

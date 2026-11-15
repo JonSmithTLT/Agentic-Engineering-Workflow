@@ -54,7 +54,15 @@ from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
-from aew.errors import AEWError, ApprovalSubjectChanged, IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.errors import (
+    AEWError,
+    ApprovalSubjectChanged,
+    IllegalTransition,
+    IntegrityError,
+    NotFound,
+    PermissionDenied,
+    UsageError,
+)
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -83,8 +91,10 @@ if TYPE_CHECKING:
 
 AEW_GITIGNORE = "# Rebuildable/runtime data (KC §5.3) and spent redo records.\nlocal/\nstate/txn/\n"
 AUTHORITY_CLASSES = ("contracts", "decisions", "schemas", "source", "orientation")
-# The short doctor probe introduced by #481 is shared by both doctor checks. It keeps doctor responsive while
-# a Run activation uses the operator client's longer action-time budget (`operator_client.PING_TIMEOUT_S`).
+# Both doctor rows share the short ping introduced by #481. The endpoint answers from memory on its own thread
+# (review measurement on an idle Windows host: median 0.5 ms, max 8 ms). This is shorter than a Run activation's
+# `operator_client.PING_TIMEOUT_S` to keep doctor quick. A slower reply is reported as no answer.
+# Rerun doctor to recheck.
 DOCTOR_PING_S = 2.0
 
 
@@ -359,6 +369,8 @@ class ProjectAdmin:
             return None, steering_mod.ENDPOINT_DOWN
         try:
             return operator_client.ping(self.k.aew_root, timeout_s=DOCTOR_PING_S), None
+        except PermissionDenied as exc:
+            return None, exc.message
         except AEWError as exc:
             return None, steering_mod.endpoint_silent(exc.message)
 

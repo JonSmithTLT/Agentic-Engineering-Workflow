@@ -87,8 +87,22 @@ def test_reconnect_clears_open_lifetimes_and_does_not_revive_the_old_binding(tmp
     assert b is not None
     a._stream_dropped()
     assert a.open_step() is None and a.open_shell_calls() == [] and a.wait_binding() is None
+    start_call(a, "shell-2", step="step-2")
+    recovered, _, lost_at = a.wait_binding_at_deadline()
+    assert recovered is not None and recovered.step == "step-2" and lost_at is None
+    assert a.wait_binding_valid(recovered) and not a.wait_binding_valid(b)
+
+
+def test_repeated_drops_keep_the_first_loss_until_a_step_boundary(tmp_path, monkeypatch):
+    a, _ = adapter(tmp_path)
+    first, second = "2026-11-15T00:00:01Z", "2026-11-15T00:00:02Z"
+    times = iter((first, second))
+    monkeypatch.setattr(OC, "utc_now", lambda: next(times))
     start_call(a)
-    assert not a.wait_binding_valid(b)
+    a._stream_dropped()
+    assert a.wait_binding_at_deadline() == (None, "stream_drop", first)
+    a._stream_dropped()
+    assert a.wait_binding_at_deadline() == (None, "stream_drop", first)
 
 
 @pytest.mark.parametrize("end", ["adapter", "stop"])

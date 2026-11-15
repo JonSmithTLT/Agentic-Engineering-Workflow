@@ -113,14 +113,8 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
 
 def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(lab, tmp_path):
     go = tmp_path / "wait-after-reconnect"
-    command = (
-        "while (-not (Test-Path -LiteralPath $env:WAIT_AFTER_RECONNECT)) { Start-Sleep -Milliseconds 50 }; "
-        "aew message wait --timeout 0"
-        if sys.platform == "win32"
-        else 'while [ ! -f "$WAIT_AFTER_RECONNECT" ]; do sleep 0.05; done; aew message wait --timeout 0'
-    )
     run, sync = launch(lab, tmp_path, [
-        {"do": "shell", "command": command, "env": {"WAIT_AFTER_RECONNECT": str(go)}}],
+        {"do": "shell", "command": "aew message wait --timeout 0", "start_after_file": str(go)}],
         drop_events_every={"type": "session.tool.called", "count": 3})
     directory = lab.aew_root / "local/harness/runs" / run
     (sync / "go").touch()
@@ -128,7 +122,7 @@ def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(l
               what="the event stream reconnects while the shell tool is still open")
     send(lab)
     go.touch()
-    shell = steps_done(lab, run, 2, watchdog_only=True)
+    shell = steps_done(lab, run, 2)
     evidence = describe_shell(directory / "harness", shell)
     assert "WAIT_BINDING_LOST_ON_RECONNECT" in evidence, evidence
     assert "opencode.stream.dropped" in evidence, evidence

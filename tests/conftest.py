@@ -30,6 +30,7 @@ git_isolation.isolate(Path(__file__).resolve().parents[1])
 import autopsy  # noqa: E402  (a hang, a deadline or a marked failure leaves an autopsy: G3 H1)
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
+import process_dumpable  # noqa: E402  (no test leaves the test process non-dumpable)
 import session_deadline  # noqa: E402  (--session-deadline: CI keeps the evidence before a job timeout: G3 H3)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
@@ -376,6 +377,25 @@ def no_tool_prompt():
     consent.terminal = lambda: False
     yield
     consent.terminal = saved
+
+
+@pytest.fixture(autouse=True)
+def no_hardened_test_process(request):
+    """``procs.harden_current_process`` makes the process that calls it non-dumpable (Linux), for the real credential
+    holders. In process it would harden the test process itself, for every later test in it: ``ss -p`` then names no
+    owner for this process's own sockets (``process_dumpable``). So in process it does nothing: a test of the call
+    replaces it itself, and a process a test starts hardens itself as it would. A test that leaves this process
+    non-dumpable any other way fails here by name, and the flag is set again for the next test. (Not through
+    ``monkeypatch``, for the reason ``capability_register`` gives.)"""
+    from aew.harness import procs
+
+    saved = procs.harden_current_process
+    procs.harden_current_process = lambda: None
+    yield
+    procs.harden_current_process = saved
+    if process_dumpable.restored():
+        pytest.fail(f"{request.node.nodeid} left the test process non-dumpable (PR_SET_DUMPABLE 0), which hides this "
+                    "process's sockets' owner from every later test in it: harden only a process the test starts")
 
 
 @pytest.fixture(autouse=True)

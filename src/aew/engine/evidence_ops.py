@@ -18,10 +18,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, transitions
 from aew.engine import coverage as CV
 from aew.engine import disposition_ops as DO
 from aew.engine import gates as G
-from aew.engine import transitions
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import Blocker, blocker_from, checked
@@ -112,7 +112,8 @@ def _tracked_paths(workspace: Path) -> set[str] | None:
         return None
 
 
-def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None) -> dict[str, Any]:
+def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None, *,
+                               check_id: str | None = None, include_ignored: list[str] | None = None) -> dict[str, Any]:
     if not paths:
         return {"changed_paths": [], "message": "The check changed its inputs, but the changed paths couldn't be "
                 "named because the two snapshots could not be compared. Inspect the workspace and restore any "
@@ -131,6 +132,13 @@ def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None) -> di
         message += (" For untracked output, write it outside the project or keep it out of the snapshot with "
                     ".gitignore, .git/info/exclude, or fingerprint.exclude. For ignored output included by "
                     "fingerprint.include_ignored, remove it from that list.")
+    forced = [str(path).rstrip("/") for path in include_ignored or []]
+    if check_id and untracked_paths == paths and not any(
+            path == prefix or path.startswith(prefix + "/") for path in paths for prefix in forced):
+        if hint := C.cache_hint(paths):
+            message += (f" If these are disposable caches, add `{hint}` under check {check_id!r} in "
+                        "policy/checks.yaml and adopt the policy. "
+                        "This can change the fingerprint and make existing evidence STALE.")
     return {"changed_paths": shown, "message": message}
 
 
@@ -224,7 +232,8 @@ class Gates:
         unit = self.units.unit(state, work_id)
         snapshot = self.invocations.current_snapshot(unit)
         ws = unit.get("workspace")
-        changed = changed_paths(Path(ws["path"]), ws["base_commit"]) if snapshot and ws else None
+        changed = (changed_paths(Path(ws["path"]), ws["base_commit"], **self.k.check_cache_inputs())
+                   if snapshot and ws else None)
         return self._gates_at(state, work_id, snapshot, changed)
 
     def accepted_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -285,6 +294,18 @@ class Gates:
             state = self.archive.rehydrate(state, work_id) or state
         gc = self.gate_context(state, work_id)
         gc.pop("evidence")
+        digests = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
+        gc["gate_approval_digests"] = digests
+        gc["gate_approval_argv"] = {
+            gate: approval.command("waive", work_id, state["revision"], digest,
+                                   "--gate", gate, "--reason", "<reason>")
+            for gate, digest in digests.items()
+        }
+        snapshot = gc.get("snapshot")
+        if snapshot and "children_digest" in snapshot:
+            digest = approval.closeout_digest(snapshot)
+            gc["closeout_approval_digest"] = digest
+            gc["closeout_approval_argv"] = approval.command("work.close", work_id, state["revision"], digest)
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
         if gc.get("plan_binding"):
@@ -765,6 +786,8 @@ class EvidenceCommands:
                       execution_profile: dict[str, Any] | None = None, launch: bool = False,
                       request_id: str | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation, by the handler registered for the unit's kind."""
+        if scope not in {"ticket", "integration"}:
+            raise UsageError("--scope must be ticket or integration")
         if request_id is not None:
             return self._invoke_request(token, expect_rev, request_id, evidence_only=False, work_id=work_id,
                                         role=role, card=card, scope=scope, execution_profile=execution_profile,
@@ -789,6 +812,8 @@ class EvidenceCommands:
             handler = resolve(INVOKE, unit)
             out = handler(token=token, expect_rev=expect_rev, **arguments, _ctx=ctx)
             ctx.request_ref = (work_id, out["invocation"])
+            if "dispatch" in out:
+                ctx.request_metadata = {"dispatch": out["dispatch"]}
         return out | {"revision": ctx.session.committed_revision}
 
     # ---- the dispatch guards of ``invoke create`` for a mutating Ticket (M4-A), in the order the route checked
@@ -919,7 +944,7 @@ class EvidenceCommands:
         if inv is None:
             raise NotFound(f"no invocation {invocation}")
         shown = {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
-        if "pack" in shown:  # the pinned slice body stays in control state, never in the Lead's context (E184)
+        if "pack" in shown:  # the pinned slice body stays in control state, never in the Lead's context
             shown["pack"] = slices.for_lead(shown["pack"])
         return shown
 
@@ -1020,8 +1045,8 @@ class EvidenceCommands:
             if base is None:
                 raise IllegalTransition(f"{inv_id}'s workspace records no base commit, so guardrails cannot say what "
                                         "changed")
-            verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
-                                  acceptance_inputs)
+            changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
+            verdict = GR.evaluate(changed, self.k.policy("guardrails"), scope_paths, acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
                    "cwd": str(workspace.resolve())}
@@ -1088,7 +1113,9 @@ class EvidenceCommands:
             tracked_after = _tracked_paths(workspace) if paths else None
             tracked = (tracked_before | tracked_after
                        if tracked_before is not None and tracked_after is not None else None)
-            diagnostic = _check_mutation_diagnostic(paths, tracked)
+            diagnostic = _check_mutation_diagnostic(
+                paths, tracked, check_id=check_id,
+                include_ignored=(self.k.manifest.get("fingerprint") or {}).get("include_ignored"))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
                 "coverage": meta["coverage"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": str(self.k.aew_root / log_rel),
@@ -1187,12 +1214,12 @@ class EvidenceCommands:
                 "evaluated_snapshot": meta["evaluated_snapshot"], "path": str(path),
                 **({"coverage": meta["coverage"]} if "coverage" in meta else {})}
 
-    @staticmethod
-    def _coverage_files(workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
+    def _coverage_files(self, workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
         if not base or scope not in {"ticket", "integration"}:
             return CV.files(None, source="workspace_diff", reason="no_source_diff_for_this_subject")
         try:
-            return CV.files(changed_paths(workspace, base), source=f"workspace_diff_from:{base}")
+            paths = changed_paths(workspace, base, **self.k.check_cache_inputs())
+            return CV.files(paths, source=f"workspace_diff_from:{base}")
         except (AEWError, OSError):
             return CV.files(None, source="workspace_diff", reason="evaluated_source_diff_unavailable")
 
@@ -1589,16 +1616,18 @@ class EvidenceCommands:
                 "coverage": ev.get("coverage") or CV.legacy()}
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                        reason: str) -> dict[str, Any]:
+                        reason: str, binding: str | None = None) -> dict[str, Any]:
         if classification not in transitions.VERIFICATION_CLASSIFICATIONS:
             raise UsageError(f"classification must be one of {sorted(transitions.VERIFICATION_CLASSIFICATIONS)}")
         if not (reason and reason.strip()):
             raise UsageError("a classification needs a reason")
-        return self._handler(CLASSIFY_VERIFICATION, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
-                                                             classification=classification, reason=reason)
+        return self._handler(CLASSIFY_VERIFICATION, work_id)(
+            token=token, expect_rev=expect_rev, work_id=work_id, classification=classification, reason=reason,
+            binding=binding,
+        )
 
     def _classify_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                                      reason: str) -> dict[str, Any]:
+                                      reason: str, binding: str | None = None) -> dict[str, Any]:
         """A Ticket's failed verification, classified (WC §6); a parent's is the hierarchy's."""
         with self.k.lead_txn(token, expect_rev, "verify.classify", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
@@ -1607,11 +1636,12 @@ class EvidenceCommands:
             to = transitions.VERIFICATION_CLASSIFICATIONS[classification]
             transitions.check("VERIFICATION_FAILED", to, "verify.classify")
             failing = (unit.get("last_verification") or {}).get("evidence")
+            ref = approval.failure_ref("verify.classify", unit, failing, binding)
             change = {"from": "VERIFICATION_FAILED", "to": to}
             decision = self.k.new_decision(
                 ctx, "verification_failure_classification",
                 f"{work_id} verification failure classified {classification}", work_unit=work_id,
-                classification=classification, evidence_refs=[failing] if failing else [],
+                classification=classification, evidence_refs=[ref] if ref else [],
                 resulting_transition=change, reason=reason)
             unit.setdefault("classifications", []).append(
                 {"decision": decision, "classification": classification, "evidence": failing})
@@ -1628,14 +1658,18 @@ class EvidenceCommands:
                 "revision": ctx.session.committed_revision}
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
-              finding: str | None = None) -> dict[str, Any]:
+              finding: str | None = None, binding: str | None = None) -> dict[str, Any]:
         if bool(gate) == bool(finding):
             raise UsageError("waive exactly one gate or one finding")
         with self.k.lead_txn(token, expect_rev, "waive", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             policy = self.k.policy("gates")
+            ref = []
             if gate:
                 gc = self.gates.gate_context(ctx.state, work_id)
+                if binding is not None:
+                    approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate))
+                    ref = [f"{work_id}/{gate}@record:{binding}"]
                 if gate in gc["obligations"]["non_waivable"]:
                     raise GateUnsatisfied(f"{gate} is inherited as non-waivable")
                 if gate not in policy.get("waivable_gates", []):
@@ -1647,7 +1681,7 @@ class EvidenceCommands:
                 if target["severity"] not in policy.get("waivable_finding_severities", []):
                     raise GateUnsatisfied(f"project policy does not allow waiving {target['severity']} findings")
             decision = self.k.new_decision(ctx, "waiver", f"waived {gate or finding} on {work_id}", work_unit=work_id,
-                                         reason=reason)
+                                         reason=reason, evidence_refs=ref)
             unit.setdefault("waivers", []).append({"gate": gate, "finding": finding, "decision": decision})
             ctx.summary = f"{work_id}: waived {gate or finding}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}

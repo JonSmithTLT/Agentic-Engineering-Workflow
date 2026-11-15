@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 import yaml
+from aewflow import without_steering
 from conftest import IS_WINDOWS, run_aew
 from invariants import assert_control_invariants
 
@@ -132,12 +133,13 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
         with pytest.raises(errors.PermissionDenied):
             engine.steering_raise(fake, mode="walk", generation=bound["generation"],  # type: ignore[arg-type]
                                   legality_digest=bound["legality_digest"])
-    assert engine.steering_view()["effective"] is None
+    assert engine.steering_view()["effective"] == "crawl"  # the standing mode init recorded: nothing was raised
 
 
 def test_mode_commands_refuse_while_steering_is_not_configured(project):
     """Decision 3: absent is legacy/manual behaviour, not a fourth mode; status shows nothing new. A project made
-    before the template had a standing mode, or whose operator removed it."""
+    before the template had a standing mode (``aew init`` records the template's)."""
+    without_steering(project)
     engine = _adopt(project)
     for call in (lambda: engine.steering_raise_preview("walk"),
                  lambda: engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl"),
@@ -154,7 +156,8 @@ def test_mode_commands_refuse_while_steering_is_not_configured(project):
 
 def test_adopted_raise_waits_for_the_endpoint(project):
     """N1: adopting a default that raises changes nothing until the endpoint records a raise; adopting one that does
-    not is the standing mode at once (absent to crawl is not a raise)."""
+    not is the standing mode at once (absent to crawl is not a raise). From a project with no mode recorded."""
+    without_steering(project)
     engine = _adopt(project, mode="walk")
     view = engine.steering_view()
     assert view["effective"] is None and view["default"] == "walk"

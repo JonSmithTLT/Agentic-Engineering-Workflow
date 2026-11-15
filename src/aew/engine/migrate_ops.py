@@ -47,18 +47,19 @@ from aew.history.store import History
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort
+    from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort, SteeringPort
 
 
 class Migration:
     """``aew migrate`` (Lead)."""
 
     def __init__(self, k: Kernel, *, hierarchy: HierarchyPort, archive: ArchivePort,
-                 coordination: CoordinationPort) -> None:
+                 coordination: CoordinationPort, steering: SteeringPort) -> None:
         self.k = k
         self.hierarchy = hierarchy
         self.archive = archive
         self.coordination = coordination
+        self.steering = steering
 
     def live_runs(self, state: dict[str, Any]) -> list[str]:
         """The harness runs whose supervisor may still hold custody: each invocation's latest run, conservatively (a
@@ -134,12 +135,14 @@ class Migration:
                     "v1": v1, "v2_at_migration": self.hierarchy.children_digest(committed, wid)}
             # A v1 project that adopted messaging enabled is registered as it becomes v2 (F9-A plan D-39).
             self.coordination.register_on_migrate(committed, s.revision + 1)
+            # Its adopted steering default is recorded likewise, so `default` equals the pinned policy's (#432, M1).
+            self.steering.register_on_migrate(ctx, committed)
             archived = (committed["cold"].get("archived") or {})
             summary = (f"control state migrated to v2: {before['units'] - len(committed['work'])} finished units "
                        f"archived ({archived.get('done', 0)} DONE, {archived.get('cancelled', 0)} CANCELLED), "
                        f"{len(committed['work'])} open units stay hot")
             revision = s.commit(Transition(op="migrate", actor=actor, summary=summary,
-                                           reason="ADR-0011: finished work leaves the hot state"),
+                                           reason="ADR-0011: finished work leaves the hot state", refs=ctx.refs),
                                 expect_rev=expect_rev, state=committed)
         for effect in ctx.after_commit:  # retired observation worktrees, as after any archival commit
             try:

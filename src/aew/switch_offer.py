@@ -36,7 +36,7 @@ from aew import operator, process_kind
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge.manifest import DEFAULT_GATES, MANIFEST, default_manifest
-from aew.util import atomic_write, load_yaml, safe_dump_yaml, utc_now
+from aew.util import atomic_write, load_yaml, safe_dump_yaml, sha256_bytes, utc_now
 
 REMEMBERED = "local/switch-offers.json"  # gitignored and never pinned: an answer is not policy
 ABSENT: Any = object()  # a key the file doesn't hold, as `effective` is told
@@ -67,7 +67,7 @@ class SwitchOffer:
     legality: bool
     opening: Callable[[Path], Opening | None]
     edits: Callable[[Path], dict[str, bytes]]
-    text: Callable[[Opening], str]
+    text: Callable[[Opening, dict[str, bytes]], str]
     changes: str  # the screen's `changes` line
     done: Callable[[Opening], str]
     by_hand: Callable[[Opening], str]  # how to take it later, or when the edit can't be made: no command does this
@@ -201,7 +201,8 @@ def key_offer(switch: str, *, label: str, file: str, policy_key: str, key_path: 
         return {file: edited}
 
     name = ".".join(key_path)
-    return SwitchOffer(switch=switch, label=label, legality=legality, opening=opening, edits=edits, text=text,
+    return SwitchOffer(switch=switch, label=label, legality=legality, opening=opening, edits=edits,
+                       text=lambda opening, _: text(opening),
                        changes=f".aew/{file} {name}", done=done, after_adopt=after_adopt,
                        by_hand=lambda o: f"set {name} to {o.to} in .aew/{file}; {THEN_ADOPT}")
 
@@ -243,11 +244,10 @@ def _table_edits(aew_root: Path) -> dict[str, bytes]:
     return {rel: table, MANIFEST: edited}
 
 
-def _table_text(opening: Opening) -> str:
-    from aew.engine.usage_ops import Prices, bundled_table
+def _table_text(opening: Opening, edits: dict[str, bytes]) -> str:
+    from aew.engine.usage_ops import Prices
 
-    raw = bundled_table()
-    assert raw is not None  # `_table_opening` offers no table without one
+    raw = edits[_table_rel()]
     table = Prices(raw, source="AEW's bundled table").table
     return ("AEW now ships a price table, and this project has none, so its usage report reads every cost as unpriced. "
             f"This adds the table as the project's own copy: list prices as of {table['as_of']}, estimates and not a "
@@ -306,7 +306,7 @@ OFFERS: tuple[SwitchOffer, ...] = (
                 done=lambda o: (f"the price table is now in force at .aew/{_table_rel()}, adopted as your decision. To "
                                 f"change it, edit that file; {THEN_ADOPT}."),
                 by_hand=_table_by_hand),
-    # Register E184: a project initialized before maps were on by default holds `"off"` or no key at all.
+    # A project initialized before maps were on by default holds `"off"` or no key at all.
     key_offer("maps_pack_slices", label="project maps", file=_policy_rel("execution"), policy_key="execution",
               key_path=("maps", "pack_slices"), old_values=("off",), to_value=_maps_to, effective=_maps_effective,
               legality=True, schema="execution", text=_maps_text,
@@ -352,6 +352,7 @@ class Standing(NamedTuple):
     declined_at: str | None
     blocked: list[str] | None  # what else has drifted: it would be pinned unseen by an adoption
     hand: str | None  # why the edit can't be made as text: the operator makes it by hand
+    edits: dict[str, bytes]
 
 
 def _blocked(engine: Any) -> list[str] | None:
@@ -372,11 +373,12 @@ def _standing(engine: Any, offer: SwitchOffer) -> Standing | None:
     if opening is None:
         return None
     try:
-        offer.edits(engine.aew_root)
+        edits = offer.edits(engine.aew_root)
         hand = None
     except (HandChange, OSError) as exc:
         hand = str(exc)
-    return Standing(offer, opening, _declined_at(engine.aew_root, offer, opening), _blocked(engine), hand)
+        edits = {}
+    return Standing(offer, opening, _declined_at(engine.aew_root, offer, opening), _blocked(engine), hand, edits)
 
 
 def standings(engine: Any) -> list[Standing]:
@@ -427,7 +429,7 @@ def terminal() -> bool:
     return operator.has_terminal()
 
 
-def _may_ask() -> bool:
+def may_ask() -> bool:
     """`lead_session_problem`, not `consent._never_here`: that refuses ``AEW_LEAD_TOKEN``, which is how an operator
     legitimately starts `aew opencode`. It reads the broker's variables and, on Linux, the process chain from the parent
     up, so `aew opencode` doesn't refuse itself and a Lead's own shell is refused."""
@@ -456,14 +458,14 @@ class Decision:
 
     engine: Any = None
     out: Any = None
-    taken: list[tuple[SwitchOffer, Opening, dict[str, str]]] = field(default_factory=list)
+    taken: list[tuple[SwitchOffer, Opening, dict[str, str], dict[str, bytes]]] = field(default_factory=list)
 
     def apply(self, token: str) -> None:
         """Each answer alone, once the Lead credential is in hand. It never raises: an already-held seat isn't lost over
         an offer, and one row failing leaves the next to run."""
-        for offer, opening, authorization in self.taken:
+        for offer, opening, authorization, edits in self.taken:
             try:
-                _take(self.engine, offer, opening, authorization, token, self.out)
+                _take(self.engine, offer, opening, authorization, edits, token, self.out)
             except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
                 _say(self.out, f"the offer for {offer.label} failed ({type(exc).__name__}: {exc}); see `aew doctor`.")
 
@@ -474,7 +476,7 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
     out = out if out is not None else sys.stderr
     decision = Decision(engine, out)
     try:
-        if not _may_ask():
+        if not may_ask():
             if _askable_but_for_the_terminal():
                 _say_pending(engine, out)
             return decision
@@ -498,7 +500,7 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
 
 
 def _askable_but_for_the_terminal() -> bool:
-    """`_may_ask`'s other checks pass (the operator's own start: not a Lead session, a writer), but no terminal does."""
+    """`may_ask`'s other checks pass (the operator's own start: not a Lead session, a writer), but no terminal does."""
     from aew.harness.operator_client import lead_session_problem
 
     return lead_session_problem() is None and process_kind.kind() != process_kind.NON_WRITER and not terminal()
@@ -514,7 +516,9 @@ def _say_pending(engine: Any, out: Any) -> None:
 
 def _ask_one(engine: Any, standing: Standing, decision: Decision, out: Any) -> None:
     offer, opening = standing.offer, standing.opening
-    text = f"{offer.text(opening)}\n{_stages_line(offer, engine)}"
+    edits = standing.edits
+    pins = "\n".join(f"  {rel}@{sha256_bytes(raw)}" for rel, raw in sorted(edits.items()))
+    text = f"{offer.text(opening, edits)}\n{_stages_line(offer, engine)}\nFiles to adopt:\n{pins}"
     instruction = (f"Type {{code}} and Enter to switch to {opening.to}. Enter alone keeps {opening.held}, and AEW "
                    "won't ask again. Anything else changes nothing and asks again next start.")
     try:
@@ -530,11 +534,11 @@ def _ask_one(engine: Any, standing: Standing, decision: Decision, out: Any) -> N
             return
         _say(out, f"{offer.label} keeps {opening.held}, and AEW won't ask again. To take it: {offer.by_hand(opening)}.")
     elif reply.authorization is not None:
-        decision.taken.append((offer, opening, reply.authorization))
+        decision.taken.append((offer, opening, reply.authorization, edits))
 
 
-def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict[str, str], token: str,
-          out: Any) -> None:
+def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict[str, str],
+          edits: dict[str, bytes], token: str, out: Any) -> None:
     """Write the row's files, adopt exactly them, and on any failure leave neither behind."""
     root = engine.aew_root
     if offer.opening(root) != opening:  # the operator's own edit since they answered: theirs stands
@@ -546,16 +550,20 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
                   f"would adopt that too. To take it: {offer.by_hand(opening)}.")
         return
     try:
-        edits = offer.edits(root)
+        if offer.edits(root) != edits:
+            _say(out, f"{offer.label} changed since you answered, so it was left as it is.")
+            return
     except (HandChange, OSError) as exc:
         _say(out, f"{offer.label} is unchanged: {exc}. To take it: {offer.by_hand(opening)}.")
         return
     kept = {rel: (root / rel).read_bytes() if (root / rel).exists() else None for rel in edits}
+    binding = {rel: sha256_bytes(raw) for rel, raw in edits.items()}
     try:
         for rel, new in edits.items():
             atomic_write(root / rel, new)
         engine.manifest_adopt(token=token, expect_rev=engine.store.current()["revision"], authorization=authorization,
-                              reason=f"switch offer: {offer.switch} {opening.held} -> {opening.to}", only=sorted(edits))
+                              reason=f"switch offer: {offer.switch} {opening.held} -> {opening.to}", only=sorted(edits),
+                              binding=binding)
     except Exception as exc:  # noqa: BLE001 (rules 3 and 5: whatever failed, nothing stays, and the start goes on)
         left = _restore(root, edits, kept)
         message = getattr(exc, "message", None) or f"{type(exc).__name__}: {exc}"

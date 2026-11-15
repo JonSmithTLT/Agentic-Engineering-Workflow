@@ -115,6 +115,30 @@ def test_linux_shows_kind_subject_and_project_never_the_reason(monkeypatch):
     assert "agent wrote" not in json.dumps(call, default=str)
 
 
+def test_a_raise_toast_names_the_mode_asked_for_and_never_the_rationale():
+    """The designer's ruling of 2026-11-11 on SYS-04, part 4(b): a raise's toast names the requested mode, an enum,
+    and never the Lead's rationale (its ``reason``)."""
+    raise_ = {**EVENT, "event": "raise_requested", "subject": "SR-1", "reason": "the Lead's own words", "ref": "run"}
+    assert D.text(raise_) == ("AEW: raise requested to run", "SR-1 (project demo)")
+    assert all("the Lead's own words" not in part for part in D.text(raise_))
+
+
+def test_the_toast_s_modes_are_steering_s():
+    assert D.MODES == steering.MODES
+
+
+@pytest.mark.parametrize("event", [
+    {"event": "raise_requested", "ref": "run now, said the agent"},  # not one of steering's modes
+    {"event": "raise_requested", "ref": None},
+    {"event": "confirmation_requested", "ref": "run"},  # only a raise's ref is a mode
+    {"event": "hard_deadline", "ref": "walk"},
+])
+def test_a_toast_names_no_ref_that_is_not_a_raise_s_mode(event):
+    title, body = D.text({**EVENT, **event})
+    assert title == "AEW: " + event["event"].replace("_", " ")
+    assert str(event["ref"]) not in body
+
+
 def test_windows_passes_the_text_as_data_and_opens_no_console(monkeypatch):
     """The title and body reach the toast as environment values that the script escapes, never as script text; the
     child gets CREATE_NO_WINDOW."""
@@ -233,6 +257,35 @@ def test_the_default_runs_the_endpoints_own_engine_whatever_is_on_path(monkeypat
     for default in (["aew", "notify", "desktop"], ["/opt/old/bin/aew", "notify", "desktop"]):
         assert D.runnable(default) == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "notify", "desktop"]
     assert D.runnable(["/usr/local/bin/my-notifier", "--x"]) == ["/usr/local/bin/my-notifier", "--x"]
+
+
+def test_the_endpoints_watcher_delivers_the_default_as_its_own_engine(project, tmp_path, monkeypatch):
+    """Quick check of E228's third PR, M3: the watcher hands `deliver` the default as ``runnable`` makes it, so the
+    endpoint's own interpreter runs it, never the `aew` on PATH. `deliver` is replaced, so nothing is shown."""
+    from notifier import adopt, until
+
+    from aew.harness import event_spool
+
+    adopt(project, command=list(D.COMMAND))
+    monkeypatch.setattr(D, "problem", lambda env, platform=None: None)  # a desktop that could show it
+    argvs: list[list[str]] = []
+
+    def deliver(command: list[str], event: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        argvs.append(list(command))
+        return {"outcome": "delivered", "reason": None, "exit_code": 0, "timed_out": False, "output_bytes": 0,
+                "discarded_bytes": 0}
+
+    monkeypatch.setattr(notify, "deliver", deliver)
+    watcher = notify.Watcher(project.root, project.root / ".aew")
+    watcher.pass_once()
+    watcher.start()
+    try:
+        event_spool.append(project.root / ".aew", event_spool.BROKER, "loop_stopped", subject="T-0001",
+                           reason="REPETITION: the test's stop", ref="LA-1-1")
+        until(lambda: argvs, what="the delivery")
+    finally:
+        watcher.close()
+    assert argvs[0] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "notify", "desktop"], argvs
 
 
 def test_no_test_shows_the_shipped_default():

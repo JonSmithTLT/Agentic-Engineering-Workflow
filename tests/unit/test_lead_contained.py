@@ -85,6 +85,8 @@ def test_the_stored_login_is_read_read_only_one_row_per_provider_the_active_one_
     {"type": "oauth", "access": "synthetic-access-new"},                            # no expiry
     {"type": "oauth", "access": "synthetic-access-new", "expires": True},           # not a time
     {"type": "oauth", "access": "synthetic-access-new", "expires": 9, "metadata": ["synthetic"]},
+    {"type": "oauth", "access": "synthetic-access-new", "expires": float("inf")},
+    {"type": "oauth", "access": "synthetic-access-new", "expires": 10**400},
     {"type": "oauth2", "token": "synthetic-access-new", "expires": 9},              # a type AEW does not know
     "synthetic-not-an-object"])
 def test_a_providers_row_in_a_shape_aew_does_not_know_is_its_login_unread_and_never_passed_over(tmp_path, value):
@@ -113,7 +115,8 @@ def test_a_login_database_that_cannot_be_read_says_why_without_a_value(tmp_path,
         path.parent.mkdir(parents=True)
         path.write_text("SYNTHETIC not sqlite\n")
     logins, why = login.stored({"HOME": str(tmp_path)})
-    assert logins == [] and why is not None and "opencode.db" in why and "SYNTHETIC" not in why
+    assert logins == [] and why is not None and "OpenCode login database" in why
+    assert str(tmp_path) not in why and "opencode.db" not in why and "SYNTHETIC" not in why
 
 
 # ------------------------------------------------------------------------------- what the contained Lead relays
@@ -163,7 +166,7 @@ def chatgpt(access: str, expires_s: float, account: str = "synthetic-account-000
             "expires": int(expires_s * 1000), "metadata": {"accountID": account}}
 
 
-def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_written(tmp_path):
+def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_written(tmp_path, at_a_terminal):
     """Addendum 1, option (a): the relay's resolver reads the operator's login store on each request, read-only, so a
     refresh by the operator's own OpenCode is used from the next request on; the account header comes from the
     stored login. Expired (or within the margin), gone, or no longer a refreshing login: the message names the
@@ -172,7 +175,7 @@ def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_writt
     from aew.harness.containment import relay
 
     db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() + 3600), 1)])
-    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    resolve = login.StoredLogin("openai", {"HOME": str(tmp_path)})
     before = db.read_bytes()
     assert resolve() == ("synthetic-access-1", {"chatgpt-account-id": "synthetic-account-0007"})
     assert db.read_bytes() == before
@@ -181,32 +184,95 @@ def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_writt
     con.commit()
     con.close()
     assert resolve()[0] == "synthetic-access-2"
-    for value, words in ((chatgpt("synthetic-access-3", time.time() + lead.EXPIRY_MARGIN_S - 5), "has expired"),
-                         ({"type": "key", "key": "sk-synthetic-now-a-key"}, "is now an API key")):
+    near_expiry = chatgpt("synthetic-access-3", time.time() + login.EXPIRY_MARGIN_S - 5)
+    key_row = {"type": "key", "key": "sk-synthetic-now-a-key"}
+    for value, words, cause in ((near_expiry, "has expired", "expired"),
+                                (key_row, "is now an API key", "kind_changed")):
         con = sqlite3.connect(db)
         con.execute("UPDATE credential SET value = ?", (json.dumps(value),))
         con.commit()
         con.close()
         with pytest.raises(relay.Unavailable) as refused:
             resolve()
+        assert refused.value.cause == cause
         message = str(refused.value)
         assert f"your stored openai login {words}" in message and "synthetic" not in message
+    assert "Restart `aew opencode`" in message
+    restarted = contained(tmp_path)
+    restarted.require_provider()
+    assert restarted.keys == {"openai": key_row["key"]} and restarted.refreshing == {}
     db.unlink()
-    with pytest.raises(relay.Unavailable, match="your stored openai login could not be read .*the Lead's next "
-                                                "request then works, with no restart"):
+    with pytest.raises(relay.Unavailable, match=r"your stored openai login is missing\. .*the Lead's next "
+                                                "request then works, with no restart") as refused:
         resolve()
+    assert refused.value.cause == "missing"
+    assert str(tmp_path) not in str(refused.value)
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-returned", time.time() + 3600), 1)])
+    assert resolve()[0] == "synthetic-access-returned"
+
+
+def test_the_resolver_reads_only_the_latest_tied_active_row_for_its_provider(tmp_path):
+    expires = time.time() + 3600
+    db = store(tmp_path, [
+        ("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-old", expires), 1),
+        ("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-deciding", expires), 1),
+        ("openai", "chatgpt-browser", 0, chatgpt("synthetic-access-inactive", expires), 9),
+        ("anthropic", "api", 1, {"type": "key", "key": "synthetic-unrelated"}, 2),
+    ])
+    # Selecting any other value fails while SQLite decodes the result. The resolver must fetch only the deciding row.
+    con = sqlite3.connect(db)
+    try:
+        with con:
+            con.execute("UPDATE credential SET value = CAST(X'FF' AS TEXT) WHERE rowid != 2")
+    finally:
+        con.close()
+    resolve = login.StoredLogin("openai", {"OPENCODE_DB": str(db)})
+    assert resolve()[0] == "synthetic-access-deciding"
+
+
+def test_the_lead_announces_it_will_not_relay_a_refreshing_login_with_an_override(tmp_path, at_a_terminal):
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access", time.time() + 3600), 1)])
+    policy = {"containment": {"network": {"upstreams": {"openai": "https://override.example/backend-api/codex"}}}}
+    session = contained(tmp_path, policy=policy)
+    assert session.refreshing == {} and session.keys == {}
+    out = io.StringIO()
+    session.announce(out)
+    refusal = "stored login not relayed because containment.network.upstreams.openai is set"
+    way_on = ("Remove the override to use the stored login, or export OPENAI_API_KEY and start "
+              "`aew opencode --provider-env OPENAI_API_KEY` to use an API key")
+    assert f"openai (oauth): {refusal}. {way_on}" in out.getvalue()
+    assert "synthetic-access" not in out.getvalue()
+    with pytest.raises(errors.HarnessIncompatible) as refused:
+        session.require_provider()
+    assert f"{refusal}. {way_on}" in refused.value.message
+    assert "opencode auth login" not in refused.value.message
+
+    restored = contained(tmp_path)
+    restored.require_provider()
+    assert set(restored.refreshing) == {"openai"}
+
+    keyed = contained(tmp_path, ["OPENAI_API_KEY"], policy=policy, OPENAI_API_KEY="synthetic-key")
+    keyed.require_provider()
+    assert keyed.refreshing == {} and keyed.keys == {"openai": "synthetic-key"}
+    keyed_out = io.StringIO()
+    keyed.announce(keyed_out)
+    assert f"{refusal}, using the key supplied by `--provider-env OPENAI_API_KEY` instead" in keyed_out.getvalue()
+    assert "synthetic-key" not in keyed_out.getvalue()
 
 
 def test_an_expired_login_says_what_refreshes_it_and_that_the_next_request_works(tmp_path):
     from aew.harness.containment import relay
 
-    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() - 1), 1)])
+    db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() - 1), 1)])
+    resolve = login.StoredLogin("openai", {"HOME": str(tmp_path)})
     with pytest.raises(relay.Unavailable) as refused:
-        lead.StoredLogin("openai", {"HOME": str(tmp_path)})()
+        resolve()
     assert str(refused.value) == (
         "AEW: your stored openai login has expired, and the contained Lead never refreshes it (that would write your "
         "OpenCode's own login). Run `opencode auth list` at your own terminal: your OpenCode refreshes it there, and "
         "the Lead's next request then works, with no restart.")
+    rewrite(db, chatgpt("synthetic-access-refreshed", time.time() + 3600))
+    assert resolve()[0] == "synthetic-access-refreshed"
 
 
 def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and_on_a_request(tmp_path,
@@ -226,13 +292,17 @@ def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and
     session.announce(out)
     assert f"openai: not relayed; its stored login is {unknown}" in out.getvalue()
     assert "synthetic" not in out.getvalue()
-    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    resolve = login.StoredLogin("openai", {"HOME": str(tmp_path)})
     rewrite(db, chatgpt("synthetic-access-1", time.time() + 3600))
     assert resolve()[0] == "synthetic-access-1"
     rewrite(db, {"type": "oauth", "access": "synthetic-access-2", "expires": "tomorrow"})
     with pytest.raises(relay.Unavailable) as refused:
         resolve()
+    assert refused.value.cause == "unknown_shape"
     assert str(refused.value) == f"AEW: your stored openai login is now {unknown}."
+    keyed = contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="synthetic-key")
+    keyed.require_provider()
+    assert keyed.keys == {"openai": "synthetic-key"} and keyed.refreshing == {}
 
 
 def test_a_relayed_login_close_to_expiry_is_named_at_launch_with_the_refresh_step_and_blocks_nothing(tmp_path,
@@ -271,7 +341,7 @@ def test_a_fresh_login_is_what_the_relay_reads_next(tmp_path):
     active over the provider's others (`Credential.create`, in the pinned bundle), and the relay reads the active
     row on its next request."""
     db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-old", time.time() + 3600), 1)])
-    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    resolve = login.StoredLogin("openai", {"HOME": str(tmp_path)})
     assert resolve()[0] == "synthetic-access-old"
     con = sqlite3.connect(db)  # what Credential.create does, in one transaction
     con.execute("UPDATE credential SET active = 0 WHERE integration_id = 'openai'")
@@ -660,7 +730,7 @@ def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relaye
     monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")
     monkeypatch.setattr(lead, "contained_here", lambda: True)
-    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire: None)
+    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire, **_: None)
     monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: started.append(a) or {})
     monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin"})
     engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path)
@@ -695,7 +765,7 @@ def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ:
                         lambda self, out: calls.append("announce") or announce(self, out))
     monkeypatch.setattr(lead_broker.WeakerLead, "precheck", lambda self: calls.append("precheck"))
 
-    def require_credential(acquire: bool) -> None:
+    def require_credential(acquire: bool, **_: Any) -> None:
         calls.append("credential")
         if not credential:
             raise errors.AEWError("synthetic: no Lead credential")
@@ -1033,10 +1103,12 @@ class Engine:
 
     def __init__(self) -> None:
         self.released: list[str] = []
-        self.store = type("St", (), {"current": lambda _s: {"revision": 3, "invocations": {}}})()
+        self.store = type("St", (), {"current": lambda _s: {
+            "revision": 3, "lead": {"status": "active", "generation": 1}, "invocations": {},
+        }})()
 
-    def lead_acquire(self, **_: Any) -> dict[str, str]:
-        return {"token": "synthetic-token"}
+    def lead_acquire(self, **_: Any) -> dict[str, str | int]:
+        return {"token": "synthetic-token", "generation": 1}
 
     def lead_release(self, *, token: str, expect_rev: int) -> None:
         self.released.append(token)

@@ -100,6 +100,10 @@ class IllegalTransition(AEWError):
     exit_code = 5
 
 
+class ApprovalSubjectChanged(IllegalTransition):
+    code = "APPROVAL_SUBJECT_CHANGED"
+
+
 class GateUnsatisfied(IllegalTransition):
     code = "GATE_UNSATISFIED"
 
@@ -198,6 +202,14 @@ class MessagingDisabled(IllegalTransition):
     engine before the sealing slice; plan D-39)."""
 
     code = "MESSAGING_DISABLED"
+
+
+class WaitUnsupported(IllegalTransition):
+    code = "WAIT_UNSUPPORTED"
+
+
+class WaitOutsideAStep(IllegalTransition):
+    code = "WAIT_OUTSIDE_A_STEP"
 
 
 class TurnEndNeedsMessaging(IllegalTransition):

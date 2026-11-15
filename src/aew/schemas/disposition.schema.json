@@ -8,6 +8,7 @@
                "anomaly"],
   "additionalProperties": false,
   "properties": {
+    "approval_ref": {"type": "string"},
     "schema": {"const": "aew/disposition/v1"},
     "id": {"type": "string", "pattern": "^DP-[0-9]{4,}$"},
     "subject": {

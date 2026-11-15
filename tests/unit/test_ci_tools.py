@@ -246,6 +246,79 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     assert "always()" not in ratchet["if"] and "failure()" not in ratchet["if"]  # after the lane-report check passed
 
 
+def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_secrets():
+    workflows = ROOT / ".github" / "workflows"
+    action = ROOT / ".github" / "actions" / "publish-evidence" / "action.yml"
+    steps = yaml.safe_load(action.read_text(encoding="utf-8"))["runs"]["steps"]
+    upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+    assert upload["with"]["retention-days"] == 14
+    assert upload["with"]["path"] == "${{ steps.stage.outputs.directory }}"
+    assert not upload["with"].get("include-hidden-files")
+    proof_uses = "./.github/actions/prove-evidence"
+    publisher = "./.github/actions/publish-evidence"
+    workflow_docs = {path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+                     for path in workflows.glob("*.yml")}
+    action_docs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))["runs"]
+                   for path in action.parents[1].glob("*/action.y*ml")}
+    groups = [
+        (f"{name}/{key}", {**doc.get("env", {}), **job.get("env", {})}, job.get("steps", []))
+        for name, doc in workflow_docs.items() for key, job in doc["jobs"].items()
+    ] + [(name, {}, runs.get("steps", [])) for name, runs in action_docs.items()]
+    for label, inherited, job_steps in groups:
+        tests = [step for step in job_steps if " -m pytest" in step.get("run", "")]
+        publishers = [step for step in job_steps if step.get("uses") == publisher]
+        for step in publishers:
+            artifact = step["with"]["artifact"]
+            assert artifact.endswith("attempt-${{ github.run_attempt }}") and "${ " not in artifact, (label, artifact)
+        if not tests:
+            continue
+        assert len(publishers) == 1, label
+        if "/" in label:
+            assert publishers[0]["if"] == "failure() || cancelled()", label
+        for step in tests:
+            variables = {**inherited, **step.get("env", {})}
+            assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys(), label
+            assert all(not re.search(r"\b(secrets\.|github\.token\b)", str(value))
+                       for value in variables.values()), label
+            assert all(not ("GITHUB_ENV" in earlier.get("run", "") and
+                            re.search(r"GH_TOKEN|GITHUB_TOKEN|secrets\.|github\.token", str(earlier)))
+                       for earlier in job_steps[:job_steps.index(step)]), label
+        assert all(step.get("with", {}).get("persist-credentials") is False
+                   for step in job_steps if step.get("uses", "").startswith("actions/checkout@")), label
+    proof_steps = action_docs["prove-evidence"]["steps"]
+    pytest_step = next(step for step in proof_steps if " -m pytest" in step.get("run", ""))
+    assert all(flag in pytest_step["run"] for flag in ("--session-deadline ", "--test-timeout ", "--hang-dir="))
+    for workflow, job, condition in (
+        ("ci.yml", "core", "needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1"),
+        ("nightly.yml", "reference", "matrix.shard == 1"),
+    ):
+        [proof] = [step for step in workflow_docs[workflow]["jobs"][job]["steps"] if step.get("uses") == proof_uses]
+        assert proof["if"] == condition
+
+
+def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    stage_evidence = _load("stage_evidence")
+    source = tmp_path / "raw"
+    autopsy = source / "autopsy"
+    autopsy.mkdir(parents=True)
+    (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
+    destination = tmp_path / "public"
+
+    def scan(argv, **kwargs):
+        assert "--ignore-gitleaks-allow" in argv
+        report = Path(argv[argv.index("--report-path") + 1])
+        report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
+    assert "planted-rule" in stage_evidence.stage(source, destination)
+    [listing] = list(destination.iterdir())
+    assert listing.name == "inventory.txt"
+    assert "private contents" not in listing.read_text(encoding="utf-8")
+
+
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
     import subprocess
 
@@ -1237,6 +1310,109 @@ def test_a_rename_out_of_the_code_is_full_tier(tmp_path, monkeypatch):
     assert tier.decide("pull_request", paths, "main") == "full"
 
 
+@pytest.mark.parametrize(("change", "expected"), [
+    ("register", "docs"), ("invalid", "full"), ("mixed", "full"), ("delete", "full"),
+    ("rename", "full"), ("create", "full"), ("empty", "full"), ("one-parent", "full"),
+    ("delete-entry", "full"), ("trim-evidence", "full"),
+])
+def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monkeypatch, capsys, change, expected):
+    git = _git(tmp_path)
+    git("init", "-q")
+    register = tmp_path / tier.FLAKE_REGISTER
+    register.parent.mkdir()
+    (register.parent / "test_sample.py").write_text("def test_sample(): pass\n", encoding="utf-8")
+    doc = {"schema": "aew/flake-register/v1", "entries": [{
+        "id": "relayed-reads", "test": "tests/test_sample.py::test_sample", "scope": "test", "status": "open",
+        "lane": "fast",
+        "platforms": ["windows"], "class": "race", "owner": "CI", "cause": "unestablished",
+        "evidence": [{"run": 1, "job": job, "at": "2026-11-11T00:00:00Z"} for job in (2, 3, 4)],
+    }], "census": []}
+    doc["entries"].append({**doc["entries"][0], "id": "hung-notifier"})
+    if change != "create":
+        register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    git("checkout", "-qb", "pr")
+    if change in {"delete", "rename"}:
+        if change == "rename":
+            git("mv", tier.FLAKE_REGISTER, "renamed.md")
+        else:
+            git("rm", tier.FLAKE_REGISTER)
+    elif change != "empty":
+        doc["entries"][0]["cause"] = "observed twice"
+        if change == "delete-entry":
+            doc["entries"].pop()
+        elif change == "trim-evidence":
+            doc["entries"][0]["evidence"] = doc["entries"][0]["evidence"][:1]
+        register.write_text("invalid: [" if change == "invalid" else yaml.safe_dump(doc), encoding="utf-8")
+    if change == "mixed":
+        (tmp_path / "README.md").write_text("additional change", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "--allow-empty", "-qm", "edit")
+    merge = git("rev-parse", "HEAD") if change == "one-parent" else _merge(git, "pr")
+    monkeypatch.chdir(tmp_path)
+    args = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", ""]
+    assert tier.main(args) == 0
+    assert f"decision={expected} tier={expected}" in capsys.readouterr().out
+    if change in {"delete-entry", "trim-evidence"}:
+        import flake_register
+
+        monkeypatch.setattr(flake_register, "ROOT", tmp_path)
+        current = flake_register.load_register(register.read_text(encoding="utf-8"),
+                                               source=lambda path: (tmp_path / path).read_text(encoding="utf-8"))
+        with pytest.raises(flake_register.InvalidRegister, match="hung-notifier|relayed-reads"):
+            flake_register.check_base(base, current)
+
+
+def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_path, capsys):
+    path = tier.FLAKE_REGISTER
+    listing = tmp_path / "changed.txt"
+    listing.write_text(path, encoding="utf-8")
+    args = ["--event", "pull_request", "--base-ref", "main", "--paths-file", str(listing), "--labels", ""]
+    assert tier.main(args) == 0
+    assert "decision=full tier=full" in capsys.readouterr().out
+    assert tier.decide("pull_request", [path], "main", forced=True, register_valid=True) == "full"
+    assert tier.decide("push", [path], "main", register_valid=True) == "full"
+    assert tier.decide("pull_request", [path], "other", register_valid=True) == "full"
+    assert tier.shortcut_barred([path]) and tier.shortcut_barred(["tools/flake_register.py"])
+
+
+def test_flake_register_check_cli_rejects_a_dropped_base_entry(tmp_path, monkeypatch, capsys):
+    monkeypatch.syspath_prepend(str(ROOT / "tools"))
+    import flake_register
+
+    git = _git(tmp_path)
+    git("init", "-q")
+    register = tmp_path / tier.FLAKE_REGISTER
+    register.parent.mkdir()
+    (register.parent / "test_sample.py").write_text("def test_sample(): pass\n", encoding="utf-8")
+    entry = {"scope": "test", "test": "tests/test_sample.py::test_sample", "status": "open", "lane": "fast",
+             "platforms": ["windows"], "class": "race", "cause": "unestablished", "owner": "CI",
+             "evidence": [{"run": 1, "job": 2, "at": "2026-11-11T00:00:00Z"}]}
+    doc = {"schema": flake_register.SCHEMA, "entries": [{**entry, "id": "keep"}, {**entry, "id": "dropped"}],
+           "census": []}
+    register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    flake_register.lane_policy()
+    monkeypatch.setattr(flake_register, "ROOT", tmp_path)
+    monkeypatch.setattr(flake_register, "TESTS", register.parent)
+    monkeypatch.setattr(flake_register, "REGISTER_PATH", register)
+
+    assert flake_register.main(["check", "--base", base]) == 0
+    doc["entries"].pop()
+    register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    assert flake_register.main(["check", "--base", base]) == 1
+    assert "dropped: base entry must be retained" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("code", ["tools/flake_register.py", "tools/ci/tier.py"])
+def test_decide_requires_an_exact_register_path_even_with_valid_history(code):
+    assert tier.decide("pull_request", [tier.FLAKE_REGISTER, code], "main", register_valid=True) == "full"
+
+
 GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success",
          "fastbase": "skipped"}
 REDUCED = {**GREEN, "lanes": "skipped"}
@@ -1787,7 +1963,8 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "--lane vertical tests/acceptance/test_vertical_path.py" in run["run"] and "continue-on-error" not in run
     assert run["env"]["AEW_VERTICAL_OUT"] == "${{ runner.temp }}/vertical"
     upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
-    assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
+    assert upload["if"] == "always()"
+    assert "${{ runner.temp }}/vertical/*/vertical-ledger.json" in upload["with"]["path"].splitlines()
     # The lane's report leads the run's summary with the not-measured count, then each ledger's summary (STG-13,
     # addendum 1); its scenarios are the JUnit report's test cases.
     summaries = next(s for s in job["steps"] if "python -m vertical.report" in str(s.get("run", "")))
@@ -2010,6 +2187,22 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     assert nightly_steps.index(nightly_assure) < nightly_steps.index(nightly_ratchet)
     reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
     assert "--lane-report" in reference  # the capture writes beside it
+
+
+def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green_night():
+    workflows = ROOT / ".github/workflows"
+    ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))
+    core = ci["jobs"]["core"]
+    check = 'python tools/flake_register.py check --base "$env:FLAKE_BASE"'
+    checks = [step for step in core["steps"] if step.get("run") == check]
+    assert len(checks) == 1 and "if" not in checks[0] and not checks[0].get("continue-on-error")
+    assert "github.event.pull_request.base.sha" in checks[0]["env"]["FLAKE_BASE"]
+    assert {"fast", "serial"} <= set(tier.LANES["docs"])
+    nightly = yaml.safe_load((workflows / "nightly.yml").read_text(encoding="utf-8"))
+    queue = nightly["jobs"]["flake-queue"]
+    assert queue["if"] == "always() && github.event_name == 'schedule'"
+    assert queue["permissions"] == {"contents": "read", "actions": "read", "checks": "read", "issues": "write"}
+    assert "needs" not in queue
 
 
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
@@ -3279,22 +3472,23 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 
 
-def test_every_lane_uploads_its_hang_directory_whatever_the_outcome():
-    """H3: the autopsy, the deadline's markers and the watchdog's dumps go to the lane's hang directory (its explicit
-    --hang-dir, else its lane report's directory), which an `if: always()` upload in the same job covers: uploads
-    still run after a failure, a cancellation or the job's timeout."""
-    import re
-
+def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():
+    """H3: the scanned publisher covers each lane's hang directory or lane-report parent."""
     problems = []
     for lane in _workflow_lanes():
         where = lane.hang_dir or (lane.lane_report.rsplit("/", 1)[0] if lane.lane_report else None)
         if where is None:
             problems.append(f"{lane.label}: no --hang-dir and no --lane-report (the default is the runner's temp)")
             continue
-        covered = [u for u in lane.uploads if str(u.get("if", "")).startswith("always()")
-                   and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", str(u["with"]["path"])).rstrip("/"))]
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / lane.workflow).read_text(encoding="utf-8"))
+        steps = workflow["jobs"][lane.job]["steps"]
+        covered = [
+            step for step in steps if step.get("uses") == "./.github/actions/publish-evidence"
+            and step.get("if") == "failure() || cancelled()"
+            and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/"))
+        ]
         if not covered:
-            problems.append(f"{lane.label}: no `if: always()` upload covers {where}")
+            problems.append(f"{lane.label}: no scanned upload covers {where}")
     assert problems == [], "\n".join(problems)
 
 
@@ -3312,11 +3506,13 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     workflow = ROOT / ".github" / "workflows" / "flake-dispatch.yml"
     doc = yaml.safe_load(workflow.read_text(encoding="utf-8"))
     assert set(doc[True]) == {"workflow_dispatch"}
+    assert doc["permissions"] == {"contents": "read"}
     assert set(doc["jobs"]) == {"regression"}
     job = doc["jobs"]["regression"]
+    assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
-    pytest_step, upload = steps[-2:]
+    pytest_step, upload, evidence = steps[-3:]
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
     assert [lane.repeats for lane in lanes] == [1, 2, 1]
     assert all(lane.step == pytest_step["name"] for lane in lanes)
@@ -3330,6 +3526,9 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert step_seconds + bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S < job["timeout-minutes"] * 60
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
+    assert upload["with"]["retention-days"] == 14
+    assert evidence["uses"] == "./.github/actions/publish-evidence"
+    assert evidence["if"] == "failure() || cancelled()"
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

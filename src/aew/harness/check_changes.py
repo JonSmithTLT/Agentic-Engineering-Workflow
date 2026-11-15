@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aew.policy import checks as C
+
 CHECK = "check-changes"
 COMMAND = "aew doctor --run-checks"
 ROLE, SCOPE = "implementer", "ticket"  # a worker's check runs in its run's sandbox (``check.run``)
@@ -51,7 +53,6 @@ def configured(engine: Any) -> list[tuple[str, dict[str, Any]]]:
     """The project's configured checks (``policy/checks.yaml``), as ``check run`` resolves them; the builtin guardrails
     check reads the change set, not a tree, so it is not one of them."""
     from aew.errors import AEWError
-    from aew.policy import checks as C
 
     policy = engine.policy("checks") or {}
     out = []
@@ -88,9 +89,10 @@ def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
         ran = ("timed out" if outcome == "timeout" else "could not start" if outcome == "spawn_failed"
                else f"exited {found['exit_code']}")
         if found["mutated"]:  # what verification compares: the snapshot's fingerprint (review of #367, F2)
+            guidance = fix(engine, found["paths"], check_id=check_id, tracked=found.get("tracked"))
             changed.append(f"check {check_id} ({ran}) changes the snapshot it runs on: it writes "
                            f"{', '.join(found['paths']) or '(paths not named: the two snapshots cannot be compared)'}"
-                           f", so each verification of it is inconclusive. {fix(engine, found['paths'])}")
+                           f", so each verification of it is inconclusive. {guidance}")
         else:
             notes.append(f"check {check_id} ({ran}) changes nothing in the snapshot")
     detail = "; ".join(changed + notes) + f" (ran once on a copy of {commit[:12]}; never evidence)"
@@ -99,7 +101,7 @@ def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
     return [_row("PASS" if not any("was not run" in n for n in notes) else "WARN", detail)]
 
 
-def fix(engine: Any, paths: list[str]) -> str:
+def fix(engine: Any, paths: list[str], *, check_id: str = "", tracked: set[str] | None = None) -> str:
     """The fix for paths a check writes into its snapshot: written elsewhere, or kept out of the snapshot by the rule
     that keeps a path out of it. A path the manifest's ``fingerprint.include_ignored`` puts back in is kept out only by
     taking it off that list; any other by ``.gitignore``, ``.git/info/exclude`` or ``fingerprint.exclude``."""
@@ -110,6 +112,9 @@ def fix(engine: Any, paths: list[str]) -> str:
     if forced:
         return (f"Make the check write outside the project, or take {', '.join(sorted(set(forced)))} off the project "
                 "manifest's fingerprint.include_ignored, which puts ignored output back into the snapshot")
+    if check_id and tracked is not None and not tracked.intersection(paths) and (hint := C.cache_hint(paths)):
+        return (f"If these are disposable caches, add `{hint}` under check {check_id!r} in policy/checks.yaml "
+                "and adopt the policy. This can change the fingerprint and make existing evidence STALE.")
     return (f"Make the check write outside the project, or, for output it leaves on purpose, list {it} in .gitignore "
             f"(or .git/info/exclude), or in the project manifest's fingerprint.exclude, which keeps {it} out of the "
             "snapshot")
@@ -121,7 +126,6 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
     gone when this returns."""
     from aew.errors import AEWError, ContainmentUnavailable
     from aew.harness import containment, procs, runlog, weaker_register
-    from aew.policy import checks as C
     from aew.workspace import git
     from aew.workspace.integration import changed_between
 
@@ -161,6 +165,7 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
         except ContainmentUnavailable as exc:
             return {"not_run": exc.message}
         env = {**C.allowlist_env(layout), weaker_register.MARKER: str(marker)}
+        tracked = set(git.git("ls-files", "--cached", "-z", cwd=copy).stdout.decode("utf-8", "replace").split("\0"))
         before = engine.snapshot_of(copy, WORKSPACE_ID)
         if weaker is not None:
             weaker.started()
@@ -178,7 +183,8 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
                 if a != b else []
         except AEWError:  # a process that stores no objects hashed the trees without writing them
             paths = []
-        return {"outcome": out["outcome"], "exit_code": out["exit_code"], "paths": paths, "mutated": a != b}
+        return {"outcome": out["outcome"], "exit_code": out["exit_code"], "paths": paths, "mutated": a != b,
+                **({"tracked": tracked} if C.cache_hint(paths) else {})}
     finally:
         containment.retire_private_git(run_dir)
         if copy.exists():

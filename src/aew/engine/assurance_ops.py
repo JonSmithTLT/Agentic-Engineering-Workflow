@@ -166,7 +166,8 @@ class Assurance:
         try:
             # hashed, never stored: a dispatch guard (and `dispatch explain`) writes nothing, here into the object
             # store another worker's workspace shares
-            touched = tuple(changed_paths(Path(ws["path"]), ws["base_commit"], stores=False))
+            touched = tuple(changed_paths(Path(ws["path"]), ws["base_commit"], stores=False,
+                                          **self.k.check_cache_inputs()))
         except Exception as err:  # as above: unknown, never "nothing changed"
             why.append(f"its workspace {ws.get('path')} cannot be read: {err}")
         return C.LiveTicket(work_id=work_id, invocation=unit.get("implementer_invocation"), workspace=ws.get("id"),

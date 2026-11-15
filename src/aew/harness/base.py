@@ -73,6 +73,11 @@ class HarnessAdapter(ABC):
         self.run_dir = run_dir
         self.emit = emit  # append a telemetry event to the run's local event log
 
+    @property
+    def reports_steps(self) -> bool:
+        """Worker waits fail closed unless this run has qualified foreground call/step lifetime reporting."""
+        return False
+
     @abstractmethod
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         """Start the harness and deliver the contract's prompt. Returns health/version/session facts.

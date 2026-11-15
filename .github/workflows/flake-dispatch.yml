@@ -18,6 +18,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/flake-dispatch"
           printf 'commit=%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/flake-dispatch/dispatch.txt"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: "3.13"
@@ -60,5 +62,11 @@ jobs:
         if: always()
         with:
           name: flake-dispatch-evidence
-          path: ${{ runner.temp }}/flake-dispatch/
+          path: |
+            ${{ runner.temp }}/flake-dispatch/**/report.json
           retention-days: 14
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/flake-dispatch/
+          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-attempt-${{ github.run_attempt }}

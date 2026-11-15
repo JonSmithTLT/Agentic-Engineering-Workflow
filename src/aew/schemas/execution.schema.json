@@ -31,6 +31,12 @@
         "cards": {"x-aew-class": "legality_affecting", "$ref": "#/$defs/route_map"}
       }
     },
+    "credentials": {
+      "x-aew-class": "legality_affecting",
+      "description": "The default worker credential for each provider. Profiles may override it. Absent means api_key.",
+      "type": "object",
+      "additionalProperties": {"enum": ["api_key", "plan_login"]}
+    },
     "provider_env": {
       "x-aew-class": "legality_affecting",
       "type": "array",
@@ -116,7 +122,7 @@
     "description": {"x-aew-class": "operational", "type": "string"},
     "maps": {
       "type": "object",
-      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices structural (what `aew init` writes for a new project, registers E62 and E184) adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. \"off\" (also when absent, as in a project initialized before that default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps. Changing it is the operator's configuration decision: an existing project is offered structural at the operator's terminal (the switch offer).",
+      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices structural (what `aew init` writes for a new project) adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. \"off\" (also when absent, as in a project initialized before that default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps. Changing it is the operator's configuration decision: an existing project is offered structural at the operator's terminal (the switch offer).",
       "additionalProperties": false,
       "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}}
     },
@@ -150,6 +156,7 @@
         "provider": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^[^/\\s]+$"},
         "model": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^\\S+$"},
         "effort": {"x-aew-class": "legality_affecting", "type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
+        "credential": {"x-aew-class": "legality_affecting", "enum": ["api_key", "plan_login"], "description": "Override the provider's default worker credential for this profile."},
         "max_steps": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 1},
         "deadline_s": {"x-aew-class": "operational", "type": "number", "exclusiveMinimum": 0},
         "deadline_scope": {"x-aew-class": "operational", "enum": ["always", "run"], "description": "Which runs deadline_s bounds: always (the default), or only a run started while the steering mode is run. First configuration writes run with its provisional deadline, so the deadline Run needs never ends an attended run."},

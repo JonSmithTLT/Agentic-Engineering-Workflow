@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -133,7 +134,8 @@ def _harness_wait(c: Call) -> Any:
             why = c.cancelled()
             if why:
                 raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {why}")
-            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True)
+            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True,
+                                        **({"message_after": {}} if contract.MESSAGING in c.ctx.switches else {}))
         if not out.get("timed_out") or time.monotonic() >= deadline:
             return out
         mark, since = outbox.wake_mark(wake_root), time.monotonic()  # block on the wake file alone: no engine state
@@ -331,6 +333,7 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
+    payload, projection = _message_budget(payload, projection)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
     # authored text too (PR #88 review).
     result = scrub({
@@ -343,6 +346,55 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Quote selected framed bodies once in projection.coordination; payload/wait fields contain ID references.
+    Requested payload takes priority. Both the existing identity cap and a wire-byte budget apply before receipts;
+    no cached object is mutated. Long-body omissions are recoverable just like count-cap omissions."""
+    view = projection.get("coordination")
+    if not isinstance(view, dict):
+        return payload, projection
+    payload_view = payload.get("coordination") if isinstance(payload, dict) else None
+    requested = payload_view.get("awaiting_lead", []) if isinstance(payload_view, dict) else []
+    selected: dict[str, Any] = {}
+    size = 0
+    for message in [*requested, *view["awaiting_lead"]]:
+        if message["id"] in selected:
+            continue
+        cost = len(json.dumps(message, ensure_ascii=True, separators=(",", ":")).encode())
+        if len(selected) >= contract.MESSAGE_BODY_CAP or size + cost > contract.MESSAGE_BODY_BYTES:
+            break
+        selected[message["id"]] = message
+        size += cost
+    projection = {**projection, "coordination": {**view, "awaiting_lead": list(selected.values()),
+        "omitted": max(0, len(view["awaiting_lead"]) + view["omitted"] - len(selected))}}
+    if (isinstance(payload_view, dict) and isinstance(payload, dict)
+            and isinstance(payload_view.get("awaiting_lead"), list)):
+        refs = [{"id": m["id"]} for m in requested if m["id"] in selected]
+        payload = {**payload, "coordination": {**payload_view, "awaiting_lead": refs,
+                    "omitted": payload_view["omitted"] + len(requested) - len(refs)}}
+        if "messages" in payload:
+            payload["messages"] = refs
+    return payload, projection
+
+
+def record_message_result(engine: Any, result: dict[str, Any], token: str | None) -> None:
+    """Explicit typed ingress consumption, not an automatic steering-loop or bare engine read side effect.
+    The successfully returned StageResult is the receipt boundary, not proof of model understanding. Verify full
+    carried bodies before invoking the established durable writer; no failed result consumes its projection."""
+    if not token or result.get("ok") is not True:
+        return
+    from aew.surface import readable
+
+    if len(readable.render(result).encode()) > readable.CUT_BYTES:
+        return  # the model's tool-output cut may remove the JSON line: never claim its bodies were carried
+    if not any(isinstance(result.get(key), dict) and result[key].get("coordination", {}).get("awaiting_lead")
+               for key in ("result", "projection")):
+        return
+    ids = engine.message_result_ids(result)
+    if ids:
+        engine.message_mark_shown(token=token, messages=ids)
 
 
 def _binding(binding: dict[str, Any] | None) -> dict[str, Any] | None:

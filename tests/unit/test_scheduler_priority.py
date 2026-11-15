@@ -101,6 +101,26 @@ def test_a_low_ticket_starts_only_when_no_critical_or_normal_one_is_eligible():
     assert isinstance(stop, Stop) and stop.subject == "T-0001"  # with none eligible, the first stop in that order
 
 
+def decided(subject: str) -> dict[str, Any]:
+    """A live Ticket's projection held on a decision only the Lead can make."""
+    return {"subject": subject, "actions": [],
+            "decisions_required": [{"decision": "plan_acceptance", "evidence": []}]}
+
+
+def test_with_none_eligible_a_stop_only_the_lead_can_clear_comes_before_a_higher_tickets_blocked():
+    """The merge of the priority order with loop_waiting's Lead-only preference (QC3-m1): the order ranks the stops,
+    but a stop that waits on the Lead goes ahead of a BLOCKED that can clear on its own, whatever the levels."""
+    state = {"work": {"T-0001": ticket(level="low"), "T-0002": ticket(level="critical")}}
+    stop = L.select({}, [decided("T-0001"), blocked("T-0002")], PRIORITY.order(state))
+    assert isinstance(stop, Stop) and (stop.code, stop.subject) == (L.DECISION_REQUIRED, "T-0001")
+
+
+def test_among_stops_only_the_lead_can_clear_the_first_in_priority_order_wins_not_the_lowest_id():
+    state = {"work": {"T-0001": ticket(level="low"), "T-0002": ticket(), "T-0003": ticket(level="critical")}}
+    stop = L.select({}, [decided("T-0001"), blocked("T-0002"), decided("T-0003")], PRIORITY.order(state))
+    assert isinstance(stop, Stop) and (stop.code, stop.subject) == (L.DECISION_REQUIRED, "T-0003")
+
+
 def test_without_an_order_select_keeps_id_order():
     assert L.select({}, [ready("T-0002"), ready("T-0001")]).subject == "T-0001"  # type: ignore[union-attr]
 

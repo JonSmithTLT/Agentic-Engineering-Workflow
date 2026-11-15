@@ -163,11 +163,11 @@ def pinned(sources: list[dict[str, Any]] | None) -> dict[str, Any] | None:
 
 
 def for_lead(pack: dict[str, Any] | None) -> dict[str, Any] | None:
-    """A pack as a result gives it to the Lead (register E184, owed since its review of 2026-11-08): the map's pinned
-    entry keeps its path, hashes and freshness, and its slice body becomes ``slice_bytes``, the UTF-8 bytes of the
-    section the worker reads. A result stays in the Lead's context for every later request, and the body is the
-    worker's navigation, not the Lead's. The pin in control state keeps the body: a regenerated pack is rendered from
-    it (:func:`lines`). Any other pack, or none, is returned as it is."""
+    """A pack as a result gives it to the Lead: the map's pinned entry keeps its path, hashes and freshness, and its
+    slice body becomes ``slice_bytes``, the UTF-8 bytes of the section the worker reads. A result stays in the Lead's
+    context for every later request, and the body is the worker's navigation, not the Lead's. The pin in control state
+    keeps the body: a regenerated pack is rendered from it (:func:`lines`). Any other pack, or none, is
+    returned as it is."""
     sources = (pack or {}).get("sources")
     if not isinstance(sources, list) or not any(isinstance(s, dict) and "slice" in s for s in sources):
         return pack

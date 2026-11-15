@@ -44,7 +44,7 @@ provider_env: [OPENAI_API_KEY]
 
 For a manual edit of the pinned execution policy, follow the quickstart's
 [pinned settings steps](quickstart.md#edit-pinned-settings-or-classify-authority-candidates). Once you've adopted the
-edit at your terminal and released the seat, start the Lead with `aew opencode --acquire`.
+edit at your terminal and released the seat, start the Lead with plain `aew opencode`.
 
 Then check the project:
 
@@ -72,7 +72,11 @@ containment:
 
 The key is a PEM private key with no passphrase. The relay reads the three files at each launch, so a renewed certificate, or a CA file swapped in at the same path when a change is announced, is picked up by the next one; AEW never copies them. The provider's own certificate is checked against that CA file alone. The certificate and key are hidden from every contained run, and the launch's self-test checks they can't be read from inside. A certificate that can't be used (expired, not yet valid, not matching its key, a key with a passphrase, a file that can't be read, or an upstream that isn't `https://`) refuses the launch with one line per problem, each naming its file (the key by its policy field), and `aew doctor`'s `client-cert` line shows the same lines beforehand, with the certificate's expiry when it passes. Only the relay presents the certificate, so this needs Linux with `containment.network.mode: proxy_only` (the default) and containment that works: a run with no relay is refused, whether its network is `shared` or `isolated`, it runs on Windows, or its sandbox can't be established and `containment.mode: allow_weaker` would run it uncontained (doctor's line is WARN under `allow_weaker` for that reason). The contained Lead relays such a provider too, with no key, offering the models your OpenCode profiles pin for it. One no profile pins a model of isn't relayed, and the Lead's start says what to pin. A Lead with no relay says at its start which providers it can't use. A Lead whose only provider takes a certificate is refused when it would have none to use: its profiles pin no model of it, or its sandbox can't be established under `allow_weaker`. AEW requires no key variable for a provider of its own id; whether OpenCode serves one from its address alone, and needs a placeholder key for it, is checked at its first run. One AEW knows a key variable for (such as `openai`) still needs it.
 
-On contained Linux, a worker can use a stored API-key login from a fresh shell when the policy names that provider's key variable, its other names are set or are other built-in providers' key variables, and the run uses the built-in upstream through the relay. One login decides per provider for the Lead and workers. If the Lead uses a refreshing login, keep it and export that provider's API key for workers. If no deciding login needs to be preserved, set up the API-key method at your own terminal with `opencode auth login`. This covers Anthropic, Google, OpenAI and paid OpenCode models. Doctor and the launch record name the source. Rotating the login affects the next worker launch. A running relay keeps its original key.
+On contained Linux, an API-key worker can use a stored API-key login from a fresh shell when the policy names that provider's key variable, its other names are set or are other built-in providers' key variables, and the run uses the built-in upstream through the relay. One login decides per provider for the Lead and workers. If that login is refreshing, export the provider's API key for API-key workers. If no deciding login needs to be preserved, set up the API-key method at your own terminal with `opencode auth login`. This covers Anthropic, Google, OpenAI and paid OpenCode models. Doctor and the launch record name the source. Rotating the API-key login affects the next worker launch.
+
+The execution policy's provider defaults live under `credentials`. For example, `credentials: {openai: plan_login}` makes OpenAI profiles use the plan by default. A profile can override that choice with `credential: api_key` or `credential: plan_login`. Adopt the policy before dispatching. Adoption of `plan_login` requires qualification at the pinned OpenCode version. The Lead can select any adopted profile with `--profile`. An explicit `--model` dispatch uses an API key.
+
+Plan workers use the operator's stored ChatGPT login through the built-in relay on contained Linux. AEW reads it for each request and never refreshes it. The worker receives no provider key variable and the relay tries one credential. Any Lead on the same login shares the plan's usage limits. Doctor names the pot and time left, and a launch is refused if the login cannot outlive its deadline. After expiry, renew at your own terminal with `opencode auth login openai` and choose ChatGPT. Use the relaunch or cancel command for the active invocation shown by `aew status`.
 
 A usable export for the named variable takes precedence. Use the shell-only forms in [the quickstart](quickstart.md#giving-aew-the-lead-credential), with the variable's name in place of `AEW_LEAD_TOKEN`, for an override or a launch outside the stored-login route. Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Off the relay, the harness server receives a named export directly.
 
@@ -85,11 +89,21 @@ The Lead's own model is different. By default it uses the credentials OpenCode h
 From the project's main worktree:
 
 ```bash
-aew opencode --acquire
+aew opencode
 ```
 
-- `--acquire` takes the vacant Lead seat inside the session, so the Lead credential exists only in the broker's memory. It is never printed. At exit the seat is released if nothing is in flight; otherwise it stays held, and the output tells you that continuing needs a terminal takeover. `--keep-seat` keeps it held.
-- Without `--acquire`, `aew opencode` asks for the Lead credential at a hidden prompt, and the broker holds what you type in its memory. If your shell already holds `AEW_LEAD_TOKEN`, it takes the credential from there instead and removes it from OpenCode's environment. Set it for this shell session only, with a form that echoes nothing and leaves nothing in history:
+- Plain `aew opencode` takes a vacant Lead seat inside the session when the shell has no exported Lead credential.
+  It resumes a seat it took itself when the previous session is gone, the host and user match, and no handoff is
+  pending. When work is carried or processes may still run, the operator's terminal asks for one confirmation code.
+  `--acquire` explicitly selects the same route even if a credential is exported. The credential stays in the
+  broker's memory. The seat is released after a clean exit when nothing is in flight and no acknowledged process
+  may still run. `--keep-seat` keeps it held. An unknown leftover outcome or a nonzero Windows process count
+  keeps the seat held across sessions. To free it instead of resuming it, run `aew lead takeover` at your own
+  terminal, then `aew lead release`.
+- With `AEW_LEAD_TOKEN` set in your shell, `aew opencode` uses that Lead credential. Use `--prompt-token` to
+  enter an existing credential at the hidden prompt. `--prompt-token` and `--acquire` cannot be combined.
+  The broker holds the credential in memory and removes it from OpenCode's environment. Set the variable for
+  this shell session only, with a form that echoes nothing and leaves nothing in history:
   - bash: `read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN`
   - PowerShell 7: `$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput`
   - Windows PowerShell 5.1: `$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s`
@@ -100,7 +114,7 @@ aew opencode --acquire
 - A pasted image reaches the Lead's model without its path or file name, so the Lead can't name it, read it again or hand it to a worker (OpenCode sends no local path to a server it doesn't treat as local; register E211). To keep the path for a file in the project, attach it with an `@` mention, or type its path and ask the Lead to read it.
 - If the Lead's server dies, nothing restarts it: the session ends, `aew opencode` exits non-zero, and its result says how to go on, which depends on the seat. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
 - AEW wakes the Lead when a run needs it, by posting to the session you last viewed, so the Lead ends its turn after a dispatch and you can talk to it meanwhile; `aew status` shows each wake under "Lead wakes".
-- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session started with `--acquire` holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
+- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session that took the seat itself holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
 - Wakes have these limits:
   - **`/new`:** no session exists between `/new` and your first prompt, and the server gives no signal for that gap. A wake in it goes to the session you left and spends a turn there, and it doesn't show in the TUI. `aew status` shows it was posted, and to which session.
   - **A restart:** a wake before your first prompt in this launch is held for it, and `aew status` shows it outstanding. Nothing shows in the TUI until you type.

@@ -192,6 +192,7 @@ def judge(record: dict[str, Any] | None, *, generation: int, poll_s: float,
     a live broker that beats and whose watchdog completes its iterations)."""
     from aew.harness.operator_client import same_process
 
+    now = time.time() if now is None else now  # one observation time, before the process identity check can delay us
     if record is None or record["generation"] != generation:
         return None
     process = f"{record['pid']}@{record.get('process_started')}"
@@ -204,7 +205,6 @@ def judge(record: dict[str, Any] | None, *, generation: int, poll_s: float,
     if gone:
         return Verdict("crash", f"{process}:crash", f"the broker's process ({record['pid']}) is gone and it never "
                                                     "recorded a clean end")
-    now = time.time() if now is None else now
     beat_age = now - float(record["beat_at"])
     if beat_age > 2.0 * poll_s:
         return Verdict("stale", f"{process}:beat:{record['beat_at']}",

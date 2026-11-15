@@ -23,7 +23,8 @@ def test_a_manual_manifest_edit_right_after_a_transition_reaches_manifest_adopt(
     mismatch that `manifest adopt` resolves, not "modified while a transition was being applied" on every read."""
     p = new_project(tmp_path)
     cand = next(c for c in p.ok("authority", "list")["candidates"] if c["status"] == "proposed")
-    p.lead("authority", "accept", cand["id"], "--class", "decisions")  # the last transition staged project.yaml
+    # The last transition staged project.yaml.
+    p.lead("authority", "accept", cand["id"], "--class", "decisions", "--decided-by", "lead")
     manifest = p.root / ".aew" / "project.yaml"
     manifest.write_bytes(manifest.read_bytes() + b"# reviewed manual edit\n")
     p.ok("lead", "show")  # reads work

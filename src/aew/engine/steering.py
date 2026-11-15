@@ -4,7 +4,8 @@
 fourth mode). The effective mode is always the mode of the latest A1 §1.3 record, held in control state's
 ``steering`` key:
 
-- ``standing``: the latest record no Lead generation bounds. Only an adopted default that is not a raise makes one.
+- ``standing``: the latest record no Lead generation bounds. Only a pinned default that is not a raise makes one, where
+  the pin is written: ``aew init``, ``manifest adopt``, or ``aew migrate`` for a v1 project (:func:`take_default`).
 - ``override``: an operator raise at the endpoint, or a Lead lowering. It is in force only while its Lead generation
   is current; when that generation ends, the mode falls back to ``standing`` (plan v3 §2.1, P2), so a new generation
   runs above the standing mode only after a fresh raise at the endpoint.
@@ -31,13 +32,15 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from aew.engine.base import V2
+from aew.engine.base import POLICY_PINS, V2
 from aew.engine.store import Transition
 from aew.errors import (
+    AEWError,
     IllegalTransition,
     MigrationRequired,
     PermissionDenied,
@@ -92,6 +95,70 @@ def is_raise(new: str | None, standing: str | None) -> bool:
 
 def empty() -> dict[str, Any]:
     return {"default": None, "standing": {"mode": None, "record": None, "rev": 0}, "override": None, "requests": []}
+
+
+def default_of(policy: dict[str, Any] | None) -> str | None:
+    """The steering default an execution policy names (``steering.mode``), or None."""
+    return ((policy or {}).get("steering") or {}).get("mode")
+
+
+def take_default(state: dict[str, Any], default: str | None, *, via: str, revision: int,
+                 record: Callable[[dict[str, Any]], str]) -> bool | None:
+    """The one rule for recording the pinned policy's default ``default`` in ``state``, wherever a pin is written:
+    ``manifest adopt``, ``aew migrate`` and ``aew init``. A default that is not a raise over the standing mode becomes
+    the standing mode (and the effective one: the latest record wins), through ``record``; a raise changes nothing but
+    the recorded default (plan v3 §2.1, N1). ``None`` when nothing changed, else whether it was a raise left pending.
+
+    Recording the default where the pin is first written keeps ``default`` equal to the pinned policy's, so a later
+    adopt acts only on a real change: an operator raise is never dropped by an adopted edit of another file (#432's
+    merge check, M1)."""
+    s = state.get("steering")
+    if s is None:
+        if default is None:
+            return None  # a project that never configured steering keeps no steering state
+        s = state["steering"] = empty()
+    if default == s["default"]:
+        return None
+    previous_default, s["default"] = s["default"], default
+    if is_raise(default, s["standing"]["mode"]):
+        return True
+    before = effective(state)["mode"]
+    rid = record({"kind": "mode_change", "source": "default",
+                  "by": {"kind": "operator", "via": via, "guarantee": GUARANTEE},
+                  "previous": before, "new": default, "generation": None, "previous_default": previous_default})
+    s["standing"] = {"mode": default, "record": rid, "rev": revision}
+    s["override"] = None
+    return False
+
+
+def record_line(state: dict[str, Any], body: dict[str, Any], digests: dict[str, str],
+                revision: int) -> tuple[str, dict[str, Any]]:
+    """One A1 §1.3 record for ``body``, its id counted in ``state``: the line and its id."""
+    state["counters"]["steering_record"] = state["counters"].get("steering_record", 0) + 1
+    rid = format_id("SM", state["counters"]["steering_record"])
+    return rid, {"schema": RECORD_SCHEMA, "id": rid, **body, "legality_digest": digests["legality_digest"],
+                 "operational_digest": digests["operational_digest"], "revision": revision, "at": utc_now()}
+
+
+def records_rel() -> str:
+    """Today's steering record file, under ``.aew``."""
+    return f"{RECORDS_DIR}/{datetime.now(UTC).strftime('%Y-%m-%d')}.jsonl"
+
+
+def seed_at_init(state: dict[str, Any], policy: dict[str, Any] | None, digests: dict[str, str]) -> dict[str, str]:
+    """``aew init``, the operator's: record the default of the policy it pins, by ``take_default``, in revision 0.
+    Returns the record file to write with the initial state (nothing when no record is made)."""
+    lines: list[dict[str, Any]] = []
+
+    def record(body: dict[str, Any]) -> str:
+        rid, line = record_line(state, body, digests, 0)
+        lines.append(line)
+        return rid
+
+    take_default(state, default_of(policy), via="init", revision=0, record=record)
+    if not lines:
+        return {}
+    return {records_rel(): "".join(json.dumps(x, sort_keys=True, separators=(",", ":")) + "\n" for x in lines)}
 
 
 # Where the effective mode comes from: an operator raise, a Lead lowering, the adopted default, or nothing set.
@@ -244,8 +311,7 @@ class Steering:
     # ------------------------------------------------------------------ reads
 
     def policy_default(self) -> str | None:
-        policy, _ = self.k.execution_policy()
-        return ((policy or {}).get("steering") or {}).get("mode")
+        return default_of(self.k.execution_policy()[0])
 
     def view(self, state: dict[str, Any]) -> dict[str, Any]:
         """The steering block of ``status``: the adopted default, the effective mode, a pending raise, open requests.
@@ -280,27 +346,27 @@ class Steering:
         nothing; ``status`` shows it pending at the endpoint."""
         state = ctx.state
         if state.get("schema") != V2:
-            return  # steering state is v2-only (the control schema refuses it on v1): the first adopt after migrating
-        default = ((policy or {}).get("steering") or {}).get("mode")
-        s = state.get("steering")
-        if s is None:
-            if default is None:
-                return  # a project that never configured steering keeps no steering state
-            s = state["steering"] = empty()
-        if default == s["default"]:
-            return
-        previous_default, s["default"] = s["default"], default
-        if is_raise(default, s["standing"]["mode"]):
+            return  # steering state is v2-only (the control schema refuses it on v1): `register_on_migrate` records it
+        default = default_of(policy)
+        if take_default(state, default, via="manifest.adopt", revision=ctx.session.revision + 1,
+                        record=lambda body: self._record(ctx, body)):
             ctx.summary = (ctx.summary or "") + f"; steering default `{default}` adopted, pending a raise at the " \
                                                 "operator endpoint"
+
+    def register_on_migrate(self, ctx: Any, state: dict[str, Any]) -> None:
+        """Inside ``aew migrate``'s v1-to-v2 commit, on the state it commits: a v1 project's adopted default could not
+        be recorded at its adoption (the key is v2-only), so the migration records it, by ``take_default``, beside
+        coordination's registration. A project whose policy was never pinned records nothing (adopt does, later); an
+        unreadable or drifted policy records nothing either (doctor and status report it)."""
+        pins = state.get(POLICY_PINS)
+        if state.get("schema") != V2 or not isinstance(pins, dict):
             return
-        before = effective(state)["mode"]
-        record = self._record(ctx, {"kind": "mode_change", "source": "default",
-                                    "by": {"kind": "operator", "via": "manifest.adopt", "guarantee": GUARANTEE},
-                                    "previous": before, "new": default, "generation": None,
-                                    "previous_default": previous_default})
-        s["standing"] = {"mode": default, "record": record, "rev": ctx.session.revision + 1}
-        s["override"] = None
+        try:
+            policy, _ = self.k._execution_policy(self.k.manifest, pins)
+        except AEWError:
+            return
+        take_default(state, default_of(policy), via="migrate", revision=ctx.session.revision + 1,
+                     record=lambda body: self._record(ctx, body, state=state))
 
     # ------------------------------------------------------------------ the operator's raise (A1 §1.1)
 
@@ -464,21 +530,19 @@ class Steering:
                 self._append(ctx, {"schema": RECORD_SCHEMA, "kind": "request_closed", "request": r, "closed": why,
                                    "at": utc_now(), "revision": ctx.session.revision + 1})
 
-    def _record(self, ctx: Any, body: dict[str, Any], *, digests: dict[str, str] | None = None) -> str:
-        """Write one A1 §1.3 record and return its id."""
-        state = ctx.state
-        state["counters"]["steering_record"] = state["counters"].get("steering_record", 0) + 1
-        rid = format_id("SM", state["counters"]["steering_record"])
-        d = digests if digests is not None else self.k.policy_digests()
-        self._append(ctx, {"schema": RECORD_SCHEMA, "id": rid, **body,
-                           "legality_digest": d["legality_digest"], "operational_digest": d["operational_digest"],
-                           "revision": ctx.session.revision + 1, "at": utc_now()})
+    def _record(self, ctx: Any, body: dict[str, Any], *, digests: dict[str, str] | None = None,
+                state: dict[str, Any] | None = None) -> str:
+        """Write one A1 §1.3 record and return its id, counted in ``state`` (default: the transaction's own; a
+        migration commits a projected state instead)."""
+        rid, line = record_line(ctx.state if state is None else state, body,
+                                digests if digests is not None else self.k.policy_digests(), ctx.session.revision + 1)
+        self._append(ctx, line)
         return rid
 
     def _append(self, ctx: Any, line: dict[str, Any]) -> None:
         """Append ``line`` to today's steering record file, in the transaction (the file is rewritten whole with the
         new line last; earlier lines are never changed)."""
-        rel = f"{RECORDS_DIR}/{datetime.now(UTC).strftime('%Y-%m-%d')}.jsonl"
+        rel = records_rel()
         pending = getattr(ctx, "_steering_files", None)
         if pending is None:
             pending = {}

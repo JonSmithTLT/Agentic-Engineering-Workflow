@@ -37,7 +37,7 @@ def parse(**flags: Any) -> FC.FirstConfiguration:
 
 
 def init_parser() -> argparse.ArgumentParser:
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     subs = next(a for a in root._actions if isinstance(a, argparse._SubParsersAction))
     return subs.choices["init"]
 
@@ -424,17 +424,19 @@ def test_the_refusal_on_an_initialized_project_says_what_it_takes_now():
 def test_inits_option_set_is_exactly_these():
     """The invariant: none of the driver's fixtures (`harness: fake`, `containment.writable`, the fake providers, V3's
     causes, the steering extras) is a parser option, here or on any later row without changing this pin."""
-    options = {o for a in init_parser()._actions for o in a.option_strings}
+    parser = init_parser()
+    options = {o for a in parser._actions for o in a.option_strings}
     assert options == {"-h", "--help", "--fields", "--project-id", "--name", "--branch", "--workspaces-root",
                        "--check-command", "--check-timeout", "--model", "--provider",
                        "--fetch-tool"}  # --fields: every leaf has it; --fetch-tool: the operator's choice of tools
-    assert {a.dest for a in init_parser()._actions} >= set(FC.FLAGS)
+    assert parser.parse_args(["--fetch-tool", "none"]).fetch_tool == ["none"]
+    assert {a.dest for a in parser._actions} >= set(FC.FLAGS)
     assert set(FC.FLAGS.values()) <= options
 
 
 def test_no_sibling_command_takes_a_first_configuration_flag():
     """On `init` only: a sibling that writes after the pin is the credential-free adopt that was rejected."""
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     found = []
 
     def walk(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
@@ -497,8 +499,8 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
              "steering": {**S.empty(), "standing": {"mode": mode, "record": None, "rev": 0}}}
 
     def applied(profile: dict[str, Any], read: Any = state) -> Any:
-        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile},  # type: ignore[arg-type]
-                                                           _committed_state=lambda: read))
+        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile}),  # type: ignore[arg-type]
+                                           read)
 
     first = pin(policy)
     assert first["deadline_s"] == FC.DEADLINE_S and first["deadline_scope"] == "run"
@@ -507,3 +509,11 @@ def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
     for scope in ({}, {"deadline_scope": "always"}):
         own = pin({**policy, "profiles": {"default": {"model": "openai/m", "deadline_s": 900, **scope}}})
         assert own.get("deadline_scope") == scope.get("deadline_scope") and applied(own) == 900
+
+
+def test_quickstart_marks_key_export_as_optional_and_points_to_the_shell_forms():
+    quickstart = Path(__file__).resolve().parents[2] / "docs" / "guides" / "quickstart.md"
+    guide = quickstart.read_text(encoding="utf-8")
+    intro = "If you use an exported key (not a saved OpenCode login),"
+    pointer = "use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`."
+    assert guide.index(intro) < guide.index("read -rsp") < guide.index(pointer)

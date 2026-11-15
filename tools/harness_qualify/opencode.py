@@ -56,17 +56,17 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # ------------------------------------------------------------------------------------------------ starting the server
 
-def server_config(base_url: str | None = None) -> dict[str, Any]:
+def server_config(base_url: str | None = None, *, model_id: str = MODEL) -> dict[str, Any]:
     config: dict[str, Any] = {"snapshots": False, "update": "disable", "share": "disabled", "lsp": False,
                               "formatter": False}
     if base_url is not None:
-        ref = {"providerID": "openai", "model": MODEL}
+        ref = {"providerID": "openai", "model": model_id}
         agent = {"model": ref, "mode": "primary", "system": "Do exactly what the scripted model says.",
                  "permissions": _ALL_ALLOWED}
         config.update({"default_agent": AGENT, "agents": {AGENT: agent, **{a: {"model": ref} for a in
                                                                            ("title", "summary", "compaction")}},
                        "providers": {"openai": {"settings": {"baseURL": base_url, "transport": "http"},
-                                                "models": {MODEL: {"settings": {"baseURL": base_url}}}}}})
+                                                "models": {model_id: {"settings": {"baseURL": base_url}}}}}})
     return config
 
 
@@ -539,8 +539,9 @@ def _render_json(value: Any, indent: int = 0, width: int = 120, prefix: int = 0)
 class OpenCodePack:
     harness = HARNESS
 
-    def __init__(self, fixtures: Path) -> None:
+    def __init__(self, fixtures: Path, *, platform: str | None = None) -> None:
         self.fixtures = fixtures
+        self.platform = platform or sys.platform
         self.version_source = Feed()
         # The pinned version, whose fixtures are the inputs and the pin: the adapter's tested version (its owner).
         self.pinned_version = C.TESTED_VERSIONS[0]
@@ -553,6 +554,10 @@ class OpenCodePack:
         return read_version(binary, work, env)
 
     def checks(self) -> list[Check]:
+        from .messaging import checks as messaging_checks
+        from .worker_plan import FACT
+        from .worker_plan import check as check_worker_plan
+
         fx, pin = self.fixtures, self.pinned_version
         api = [
             Check("api.openapi", check_openapi, depth=API,
@@ -589,6 +594,8 @@ class OpenCodePack:
         behaviour.append(Check("login.store", check_login_store, measures=("login.store", "store.schema"),
                                says="a synthetic key, stored by the server in a private home, reads as AEW's login "
                                     "reader expects; the store is the one the Lead's own store handling knows"))
+        behaviour.append(Check(FACT, check_worker_plan, slow=True, measures=(FACT,),
+                               says="a synthetic worker OAuth login through a loopback-only provider relay"))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, live_usage_version(fx, pin)),
                   ("read_usage",),
@@ -600,7 +607,7 @@ class OpenCodePack:
         ]
         # The live lane's driver cannot drive some actions (``harness_conformance``'s "cannot drive" skip): its
         # limits, not tests that went unrun.
-        return [*api, *behaviour, *citations,
+        return [*api, *messaging_checks(), *behaviour, *citations,
                 *neutral_checks(HARNESS, "AEW_OPENCODE_BIN", conformance=["tests/live/test_opencode_live.py"],
                                 allowed_skips={r"^opencode-live cannot drive \[": 1})]
 
@@ -632,7 +639,17 @@ class OpenCodePack:
         store = fixtures / f"store-{version}.json"
         if store.exists():
             facts["store.schema"] = load(store.name)["tables"]
+        messaging = fixtures / self.messaging_pin_name(version)
+        if messaging.exists():
+            pin = load(messaging.name)
+            if pin.get("platform") == self.platform:
+                facts.update(pin["facts"])
         return version, facts
+
+    def messaging_pin_name(self, version: str) -> str:
+        # Keep the existing Linux pin's name; every other platform has a separate, explicitly tagged pin.
+        suffix = "" if self.platform == "linux" else "-" + self.platform
+        return f"messaging-{version}{suffix}.json"
 
     def render(self, version: str, facts: Mapping[str, Any], fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
         out: dict[str, tuple[bytes | None, str]] = {}
@@ -661,7 +678,15 @@ class OpenCodePack:
         if "tool_parts" in facts:
             out[f"tool-parts-{version}.json"] = (
                 dump({"harness": HARNESS, "version": version, "probe": "harness_qualify progress.tool_parts",
-                      "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
+                       "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
+        messaging = {k: v for k, v in facts.items() if k.startswith("messaging.")}
+        if messaging:
+            doc = {"harness": HARNESS, "version": version, "platform": self.platform, "facts": messaging}
+            if "qualification.reevaluation" in facts:
+                doc.update(qualification=facts["qualification.reevaluation"])
+            out[self.messaging_pin_name(version)] = (
+                dump(doc),
+                "measured: messaging behaviour with the scripted loopback model; pin is platform-scoped")
         return out
 
     def unmeasured(self) -> Mapping[str, str]:
@@ -686,4 +711,3 @@ def _shipped_ripgrep() -> str:
     text = Path(records.__file__).read_text(encoding="utf-8")
     m = re.search(r"ripgrep/releases/download/(\d+\.\d+\.\d+)/", text)
     return m.group(1) if m else "?"
-

@@ -12,6 +12,8 @@ from typing import Any
 
 from aew import process_kind
 from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import (
@@ -27,8 +29,10 @@ from aew.harness.contract import EXPECT_REV, MANIFEST_ADOPT
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
+from aew.policy import checks as C
 from aew.policy import execution as X
 from aew.schemas import validate
+from aew.snapshot.fingerprint import CacheInputs
 from aew.util import load_yaml, read_yaml, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git
 
@@ -38,7 +42,7 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies")
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS)
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -54,6 +58,19 @@ def policy_files(manifest: dict[str, Any]) -> list[str]:
     return sorted({*named.values(), named.get("execution") or X.REL_PATH})
 
 
+def policy_digests_of(manifest: dict[str, Any], raws: dict[str, bytes | None], aew_root: Path) -> dict[str, str]:
+    """``legality_digest`` and ``operational_digest`` over ``raws`` (``{path under .aew: bytes or None when absent}``,
+    one per ``policy_files(manifest)``): the one computation behind ``Kernel.policy_digests`` and the record ``aew
+    init`` writes before any kernel exists (``steering.seed_at_init``)."""
+    from aew.policy import classes
+
+    named = {rel: name for name, rel in (manifest.get("policy") or {}).items()}
+    return classes.digests({
+        rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
+              None if raw is None else load_yaml(raw.decode("utf-8"), source=str(aew_root / rel)))
+        for rel, raw in raws.items()})
+
+
 def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
     """A policy file's bytes, parsed and checked as adoption checks them (``manifest adopt``), under its logical name
     (the manifest's ``policy`` key, or ``execution`` at its conventional path): the execution policy fully
@@ -62,7 +79,9 @@ def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
     date is the table's ``as_of`` string), any other entry as YAML only. Raises ``VALIDATION_FAILED``; the one owner of
     "this file is valid", which the configuration projection's document states also read (register F46.1)."""
     if name == "execution":
-        return X.parse(raw, source=source)
+        policy = X.parse(raw, source=source)
+        X.check_semantics(policy, source=source, adoption=True)
+        return policy
     data = load_yaml(raw.decode("utf-8"), source=source)
     if name in ("guardrails", "checks", "gates"):
         validate(name, data, source=source)
@@ -123,6 +142,9 @@ class TxnContext:
     # The dispatch decisions this transaction computed (M4-A): the dispatch finalizer admits a new invocation or run
     # only with one of them.
     dispatch_decisions: list[Any] = field(default_factory=list)
+    replayed: dict[str, Any] | None = None
+    request_ref: tuple[str, str] | None = None
+    request_metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def state(self) -> dict[str, Any]:
@@ -256,14 +278,24 @@ class Kernel:
         return render.views(state, name, self.aew_root)
 
     def policy(self, name: str) -> dict[str, Any]:
+        return self._policy(name, self._pins_in_force())
+
+    def _policy(self, name: str, pins: dict[str, str | None] | None) -> dict[str, Any]:
         rel = self.manifest["policy"][name]
         path = self.aew_root / rel
-        raw = self._pinned_bytes(rel, self._pins_in_force())
+        raw = self._pinned_bytes(rel, pins)
         if raw is None:
             raise FileNotFoundError(str(path))
         data = load_yaml(raw.decode("utf-8"), source=str(path))
         validate(name, data, source=str(path))
         return data
+
+    def check_cache_inputs(self) -> CacheInputs:
+        """Cache declarations from the checks policy in force, never from the workspace being read."""
+        fp = self.manifest.get("fingerprint") or {}
+        pins = self._pins_in_force()
+        patterns = C.cache_patterns(self._policy("checks", pins)) if pins is not None else ()
+        return {"cache_patterns": patterns, "include_ignored": list(fp.get("include_ignored", []))}
 
     def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
         """The execution policy and its file hash; ``(None, None)`` when the project has none (ADR-0010)."""
@@ -316,19 +348,13 @@ class Kernel:
         """``legality_digest`` and ``operational_digest`` over every policy file in force, read from the pinned bytes
         (the pre-F15.2 amendment A3; ``aew.policy.classes``). A file named by a manifest ``policy`` entry is read
         against that entry's schema; the execution policy at its conventional path is ``execution``."""
-        from aew.policy import classes
-
         named = {rel: name for name, rel in (self.manifest.get("policy") or {}).items()}
         pins = self._pins_in_force()
         raws = {rel: self._pinned_bytes(rel, pins) for rel in policy_files(self.manifest)}
         # Decisions are computed on every projection; parse only when the bytes in force change.
         key = tuple((rel, named.get(rel), sha256_bytes(raw) if raw is not None else None) for rel, raw in raws.items())
         if self._digest_cache[0] != key:
-            files: dict[str, tuple[str | None, Any]] = {
-                rel: (named.get(rel) or ("execution" if rel == X.REL_PATH else None),
-                      None if raw is None else load_yaml(raw.decode("utf-8"), source=str(self.aew_root / rel)))
-                for rel, raw in raws.items()}
-            self._digest_cache = (key, classes.digests(files))
+            self._digest_cache = (key, policy_digests_of(self.manifest, raws, self.aew_root))
         return dict(self._digest_cache[1])
 
     def _pinned_bytes(self, rel: str, pins: dict[str, str | None] | None) -> bytes | None:
@@ -390,6 +416,7 @@ class Kernel:
         reason: str | None = None,
         allow_pending: bool = False,
         _adopting_manifest: bool = False,
+        request: ControlRequest | None = None,
     ) -> Iterator[TxnContext]:
         """A control transition: current Lead credential + expected revision, atomic commit.
 
@@ -407,7 +434,9 @@ class Kernel:
                         f"expected control revision {expect_rev}, current is {s.revision}",
                         expected=expect_rev, current=s.revision,
                     )
-                if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                if s.state.get("schema") != V2 and (
+                    request is not None or (op not in V1_OPS and not self.legacy_v1_writes)
+                ):
                     raise MigrationRequired(
                         "this project's control state is v1: migrate it first (the operator runs `aew migrate "
                         f"{EXPECT_REV}` at their own terminal); until then the Lead can change the seat and cancel "
@@ -419,8 +448,17 @@ class Kernel:
                 self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
                 try:
                     ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                    if request is not None:
+                        ctx.replayed = request.replay(s.state, actor["generation"], op, aew_root=self.aew_root)
+                        if ctx.replayed is not None:
+                            yield ctx
+                            return
                     yield ctx
                     self.finalizers.run(ctx)
+                    if request is not None:
+                        projected = s.state if ctx.commit_state is None else ctx.commit_state
+                        request.remember(projected, actor["generation"], op, ctx.request_ref, s.revision + 1,
+                                         ctx.request_metadata)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
                              expect_rev=expect_rev, state=ctx.commit_state)

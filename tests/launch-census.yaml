@@ -28,6 +28,14 @@ starts:
   reason: the general Lead command, refused under required in its handler before any credential read or seat move
     (WeakerLead.precheck); elsewhere it runs labelled not contained
   registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: src/aew/kit/__init__.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: Git for the operator's seeded repository or AEW's own source revision; no sample program runs
+- site: src/aew/kit/__main__.py::main
+  call: call
+  classes: [not_agent_context]
+  reason: starts AEW's operator CLI on its terminal; that CLI owns the Lead launch and its containment
 - site: src/aew/doctor.py::_git
   call: run
   classes: [not_agent_context]
@@ -141,6 +149,11 @@ starts:
   reason: the contained Lead's sandbox (STG-05 CS-4)
   contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/opencode/adapter.py::OpenCodeAdapter._seed_plan_login.offline
+  call: ProcessTree
+  classes: [contained]
+  reason: each short-lived CLI probe uses the worker's required sandbox layout without the relay shim
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/harness/opencode/lead.py::ContainedLead._seed_logins
   call: bwrap_argv
   classes: [contained]
@@ -427,6 +440,13 @@ token_only:
     Validation.establish): a method, which the AST detector resolves by import only"
 
 handlers:
+- site: src/aew/harness/opencode/adapter.py::OpenCodeAdapter._seed_plan_login
+  catches: [ContainmentUnavailable]
+  does: raises
+  reason: failure to verify the private seed refuses the launch before the server starts
+- site: src/aew/kit/__main__.py::main
+  catches: [AEWError]
+  does: returns
 - site: eval/aew_eval/raw.py::RawArm.run
   catches: [Exception]
   does: goes_on
@@ -464,6 +484,10 @@ handlers:
   does: returns
   reason: re-raised under required; where the policy allows weaker runs, it returns the weaker label it reports (read
     on every path since #321's review, F3)
+- site: src/aew/harness/lead_broker.py::run_session
+  catches: [BaseException]
+  does: raises
+  reason: records a failed start for seat cleanup and re-raises the original exception
 - site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
   catches: [BaseException]
   does: raises

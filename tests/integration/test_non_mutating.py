@@ -21,7 +21,8 @@ from aewflow import (
 from conftest import git
 from invariants import assert_control_invariants
 
-from aew.util import dump_yaml, load_yaml
+from aew.knowledge import evidence
+from aew.util import dump_yaml, load_yaml, sha256_file
 
 
 def show(p, wid):
@@ -66,6 +67,31 @@ def test_changing_the_executor_between_attempts_pins_a_new_contract(tmp_path):
     p.lead("evidence", "ingest", wid, "--evidence", rec)
     assert p.ok("gate", "show", wid)["gates"]["execute_record"]["status"] == "CURRENT"
     assert_control_invariants(p)
+
+
+def test_plan_adopt_refuses_a_resealed_proposal_that_differs_from_the_accepted_record(tmp_path):
+    p = sample_project(tmp_path)
+    source = create_investigation(p, tmp_path, card="planner")
+    planner, _ = dispatch(p, source)
+    proposal = submit_record(planner, "plan_proposal", PROPOSAL)["evidence"]
+    p.lead("evidence", "ingest", source, "--evidence", proposal)
+    p.lead("work", "accept", source)
+    target = create_planned_ticket(p, tmp_path)
+    folder = p.root / ".aew" / "evidence" / source
+    [path] = list(folder.glob(f"{proposal}.md"))
+    accepted = sha256_file(path)
+    meta, body = evidence.read(path)
+    meta.pop("integrity")
+    path.write_text(evidence.seal(meta, body + "\nSynthetic rewrite after acceptance.\n"),
+                    encoding="utf-8", newline="\n")
+    records, problems = evidence.scan(p.root / ".aew", source)
+    assert not problems and any(r["id"] == proposal for r in records)
+    before = p.rev()
+    err = refused(p, "plan", "adopt", target, "--assurance", "none", "--evidence", proposal, "--from", source)
+    assert err["code"] == "GATE_UNSATISFIED"
+    assert err["details"] == {"evidence": proposal, "expected": accepted, "current": sha256_file(path)}
+    assert "create a new planning Ticket" in err["message"]
+    assert p.rev() == before
 
 
 def test_read_only_observation_runs_beside_mutating_work(tmp_path):
@@ -136,6 +162,22 @@ def test_a_record_under_review_binds_the_review_to_it(tmp_path):
     assert show(p, wid)["state"] == "DONE"
     assert refused(p, "work", "transition", wid, "--to", "COMMIT_READY")["code"] == "ILLEGAL_TRANSITION"
     assert_control_invariants(p)
+
+
+def test_second_active_review_on_the_same_observation_card_is_refused(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path, cls=2)
+    p.lead("work", "staff", wid, "--review", "code_reviewer")
+    executor, _ = dispatch(p, wid)
+    record = submit_record(executor, "discovery_record")["evidence"]
+    p.lead("evidence", "ingest", wid, "--evidence", record)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    first = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    assert first["scope"] == "observation"
+
+    error = refused(p, "invoke", "create", wid, "--card", "code_reviewer")
+    assert error["code"] == "ILLEGAL_TRANSITION"
+    assert error["details"]["holding"] == first["invocation"]
 
 
 def test_external_research_never_goes_stale_on_source_changes(tmp_path):

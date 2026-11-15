@@ -58,8 +58,8 @@ def test_existing_authority_project_is_referenced_not_duplicated(tmp_path):
     contracts = cands["docs/contracts/"]
     assert contracts["suggested_class"] == "contracts" and contracts["confidence"] == "high"
     p.token = p.ok("lead", "acquire", "--expect-rev", "0")["token"]
-    p.lead("authority", "accept", cands["docs/contracts/"]["id"], "--class", "contracts")
-    p.lead("authority", "accept", cands["docs/adr/"]["id"], "--class", "decisions")
+    p.lead("authority", "accept", cands["docs/contracts/"]["id"], "--class", "contracts", "--decided-by", "lead")
+    p.lead("authority", "accept", cands["docs/adr/"]["id"], "--class", "decisions", "--decided-by", "lead")
     r = p.ok("resume", "--json")
     assert {a["path"] for a in r["accepted_authority"]} == {"docs/contracts/", "docs/adr/"}
     # Referenced, not copied into .aew.

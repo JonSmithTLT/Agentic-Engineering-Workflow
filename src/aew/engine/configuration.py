@@ -116,7 +116,8 @@ UNPROCESSABLE = "UNPROCESSABLE"
 UNPROCESSABLE_VIOLATION = {"path": "", "code": UNPROCESSABLE, "expected": None, "extra_key": None}
 # A schema violation's code is the keyword that failed: every validation keyword the execution schema uses.
 SCHEMA_KEYWORD_CODES = frozenset(Draft202012Validator.VALIDATORS) & frozenset(_schema_keys(schema(EXECUTION)))
-DATA_CODES = frozenset({YAML_SYNTAX, UNPROCESSABLE, X.NO_SUCH_PROFILE, X.NO_DEFAULT_ROUTE, *SCHEMA_KEYWORD_CODES})
+DATA_CODES = frozenset({YAML_SYNTAX, UNPROCESSABLE, X.NO_SUCH_PROFILE, X.NO_DEFAULT_ROUTE, X.PLAN_PROVIDER,
+                        X.PLAN_OVERRIDE, X.PLAN_QUALIFICATION, *SCHEMA_KEYWORD_CODES})
 
 
 def too_long(value: Any) -> bool:
@@ -214,9 +215,12 @@ def _hash(raw: bytes | None) -> str:
     return sha256_bytes(raw) if raw is not None else ON_DISK_ABSENT
 
 
-def _valid(name: str, raw: bytes, rel: str) -> bool:
+def _valid(name: str, raw: bytes, rel: str, *, adopted: bool = False) -> bool:
     try:
-        check_policy_bytes(name, raw, source=rel)
+        if name == EXECUTION and adopted:
+            X.parse(raw, source=rel)
+        else:
+            check_policy_bytes(name, raw, source=rel)
     except Exception:  # any failure to parse or check is INVALID (fail closed); its structure is §7's
         return False
     return True
@@ -282,7 +286,8 @@ def documents(k: Kernel, c: Committed) -> list[Document]:
         rel = rels[name]
         if rel not in read:
             raw = read_lock_free(k.aew_root / rel)
-            read[rel] = (raw, None if raw is None else all(_valid(n, raw, rel) for n in named_as[rel]))
+            adopted = raw is not None and (pins or {}).get(rel) == _hash(raw)
+            read[rel] = (raw, None if raw is None else all(_valid(n, raw, rel, adopted=adopted) for n in named_as[rel]))
         raw, valid = read[rel]
         state, adopted = _policy_state(pins, rel, raw, valid)
         out.append(Document(name, i, rel, adopted, _hash(raw), raw, valid, state, IN_FORCE.get(state, False),
@@ -335,7 +340,7 @@ def _expected(e: Any) -> str | None:
     return None
 
 
-def violations(data: Any) -> list[dict[str, Any]]:
+def violations(data: Any, *, adoption: bool = True) -> list[dict[str, Any]]:
     """The execution policy's violations as structure (§7 rule 1): ``{path, code, expected, extra_key}``, each path
     from the one encoder, each code the schema keyword (or a semantic code), never the validator's message."""
     out: list[dict[str, Any]] = []
@@ -354,11 +359,11 @@ def violations(data: Any) -> list[dict[str, Any]]:
                         "extra_key": None})
     if not errors and isinstance(data, dict):
         out += [{"path": P.encode(where, data), "code": code, "expected": None, "extra_key": None}
-                for where, code, _target in X.semantic_problems(data)]
+                for where, code, _target in X.semantic_problems(data, adoption=adoption)]
     return sorted(out, key=lambda v: (v["path"], v["code"], v["extra_key"] or ""))
 
 
-def parse_structured(raw: bytes) -> tuple[Any, list[dict[str, Any]], dict[str, Any] | None]:
+def parse_structured(raw: bytes, *, adoption: bool = True) -> tuple[Any, list[dict[str, Any]], dict[str, Any] | None]:
     """``(document, violations, yaml_error)`` for an execution policy's bytes: the parsed document (None when it does
     not parse) and what is wrong with it, as structure. A document nested deeper than the YAML bound
     (``util.YAML_MAX_DEPTH``, refused before it is composed, on every platform and Python), or one the walk cannot
@@ -375,7 +380,7 @@ def parse_structured(raw: bytes) -> tuple[Any, list[dict[str, Any]], dict[str, A
     except Exception:  # RecursionError and the like: fail closed, as structure
         return None, [UNPROCESSABLE_VIOLATION], None
     try:
-        return data, violations(data), None
+        return data, violations(data, adoption=adoption), None
     except Exception:  # the validator's own walk (and its message formatting) can exhaust the recursion limit
         return None, [UNPROCESSABLE_VIOLATION], None
 
@@ -683,7 +688,7 @@ def execution_projection(k: Kernel, *, observed_in: str = CLI_ENVIRONMENT,
     d = _execution_document(documents(k, c))
     found, yaml_err, document = [], None, {}
     if d.raw is not None:
-        parsed, found, yaml_err = parse_structured(d.raw)
+        parsed, found, yaml_err = parse_structured(d.raw, adoption=d.adopted != d.on_disk)
         # Values only for bytes with no structured violation: the projector never sees a document the execution
         # schema rejects, whatever the state says (F1a review R1).
         if d.valid and not found and yaml_err is None and isinstance(parsed, dict):

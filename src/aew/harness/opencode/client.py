@@ -29,6 +29,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from contextlib import closing
 from pathlib import Path
 from typing import Any, cast
 
@@ -235,10 +236,13 @@ class EventStream:
     """
 
     def __init__(self, client: Client, on_event: Callable[[dict[str, Any]], None],
-                 alive: Callable[[], bool]) -> None:
+                 alive: Callable[[], bool], *, on_drop: Callable[[], None] | None = None,
+                 on_reconnect: Callable[[], None] | None = None) -> None:
         self.client = client
         self.on_event = on_event
         self.alive = alive
+        self.on_drop = on_drop
+        self.on_reconnect = on_reconnect
         self.connected = threading.Event()
         self.drops = 0
         self.last_error: str | None = None
@@ -255,10 +259,10 @@ class EventStream:
         self._drop()
 
     def _drop(self) -> None:
-        """Break the current connection (also used by tests to simulate a lost stream).
+        """Request socket shutdown without waiting for the buffered response's read lock.
 
-        The socket is shut down, not the response closed: closing a buffered response from another thread
-        waits for the lock its blocked reader holds."""
+        Shutdown may leave a blocked reader on Windows. The server's exit closes the connection.
+        Tests also call this to simulate a lost stream."""
         sock, self._sock = self._sock, None
         if sock is not None:
             try:
@@ -270,22 +274,33 @@ class EventStream:
         backoff = 0.2
         while not self._stop.is_set() and self.alive():
             try:
-                conn = self.client.connection(timeout=30)
-                conn.request("GET", "/api/event", headers=self.client.headers("text/event-stream"))
-                resp = conn.getresponse()
-                if resp.status != 200:
-                    raise OpenCodeUnavailable(f"event stream refused: {resp.status}")
-                self._sock = conn.sock
-                if conn.sock is not None:
-                    conn.sock.settimeout(None)  # a quiet stream is normal; liveness comes from the REST polls
-                self.connected.set()
-                backoff = 0.2
-                self._read(resp)
+                with closing(self.client.connection(timeout=30)) as conn:
+                    conn.request("GET", "/api/event", headers=self.client.headers("text/event-stream"))
+                    # HTTPConnection can detach the socket when the response has no length or chunking.
+                    sock = conn.sock
+                    with conn.getresponse() as resp:
+                        if resp.status != 200:
+                            raise OpenCodeUnavailable(f"event stream refused: {resp.status}")
+                        self._sock = sock
+                        if self._stop.is_set():
+                            self._drop()
+                            return
+                        if sock is not None:
+                            sock.settimeout(None)  # a quiet stream is normal; liveness comes from REST polls
+                        if self.drops and self.on_reconnect is not None:
+                            self.on_reconnect()
+                        self.connected.set()
+                        backoff = 0.2
+                        self._read(resp)
             except Exception as exc:  # noqa: BLE001 - any stream failure: record, reconnect
                 self.last_error = f"{type(exc).__name__}: {exc}"
+            finally:
+                self._sock = None
             if self._stop.is_set():
                 return
             self.drops += 1
+            if self.on_drop is not None:
+                self.on_drop()
             self.connected.set()  # a failed first connect must not block start()
             self._stop.wait(backoff)
             backoff = min(backoff * 2, 5.0)

@@ -658,6 +658,7 @@ class Projector:
         if OPAQUE_ID.match(str(producer.get("run") or "")):
             provenance.append(entity(producer["run"], "run"))
         fingerprint = str((snapshot or {}).get("relevant_inputs_fingerprint") or "")
+        # Always empty until a 0.2.0 contract drops it.
         digests = _bounded([str(d) for d in (snapshot or {}).get("artifact_digests") or []])
 
         def declared(key: str) -> str | None:

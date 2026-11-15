@@ -43,6 +43,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 900 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -50,10 +52,8 @@ jobs:
         run: >-
           python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600
           --session-deadline 900 "--hang-dir=${{ runner.temp }}/discovery/hangs"
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
         with:
-          name: discovery-hangs-${{ runner.os }}
-          path: ${{ runner.temp }}/discovery/
-          if-no-files-found: ignore
-          retention-days: 30
+          source: ${{ runner.temp }}/discovery/hangs
+          artifact: evidence-discovery-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}

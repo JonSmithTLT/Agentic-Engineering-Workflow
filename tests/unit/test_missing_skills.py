@@ -12,7 +12,7 @@ from aew.harness.supervisor import Supervisor
 def test_a_skill_whose_copy_failed_is_missing_in_the_leads_result(tmp_path, monkeypatch):
     from aew.harness.contract import LaunchContract
 
-    planned = skills.plan(["c-development", "security-review"], ["not-offered"])
+    planned = skills.plan(["c-development", "never-shipped"], ["not-offered"])
     original = Path.write_bytes
 
     def write(path, data):
@@ -31,7 +31,7 @@ def test_a_skill_whose_copy_failed_is_missing_in_the_leads_result(tmp_path, monk
     assert delivered.extra["skills"]["exposed"] == []
     record = {"contract": delivered.to_record(), "status": "ended_with_evidence"}
     assert _missing_skills(record) == [{"name": "c-development", "reason": "copy_failed"},
-                                       {"name": "security-review", "reason": "not_shipped"}]
+                                       {"name": "never-shipped", "reason": "not_shipped"}]
     assert record["status"] == "ended_with_evidence"
     assert planned["exposed"] == ["c-development"], "the planned answer would incorrectly claim delivery"
 

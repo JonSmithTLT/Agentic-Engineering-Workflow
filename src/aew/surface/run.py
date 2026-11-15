@@ -7,7 +7,7 @@ Lead broker) and ``aew lead tool``.
 Every well-formed call returns a ``StageResult``, engine refusals included: the engine's own code and message, the
 steps that committed, and a fresh ``ActionProjection``. A call that is not well formed (an unknown, designed or
 concealed tool; arguments outside the tool's schema) raises :class:`~aew.surface.validate.AdapterInputError` before
-anything runs. Only an implementation defect escapes as anything else. A stage (several primitives over the
+anything runs. A defect that prevents a valid StageResult raises a typed DEFECT. A stage (several primitives over the
 StageIntent journal, M4-E E3) runs in :mod:`aew.surface.stage`, which alone retries, and only under R5-1.
 
 The Lead credential is a separate argument, never part of the context, and reaches only the engine call that needs
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -30,14 +31,16 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
-from aew.engine import outbox
+from aew.engine import outbox, stage_intents
 from aew.engine.primitives import spec_for
+from aew.harness import defects
 from aew.harness.contract import redact
 from aew.schemas import validate
 from aew.surface import SURFACE, contract, stage
 from aew.surface.availability import stage_availability
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
+from aew.surface.errors import AdapterInputError
 from aew.surface.projection import project
 from aew.surface.scrubbing import scrub
 from aew.surface.stage import STAGES, run_stage
@@ -68,6 +71,8 @@ class Call:
         # A stage's (aew.surface.stage): its intent and binding once opened, where it stopped, and why a stop it
         # could not record left the intent ACTIVE.
         self.intent: str | None = None
+        self.running: str | None = None
+        self.committed_unknown = False
         self.binding: dict[str, Any] | None = None
         self.stopped: dict[str, Any] | None = None
         self.left_active: errors.AEWError | None = None
@@ -129,7 +134,8 @@ def _harness_wait(c: Call) -> Any:
             why = c.cancelled()
             if why:
                 raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {why}")
-            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True)
+            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True,
+                                        **({"message_after": {}} if contract.MESSAGING in c.ctx.switches else {}))
         if not out.get("timed_out") or time.monotonic() >= deadline:
             return out
         mark, since = outbox.wake_mark(wake_root), time.monotonic()  # block on the wake file alone: no engine state
@@ -242,12 +248,20 @@ def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, tok
     ``serial`` and ``cancelled`` are the broker's hooks for a cooperative wait (module docstring); ``run_cli`` runs
     the recovery escape's command with the broker's refusals. ``auto_run`` is the steering loop's attribution of the
     stage it runs (M4-E E7b): recorded on the intent, it changes nothing about the call."""
-    t = check_call(name, arguments, ctx.profile, ctx.switches)
-    # A query is one read-only answer: its runner and its projection share their gate contexts (Engine.gate_memo). A
-    # wait or a stage never does (a wait's world changes as it waits; a stage commits).
-    with engine.gate_memo() if t.kind == contract.QUERY else contextlib.nullcontext():
+    op = "lead.tool"
+    try:
+        t = check_call(name, arguments, ctx.profile, ctx.switches)
+        op = t.name
         return _run_tool(engine, ctx, t, arguments, token=token, serial=serial, cancelled=cancelled, run_cli=run_cli,
                          auto_run=auto_run)
+    except (AdapterInputError, errors.Defect):
+        raise
+    except Exception as exc:
+        raise defects.report(getattr(engine, "aew_root", None), exc, op=op, at=op, ingress=ctx.ingress,
+                             committed=None, stage_intent=None, next_action=_RETRY_DEFECT) from exc
+
+
+_RETRY_DEFECT = "Call it again. If it fails the same way, give the operator defect {defect}."
 
 
 def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any, *, token: str | None,
@@ -255,6 +269,46 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
               run_cli: RunCli | None, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
     call = Call(engine, ctx, copy.deepcopy(arguments), token, serial=serial, cancelled=cancelled, run_cli=run_cli,
                 auto_run=auto_run)
+    try:
+        # A query's runner and projection share gate contexts. Waits and stages observe changing state.
+        with engine.gate_memo() if t.kind == contract.QUERY else contextlib.nullcontext():
+            return _result(call, t)
+    except AdapterInputError:
+        raise
+    except Exception as exc:
+        raise _report_defect(call, t, exc, _RETRY_DEFECT) from exc
+
+
+def _report_defect(call: Call, t: contract.Tool, exc: Exception, next_action: str) -> errors.Defect:
+    return defects.report(
+        getattr(call.engine, "aew_root", None), exc, op=t.name, at=call.running or t.name, ingress=call.ctx.ingress,
+        committed=None if call.committed_unknown else len(call.steps), stage_intent=call.intent,
+        next_action=next_action,
+    )
+
+
+def _runner_defect(call: Call, t: contract.Tool, exc: Exception) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload: dict[str, Any] = {}
+    if call.intent:
+        try:
+            payload = stage._payload(call, call.intent, [])
+        except Exception:  # the journal may be unreadable; the count is unknown
+            call.committed_unknown = True
+    if call.committed_unknown or payload.get("status") == stage_intents.ACTIVE:
+        next_action = "Call `resume` to see what committed and the unfinished stage, then `resolve`."
+    elif t.mutates:
+        next_action = "Read `status` before retrying with a fresh `expect_rev`. See completed_steps for commits."
+    else:
+        next_action = _RETRY_DEFECT
+    defect = _report_defect(call, t, exc, next_action)
+    payload["next_action"] = next_action.replace("{defect}", str(defect.details["defect"]))
+    if "left_active" in payload:
+        payload["left_active"] = {"code": defect.code, "message": defect.message}
+    return payload, {"at": defect.details["at"], "boundary": "error", "error": _error(defect)}
+
+
+def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
+    engine, ctx = call.engine, call.ctx
     payload: Any = None
     stopped: dict[str, Any] | None = None
     with call.serial():
@@ -269,12 +323,17 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
         except errors.AEWError as refusal:
             at = call.steps[-1]["primitive"] if call.steps else t.name
             stopped = {"at": at, "boundary": boundary_of(refusal), "error": _error(refusal)}
+        except AdapterInputError:
+            raise
+        except Exception as exc:
+            payload, stopped = _runner_defect(call, t, exc)
         if stopped is None and call.stopped is not None:
             stopped = call.stopped
         if stopped is None and call.unsuccessful is not None:
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
+    payload, projection = _message_budget(payload, projection)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
     # authored text too (PR #88 review).
     result = scrub({
@@ -287,6 +346,55 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Quote selected framed bodies once in projection.coordination; payload/wait fields contain ID references.
+    Requested payload takes priority. Both the existing identity cap and a wire-byte budget apply before receipts;
+    no cached object is mutated. Long-body omissions are recoverable just like count-cap omissions."""
+    view = projection.get("coordination")
+    if not isinstance(view, dict):
+        return payload, projection
+    payload_view = payload.get("coordination") if isinstance(payload, dict) else None
+    requested = payload_view.get("awaiting_lead", []) if isinstance(payload_view, dict) else []
+    selected: dict[str, Any] = {}
+    size = 0
+    for message in [*requested, *view["awaiting_lead"]]:
+        if message["id"] in selected:
+            continue
+        cost = len(json.dumps(message, ensure_ascii=True, separators=(",", ":")).encode())
+        if len(selected) >= contract.MESSAGE_BODY_CAP or size + cost > contract.MESSAGE_BODY_BYTES:
+            break
+        selected[message["id"]] = message
+        size += cost
+    projection = {**projection, "coordination": {**view, "awaiting_lead": list(selected.values()),
+        "omitted": max(0, len(view["awaiting_lead"]) + view["omitted"] - len(selected))}}
+    if (isinstance(payload_view, dict) and isinstance(payload, dict)
+            and isinstance(payload_view.get("awaiting_lead"), list)):
+        refs = [{"id": m["id"]} for m in requested if m["id"] in selected]
+        payload = {**payload, "coordination": {**payload_view, "awaiting_lead": refs,
+                    "omitted": payload_view["omitted"] + len(requested) - len(refs)}}
+        if "messages" in payload:
+            payload["messages"] = refs
+    return payload, projection
+
+
+def record_message_result(engine: Any, result: dict[str, Any], token: str | None) -> None:
+    """Explicit typed ingress consumption, not an automatic steering-loop or bare engine read side effect.
+    The successfully returned StageResult is the receipt boundary, not proof of model understanding. Verify full
+    carried bodies before invoking the established durable writer; no failed result consumes its projection."""
+    if not token or result.get("ok") is not True:
+        return
+    from aew.surface import readable
+
+    if len(readable.render(result).encode()) > readable.CUT_BYTES:
+        return  # the model's tool-output cut may remove the JSON line: never claim its bodies were carried
+    if not any(isinstance(result.get(key), dict) and result[key].get("coordination", {}).get("awaiting_lead")
+               for key in ("result", "projection")):
+        return
+    ids = engine.message_result_ids(result)
+    if ids:
+        engine.message_mark_shown(token=token, messages=ids)
 
 
 def _binding(binding: dict[str, Any] | None) -> dict[str, Any] | None:

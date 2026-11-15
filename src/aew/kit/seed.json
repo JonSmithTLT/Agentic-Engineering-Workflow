@@ -1,0 +1,12 @@
+{
+  "README.md": "# Ledger\n\nFormats ledger amounts and dates. Run `python -m pytest -q tests/unit` for the configured check, `python -m pytest -q tests/neighbour` for the statement contract, and `python tools/lint.py` for the independent lint check. The lint check flags one unfinished marker in `ledger/dates.py`.\n",
+  ".gitignore": "__pycache__/\n.pytest_cache/\n",
+  "ledger/__init__.py": "",
+  "ledger/money.py": "def format_amount(cents: int) -> str:\n    dollars, remainder = divmod(abs(cents), 100)\n    return f\"${dollars}.{remainder:02d}\"\n",
+  "ledger/dates.py": "from datetime import date\n\n\ndef format_date(day: date) -> str:\n    # TODO(lint): Remove this marker when the date fix is complete.\n    return f\"{day.day:02d}/{day.month:02d}/{day.year}\"\n",
+  "ledger/statement.py": "from ledger.money import format_amount\n\n\ndef refund_statement(cents: int) -> str:\n    return f\"Refund total: {format_amount(cents)}\"\n",
+  "tests/unit/test_money.py": "from ledger.money import format_amount\n\n\ndef test_format_amount():\n    assert format_amount(105) == \"$1.05\"\n",
+  "tests/unit/test_dates.py": "from datetime import date\n\nfrom ledger.dates import format_date\n\n\ndef test_format_date():\n    assert format_date(date(2026, 3, 3)) == \"03/03/2026\"\n",
+  "tests/neighbour/test_statement.py": "from ledger.statement import refund_statement\n\n\ndef test_refund_statement():\n    assert refund_statement(-125) == \"Refund total: $1.25\"\n",
+  "tools/lint.py": "from pathlib import Path\n\n\ndef main() -> int:\n    root = Path(__file__).resolve().parents[1]\n    findings = []\n    for path in sorted((root / \"ledger\").glob(\"*.py\")):\n        for line, text in enumerate(path.read_text(encoding=\"utf-8\").splitlines(), 1):\n            if \"TODO(lint)\" in text:\n                findings.append(f\"{path.relative_to(root).as_posix()}:{line}: unfinished marker\")\n    for finding in findings:\n        print(finding)\n    return int(bool(findings))\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n"
+}

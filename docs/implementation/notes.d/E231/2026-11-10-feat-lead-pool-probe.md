@@ -1,0 +1,1 @@
+E231 slice 1 adds a repeatable OpenCode probe with a scripted loopback model. It measures the contained Lead's request and typed and shell read results, the worker's compaction, and MCP tool-list changes across two turns. The offline budget and guide remain the subjects of later slices.

@@ -9,6 +9,10 @@ versions:
     rules: Never hand authority, containment, credentials or evidence to the harness; adopting needs both harnesses
       to declare the capability; no AEW code is deleted in a bump; adopt and deny verdicts become register rows.
     verdicts:
+      - feature: 'Messaging behaviour qualification'
+        verdict: 'hold -> consume'
+        reason: 'Offline re-evaluation under messaging amendment 3, addendum 1 revision 2 (SHA256 f91361861601e084d561f4b96ee513508c0e4e6b194f3b028e146539c13c5ef5), alongside the Lead ruling, passes all ten selected checks. messaging-2.2.6.json and the separate full Linux re-evaluation record are qualifier-generated. Both admitted retry envelopes gate id, sessionID, text and metadata; GET proves admission and the session list proves once. Only retry time and delivery parts are retired as gates; original observations remain. AEW owns enqueue time and mode and refuses changed-mode retries when transport is built. Both historical failed records remain unchanged. Binding implementation is absent; Windows runtime is NOT RUN and capability remains GAP. E175 tracks request-body retention and a changed-metadata/aew_when probe before the next approved run in PR 3.'
+        row: 'E175'
       - feature: 'Session `warming`'
         verdict: 'deny'
         reason: 'Transient model requests count against a provider''s rate limit. Its default is off ("default: false" in the bundle; the upgrade check read it as on), and it is set off anyway so a default flip cannot open it. A provider''s `cache.warming` falls back to it.'

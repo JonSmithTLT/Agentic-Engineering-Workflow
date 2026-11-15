@@ -410,6 +410,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     for n, step in enumerate(plan, start=1):
         if n < first or n == covered:  # committed already: a stage never repeats a step (its key is recorded)
             continue
+        c.running = step["primitive"]
         try:
             args = _resolve(c, intent, step.get("args") or {})
         except errors.AEWError as refusal:
@@ -421,6 +422,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
             try:
                 with SI.step(intent, n, retried=retried, final=final, covers=covers):
                     out = STEP_RUNNERS[step["primitive"]](c, args, rev)
+                    c.running = None
                 break
             except errors.StaleRevision as refusal:
                 try:
@@ -693,7 +695,7 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
             "steps_committed": len(si["steps"]), "steps_planned": len(si["plan"]),
             "safe_to_continue": not failing, "failing": failing,
             "unknown_checks": [name for name, v in checks.items() if v["status"] == UNKNOWN_STATUS],
-            "checks": checks,
+            "checks": checks, "approval": check["approval"],
             "policy": {"legality_digest": si["binding"]["legality_digest"], "status": checks["policy"]["status"]},
             "next_step": nxt, "boundary": boundary, "owner_generation": check["owner_generation"],
             "current_generation": check["current_generation"], "rebind": check["rebind"],
@@ -720,7 +722,8 @@ def dispose(c: Call) -> dict[str, Any]:
     checkpoint)."""
     a = c.a
     out = c.engine.work_dispose(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"], choice=a["choice"],
-                                rationale=a["rationale"], follow_up=a.get("follow_up"))
+                                rationale=a["rationale"], follow_up=a.get("follow_up"),
+                                binding=a.get("approval_digest"))
     c.subject = out.get("work_id")
     c.committed("work.dispose", out, f"{out['subject']} disposed of: {out['choice']} ({out['disposition']})",
                 [str(out["disposition"])])
@@ -732,7 +735,8 @@ def replace_gate(c: Call) -> dict[str, Any]:
     be satisfied, replaced on the record by one that can. One transaction, so no stage intent (like a disposition)."""
     a = c.a
     out = c.engine.work_gate_replace(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"],
-                                     replacement=a.get("replacement"), rationale=a["rationale"])
+                                     replacement=a.get("replacement"), rationale=a["rationale"],
+                                     binding=a.get("approval_digest"))
     c.subject = out.get("work_id")
     c.committed("work.gate_replace", out, f"{out['work_id']} gate `{out['replaced']}` replaced by `{out['with']}` "
                 f"({out['correction']})", [str(out["correction"])])
@@ -777,7 +781,8 @@ def resolve_stage(c: Call) -> dict[str, Any]:
                 "stand) and decide anew from the projection", reason="next_step_blocked", intent=sid,
                 reason_codes=guard["reason_codes"])
     out = c.engine.stage_continue(token=c.token(), expect_rev=a["expect_rev"], intent=sid,
-                                  contract_digest=digest_now, plan=plan_now, rationale=a["rationale"])
+                                  contract_digest=digest_now, plan=plan_now, rationale=a["rationale"],
+                                  binding=a.get("approval_digest"))
     if out["status"] == SI.STOPPED:  # the launching step's run never started, or has ended: never completed
         launch = out["launch"]
         failed = errors.HarnessLaunchFailed(launch["message"], run=launch["run"], committed=True,

@@ -1,0 +1,44 @@
+name: Publish test evidence
+description: Scan a bounded staging directory and publish the evidence for this attempt.
+inputs:
+  source:
+    description: Test report or hang directory
+    required: true
+  artifact:
+    description: Attempt-specific artifact name
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install the evidence scanner
+      shell: bash
+      run: |
+        go install github.com/zricethezav/gitleaks/v8@v8.28.0
+        go env GOPATH | tr -d '\r' | sed 's|$|/bin|' >> "$GITHUB_PATH"
+      continue-on-error: true
+    - name: Stage and scan test evidence
+      id: stage
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        ARTIFACT: ${{ inputs.artifact }}
+      run: |
+        bin="$(go env GOPATH)/bin"
+        if command -v cygpath >/dev/null; then bin="$(cygpath -u "$bin")"; fi
+        export PATH="$bin:$PATH"
+        dir="$RUNNER_TEMP/$ARTIFACT"
+        result=$(python tools/ci/stage_evidence.py "$SOURCE" "$dir")
+        echo "directory=$dir" >> "$GITHUB_OUTPUT"
+        printf 'Test evidence: %s\n' "$result" >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v7
+      id: upload
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ steps.stage.outputs.directory }}
+        retention-days: 14
+    - name: Link the evidence bundle
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+        ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+      run: printf '[%s](%s)\n' "$ARTIFACT" "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"

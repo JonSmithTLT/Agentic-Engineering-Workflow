@@ -31,6 +31,8 @@ import contextlib
 import io
 import json
 import os
+import re
+import select
 import shlex
 import subprocess
 import sys
@@ -78,7 +80,7 @@ EXIT_S = bounds.declare("vertical.exit", 120, within="vertical.conversation", la
 
 
 def start_on_terminal(argv: list[str], *, env: dict[str, str], stdout: Any,
-                      stderr: Any) -> tuple[subprocess.Popen[bytes], int | None]:
+                      stderr: Any, resume_prompt: bool = False) -> tuple[subprocess.Popen[bytes], int | None]:
     """Start what the operator types at their terminal, and return it with the master of its terminal (None on
     Windows). On Linux the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4, ``os.isatty(0)``), so the
     operator's terminal is a pseudo-terminal this test owns, as an operator's terminal is theirs: its slave is the
@@ -87,6 +89,12 @@ def start_on_terminal(argv: list[str], *, env: dict[str, str], stdout: Any,
     stdout), so the master needs no reader. The process leads its own session (POSIX), so the lab ends its whole tree.
     On Windows it has no terminal (no relay; the Lead is not contained there) and opens no console window."""
     master, stdin = os.openpty() if not IS_WINDOWS else (None, subprocess.DEVNULL)
+    if master is not None and resume_prompt:
+        # Popen starts a session, but inherited stdin alone doesn't make its slave the controlling terminal.
+        argv = [sys.executable, "-c",
+                "import fcntl, os, sys, termios; fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
+                "os.execv(sys.argv[1], sys.argv[1:])",
+                *argv]
     kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
                               else {"start_new_session": True})
     try:
@@ -137,7 +145,6 @@ class Operator:
     credential: str = field(default="", repr=False)
     transcript: list[dict[str, Any]] = field(default_factory=list)
     allowed_heads: set[str] = field(default_factory=set)  # main's heads not published by AEW
-    excluded_caches: bool = False  # the U14 workaround, applied once after the gate was observed to refuse
     publish_approved: bool = False
     reports: list[dict[str, Any]] = field(default_factory=list)
     said: list[dict[str, Any]] = field(default_factory=list)
@@ -274,7 +281,8 @@ class Operator:
         (Path(self.lab.env[SCRIPTS_ENV]) / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
         return lead_spec
 
-    def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any]) -> Session:
+    def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any],
+                     *, resume_prompt: bool = False) -> Session:
         lead_spec = self.new_session(lead_spec)
         n = len(self.lab.sessions)
         out, err = self.tmp / f"session-{n}.out", self.tmp / f"session-{n}.err"
@@ -283,17 +291,39 @@ class Operator:
         autopsy.register_workdir(err)
         with out.open("wb") as o, err.open("wb") as e:
             proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
-                                             stdout=o, stderr=e)
+                                             stdout=o, stderr=e, resume_prompt=resume_prompt)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
         session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
         self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
 
-    def first_words(self, session: Session) -> dict[str, Any] | None:
+    def first_words(self, session: Session, *, resume_step: str | None = None) -> dict[str, Any] | None:
         """The session's first message (the Lead's status line), or None when the session ended without one."""
+        prompt = b""
+        answered = False
+
+        def ended() -> bool:
+            nonlocal prompt, answered
+            tty = session.tty
+            if session.ended():
+                return True
+            if resume_step is not None and tty is not None and not answered and select.select([tty], [], [], 0)[0]:
+                try:
+                    prompt = (prompt + os.read(tty, 4096))[-8192:]
+                except OSError:
+                    return session.ended()
+                if b"RESUME Lead seat" in prompt:
+                    code = re.search(rb"Type the confirmation code ([0-9A-F]{6}) and press Enter", prompt)
+                    if code is not None:
+                        os.write(tty, code[1] + b"\n")
+                        self.ledger.console_challenge("seat_resume", step=resume_step)
+                        answered = True
+                        prompt = b""
+            return False
+
         try:
-            msg = self.chat.receive(SESSION_START_S, gone=session.ended)
+            msg = self.chat.receive(SESSION_START_S, gone=ended if resume_step is not None else session.ended)
         except Gone:
             if not session.ended():
                 self.lead_silent("first words", SESSION_START_S)
@@ -350,8 +380,6 @@ class Operator:
                 if label == "publish" and answer.startswith("y"):
                     self.publish_approved = True
                 self.say(f"answer:{label}", answer)
-            elif kind == "stuck" and self.cache_workaround(msg):
-                continue
             elif kind in ("report", "stuck"):
                 if kind == "report":
                     self.reports.append(msg)
@@ -380,28 +408,6 @@ class Operator:
         session.close()
         return code
 
-    def cache_workaround(self, msg: dict[str, Any]) -> bool:
-        """U14's workaround, only after the gate was observed to refuse (the Lead stuck on GATE_UNSATISFIED while the
-        check's caches sat untracked in the Ticket's workspace): the operator excludes the caches for every worktree
-        (`.git/info/exclude`) and tells the Lead to carry on. Counted as a fallback with its evidence, once."""
-        text = str(msg.get("text", ""))
-        if self.excluded_caches or "GATE_UNSATISFIED" not in text:
-            return False
-        caches = sorted({p.name for p in self.root.parent.glob(".aew-workspaces/*/*/**/__pycache__")} |
-                        {p.name for p in self.root.parent.glob(".aew-workspaces/*/*/.pytest_cache")})
-        if not caches:
-            return False
-        self.excluded_caches = True
-        exclude = self.root / ".git" / "info" / "exclude"
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        with exclude.open("a", encoding="utf-8") as fh:
-            fh.write("\n" + workers.GITIGNORE)
-        self.fallback("caches", "(nothing: the check's own caches should not change its snapshot)", text,
-                      "add __pycache__/ and .pytest_cache/ to .git/info/exclude, then tell the Lead to carry on")
-        self.typed("caches", "$EDITOR .git/info/exclude  (adds __pycache__/, .pytest_cache/, *.pyc)")
-        self.say("caches:ask", "I excluded the test caches from git. Carry on.")
-        return True
-
     # ------------------------------------------------------------------ hard limit: publish needs a decision
 
     def check_heads(self, when: str) -> None:
@@ -427,7 +433,7 @@ class Operator:
 
 def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
     """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
-    sample has no `.gitignore` for the check's caches: a fresh project does not, and nothing may hide U14."""
+    sample declares check caches in policy and has no `.gitignore` entry for them."""
     files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
@@ -503,13 +509,17 @@ class _WithFixtures:
     def files(self) -> dict[str, str]:
         import yaml
 
+        from aew.engine.first_configuration import CHECKS_REL
         from aew.policy import execution as X
 
         files = self.given.files()
-        doc = yaml.safe_load(files[X.REL_PATH])
-        for fixture in self.fixtures.values():
-            fixture(doc)
-        files[X.REL_PATH] = dump_yaml(doc)
+        policies = {X.REL_PATH: yaml.safe_load(files[X.REL_PATH])}
+        for name, fixture in self.fixtures.items():
+            rel = CHECKS_REL if name.startswith("checks.") else X.REL_PATH
+            if rel not in policies:
+                policies[rel] = yaml.safe_load(files[rel])
+            fixture(policies[rel])
+        files.update({rel: dump_yaml(doc) for rel, doc in policies.items()})
         return files
 
 

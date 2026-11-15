@@ -6,16 +6,17 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew import profile
+from aew.engine import approval, transitions
 from aew.engine import dependencies as deps
 from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
-from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import NotQueryable, checked, refusal, require
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import SOURCE, GuardRegistration
 from aew.errors import (
     DependencyUnsatisfied,
@@ -485,6 +486,7 @@ class WorkCommands:
         class0_assertions: list[str] | None = None,
         priority: str | None = None,
         priority_reason: str | None = None,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         args: dict[str, Any] = {
             "kind": kind, "title": title, "risk_class": risk_class, "mutating": mutating, "parent": parent,
@@ -494,8 +496,12 @@ class WorkCommands:
             "promoted_from": promoted_from, "acceptance_checks": acceptance_checks,
             "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions,
             "priority": priority, "priority_reason": priority_reason}
-        self._check_create_arguments(args)  # before the transaction, as always: a malformed request needs no state
-        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
+        if request_id is None:
+            self._check_create_arguments(args)  # preserve the no-ID path's pre-transaction validation
+        request = ControlRequest.prepare(request_id, **args)
+        with self.k.lead_txn(token, expect_rev, "work.create", request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
             # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
             require(self.create_query(ctx.state, None, args))
             work_id, unit, text = self._draft_unit(ctx.state, args, ctx.actor)
@@ -504,12 +510,15 @@ class WorkCommands:
             ctx.refs.append(path)
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.units.before_commit(ctx)
-        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
-        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
-        if unmatched:
-            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
-                               "otherwise a change there needs a scope that names it" for g in unmatched]
-        return out
+            unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
+            warnings = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                        "otherwise a change there needs a scope that names it" for g in unmatched]
+            if request is not None:
+                ctx.request_ref = (work_id, work_id)
+                if warnings:
+                    ctx.request_metadata = {"warnings": warnings}
+        return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision,
+                **({"warnings": warnings} if warnings else {})}
 
     # ---- `work.create`'s guard as a query (M4-E E4; aew.engine.guards)
 
@@ -700,12 +709,15 @@ class WorkCommands:
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
                      reason: str | None = None, affected_paths: list[str] | None = None,
                      review: list[str] | None = None, verify: list[str] | None = None,
-                     no_assurance: bool = False) -> dict[str, Any]:
-        if not body.strip():
+                     no_assurance: bool = False, request_id: str | None = None) -> dict[str, Any]:
+        if request_id is None and not body.strip():
             raise UsageError("plan body is empty")
         args: dict[str, Any] = {"body": body, "reason": reason, "affected_paths": affected_paths, "review": review,
                                 "verify": verify, "no_assurance": no_assurance}
-        with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
+        request = ControlRequest.prepare(request_id, work_id=work_id, **args)
+        with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason, request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
             require(self.propose_query(ctx.state, work_id, args))  # the guard (M4-E E4), then the write
             unit = ctx.state["work"][work_id]
             assurance = args["found"]["assurance"]
@@ -713,6 +725,8 @@ class WorkCommands:
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.units.before_commit(ctx)
+            if request is not None:
+                ctx.request_ref = (work_id, str(revision))
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
@@ -739,7 +753,8 @@ class WorkCommands:
 
         return checked(check)
 
-    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
+    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int,
+                    binding: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if H.is_parent(unit):
@@ -762,6 +777,10 @@ class WorkCommands:
                 against = f"plan v{entry['supersedes']}" if entry.get("supersedes") else "no accepted plan"
                 raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
                                         "accepted now; propose a new revision to change it")
+            if binding is not None:
+                approval.compare("plan.accept", entry["path"], binding,
+                                 sha256_file(self.k.aew_root / entry["path"]))
+                approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
             for p in unit["plans"]:
                 if p["status"] == "accepted":
                     p["status"] = "superseded"
@@ -773,7 +792,8 @@ class WorkCommands:
             if H.is_parent(unit) and not unit.get("baseline_commit"):
                 unit["baseline_commit"] = self.k.authoritative_commit()
             decision = self.k.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
-                                         work_unit=work_id, evidence_refs=[entry["path"]])
+                                         work_unit=work_id,
+                                         evidence_refs=[f"{entry['path']}@{binding}" if binding else entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
                 # Work done under the superseded plan never continues implicitly: the old attempt's workspace
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).

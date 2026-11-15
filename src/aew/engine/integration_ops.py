@@ -20,8 +20,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, faults, transitions
 from aew.engine import coverage as CV
-from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
@@ -326,7 +326,8 @@ class Integration:
         gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
         current = gc["snapshot"]["relevant_inputs_fingerprint"]
         if gated != current:
-            raise GateUnsatisfied("the workspace changed after COMMIT_READY; return it to RUNNING and revalidate",
+            raise GateUnsatisfied("the workspace changed after COMMIT_READY; adopted policy can also change its "
+                                  "snapshot. Return it to RUNNING and revalidate",
                                   gated=gated, current=current)
 
     def _admission_refusal(self, unit: dict[str, Any], changed: list[str]) -> GateUnsatisfied | None:
@@ -376,7 +377,7 @@ class Integration:
         gated = (unit.get("commit_ready_snapshot") or {}).get("relevant_inputs_fingerprint")
         ws = unit["workspace"]
         ws_path = Path(ws["path"])
-        ticket_commit = I.commit_workspace(ws_path, f"aew({work_id}): {unit['title']}")
+        ticket_commit = I.commit_workspace(ws_path, f"aew({work_id}): {unit['title']}", **self.k.check_cache_inputs())
         committed = self.invocations.snapshot_of(ws_path, ws["id"])["relevant_inputs_fingerprint"]
         if committed != gated:
             raise IntegrityError("committed tree differs from the gated evaluated snapshot",
@@ -812,11 +813,10 @@ class Integration:
             self.queue.regrant(ctx, work_id, lambda state, entrypoint, wid, **kw: self.dispatch.decide_in(
                 ctx, entrypoint, wid, **kw))
             named = (ctx.state["work"].get(work_id) or {}).get("integration") or {}
-            if candidate is not None and named.get("candidate") != candidate:
-                raise IllegalTransition(f"{work_id}'s integration candidate is {named.get('candidate')}, not the "
-                                        f"{candidate} named: read its projection and decide on the current one",
-                                        reason="candidate_mismatch", named=candidate,
-                                        current=named.get("candidate"))
+            if candidate is not None:
+                approval.compare("integrate.publishing", work_id, candidate, named.get("candidate"),
+                                 next_step="Read its projection and decide on the current one.",
+                                 reason="candidate_mismatch", named=candidate)
             args: dict[str, Any] = {}
             refused = self.publish_query(ctx.state, work_id, args)
             outcome = (args.get("found") or {}).get("outcome")
@@ -840,6 +840,8 @@ class Integration:
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+                if candidate is not None:
+                    ctx.summary += f" ({work_id}@record:{candidate})"
             else:
                 raise IntegrityError(f"engine defect: the publish query of {work_id} answered no outcome",
                                      outcome=outcome)
@@ -979,8 +981,7 @@ class Integration:
                 "worktree_sync": sync, "revision": ctx.session.committed_revision,
                 "coverage": CV.load(self.k.aew_root, integ.get("coverage") or CV.legacy())}
 
-    @staticmethod
-    def _settle_ticket_workspace(unit: dict[str, Any], ticket_commit: str) -> bool:
+    def _settle_ticket_workspace(self, unit: dict[str, Any], ticket_commit: str) -> bool:
         """At DONE: the Ticket workspace is removable only if it holds exactly the integrated commit.
 
         ``worktrees.inspect`` compares HEAD with both the working content (index flags neutralized, never
@@ -991,7 +992,7 @@ class Integration:
         ws = unit.get("workspace")
         if not ws:
             return False
-        found = worktrees.inspect(ws["path"], ws.get("base_commit"))
+        found = worktrees.inspect(ws["path"], ws.get("base_commit"), **self.k.check_cache_inputs())
         if not found.get("exists"):
             ws["status"] = "integrated"
             return False

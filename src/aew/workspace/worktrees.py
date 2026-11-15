@@ -128,7 +128,8 @@ def remove(repo_root: Path, path: str) -> None:
     git.git("worktree", "prune", cwd=repo_root, check=False)
 
 
-def inspect(path: str, base_commit: str | None) -> dict[str, Any]:
+def inspect(path: str, base_commit: str | None, *, cache_patterns: tuple[tuple[str, ...], ...] = (),
+            include_ignored: list[str] | None = None) -> dict[str, Any]:
     """What a workspace holds, judged from content.
 
     ``dirty`` is True when either the working state (tracked + untracked-not-ignored, read from content
@@ -146,7 +147,8 @@ def inspect(path: str, base_commit: str | None) -> dict[str, Any]:
     try:
         head_tree = fingerprint.head_tree_id(ws)
         out["staged"] = fingerprint.index_tree_id(ws) != head_tree
-        out["dirty"] = out["staged"] or fingerprint.working_tree_id(ws) != head_tree
+        out["dirty"] = out["staged"] or fingerprint.working_tree_id(
+            ws, cache_patterns=cache_patterns, include_ignored=include_ignored) != head_tree
     except AEWError as exc:
         out["dirty"] = None
         out["dirty_unknown"] = exc.message

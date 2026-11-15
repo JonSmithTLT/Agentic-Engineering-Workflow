@@ -28,6 +28,12 @@ class AEWError(Exception):
         return out
 
 
+class Defect(AEWError):
+    """An unexpected failure of the typed Lead surface."""
+
+    code = "DEFECT"
+
+
 class UsageError(AEWError):
     code = "USAGE"
     exit_code = 2
@@ -92,6 +98,10 @@ class OperatorAuthorizationRequired(PermissionDenied):
 class IllegalTransition(AEWError):
     code = "ILLEGAL_TRANSITION"
     exit_code = 5
+
+
+class ApprovalSubjectChanged(IllegalTransition):
+    code = "APPROVAL_SUBJECT_CHANGED"
 
 
 class GateUnsatisfied(IllegalTransition):
@@ -194,6 +204,18 @@ class MessagingDisabled(IllegalTransition):
     code = "MESSAGING_DISABLED"
 
 
+class WaitUnsupported(IllegalTransition):
+    code = "WAIT_UNSUPPORTED"
+
+
+class WaitOutsideAStep(IllegalTransition):
+    code = "WAIT_OUTSIDE_A_STEP"
+
+
+class WaitBindingLostOnReconnect(IllegalTransition):
+    code = "WAIT_BINDING_LOST_ON_RECONNECT"
+
+
 class TurnEndNeedsMessaging(IllegalTransition):
     """``aew harness send --when turn-end`` while coordination messaging is off (F9-A plan v4 amendment 2 §3.3, G1):
     the `turn-end` timing goes only through the message store, so it is unavailable, and nothing is written."""
@@ -229,8 +251,7 @@ class LeadInboxFull(CoordinationLimit):
 
 
 class IdempotencyConflict(IllegalTransition):
-    """An idempotency id already names a message on the thread with other content (D-8): a retry must repeat the
-    original exactly, and a new message needs a new id."""
+    """A message or create request already committed with this id and different arguments."""
 
     code = "IDEMPOTENCY_CONFLICT"
 

@@ -7,8 +7,10 @@ stream are both checked against a dead proxy (they still reach the server) and a
 
 from __future__ import annotations
 
+import http.client
 import http.server
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from typing import Any
@@ -102,3 +104,24 @@ def test_no_loopback_call_ever_reaches_a_configured_proxy(server, monkeypatch):
         _behind(monkeypatch, proxy.url)
         _use(server)
     assert (proxy.connections, proxy.request_lines) == (0, [])
+
+
+def test_an_unframed_event_stream_keeps_its_socket_and_clears_the_read_timeout(monkeypatch):
+    client = Client("http://127.0.0.1:1", "pw")
+    local, peer = socket.socketpair()
+    with local, peer:
+        conn = http.client.HTTPConnection("127.0.0.1")
+        conn.sock = local
+        local.settimeout(0.25)
+        monkeypatch.setattr(client, "connection", lambda **kwargs: conn)
+        peer.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {}\n\n")
+        seen = []
+
+        def on_event(frame):
+            seen.append((conn.sock, local.gettimeout(), stream._sock))
+            stream.close()
+            peer.close()  # also release a reader whose shutdown failed
+
+        stream = EventStream(client, on_event, alive=lambda: True)
+        stream._run()
+        assert seen == [(None, None, local)] and stream.drops == 0

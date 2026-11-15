@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -162,16 +163,28 @@ def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabrica
 
 
 def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tmp_path, monkeypatch):
-    """The real `aew lead mcp` process and its stdio, in front of a real broker whose run never ends (each single
-    check reports it running, as in the broker's own cooperative-wait tests). A status sent right after a four-second
-    `harness_wait`, on the same connection and before its answer, is answered first and promptly (PR #95 review)."""
+    """The real `aew lead mcp` process and its stdio, in front of a real broker. A `harness_wait` is in flight on the
+    broker, and its run reports running until the test lets it end. A status sent then on the same connection is
+    answered while the wait still waits, and the wait answers after (PR #95 review). The order is the proof, with no
+    clock in it: a status queued behind the wait could only come after the wait's own answer, which comes only once
+    the status has been read, or at the wait's deadline. Before 2026-11-12 this test timed the status (`< 3 s` from
+    the send, which counted the MCP process's start too) and failed at 5.1 s on a loaded Windows runner."""
+    from aew.engine import outbox
     from aew.engine.api import Engine
     from aew.harness import lead_broker
 
     p = lead_project(tmp_path)
     engine = Engine.discover(p.root)
-    monkeypatch.setattr(engine, "harness_wait", lambda runs, *, timeout=600.0, any_=False, triggers=False, lead=False: {
-        "run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True})
+    in_flight, released = threading.Event(), threading.Event()
+
+    def held(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+        in_flight.set()  # each check the broker's cooperative wait makes, under its serialization
+        run = runs if isinstance(runs, str) else runs[0]
+        if released.is_set():
+            return {"run": run, "status": "ended", "timed_out": False}
+        return {"run": run, "status": "running", "timed_out": True}
+
+    monkeypatch.setattr(engine, "harness_wait", held)
     broker = lead_broker.LeadBroker(engine, p.token)
     broker.start()
     try:
@@ -181,24 +194,27 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
         server = subprocess.Popen([sys.executable, "-m", "aew", "lead", "mcp"], cwd=str(p.root), env=env,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
         assert server.stdin is not None and server.stdout is not None
-        for rid, name, arguments in [(1, "harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 4}),
-                                     (2, "status", {})]:
+
+        def send(rid: int, name: str, arguments: dict) -> None:
+            assert server.stdin is not None
             server.stdin.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": "tools/call",
                                             "params": {"name": name, "arguments": arguments}}) + "\n").encode())
             server.stdin.flush()
-        sent = time.monotonic()
+
+        send(1, "harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 60})  # the deadline bounds a failure only
+        assert in_flight.wait(60), "the wait never reached the broker"
+        send(2, "status", {})
         first = json.loads(server.stdout.readline())
-        first_at = time.monotonic() - sent
+        released.set()
+        outbox.bump_wake(Path(engine.aew_root))  # the wait looks again now, not at its next re-check
         second = json.loads(server.stdout.readline())
-        waited = time.monotonic() - sent
         server.stdin.close()
         assert server.wait(timeout=30) == 0
     finally:
         broker.close()
     assert first["id"] == 2 and first["result"]["structuredContent"]["ok"], first
-    assert first_at < 3.0, f"the status waited {first_at:.1f}s behind the wait"
-    assert second["id"] == 1 and second["result"]["structuredContent"]["result"]["timed_out"] is True
-    assert 3.5 <= waited < 20
+    assert second["id"] == 1, second
+    assert second["result"]["structuredContent"]["result"]["timed_out"] is False, "the wait ended at its deadline"
 
 
 @pytest.mark.parametrize(("extra", "why"), [

@@ -669,10 +669,13 @@ def test_a_reviewer_cannot_mutate_source(lab, tmp_path):
     wid, _ = implemented(lab, tmp_path)
     lab.script("R-INV-0002-1", [{"do": "write", "files": TAMPER},
                                 {"do": "submit", "kind": "review", "meta": REVIEW_PASS}])
-    run = lab.lead("invoke", "create", wid, "--role", "reviewer", "--launch")["launch"]["run"]
+    dispatched = lab.lead("invoke", "create", wid, "--role", "reviewer", "--launch")
+    run = dispatched["launch"]["run"]
     if contained(lab, run):  # M4-B: the reviewer's source is read-only, so the edit never happens
         assert lab.wait(run)["status"] == "ended_with_evidence"  # a review of the unchanged code is a valid review
         assert lab.step(run, 0) == {"wrote": [], "refused": {"calc/core.py": "EROFS"}}
+        assert inv_show(lab, dispatched["invocation"])["status"] == "active"
+        lab.lead("invoke", "cancel", dispatched["invocation"], "--reason", "free the card for another review")
         assert lab.lead_res("invoke", "create", wid, "--role", "reviewer").returncode == 0
         assert_control_invariants(lab.project)
         return

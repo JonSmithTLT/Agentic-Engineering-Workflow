@@ -110,7 +110,9 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     projection = R.run_tool(Engine.discover(p.root), CTX, "status", {})["projection"]
     [decision] = [d for d in projection["decisions_required"] if d["decision"] == "RESOLVE_STAGE"]
     assert decision["tool"] == "resolve" and decision["evidence"] == [sid] and decision["default"] == "NONE"
-    assert decision["arguments"] == {"expect_rev": p.rev(), "subject": sid}  # no choice: never a default
+    assert decision["arguments"] == {  # The binding is prefilled and the Lead still chooses the action.
+        "expect_rev": p.rev(), "subject": sid, "approval_digest": row["approval"]["digest"],
+    }
     cli = p.ok("resume", "--json")  # another process, where the test's probe stage does not exist
     assert [s["intent"] for s in cli["stage_intents"]] == [sid] and cli["stage_intents"][0]["failing"] == ["contract"]
     assert cli["stage_intents"][0]["checks"]["contract"]["status"] == "unknown_stage"

@@ -240,11 +240,17 @@ def test_interruption_keeps_a_review_failure_and_revokes_the_sibling_reviewer(tm
 
 
 def test_handoff_while_publishing_keeps_commit_ready_and_reconcile_completes(tmp_path):
+    from aew.util import dump_yaml
+
     p = sample_project(tmp_path)
+    (p.root / ".aew/roles/strict_verifier.yaml").write_text(dump_yaml({
+        "schema": "aew/role/v1", "role": "strict_verifier", "display_name": "Strict Verifier", "version": 1,
+        "extends": "verifier", "purpose": "Independent post-integration verification.",
+    }), encoding="utf-8", newline="\n")
     wid, _ = to_commit_ready(p, tmp_path)
     p.lead("integrate", "prepare", wid)
     straggler = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")["invocation"]
-    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration", card="strict_verifier"))
     crash_after_publishing_record(p, wid)
     handoff(p)
     u = unit(p, wid)
@@ -325,14 +331,15 @@ def test_long_lived_engine_never_serves_an_older_manifest(tmp_path):
     reader = Engine.discover(proj.root)
     assert reader.authority_list()["accepted"] == []
     writer = Engine.discover(proj.root)
-    writer.authority_accept(token=proj.token, expect_rev=proj.rev(), candidate_id=candidate["id"], klass="decisions")
+    writer.authority_accept(token=proj.token, expect_rev=proj.rev(), candidate_id=candidate["id"],
+                            klass="decisions", decided_by="lead")
     assert [a["path"] for a in reader.authority_list()["accepted"]] == ["docs/adr/"]
     assert [a["path"] for a in reader.resume()["accepted_authority"]] == ["docs/adr/"]
 
 
 def test_first_resume_after_a_crash_mid_manifest_apply_shows_the_committed_authority(tmp_path):
     proj, candidate = _authority_project(tmp_path)
-    res = proj.aew("authority", "accept", candidate["id"], "--class", "decisions",
+    res = proj.aew("authority", "accept", candidate["id"], "--class", "decisions", "--decided-by", "lead",
                    "--expect-rev", str(proj.rev()), env={"AEW_LEAD_TOKEN": proj.token, "AEW_FAULT": "txn.mid_apply"})
     assert res.returncode == 86
     first = proj.ok("resume", "--json")

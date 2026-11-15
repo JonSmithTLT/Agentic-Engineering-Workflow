@@ -24,6 +24,7 @@
       "enum": [
         "verification_failure_classification",
         "authority_transfer",
+        "seat_resume",
         "authority_acceptance",
         "authority_rejection",
         "waiver",

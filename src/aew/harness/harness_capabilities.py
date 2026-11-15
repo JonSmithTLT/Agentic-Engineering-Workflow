@@ -34,6 +34,7 @@ CAPABILITIES: dict[str, str] = {
     "attach_to_operator_session": "reach the session the operator is talking to",
     "mark_non_operator_input": "input the model can tell from the operator's",
     "read_model_list": "list the models the harness offers, read as a launch reads them, with no session",
+    "report_step_and_shell_calls": "report open step and foreground shell call identities and their lifetime ends",
 }
 
 # Each steering feature, the capabilities it needs, and the steering pull request that builds it.
@@ -45,6 +46,7 @@ FEATURES: dict[str, tuple[tuple[str, ...], str]] = {
     "interrupt_worker": (("interrupt_turn",), "steering design §3"),
     # Not steering: `aew doctor`'s read of the model list (register E153), held to the same both-harnesses rule.
     "doctor_model_list": (("read_model_list",), "aew doctor"),
+    "message_wait_binding": (("report_step_and_shell_calls",), "messaging worker wait"),
 }
 
 # yes: the harness provides it. partial: it provides it in a weaker form the feature's design accepts, which the
@@ -81,6 +83,8 @@ CODEX: dict[str, Support] = {
                                             "header"),
     "read_model_list": Support(GAP, "`model/list` on the app-server; doctor's read is built for OpenCode only",
                                "F24"),
+    "report_step_and_shell_calls": Support(GAP, "no adapter integrates call/step lifetime reporting or message waits",
+                                           "F24"),
 }
 
 

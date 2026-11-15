@@ -525,13 +525,38 @@ def test_a_failed_adopt_restores_every_file_it_wrote(old, at_terminal, monkeypat
 
 def test_a_table_the_adoption_refuses_leaves_neither_file(old, at_terminal, monkeypatch):
     """A real failure inside the adoption: the bytes don't validate as a price table."""
-    only_row(monkeypatch, TABLE)
+    [row] = _rows(TABLE)
+    bad = dataclasses.replace(row, edits=lambda root: {**row.edits(root), PRICES: b"not: a price table\n"},
+                              text=lambda opening, edits: "Malformed table for this test")
+    monkeypatch.setattr(switch_offer, "OFFERS", (bad,))
     before = snapshot(old, PRICES, MANIFEST)
     at_terminal("CODE")
     decision, out = start(old)
-    monkeypatch.setattr(O, "bundled_table", lambda: b"not: a price table\n")
     decision.apply(old.token)
     assert "is unchanged" in out.getvalue() and snapshot(old, PRICES, MANIFEST) == before
+
+
+def test_an_edit_to_the_offered_file_after_the_write_is_never_pinned(old, at_terminal, monkeypatch):
+    only_row(monkeypatch, MUTATING)
+    terminal = at_terminal("CODE")
+    decision, out = start(old)
+    real = Engine.manifest_adopt
+    rev = old.rev()
+    changed = b""
+
+    def changed_after_write(self: Engine, **kw: Any) -> Any:
+        nonlocal changed
+        path = self.aew_root / GATES
+        changed = path.read_bytes() + b"\n# edit after the offer wrote\n"
+        path.write_bytes(changed)
+        return real(self, **kw)
+
+    monkeypatch.setattr(Engine, "manifest_adopt", changed_after_write)
+    decision.apply(old.token)
+    assert f"{GATES}@" in str(terminal.prompts)
+    assert "changed since approval" in out.getvalue()
+    assert (old.root / ".aew" / GATES).read_bytes() == changed
+    assert old.rev() == rev
 
 
 def test_a_failed_adopt_leaves_a_file_someone_else_changed(old, at_terminal, monkeypatch):
@@ -1014,14 +1039,14 @@ def test_nothing_about_the_offer_stops_the_start(old, at_terminal, monkeypatch):
         raise RuntimeError("a broken row")
 
     row = switch_offer.SwitchOffer(switch="broken", label="broken", legality=False, opening=boom, edits=boom,
-                                   text=lambda o: "", changes="", done=lambda o: "", by_hand=lambda o: "")
+                                   text=lambda o, edits: "", changes="", done=lambda o: "", by_hand=lambda o: "")
     monkeypatch.setattr(switch_offer, "OFFERS", (row,))
     at_terminal("CODE")
     decision, out = start(old)
     assert decision.taken == [] and "could not be read" in out.getvalue()
 
     fine = dataclasses.replace(row, opening=lambda _r: switch_offer.Opening("a", "b"), edits=lambda _r: {},
-                               text=lambda o: "t")
+                               text=lambda o, edits: "t")
     monkeypatch.setattr(switch_offer, "OFFERS", (_second_call(fine, boom),))
     at_terminal("CODE")
     decision, out = start(old)
@@ -1033,7 +1058,7 @@ def test_nothing_about_the_offer_stops_the_start(old, at_terminal, monkeypatch):
 def test_a_row_that_breaks_ends_that_row_and_not_the_next(old, at_terminal, monkeypatch):
     first, second = switch_offer.OFFERS
 
-    def boom(_opening: Any) -> str:
+    def boom(_opening: Any, _edits: Any) -> str:
         raise RuntimeError("a row's text")
 
     monkeypatch.setattr(switch_offer, "OFFERS", (dataclasses.replace(first, text=boom), second))

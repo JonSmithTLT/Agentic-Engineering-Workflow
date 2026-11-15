@@ -109,5 +109,4 @@ def for_session(engine: Any, *, provider_env: list[str]) -> Iterator[None]:
         yield
     finally:
         if held is not None:
-            with contextlib.suppress(OSError):  # the endpoint's look removes a dead session's file anyway
-                held.unlink(missing_ok=True)
+            operator_client.unname_session(Path(engine.aew_root), held)

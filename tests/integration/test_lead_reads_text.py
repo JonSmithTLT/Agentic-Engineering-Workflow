@@ -89,6 +89,11 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     wid, _impl = implemented(p, tmp_path)
     lead = TextLead(p)
 
+    def stop_fixture_reviewer(stage: dict[str, Any]) -> None:
+        [dispatch] = [step for step in stage["completed_steps"] if step["primitive"] == "invoke.create.mutating"]
+        [invocation] = [ref.removeprefix("invocation:") for ref in dispatch["refs"] if ref.startswith("invocation:")]
+        p.lead("invoke", "cancel", invocation, "--reason", "replace the hanging fixture reviewer")
+
     # The next step in the text is what the JSON offers.
     seen = lead.status(wid)
     assert lead.head == [f"status: done ({wid}: RUNNING)", readable._next(seen)]
@@ -104,6 +109,7 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert requested["completed_steps"][0]["summary"] in lead.text.split("\n")[2]
 
     # A review that fails: the stage stops at the refusal, with what it committed and why, in the text.
+    stop_fixture_reviewer(requested)
     failing = review(p, wid, disposition="changes_required", findings=FAILING)
     stopped = lead.call("ticket_request_verification", expect_rev=lead.status(wid)["revision"], work_id=wid,
                         review_evidence=failing)
@@ -119,6 +125,7 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
                                                + "\n\ndef test_again():\n    assert True\n"})
     again = lead.offered(wid, "ticket_request_review")
     assert again["ok"], again["stopped"]
+    stop_fixture_reviewer(again)
     passing = review(p, wid, resolved=[f"{failing}#F1"])
     verifying_now = lead.call("ticket_request_verification", expect_rev=lead.status(wid)["revision"], work_id=wid,
                               review_evidence=passing)

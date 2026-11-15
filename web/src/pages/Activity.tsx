@@ -22,7 +22,7 @@ export function ActivityPage() {
             <div><dt>Activity ID</dt><dd><code>{item.id}</code></dd></div>
             <div><dt>Occurred UTC</dt><dd><time dateTime={item.occurred_at}>{item.occurred_at}</time></dd></div>
             <div><dt>Subject</dt><dd><EntityAnchor entity={item.subject} />{!entityLink(item.subject) && <>
-              {item.subject.title && item.subject.title !== item.subject.id && <> · <code>{item.subject.id}</code></>}
+              {item.subject.title !== null && item.subject.title !== item.subject.id && <> · <code>{item.subject.id}</code></>}
               <p className="muted">No detail view available.</p>
             </>}</dd></div>
           </dl>

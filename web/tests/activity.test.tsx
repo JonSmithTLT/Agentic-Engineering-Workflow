@@ -17,7 +17,7 @@ function mount({ denied = false, empty = false, search = '', keepCache = false, 
   envelope.data.items = empty ? [] : Array.from({ length: recordCount }, (_, index) => ({
     id: `R${recordCount - index}`, occurred_at: '2026-10-12T12:00:00.123456Z',
     title: `Supplied activity ${recordCount - index}`,
-    subject: index === 0 ? { id: 'T-0001', kind: 'work', title: 'Supplied ticket' } : { id: `S${index}`, kind: 'transition', title: 'Supplied transition' },
+    subject: index === 0 ? { id: 'T-0001', kind: 'work', title: 'Supplied ticket' } : { id: `S${index}`, kind: 'transition', title: index === 3 ? '' : 'Supplied transition' },
     reason: index === 0 ? { code: 'SUPPLIED_REASON', message: '<script>hostile()</script>' } : null,
   }));
   if (denied) (world.responses['/capabilities'] as { data: Record<string, unknown> }).data.activity = { state: 'UNSUPPORTED', reasons: [{ code: 'NOT_ENABLED', message: 'Activity unavailable.' }] };
@@ -106,6 +106,7 @@ it('shows full UTC timestamps, supplied reasons, safe text and explicit unavaila
   for (const row of screen.getAllByRole('article', { name: /^Activity / })) expect(within(row).getByText('2026-10-12T12:00:00.123456Z')).toBeTruthy();
   expect(within(screen.getByRole('article', { name: 'Activity R60' })).getByText('S1')).toBeTruthy();
   expect(within(screen.getByRole('article', { name: 'Activity R59' })).getByText('S2')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: 'Activity R58' })).getByText('S3')).toBeTruthy();
   expect(screen.getByText('<script>hostile()</script>')).toBeTruthy();
   expect(view.container.querySelector('script')).toBeNull();
   expect(screen.getAllByText('No reason supplied.').length).toBe(49);

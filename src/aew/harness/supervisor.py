@@ -620,6 +620,12 @@ class Supervisor:
                 self._event("request", kind=kind)
                 if kind == "stop":
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
+                bound = self.adapter.STEERING_BOUND_S
+                until = time.monotonic() + bound
+                if deadline is not None:
+                    until = min(until, deadline)
+                # A steering request can take longer than a heartbeat's lifetime while the local server answers.
+                steering = self._background_beats("aew-steering-heartbeat", until=until) if bound else None
                 try:
                     if kind == "send":  # only `next-step` is ever a request file (F9-A amendment 2 §3.3; E55)
                         self.adapter.send(str(req.get("text") or ""), WHEN_DELIVERY[NEXT_STEP])
@@ -627,6 +633,9 @@ class Supervisor:
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
+                finally:
+                    if steering is not None:
+                        steering.set()
             if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
                 read, problem = self._authority()
                 if problem:

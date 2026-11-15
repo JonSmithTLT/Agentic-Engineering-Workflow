@@ -9,6 +9,7 @@ store whose locked reads fail the test."""
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -18,7 +19,9 @@ from typing import Any
 import pytest
 
 from aew import errors
+from aew.harness import contract as K
 from aew.harness import runlog
+from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.supervisor import Supervisor
 from aew.util import sha256_text
 
@@ -184,6 +187,36 @@ def test_a_failed_authority_read_at_the_bridge_leaves_the_engine_as_the_gate(tmp
     sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
     assert sup.authority_problem() is None
     assert sup._authority() == (False, None)
+
+
+def test_a_run_stays_live_while_opencode_answers_a_steering_request(tmp_path, monkeypatch):
+    entry = recorded_request(tmp_path, "send", text="continue")
+    sup = stand_in(tmp_path, LockFreeOnly([state([entry])]))
+    (tmp_path / "run.json").write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    renewed = threading.Event()
+    aged = threading.Event()
+    real_beat = runlog.beat
+
+    def beat(directory):
+        real_beat(directory)
+        if aged.is_set():
+            renewed.set()
+
+    def send(text, delivery):
+        assert (text, delivery) == ("continue", "steer")
+        old = time.time() - runlog.STALE_AFTER_S - 1
+        os.utime(tmp_path / "heartbeat", (old, old))
+        aged.set()
+        assert renewed.wait(5), "the supervisor stopped beating while send was in flight"
+        assert runlog.observed_status(tmp_path)[0] == K.RUNNING
+
+    monkeypatch.setattr(runlog, "beat", beat)
+    sup.adapter = SimpleNamespace(STEERING_BOUND_S=OpenCodeAdapter.STEERING_BOUND_S, send=send,
+                                  inspect=lambda: {"alive": False})
+    ended = []
+    monkeypatch.setattr(sup, "_finish_exited", ended.append)
+    sup.watch()
+    assert ended == [{"alive": False}]
 
 
 def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):

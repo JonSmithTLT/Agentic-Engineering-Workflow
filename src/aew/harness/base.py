@@ -62,6 +62,8 @@ class HarnessAdapter(ABC):
     token_semantics: Mapping[str, Mapping[str, str | Mapping[str, str]]] = {}
     # The longest a successful ``launch`` can take, for an adapter that does not compute it (``launch_bound_s``).
     LAUNCH_BOUND_S = 240.0
+    # Time an adapter can spend sending or interrupting outside the supervisor's normal heartbeat loop.
+    STEERING_BOUND_S = 0.0
     # F28 (STG-05 CS-3b): whether the harness calls a model provider itself, so that its run, in a network of its own,
     # gets the provider relay; and the host:port destinations it needs beyond its provider (OpenCode's model catalog),
     # which join the execution policy's egress allowlist (F28 §3.4).

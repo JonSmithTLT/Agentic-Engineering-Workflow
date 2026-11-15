@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from aew.harness import contract as K
-from aew.util import atomic_write, utc_now
+from aew.util import IS_WINDOWS, atomic_write, utc_now
 
 RUNS_REL = "local/harness/runs"
 RECORD = "run.json"                        # the run record
@@ -328,7 +328,7 @@ def deliver_request(directory: Path, name: str, text: str) -> Path:
 
 
 def take_requests(directory: Path) -> list[tuple[str, str]]:
-    """Every queued request file as (name, text), removed from the queue. Nothing here is trusted."""
+    """Take readable requests and discard invalid entries. An unavailable Windows read leaves the file queued."""
     queue = directory / "requests"
     out = []
     try:  # a queue that is a link is not the run's queue: its target's files are never read or removed
@@ -340,6 +340,11 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
             # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
             # queue, so a request that could block it would stop the deadline and every later Lead request.
             out.append((path.name, _read_regular(path).decode("utf-8", errors="replace")))
+        except PermissionError:
+            # os.open on Windows reports a sharing violation as EACCES. The handle may be released before unlink:
+            # don't remove a request unless it was read or rejected as invalid.
+            if IS_WINDOWS:
+                continue
         except OSError:
             pass
         try:

@@ -9,3 +9,9 @@ For a dashboard independent of that session, run `aew dashboard serve` in a term
 AEW never prints, logs or saves the auto-start URL. Its bootstrap code is single-use and expires after ten minutes; the browser exchanges it for an `HttpOnly` cookie. On both platforms the browser may receive the URL on its command line, readable by another local process until the bootstrap is consumed or expires. Windows ShellExecute avoids only AEW's own child command line; it does not avoid the browser's. Unix desktop launchers are detached with their input and output disconnected from the TUI. The dashboard grants viewing access only: this start adds no write path.
 
 The existing session listing reports `authorized_by`: `operator-start` for the no-code first session, `operator-tty` for `serve` and `open` after their typed-back code. `operator-start` is provenance, not an operator confirmation.
+
+## Keeping the packaged frontend current
+
+The dashboard bundle freshness workflow checks main after every merge. It compares the committed bundle's recorded source, full web tree and API contract against the reviewed checkout. A mismatch fails that workflow and reports the number of mainline commits touching the frontend or API contract since the build source. Changes confined to web documentation also change the recorded web tree.
+
+Use a dedicated package update after merge. Agree on the exact source commit with the operator, then run the [pinned maintenance builder](../../web/docs/how-to/maintenance-offline-builder.md) from a clean detached checkout, verify the resulting production files against AEW, then import them with `tools/dashboard/import_build.py`. Use `python tools/dashboard/check_freshness.py` on the committed release candidate before publishing. Feature PRs can merge independently of the bundle update.

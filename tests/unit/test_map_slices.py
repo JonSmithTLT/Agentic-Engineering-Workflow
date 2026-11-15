@@ -65,20 +65,23 @@ def test_the_lead_gets_the_slices_bytes_in_place_of_its_body_and_every_other_pac
 
 
 def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it():
-    """Register E184: a result's ``pack`` stays in the Lead's context, so every engine result that returns one passes
-    it through :func:`slices.for_lead`. Read from the source, so a new result can't return the body unnoticed."""
+    """A result's ``pack`` stays in the Lead's context, so every engine result that carries one, first or replayed,
+    passes it through :func:`slices.for_lead`. Read from the source: any dict literal keyed ``pack`` (a result, or one
+    built before it is returned), so a new result can't return the body unnoticed. Control state is written by
+    subscript (``inv["pack"] = ...``), or holds no pack yet (``None``)."""
     import ast
 
     engine = Path(slices.__file__).resolve().parents[1] / "engine"
     unwrapped = []
     for path in sorted(engine.glob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
+            if not isinstance(node, ast.Dict):
                 continue
-            for key, value in zip(node.value.keys, node.value.values, strict=True):
+            for key, value in zip(node.keys, node.values, strict=True):
                 if isinstance(key, ast.Constant) and key.value == "pack" and not (
                         isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
-                        and value.func.attr == "for_lead"):
+                        and value.func.attr == "for_lead") and not (
+                        isinstance(value, ast.Constant) and value.value is None):
                     unwrapped.append(f"{path.name}:{node.lineno}")
     assert unwrapped == []
 

@@ -1015,7 +1015,7 @@ systems:
   - src/aew/cli/map_commands.py:56-93 aew map generate, select-architecture, show, diff
   - src/aew/dashboard/server.py:288-298 the five /maps routes
   - 'importers of aew.maps outside the package (grep): cli/map_commands, dashboard/mapview, dashboard/projections, dashboard/reader,
-    engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops (slices.for_lead),
+    engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops, engine/request_ids (slices.for_lead),
     knowledge/context, switch_offer; none in integration code, so no regeneration on publish'
   - src/aew/surface/readable.py:60-61 the only surface mention of aew map is a code comment; no Lead text names it
   - 'src/aew/maps/store.py:51-52 LOG_REL and LOCK_REL: the registry log and the registry lock'

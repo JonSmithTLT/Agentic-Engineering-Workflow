@@ -1121,6 +1121,7 @@ None.
 - `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.maps.slices`
 - `aew.util`
 
 ### `aew.engine.resume_ops`

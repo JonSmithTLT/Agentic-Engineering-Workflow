@@ -172,6 +172,9 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "aew":
         return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=env, input_bytes=stdin)
     if do == "shell":
+        # The server has already emitted tool.called. A planted stream drop can precede CLI startup.
+        if s.get("start_after_file") and not wait_file(s["start_after_file"], 60):
+            raise RuntimeError("the fake shell's start barrier was not released")
         command = s["command"]
         argv = (["powershell", "-NoProfile", "-NonInteractive", "-Command", command] if sys.platform == "win32"
                 else ["sh", "-c", command + "; :"])

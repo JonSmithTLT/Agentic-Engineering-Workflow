@@ -488,6 +488,8 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
     assert [p["primitive"] for p in plan[n - 1:]] == ["invoke.create.mutating", "dispatch.launch"] * 2
     si = {"tool": name, "plan": plan}
     assert stage.STAGES[name](dict(call), stage.recorded_cards(si)) == plan
+
+
 def test_stage_plans_do_not_bind_their_own_transition_state():
     from itertools import product
 

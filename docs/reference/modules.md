@@ -510,6 +510,7 @@ None.
 - `aew.dashboard.session`
 - `aew.engine.api`
 - `aew.engine.lock`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.harness.procs`
 - `aew.knowledge.manifest`
@@ -1356,6 +1357,7 @@ None.
 
 ### `aew.harness.broker_liveness`
 
+- `aew.engine.store`
 - `aew.harness.operator_client`
 - `aew.harness.procs`
 - `aew.util`
@@ -1537,6 +1539,7 @@ None.
 
 ### `aew.harness.model_list`
 
+- `aew.engine.store`
 - `aew.errors`
 - `aew.harness.containment`
 - `aew.harness.containment.netns`
@@ -1558,6 +1561,7 @@ None.
 - `aew.engine.api`
 - `aew.engine.outbox`
 - `aew.engine.steering`
+- `aew.engine.store`
 - `aew.harness.agentenv`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
@@ -1676,6 +1680,7 @@ None.
 ### `aew.harness.operator_client`
 
 - `aew.engine.lock`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.harness.procs`
@@ -1722,12 +1727,14 @@ None.
 ### `aew.harness.runlog`
 
 - `aew.engine.outbox`
+- `aew.engine.store`
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.util`
 
 ### `aew.harness.seat`
 
+- `aew.engine.store`
 - `aew.errors`
 - `aew.harness.procs`
 - `aew.util`
@@ -1741,6 +1748,7 @@ None.
 - `aew.engine.primitives`
 - `aew.engine.priority`
 - `aew.engine.steering`
+- `aew.engine.store`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`
@@ -1790,12 +1798,14 @@ None.
 - `aew.coordination.layout`
 - `aew.engine.faults`
 - `aew.engine.lock`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.process_kind`
 - `aew.util`
 
 ### `aew.harness.tool_calls`
 
+- `aew.engine.store`
 - `aew.util`
 
 ### `aew.harness.usage`
@@ -1818,6 +1828,7 @@ None.
 ### `aew.harness.wake_queue`
 
 - `aew.engine.steering`
+- `aew.engine.store`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
@@ -2044,6 +2055,7 @@ None.
 ### `aew.maps.store`
 
 - `aew.engine.lock`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.maps.canonical`
 - `aew.schemas`

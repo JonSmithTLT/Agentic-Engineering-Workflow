@@ -46,6 +46,7 @@ Verified coordination bodies additionally have escaped readable data frames; per
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable, Mapping
@@ -147,34 +148,54 @@ def mark_serving(aew_root: Path, generation: int) -> None:
 
 def clear_serving(aew_root: Path, generation: int) -> None:
     """This generation's broker no longer posts. A later generation's mark is that broker's, and stays."""
-    if serving(aew_root) == generation:
+    try:
+        marked = serving(aew_root)
+    except PermissionError:
+        return  # an unreadable mark could belong to a newer broker
+    if marked == generation:
         (Path(aew_root) / SERVING_REL).unlink(missing_ok=True)
 
 
 def serving(aew_root: Path) -> int | None:
-    """The generation whose broker posts wakes, or None."""
+    """The generation whose broker posts wakes, or None if there is no valid mark."""
+    from aew.engine.store import retry_lock_free
+
     try:
-        return int((Path(aew_root) / SERVING_REL).read_text(encoding="utf-8"))
+        return int(retry_lock_free(lambda: (Path(aew_root) / SERVING_REL).read_text(encoding="utf-8")))
+    except PermissionError as exc:
+        logging.getLogger(__name__).warning("broker_serving_unreadable: errno=%s winerror=%s",
+                                           exc.errno, getattr(exc, "winerror", None))
+        raise
     except (OSError, ValueError):
         return None
 
 
-def broker_posts(aew_root: Path, generation: int) -> bool:
+def broker_posts(aew_root: Path, generation: int) -> bool | None:
     """Whether this generation's broker is live and posts wakes: its mark, and its liveness record's verdict at the
     observation's start. A slow file/process check must not age the snapshot it just sampled."""
     from aew.harness import broker_liveness
     from aew.harness.lead_broker import POLL_S
 
     observed_at = time.time()  # judge this snapshot at observation, not after potentially slow file/process checks
+    try:
+        if serving(aew_root) != generation:
+            return False
+    except PermissionError:
+        return None
     record = broker_liveness.read(aew_root)
-    return (serving(aew_root) == generation and record is not None and record.get("generation") == generation
+    if isinstance(record, broker_liveness.Unreadable):
+        return None
+    return (record is not None and record.get("generation") == generation
             and broker_liveness.judge(record, generation=generation, poll_s=POLL_S, now=observed_at) is None)
 
 
-def some_broker_posts(aew_root: Path) -> bool:
+def some_broker_posts(aew_root: Path) -> bool | None:
     """Whether the generation that marked itself is live and posts wakes, from files alone: a wait's own results read no
     state, since the broker's wait calls that code on every observation."""
-    generation = serving(aew_root)
+    try:
+        generation = serving(aew_root)
+    except PermissionError:
+        return None
     return generation is not None and broker_posts(aew_root, generation)
 
 
@@ -186,8 +207,10 @@ def _empty() -> dict[str, Any]:
 def read(aew_root: Path) -> dict[str, Any] | None:
     """The queue's file, or None: missing, unreadable, or not this module's. The queue then starts empty: the runs'
     returned marks stop it repeating what the Lead has seen, and the worst case is one more wake."""
+    from aew.engine.store import retry_lock_free
+
     try:
-        doc = json.loads((Path(aew_root) / WAKES_REL).read_text(encoding="utf-8"))
+        doc = json.loads(retry_lock_free((Path(aew_root) / WAKES_REL).read_bytes))
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
@@ -235,8 +258,9 @@ def render(status_: Mapping[str, Any]) -> list[str]:
         said = (f"last {'delivered' if status_.get('last_delivered') else 'posted'} {last['id']} at {_when(last['at'])}"
                 + (f" to session {last['session']}" if last.get("session") else ""))
     watching = status_.get("watching") or []
-    posting = f"the broker posts them ({OFF_SWITCH} stops them)" if status_.get("broker_posting") else (
-        f"{K.NO_BROKER} them")
+    posting = status_.get("broker_posting", False)
+    posting = ("broker posting could not be checked" if posting is None else
+               f"the broker posts them ({OFF_SWITCH} stops them)" if posting else f"{K.NO_BROKER} them")
     lines = [f"Lead wakes: watching {', '.join(watching) or 'no run'}; {said}; {posting}"]
     wake = status_.get("outstanding")
     if wake:

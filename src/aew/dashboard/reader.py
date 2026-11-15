@@ -94,7 +94,8 @@ class StateReader:
             manifest_path = self.engine.aew_root / MANIFEST
             manifest_identity = _identity(manifest_path)
             if self._manifest is None or self._manifest[0] != manifest_identity:
-                self._manifest = (manifest_identity, load_manifest(self.engine.aew_root))
+                manifest = committed.retry_lock_free(lambda: load_manifest(self.engine.aew_root))
+                self._manifest = (manifest_identity, manifest)
             gates_rel = (self._manifest[1].get("policy") or {}).get("gates")
             gates_path = self.engine.aew_root / str(gates_rel) if gates_rel else None
             pins = self._state[1].get(POLICY_PINS)
@@ -124,7 +125,7 @@ class StateReader:
         committed state), without the engine's locked manifest path; an unreadable, invalid or unadopted policy counts
         as empty, as the audit's own ``_policy`` treats it."""
         try:
-            raw = path.read_bytes()
+            raw = committed.retry_lock_free(path.read_bytes, also=committed.MISSING_MID_REPLACE)
             if pinned and sha256_bytes(raw) != pin:
                 return {}
             data = load_yaml(raw.decode("utf-8"), source=str(path))
@@ -271,7 +272,9 @@ class MapsReader:
         """The artifact's ``lstat``: a regular file within the dashboard's bound, or ``MAP_ARTIFACT_CORRUPT``
         (``not_a_file``, ``too_large``); ``NOT_FOUND`` when there is none. Nothing is opened."""
         try:
-            return MS.lstat_regular(self.aew_root / MS.artifact_rel(root), MS.MAP_FILE_MAX)
+            return committed.retry_lock_free(
+                lambda: MS.lstat_regular(self.aew_root / MS.artifact_rel(root), MS.MAP_FILE_MAX),
+                also=committed.MISSING_MID_REPLACE)
         except FileNotFoundError:
             raise NotFound(f"no stored map {root}", root=root) from None
         except MS.NotARegularFile as exc:

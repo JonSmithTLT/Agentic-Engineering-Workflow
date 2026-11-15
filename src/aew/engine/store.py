@@ -478,7 +478,7 @@ class ControlStore:
 
         On Windows the writer's atomic replace and a reader's open can collide for a moment (a sharing violation,
         ``PermissionError``); the reader retries briefly, as the writer does on its side (``replace_with_retry``)."""
-        return retry_lock_free(lambda: copy.deepcopy(self._load()))
+        return copy.deepcopy(self._load(lock_free=True))
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.
@@ -619,12 +619,13 @@ class ControlStore:
 
     # ------------------------------------------------------------------ recovery
 
-    def _load(self) -> dict[str, Any]:
+    def _load(self, *, lock_free: bool = False) -> dict[str, Any]:
         """The committed state: this process's last parse when the file holds the very bytes it parsed, else a verified
         parse. The result is shared with the cache and must not be changed (a session changes its own copy)."""
         with profile.phase("parse"):
             try:
-                raw = self.control_path.read_bytes()
+                read = self.control_path.read_bytes
+                raw = retry_lock_free(read, also=MISSING_MID_REPLACE) if lock_free else read()
             except FileNotFoundError:
                 raise ProjectNotFound(f"no control state at {self.control_path}") from None
             digest = sha256_bytes(raw)

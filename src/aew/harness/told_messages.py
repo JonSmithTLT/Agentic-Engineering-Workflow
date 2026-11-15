@@ -16,6 +16,7 @@ from aew import process_kind, util
 from aew.coordination.layout import MESSAGE_ID_RE
 from aew.engine import faults
 from aew.engine.lock import FileLock
+from aew.engine.store import retry_lock_free
 from aew.errors import IntegrityError, StaleAuthority, UsageError
 
 REL = "local/lead/told-messages.json"
@@ -24,7 +25,7 @@ LOCK_REL = "local/lead/told-messages.lock"
 
 def _load(path: Path) -> Any:
     try:
-        return json.loads(path.read_bytes())
+        return json.loads(retry_lock_free(path.read_bytes))
     except (OSError, ValueError, RecursionError):
         return None
 

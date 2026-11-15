@@ -55,6 +55,27 @@ def test_a_heartbeat_or_record_that_is_a_directory_is_none(directory):
     assert runlog.observed_status(directory)[0] == K.UNCONFIRMED
 
 
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_a_run_record_temporarily_missing_during_replace_reports_its_terminal_status(directory):
+    from windows_sharing import blocked_read
+
+    record(directory, status=K.ENDED_WITH_EVIDENCE)
+    path = directory / runlog.RECORD
+    with blocked_read(path, replace_gap=True):
+        assert runlog.observed_status(directory)[0] == K.ENDED_WITH_EVIDENCE
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_unreadable_run_record_is_distinct_from_an_absent_one(directory, caplog):
+    from windows_sharing import blocked_read
+
+    record(directory)
+    with blocked_read(directory / runlog.RECORD, release=False):
+        status, _ = runlog.observed_status(directory)
+    assert status == K.UNREADABLE and runlog.possibly_live(status, None)
+    assert "run_record_unreadable" in caplog.text
+
+
 def test_a_record_past_its_bound_is_not_read(directory, monkeypatch):
     record(directory)
     assert runlog.read_record(directory) is not None

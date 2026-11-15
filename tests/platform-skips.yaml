@@ -1051,6 +1051,14 @@ skipped:
       refusal run on every platform in tests/unit/test_provider_key_refusal.py, and Windows' side (no provider-key
       line) in test_doctor_judges_no_provider_key_off_the_relay_route.
   linux:
+    tests/integration/test_lead_wake_status.py::test_a_held_liveness_record_does_not_make_a_live_broker_look_absent: >-
+      Windows handle sharing prevents opening a live broker's record. Covered on Windows.
+    tests/unit/test_map_store.py::test_an_identical_map_write_succeeds_while_the_published_artifact_is_held: >-
+      A Windows held handle refuses the read of the published map. Covered on Windows.
+    tests/unit/test_runlog_reads.py::test_a_run_record_temporarily_missing_during_replace_reports_its_terminal_status: >-
+      A Windows replacement can briefly report a missing file name. Covered on Windows.
+    tests/unit/test_runlog_reads.py::test_an_unreadable_run_record_is_distinct_from_an_absent_one: >-
+      A Windows held handle keeps refusing the run record read until the shared retry expires. Covered on Windows.
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
     tests/unit/test_store_read_committed.py::test_an_absent_file_is_absent_only_after_the_retries_on_windows: >-

@@ -208,8 +208,10 @@ def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_c
 
 
 def _load(path: Path) -> dict[str, Any]:
+    from aew.engine.store import retry_lock_free
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(retry_lock_free(path.read_bytes))
     except (OSError, ValueError):
         return {}
     return {k: v for k, v in data.items() if isinstance(v, dict) and isinstance(v.get("models"), list)} \

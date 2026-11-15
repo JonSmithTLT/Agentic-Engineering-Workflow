@@ -1010,6 +1010,54 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: run-record-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: file sharing
+  owner: CI timing fixes
+  cause: The wait observed unconfirmed while the saved run record showed ended_with_evidence in the same second.
+  test: tests/integration/test_harness_runs.py::test_launching_a_dispatched_invocation_rotates_the_printed_credential
+  planned_fix: Retry the run record read through the shared store policy and surface a persistently unreadable record.
+  evidence:
+  - run: 43747598867
+    job: 132920297439
+    at: '2026-11-15T18:35:17Z'
+- id: broker-posting-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: file sharing and startup order
+  owner: CI timing fixes
+  cause: An immediate posting assertion could sample before startup or while Windows refused a liveness read.
+  test: tests/integration/test_lead_wake_status.py::test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn
+  planned_fix: Wait for posting and retry the liveness read through the shared store policy.
+  evidence:
+  - run: 43135354992
+    job: 130909397879
+    at: '2026-11-12T01:33:50Z'
+  - run: 43747598867
+    job: 132920297391
+    at: '2026-11-15T18:35:17Z'
+- id: map-identical-write-sharing
+  scope: test
+  lane: fast
+  platforms:
+  - windows
+  status: open
+  class: file sharing
+  owner: CI timing fixes
+  cause: Four of eight identical writers failed with PermissionError when reading the already published artifact.
+  test: tests/unit/test_map_store.py::test_concurrent_identical_writes_all_succeed_with_one_file
+  planned_fix: Retry the existing artifact's byte comparison through the shared store policy.
+  evidence:
+  - run: 43747598867
+    job: 132920297047
+    at: '2026-11-15T18:35:17Z'
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

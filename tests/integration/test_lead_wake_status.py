@@ -7,6 +7,9 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
+from conftest import IS_WINDOWS
+
 from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog
@@ -250,6 +253,9 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
     broker.start()
     try:
         broker.start_wakes(_CountingPoster())
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not Q.some_broker_posts(root):
+            time.sleep(0.05)
         assert Q.some_broker_posts(root)
         path = root / X.REL_PATH
         path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
@@ -259,6 +265,29 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
         assert Q.serving(root) is None and Q.some_broker_posts(root) is False
     finally:
         broker.close()
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_a_held_liveness_record_does_not_make_a_live_broker_look_absent(tmp_path, caplog):
+    import os
+
+    from windows_sharing import blocked_read
+
+    from aew.harness import broker_liveness, procs
+
+    generation = 7
+    Q.mark_serving(tmp_path, generation)
+    now = time.time()
+    broker_liveness.write(tmp_path, {
+        "schema": broker_liveness.SCHEMA, "pid": os.getpid(), "start_id": procs.start_id(os.getpid()),
+        "generation": generation, "beat_at": now, "watchdog_tick_at": now, "wedge_after_s": 30,
+    })
+    path = broker_liveness.path(tmp_path)
+    with blocked_read(path):
+        assert Q.some_broker_posts(tmp_path) is True
+    with blocked_read(path, release=False):
+        assert Q.some_broker_posts(tmp_path) is None
+    assert "broker_liveness_unreadable" in caplog.text
 
 
 def test_broker_posting_does_not_age_its_snapshot_during_the_process_identity_check(project, monkeypatch):

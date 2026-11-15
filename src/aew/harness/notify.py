@@ -316,7 +316,7 @@ def summary(aew_root: Path) -> dict[str, Any] | None:
         info = os.lstat(path)
         if not stat.S_ISREG(info.st_mode) or info.st_size > STATE_MAX_BYTES:
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(_read_state(path))
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(data, dict) or data.get("schema") != STATE_SCHEMA:
@@ -836,13 +836,19 @@ def _count(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
+def _read_state(path: Path) -> bytes:
+    from aew.engine.store import retry_lock_free
+
+    return retry_lock_free(path.read_bytes)
+
+
 def _saved_state(aew_root: Path) -> dict[str, Any]:
     path = notify_dir(aew_root) / STATE
     try:
         info = os.lstat(path)
         if not stat.S_ISREG(info.st_mode) or info.st_size > STATE_MAX_BYTES:
             return {}
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(_read_state(path))
     except (OSError, ValueError, RecursionError):
         return {}
     return data if isinstance(data, dict) and data.get("schema") == STATE_SCHEMA else {}

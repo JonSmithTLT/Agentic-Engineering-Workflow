@@ -39,6 +39,7 @@ TERMINATED = "terminated"                  # stopped by AEW: authority ended, su
 TERMINAL = frozenset({LAUNCH_FAILED, ENDED_WITH_EVIDENCE, ENDED_WITHOUT_EVIDENCE, CRASHED, TERMINATED})
 # Derived from local observation only (never written by a supervisor):
 UNCONFIRMED = "unconfirmed"  # recorded in control state, but no supervisor ever took custody
+UNREADABLE = "unreadable"   # the record could not be opened; its last reported status is unknown
 LOST = "lost"                # a supervisor took custody and stopped reporting (killed, crashed, machine lost)
 # Why a run ended, where an adapter can tell more than its status says: the record's `reason_code`, beside `status`
 # and `reason`. Telemetry like the rest of the record, so it never decides anything.

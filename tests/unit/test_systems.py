@@ -649,7 +649,7 @@ def test_off_on_pairs_check_the_boolean_in_both_directions(own, values, on):
 
 
 def test_a_switch_the_init_template_sets_is_on_by_default_as_a_new_project_holds_it(own):
-    """The Lead's ruling of 2026-11-11 (SYS-07's switch-on): on_by_default means what a new project gets. A table
+    """The board's rule of 2026-11-11: on_by_default means what a new project gets. A table
     switch `aew init`'s template sets derives it from the template, and the board states that value beside the
     absent-key default; a switch the template leaves unset derives it from the table, and states no other value."""
     data = board()
@@ -678,7 +678,7 @@ def test_a_switch_the_init_template_sets_is_on_by_default_as_a_new_project_holds
 
 def test_the_real_template_sets_only_the_maps_switch_among_the_table_switches():
     """Which table switches a new project holds otherwise than an absent key, read from the real template: the rule
-    above flips on_by_default only for these (SYS-07 at 2026-11-11)."""
+    above flips on_by_default only for these (project maps, 2026-11-11)."""
     real = owners_at_head()
     assert real.new_project == {("maps", "pack_slices"): "structural"}
 

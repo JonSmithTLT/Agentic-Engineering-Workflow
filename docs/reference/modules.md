@@ -626,6 +626,7 @@ None.
 - `aew.history.store`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.schemas`
 - `aew.util`
 - `aew.workspace.git`
@@ -1897,7 +1898,6 @@ Imports from the groups:
 - `aew.harness.opencode.projection`
 - `aew.maps.service`
 - `aew.policy.checks`
-- `aew.policy.execution`
 - `aew.util`
 
 ### `aew.kit.__main__`
@@ -2024,6 +2024,7 @@ None.
 - `aew.maps.rules`
 - `aew.maps.store`
 - `aew.maps.structural`
+- `aew.util`
 
 ### `aew.maps.slices`
 

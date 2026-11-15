@@ -35,7 +35,7 @@ def sealed(files: dict[str, Any]) -> dict[str, Any]:
 def test_a_new_project_holds_the_switch_on_and_an_absent_key_is_off():
     """A new project's policy is the template, which holds :data:`X.NEW_PROJECT_PACK_SLICES`; a policy without the key
     (a project initialized before that default) reads as off, so it changes no pack until the operator takes the switch
-    offer (register E184)."""
+    offer (ADR-0015)."""
     assert X.pack_slices(None) == X.pack_slices({}) == X.pack_slices({"maps": {}}) == "off"
     assert X.pack_slices({"maps": {"pack_slices": "structural"}}) == "structural"
     assert X.NEW_PROJECT_PACK_SLICES == X.PACK_SLICES_STRUCTURAL
@@ -51,7 +51,7 @@ def test_a_new_project_holds_the_switch_on_and_an_absent_key_is_off():
 
 
 def test_the_lead_gets_the_slices_bytes_in_place_of_its_body_and_every_other_pack_as_it_is():
-    """Register E184: :func:`slices.for_lead` replaces only the body; nothing else in the pack or the entry moves."""
+    """:func:`slices.for_lead` replaces only the body; nothing else in the pack or the entry moves."""
     rows = ["map 0123456789ab: CURRENT", "calc/  2 files"]
     entry = {"name": slices.NAME, "path": "local/maps/x", "sha256": "a" * 64, "freshness": {"status": "CURRENT"}}
     other = {"name": "guardrails", "path": "policy/guardrails.yaml", "sha256": "b" * 64}
@@ -114,7 +114,7 @@ def test_only_a_role_whose_context_names_codebase_map_gets_the_slice(role):
 
     on = {"maps": {"pack_slices": "structural"}}
     role_def = roles.archetype(role)
-    assert slices.wanted(role_def, on) is True  # every worker's card names it (register E184)
+    assert slices.wanted(role_def, on) is True  # every worker's card names it (ADR-0015)
     assert slices.wanted(role_def, None) is False and slices.wanted(role_def, {"maps": {"pack_slices": "off"}}) is False
     assert slices.wanted(roles.archetype("lead"), on) is False  # the Lead has no pack
 

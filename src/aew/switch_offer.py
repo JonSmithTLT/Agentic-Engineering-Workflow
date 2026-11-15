@@ -5,8 +5,8 @@ projects only. The offer is how an existing project gets it, by the operator's d
 (:data:`OFFERS`) is one switch. The rules:
 
 1. **It asks only at the operator's own terminal, in `aew opencode`'s start.** A Lead session and an agent's own `aew`
-   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer. (2026-11-12, the Lead's
-   ruling on SYS-07's switch-on: the skip also prints one line naming the pending offers.)
+   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer. (2026-11-12: the skip also
+   prints one line naming the pending offers.)
 2. **It decides by the key, and never over the operator's value.** A value AEW never shipped, a table the project
    already names or a file already there is never offered, and no line anywhere mentions it.
 3. **It adopts only its own change.** Anything else drifted means it doesn't ask, and lists what. The adoption takes

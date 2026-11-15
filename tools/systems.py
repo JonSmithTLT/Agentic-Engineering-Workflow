@@ -81,7 +81,7 @@ TOP_FIELDS = ("schema", "wip_limit", "unowned", "systems", "wip_allowance")
 ALLOWANCE_FIELDS = ("count", "operator", "date")
 GATE_SOURCE = "src/aew/knowledge/manifest.py:DEFAULT_GATES"
 SWITCH_SOURCE = "src/aew/policy/execution.py:STRING_SWITCHES"
-# What a new project holds, for a table switch `aew init`'s template sets (the Lead's ruling on SYS-07's switch-on,
+# What a new project holds, for a table switch `aew init`'s template sets (the board's rule of 2026-11-11,
 # 2026-11-11): on_by_default means what a new project gets, and the table's first value stays the absent-key default.
 NEW_PROJECT_SOURCE = "src/aew/policy/execution.py:TEMPLATE"
 WIRED_RECORDS = {"cli": "cli-commands", "dashboard": "dashboard-routes", "tool": "tools"}

@@ -509,7 +509,7 @@ def test_a_warm_read_spawns_only_the_partial_clone_check_and_the_head_resolve(wo
 @pytest.fixture
 def lab(tmp_path) -> Iterator[tuple[Project, Path]]:
     """A fresh project for a test that changes its maps or its repository, before any map: `aew init` selected one
-    (register E184), and removing local/maps/ is the same as never having had it (ADR-0015 D1). The switch is off, so
+    (ADR-0015), and removing local/maps/ is the same as never having had it (ADR-0015 D1). The switch is off, so
     no dispatch makes one either: each test builds the map states it shows."""
     p = sample_project(tmp_path, maps="off")
     shutil.rmtree(maps_dir(p))

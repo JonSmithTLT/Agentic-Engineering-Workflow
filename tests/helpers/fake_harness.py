@@ -185,7 +185,7 @@ class HarnessLab:
         scripts.mkdir(parents=True, exist_ok=True)
         (tmp / "sync").mkdir(exist_ok=True)
         policy = dict(policy or POLICY)
-        # The lab's policy replaces the one `aew init` wrote, so it keeps init's maps switch (register E184) unless the
+        # The lab's policy replaces the one `aew init` wrote, so it keeps init's maps switch (ADR-0015) unless the
         # test names one: a lab project is a new project, and without the key it would read off and be offered maps at
         # `aew opencode`'s start, which a Lead session's test runs on a relayed terminal, where it waits for an answer.
         policy.setdefault("maps", {"pack_slices": X.NEW_PROJECT_PACK_SLICES})

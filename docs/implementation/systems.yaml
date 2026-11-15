@@ -999,26 +999,27 @@ systems:
   - src/aew/policy/execution.py pack_slices() reads an absent key as off
   - src/aew/switch_offer.py OFFERS row maps_pack_slices, for a project holding the key absent or "off"
   - src/aew/maps/slices.py for_lead, every engine result's pack as the Lead sees it (slice_bytes, no body)
-  - 'src/aew/maps/slices.py:50-55 wanted(): switch structural AND the role''s context names codebase_map'
-  - src/aew/engine/context_ops.py:177 the pack slice is pinned only when slices.wanted()
-  - src/aew/engine/resume_ops.py:452-467 the resume row behind the same switch
-  - src/aew/roles/archetypes/investigator.yaml:21 the only archetype naming codebase_map
-  - src/aew/roles/archetypes/planner.yaml:20 the planner's knowledge omits codebase_map (E62)
-  - src/aew/knowledge/context.py:609-610 the codebase-map section rendered last and cuttable
-  - src/aew/knowledge/context.py:122-130 KNOWLEDGE_SECTIONS has no architecture_map key
-  - src/aew/maps/service.py:257-268 select_architecture records a discovery-evidence id
+  - 'src/aew/maps/slices.py wanted(): switch structural AND the role''s context names codebase_map'
+  - src/aew/engine/context_ops.py the pack slice is pinned only when slices.wanted()
+  - src/aew/engine/resume_ops.py the resume row behind the same switch
+  - src/aew/roles/archetypes/investigator.yaml the only archetype naming codebase_map
+  - src/aew/roles/archetypes/planner.yaml the planner's knowledge omits codebase_map (E62)
+  - src/aew/knowledge/context.py the codebase-map section rendered last and cuttable
+  - src/aew/knowledge/context.py KNOWLEDGE_SECTIONS has no architecture_map key
+  - src/aew/maps/service.py select_architecture records a discovery-evidence id
   - 'src/aew/maps/service.py refresh_at_dispatch and slices.pin''s lead argument: a Lead''s dispatch refreshes a STALE
     or absent map at use, inert while the switch is off (ADR-0015, amendment of 2026-11-11)'
-  - src/aew/knowledge/manifest.py:99-102 init writes architecture_map, codebase_map, ownership_map, glossary as None;
+  - src/aew/knowledge/manifest.py init writes architecture_map, codebase_map, ownership_map, glossary as None;
     the architecture_map key stays (KC v0.4 §14), and KNOWLEDGE_NAMES and resolve_knowledge, which had no callers,
     are removed (the BOARD v2 §4 loose ends, closed by the drop branch)
-  - src/aew/cli/map_commands.py:56-93 aew map generate, select-architecture, show, diff
-  - src/aew/dashboard/server.py:288-298 the five /maps routes
-  - 'importers of aew.maps outside the package (grep): cli/map_commands, dashboard/mapview, dashboard/projections, dashboard/reader,
-    engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops, engine/request_ids (slices.for_lead),
-    knowledge/context, switch_offer; none in integration code, so no regeneration on publish'
-  - src/aew/surface/readable.py:60-61 the only surface mention of aew map is a code comment; no Lead text names it
-  - 'src/aew/maps/store.py:51-52 LOG_REL and LOCK_REL: the registry log and the registry lock'
+  - src/aew/cli/map_commands.py aew map generate, select-architecture, show, diff
+  - src/aew/dashboard/server.py the five /maps routes
+  - 'importers of aew.maps outside the package (grep): cli/commands, cli/map_commands, dashboard/mapview, dashboard/projections,
+    dashboard/reader, engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops,
+    engine/request_ids (slices.for_lead), engine/archive_ops (for_display), kit, kit/receipt, knowledge/context, switch_offer;
+    none in integration code, so no regeneration on publish'
+  - src/aew/surface/readable.py the only surface mention of aew map is a code comment; no Lead text names it
+  - 'src/aew/maps/store.py LOG_REL and LOCK_REL: the registry log and the registry lock'
   - docs/implementation/future-work.yaml (row F22.1, at c11a61ea) F22.1 closed with the switch off and investigator only
   - docs/implementation/future-work.yaml (row HOLD-14, at c11a61ea) HOLD-14 members E62, F22, F22.2, F22.3, F30, F41.7
 - id: SYS-08

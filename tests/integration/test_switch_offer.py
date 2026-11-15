@@ -93,7 +93,7 @@ def old(tmp_path, request):
 
 @pytest.fixture
 def before_maps(old):
-    """``old`` initialized before maps were on by default as well (register E184): its execution policy is the
+    """``old`` initialized before maps were on by default as well (ADR-0015): its execution policy is the
     template of then, with no ``maps`` key at all, so all three rows are pending."""
     if _strip_maps(old):  # a test run over one row has it so already
         old.adopt_policy()
@@ -297,7 +297,7 @@ def test_an_absent_key_whose_default_already_holds_is_not_offered(old):
 
 
 def test_a_project_from_before_maps_is_offered_them_once_and_keeps_its_answer(before_maps, at_terminal, monkeypatch):
-    """Register E184: a project with no ``maps`` key reads off, so maps reach it only through the offer. Enter alone is
+    """ADR-0015: a project with no ``maps`` key reads off, so maps reach it only through the offer. Enter alone is
     a remembered no: the next start asks nothing, the switch stays off, and doctor names the no and the hand route."""
     only_row(monkeypatch, MAPS)
     assert doctor(before_maps) == {f"switch-offer:{MAPS}": "INFO: Switch offer: project maps, off -> structural. "

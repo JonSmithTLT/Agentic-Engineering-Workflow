@@ -223,7 +223,7 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
 def new_project_switches() -> dict[tuple[str, str], str]:
     """Each string switch the template sets, with the value a new project holds. The table's first value is what an
     absent key reads; a project initialized before the template set a switch holds that until the operator changes
-    it (the Lead's ruling of 2026-11-11 on SYS-07's switch-on: the configuration view and the board show both)."""
+    it (the configuration view and the board show both)."""
     template = load_yaml(TEMPLATE)
     out = {}
     for block, key in STRING_SWITCHES:

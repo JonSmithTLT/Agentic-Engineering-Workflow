@@ -671,7 +671,7 @@ def test_field_metadata(engine):
         assert switch["value"]["allowed"] == list(allowed) and switch["default"] == allowed[0]
         assert switch["new_project_default"] == X.new_project_switches().get((block, key))
         assert switch["value"]["class"] == props[block]["properties"][key]["x-aew-class"]
-    # maps: off when absent, on for a new project (register E184), so the view says both, never one for the other
+    # maps: off when absent, on for a new project (ADR-0015), so the view says both, never one for the other
     maps = switches["/maps/pack_slices"]
     assert maps["default"] == "off" and maps["new_project_default"] == X.NEW_PROJECT_PACK_SLICES == "structural"
     model = by_name(out)["standard"]["fields"]["model"]

@@ -17,7 +17,7 @@ def test_fresh_project_resume_is_honest_about_what_is_missing(repo):
     assert any("classify authority candidates" in a for a in r["next_actions"])
     assert any("configure checks" in a for a in r["next_actions"])
     fresh = {k["name"]: k["freshness"] for k in r["derived_knowledge"]}
-    # maps are on for a new project, and init makes the first map from the branch's head (registers E62 and E184)
+    # maps are on for a new project, and init makes the first map from the branch's head (ADR-0015)
     assert fresh["project_overview"] == "AUTHORED" and fresh["codebase_map"] == "CURRENT"
     text = p.aew("resume").stdout
     assert "AEW resume" in text and "Next actions" in text

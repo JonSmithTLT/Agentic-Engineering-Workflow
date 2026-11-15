@@ -38,7 +38,7 @@ MAPS = Path(".aew") / store.MAPS_REL
 
 def switch_on(p: Project) -> None:
     """The operator turns the slices on, in a project built with ``sample_project(..., maps="off")``: before this the
-    project is as one initialized before maps were on by default (register E184)."""
+    project is as one initialized before maps were on by default (ADR-0015)."""
     policy = p.root / ".aew" / "policy" / "execution.yaml"
     text = policy.read_text(encoding="utf-8")
     assert text.count('\n  pack_slices: "off"\n') == 1, "switch_on turns on a project built with maps off"

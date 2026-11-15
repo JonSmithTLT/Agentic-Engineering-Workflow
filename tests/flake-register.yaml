@@ -610,8 +610,9 @@ entries:
     (03:57:09Z to 03:57:19Z), and the run then ended without evidence. The synchronous adapter request paused
     the heartbeat while waiting for the local server.
   planned_fix: >-
-    Keep unread Windows requests queued and keep the heartbeat during bounded OpenCode steering calls.
-    Both paths have fault-injection coverage. Closure awaits the fix PR number.
+    Keep unread Windows requests queued and log the read error once per file. A recorded unread request holds
+    later requests for up to four scans before the watchdog logs an order bypass. Bound the heartbeat during
+    OpenCode steering calls so a hung call still reads lost. Closure awaits the fix PR number.
   owner: CI flake triage
   test: tests/integration/test_opencode_adapter.py::test_a_lead_interrupt_holds_the_session_until_send
   row: E3

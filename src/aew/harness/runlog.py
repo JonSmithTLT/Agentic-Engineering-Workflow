@@ -29,6 +29,7 @@ import stat
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -327,8 +328,9 @@ def deliver_request(directory: Path, name: str, text: str) -> Path:
     return path
 
 
-def take_requests(directory: Path) -> list[tuple[str, str]]:
-    """Take readable requests and discard invalid entries. An unavailable Windows read leaves the file queued."""
+def take_requests(directory: Path, *,
+                  on_unread: Callable[[str, PermissionError], None] | None = None) -> list[tuple[str, str]]:
+    """Take readable requests and discard invalid entries. Report unavailable Windows reads and leave them queued."""
     queue = directory / "requests"
     out = []
     try:  # a queue that is a link is not the run's queue: its target's files are never read or removed
@@ -340,10 +342,12 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
             # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
             # queue, so a request that could block it would stop the deadline and every later Lead request.
             out.append((path.name, _read_regular(path).decode("utf-8", errors="replace")))
-        except PermissionError:
-            # os.open on Windows reports a sharing violation as EACCES. The handle may be released before unlink:
-            # don't remove a request unless it was read or rejected as invalid.
+        except PermissionError as exc:
+            # Another Windows handle can allow deletion while blocking this read. The CRT reports EACCES,
+            # and unlink below could succeed even while that handle is open.
             if IS_WINDOWS:
+                if on_unread is not None:
+                    on_unread(path.name, exc)
                 continue
         except OSError:
             pass

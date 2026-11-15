@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 4
+version: 5
 
 vocabulary:
   homes:
@@ -175,10 +175,12 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source.
-      `steering:run-ready` (the RUN readiness walk of 2026-11-11, finding 1) says whether a raise to Run would be
-      accepted and could act: the notifier, a deadline_s on every profile routing can pick, and the live operator
-      endpoint, each with its fix; a read, like every doctor check."
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source. The
+      execution policy's credentials provider default and profile credential override select the worker's pot. For a
+      plan login, provider-key names its time left and model-list uses the same route and seed as launch.
+      `steering:run-ready` says whether a raise to Run would be accepted and could act (A1 §3.2): a Lead in the seat, the
+      notifier, a deadline_s on every profile routing can pick, and an operator endpoint that answers a ping, each with
+      its fix; a read, like every doctor check."
   - name: init
     home: product
     users: [operator]
@@ -190,8 +192,8 @@ commands:
       capability register"
     refusals: [INTEGRITY_ERROR, NOT_FOUND, USAGE, VALIDATION_FAILED]
     note: "its first configuration's flags are refused under AEW_LEAD_BROKER (register E119), and so is --fetch-tool
-      (the operator's decision of 2026-11-05: AEW downloads no tool unless the operator chooses it); NOT_FOUND: an
-      unknown --fetch-tool, refused before anything is written"
+      (the operator's decision of 2026-11-05). --fetch-tool none by itself skips consent and downloads without
+      recording an answer (E191). Unknown tools and combinations with none are refused before anything is written."
   - name: status
     home: product
     users: [operator, lead]
@@ -631,9 +633,9 @@ commands:
       primitive: work.accept
       lands: A2
       reason: "evidence acceptance is the Lead's judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work close
     home: product
     users: [lead]
@@ -648,9 +650,9 @@ commands:
       primitive: work.close
       lands: A2
       reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work cancel
     home: product
     users: [lead]
@@ -665,9 +667,9 @@ commands:
       primitive: work.cancel
       lands: A2
       reason: "cancelling a unit is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work move
     home: product
     users: [lead]
@@ -750,9 +752,9 @@ commands:
       primitive: work.acknowledge-input
       lands: A2
       reason: "acknowledging an input is judgment"
-      options: {work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
     home: product
     users: [operator, lead]
@@ -911,9 +913,9 @@ commands:
       primitive: plan.reconfirm
       lands: A2
       reason: "reconfirming a plan is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke create
     home: product
     users: [lead]
@@ -1033,7 +1035,7 @@ commands:
           - "option --replace"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
+    note: "a stage launches its own harness with `dispatch.launch`"
   - name: harness status
     home: product
     users: [operator, lead]
@@ -1140,13 +1142,13 @@ commands:
       primitive: gate.waive
       lands: A2
       reason: "waiving a gate is the Lead's (operator, 2026-10-06); `R(waive)` pairs only a gate, so waiving a required finding (`--finding`) has no typed home yet (`uncovered`, the A1-0 review's F2)"
-      options: {work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
       uncovered:
         lands: A2
         uses:
           - "option --finding"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: evidence ingest
     home: product
     users: [lead]
@@ -1201,9 +1203,9 @@ commands:
       primitive: verify.classify
       lands: A2
       reason: "classifying a verification failure is judgment"
-      options: {work_id: homes, "--as": homes, "--reason": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate prepare
     home: product
     users: [lead]
@@ -1551,8 +1553,8 @@ commands:
       carries an agent's text (A-44), but it changes no project state"
     probe: [notify, file, /aew-probe/notified.jsonl, --check]
     refusals: [CAPABILITY_UNAVAILABLE, USAGE]
-    note: "the headless notifier for an endpoint with no desktop session (the RUN readiness walk of 2026-11-11, finding
-      5; the operator's yes the same day): `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
+    note: "the headless notifier for an endpoint with no desktop session (an ssh login on a Linux host):
+      `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
       as its own engine, as the default; CAPABILITY_UNAVAILABLE (not_writable) when the path cannot take the event"
   - name: settings show
     home: operator-admin
@@ -1715,6 +1717,33 @@ commands:
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
+
+  - name: message reply
+    home: product
+    users: [worker]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "the run's custody bridge records a reply on its own invocation's coordination thread"
+    refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, REPLY_NOT_IN_THREAD, STALE_AUTHORITY, USAGE]
+    conditional: "only inside a worker run with an enabled messaging launch snapshot; presentation grants nothing"
+  - name: message read
+    home: product
+    users: [worker]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "the run's bridge reads only its credential's own verified thread tail, without consumption"
+    mutates_exempt: "the invocation credential identifies its own thread, never another worker's"
+    probe: [message, read]
+    refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, STALE_AUTHORITY, USAGE]
+    conditional: "only inside a worker run with an enabled messaging launch snapshot; presentation grants nothing"
+  - name: message wait
+    home: product
+    users: [worker]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "after a successful bound bridge send, records exactly its returned Lead messages delivered"
+    refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, STALE_AUTHORITY, USAGE, WAIT_OUTSIDE_A_STEP, WAIT_UNSUPPORTED]
+    conditional: "only inside a worker run with an enabled messaging launch snapshot; lifetime binding must be qualified"
 
 tools:
   - name: message_send

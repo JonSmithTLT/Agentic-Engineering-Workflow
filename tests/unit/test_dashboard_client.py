@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import socket
 import sys
 import threading
@@ -78,8 +79,7 @@ def test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port():
     assert "lacks the dashboard's R21 headers" in first
     assert "this client's local port: " in text and "flake-planted-listener" in text
     if sys.platform == "linux":  # the planted listener is this process's: ss names it, with this pid
-        listening = next(line for line in text.splitlines() if line.startswith(f"listening on :{port}"))
-        assert f":{port}" in listening.split(": ", 1)[1] and f"pid={os.getpid()}," in listening, listening
+        _assert_linux_listener(text, port, os.getpid())
         local = next(line for line in text.splitlines() if line.startswith("this client's local port: ")).split()[-1]
         # recorded while this end of the connection was open: the client's own socket, with this pid
         assert any(f"127.0.0.1:{local} " in line and f"pid={os.getpid()}," in line for line in text.splitlines()), text
@@ -89,6 +89,23 @@ def test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port():
                   for line in text.splitlines())
         assert row != (D.NO_LISTENING_ROW in text), text  # never both: always saying so would pass an `or`
         assert D.SHARED in text
+
+
+def _assert_linux_listener(text: str, port: int, pid: int) -> None:
+    # ss may show several rows for the port. Only rows from the listening table count.
+    listening = text.split(f"listening on :{port} (ss -Htlnpe): ", 1)[1].split("\nevery socket on :", 1)[0]
+    assert any(re.search(rf"\bLISTEN\b.*:{port}\s+.*\bpid={pid},", row)
+               for row in listening.splitlines()), listening
+
+
+def test_the_listener_check_reads_past_an_unrelated_first_row():
+    foreign = "LISTEN 0 128 127.0.0.1:43537 0.0.0.0:* uid:1001 ino:426567"
+    own = 'LISTEN 0 128 127.0.0.1:43537 0.0.0.0:* users:(("python",pid=2489,fd=4))'
+    heading = "listening on :43537 (ss -Htlnpe): "
+    connected = "\nevery socket on :43537 or :43538 (ss -Htanpe): "
+    _assert_linux_listener(f"{heading}{foreign}\n{own}{connected}{own}", 43537, 2489)
+    with pytest.raises(AssertionError, match="ino:426567"):
+        _assert_linux_listener(f"{heading}{foreign}{connected}{own}", 43537, 2489)
 
 
 LISTENER = "  TCP    127.0.0.1:5000         0.0.0.0:0              LISTENING       41"

@@ -46,8 +46,6 @@ finishes; they are the only place AEW knowledge appears here:
   hint's ``work transition --to RUNNING`` is refused ("no active implementer invocation"): the Lead dispatches a new
   attempt (``invoke create --role implementer --launch``, or ``work redispatch`` for a non-mutating Ticket). A hint
   whose command is refused is also recorded as ``stale_hint`` (evidence about the projection's guidance);
-- ``recheck``: the gate still lacks the local check after the operator's own workaround (U14): the Lead relaunches
-  the implementer's invocation from its shell, so its check runs again;
 - ``decision_refused``: a decision still required after its answer was acted on is never re-asked: one
   ``explain``, its concrete ``cli_fallback`` if it has one (for ``RESOLVE_STAGE``, ``stage continue`` with the Lead's
   own rationale; when that is refused and the refusal names ``abandon``, ``stage abandon`` with the Lead's rationale),
@@ -120,7 +118,6 @@ class Lead:
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
         self.last_out: dict[str, Any] | None = None
-        self.operator_acted = False  # the operator spoke after the Lead said it was stuck (a workaround of theirs)
         self.last_refusal = ""  # the last refusal a hint's command met
 
     # ------------------------------------------------------------------ accounting
@@ -327,7 +324,6 @@ class Lead:
             heard = self.hear()  # after a result or a stop: whatever the operator says next; then the Lead goes on
             self.event("heard", text=str(heard.get("text", "")))
             self.seen.clear()
-            self.operator_acted = True
             budget = 40
 
     def read(self) -> dict[str, Any]:
@@ -520,10 +516,6 @@ class Lead:
         proposed = [p for p in plans if str(p.get("status")) == "proposed"]
         if proposed and not accepted and self.seen[key] == 1:
             return self.gap_plan(proposed[-1], proj)
-        unmet = [b for b in proj.get("blockers") or [] if b.get("code") == "GATE_UNSATISFIED"
-                 and "local_checks" in ((b.get("details") or {}).get("unmet") or {})]
-        if unmet and self.operator_acted:
-            return self.gap_recheck(proj)
         if self.seen[key] == 1:
             self.event("gap", gap="no_available_action", why="no decision and no AVAILABLE action")
             self.call("explain", {"work_id": self.subject}, why="no AVAILABLE action")
@@ -620,18 +612,6 @@ class Lead:
         args = {"expect_rev": proj.get("revision"), "work_id": self.subject, "prepared_candidate": candidate,
                 **({"verification_evidence": report} if report else {})}
         self.call("integration_publish", args, why="publish_not_offered")
-        return True
-
-    def gap_recheck(self, proj: dict[str, Any]) -> bool:
-        """The gate still lacks the local check after the operator's own workaround: the Lead relaunches the
-        implementer's invocation so its check runs again (`aew harness launch`, the quickstart's relaunch; counted)."""
-        self.operator_acted = False
-        runs = [r for r in proj.get("runs") or [] if r.get("role") == "implementer"]
-        if not runs:
-            return self.stuck("the local check is missing and no implementer run is known to relaunch")
-        self.event("gap", gap="recheck", why="local_checks unmet after the operator's workaround")
-        self.shell(["harness", "launch", runs[-1]["invocation"], "--expect-rev", str(proj.get("revision"))],
-                   why="recheck: relaunch the implementer so its check runs again")
         return True
 
     def gap_plan(self, plan: dict[str, Any], proj: dict[str, Any]) -> bool:

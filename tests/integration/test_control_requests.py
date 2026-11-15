@@ -52,7 +52,7 @@ def _assert_invocation_replay(p, method, first, **kwargs):
     info = replay["credential_replay"]
     assert info["status"] == "NOT_REPLAYABLE"
     assert info["rotate"].startswith(f"aew harness launch {first['invocation']} --expect-rev ")
-    assert replay["invocation"] == first["invocation"] and replay["invocation_token"] is None
+    assert replay == first | {"replayed": True, "invocation_token": None, "credential_replay": info}
     assert first["invocation_token"] not in repr(load_control(p.root)[INDEX])
 
 
@@ -103,8 +103,16 @@ def test_plan_propose_and_work_promote_replay_the_committed_results(tmp_path):
     promote = {"work_id": t, "to": "story", "title": "Larger scope", "reason": "Needed", "request_id": "same"}
     promoted = _call(p, "work_promote", **promote)
     replay = _replay(p, "work_promote", promoted, **promote)
-    assert replay["promoted_to"] == promoted["promoted_to"] and replay["work_id"] == t
-    assert replay["record"] == load_control(p.root)["work"][replay["promoted_to"]]["record"]
+    assert replay == promoted | {"replayed": True}
+
+    from aew.engine.store import Transition
+
+    engine = Engine.discover(p.root)
+    with engine.store.session() as session:
+        receipt = session.state[INDEX]["operations"]["work.promote"]["same"]
+        receipt["ref"] = promoted["promoted_to"]
+        session.commit(Transition(op="test.legacy_receipt", actor={"kind": "test"}, summary="legacy receipt"))
+    assert _replay(p, "work_promote", promoted, **promote) == promoted | {"replayed": True}
 
 
 def test_archiving_prunes_only_receipts_for_the_archived_unit(project):
@@ -267,3 +275,19 @@ def test_following_the_rotate_step_and_forwarding_a_launch_replay(lab, tmp_path,
     assert "launch" not in replay and replay["invocation_token"] is None
     assert engine.launch_dispatched(replay) == replay
     assert spawned == [(started["launch"]["run"], True)]
+
+
+@pytest.mark.parametrize("scope", ["observation", "arbitrary"])
+def test_invoke_create_refuses_non_dispatch_scopes(project, scope):
+    rev = project.rev()
+    with pytest.raises(UsageError, match="ticket or integration"):
+        _call(project, "invoke_create", work_id="T-0001", scope=scope)
+    assert project.rev() == rev
+
+
+def test_work_create_replays_scope_warnings(project):
+    args = {"kind": "ticket", "title": "New source", "risk_class": 1, "scope_paths": ["not-yet-created/**"],
+            "goal_backwards": ["the planned source exists"], "request_id": "scope-warning"}
+    first = _call(project, "work_create", **args)
+    assert first["warnings"] and "not-yet-created/**" in first["warnings"][0]
+    assert _replay(project, "work_create", first, **args) == first | {"replayed": True}

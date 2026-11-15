@@ -38,12 +38,14 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from aew import util
 from aew.coordination import layout as L
+from aew.coordination.render import lead_message, worker_message
 from aew.engine import outbox
 from aew.engine.authority import require_invocation, require_lead
 from aew.engine.base import POLICY_PINS, V2, Kernel, TxnContext
@@ -439,6 +441,55 @@ class Coordination:
 
     # ------------------------------------------------------------------ reads
 
+    def message_read_worker(self, *, invocation_token: str) -> dict[str, Any]:
+        """The credential's own thread tail only; no consumption, repair, sibling lookup or revision movement."""
+        state = self.k.store.read_committed()
+        inv_id, inv, _ = require_invocation(state, invocation_token, None, archived=self.archive.archived_credential)
+        thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+        return {"thread": inv_id, "messages": [lead_message(m) if _is_lead(m) else _labelled(m)
+                                               for m in thread.messages[-L.UNSEEN_CAP:]]}
+
+    def _waiting(self, state: dict[str, Any], invocation_token: str, after: str) -> tuple[Thread, list[dict[str, Any]]]:
+        inv_id, inv, _ = require_invocation(state, invocation_token, None, archived=self.archive.archived_credential)
+        self._require_recordable(state)
+        thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+        cursor = 0
+        if after:
+            target = thread.by_id().get(after)
+            if target is None:
+                raise ReplyNotInThread(f"{after} is not a message of your thread ({inv_id})", reason="unknown")
+            cursor = target["seq"]
+        answered = _answered(thread)
+        pending = [m for m in thread.messages if m["sender"] == L.lead_party(state["lead"]["generation"])
+                   and m["seq"] > cursor and m["id"] not in answered]
+        return thread, pending[:L.UNSEEN_CAP]
+
+    def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
+        thread, pending = self._waiting(self.k.store.read_committed(), invocation_token, after)
+        return {"thread": thread.invocation, "messages": [lead_message(m) for m in pending]}
+
+    def message_deliver_wait(self, *, invocation_token: str, after: str, send: Callable[[Any], None]) -> None:
+        """Select under authority, send without the control lock, then revalidate before recording carried IDs.
+        Caller holds the supervisor's delivery lock; send rechecks the connection, authority and call/step lifetime.
+        A slow or dead socket must never hold the project's control lock. An exception from send writes no fact;
+        authority lost after the send also writes nothing, and a sealed thread is never reopened."""
+        with self.k.store.session() as s:
+            thread, pending = self._waiting(s.state, invocation_token, after)
+            if not pending:
+                return  # another waiter consumed them: the supervisor resumes its bounded wait
+            result = {"thread": thread.invocation, "messages": [lead_message(m) for m in pending],
+                      "outcome": "messages"}
+            carried = {m["id"] for m in pending}
+        send(result)
+        with self.k.store.session() as s:
+            thread, pending = self._waiting(s.state, invocation_token, after)
+            inv = s.state["invocations"][thread.invocation]
+            run = (inv.get("runs") or [{}])[-1].get("run")
+            for m in pending:
+                if m["id"] in carried:
+                    self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": m["id"], "via": "wait",
+                                                      "at": utc_now(), "transport_ref": run})
+
     def message_thread(self, invocation: str) -> dict[str, Any]:
         """An invocation's thread, lock-free (a reader never repairs): its complete, chain-verified messages, each with
         its facts. Reading creates nothing; an invocation with no thread has no messages."""
@@ -742,6 +793,140 @@ class Coordination:
     @staticmethod
     def _active(state: dict[str, Any], inv_id: str) -> bool:
         return (state["invocations"].get(inv_id) or {}).get("status") == "active"
+
+    def attention(self, state: dict[str, Any], *, work_id: str | None = None,
+                  invocations: set[str] | None = None, exclude: set[str] | None = None,
+                  only: set[str] | None = None, after: dict[str, int] | None = None,
+                  runs: set[str] | None = None, limit: int = L.UNSEEN_CAP,
+                  byte_bound: bool = True) -> dict[str, Any] | None:
+        """Fresh, verified worker bodies and Lead-pending IDs, bounded across the whole result (MS6).
+        This durable-attention view deliberately ignores generation-local told/posted records. Settled bodies come
+        only from the bounded hot list's pinned seals, never an archive/history walk on the polling path."""
+        if self.project_switch(state) != X.MESSAGING_ENABLED:
+            return None
+        replies: list[dict[str, Any]] = []
+        awaiting: list[dict[str, Any]] = []
+        damaged: list[dict[str, str]] = []
+        seen, recovered = self._seen_log()
+        generation = state["lead"]["generation"]
+
+        def wanted(inv_id: str, work: str) -> bool:
+            return (work_id is None or work == work_id) and (invocations is None or inv_id in invocations)
+
+        def shown(thread: Thread, m: dict[str, Any], *, seal: str | None = None) -> dict[str, Any]:
+            return worker_message({**_shown(m), "invocation": thread.invocation, "work_unit": thread.work_unit,
+                                   "run": m["run"], "seq": m["seq"],
+                                   **({"seal": seal} if seal is not None else {})})
+
+        for inv_id, inv in sorted(state["invocations"].items()):
+            if inv.get("status") != "active" or not wanted(inv_id, inv["work_unit"]):
+                continue
+            try:
+                thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+            except (IntegrityError, ValidationFailed) as exc:
+                damaged.append({"invocation": inv_id, "code": exc.code})
+                continue
+            answered = _answered(thread)
+            for m in thread.messages:
+                if _is_lead(m):
+                    if m["sender"] == L.lead_party(generation) and m["id"] not in answered:
+                        awaiting.append({"id": m["id"], "invocation": inv_id, "work_unit": inv["work_unit"]})
+                elif m["id"] not in answered and m["seq"] > (after or {}).get(inv_id, 0):
+                    replies.append(shown(thread, m))
+        held = state.get(L.UNSEEN_KEY) or {"entries": [], "omitted": 0, "omitted_revs": None}
+        verified: dict[str, tuple[dict[str, Any], Thread]] = {}
+        rejected: set[str] = set()
+        for entry in held["entries"]:
+            inv_id, work = entry["invocation"], entry["work_unit"]
+            if not wanted(inv_id, work) or entry["message"] in seen or inv_id in rejected:
+                continue
+            try:
+                if inv_id not in verified:
+                    pointer = self._pinned(state, entry["seal"], work, inv_id)
+                    verified[inv_id] = self._sealed(work, inv_id, pointer)
+                seal, thread = verified[inv_id]
+                m = thread.by_id().get(entry["message"])
+                if (m is None or _is_lead(m) or m["id"] not in seal["unseen_by_lead"]
+                        or thread.work_unit != work):
+                    raise IntegrityError("the settled message does not match its verified seal")
+                replies.append(shown(thread, m, seal=entry["seal"]))
+            except (IntegrityError, ValidationFailed) as exc:
+                rejected.add(inv_id)
+                damaged.append({"invocation": inv_id, "code": exc.code})
+        # An ID is quoted once per result, and no local suppression can prune durable attention.
+        replies = list({m["id"]: m for m in replies}.values())
+        replies = [m for m in replies if m["id"] not in (exclude or set())
+                   and (only is None or m["id"] in only) and (runs is None or m["run"] in runs)]
+        revs = held["omitted_revs"]
+        settled_omitted = (held["omitted"] if revs and not any(
+            r[0] <= revs[0] and revs[1] <= r[1] for r in recovered) else 0)
+        from aew.coordination.render import body_batch
+
+        selected = body_batch(replies[:limit]) if byte_bound else replies[:limit]
+        return {"awaiting_lead": selected, "awaiting_worker": awaiting,
+                "omitted": max(0, len(replies) - len(selected)) + (settled_omitted if work_id is None
+                    and invocations is None else 0), "omitted_revs": revs,
+                "recovery": "aew message unseen", "integrity_errors": damaged}
+
+    def available_message_ids(self, state: dict[str, Any], ids: set[str]) -> set[str]:
+        """Retention identities only, never a transmitted body batch: live inbox bounds plus the settled hot cap.
+        Durable shown/dead/out-of-view IDs may be pruned from posted; eligible IDs must not be evicted just because
+        a different invocation occupied the first 20 bodies of the public attention view."""
+        bound = L.UNSEEN_CAP + L.MAX_UNSEEN_WORKER * sum(inv.get("status") == "active"
+                                                       for inv in state["invocations"].values())
+        view = self.attention(state, only=ids, limit=bound, byte_bound=False)
+        return {m["id"] for m in (view or {}).get("awaiting_lead", [])}
+
+    def delivery_view(self, state: dict[str, Any], *, invocations: set[str] | None = None,
+                      after: dict[str, int] | None = None, runs: set[str] | None = None) -> dict[str, Any] | None:
+        """Automatic news, unlike durable attention: suppress local told/confirmed posted IDs before the total cap.
+        ``after`` is a wait's entry cursor for live threads only; explicit ended-run carry passes no cursor. Local
+        loss may repeat news but never removes the verified durable body. No telemetry can establish eligibility."""
+        from aew.harness import told_messages, wake_queue
+
+        if self.project_switch(state) != X.MESSAGING_ENABLED:
+            return None
+        generation = state["lead"]["generation"]
+        suppressed = told_messages.read(self.k.aew_root, generation) | wake_queue.posted_messages(
+            self.k.aew_root, generation)
+        return self.attention(state, invocations=invocations, exclude=suppressed, after=after, runs=runs)
+
+    def message_cursor(self, state: dict[str, Any], invocations: set[str]) -> dict[str, int]:
+        """Own-shell wait entry cursors, from complete verified threads, not a capped attention view."""
+        return {inv_id: len(read_thread(self.k.aew_root, inv["work_unit"], inv_id).messages)
+                for inv_id, inv in state["invocations"].items() if inv_id in invocations and inv["status"] == "active"}
+
+    def result_messages(self, result: Any, *, work_id: str | None = None,
+                        invocations: set[str] | None = None, runs: set[str] | None = None) -> list[str]:
+        """Lock-free verification of complete attention bodies at fixed host-result fields, never text traversal.
+        Callers supply the request scope. Unknown/failed results, partial bodies and changed identities consume
+        nothing. A concurrent change may omit a receipt (safe re-listing), never justify consuming an unseen body.
+        This function writes nothing and cannot turn an ID in worker text into a delivery identity."""
+        if not isinstance(result, dict) or result.get("ok") is False:
+            return []
+        # Engine read envelopes, or the two fixed envelopes in a typed StageResult. No recursive lookup.
+        envelopes = [result]
+        if result.get("surface") == "aew/surface/v1" and result.get("ok") is True:
+            envelopes = [result.get("projection"), result.get("result")]
+        candidates: list[dict[str, Any]] = []
+        for envelope in envelopes:
+            if not isinstance(envelope, dict):
+                continue
+            coordination = envelope.get("coordination")
+            if not isinstance(coordination, dict) or not isinstance(coordination.get("awaiting_lead"), list):
+                continue
+            for m in coordination["awaiting_lead"]:
+                if isinstance(m, dict) and isinstance(m.get("id"), str):
+                    candidates.append(m)
+        if not candidates:
+            return []
+        view = self.attention(self.k.store.read_committed(), work_id=work_id, invocations=invocations,
+                              only={m["id"] for m in candidates}, runs=runs)
+        if view is None:
+            return []
+        verified = {m["id"]: m for m in view["awaiting_lead"]}
+        found = {m["id"] for m in candidates if m == verified.get(m["id"])}
+        return sorted(found)
 
     def message_list(self, work_id: str) -> dict[str, Any]:
         """``aew message list --work T`` (D-24, operator-only): the unit's threads, hot or archived, as

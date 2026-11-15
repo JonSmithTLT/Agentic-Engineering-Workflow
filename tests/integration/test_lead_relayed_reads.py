@@ -20,7 +20,7 @@ import worker_surface
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from conftest import clean_env, run_aew
 from fake_harness import IMPL_REPORT, HarnessLab
-from harness_conformance import FakeOpenCodeDriver, sync_dir
+from harness_conformance import FakeOpenCodeDriver, supervisor_gone, sync_dir
 
 from aew import process_kind
 from aew.engine import steering
@@ -35,6 +35,9 @@ IMPLEMENT = [
     {"do": "check", "id": "unit"},
     {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
 ]
+# These broker receipt files are not session-liveness noise: every test must account for their exact writes.
+MESSAGE_DELIVERY_RECORDS = frozenset({"local/lead/told-messages.json", "local/lead/told-messages.lock",
+                                      "local/lead/told-messages.lock.queue"})
 # What the session's own broker writes under `.aew/local` while it serves, never a relayed read's: its liveness and
 # tool-call log (`local/lead/`), the steering loop's state (`local/steering/`), and the wake queue's two files, each
 # with the temporary file ``util.atomic_write`` publishes it through (`.<name>.<random>.tmp` beside it). A snapshot
@@ -45,6 +48,8 @@ SESSION_FILES = (wake_queue.WAKES_REL, wake_queue.SERVING_REL)
 
 
 def session_own(rel: str) -> bool:
+    if rel in MESSAGE_DELIVERY_RECORDS:
+        return False  # exact message receipts must remain visible, not hidden as broker-liveness noise
     if rel.startswith(SESSION_DIRS) or rel in SESSION_FILES:
         return True
     folder, _, name = rel.rpartition("/")
@@ -58,8 +63,9 @@ def session_own(rel: str) -> bool:
 TOLD = (runlog.END_RETURNED_FILE, runlog.RETURNED_FILE)
 
 
-def delivery_records(run: str) -> set[str]:
-    return {f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD}
+def delivery_records(run: str | None, *, messages: bool = False) -> set[str]:
+    return ({f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD} if run is not None else set()) | (
+        set(MESSAGE_DELIVERY_RECORDS) if messages else set())
 
 
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
@@ -91,12 +97,31 @@ def broker(lab, monkeypatch):
     b.close()
 
 
+def settled(lab: HarnessLab, broker: lead_broker.LeadBroker) -> None:
+    """Wait until the broker's steering loop has recorded its look at the committed state, which `status` shows.
+
+    The loop runs on its own thread and activates once the broker starts, and again after each commit. Its record
+    holds the activation's id and times, so a `status` read before the record and one read after it differ (CI,
+    2026-11-12: the relayed `status --json` carried a `steering.loop` block the direct one before it lacked). Once
+    the loop has recorded the current revision, only a commit or a wake starts another activation (``SteeringLoop.
+    _run_forever``), and a read makes neither. So two reads after this barrier see the same record."""
+    revision = int(ControlStore(lab.aew_root).read_committed()["revision"])
+
+    def recorded() -> bool:
+        stop = (steering.loop_state(lab.aew_root, broker.generation) or {}).get("stop")
+        return isinstance(stop, dict) and stop.get("revision") == str(revision)  # shown as `status` shows it
+
+    lab.until(recorded, what=f"the steering loop's record of revision {revision}")
+
+
 def contained(lab: HarnessLab, broker: lead_broker.LeadBroker) -> dict[str, str]:
     return {**lab.env, **broker.env, process_kind.LEAD_CONTAINED_ENV: "1"}
 
 
 def relayed(lab: HarnessLab, broker: lead_broker.LeadBroker, *argv: str):
-    return run_aew(*argv, cwd=lab.root, env=contained(lab, broker))
+    result = run_aew(*argv, cwd=lab.root, env=contained(lab, broker))
+    assert broker.server.drain(20)
+    return result
 
 
 def direct(lab: HarnessLab, *argv: str):
@@ -155,6 +180,7 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
     names). One write follows a read, and it is the broker's: a wait told the Lead the run's end, which it records in
     its delivery records, each named by its exact path (``delivery_records``; what it records is the next tests')."""
     run, invocation = worked(lab, tmp_path)
+    settled(lab, broker)  # the loop's look at the work's last commit, before the first pair of reads
     served: list[list[str]] = []
     run_read = lead_broker.run_read
 
@@ -215,7 +241,11 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
             directory = runlog.run_dir(lab.aew_root, run)
             lab.until(lambda: not runlog.possibly_live(runlog.observed_status(directory)[0], None)
                       and (runlog.read_progress(directory) or {}).get("state") == P.ENDED, what="the run to end",
-                      timeout=120)
+                       timeout=120)
+            # The terminal record precedes the supervisor's final advisory wake bump. Observe process exit before
+            # attributing every subsequent .aew byte change to the read: do not exempt the wake file from the proof.
+            record = lab.record(run)
+            lab.until(lambda: supervisor_gone(record), 30, "the ended run's supervisor to exit")
             seq = int(runlog.read_progress(directory)["trigger_seq"])
             assert seq > 0 and runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
             before = worker_surface.snapshot(lab.aew_root)
@@ -258,6 +288,13 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
             try:
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
                           what="the write outside the scope", timeout=120)
+                # A digest is published before its advisory wake bump. A later digest is the producer's completion
+                # barrier: the first poll finished its bump before it could enter the next poll. Keep local/wake in
+                # the exact no-write assertion rather than attributing a still-running producer's bump to the read.
+                observed = lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at"),
+                                     what="the trigger poll's observation", timeout=120)
+                lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at") not in (None, observed),
+                          what="the poll after the trigger's advisory wake update", timeout=120)
                 own = f"{runlog.RUNS_REL}/{run}/"
 
                 def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
@@ -289,6 +326,7 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
     """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
     are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""
+    settled(lab, broker)
     here = direct(lab, "status", "--json")
     with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
         started = time.monotonic()

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,11 @@ def run_dirs(lab: Any) -> list[Path]:
     return sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
 
 
+def shell_files(directory: Path) -> list[str]:
+    return sorted(p.relative_to(directory).as_posix() for p in (directory / "harness").glob("shell-*")
+                  if p.suffix in (".stdout", ".stderr", ".admission") and p.is_file())
+
+
 def describe_run(directory: Path) -> str:
     """One run as a failure report shows it: what its record says, what an observer sees, and its logs' tails."""
     record = runlog.read_record(directory) or {}
@@ -97,7 +103,8 @@ def describe_run(directory: Path) -> str:
              f"  reason: {record.get('reason')}",
              f"  custody_at {record.get('custody_at')}, started_at {record.get('started_at')}, "
              f"ended_at {record.get('ended_at')}, supervisor_pid {record.get('supervisor_pid')}"]
-    for name in ("supervisor.log", "events.jsonl", "harness/agent.log", "harness/transcript.jsonl"):
+    names = ("supervisor.log", "events.jsonl", "harness/agent.log", "harness/transcript.jsonl", *shell_files(directory))
+    for name in names:
         path = directory / name
         if path.exists():
             lines.append(f"  --- {name} (last {TAIL_LINES} lines)")
@@ -112,6 +119,26 @@ def describe(lab: Any) -> str:
     return f"{lab.root} at {time.strftime('%H:%M:%S')}:\n" + "\n".join(describe_run(d) for d in dirs)
 
 
+def describe_shell(directory: Path, result: dict[str, Any]) -> str:
+    """Failure-only shell evidence; fake_agent merges stderr into stdout unless a separate file is named.
+    Redact each complete stream before taking its last 40 lines; an unreadable file must not mask the assertion."""
+    lines = [f"harness dir: {directory}",
+             f"shell exit: {result.get('exit')}; timed_out: {result.get('timed_out')}; "
+             f"barrier_error: {result.get('barrier_error')}"]
+    paths = list(dict.fromkeys(str(result[key]) for key in ("stdout_file", "stderr_file") if result.get(key)))
+    for name in paths:
+        lines.append(f"--- shell stdout/stderr: {name} (last 40 lines)")
+        lines.append(_tail(Path(name), lines=40))
+    if result.get("admission_file"):
+        lines.append("--- shell admission/process evidence")
+        lines.append(_tail(Path(result["admission_file"]), lines=40))
+    events = directory.parent / "events.jsonl"
+    if events.exists():
+        lines.append("--- run events (last 40 lines)")
+        lines.append(_tail(events, lines=40))
+    return "\n".join(lines)
+
+
 def _safe(nodeid: str) -> str:
     """A directory name for one test: readable, bounded for Windows paths, and unique (its full id's digest: two ids
     that differ only in punctuation, such as parametrized URLs, never share a directory; #136 review, F2)."""
@@ -123,7 +150,7 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
     Returns what was copied and what could not be: one unreadable file never stops the rest (#136 review, F3)."""
     copied, failed = [], []
     for directory in run_dirs(lab):
-        for name in EVIDENCE:
+        for name in (*EVIDENCE, *shell_files(directory)):
             src = directory / name
             if not src.is_file():
                 continue
@@ -187,13 +214,82 @@ def forget() -> None:
 AUTOPSY_DIR = "autopsy"  # under the hang directory; tools/ci/check_assurance.py and update_durations.py skip it
 AUTOPSY_FILE_CAP = 512 * 1024
 AUTOPSY_TOTAL_CAP = 64 * 1024 * 1024
+CHEAP_FILE = 64 * 1024
+CHEAP_TOTAL = 2 * 1024 * 1024
+OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
+TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
 TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
+
+
+def evidence_text(path: Path) -> bool:
+    return (path.suffix.lower() in TEXT_SUFFIXES or path.name == "heartbeat") and not any(
+        word in path.name.lower() for word in ("credential", "secret", "auth.json", ".env"))
+
+
+def is_link(path: Path) -> bool:
+    info = path.lstat()
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def copy_test_file(path: Path, target: Path, budget: Budget) -> str:
+    with path.open("rb") as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - CHEAP_FILE))
+        data = stream.read(CHEAP_FILE)
+    if b"\x00" in data:
+        return "binary source"
+    text = data.decode("utf-8", errors="strict" if size <= CHEAP_FILE else "replace")
+    if size > CHEAP_FILE:
+        _, separator, remainder = text.partition("\n")
+        text = TRUNCATED + (remainder if separator and remainder else text)
+    out = write_text(target, path.name, text, budget=budget, cap=CHEAP_FILE)
+    return f"copied to {out.name}" if out else "budget exhausted"
+
+
+def copy_test_evidence(src: Path, dest: Path, label: str, *, budget: Budget) -> list[str]:
+    """Copy bounded fixture text, including text below hidden AEW state directories."""
+    inventory = []
+    pending = [src]
+    if is_link(src):
+        return [f"{label}: link skipped"]
+    while pending and budget.paths_left:
+        directory = pending.pop()
+        for path in directory.iterdir():
+            if not budget.paths_left:
+                break
+            budget.paths_left -= 1
+            rel = path.relative_to(src)
+            hidden = any(part.startswith(".") for part in rel.parts)
+            try:
+                if is_link(path):
+                    outcome = "link skipped"
+                elif path.is_dir():
+                    if not path.name.startswith(".") or path.name == ".aew":
+                        pending.append(path)
+                    outcome = "directory"
+                elif (not path.is_file() or not evidence_text(path)
+                      or any(word in part.lower() for part in rel.parts[:-1]
+                             for word in ("credential", "secret", ".env", ".git"))
+                      or (not hidden and path.suffix.lower() not in OUTPUT_SUFFIXES)):
+                    outcome = "excluded"
+                else:
+                    target = (dest / "harness" / safe_dir(f"{label}/{rel.parent.as_posix()}") if hidden
+                              else dest / "workdir" / label / rel.parent)
+                    outcome = copy_test_file(path, target, budget)
+            except (OSError, UnicodeError) as exc:
+                outcome = f"unavailable ({type(exc).__name__})"
+            inventory.append(f"{label}/{rel.as_posix()}: {outcome}")
+    if not budget.paths_left:
+        inventory.append(f"{label}: test inventory capped at 256 paths")
+    return inventory
 
 
 class Budget:
     """The bytes an autopsy may still write (shared by every writer of one autopsy directory)."""
 
     def __init__(self, total: int = AUTOPSY_TOTAL_CAP) -> None:
+        self.paths_left = 256
         self.left = total
         self.refused: list[str] = []
 
@@ -230,6 +326,10 @@ def write_text(dest_dir: Path, name: str, text: str, *, budget: Budget | None = 
     """Write ``text`` redacted, capped and safely named under ``dest_dir``. Returns the path, or None when the
     autopsy's total budget refused it (the refusal is kept in the budget, and reported by its writer)."""
     body = capped(K.redact(text), cap)
+    encoded = body.encode("utf-8", "replace")
+    if cap == CHEAP_FILE and len(encoded) > cap:
+        prefix = TRUNCATED.encode("utf-8")
+        body = TRUNCATED + encoded[-(cap - len(prefix)):].decode("utf-8", "ignore")
     target = dest_dir / safe_name(name)
     if budget is not None and not budget.take(target.name, len(body.encode("utf-8", "replace"))):
         return None

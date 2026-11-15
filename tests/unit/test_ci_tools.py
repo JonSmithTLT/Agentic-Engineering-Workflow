@@ -246,6 +246,79 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     assert "always()" not in ratchet["if"] and "failure()" not in ratchet["if"]  # after the lane-report check passed
 
 
+def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_secrets():
+    workflows = ROOT / ".github" / "workflows"
+    action = ROOT / ".github" / "actions" / "publish-evidence" / "action.yml"
+    steps = yaml.safe_load(action.read_text(encoding="utf-8"))["runs"]["steps"]
+    upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+    assert upload["with"]["retention-days"] == 14
+    assert upload["with"]["path"] == "${{ steps.stage.outputs.directory }}"
+    assert not upload["with"].get("include-hidden-files")
+    proof_uses = "./.github/actions/prove-evidence"
+    publisher = "./.github/actions/publish-evidence"
+    workflow_docs = {path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+                     for path in workflows.glob("*.yml")}
+    action_docs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))["runs"]
+                   for path in action.parents[1].glob("*/action.y*ml")}
+    groups = [
+        (f"{name}/{key}", {**doc.get("env", {}), **job.get("env", {})}, job.get("steps", []))
+        for name, doc in workflow_docs.items() for key, job in doc["jobs"].items()
+    ] + [(name, {}, runs.get("steps", [])) for name, runs in action_docs.items()]
+    for label, inherited, job_steps in groups:
+        tests = [step for step in job_steps if " -m pytest" in step.get("run", "")]
+        publishers = [step for step in job_steps if step.get("uses") == publisher]
+        for step in publishers:
+            artifact = step["with"]["artifact"]
+            assert artifact.endswith("attempt-${{ github.run_attempt }}") and "${ " not in artifact, (label, artifact)
+        if not tests:
+            continue
+        assert len(publishers) == 1, label
+        if "/" in label:
+            assert publishers[0]["if"] == "failure() || cancelled()", label
+        for step in tests:
+            variables = {**inherited, **step.get("env", {})}
+            assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys(), label
+            assert all(not re.search(r"\b(secrets\.|github\.token\b)", str(value))
+                       for value in variables.values()), label
+            assert all(not ("GITHUB_ENV" in earlier.get("run", "") and
+                            re.search(r"GH_TOKEN|GITHUB_TOKEN|secrets\.|github\.token", str(earlier)))
+                       for earlier in job_steps[:job_steps.index(step)]), label
+        assert all(step.get("with", {}).get("persist-credentials") is False
+                   for step in job_steps if step.get("uses", "").startswith("actions/checkout@")), label
+    proof_steps = action_docs["prove-evidence"]["steps"]
+    pytest_step = next(step for step in proof_steps if " -m pytest" in step.get("run", ""))
+    assert all(flag in pytest_step["run"] for flag in ("--session-deadline ", "--test-timeout ", "--hang-dir="))
+    for workflow, job, condition in (
+        ("ci.yml", "core", "needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1"),
+        ("nightly.yml", "reference", "matrix.shard == 1"),
+    ):
+        [proof] = [step for step in workflow_docs[workflow]["jobs"][job]["steps"] if step.get("uses") == proof_uses]
+        assert proof["if"] == condition
+
+
+def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    stage_evidence = _load("stage_evidence")
+    source = tmp_path / "raw"
+    autopsy = source / "autopsy"
+    autopsy.mkdir(parents=True)
+    (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
+    destination = tmp_path / "public"
+
+    def scan(argv, **kwargs):
+        assert "--ignore-gitleaks-allow" in argv
+        report = Path(argv[argv.index("--report-path") + 1])
+        report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
+    assert "planted-rule" in stage_evidence.stage(source, destination)
+    [listing] = list(destination.iterdir())
+    assert listing.name == "inventory.txt"
+    assert "private contents" not in listing.read_text(encoding="utf-8")
+
+
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
     import subprocess
 
@@ -1890,7 +1963,8 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "--lane vertical tests/acceptance/test_vertical_path.py" in run["run"] and "continue-on-error" not in run
     assert run["env"]["AEW_VERTICAL_OUT"] == "${{ runner.temp }}/vertical"
     upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
-    assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
+    assert upload["if"] == "always()"
+    assert "${{ runner.temp }}/vertical/*/vertical-ledger.json" in upload["with"]["path"].splitlines()
     # The lane's report leads the run's summary with the not-measured count, then each ledger's summary (STG-13,
     # addendum 1); its scenarios are the JUnit report's test cases.
     summaries = next(s for s in job["steps"] if "python -m vertical.report" in str(s.get("run", "")))
@@ -3398,22 +3472,23 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 
 
-def test_every_lane_uploads_its_hang_directory_whatever_the_outcome():
-    """H3: the autopsy, the deadline's markers and the watchdog's dumps go to the lane's hang directory (its explicit
-    --hang-dir, else its lane report's directory), which an `if: always()` upload in the same job covers: uploads
-    still run after a failure, a cancellation or the job's timeout."""
-    import re
-
+def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():
+    """H3: the scanned publisher covers each lane's hang directory or lane-report parent."""
     problems = []
     for lane in _workflow_lanes():
         where = lane.hang_dir or (lane.lane_report.rsplit("/", 1)[0] if lane.lane_report else None)
         if where is None:
             problems.append(f"{lane.label}: no --hang-dir and no --lane-report (the default is the runner's temp)")
             continue
-        covered = [u for u in lane.uploads if str(u.get("if", "")).startswith("always()")
-                   and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", str(u["with"]["path"])).rstrip("/"))]
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / lane.workflow).read_text(encoding="utf-8"))
+        steps = workflow["jobs"][lane.job]["steps"]
+        covered = [
+            step for step in steps if step.get("uses") == "./.github/actions/publish-evidence"
+            and step.get("if") == "failure() || cancelled()"
+            and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/"))
+        ]
         if not covered:
-            problems.append(f"{lane.label}: no `if: always()` upload covers {where}")
+            problems.append(f"{lane.label}: no scanned upload covers {where}")
     assert problems == [], "\n".join(problems)
 
 
@@ -3437,7 +3512,7 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
-    pytest_step, upload = steps[-2:]
+    pytest_step, upload, evidence = steps[-3:]
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
     assert [lane.repeats for lane in lanes] == [1, 2, 1]
     assert all(lane.step == pytest_step["name"] for lane in lanes)
@@ -3452,6 +3527,8 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == 14
+    assert evidence["uses"] == "./.github/actions/publish-evidence"
+    assert evidence["if"] == "failure() || cancelled()"
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

@@ -1,8 +1,8 @@
 """The operator's stored OpenCode login, read on the host for contained provider relays.
 
 Workers use the deciding API-key row for Anthropic, Google, OpenAI or OpenCode. A different
-deciding row supplies no worker credential, even if an older API-key row exists. OAuth is
-never used by workers. Worker diagnostics omit the store path. A read-only WAL connection
+deciding row supplies no API key, even if an older API-key row exists. A worker pinned to
+a plan login resolves OAuth separately. Worker diagnostics omit the store path. A read-only WAL connection
 can create SQLite sidecars, while the database content stays unchanged.
 
 OpenCode 2.0.18 keeps each login as a row of the ``credential`` table in its SQLite database, ``<data>/opencode.db``
@@ -57,6 +57,7 @@ REFRESH_STEP = (f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refres
 # Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
 # values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
 LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
+RELAY_NO_REFRESH = "aew-relay-no-refresh"
 # The files SQLite keeps beside a database (its write-ahead log, the log's index, the rollback journal): they hold rows
 # not yet in the database, and appear and go while the database is open, after any launch.
 SIDECARS = ("-wal", "-shm", "-journal")
@@ -320,13 +321,16 @@ class StoredLogin:
             f"store, move it aside so OpenCode can recreate it. Log in again with your own OpenCode "
             f"(`opencode auth login {self.integration}`).", cause="unreadable")
 
-    def __call__(self) -> tuple[str, dict[str, str]]:
+    def deciding_login(self) -> Login | None:
         row = self._deciding_row()
+        return _read(self.integration, *row) if row is not None else None
+
+    def __call__(self) -> tuple[str, dict[str, str]]:
+        entry = self.deciding_login()
         label = f"AEW: your stored {self.integration} login"
-        if row is None:
+        if entry is None:
             raise relay.Unavailable(f"{label} is missing. Log in with your own OpenCode (`opencode auth login`); "
                                     "the Lead's next request then works, with no restart.", cause="missing")
-        entry = _read(self.integration, *row)
         if entry.kind == UNKNOWN or not entry.secret:
             raise relay.Unavailable(f"{label} is now {unknown_remedy(self.integration)}.", cause="unknown_shape")
         if entry.kind != "oauth":
@@ -336,9 +340,22 @@ class StoredLogin:
             raise relay.Unavailable(f"{label} has expired, and the contained Lead never refreshes it "
                                     f"(that would write your OpenCode's own login). Run {REFRESH_STEP}.",
                                     cause="expired")
+        return self._grant(entry)
+
+    def _grant(self, entry: Login) -> tuple[str, dict[str, str]]:
         meta = entry.metadata
         return entry.secret, {h: str(meta[k]) for h, k in LOGIN_HEADERS.get(self.integration, {}).items()
                               if meta.get(k)}
+
+    def worker_grant(self) -> tuple[str, dict[str, str]]:
+        """Resolve a plan worker's next request with the same read and cause as the Lead."""
+        try:
+            return self()
+        except relay.Unavailable as exc:
+            message = (f"AEW: the operator's {self.integration} plan login cannot be used ({exc.cause}). "
+                       + ("Try again once the store is available." if exc.retryable else
+                          "The operator renews it; this run cannot continue."))
+            raise relay.Unavailable(message, cause=exc.cause, retryable=exc.retryable) from None
 
 
 @dataclass(frozen=True)

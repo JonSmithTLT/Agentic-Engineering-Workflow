@@ -951,10 +951,14 @@ def test_legality_modules_never_import_coordination():
     assert offenders == []
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
-    # MS2: store/archival use leaf paths/keys (D-16). MS3: the typed schema uses only leaf bounds/kinds, not authority.
+    # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
-                         "aew/engine/archive_ops.py", "aew/surface/contract.py"}
-    for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py"):
+                         "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
+                         "aew/harness/told_messages.py"}
+    assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
+        "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
+    for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
+                      "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",
                                                                                  "aew.coordination.layout"}, leaf_only
 

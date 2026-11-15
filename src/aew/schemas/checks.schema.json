@@ -19,6 +19,7 @@
           "cwd": {"x-aew-class": "legality_affecting", "type": "string"},
           "timeout_s": {"x-aew-class": "legality_affecting", "type": "number", "exclusiveMinimum": 0},
           "network": {"x-aew-class": "legality_affecting", "enum": ["isolated", "shared"], "description": "The network the check runs with in a contained run (F28 §3.8): isolated (the default) has none; shared asks for the host's, and gets it only when the run itself has the host's network (containment.network.mode: shared in the execution policy)."},
+          "caches": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "description": "Gitignore patterns for untracked caches this check may leave in the working state."},
           "description": {"x-aew-class": "operational", "type": "string"}
         }
       }

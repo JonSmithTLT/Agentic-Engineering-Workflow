@@ -56,6 +56,18 @@
                 "digest": {"$ref": "#/$defs/sha256"},
                 "unit": {"type": "string"},
                 "ref": {"type": "string"},
+                "metadata": {
+                  "description": "Credential-free result fields that cannot be reconstructed from the referenced record.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                    "decision": {"type": "string"},
+                    "execution": {"type": "object"},
+                    "superseded": {"type": "object"},
+                    "dispatch": {"type": "object"}
+                  }
+                },
                 "revision": {"type": "integer", "minimum": 1}
               }
             }
@@ -386,13 +398,20 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
                 "provider_key_admission": {
-                  "description": "Stored key admission metadata. The generation contains the SQLite row ID and update time.",
+                  "description": "Stored credential admission metadata. API keys carry the SQLite row ID and update time. Plan logins carry their kind.",
                   "type": "object",
-                  "required": ["provider", "generation"],
+                  "required": ["provider"],
+                  "oneOf": [{"required": ["generation"]}, {"required": ["credential"]}],
                   "additionalProperties": false,
                   "properties": {
                     "provider": {"enum": ["anthropic", "google", "openai", "opencode"]},
+                    "credential": {"const": "plan_login"},
                     "generation": {
                       "type": "array",
                       "prefixItems": [{"type": "integer"}, {"type": ["integer", "null"]}],
@@ -435,7 +454,8 @@
               "deadline_s": {"type": ["number", "null"]},
               "selected_by": {"enum": ["policy", "lead"]},
               "rule": {"type": "string"},
-              "policy_sha256": {"type": ["string", "null"]}
+              "policy_sha256": {"type": ["string", "null"]},
+              "credential": {"enum": ["api_key", "plan_login"]}
             }
           }
         }

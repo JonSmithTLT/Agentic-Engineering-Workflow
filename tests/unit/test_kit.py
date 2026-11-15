@@ -22,6 +22,7 @@ from aew.kit import CHECK_COMMAND, DATES_SCOPE, MONEY_SCOPE, OPENING_REQUEST, gi
 from aew.kit import __main__ as kit_main
 from aew.kit import receipt as receipt_module
 from aew.kit.receipt import FIELDS, SCHEMA, write_receipt
+from aew.policy.checks import PYTEST_CACHES
 from aew.policy.execution import pack_slices
 
 MODEL = "openai/worker-model"
@@ -99,7 +100,9 @@ def test_prepare_pins_the_model_check_and_slices_and_owns_seed_identity(tmp_path
     [profile] = policy["profiles"].values()
     assert profile["model"] == MODEL
     assert engine.policy("gates")["mutating_concurrency"] == 2
-    assert engine.policy("checks")["checks"]["unit"]["command"] == CHECK_COMMAND.split()
+    unit = engine.policy("checks")["checks"]["unit"]
+    assert unit["command"] == CHECK_COMMAND.split()
+    assert unit["caches"] == list(PYTEST_CACHES)
     identity = git(tmp_path / "repo", "log", "-1", "--format=%an <%ae>%n%cn <%ce>")
     assert identity.splitlines() == ["AEW Kit <kit@example.invalid>"] * 2
     assert git(tmp_path / "repo", "rev-list", "--count", "HEAD") == "1"

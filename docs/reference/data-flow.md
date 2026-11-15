@@ -145,7 +145,9 @@ The `writers` fact of the `writers` records.
 - `aew.engine.disposition_ops:Dispositions._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.disposition_ops:_unlink`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
@@ -165,6 +167,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:mark_serving`: no static call chain from any entry point's declaring function reaches this writer

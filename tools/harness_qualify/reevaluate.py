@@ -109,7 +109,7 @@ def evaluate(doc: dict[str, Any], *, source_digest: str, pack: OpenCodePack,
         "source_revision": SOURCE_REVISION, "source_verdict": doc["verdict"],
         "evaluator_revision": evaluator_revision, "required_checks": list(REQUIRED),
         "ruling": {"title": "Lead ruling, 2026-11-10: post-admission retry premise on OpenCode 2.2.6",
-                    "digest": RULING_DIGEST, "sections": [1, 2, 3, 4, 5, 7]},
+                   "digest": RULING_DIGEST, "sections": [1, 2, 3, 4, 5, 7]},
         "addendum": {"title": "Messaging amendment 3, addendum 1: retry fields", "revision": 2,
                      "digest": ADDENDUM_DIGEST, "parts": [2, 4]},
         "retired_gate_facts": list(RETIRED), "windows_runtime": "NOT RUN; capability GAP"}

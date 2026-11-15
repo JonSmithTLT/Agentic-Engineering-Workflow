@@ -86,6 +86,8 @@ UNIT_KEY = "coordination"  # the unit's seal pointers: [{invocation, seal, sha25
 UNSEEN_KEY = "coordination_unseen"  # top-level: sealed worker messages no Lead generation has seen yet (D-38)
 STORE_KEY = "coordination_store"  # top-level: the project is registered for messaging (D-39)
 UNSEEN_CAP = 20  # entries in `coordination_unseen`, the `awaiting_lead` bound; further ones are counted as omitted
+# One framed body per selected ID. Leave 18 KiB of OpenCode's 50 KiB cut for the ordinary result/metadata envelope.
+UNSEEN_BODY_BYTES = 32 * 1024
 SEAL_FALLBACK = "coordination.seal_fallback"  # the event a commit records when it sealed a missed ending (R3)
 # Lead messages that never reached the worker, as the seal records them (D-13, D-14).
 INVOCATION_ENDED, SENDER_SUPERSEDED = "invocation_ended", "sender_superseded"

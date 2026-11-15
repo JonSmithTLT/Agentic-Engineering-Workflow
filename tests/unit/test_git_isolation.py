@@ -21,7 +21,7 @@ from typing import Any
 import git_isolation
 import pytest
 
-from aew.workspace.git import AEW_IDENTITY
+from aew.workspace.git import AEW_IDENTITY, LOCAL_ENV_VARS
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPERS = ROOT / "tests" / "helpers"
@@ -146,7 +146,7 @@ def test_every_variable_git_calls_repository_local_is_cleared():
     """git's own list, from the installed git: a new version's variable fails here rather than leaks. Its config-count
     pairs are matched by pattern."""
     listed = plain_git("rev-parse", "--local-env-vars", cwd=Path(tempfile.gettempdir())).split()
-    assert listed and set(listed) <= git_isolation.REDIRECTING
+    assert listed and set(listed) <= LOCAL_ENV_VARS
     assert git_isolation._COUNTED_CONFIG.match("GIT_CONFIG_KEY_0") and git_isolation._COUNTED_CONFIG.match(
         "GIT_CONFIG_VALUE_12")
 

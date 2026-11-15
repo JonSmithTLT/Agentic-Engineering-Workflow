@@ -69,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
@@ -168,6 +169,7 @@ jobs:
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1200 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0     # the spec-pin test verifies the frozen tag
       - run: git fetch --tags --force
       - uses: ./.github/actions/setup-aew
@@ -215,8 +217,17 @@ jobs:
         if: always()
         with:
           name: lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/lane-reports/
+          path: |
+            ${{ runner.temp }}/lane-reports/*.json
           retention-days: 14
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+      - uses: ./.github/actions/prove-evidence
+        if: needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
       # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps. The serial
       # lane runs without coverage, as it always has.
@@ -248,6 +259,8 @@ jobs:
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
@@ -276,8 +289,15 @@ jobs:
         if: always()
         with:
           name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/lane-reports/
+          path: |
+            ${{ runner.temp }}/lane-reports/*.json
           retention-days: 14
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: success() && runner.os == 'Linux'  # only from a passing job, as core's
         with:
@@ -310,6 +330,7 @@ jobs:
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0     # the base tip, and the spec-pin test verifies the frozen tag
       - run: git fetch --tags --force
       - uses: ./.github/actions/setup-aew
@@ -331,10 +352,16 @@ jobs:
         if: always()
         with:
           name: fastbase-coverage  # outside the `coverage-*` pattern the ratchet combines
-          path: ${{ runner.temp }}/fastbase/
+          path: ${{ runner.temp }}/fastbase/.coverage
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/fastbase/hangs
+          artifact: evidence-fastbase-coverage-attempt-${{ github.run_attempt }}
 
   web:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
@@ -347,6 +374,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -414,6 +443,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:

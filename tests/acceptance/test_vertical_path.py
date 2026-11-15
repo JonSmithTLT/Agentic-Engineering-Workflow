@@ -102,6 +102,8 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         # (After containment.writable, which sets the containment block this adds to.)
         fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
             network={"upstreams": {"vuatprov": "https://vuatprov.invalid/v1"}})
+    fixtures["checks.unit.caches"] = lambda doc: doc["checks"]["unit"].update(
+        caches=["__pycache__/", "*.pyc", ".pytest_cache/"])
     res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)
     assert res.returncode == 0, res.stderr
 

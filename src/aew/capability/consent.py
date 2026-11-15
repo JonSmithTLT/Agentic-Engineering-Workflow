@@ -37,7 +37,7 @@ from typing import Any
 from aew import process_kind
 from aew.capability import ops, records, status, store
 from aew.capability import payload as P
-from aew.errors import AEWError, NotFound, PermissionDenied
+from aew.errors import AEWError, NotFound, PermissionDenied, UsageError
 from aew.util import utc_now
 
 log = logging.getLogger(__name__)
@@ -338,17 +338,19 @@ def named(names: list[str], directory: Path | None = None) -> list[Offer]:
 
 
 def check_names(names: list[str] | None, directory: Path | None = None) -> None:
-    """Refuse an unknown ``--fetch-tool`` name before `aew init` writes anything."""
-    if names:
-        named(names, directory)
+    """Validate the init tool choice before `aew init` writes anything."""
+    if not names or names == [NONE]:
+        return
+    if NONE in names:
+        raise UsageError(f"use {FETCH_FLAG} {NONE} by itself")
+    named(names, directory)
 
 
 def at_init(fetch_tools: list[str] | None, directory: Path | None = None) -> dict[str, Any]:
-    """`aew init`'s step, after the project is initialized: the tools ``--fetch-tool`` names, or, with none named, the
-    screen on a terminal. A tool already declined is not asked again here; it is listed. Off a terminal with none
-    named, nothing downloads and the report says what is missing. Never fails the init: what went wrong is said."""
+    """After init, fetch named tools or show the consent screen on a terminal. ``--fetch-tool none`` skips both and
+    records no answer. A tool already declined is listed without asking again. Never fails the init."""
     try:
-        if _never_here() is not None:
+        if fetch_tools == [NONE] or _never_here() is not None:
             return outcome(None, {}, offers(directory), directory)
         if fetch_tools:
             chosen = named(fetch_tools, directory)
@@ -434,8 +436,6 @@ def _say(out: Any, said: list[str]) -> list[str]:
 def at_fetch(names: list[str], directory: Path | None = None) -> dict[str, Any]:
     """`aew capability fetch [tool...]`: the tools named, or, with none named, the screen on a terminal with every
     missing tool, the declined ones too (the operator asked). Off a terminal with none named, nothing downloads."""
-    from aew.errors import UsageError
-
     why = _never_here()
     if why is not None:
         raise PermissionDenied(f"{why}: `{status.FETCH}` is the operator's, at their own terminal",

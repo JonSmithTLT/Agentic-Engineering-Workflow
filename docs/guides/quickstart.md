@@ -14,6 +14,10 @@ aew doctor
 
 Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py311 offline wheelhouse.
 
+AEW's Git commands ignore settings injected through `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
+pairs, `GIT_CONFIG_PARAMETERS`, and `GIT_CONFIG`. Put settings such as `safe.directory` in your global or system Git
+configuration file.
+
 ## Operator: initialize a project
 
 ```bash
@@ -56,8 +60,9 @@ the missing provider variable under `provider-env` and shows how to supply it.
 
 On contained Linux a worker uses the saved API-key login through the built-in provider relay when the policy names
 that provider's variable and its other names are set or are other built-in providers' key variables. One login
-decides per provider for the Lead and workers. If the Lead uses a refreshing login for a provider, keep it and
-export that provider's API key for workers. For an explicit override or a legacy launch,
+decides per provider for the Lead and workers. API-key workers use an export when the deciding login is refreshing.
+Once the pinned OpenCode version is qualified, an adopted `plan_login` profile can use the operator's plan on
+contained Linux. For an explicit override or a legacy launch,
 use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`.
 A certificate-only provider skips key setup.
 

@@ -40,7 +40,18 @@ from typing import Any
 from aew import errors, skills
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage, weaker_register
+from aew.harness import (
+    agentenv,
+    bridge,
+    containment,
+    event_spool,
+    procs,
+    registry,
+    runlog,
+    usage,
+    weaker_register,
+    worker_messages,
+)
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter, refusal_of, relay_family_of
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
@@ -83,7 +94,8 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
                    provider_env: list[str], role: str, scope: str, workspace: str, run_dir: Path, scratch: str,
                    bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
                    marker: Path | None = None, skills_dir: str | None = None,
-                   key_admission: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
+                   key_admission: dict[str, Any] | None = None,
+                   execution_profile: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
     """A harness launch's containment: the provider key's check, the sandbox, self-tested, its label, the entry in the
     register of weaker contexts when the label is weaker, and the network of its own (the provider relay when the
     harness calls a provider, and the egress proxy when its allowlist names something). Returns ``(layout, label,
@@ -96,7 +108,11 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
 
     # Check policy-known refusals before building the sandbox. A stored source needs the actual relay below.
     on_route = netns.relay_route(policy, adapter_cls.PROVIDER_RELAY)
-    missing = netns.provider_key_missing(provider, provider_env, os.environ, on_relay_route=on_route)
+    plan_profile = execution_profile if (execution_profile or {}).get("credential") == "plan_login" else None
+    if plan_profile is not None:
+        netns.require_plan_route(plan_profile, policy, on_relay_route=on_route)
+    missing = (None if plan_profile else
+               netns.provider_key_missing(provider, provider_env, os.environ, on_relay_route=on_route))
     if missing is not None and not netns.stored_key_candidate(
         provider, provider_env, os.environ, policy, on_relay_route=on_route,
     ):
@@ -119,15 +135,20 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         # The relay's absence is known only now: under allow_weaker a sandbox that could not be established runs the
         # harness on the host's network with no relay, whatever the policy's network mode (E123 review, M1)
         unrelayed = layout is None or not layout.private_network
-        stored, unavailable = netns.resolve_worker_key(
-            provider, provider_env, os.environ, policy, on_relay_route=on_route and not unrelayed,
-        )
-        missing = netns.provider_key_missing(
-            provider, provider_env, os.environ, on_relay_route=on_route, stored=stored is not None,
-        )
-        changed = bool(key_admission and not unrelayed and (
-            stored is None or key_admission.get("generation") != list(stored.generation)
-        ))
+        plan = None
+        stored, unavailable, changed = None, None, False
+        if plan_profile is not None:
+            plan = netns.check_plan_login(plan_profile, policy, os.environ, on_relay_route=on_route and not unrelayed)
+        else:
+            stored, unavailable = netns.resolve_worker_key(
+                provider, provider_env, os.environ, policy, on_relay_route=on_route and not unrelayed,
+            )
+            missing = netns.provider_key_missing(
+                provider, provider_env, os.environ, on_relay_route=on_route, stored=stored is not None,
+            )
+            changed = bool(key_admission and not unrelayed and (
+                stored is None or key_admission.get("generation") != list(stored.generation)
+            ))
         if missing is not None:
             detail = unavailable or (netns.STORED_REQUIRES_RELAY if unrelayed else None)
             if changed:
@@ -149,7 +170,7 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         if layout is not None and layout.private_network:
             network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
                                               env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow,
-                                              stored=stored)
+                                              stored=stored, plan=plan)
             label["network"].update(network.describe())
             if changed:
                 label["network"]["provider_key_note"] = "the stored OpenCode login changed after admission"
@@ -208,6 +229,8 @@ class Supervisor:
                                        "supervisor_start_id": procs.start_id(os.getpid()), "custody_at": utc_now(),
                                        "timeline": [{"at": utc_now(), "event": "custody"}]}
         self.bridge: bridge.BridgeServer | None = None
+        self.messaging = False  # immutable contract snapshot, never the agent's presentation environment
+        self.messages = worker_messages.WorkerMessages(self)
         self.adapter: Any = None
         # Fail closed until the run's containment is decided: on POSIX, nothing starts without a layout (M4-B).
         self.tree = procs.ProcessTree(require_layout=not procs.IS_WINDOWS)
@@ -300,6 +323,16 @@ class Supervisor:
 
     # ------------------------------------------------------------------ bridge
 
+    def require_message_authority(self) -> None:
+        problem = self.authority_problem()
+        if self._ending.is_set() or problem:
+            raise errors.StaleAuthority(f"run {self.run} cannot message: {problem or 'the run ended'}")
+        if not self.messaging:
+            raise errors.MessagingDisabled("messaging was not enabled in this run's launch snapshot")
+        if not self.engine.messaging_enabled():
+            raise errors.MessagingSnapshotMismatch("the project's adopted messaging switch and this run's enabled "
+                                                   "launch snapshot disagree; relaunch the run")
+
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if self._start_overdue():  # the run reads (or is about to read) `lost`: nothing it does counts any more
             raise errors.HarnessLaunchFailed(f"run {self.run} did not start within {self._start_s:g}s ({START_ENV}) "
@@ -320,6 +353,14 @@ class Supervisor:
                                              ending=self._ending, label=self.record["containment"])
             if op == "submit":
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
+            if op.startswith("message."):
+                self.require_message_authority()
+                if op == "message.read":
+                    return self.engine.message_read_worker(invocation_token=self._credential)
+                if op == "message.reply":
+                    return self.engine.message_record_worker(invocation_token=self._credential,
+                        in_reply_to=args["in_reply_to"], body=args["body"], kind=args["kind"] or None,
+                        refs=args["refs"], idempotency_id=args["idempotency_id"] or None)
         except errors.StaleAuthority as exc:
             self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
             raise
@@ -359,7 +400,11 @@ class Supervisor:
             contract = self._deliver_skills(self.engine.harness_contract(state, self.inv_id, self.run))
             self.record["contract"] = contract.to_record()
             (self.run_dir / "prompt.md").write_text(K.redact(contract.prompt), encoding="utf-8")
-            self.bridge = bridge.BridgeServer(self.handle)
+            self.messaging = (contract.extra.get("coordination") or {}).get("messaging") == "enabled"
+            self.bridge = bridge.BridgeServer(self.handle,
+                operations=bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if self.messaging else {}),
+                cooperative=frozenset({"message.wait"}) if self.messaging else frozenset(),
+                connection_handlers={"message.wait": self.messages.wait} if self.messaging else {})
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
@@ -371,7 +416,9 @@ class Supervisor:
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
-                                            contained=self.layout.env if self.layout is not None else None)
+                                             contained=self.layout.env if self.layout is not None else None)
+            if self.messaging:
+                self.agent_env["AEW_MESSAGING"] = "enabled"
             # The run's marker, whatever its label: the register of weaker contexts' scan finds its processes by it
             self.agent_env[weaker_register.MARKER] = str(self.run_dir / runlog.RECORD)
             self.adapter = adapter_cls(self.tree, self.run_dir, self.events)
@@ -460,13 +507,15 @@ class Supervisor:
         label records what the run has."""
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
+        pin = self.record.get("execution_profile") or {}
         try:
             contained = contain_launch(
-                policy, adapter_cls, provider=(self.record.get("execution_profile") or {}).get("provider"),
+                policy, adapter_cls, provider=pin.get("provider"),
                 provider_env=[str(n) for n in contract.extra.get("provider_env") or []], role=contract.role,
                 scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
                 bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
                  aew_root=self.engine.aew_root, kind="worker_run", key_admission=key_admission,
+                execution_profile=pin,
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             self.layout = None
@@ -664,6 +713,10 @@ class Supervisor:
             return self._finish(K.ENDED_WITHOUT_EVIDENCE, "harness exited successfully without recording its expected "
                                 f"output ({', '.join(sorted(expected))}); no AEW state changed")
         if reason_code == K.PROVIDER_AUTH_FAILED:  # its own reason, in the existing status (register V1)
+            pin = self.record.get("execution_profile") or {}
+            if pin.get("credential") == "plan_login":
+                return self._finish(K.CRASHED, "the model provider rejected the operator's plan login. "
+                                    + K.plan_login_recovery(pin["provider"], self.inv_id))
             names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
             return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
                                 "the harness exited without recording its expected output; check the key in "
@@ -751,6 +804,8 @@ class Supervisor:
         self._compare_effective()
         self.record["evidence"] = self._evidence()
         self.record.update(status=status, reason=reason, ended_at=utc_now())
+        if self.record.pop("cause", None) is not None:
+            self.record.pop("next_action", None)
         # The vocabulary follows the status (amendment 1, R2-m2): a launch-failure code is written with `launch_failed`
         # and never survives onto another ending, such as a `crashed` re-end after this one failed (PR #185, F2).
         if status == K.LAUNCH_FAILED:
@@ -761,8 +816,21 @@ class Supervisor:
             self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
                                          outcomes=self.bridge.outcomes)
         if self.tree.network is not None:  # closed with the tree; its counts stay
-            self.record["containment"]["network"]["decisions"] = self.tree.network.decisions()
+            decisions = self.tree.network.decisions()
+            self.record["containment"]["network"]["decisions"] = decisions
             record_refused(self.record, self.tree.network)
+            if status in (K.LAUNCH_FAILED, K.CRASHED, K.ENDED_WITHOUT_EVIDENCE) and (
+                (self.record.get("execution_profile") or {}).get("credential") == "plan_login"
+            ):
+                for cause in K.PLAN_LOGIN_FAILURES:
+                    count_key = "credential:" + cause.removeprefix("plan_login_")
+                    if cause.endswith("_retryable") and not self.tree.network.retryable_pending():
+                        continue
+                    if decisions.get("relay", {}).get(count_key):
+                        self.record["cause"] = cause
+                        self.record["next_action"] = K.plan_login_failure(
+                            cause, self.record["execution_profile"]["provider"], self.inv_id)
+                        break
         self._event("ended", status=status, reason=reason)
         self._drop_credential()
         try:

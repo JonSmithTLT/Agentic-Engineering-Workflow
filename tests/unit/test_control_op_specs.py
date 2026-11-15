@@ -233,7 +233,8 @@ TRANSACTION_HANDLERS = {
 }
 
 HANDLER_CASES = {
-    "authority_accept": [{"klass": "contracts"}],
+    "authority_accept": [{"klass": "contracts", "decided_by": "lead"}],
+    "authority_reject": [{"decided_by": "lead"}],
     "manifest_adopt": [{"authorization": {"authorized_by": "operator-tty"}}],
     "dispose": [{"choice": "accept_risk", "follow_up": None}],
     "waive": [{"gate": "gate"}],

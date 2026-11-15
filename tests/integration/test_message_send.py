@@ -19,9 +19,10 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-OFF_LIST_SHA = {"normal": "48afb5063f03ee0fd7bc3d7a11c8bf6bfaab6f71c31048132c6e4e1313242a48",
-                "recovery": "7bf05654630eb33df51161c11cc8db475797aa1ecc490107712549d2dcb9d8c6"}
-OFF_CLI_SHA = "da1c7adb3e31ec1579573637d0770778fb3f6db1a359c8c580d2f813bcbce904"
+# Full catalogs with messaging off, including E327's optional resolve approval digest.
+OFF_LIST_SHA = {"normal": "34786d9f407b2e7bf3f05cab3e4ecbbf2d55438b905ca0e56dbdbf1588b838d0",
+                "recovery": "ac57b66069f8001c25b94984975c351e16eddaf02f7e8869eafa0b0eefc80567"}
+OFF_CLI_SHA = "c104c7de0b9b070d205ffb3fd03d78f4df1efc07127242b57bf9393843eb8c91"
 
 
 def digest(value):
@@ -60,7 +61,6 @@ def cli(w, *arguments):
 
 @pytest.mark.parametrize("profile", ["normal", "recovery"])
 def test_with_messaging_off_tools_list_is_byte_identical_on_both_profiles(profile):
-    # Independently captured from main b2a7a287 after its priority schema; full tools/list, not only bytes or names.
     assert digest(mcp.tools_list(profile)) == OFF_LIST_SHA[profile]
 
 
@@ -188,10 +188,30 @@ def test_turn_end_is_refused_before_recording_and_names_the_available_timing(tmp
 
 def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     w = world(tmp_path)
-    assert lead_text.guide_for(w.e) == str(w.e.lead_guide(lead_text.stages()))
-    standard = contract.catalog(contract.ALL_SWITCHES, presentation="standard")
-    assert all(s.description == standard[s.tool].description
-               for s in lead_text.stages(switches=contract.ALL_SWITCHES))
+    text = lead_text.guide_for(w.e)
+    assert text.startswith(lead_text.guide_for(w.e, switches=frozenset()))
+    assert "`message_send`" in text
+    # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
+    expected = {
+        "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
+        "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
+                    "Requests grant nothing.",
+        "resolve": "Resolve a shown decision.",
+        "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
+                        "(proposed, not accepted).",
+        "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
+        "ticket_request_review": "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the "
+                                 "reviewers policy requires.",
+        "ticket_request_verification": "Accept the review report, if one is due, move the Ticket to VERIFY_PENDING "
+                                       "and launch the verifiers policy requires.",
+        "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
+                          "Publication stays a separate decision.",
+        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        "message_send": "Record a coordination message for an active worker, not a scope change. "
+                        "Delivery not built; turn-end refused.",
+    }
+    assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
+    assert expected["ticket_start"] in text
 
 
 def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp_path, monkeypatch):

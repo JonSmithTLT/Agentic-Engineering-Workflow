@@ -31,6 +31,12 @@
         "cards": {"x-aew-class": "legality_affecting", "$ref": "#/$defs/route_map"}
       }
     },
+    "credentials": {
+      "x-aew-class": "legality_affecting",
+      "description": "The default worker credential for each provider. Profiles may override it. Absent means api_key.",
+      "type": "object",
+      "additionalProperties": {"enum": ["api_key", "plan_login"]}
+    },
     "provider_env": {
       "x-aew-class": "legality_affecting",
       "type": "array",
@@ -150,6 +156,7 @@
         "provider": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^[^/\\s]+$"},
         "model": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1, "pattern": "^\\S+$"},
         "effort": {"x-aew-class": "legality_affecting", "type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]+$"},
+        "credential": {"x-aew-class": "legality_affecting", "enum": ["api_key", "plan_login"], "description": "Override the provider's default worker credential for this profile."},
         "max_steps": {"x-aew-class": "legality_affecting", "type": "integer", "minimum": 1},
         "deadline_s": {"x-aew-class": "operational", "type": "number", "exclusiveMinimum": 0},
         "deadline_scope": {"x-aew-class": "operational", "enum": ["always", "run"], "description": "Which runs deadline_s bounds: always (the default), or only a run started while the steering mode is run. First configuration writes run with its provisional deadline, so the deadline Run needs never ends an attended run."},

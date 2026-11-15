@@ -65,7 +65,7 @@ def test_pin_carries_profile_fields_policy_hash_and_harness_precedence():
     pin = resolve(configured(archetypes={"implementer": "careful"}))
     assert pin == {"profile": "careful", "harness": "other", "provider": "q", "model": "m-care", "effort": None,
                    "max_steps": None, "deadline_s": 900, "selected_by": "policy", "rule": "archetype:implementer",
-                   "policy_sha256": SHA}
+                   "policy_sha256": SHA, "credential": "api_key"}
     assert resolve(configured())["harness"] == "opencode"  # the policy-level harness when the profile has none
 
 
@@ -86,6 +86,105 @@ def test_lead_overrides_are_recorded_as_lead_selections():
 def test_explicit_model_works_without_a_configured_policy():
     pin = resolve(None, request={"model": "prov/m"})
     assert pin["harness"] == X.DEFAULT_HARNESS and pin["selected_by"] == "lead" and pin["policy_sha256"] == SHA
+
+
+def test_worker_plan_login_requires_qualification_and_respects_profile_override(monkeypatch):
+    from aew.engine.base import check_policy_bytes
+    from aew.engine.configuration import parse_structured
+    from aew.harness.opencode import capabilities
+
+    policy = configured()
+    policy["credentials"] = {"openai": "plan_login"}
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["profiles"]["light"].update(provider="openai", credential="api_key")
+    with pytest.raises(ValidationFailed) as failure:
+        check_policy_bytes("execution", dump_yaml(policy).encode(), source="test")
+    assert "awaiting qualification" in failure.value.details["violations"][0]
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    raw = dump_yaml(policy).encode()
+    parsed = check_policy_bytes("execution", raw, source="test")
+    assert resolve(parsed)["credential"] == "plan_login"
+    assert resolve(parsed, request={"profile": "light"})["credential"] == "api_key"
+    assert resolve(parsed, request={"model": "openai/test-model"})["credential"] == "api_key"
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("2.3.0",))
+    assert resolve(X.parse(raw, source="in force"))["credential"] == "plan_login"
+    assert parse_structured(raw, adoption=False)[1] == []
+    assert [item["code"] for item in parse_structured(raw)[1]] == [X.PLAN_QUALIFICATION]
+    with pytest.raises(ValidationFailed, match="inconsistent"):
+        check_policy_bytes("execution", raw, source="new adoption")
+
+
+def test_adopting_another_file_does_not_requalify_an_unchanged_plan_policy(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.engine.api import ProjectAdmin
+    from aew.harness.opencode import capabilities
+    from aew.util import sha256_bytes
+
+    policy = configured()
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["credentials"] = {"openai": "plan_login"}
+    execution = tmp_path / X.REL_PATH
+    execution.parent.mkdir(parents=True)
+    execution.write_bytes(dump_yaml(policy).encode())
+    extra_rel = "policy/extra.yaml"
+    extra = tmp_path / extra_rel
+    extra.write_bytes(b"setting: first\n")
+    manifest = {"policy": {"execution": X.REL_PATH, "extra": extra_rel}}
+    admin = SimpleNamespace(k=SimpleNamespace(aew_root=tmp_path))
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    pins = ProjectAdmin._read_policy_pins(admin, manifest, {})
+
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("9.9.9",))
+    extra.write_bytes(b"setting: second\n")
+    updated = ProjectAdmin._read_policy_pins(admin, manifest, pins)
+    assert updated == {X.REL_PATH: pins[X.REL_PATH], extra_rel: sha256_bytes(extra.read_bytes())}
+
+    execution.write_bytes(execution.read_bytes() + b"# edited execution policy\n")
+    with pytest.raises(ValidationFailed) as failure:
+        ProjectAdmin._read_policy_pins(admin, manifest, updated)
+    assert "awaiting qualification" in failure.value.details["violations"][0]
+
+
+def test_manifest_adopt_keeps_the_existing_execution_pin_after_a_version_bump(project, monkeypatch):
+    from aew.engine.api import Engine
+    from aew.engine.base import POLICY_PINS
+    from aew.harness.opencode import capabilities
+
+    engine = Engine.discover(project.root)
+    policy = configured()
+    policy["profiles"]["standard"]["provider"] = "openai"
+    policy["credentials"] = {"openai": "plan_login"}
+    execution = engine.aew_root / X.REL_PATH
+    execution.write_bytes(dump_yaml(policy).encode())
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    project.adopt_policy()
+    adopted = engine.store.current()[POLICY_PINS]
+
+    monkeypatch.setattr(capabilities, "TESTED_VERSIONS", ("9.9.9",))
+    other_rel = next(rel for rel, digest in adopted.items() if rel != X.REL_PATH and digest is not None)
+    other = engine.aew_root / other_rel
+    other.write_bytes(other.read_bytes() + b"\n# unrelated policy edit\n")
+    assert project.adopt_policy()["adopted"] == [other_rel]
+    updated = engine.store.current()[POLICY_PINS]
+    assert updated[X.REL_PATH] == adopted[X.REL_PATH]
+    assert updated[other_rel] != adopted[other_rel]
+
+
+@pytest.mark.parametrize(("model", "containment", "reason"), [
+    ("anthropic/test", {}, "whose requests it has measured: openai"),
+    ("openai/test", {"network": {"upstreams": {"openai": "http://127.0.0.1:9"}}}, "upstreams override"),
+])
+def test_plan_adoption_validates_the_provider_and_override_for_a_model_prefix(monkeypatch, model, containment, reason):
+    from aew.harness.opencode import capabilities
+
+    monkeypatch.setattr(capabilities, "PLAN_LOGIN_QUALIFIED_VERSIONS", capabilities.TESTED_VERSIONS)
+    policy = configured()
+    policy["containment"] = containment
+    policy["profiles"]["standard"] = {"model": model, "credential": "plan_login"}
+    with pytest.raises(ValidationFailed) as failure:
+        X.parse(dump_yaml(policy).encode(), source="test")
+    assert reason in failure.value.details["violations"][0]
 
 
 @pytest.mark.parametrize("request_, why", [

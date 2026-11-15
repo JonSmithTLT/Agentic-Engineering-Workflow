@@ -87,8 +87,8 @@ def env_fix(name: str, *, secret: bool = True) -> str:
 
 def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:
     """``(name, why)`` for each provider variable (``provider_env``, ``--provider-env``) that a harness could not be
-    given from ``env``: an AEW variable, one that is unset or empty, or one that holds an AEW credential. A run never
-    starts without a variable its policy names: the provider would refuse it and the failure would blame the key
+    given from ``env``: an AEW variable, one that is unset or empty, or one that holds an AEW credential. The caller
+    passes required names only. A built-in worker does not require another built-in provider's key
     (M4 user acceptance test). The launch refuses up front instead (``require_launchable``), the harness server's
     environment refuses again (``server_env``), and ``aew doctor`` reports the same text. No value is ever echoed."""
     out: list[tuple[str, str]] = []

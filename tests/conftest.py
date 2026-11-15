@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,25 @@ class CLIResult:
 
 HOST_ENV = dict(os.environ)  # as the session found it: the base the host's own capability register lives under
 CHILD_DATA_BASE: Path | None = None  # the session's base for the register of every `aew` a test starts (CAP-1 F2)
+
+
+@pytest.fixture(autouse=True)
+def guard_worker_key_store() -> Iterator[None]:
+    from aew.harness.opencode import login
+
+    inherited = HOST_ENV.get("HOME")
+    home = Path(inherited).resolve() if inherited else (None if IS_WINDOWS else Path.home().resolve())
+    read = login.worker_keys
+
+    def checked_read(env, providers):
+        if providers and home is not None and login.db_path(env).resolve().is_relative_to(home):
+            pytest.fail("worker_keys attempted to read under the inherited test host's home")
+        return read(env, providers)
+
+    # Keep the guard's lifetime independent of a test's environment monkeypatches.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(login, "worker_keys", checked_read)
+        yield
 
 
 def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -369,6 +389,37 @@ def no_switch_offer_prompt():
     switch_offer.terminal = lambda: False
     yield
     switch_offer.terminal = saved
+
+
+# The shipped desktop notifier's real session check, for the tests of that check itself (`real_desktop_notifier`).
+from aew.harness import desktop_notifier as _desktop_notifier  # noqa: E402
+
+REAL_DESKTOP_PROBLEM = _desktop_notifier.problem
+NO_DESKTOP_IN_TESTS = "tests show no desktop notification"
+
+
+@functools.wraps(REAL_DESKTOP_PROBLEM)  # keeps the real signature: test_polling_predicates reads its `-> str | None`
+def _no_desktop_problem(*args, **kwargs) -> str | None:
+    return NO_DESKTOP_IN_TESTS
+
+
+@pytest.fixture(autouse=True)
+def no_desktop_notification():
+    """No test shows a real desktop notification (the operator's no-popups rule): in process, the shipped default
+    notifier (`aew notify desktop`, register E104) is unavailable, so `show` refuses before it starts anything, and
+    Run's gate refuses the default as it would on a host with no desktop. A test of the check itself takes
+    `real_desktop_notifier`. The limit: an endpoint a test starts as its own process runs the real check, so on a
+    developer's desktop (a session bus on Linux, an interactive session on Windows) such a test that raises an event
+    would show one. (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
+    _desktop_notifier.problem = _no_desktop_problem
+    yield
+    _desktop_notifier.problem = REAL_DESKTOP_PROBLEM
+
+
+@pytest.fixture
+def real_desktop_notifier(monkeypatch):
+    """The desktop notifier's real session check, for its own tests: they pass each environment and platform."""
+    monkeypatch.setattr(_desktop_notifier, "problem", REAL_DESKTOP_PROBLEM)
 
 
 @pytest.fixture

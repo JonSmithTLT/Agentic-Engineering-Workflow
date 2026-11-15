@@ -225,8 +225,7 @@
       "properties": {
         "base_revision": {"type": ["string", "null"]},
         "workspace_id": {"type": "string"},
-        "relevant_inputs_fingerprint": {"type": "string"},
-        "artifact_digests": {"type": "array", "items": {"type": "string"}}
+        "relevant_inputs_fingerprint": {"type": "string"}
       }
     }
   }

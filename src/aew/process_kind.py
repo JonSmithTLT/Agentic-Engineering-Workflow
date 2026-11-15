@@ -49,6 +49,7 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
                      "Lead broker, which holds the credential"),
     "aew.harness.supervisor": (STORE_WRITER, "a run's supervisor: holds the run's credential and commits through the "
                                "engine"),
+    "aew.kit.__main__": (STORE_WRITER, "the operator's seeded kit initializes and maps its own repository"),
     "aew.stg02.server": (NON_WRITER, "the STG-02 slice's producer: it reads a project's committed state lock-free "
                          "(dashboard.reader) and writes only its own state directory, never the store"),
 }

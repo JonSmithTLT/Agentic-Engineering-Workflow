@@ -995,7 +995,7 @@ def test_no_credential_reaches_git_inside_the_sandbox(lab):
     assert "SYNTHETIC" not in inside.stdout + inside.stderr
 
 
-FAIL_CLOSED = ("row1-netns", "row2-run", "row3-file", "row3-env", "row5-mask")
+FAIL_CLOSED = ("row1-netns", "row2-run", "row3-file", "row3-env", "row5-mask", "row5-worker-store")
 
 
 @pytest.mark.parametrize("case", FAIL_CLOSED)
@@ -1008,6 +1008,19 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     xauth = lab.home / ".Xauthority"
     xauth.write_text("SYNTHETIC-COOKIE\n")
     real = os.path.realpath
+    env = None
+    relocated = lab.outside / "xdg" / "opencode"
+    if case == "row5-worker-store":
+        relocated.mkdir(parents=True)
+        planted = [relocated / ("opencode.db" + suffix) for suffix in ("", "-wal", "-shm", "-journal")]
+        for path in planted:
+            path.write_text("SYNTHETIC-NOT-A-KEY")
+        env = {"XDG_DATA_HOME": str(relocated.parent), "OPENCODE_DB": str(planted[0])}
+        good, label = establish(lab, monkeypatch, env=env)
+        assert label["self_test"]["rows"]["5"]["ok"]
+        quoted = " ".join(shlex.quote(str(p)) for p in planted)
+        inside = lab.sh(good, f"cat {quoted} 2>/dev/null; true")
+        assert "SYNTHETIC-NOT-A-KEY" not in inside.stdout + inside.stderr
     row, steps = {
         "row1-netns": ("1", [("--unshare-net",)]),  # the run's own network (F28 §3.6; the hand-off's outcome 4)
         "row2-run": ("2", [("--tmpfs", L.RUN), ("--remount-ro", L.RUN)]),
@@ -1015,12 +1028,13 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
         "row3-file": ("3", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
         "row3-env": ("3", [("--unsetenv", "DISPLAY")]),
         "row5-mask": ("5", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
+        "row5-worker-store": ("5", [("--tmpfs", real(relocated))]),
     }[case]
     without(monkeypatch, *steps)
     with pytest.raises(C.ContainmentUnavailable, match=f"row {row} ") as refused:
-        establish(lab, monkeypatch)
+        establish(lab, monkeypatch, env=env)
     assert refused.value.details["self_test"]["rows"][row]["ok"] is False
-    layout, label = establish(lab, monkeypatch, mode="allow_weaker")
+    layout, label = establish(lab, monkeypatch, env=env, mode="allow_weaker")
     assert layout is None and label["self_test"]["rows"][row]["ok"] is False
 
 

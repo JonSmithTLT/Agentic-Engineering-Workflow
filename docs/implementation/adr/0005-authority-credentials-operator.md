@@ -7,7 +7,7 @@
 ## Decision
 
 - **Credentials** have the form `aew1.<token_id>.<secret>`, where the secret is 256-bit random. Control state stores only a verifier (`sha256(secret)`) plus scope, issuance, expiry and revocation. Any separate process can verify a presented credential, and the raw secret is never written to disk: packs carry only a placeholder, and a test scans the files for leaked secrets.
-- **Lead generation** increases on every acquire, handoff accept or takeover. Each of those atomically revokes every superseded credential. A stale Lead write fails `STALE_AUTHORITY` before any state-dependent answer is given. Every control mutation also requires `--expect-rev` (compare-and-swap).
+- **Lead generation** increases on every acquire, handoff accept, takeover or resume. Each of those atomically revokes every superseded credential. A stale Lead write fails `STALE_AUTHORITY` before any state-dependent answer is given. Every control mutation also requires `--expect-rev` (compare-and-swap), subject to the E330 resume amendment below.
 - **Invocation credentials** are scoped to (invocation, archetype, work unit, generation) and to the operations of the archetype's role table. They are revoked on completion, cancellation, takeover, or a handoff that does not carry them.
 - **Takeover** requires out-of-band operator authorization. The engine itself reads a one-time challenge answer from the controlling terminal (`/dev/tty`, or the Windows console). There is no flag, environment variable, stdin input or API parameter that authorizes. Without a terminal it fails with `OPERATOR_AUTHORIZATION_REQUIRED`.
 
@@ -266,3 +266,18 @@ portion of the 2026-10-05 amendment above:
   automatically; an occupied port skips the dashboard and offers `aew dashboard serve --port 0` to explicitly request
   an ephemeral port (or a free port the operator chooses). A dashboard failure never fails the Lead session. No write
   path is added; a write route bypassing adopt or the operator endpoint reopens the no-code decision.
+
+## E330 amendment — OpenCode seat resume
+
+The Lead credential is taken in-process when `aew opencode` starts on a vacant seat (`--acquire` says the same
+and is still accepted), or, when `AEW_LEAD_TOKEN` is set in the operator's own shell or a flag asks for the
+hidden prompt, from that credential, which is removed from the session's environment. `--prompt-token` selects
+the hidden prompt. Explicit `--acquire` selects the in-process path even when `AEW_LEAD_TOKEN` is set.
+`aew lead session` keeps its existing modes.
+
+**Resume** applies to a seat that `aew opencode` took itself or previously resumed. It requires the same host
+and user, the recorded session process gone, no pending handoff and the operator's own terminal outside any
+AEW session and non-writer process. The new generation fences the old Lead and carries the still-active
+invocations and their credentials. If any invocation will be carried or any leftover process may still run,
+the operator types one code after seeing the generation move and the invocations and processes concerned.
+The commit rechecks the holder and the subjects shown under lock and accepts unrelated revision changes.

@@ -49,6 +49,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval
 from aew.engine.authority import require_lead
 from aew.engine.base import V2, TxnContext
 from aew.engine.store import Transition
@@ -397,8 +398,17 @@ class Dispositions:
 
     # ------------------------------------------------------------------ the Lead's disposition
 
+    def approval_subject(self, state: dict[str, Any], subject: str) -> dict[str, Any]:
+        if ANOMALY_ID.match(subject):
+            value = self._anomaly(state, subject)
+        else:
+            _, wid, evidence = self._item(state, subject)
+            ev = self.gates.find_evidence(wid, evidence)
+            value = {"id": subject, "evidence": evidence, "sha256": ev["_sha256"]}
+        return {"subject": value, "digest": approval.digest(value)}
+
     def dispose(self, *, token: str, expect_rev: int, subject: str, choice: str, rationale: str,
-                follow_up: str | None = None) -> dict[str, Any]:
+                follow_up: str | None = None, binding: str | None = None) -> dict[str, Any]:
         """Dispose of a marked finding or claim, or an open anomaly: one Lead judgment, one commit."""
         if choice not in CHOICES:
             raise UsageError(f"a disposition is one of {', '.join(CHOICES)}", allowed=list(CHOICES))
@@ -415,6 +425,8 @@ class Dispositions:
                 kind, wid = "anomaly", anomaly["subject"]
             else:
                 kind, wid, evidence = self._item(state, subject)
+            if binding is not None:
+                approval.compare("work.dispose", subject, binding, self.approval_subject(state, subject)["digest"])
             if follow_up is not None:
                 self._follow_up(state, follow_up, wid)
             rev = ctx.session.revision + 1
@@ -426,6 +438,8 @@ class Dispositions:
             record = {"schema": SCHEMA, "id": dp, "subject": {"id": subject, "kind": kind, "evidence": evidence},
                       "work_unit": wid, **decided, "by": dict(ctx.actor),
                       "anomaly": {**anomaly, "disposition": {"id": dp, **decided}} if anomaly else None}
+            if binding is not None:
+                record["approval_ref"] = f"{subject}@record:{binding}"
             validate("disposition", record, source=f"disposition {dp}")
             if anomaly is not None:
                 del state["anomalies"][subject]

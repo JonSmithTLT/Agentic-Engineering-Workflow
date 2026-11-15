@@ -4,7 +4,10 @@ The live lane is never collected in CI, so its guard is proved here."""
 
 from __future__ import annotations
 
+import pytest
 from live_models import free_model, zero_cost
+
+from aew.harness.opencode.model_pricing import paid_base_problem
 
 PAID = {"input": 0.05, "output": 0.4, "cache": {"read": 0.005, "write": 0}}
 NOTHING = {"input": 0, "output": 0, "cache": {"read": 0, "write": 0}}
@@ -20,6 +23,18 @@ CATALOG = [
 def test_a_paid_opencode_zen_model_is_not_refused_for_its_provider():
     assert free_model("opencode/gpt-5-nano", CATALOG) is None
     assert free_model("openai/gpt-5-nano", CATALOG) is None
+
+
+def test_malformed_zen_catalog_entries_get_the_paid_model_refusal():
+    entry = {"providerID": "opencode", "id": "synthetic-model"}
+    for rate in ("not-a-number", {}, True):
+        malformed = {**entry, "cost": [{"input": rate, "output": 1}]}
+        assert zero_cost(malformed)
+        problem = paid_base_problem(malformed)
+        assert problem and "opencode/synthetic-model does not have a verified paid base price" in problem
+    for invalid in ({"cost": [PAID]}, {"id": [], "cost": [PAID]}):
+        problem = paid_base_problem(invalid)
+        assert problem and "missing or invalid catalog id" in problem and "--profile or --model" in problem
 
 
 def test_a_model_the_catalog_prices_at_zero_is_refused_whatever_its_provider():
@@ -44,4 +59,24 @@ def test_a_model_paid_in_any_tier_is_not_zero_cost_and_an_unlisted_paid_id_is_le
     assert not zero_cost(CATALOG[4])
     assert free_model("anthropic/tiered", CATALOG) is None
     assert free_model("openai/not-listed", CATALOG) is None  # the adapter refuses an unlisted pin at launch
-    assert not zero_cost({"cost": PAID})  # a single object, as the config schema allows
+
+
+@pytest.mark.parametrize("cost", [
+    [{"input": None, "output": 1}],
+    [{"input": 1, "output": "0"}],
+    [PAID, {"input": float("nan"), "output": 1}],
+    [{"input": 1, "output": float("inf")}],
+    [{"input": -1, "output": 1}],
+    [PAID, None],
+    PAID,
+])
+def test_unusable_pricing_is_refused_for_other_providers(cost):
+    entry = {"providerID": "openai", "id": "synthetic-model", "cost": cost}
+    assert zero_cost(entry)
+    assert free_model("openai/synthetic-model", [entry])
+
+
+def test_a_large_integer_rate_is_verified_without_float_conversion():
+    entry = {"providerID": "opencode", "id": "synthetic-model",
+             "cost": [{"input": 10**400, "output": 1}]}
+    assert paid_base_problem(entry) is None

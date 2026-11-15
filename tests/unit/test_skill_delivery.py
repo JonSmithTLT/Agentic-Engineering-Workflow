@@ -1,6 +1,6 @@
 """Skills reach workers by their card's fit (register E127; the designer's rulings of 2026-11-03 §3 and 2026-11-04).
 
-AEW's own install ships four skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
+AEW's own install ships six skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
 a run may reach. The supervisor copies what is exposed into the run's own folder, the projection lets the ``skill`` tool
 list exactly those, and the agent is told, from the plan, which to load. The record says what was offered, exposed,
 delivered and loaded. Nothing here runs a model: the live test is ``tests/live/test_skills_live.py``, on the VM.
@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -26,7 +27,9 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-FOUR = ["acceptance-verification", "adversarial-review", "c-development", "python-development"]
+SIX = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "python-development",
+       "security-review"]
+UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
 
 def contract(*, role: str = "implementer", card: str = "engineer", requested: list[str] | None = None,
@@ -57,8 +60,8 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 # ---------------------------------------------------------------------------------------------- the install
 
 
-def test_the_four_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
-    assert sorted(skills.shipped()) == FOUR
+def test_the_six_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
+    assert sorted(skills.shipped()) == SIX
     for name, entry in skills.entries().items():
         on_disk = {p.relative_to(SHIPPED / name).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                    for p in (SHIPPED / name).rglob("*") if p.is_file()}
@@ -80,6 +83,34 @@ def test_each_shipped_skill_names_itself_by_its_folder_states_its_version_and_sa
         assert re.search(rf"^  version: '{re.escape(entry['version'])}'$", front, re.M), name
         description = re.search(r"^description: (.+)$", front, re.M)
         assert description and re.search(r"\b(skip|not)\b", description.group(1), re.I), name
+
+
+def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links_every_one():
+    """The pointer rule (E142): a step moved to ``references/`` or ``examples/`` is read only through its link, so a
+    broken link loses the step silently. ``specification.md``: each runtime resource has an explicit link from the
+    entrypoint. Every link form is read: inline with a ``#fragment``, a ``"title"`` or ``<angle brackets>``, and a
+    reference-style definition; an inline ``](`` the pattern cannot read fails rather than being skipped (E142's
+    review). A link to a fragment of the same file names no file and is left out."""
+    inline = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+    definition = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
+    for name, entry in skills.entries().items():
+        listed = set(entry["files"])
+        linked_from_skill_md: set[str] = set()
+        for rel in listed:
+            here = PurePosixPath(rel).parent
+            text = (SHIPPED / name / rel).read_text(encoding="utf-8")
+            found = inline.findall(text)
+            assert len(found) == text.count("]("), (name, rel, "an inline link the pattern cannot read")
+            for raw in found + definition.findall(text):
+                target = raw.split("#", 1)[0]
+                if not target and raw.startswith("#"):
+                    continue
+                assert target and "://" not in target, (name, rel, raw)
+                resolved = posixpath.normpath((here / target).as_posix())
+                assert resolved in listed, (name, rel, target)
+                if rel == skills.SKILL_FILE:
+                    linked_from_skill_md.add(resolved)
+        assert linked_from_skill_md == listed - {skills.SKILL_FILE}, name
 
 
 def test_the_package_data_ships_every_file_the_manifest_lists():
@@ -125,13 +156,13 @@ def test_a_changed_installed_file_reports_a_mismatch_and_the_run_goes_on(monkeyp
 
 def test_exposed_is_both_lists_that_ship_and_offered_is_the_optional_beyond_skills():
     """A1: ``exposed`` is ``(requested ∪ offered) ∩ provided`` (11-04 §5), so an optional skill is reachable."""
-    planned = skills.plan(["adversarial-review", "security-review"],
+    planned = skills.plan(["adversarial-review", UNSHIPPED],
                           ["adversarial-review", "c-development", "frontend-design"])
-    assert planned["requested"] == ["adversarial-review", "security-review"]
+    assert planned["requested"] == ["adversarial-review", UNSHIPPED]
     assert planned["offered"] == ["c-development", "frontend-design"]  # a name in both counts as skills:
     assert planned["exposed"] == ["adversarial-review", "c-development"]
-    assert planned["unavailable"] == ["security-review"]  # only what skills: asked for
-    assert planned["reasons"] == {"frontend-design": "not_shipped", "security-review": "not_shipped"}
+    assert planned["unavailable"] == [UNSHIPPED]  # only what skills: asked for
+    assert planned["reasons"] == {"frontend-design": "not_shipped", UNSHIPPED: "not_shipped"}
     assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
     for d in planned["delivered"]:
         entry = skills.entries()[d["name"]]
@@ -160,9 +191,28 @@ def test_a_projects_own_card_can_name_shipped_skills_and_add_none(tmp_path):
 
 
 def test_every_optional_skill_a_built_in_card_names_is_shipped():
-    """The ruling's §2 test (``skills:`` can't have it yet: two cards name skills not written)."""
+    """The ruling's §2 test."""
     for card in roles.builtin_cards().values():
         assert set(card.meta.get("optional_skills") or []) <= skills.shipped(), card.id
+
+
+def test_every_skill_a_built_in_card_requests_is_shipped():
+    """E142: ``security_reviewer`` and ``c_reviewer`` asked for skills AEW did not ship, so their runs were told
+    "does not provide". Now every built-in card's ``skills:`` is shipped, and a new card naming an unwritten skill
+    fails here."""
+    for card in roles.builtin_cards().values():
+        assert set(card.meta.get("skills") or []) <= skills.shipped(), card.id
+
+
+@pytest.mark.parametrize("card, skill", [("security_reviewer", "security-review"), ("c_reviewer", "c-review")])
+def test_the_specialist_reviewers_get_their_skill_delivered_and_nothing_reported_missing(tmp_path, card, skill):
+    planned = skills.plan(roles.builtin_cards()[card].meta["skills"])
+    assert (planned["exposed"], planned["unavailable"], planned["reasons"]) == ([skill], [], {})
+    delivered = skills.deliver(planned, tmp_path / "skills")
+    assert delivered["exposed"] == [skill]
+    assert skills.root_problems(tmp_path / "skills", delivered["exposed"]) == []
+    said = lines(delivered)
+    assert said == [said[0]] and said[0].startswith(f"- Load `{skill}` with the `skill` tool")
 
 
 def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
@@ -178,7 +228,7 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
 
 
 def test_the_copy_holds_exactly_the_exposed_skills_and_their_listed_files(tmp_path):
-    planned = skills.plan(["adversarial-review", "security-review"], ["python-development"])
+    planned = skills.plan(["adversarial-review", UNSHIPPED], ["python-development"])
     root = tmp_path / "harness" / "skills"
     delivered = skills.deliver(planned, root)
     assert delivered == planned
@@ -287,7 +337,7 @@ AT = projection.skills_at("/r/harness", "/")
 def test_the_skill_rules_are_exactly_the_copied_set_with_the_folder_readable_and_never_editable(tmp_path, role):
     """A2 and A5: a ``skill allow`` rule for every copied skill and no other; the folder's read grant always goes with
     its edit deny (the read grant alone let a model write an unbound copy: skills probe, check 7)."""
-    planned = skills.plan(["adversarial-review", "security-review"], ["c-development", "frontend-design"])
+    planned = skills.plan(["adversarial-review", UNSHIPPED], ["c-development", "frontend-design"])
     root = tmp_path / "skills"
     delivered = skills.deliver(planned, root)
     assert delivered["exposed"] == planned["exposed"] == ["adversarial-review", "c-development"]  # never widened
@@ -296,7 +346,7 @@ def test_the_skill_rules_are_exactly_the_copied_set_with_the_folder_readable_and
     rules = config["permissions"]
     allowed = sorted(r["resource"] for r in rules if r["action"] == "skill" and r["effect"] == "allow")
     assert allowed == delivered["exposed"] == sorted(p.name for p in root.iterdir())
-    for name in ("security-review", "frontend-design", "opencode", "report", "anything"):
+    for name in (UNSHIPPED, "frontend-design", "opencode", "report", "anything"):
         assert effect(rules, "skill", name) == "deny", name  # OpenCode's built-ins stay hidden
     inside = "/r/harness/skills/c-development/SKILL.md"
     assert effect(rules, "external_directory", inside) == "allow"
@@ -350,10 +400,10 @@ def test_only_optional_tells_it_what_else_the_tool_lists():
 
 
 def test_an_unshipped_skill_with_a_shipped_optional_one_says_both():
-    """``security_reviewer``'s case before its skill ships."""
-    said = lines(skills.plan(["security-review"], ["adversarial-review"]))
+    """A card whose ``skills:`` names a skill AEW does not ship (``security_reviewer``'s case before E142)."""
+    said = lines(skills.plan([UNSHIPPED], ["adversarial-review"]))
     assert said == ["- The `skill` tool lists `adversarial-review`: load each one whose description matches your task.",
-                    "- Skills your role card requests that this harness does not provide: security-review. Proceed "
+                    f"- Skills your role card requests that this harness does not provide: {UNSHIPPED}. Proceed "
                     "without them and say so in your report."]
 
 
@@ -379,9 +429,9 @@ def test_the_tool_lists_clause_names_what_was_delivered_never_an_unshipped_or_fa
 
 
 def test_one_of_two_skills_shipped_loads_one_and_names_the_other_unavailable():
-    said = lines(skills.plan(["c-development", "c-review"]))
+    said = lines(skills.plan(["c-development", UNSHIPPED]))
     assert said[0].startswith("- Load `c-development` with the `skill` tool")
-    assert said[1].startswith("- Skills your role card requests that this harness does not provide: c-review.")
+    assert said[1].startswith(f"- Skills your role card requests that this harness does not provide: {UNSHIPPED}.")
     assert len(said) == 2
 
 
@@ -420,7 +470,7 @@ def test_a_card_without_optional_skills_renders_as_before():
 
 
 def test_the_packs_sources_pin_the_cards_skills_only():
-    assert skills.pins(["adversarial-review", "security-review"]) == [
+    assert skills.pins(["adversarial-review", UNSHIPPED]) == [
         {"name": "skill:adversarial-review", "path": None, "sha256": skills.entries()["adversarial-review"]["sha256"],
          "version": "0.6.0", "label": "unevaluated"}]
 

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 SCHEMA = "aew/codebase-map/v1"
 NAME = "structural"
-VERSION = 1
+VERSION = 2  # 2: the listing leaves `.aew/` out (register E184, ADR-0015 amended 2026-11-11)
 
 BLOB_LIMIT = 256 * 1024
 METADATA_LIMIT = 2 * 1024 * 1024

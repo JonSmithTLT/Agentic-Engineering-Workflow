@@ -12,15 +12,17 @@ earlier parent review/verification stale.
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, transitions
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
-from aew.engine import transitions
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
 from aew.errors import (
     DependencyUnsatisfied,
@@ -38,7 +40,7 @@ from aew.schemas import schema
 from aew.util import render_frontmatter, sha256_text, utc_now
 
 if TYPE_CHECKING:
-    from aew.engine.base import Kernel
+    from aew.engine.base import Kernel, TxnContext
     from aew.engine.ports import (
         ArchivePort,
         DispatchPort,
@@ -243,11 +245,31 @@ class Hierarchy:
 
         results = G.evaluate_evidence_unit(state, work_id, evidence, obligations=obligations, special=special,
                                            is_current=is_current)
+        pv = unit.get("parent_verification") or {}
+        retry = None
+        if pv.get("classification") == "ENVIRONMENT_OR_EVIDENCE_BLOCKED":
+            failed_id = pv.get("failed_evidence")
+            pin = next((ref["sha256"] for ref in unit.get("evidence", []) if ref["id"] == failed_id), None)
+            failed = next((e for e in evidence if e["id"] == failed_id and e["_sha256"] == pin), None)
+            if failed is not None:
+                producer = state["invocations"].get(failed["producer"]["invocation"]) or {}
+                card = (producer.get("card") or {}).get("id")
+                if card:
+                    gate = f"{G.VERIFY_CARD_PREFIX}{card}"
+                    # This requirement applies even if the failed card was not in the plan. Waivers cannot
+                    # discharge it. Sequence is the report's evidence order, so even a previously passing report
+                    # that matches the current source and children cannot count if it predates the failed report.
+                    retry_results = G.evaluate_evidence_unit(
+                        state, work_id, [e for e in evidence if e["seq"] > failed["seq"]],
+                        obligations={"gates": [gate], "non_waivable": [gate]}, special={},
+                        is_current=is_current,
+                    )
+                    retry = {"card": card, "current": retry_results[gate]["status"] == G.CURRENT}
         return {"snapshot": {"base_revision": commit, "children_digest": digest,
                              "relevant_inputs_fingerprint": f"authoritative:{(commit or '')[:12]}+children:{digest}"},
                 "guardrails": dict(NO_GUARDRAILS), "obligations": obligations, "gates": results, "evidence": evidence,
                 "evidence_problems": problems, "open_required_findings": G.open_required_findings(unit),
-                "plan_binding": self.units.plan_binding_problem(state, work_id)}
+                "plan_binding": self.units.plan_binding_problem(state, work_id), "classification_retry": retry}
 
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(GATE_CONTEXT, PARENT, self.evidence_gate_context),
@@ -257,7 +279,9 @@ class Hierarchy:
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         """The gate context of a Story or Epic (its ``KindRegistry`` handler)."""
-        return self._parent_gate_context(state, work_id)
+        gc = self._parent_gate_context(state, work_id)
+        gc.pop("classification_retry")
+        return gc
 
     # ---- the dispatch guards of ``invoke create`` for a Story or Epic (M4-A), in the order the route checked
 
@@ -294,6 +318,9 @@ class Hierarchy:
             gc = self._parent_gate_context(state, work_id)
             chosen = self.roles.resolve_card(state, work_id, facts["slot"], card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
+            if chosen.archetype == "verifier":
+                self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id,
+                                                             scope="parent")
             facts.update(gc=gc, card=chosen, archetype=chosen.archetype)
         return checked(check)
 
@@ -313,9 +340,10 @@ class Hierarchy:
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Review/verify invocations for a Story or Epic's acceptance, bound to the parent snapshot."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else nullcontext(_ctx)
+        with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             decision = self.dispatch.decide_in(ctx, "invoke.create.parent", work_id, role=role, card_id=card,
@@ -347,24 +375,34 @@ class Hierarchy:
             if unit["state"] != "ACCEPTANCE_PENDING":
                 raise IllegalTransition(f"{work_id} is {unit['state']}, not ACCEPTANCE_PENDING")
             ev = self.inputs.find_unit_evidence(work_id, evidence_id)
-            inv = state["invocations"][ev["producer"]["invocation"]]
+            invocation = ev["producer"]["invocation"]
+            inv = state["invocations"][invocation]
             role = "reviewer" if kind == "review" else "verifier"
             if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id or inv.get("scope") != "parent":
                 raise IllegalTransition(f"{evidence_id} is not a parent {kind} of {work_id}")
             gc = self._parent_gate_context(state, work_id)
+            cancel = fields_command(f"aew invoke cancel {invocation} {EXPECT_REV}", "reason",
+                                    "the parent report evaluated a stale snapshot")
             snap = ev["evaluated_snapshot"]
             if not (self.same_children(unit, self.bound_children(snap["relevant_inputs_fingerprint"]),
                                        gc["snapshot"]["children_digest"])
                     and self.inputs.same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
                 raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
-                                      "parent snapshot (stale)", evaluated=snap, current=gc["snapshot"])
+                                      f"parent snapshot (stale). Cancel {invocation} with:\n\n{cancel}",
+                                      evaluated=snap, current=gc["snapshot"])
             edges = effective_edge_set(state, work_id)
             if inv.get("dependencies") != edges:
                 raise GateUnsatisfied(f"{evidence_id} was dispatched under other dependencies than {work_id}'s current "
-                                      "ones (stale)", dispatched_with=inv.get("dependencies"), current=edges)
+                                      f"ones (stale). Cancel {invocation} with:\n\n{cancel}",
+                                      dispatched_with=inv.get("dependencies"), current=edges)
             plan = unit.get("plan") or {}
             if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
-                raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
+                raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one (stale). "
+                                      f"Cancel {invocation} with:\n\n{cancel}")
+            if kind != "review" and ev["result"] == "fail":
+                unmet = self._classification_unmet(work_id, unit, gc)
+                if unmet:
+                    raise GateUnsatisfied(f"{evidence_id} is held: {unmet}")
             self.nm.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":
                 self.nm.record_review_findings(unit, ev, evidence_id)
@@ -383,13 +421,14 @@ class Hierarchy:
         return {"ok": True, "work_id": work_id, "result": ev["result"], "revision": ctx.session.committed_revision}
 
     def classify_parent_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                                     reason: str) -> dict[str, Any]:
+                                     reason: str, binding: str | None = None) -> dict[str, Any]:
         """The Lead classifies a failed parent verification (WC §6); it prescribes what closeout then requires."""
         with self.k.lead_txn(token, expect_rev, "verify.classify", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             pv = unit.get("parent_verification") or {}
             if not pv.get("awaiting_classification"):
                 raise IllegalTransition(f"{work_id} has no failed parent verification awaiting classification")
+            ref = approval.failure_ref("verify.classify", unit, pv["awaiting_classification"], binding)
             requires = {"LOCAL_IMPLEMENTATION_DEFECT": "a remediation child (the child set must change)",
                         "PLAN_OR_DESIGN_DEFECT": "a new accepted parent plan revision",
                         "CONTRACT_VIOLATION": "a new accepted parent plan revision",
@@ -398,7 +437,7 @@ class Hierarchy:
             decision = self.k.new_decision(ctx, "verification_failure_classification",
                                          f"{work_id} parent verification failure classified {classification}",
                                          work_unit=work_id, classification=classification,
-                                         evidence_refs=[pv["awaiting_classification"]], reason=reason,
+                                         evidence_refs=[ref] if ref else [], reason=reason,
                                          body=f"Closeout now requires {requires}.\n")
             unit["parent_verification"] = {**pv, "awaiting_classification": None, "failed_evidence":
                                            pv["awaiting_classification"], "classification": classification,
@@ -410,16 +449,32 @@ class Hierarchy:
         return {"ok": True, "work_id": work_id, "classification": classification, "decision": decision,
                 "requires": requires, "revision": ctx.session.committed_revision}
 
-    def _classification_unmet(self, state: dict[str, Any], unit: dict[str, Any], digest: str) -> str | None:
+    def _classification_unmet(self, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> str | None:
         pv = unit.get("parent_verification") or {}
-        if pv.get("awaiting_classification"):
-            return "a failed parent verification awaits the Lead's classification"
+        if awaiting := pv.get("awaiting_classification"):
+            return (f"{awaiting} awaits classification. Run "
+                    f"`aew verify classify {work_id} --as <CLASS> --reason <reason> {EXPECT_REV}`.")
         cls = pv.get("classification")
-        if cls == "LOCAL_IMPLEMENTATION_DEFECT" and self.same_children(unit, pv.get("children_digest"), digest):
-            return "classified LOCAL_IMPLEMENTATION_DEFECT: a remediation child must change the child set first"
+        failed = pv.get("failed_evidence")
+        if cls == "LOCAL_IMPLEMENTATION_DEFECT" and self.same_children(
+            unit, pv.get("children_digest"), gc["snapshot"]["children_digest"]
+        ):
+            create = fields_command(f"aew work create ticket --parent {work_id} --class <0-4> --scope '<path glob>' "
+                                    f"{EXPECT_REV}", "title", "<title>")
+            return f"{failed} was classified {cls}. A remediation child must change the child set first:\n\n{create}"
         if cls in {"PLAN_OR_DESIGN_DEFECT", "CONTRACT_VIOLATION"} \
                 and (unit.get("plan") or {}).get("accepted") == pv.get("plan_revision"):
-            return f"classified {cls}: a new parent plan revision must be accepted first"
+            return (f"{failed} was classified {cls}. Propose a new parent plan with "
+                    f"`aew plan propose {work_id} --file <file> --reason <reason> {EXPECT_REV}`, then accept it with "
+                    f"`aew plan accept {work_id} --revision <n> {EXPECT_REV}`.")
+        if cls == "ENVIRONMENT_OR_EVIDENCE_BLOCKED":
+            retry = gc["classification_retry"]
+            if not retry:
+                return f"{failed} was classified {cls}. Restore the failed verification record to identify its card."
+            if not retry["current"]:
+                card = retry["card"]
+                return (f"{failed} was classified {cls}. Re-verify with {card} on the current parent snapshot. "
+                        f"Run `aew invoke create {work_id} --card {card} {EXPECT_REV}` and ingest its passing report.")
         return None
 
     def _end_parent_invocations(self, state: dict[str, Any], unit: dict[str, Any], status: str) -> None:
@@ -427,7 +482,8 @@ class Hierarchy:
         for inv_id in unit.get("invocations", []):
             self.invocations.complete_invocation(state, inv_id, status)
 
-    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
+    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+                   binding: str | None = None) -> dict[str, Any]:
         """Lead closeout of a Story/Epic: every child terminal, parent gates CURRENT, findings resolved."""
         with self.k.lead_txn(token, expect_rev, "work.close", reason=reason) as ctx:
             state = ctx.state
@@ -444,13 +500,15 @@ class Hierarchy:
                 raise DependencyUnsatisfied(f"{work_id} cannot close while its dependencies are unsatisfied",
                                             blockers=blockers)
             gc = self._parent_gate_context(state, work_id)
+            if binding is not None:
+                approval.compare("work.close", work_id, binding, approval.closeout_digest(gc["snapshot"]))
+            unmet = self._classification_unmet(work_id, unit, gc)
+            if unmet:
+                raise GateUnsatisfied(f"{work_id}: {unmet}")
             self.gates.require_gates(gc, gc["obligations"]["gates"], what="closeout")
             if gc["open_required_findings"]:
                 raise GateUnsatisfied("parent-level findings are unresolved and not waived",
                                       findings=[f["id"] for f in gc["open_required_findings"]])
-            unmet = self._classification_unmet(state, unit, gc["snapshot"]["children_digest"])
-            if unmet:
-                raise GateUnsatisfied(f"{work_id}: {unmet}")
             backlog = self.history.audit_backlog(state) if unit["kind"] == "epic" else None
             if backlog:  # ADR-0011: Epic closeout requires at least an incremental audit through the current root
                 raise GateUnsatisfied(f"{work_id}: an Epic closes only once the history is audited through the current "
@@ -458,7 +516,8 @@ class Hierarchy:
                                       "then close it", unverified=backlog)
             self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
-                                         reason=reason)
+                                         reason=reason,
+                                         evidence_refs=[f"{work_id}@record:{binding}"] if binding else [])
             path = f"work/{work_id}/closeout.md"
             text = self._closeout_record(state, work_id, unit, gc, decision)
             ctx.session.write(path, text)
@@ -509,7 +568,12 @@ class Hierarchy:
                 "source + child set). Children completing alone does not prove parent acceptance (WC §8).\n")
         return render_frontmatter(meta, body)
 
-    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+    def cancellation_subject(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        descendants = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
+        return {"descendants": descendants, "digest": approval.cascade_digest(work_id, descendants)}
+
+    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                    binding: str | None = None) -> dict[str, Any]:
         """Cancel a Story/Epic and, atomically, every non-terminal descendant (decision recorded)."""
         if not (reason and reason.strip()):
             raise UsageError("cancelling a parent needs a reason")
@@ -521,7 +585,10 @@ class Hierarchy:
                     f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason", "why this Ticket must end"))
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
-            open_desc = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
+            subject = self.cancellation_subject(state, work_id)
+            open_desc = subject["descendants"]
+            if binding is not None:
+                approval.compare("work.cancel", work_id, binding, subject["digest"])
             publishing = [d for d in open_desc
                           if (state["work"][d].get("integration") or {}).get("status") == "publishing"]
             if publishing:
@@ -529,7 +596,8 @@ class Hierarchy:
                                         "first", publishing=publishing)
             decision = self.k.new_decision(ctx, "cancellation", f"{work_id} cancelled with its open descendants",
                                          work_unit=work_id, reason=reason,
-                                         body="Cascaded to: " + (", ".join(open_desc) or "none") + "\n")
+                                         body="Cascaded to: " + (", ".join(open_desc) or "none") + "\n"
+                                         + (f"{work_id}@record:{binding}\n" if binding else ""))
             for did in sorted(open_desc, key=lambda d: -H.depth(state, d)):
                 d = state["work"][did]
                 why = f"cancelled with {work_id} ({decision}): {reason}"
@@ -657,11 +725,19 @@ class Hierarchy:
                 "plans_needing_reconfirmation": invalidated, "revision": ctx.session.committed_revision}
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
         """Promote a Ticket to a Story (or a Ticket/Story to an Epic): identity and evidence are preserved."""
-        if not (reason and reason.strip()):
-            raise UsageError("promotion needs the reason evidence showed the unit was too small (KC §9.4)")
-        with self.k.lead_txn(token, expect_rev, "work.promote", reason=reason) as ctx:
+        missing_reason = not (reason and reason.strip())
+        reason_required = "promotion needs the reason evidence showed the unit was too small (KC §9.4)"
+        if request_id is None and missing_reason:
+            raise UsageError(reason_required)
+        request = ControlRequest.prepare(request_id, work_id=work_id, to=to, title=title, reason=reason,
+                                         risk_class=risk_class)
+        with self.k.lead_txn(token, expect_rev, "work.promote", reason=reason, request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
+            if missing_reason:
+                raise UsageError(reason_required)
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if to not in PROMOTION.get(unit["kind"], set()):
@@ -686,6 +762,8 @@ class Hierarchy:
             self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})", operation=PROMOTE)
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
+            if request is not None:
+                ctx.request_ref = (new_id, decision)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,
                 "revision": ctx.session.committed_revision}
 

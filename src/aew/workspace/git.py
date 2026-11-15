@@ -32,6 +32,15 @@ DRIVER_KEY = re.compile(r"^(filter|diff|merge)\.(.+)\.(clean|smudge|process|requ
 NEUTRAL = {"clean": "", "smudge": "", "process": "", "required": "false", "command": "", "textconv": "",
            "driver": "false"}
 DIFF_COMMANDS = {"diff", "log", "show"}
+# githooks(5) recommends clearing the names printed by `git rev-parse --local-env-vars`
+# before running Git in a different repository. Pin the union across supported Git versions (2.31 and newer).
+LOCAL_ENV_VARS = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
+    "GIT_DIR", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_INTERNAL_SUPER_PREFIX",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY", "GIT_PREFIX", "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE", "GIT_WORK_TREE",
+})
+COUNTED_CONFIG = re.compile(r"GIT_CONFIG_(KEY|VALUE)_\d+\Z")
 
 _trusted: frozenset[str] = frozenset()
 _drivers: dict[str, dict[str, Any]] = {}
@@ -101,7 +110,7 @@ def configured_drivers(cwd: Path, env: dict[str, str] | None = None) -> list[dic
     system, global, repository and worktree files, and the worktree's HEAD (an ``includeIf "onbranch:..."`` follows
     it). A read whose inputs were not all known before it ran is not cached, and neither is one with an include this
     cannot resolve: the next call reads again (M4-B review)."""
-    full = {**scrub_credentials(dict(os.environ)), **(env or {}), "LC_ALL": "C"}
+    full = _env(env)
     key = f"{cwd}\0{_config_env_key(full)}"
     cached = _drivers.get(key)
     if cached is not None and cached["signature"] is not None and _signature(cached["files"]) == cached["signature"]:
@@ -158,6 +167,9 @@ def safe_config(cwd: Path, env: dict[str, str] | None = None) -> list[str]:
 
 def _env(env: dict[str, str] | None) -> dict[str, str]:
     full_env = scrub_credentials(dict(os.environ))  # git and its hooks never see an AEW credential (ADR-0009)
+    for name in tuple(full_env):
+        if name in LOCAL_ENV_VARS or COUNTED_CONFIG.fullmatch(name):
+            del full_env[name]
     full_env["GIT_TERMINAL_PROMPT"] = "0"
     full_env["LC_ALL"] = "C"
     if env:
@@ -332,6 +344,7 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 # they exist so that a stuck git fails a command instead of hanging it (PR #126, CI).
 OBJECT_TIMEOUT_S = 300.0
 BATCH_READ_TIMEOUT_S = 120.0
+BATCH_CLOSE_TIMEOUT_S = 30.0  # the wait for a batch reader to exit once its input is closed (normally at once)
 
 
 def object_git(*args: str, cwd: Path, check: bool = True, input: bytes | None = None,
@@ -385,6 +398,7 @@ class CatFileBatch:
     def __init__(self, cwd: Path, timeout: float = BATCH_READ_TIMEOUT_S) -> None:
         self.cwd = cwd
         self.timeout = timeout
+        self.close_timeout = BATCH_CLOSE_TIMEOUT_S  # a caller with a deadline lowers it (maps.gitobjects.open_tree)
         self._proc: subprocess.Popen[bytes] | None = None
 
     def __enter__(self) -> CatFileBatch:
@@ -433,7 +447,7 @@ class CatFileBatch:
         try:
             if proc.stdin is not None:
                 proc.stdin.close()
-            proc.wait(timeout=30)
+            proc.wait(timeout=self.close_timeout)
         except (OSError, subprocess.TimeoutExpired):
             proc.kill()
             proc.wait()

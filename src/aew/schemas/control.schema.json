@@ -32,6 +32,49 @@
       "type": "integer",
       "minimum": 0
     },
+    "control_requests": {
+      "description": "Optional create identities for hot units in the current Lead generation.",
+      "type": "object",
+      "required": ["generation", "operations"],
+      "additionalProperties": false,
+      "properties": {
+        "generation": {"type": "integer", "minimum": 1},
+        "operations": {
+          "type": "object",
+          "propertyNames": {
+            "enum": ["work.create", "plan.propose", "invoke.create", "work.redispatch", "work.promote", "harness.launch"]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,64}$"},
+            "additionalProperties": {
+              "type": "object",
+              "required": ["arguments", "digest", "unit", "ref", "revision"],
+              "additionalProperties": false,
+              "properties": {
+                "arguments": {"type": "object", "additionalProperties": {"pattern": "^[0-9a-f]{12}$", "type": "string"}},
+                "digest": {"$ref": "#/$defs/sha256"},
+                "unit": {"type": "string"},
+                "ref": {"type": "string"},
+                "metadata": {
+                  "description": "Credential-free result fields that cannot be reconstructed from the referenced record.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                    "decision": {"type": "string"},
+                    "execution": {"type": "object"},
+                    "superseded": {"type": "object"},
+                    "dispatch": {"type": "object"}
+                  }
+                },
+                "revision": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
     "manifest_sha256": {
       "$ref": "#/$defs/sha256"
     },
@@ -90,6 +133,22 @@
           "description": "M4-E E2: the POSIX uid the Lead acquired its seat as (the Lead host principal), so the operator endpoint can say whether the principals collapse (plan v3 §2.1). Absent on Windows and for seats acquired before it.",
           "type": "integer",
           "minimum": 0
+        },
+        "start": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generation", "kind", "at", "host", "user", "pid", "start_id"],
+          "properties": {
+            "generation": {"type": "integer", "minimum": 1},
+            "kind": {"enum": ["opencode_acquire", "vacant_start", "lead_acquire", "takeover", "handoff", "seat_resume"]},
+            "at": {"type": "string", "format": "date-time"},
+            "host": {"type": "string", "minLength": 1},
+            "user": {"type": ["integer", "string"], "minimum": 0, "minLength": 1},
+            "pid": {"type": "integer", "minimum": 1},
+            "start_id": {"type": ["string", "null"], "minLength": 1}
+          },
+          "if": {"properties": {"kind": {"enum": ["opencode_acquire", "seat_resume", "vacant_start"]}}},
+          "then": {"properties": {"start_id": {"type": "string"}}}
         },
         "handoff": {
           "type": [
@@ -339,6 +398,28 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
+                "provider_key_admission": {
+                  "description": "Stored credential admission metadata. API keys carry the SQLite row ID and update time. Plan logins carry their kind.",
+                  "type": "object",
+                  "required": ["provider"],
+                  "oneOf": [{"required": ["generation"]}, {"required": ["credential"]}],
+                  "additionalProperties": false,
+                  "properties": {
+                    "provider": {"enum": ["anthropic", "google", "openai", "opencode"]},
+                    "credential": {"const": "plan_login"},
+                    "generation": {
+                      "type": "array",
+                      "prefixItems": [{"type": "integer"}, {"type": ["integer", "null"]}],
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                },
                 "requests": {
                   "type": "array",
                   "items": {
@@ -373,7 +454,8 @@
               "deadline_s": {"type": ["number", "null"]},
               "selected_by": {"enum": ["policy", "lead"]},
               "rule": {"type": "string"},
-              "policy_sha256": {"type": ["string", "null"]}
+              "policy_sha256": {"type": ["string", "null"]},
+              "credential": {"enum": ["api_key", "plan_login"]}
             }
           }
         }
@@ -492,7 +574,7 @@
       }
     },
     "steering": {
-      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (an adopted default that is not a raise); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
+      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (a pinned default that is not a raise, recorded where the pin is written: init, adopt or migrate); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
       "type": "object",
       "required": ["default", "standing", "override", "requests"],
       "additionalProperties": false,
@@ -607,7 +689,7 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]}
           ]
         }
       }

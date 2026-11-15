@@ -150,10 +150,12 @@ def run(cwd: str | None = None, *, refresh: bool = False, run_checks: bool = Fal
     engine = None
     try:
         from aew.engine.api import Engine
+        from aew.harness.containment.netns import doctor_key_snapshot
 
         engine = Engine.discover(Path(cwd) if cwd else Path.cwd())
-        project_checks = engine.doctor_checks()
-        project_checks += _guarded("model-list", lambda: _model_list(engine, refresh))
+        with doctor_key_snapshot():
+            project_checks = engine.doctor_checks()
+            project_checks += _guarded("model-list", lambda: _model_list(engine, refresh))
         project_checks += _guarded("check-changes", lambda: _check_changes(engine, run_checks))
         project_checks += _guarded("switch-offer", lambda: _switch_offers(engine))
     except ImportError:

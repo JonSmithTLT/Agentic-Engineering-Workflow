@@ -14,6 +14,10 @@ aew doctor
 
 Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py311 offline wheelhouse.
 
+AEW's Git commands ignore settings injected through `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`
+pairs, `GIT_CONFIG_PARAMETERS`, and `GIT_CONFIG`. Put settings such as `safe.directory` in your global or system Git
+configuration file.
+
 ## Operator: initialize a project
 
 ```bash
@@ -21,7 +25,7 @@ cd <repo>                       # the main worktree, on the authoritative branch
 aew init --check-command "{python} -m pytest -q" --model openai/gpt-6-sol   # also discovers authority *candidates*; confers no authority
 ```
 
-Set the provider key in the terminal you'll start AEW from. Use the form for your shell.
+If you use an exported key (not a saved OpenCode login), set it in the terminal you'll start AEW from. Use the form for your shell.
 
 Bash
 
@@ -43,12 +47,24 @@ $s = Read-Host "OPENAI_API_KEY" -AsSecureString; $env:OPENAI_API_KEY = [Runtime.
 
 ```bash
 aew doctor
-aew opencode --acquire --provider-env OPENAI_API_KEY
+aew opencode --provider-env OPENAI_API_KEY
 ```
 
-`aew init` writes the first configuration before it pins, so a fresh setup with both flags can go straight to OpenCode
-after setting the key. Its `next` says what's left for what you gave it. If the key is unset when you run `aew doctor`,
-the `provider-env` check fails and shows the forms above.
+This command uses the exported key for the Lead's own model. To use the Lead's existing login, start with
+`aew opencode --acquire`.
+
+`aew init` takes the first configuration in that one call and writes it before it pins. With both flags, a fresh
+setup needs no hand edit, no adopt and no credential at init. Its `next` says what's left for what you gave it.
+After setting the key, you can go straight to OpenCode. If a required key is unavailable, `aew doctor` reports
+the missing provider variable under `provider-env` and shows how to supply it.
+
+On contained Linux a worker uses the saved API-key login through the built-in provider relay when the policy names
+that provider's variable and its other names are set or are other built-in providers' key variables. One login
+decides per provider for the Lead and workers. API-key workers use an export when the deciding login is refreshing.
+Once the pinned OpenCode version is qualified, an adopted `plan_login` profile can use the operator's plan on
+contained Linux. For an explicit override or a legacy launch,
+use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`.
+A certificate-only provider skips key setup.
 
 - **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
   the running Python. The result prints the argv. A command that would pin something broken is refused: empty or
@@ -61,29 +77,34 @@ the `provider-env` check fails and shows the forms above.
   `.aew/policy/checks.yaml`, which goes wherever that file is committed.
 - **`--model`** sets the workers' model, written as the harness lists it, in one profile named `default`; **`--provider`**
   goes with a bare id. They don't set the Lead's own model. For a provider that needs a key, `provider_env` gets the
-  variable's name: no flag takes a key, and `aew init` doesn't look for one. `opencode` writes no variable, since its free
-  models need none; its paid models take the route below. Any other provider is refused, and takes the route below, as
+  variable's name. `aew init` only records the name. Use a paid model. An unknown provider takes the route below, as
   does a proxy variable such as `HTTPS_PROXY`.
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
   head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
-- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it finished may run again,
-  with other values.
+- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
+  may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
+  and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the
+  tool screen comes again when the Lead starts, and the first dispatch that needs a map makes one.
 
 ### Edit pinned settings or classify authority candidates
 
-After the Lead session exits and releases the seat, use `aew lead acquire` at your terminal and keep the Lead
-credential it shows. For each mutation in this section, pass `--expect-rev` with the current revision from
-`aew status`.
+After the Lead session exits and releases the seat, acquire it at your terminal and keep the credential it shows.
+Fill in the current revision from `aew status` before each command. For a pinned edit, review the changes
+under `.aew/` and give a reason. Adopt asks for the credential and a one-time code. Authority candidates can wait
+while the Lead works. Replace the example candidate ID with one from `aew authority list`. Run the middle command
+or commands you need, then release the seat.
 
-- For a pinned edit, review the changes under `.aew/`. Run `aew manifest adopt` at your terminal, passing
-  `--reason` with a quoted description of the change. Adopt asks for the Lead credential and a one-time code.
-- Authority candidates can wait while the Lead works. See the IDs in `aew authority list`. To classify one as
-  decisions authority, give its ID and `--class decisions` to `aew authority accept`.
+```bash
+aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
+aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
+aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
+aew lead release --expect-rev <revision from aew status>
+```
 
-The credential route holds the seat. When you're done, use `aew lead release`, then start the Lead with
-`aew opencode --acquire`. If work is still in flight and the old session kept the seat, follow the takeover
-instructions it printed.
+The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
+plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
+explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
 
 ### Giving AEW the Lead credential
 
@@ -105,7 +126,8 @@ $s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.Inte
 
 Set it for this shell session only: a persistent variable reaches every process you start, and a startup file is a
 plain file in your home directory, like history. A Lead session removes it from its harness's environment and holds
-the credential in its broker's memory; `--acquire` takes a vacant seat instead. The credential is never written to disk.
+the credential in its broker's memory. Plain `aew opencode` without an exported credential takes or resumes the
+seat. `--prompt-token` opens the hidden prompt for an existing credential. The credential is never written to disk.
 Once a Lead session (`aew opencode`, `aew lead session`) is running, AEW never asks for the Lead credential inside the
 Lead's own window: a prompt there is not AEW's.
 
@@ -116,7 +138,7 @@ a Lead session refuses that flag.
 
 ## Lead: one Ticket, end to end
 
-With `aew opencode --acquire`, the Lead performs the Ticket steps below through its own tools.
+With `aew opencode`, the Lead performs the Ticket steps below through its own tools.
 
 Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew status`, and each command returns the new one.
 
@@ -255,7 +277,7 @@ Configure `.aew/policy/execution.yaml` (which harness, provider, model and effor
 
 ```bash
 aew doctor                      # policy:execution PASS; containment WARN (workdir separation only)
-aew opencode --acquire          # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
+aew opencode                    # the Lead in OpenCode's TUI; the Lead credential stays in the session's broker
 ```
 
 In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <id>` takes one step at a time. Dispatches carry `--launch`, so each role runs in its own private OpenCode server and acts through a run-scoped bridge:
@@ -270,9 +292,13 @@ A run's end moves nothing: the Lead still ingests and transitions, as above. Eve
 
 ## Losing the session
 
-- Run `aew resume` in a fresh session. It is read-only and rebuilds everything from `.aew/`.
-- If the old Lead is gone, **the operator** runs `aew lead takeover --reason "..." --expect-rev N` at an interactive terminal and types the challenge code. Agents cannot do this for themselves.
-- **With OpenCode:** losing the TUI or its state loses nothing. Run `aew opencode` again and `/aew-resume`. Harness runs keep going, and a lost run is relaunched with `aew harness launch`. A lost harness is not an interruption: the Ticket and its invocation are unchanged.
+- If OpenCode took the seat itself, start plain `aew opencode` from your terminal on the same host and as the same
+  user. The previous session must be gone and no handoff can be pending. If active work is carried or processes may
+  still be running, AEW names them and asks for one confirmation code. A successful resume leaves carried runs active.
+- If resume is refused and you need to replace the holder, run `aew lead takeover --reason "..." --expect-rev N` at
+  your own terminal and type its confirmation code.
+- In the new session, run `/aew-resume` or `aew resume` to rebuild context from `.aew/`. A lost run can be relaunched
+  with `aew harness launch`. Losing the harness leaves the Ticket and its invocation unchanged.
 - After a takeover, in-flight Tickets come back as INTERRUPTED. Inspect them, then `aew work reconcile`. A non-mutating Ticket then continues only with `aew work redispatch` (a new attempt); nothing its interrupted executor submitted is accepted.
 
 ## Useful views

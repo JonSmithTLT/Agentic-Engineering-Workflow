@@ -44,6 +44,7 @@ aew = "aew.cli.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"aew.kit" = ["seed.json"]
 "aew.schemas" = ["*.json"]
 "aew.stg02" = ["adopted/*.json", "adopted/*.yaml", "overlay/*.json", "worlds/*.json"]
 "aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]

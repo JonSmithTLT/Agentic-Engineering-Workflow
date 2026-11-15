@@ -21,9 +21,10 @@ from the projection),
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
-``drop_events_every`` (close each event connection after N frames), ``tool_parts`` (a ``write`` step records
-2.0.18's ``write`` tool parts, which the run's progress digest reads), ``ask`` (a permission request before
-the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
+``drop_events_every`` (close each event connection after N matching frames, optionally by event type),
+``tool_parts`` (a ``write`` step records 2.0.18's ``write`` tool parts, which the run's progress digest reads),
+``ask`` (a permission request before the first step), ``form`` (a form before the first step),
+``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
 2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry; optional ``status``, ``type`` and ``message``
@@ -86,6 +87,10 @@ def _pinned() -> str:
 
 
 PINNED = _pinned()
+# OpenCode 2.0.18's credential table as its migrations create it (pinned bundle, 2026-10-25).
+CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value "
+                    "text NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
+                    "time_updated integer NOT NULL)")
 SPEC = HERE.parent / "fixtures" / "opencode" / f"openapi-{PINNED}.min.json"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 DEFAULT_MODELS = [
@@ -163,6 +168,7 @@ class Session:
         self.interrupted = threading.Event()
         self.contract_done = False
         self.proc: subprocess.Popen[bytes] | None = None
+        self.tool_failed = False
         self.permissions: dict[str, dict[str, Any]] = {}
         self.replies: dict[str, str] = {}
         self.forms: dict[str, dict[str, Any]] = {}
@@ -244,7 +250,7 @@ class FakeOpenCode:
         return dict(s.info["model"])
 
     def assistant(self, s: Session, i: int, finish: str, tool: str | None = None,
-                  parts: list[dict[str, Any]] | None = None) -> None:
+                  parts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
                "model": self.pin(s, i), "time": {"created": now_ms(), "completed": now_ms()},
                "content": parts or ([{"type": "tool", "name": tool}] if tool else [{"type": "text", "text": "ok"}]),
@@ -262,8 +268,10 @@ class FakeOpenCode:
                 s.messages.append(msg)
         self.emit("session.step.started", {"sessionID": s.info["id"], "model": msg["model"],
                                            "assistantMessageID": msg["id"]})
-        self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"], "finish": finish,
-                                         "tokens": msg["tokens"]})
+        if tool is None:
+            self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"],
+                                             "finish": finish, "tokens": msg["tokens"]})
+        return msg
 
     def _append(self, s: Session, msg: dict[str, Any]) -> None:
         with self.lock:
@@ -297,8 +305,18 @@ class FakeOpenCode:
             return None
         import hashlib
 
-        key = os.environ.get(knob["variable"]) or ""
+        if knob.get("plan_login"):
+            assert "OPENAI_API_KEY" not in os.environ
+            [row] = self.plan_credentials()
+            key = row["value"]["access"]
+        else:
+            key = os.environ.get(knob["variable"]) or ""
         base = provider_base(s.info["model"])
+        if knob.get("require_sentinel"):
+            from aew.harness.containment.relay import SENTINEL_PREFIX
+
+            assert key.startswith(SENTINEL_PREFIX), "the fake harness did not receive a relay sentinel"
+            assert base and base.startswith("http://127.0.0.1:"), "the fake harness needs a local relay"
         if base is not None:  # a network of the run's own (F28): the relay holds the key, and the provider answers
             if call_provider(base, key, knob["rejected_sha256"]) < 400:
                 return None
@@ -349,13 +367,24 @@ class FakeOpenCode:
 
     def run_step(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
-        do = step["do"]
-        self.assistant(s, i, "tool-calls", tool="shell",
-                       parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
+        msg = self.assistant(s, i, "tool-calls", tool="shell",
+                             parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
         call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
-        self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell"})
+        self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell",
+                                                 "assistantMessageID": msg["id"]})
         self.emit("session.tool.called", {"sessionID": s.info["id"], "id": call, "input": {"command": TOOL_INPUT},
-                                          "executed": True})
+                                          "executed": True, "assistantMessageID": msg["id"]})
+        s.tool_failed = False
+        try:
+            return self._run_tool(s, i, step)
+        finally:
+            self.emit("session.tool.failed" if s.interrupted.is_set() or s.tool_failed else "session.tool.success",
+                      {"sessionID": s.info["id"], "id": call, "assistantMessageID": msg["id"]})
+            self.emit("session.step.ended", {"sessionID": s.info["id"], "assistantMessageID": msg["id"],
+                                             "finish": "tool-calls", "tokens": msg["tokens"]})
+
+    def _run_tool(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
+        do = step["do"]
         if do == "exit":
             if step.get("code", 0):
                 os._exit(int(step["code"]))  # the harness crashed
@@ -374,6 +403,12 @@ class FakeOpenCode:
                                   cwd=s.info["location"]["directory"], env=env, stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         s.proc.wait()
+        s.tool_failed = s.proc.returncode != 0
+        if do == "shell":
+            rows = [json.loads(line) for line in (self.state / "transcript.jsonl").read_text(
+                encoding="utf-8").splitlines()]
+            result = next(row["result"] for row in reversed(rows) if row["i"] == i)
+            s.tool_failed = bool(result.get("timed_out") or result.get("exit"))
         s.proc = None
         return "interrupted" if s.interrupted.is_set() else None
 
@@ -443,9 +478,20 @@ class FakeOpenCode:
         for entry in self.knobs.get("openapi_drop") or []:
             method, path = entry.split(" ", 1)
             spec["paths"].get(path, {}).pop(method.lower(), None)
-        if "stored_credentials" in self.knobs:  # 2.0.22's credential store
+        if "stored_credentials" in self.knobs or self.knobs.get("plan_credentials"):  # 2.0.22's credential store
             spec["paths"]["/api/credential"] = {"get": {"operationId": "credential.list"}}
         return spec
+
+    def plan_credentials(self) -> list[dict[str, Any]]:
+        import sqlite3
+        from contextlib import closing
+
+        from aew.harness.opencode import login
+
+        path = self.data_home / "opencode" / login.DB
+        with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as con:
+            return [{"id": row_id, "value": json.loads(value)}
+                    for row_id, value in con.execute("SELECT id, value FROM credential")]
 
     def plugins_activating(self) -> bool:
         """The ``plugins_activating_s`` knob: still activating, counted from the first location listing."""
@@ -522,6 +568,8 @@ class FakeOpenCode:
             return 200, self.spec()
         if (method, path) == ("GET", "/api/credential") and "stored_credentials" in self.knobs:
             return 200, {"data": self.knobs["stored_credentials"]}
+        if (method, path) == ("GET", "/api/credential") and self.knobs.get("plan_credentials"):
+            return 200, {"data": self.plan_credentials()}
         if (method, path) == ("GET", "/api/info"):
             return 200, {"version": self.knobs.get("version") or PINNED, "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}
@@ -817,14 +865,17 @@ def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            every = int(app.knobs.get("drop_events_every") or 0)
+            drop = app.knobs.get("drop_events_every") or 0
+            event_type = drop["type"] if isinstance(drop, dict) else None
+            every = int(drop["count"] if isinstance(drop, dict) else drop)
             sent = 0
             try:
                 frame: dict[str, Any] | None = {"id": new_id("evt"), "type": "server.connected", "data": {}}
                 while frame is not None:
                     self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode())
                     self.wfile.flush()
-                    sent += 1
+                    if event_type is None or frame["type"] == event_type:
+                        sent += 1
                     if every and sent >= every:  # the stream is lost; the client must not depend on it
                         break
                     frame = q.get()
@@ -1002,6 +1053,15 @@ def main(argv: list[str], scripts: Path) -> int:
         return 0
     if argv[:1] == ["--server"]:
         return tui(argv, scripts)
+    if argv == ["session", "list"]:
+        import sqlite3
+        from contextlib import closing
+
+        db = Path(os.environ["XDG_DATA_HOME"]) / "opencode" / "opencode.db"
+        db.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(db)) as con, con:
+            con.execute(CREDENTIAL_TABLE)
+        return 0
     if argv[:1] != ["serve"] or "--stdio" not in argv:
         print(f"fake opencode: unsupported arguments {argv}", file=sys.stderr)
         return 2

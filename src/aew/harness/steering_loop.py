@@ -28,10 +28,10 @@ to a stop; the envelope is counted per activation.
    primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
    such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
 5. The envelope (A1 §3): the activation's deadline, its action count, and the repetition key ``(action, arguments,
-   subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation, the
-   notifier must be executable and the operator endpoint must answer (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4),
-   and a dispatching action needs every profile routing can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1
-   §3.2).
+   subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation the
+   notifier must be able to deliver, and before each action the operator endpoint must answer
+   (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4; register E228), and a dispatching action needs every profile routing
+   can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1 §3.2).
 6. Execute it as a normal stage call (``run_tool``), with the projection's ``expect_rev``, a StageIntent, and the
    loop's attribution on that intent (``auto_run``: activation, mode and its record and generation, digests,
    projection) and on its dispatches (channel ``steering_loop``). It is the same call a Lead makes, checked the same
@@ -46,7 +46,8 @@ Lead's call and the loop's are each one stage, CAS-checked: at most two intents 
 **What it records:** its state (``.aew/local/steering/loop.json``: running or stopped, and why; never control state,
 §2.7), and a ``loop_stopped`` line in the broker's event spool for a stop that needs attention, so the operator
 endpoint notifies (§2.8). A stop that returns control to the Lead in the ordinary way (a decision, a blocker, an
-unknown, nothing to do) is recorded but not notified.
+unknown, nothing to do) is recorded but not notified. Until E7c, ``CONFIRMATION_UNAVAILABLE`` is recorded too, but
+neither notified nor told to the Lead (``HELD_UNTIL_E7C``).
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
 from aew.harness import contract as K
-from aew.harness import event_spool
+from aew.harness import event_spool, runlog
 from aew.util import replace_with_retry, sha256_bytes, utc_now
 
 # Stop codes. The first group returns control to the Lead in the ordinary way; the rest need attention (notified).
@@ -80,6 +81,13 @@ ANOMALY_HIGH = "ANOMALY_HIGH"
 STALE_AUTHORITY = "STALE_AUTHORITY"
 STALE_POLICY = "STALE_POLICY"
 CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"  # E7b: confirm_before holds and no confirmation exists yet (m3)
+# Recorded (``loop.json``, so ``status`` and the steering view show it) but held from the notifier's spool and from the
+# Lead's ``loop_waiting`` wake until M4-E E7c, which lifts the hold: before E7c nothing can act on such a stop (no
+# confirmation exists, crawl cannot be lowered, and under Walk lowering to crawl only confirms more), so each would be
+# a toast and a Lead turn for a step that stays the Lead's own (the operator's ruling on the quick check of E228's
+# fourth PR, QC-1 (c)). It is the code's, in any mode, never crawl's: every other stop is notified and wakes the Lead
+# as before.
+HELD_UNTIL_E7C = frozenset({CONFIRMATION_UNAVAILABLE})
 NOTIFIER_UNAVAILABLE = "NOTIFIER_UNAVAILABLE"
 NO_HARD_DEADLINE = "NO_HARD_DEADLINE"
 LOOP_DEADLINE = "LOOP_DEADLINE"
@@ -88,6 +96,7 @@ REPETITION = "REPETITION"
 SIDE_EFFECT_UNDECLARED = "SIDE_EFFECT_UNDECLARED"
 DECLARATION_UNCHECKED = "DECLARATION_UNCHECKED"  # a step commit SAE-07 could not check: never passed (F5)
 ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch_failed): the Lead reads its result
+PLAN_LOGIN_FAILED = "PLAN_LOGIN_FAILED"
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
 STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
@@ -454,6 +463,17 @@ class SteeringLoop:
         mode = now["mode"]
         if mode is None:
             return Stop(OFF, "no steering mode is in force (legacy/manual behaviour)")
+        for inv_id, inv in state.get("invocations", {}).items():
+            runs = inv.get("runs") or []
+            if (inv.get("status") != "active" or not runs or runs[-1].get("token_id") != inv.get("token_id")
+                    or (inv.get("execution_profile") or {}).get("credential") != "plan_login"):
+                continue
+            run = runs[-1]["run"]
+            record = runlog.read_record(runlog.run_dir(self.aew_root, run)) or {}
+            if record.get("status") not in (K.CRASHED, K.ENDED_WITHOUT_EVIDENCE, K.LAUNCH_FAILED):
+                continue
+            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id):
+                return Stop(PLAN_LOGIN_FAILED, f"{run}: {failure}", subject=inv["work_unit"])
         if act.last_own_rev is not None and int(state["revision"]) != act.last_own_rev:
             act.counts.clear()  # a commit the loop did not make: progress the repetition key cannot see
         act.last_own_rev = None
@@ -496,20 +516,22 @@ class SteeringLoop:
         return self._do(act, picked, mode, now, digests, key)
 
     def _run_checks(self, act: Activation, policy: dict[str, Any] | None, t: Any) -> tuple[str, str] | None:
-        """Run's own conditions: at each activation the notifier is executable and the endpoint answers (plan v3
-        §2.8, m4); a dispatching action needs a hard deadline on every profile routing can pick (A1 §3.2)."""
+        """Run's own conditions: at each activation the notifier can deliver (plan v3 §2.8, m4); before each action the
+        endpoint answers, so an endpoint lost mid-activation stops the loop before its next step rather than at the
+        next activation (register E228); a dispatching action needs a hard deadline on every profile routing can pick
+        (A1 §3.2)."""
         if not act.run_checked:
             problem = S.notifier_problem(policy)
             if problem:
                 return NOTIFIER_UNAVAILABLE, f"unattended Run needs an executable notifier: {problem}"
-            from aew.harness import operator_client
-
-            try:
-                operator_client.ping(self.aew_root)
-            except errors.AEWError as exc:
-                return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
-                                              f"notifications, to be live: {exc.message}")
             act.run_checked = True
+        from aew.harness import operator_client
+
+        try:
+            operator_client.ping(self.aew_root)
+        except errors.AEWError as exc:
+            return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
+                                          f"notifications, to be live: {exc.message}")
         if t.dispatches:
             missing = S.profiles_without_deadline(policy)
             if missing:
@@ -654,7 +676,7 @@ class SteeringLoop:
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
         self._acted.clear()
-        if not stop.attention:
+        if not stop.attention or stop.code in HELD_UNTIL_E7C:  # held from the spool until E7c (HELD_UNTIL_E7C)
             return
         if stop.condition in self._notified:
             self._notified.move_to_end(stop.condition)  # recurring: the last to be forgotten (LRU; review, R2)

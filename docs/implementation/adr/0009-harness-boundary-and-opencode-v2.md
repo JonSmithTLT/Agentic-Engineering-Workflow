@@ -1520,7 +1520,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
   (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
   provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
-  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`lead.StoredLogin`) re-reads the operator's
+  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`login.StoredLogin`) re-reads the operator's
   login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
   account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
   writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
@@ -1641,7 +1641,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   addendum 15, "A test runs each relayed command against a project and finds the store and `.aew/local/` unchanged,
   apart from any derived cache the read already rebuilds today and the broker's delivery records, each of which the
   test names by its exact path" (the delivery records: `local/harness/runs/<run>/progress.returned.json` and
-  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned), one
+  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned; messaging's local
+  told-ID record and its synchronization files are specified in the 2026-11-11 amendment below), one
   answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
   server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
@@ -2012,3 +2013,131 @@ runs where the Lead's shell runs, and arrive as text.
   which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
+
+## Amendment 2026-11-11 — local message delivery receipts are not durable shown facts
+
+The delivery-record exception to relayed reads' no-write rule is constrained as a class:
+
+1. The broker writes, never the relayed non-writer process.
+2. Only identities actually carried in the successful result, verified against the project's data and request scope,
+   qualify. Worker text is data, not a recursively searched source of IDs; omitted or partial bodies qualify for none.
+3. Every destination is named exactly by the tests. Existing wait records remain
+   `local/harness/runs/<run>/progress.returned.json` and `local/harness/runs/<run>/progress.end-returned`.
+   Message receipts use `local/lead/told-messages.json`, a closed object with only `generation` and `messages`
+   (sorted unique complete IDs). Its stable empty synchronization files are `local/lead/told-messages.lock` and
+   `local/lead/told-messages.lock.queue`. Atomic replacement's transient temporary file is utility-owned in that
+   same directory, not another delivery destination. The stable lock files are not replaced or deleted by the writer.
+4. Normal message updates grow by union within the held generation; an old broker cannot regress a newer generation.
+   Invalid or missing disposable records suppress nothing. They are not a claim of exactly-once model receipt.
+5. Records carry only their declared identity/sequence/flag payload, never bodies, credentials or control state.
+6. **Every member of this delivery-record class writes only under `.aew/local/`.** No thread, seal, registration,
+   lead-seen log, control/history file or advisory `local/wake` bump is part of relayed message consumption.
+
+Typed broker tools and own-shell `aew lead tool` keep the existing durable shown writer for verified bodies in a
+successful result; credentialed `message unseen` keeps its recovery semantics. Plain operator and contained-local
+reads consume nothing. A relayed status/resume uses a single machine result, rendering that same result for readable
+output, then after the successful bridge send the broker records only its verified bodies locally. Relayed wait
+sequence/end marks use that same send-success boundary. Own-shell typed consumption follows successful stdout emit
+and flush. A failed send/write/flush records no message receipt. Local receipts do not clear durable attention or
+the worker inbox cap. Receipt of a successful response is not proof the model read or understood it, and a process
+loss between successful output and receipt recording may cause re-listing rather than exactly-once delivery.
+
+**Bounded uncertain wake recovery (2026-11-11, review M1).** `wake_queue.UNCERTAIN_HOLD_S` is a **60-second** local
+reconciliation deadline starting at the first recorded POSTING attempt, preserved across reads, `/new` and broker
+restart. It is a liveness/recovery bound, not evidence of non-admission. A pinned-session 404 or expiry clears the
+uncertain selection without marking any selected ID posted or advancing its news marks. The same queue can gather
+fresh news again; a delayed earlier admission may repeat news, the accepted disposable-state re-listing cost. The
+status line names the uncertain hold and its deadline. Confirmed admission still records only its exact verified IDs.
+This recovery bound applies to message and steering-loop wakes, not only one kind of news.
+
+## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
+
+The operator approved default worker use and Linux first ("yes to both, linux now and file the windows row").
+The adopted execution policy's
+`provider_env` name is the consent for the pinned provider. The stored source is eligible
+only on Linux through the established `proxy_only` relay to that provider's built-in
+upstream. A configured upstream override uses the environment path.
+
+A run carries no other built-in provider's key. For a built-in provider, other built-in providers' key variables
+are not required, including on weaker routes. Every non-proxy name retains its sentinel on the relay route. Among
+built-in key variables the relay swaps only the pinned provider's sentinel. Custom and proxy variable handling
+stays as described above.
+
+A usable named export takes precedence. An invalid nonempty export retains its refusal.
+For an unset or empty named variable, admission checks the provider's deciding API-key
+row, and the supervisor reads it afresh before feeding the relay. Both reads are bounded,
+read-only and host-side. SQLite may create WAL sidecar files as a filesystem side effect. The main file and
+its rows stay unchanged. One login decides per provider for the Lead and workers, active first, then by update time
+and descending row ID. Workers only use API-key rows and each launch read selects only the pinned provider's row.
+A refreshing deciding login remains the Lead's login and workers use the named export.
+The worker lookup uses core SQL for Rocky 8 compatibility without JSON1. It reads and parses the
+whole deciding value on the host, then discards OAuth text after classification. OAuth contents
+never reach a return value, record, log, error or sandbox.
+The launch record names the source. The control-state run entry's `provider_key_admission`
+carries the non-secret row identity and update time
+for comparison. The key never
+enters the launch contract, the record, the harness environment, logs or errors. The worker
+receives a sentinel. An upstream rejection ends the attempt with that credential. The next
+launch resolves the source afresh.
+
+This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
+providers make no store read. Off the relay, the existing explicit environment path applies.
+The Lead's stored login and the weaker containment guarantees are described above.
+
+## Amendment 2026-11-11 — the refreshing relay tightened (usage pot PR 1)
+
+This amends the refreshing-login paragraph in the 2026-10-25 contained Lead amendment.
+`login.StoredLogin` reads only the provider's deciding row on each request. If the store is still
+busy or locked after the bounded retry, the relay returns 503 `credential_unreadable`. Other store
+faults return 401 with the recovery step.
+
+The refreshing relay sends requests only to the built-in upstream in `netns.REFRESHING_UPSTREAMS`.
+A configured upstream override for that provider prevents the Lead from relaying its stored
+refreshing login. The Lead names the override at startup and explains how to use the stored login
+or an exported API key.
+
+The relay returns 403 before connecting for an ASCII target outside `/backend-api/codex/` or with
+an ambiguous path. A non-ASCII target is rejected as a malformed request line with 400.
+
+## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
+
+- **Lead session exit (former line 122).** When `aew opencode` took the seat itself, the seat is released at
+  exit when nothing is in flight. Otherwise it stays held, and the next `aew opencode` resumes it under the
+  conditions in [ADR-0005's resume amendment](0005-authority-credentials-operator.md#e330-amendment--opencode-seat-resume).
+  A seat held by a live Lead, or by the operator's own token, still needs a terminal takeover. The 2026-10-04
+  condition that release waits until no process the session started is running still applies.
+- **Owned process tree (former lines 481–482).** The seat stays held against leftover processes, and the operator
+  can resume it under ADR-0005's resume conditions. An unknown outcome keeps the seat held. To free it, take it
+  over at the operator's terminal and then release it.
+- **Lead session lifetime (former line 650).** The harness process holds the session (when `aew opencode` takes
+  the seat itself, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it).
+
+A failed start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+The next generation's held-exit evidence carries those processes forward. The local evidence records
+process identities on Linux and a count on Windows. An unknown result or missing evidence requires
+acknowledgement. Local process evidence is dev-grade on both platforms.
+
+Each new generation records `lead.start` in the seat operation's commit, with `generation`, `kind`, `at`,
+`host`, `user`, `pid` and `start_id`. The resumable kinds are `opencode_acquire`, `vacant_start` and
+`seat_resume`. The other routes record `lead_acquire`, `takeover` or `handoff`.
+
+## Amendment 2026-11-11 — workers may draw from the operator's plan login (the operator's choice of usage pot)
+
+The operator's grant, relayed by the Lead: “right that was teh plan wheter througha  asetting or whatever mechaism i wanted teh ability to choose which usage pot is being used.”
+
+This supersedes E337's sentence “A refreshing deciding login remains the Lead's login and workers use the named export.”
+It also amends the E17 worker credential check and the contained Lead's refreshing relay.
+A worker's usage pot is the operator's choice: `credentials.<provider>` in the execution policy, overridden by a
+profile's `credential`, either `api_key` (the default, as the E337 amendment describes) or `plan_login`. Under
+`plan_login` the worker reaches its provider only through the established `proxy_only` relay, to the provider's
+built-in refreshing upstream (`netns.REFRESHING_UPSTREAMS`) and only under its path, never to a configured override.
+The provider's key variable is not passed. The relay resolves the credential for each request with the Lead's
+read-only resolver (`login.StoredLogin`): the operator's deciding row for that provider, read in memory, never
+refreshed and never written. The worker's own store holds one synthetic row whose access token is the run's
+sentinel. E17 verifies the row's id, this run's sentinel and the refresh placeholder. A missing credential endpoint,
+a missing row or an additional row refuses the launch.
+
+A dispatch the login cannot outlive is refused. An expiry, a changed kind or an unreadable store is answered by the
+relay with its cause and connects nothing. No other credential is tried, and the run's end names the cause. Plan
+workers share the plan's usage limits. Doctor and the launch record name the pot. The same upstream and path rule
+applies to the Lead's relayed login. Adopted as the operator's choice, 2026-11-11.

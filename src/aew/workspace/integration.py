@@ -46,7 +46,8 @@ SYMLINK_MODE = "120000"
 LATER_COMMITS = 256
 
 
-def commit_workspace(workspace: Path, message: str) -> str:
+def commit_workspace(workspace: Path, message: str, *, cache_patterns: tuple[tuple[str, ...], ...] = (),
+                     include_ignored: list[str] | None = None) -> str:
     """Commit all non-AEW working changes in a Ticket workspace; return HEAD.
 
     Refuses, before touching the index, when committing would lose work:
@@ -62,16 +63,34 @@ def commit_workspace(workspace: Path, message: str) -> str:
             "the Ticket workspace index marks paths assume-unchanged/skip-worktree, so their edits would be left "
             "out of the Ticket commit; clear the flags (git update-index --no-assume-unchanged / "
             "--no-skip-worktree) and prepare again", workspace=str(workspace), paths=flagged[:50])
-    index_only = [p for p in fingerprint.index_only_paths(workspace) if not p.startswith(".aew/")]
+    index_only = [p for p in fingerprint.index_only_paths(
+        workspace, cache_patterns=cache_patterns, include_ignored=include_ignored) if not p.startswith(".aew/")]
     if index_only:
         raise IntegrityError(
             "the Ticket workspace index holds staged content that matches neither HEAD nor the working copy; "
             "committing the evaluated working state would overwrite it. Put the intended content in the working "
             "copy (and re-verify) or drop the staged version (git restore --staged), then prepare again",
             workspace=str(workspace), paths=index_only[:50])
-    status = git.out("status", "--porcelain", "--untracked-files=normal", "--", ".", AEW_EXCLUDE, cwd=workspace)
-    if status:
-        git.git("add", "-A", "--", ".", AEW_EXCLUDE, cwd=workspace)
+    caches = [path for path in fingerprint.untracked_caches(workspace, cache_patterns, include_ignored)
+              if not path.startswith(".aew/")]
+    spec = [".", AEW_EXCLUDE, *(f":(exclude,literal){path}" for path in caches)]
+    if sum(len(path) + 3 for path in spec) < 8000:
+        dirty = bool(git.out("status", "--porcelain", "--untracked-files=normal", "--", *spec, cwd=workspace))
+    else:
+        # status cannot read pathspecs from a file. Bound its argv, and test exact names for the untracked part.
+        dirty = bool(git.out("status", "--porcelain", "--untracked-files=no", "--", ".", AEW_EXCLUDE, cwd=workspace))
+        if not dirty:
+            raw = git.git("ls-files", "-z", "--others", "--exclude-standard", "--", ".", AEW_EXCLUDE,
+                          cwd=workspace).stdout
+            paths = {path.rstrip("/") for path in raw.decode("utf-8", "surrogateescape").split("\0") if path}
+            dirty = bool(paths.difference(caches))
+    if dirty:
+        if caches:
+            data = ("\0".join(spec) + "\0").encode("utf-8", "surrogateescape")
+            git.git("add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul", cwd=workspace, input=data)
+            message += f"\n\nExcluded {len(caches)} declared cache path(s)."
+        else:
+            git.git("add", "-A", "--", *spec, cwd=workspace)
         git.git("commit", "-q", "--no-verify", "-m", message, cwd=workspace, env=git.identity_env(workspace))
     head = git.rev_parse("HEAD", cwd=workspace)
     assert head

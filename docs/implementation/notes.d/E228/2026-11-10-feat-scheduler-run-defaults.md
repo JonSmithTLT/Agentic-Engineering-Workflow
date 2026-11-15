@@ -1,0 +1,21 @@
+**Built (`feat/scheduler-run-defaults`), the chain's third PR: what `RUN` needs, by default.** A project made by `aew init` (with first configuration's `--model`) has everything `RUN` needs, and the operator switches it on with one `aew lead mode raise run`, approved at the operator endpoint (the operator's decision of 2026-11-10: opt-in, not on by default).
+- **The standing mode:** the init template writes `steering.mode: crawl`.
+  - At `aew init` no mode is in effect and the loop is off: the template is pinned, not adopted.
+  - From the operator's first adoption of the policy, crawl is the standing, effective mode (`steering.on_adopt`).
+  - The loop then runs no step itself. It stops at each step it could take with `CONFIRMATION_UNAVAILABLE`, an attention stop, and the default notifier shows each such stop once per condition as a desktop notification. Combining them (`BOY-12.b`) is E104's.
+- **The notifier:** E104's minimal `aew notify desktop`, which the template writes as `notify.command`.
+  - It shows each event as a desktop notification: `notify-send` on Linux, and on Windows a toast from Windows PowerShell with no console window. The toast is A-44's `BOY-B5`, which the operator pulled into V-01 on 2026-11-10 ("yes to the windows toast"); E104's note records it.
+  - It shows the event's kind, subject and project, never its reason.
+  - With no desktop session it refuses, naming what is missing and both ways back. `--check` reports whether it can show one, and why not.
+  - The endpoint passes it only the session bus's two variables beyond the keep-list (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`), never a display (`BOY-12.a`).
+  - The endpoint runs it as its own engine (its interpreter, `-m aew`), so an older or missing `aew` on `PATH` never passes the gate.
+  - Run's raise and each Run activation refuse the shipped default while it can't deliver (`BOY-12.d`). The limit: an activation checks it in the Lead broker's process, not the endpoint's, which is a row. A command the operator wrote keeps the executable check alone.
+- **The endpoint up throughout `RUN`:** the loop asks the endpoint before each auto-run action, not once per activation.
+  - An endpoint that is lost, or alive but silent past the ping's bound (`operator_client.PING_TIMEOUT_S`), stops the loop (`NOTIFIER_UNAVAILABLE`) before its next step, with no action taken.
+  - Restarting a dead endpoint stays a row.
+- **`deadline_s`, provisional, and Run's only:** first configuration writes `deadline_s` on the profile it writes, from `first_configuration.DEADLINE_S`, with `deadline_scope: run`.
+  - **What it bounds:** only a run that starts while the effective mode is Run. The pin carries the profile's `deadline_scope` as written, and the supervisor applies the deadline (`Supervisor.applied_deadline`), because the pin is a legality module's, which never reads the steering mode (CWR §11). An attended run keeps no deadline. A `deadline_s` the operator writes (no scope, or `always`) bounds every run, as before. A state the supervisor can't read keeps the deadline.
+  - **Why this and not Run's precondition supplying a value:** Run's fail-closed check that every profile sets a deadline (`NO_HARD_DEADLINE`, A1 §3.2) stays as it is, and with it the loop's stop that the chain's first PR tests on.
+  - **The measurement, 2026-11-10:** the dogfood workspaces' run results were read for `usage_record.wall_s` only. 42 run result files, 0 run-usage records, so 0 wall times: the runs predate the usage ledger.
+  - **So the value is provisional:** the steering envelope's own activation bound, `ENVELOPE_DEFAULTS["loop_deadline_s"]`, derived and not restated: one run should not outlive the unattended activation that started it.
+  - **Replaced by:** E117's measured run, with its wall times as the named source. A test pins the value to this note's derivation.

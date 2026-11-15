@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +69,7 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
-             coordination_reads: bool = False) -> None:
+             coordination_reads: bool = False, worker_messaging: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",
@@ -94,7 +95,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     # The tools AEW brings: downloaded only as the operator chooses (the operator, 2026-11-05; aew.capability.consent)
     p.add_argument("--fetch-tool", action="append", metavar="TOOL",
                    help="download this tool AEW brings (`aew capability list` names them), as your choice, with no "
-                        "screen; repeat for more. "
+                        "screen; repeat for more. Use `--fetch-tool none` by itself to skip the screen and downloads "
+                        "without recording an answer. "
                         "With none named, a screen asks at a terminal, and elsewhere nothing downloads")
     p.set_defaults(handler=_init)
 
@@ -135,9 +137,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
                                          "(the operator, confirmed at their own terminal)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
-    q.set_defaults(handler=lambda a: _engine(a).manifest_adopt(
-        token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
-            "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
+    q.set_defaults(handler=_manifest_adopt)
 
     from aew.cli import (
         capability_commands,
@@ -145,6 +145,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
         g3_commands,
         history_commands,
         map_commands,
+        notify_commands,
         operator_commands,
         settings_commands,
         usage_commands,
@@ -160,10 +161,11 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     capability_commands.register(sub)  # the capability register (STG-15, CAP-1)
     usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
-    if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
+    notify_commands.register(sub)  # the notifiers AEW ships (register E104)
+    if coordination_reads or worker_messaging:
         from aew.cli import message_commands
 
-        message_commands.register(sub)
+        message_commands.register(sub, operator=coordination_reads, worker=worker_messaging)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:
@@ -245,10 +247,13 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
                                         "credential or, by default, any provider key (ADR-0009); on Linux it runs "
                                         "contained, at a terminal (STG-05 CS-4)")
-    p.add_argument("--acquire", action="store_true",
-                   help="take the vacant seat in-process (the credential then exists only in this session)")
+    seat_mode = p.add_mutually_exclusive_group()
+    seat_mode.add_argument("--acquire", action="store_true",
+                           help="take a vacant seat or resume an eligible seat in-process")
+    seat_mode.add_argument("--prompt-token", action="store_true",
+                           help="use the hidden prompt for an existing Lead credential")
     p.add_argument("--session-label")
-    p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
+    p.add_argument("--keep-seat", action="store_true", help="keep a seat this session took or resumed at exit")
     p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
                    help="use this provider variable for the Lead's model: on Linux it feeds that provider's relay on "
                         "the host and the Lead's shell sees a placeholder; elsewhere it is passed to the Lead's "
@@ -306,21 +311,59 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("candidate")
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
-    q.add_argument("--decided-by", choices=["lead", "operator"], default="lead",
+    q.add_argument("--decided-by", choices=["lead", "operator"], default="operator",
                    help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
                         "typed back)")
     q.add_argument("--reason")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).authority_accept(
-        token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, klass=a.klass,
-        decided_by=a.decided_by, reason=a.reason, authorization=operator_attribution(
-            a.decided_by, f"RECORD as YOUR decision: accept {a.candidate} as {a.klass} authority")))
+    q.set_defaults(handler=_authority_decide)
     q = asub.add_parser("reject")
     q.add_argument("candidate")
     q.add_argument("--reason")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).authority_reject(
-        token=_lead_token(a), expect_rev=a.expect_rev, candidate_id=a.candidate, reason=a.reason))
+    q.set_defaults(handler=_authority_decide, decided_by="operator")
+
+
+def _manifest_adopt(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    binding = engine.manifest_approval()
+    files = "\n".join(f"  {rel}@{sha if sha is not None else 'missing'}" for rel, sha in sorted(binding.items()))
+    authorization = operator_attribution("operator", f"ADOPT as YOUR decision: project settings\n{files}")
+    return engine.manifest_adopt(token=token, expect_rev=a.expect_rev, reason=a.reason,
+                                 authorization=authorization, binding=binding)
+
+
+def _authority_decide(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    subject = engine.authority_candidate(a.candidate)
+    action = a.authority_cmd
+    digest = subject["digest"]
+    if action == "accept" and subject["kind"] == "file, missing":
+        from aew.errors import NotFound
+        from aew.harness.contract import EXPECT_REV
+
+        raise NotFound(f"authority candidate file {subject['path']} is missing. "
+                       f"The operator can reject it with `aew authority reject {a.candidate} {EXPECT_REV}`.",
+                       path=subject["path"])
+    summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
+    if action == "accept":
+        summary += f" as {a.klass} authority"
+    authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
+    binding = digest
+    if a.decided_by == "lead":
+        if sys.stderr.isatty():
+            print(summary, file=sys.stderr, flush=True)
+        else:
+            # Redirected commands reserve stderr for the JSON refusal.
+            binding = None
+    args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
+                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
+                            "authorization": authorization}
+    if action == "accept":
+        return engine.authority_accept(klass=a.klass, **args)
+    return engine.authority_reject(**args)
 
 
 # ---------------------------------------------------------------------- handlers
@@ -345,7 +388,7 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.harness.containment import netns
     from aew.policy import execution
 
-    consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
+    consent.check_names(args.fetch_tool)  # an invalid tool choice refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
                                                    model=args.model, provider=args.provider)
     engine = Engine.initialize(
@@ -430,9 +473,10 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
 
-    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
-                        args.name, arguments,
-                        token=token or None, run_cli=cli)
+    result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
+                          args.name, arguments, token=token or None, run_cli=cli)
+    args._after_emit = lambda: run.record_message_result(engine, result, token or None)
+    return result
 
 
 def _lead_mcp(args: argparse.Namespace) -> Any:
@@ -465,7 +509,7 @@ def _opencode(args: argparse.Namespace) -> Any:
 
     return lead.run(_engine(args), acquire=args.acquire, session_label=args.session_label, keep_seat=args.keep_seat,
                     provider_env=list(args.provider_env), extra_args=list(args.opencode_args),
-                    print_config=args.print_config)
+                    print_config=args.print_config, prompt_token=args.prompt_token)
 
 
 def _resume(args: argparse.Namespace) -> Any:

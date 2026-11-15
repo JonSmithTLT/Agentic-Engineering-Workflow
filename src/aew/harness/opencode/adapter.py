@@ -40,16 +40,18 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
-from aew.harness import agentenv, progress, runlog, weaker_register
+from aew.errors import ContainmentUnavailable, HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
+from aew.harness import agentenv, procs, progress, runlog, weaker_register
 from aew.harness import usage as U
 from aew.harness.base import (
     KEY_IN_SANDBOX,
@@ -77,7 +79,7 @@ from aew.harness.contract import (
 from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
-from aew.harness.opencode import capabilities, projection
+from aew.harness.opencode import capabilities, model_pricing, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
     REQUEST_TIMEOUT_S,
@@ -90,6 +92,8 @@ from aew.harness.opencode.client import (
     location,
 )
 from aew.harness.usage_live import Meter
+from aew.harness.wait_binding import Binding, Calls, qualified
+from aew.util import utc_now
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
@@ -117,6 +121,9 @@ def plugins_activating(exc: OpenCodeError) -> bool:
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
+PLAN_SEED_COMMAND_TIMEOUT_S = 10
+PLAN_SEED_KILL_TIMEOUT_S = 2
+PLAN_SEED_LOCK_TIMEOUT_S = 12
 # The live usage meter (F25 for M4-H, slice L2; plan v4 §2.1): one poll a second, 2 s per request, and at most 4 s
 # of the adapter's share of TERMINATE_S for the final sample, the thread's join included (§4.2). The final read gets
 # the share less a margin for its two file writes; the join gets whatever is left of the share.
@@ -172,7 +179,9 @@ def _changed_now(contract: LaunchContract) -> Callable[[], list[str] | None] | N
     def read() -> list[str] | None:
         from aew.snapshot.fingerprint import changed_paths  # only a run with a base reads its workspace
 
-        return changed_paths(workspace, str(base), stores=False)
+        return changed_paths(workspace, str(base), stores=False,
+                             cache_patterns=contract.extra.get("cache_patterns", ()),
+                             include_ignored=contract.extra.get("include_ignored"))
 
     return read
 
@@ -200,7 +209,7 @@ def binary_command() -> list[str]:
 
 
 def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str], config: dict[str, Any],
-               password: str) -> dict[str, str]:
+               password: str, provider: str | None = None) -> dict[str, str]:
     """The server's environment: operating-system basics, the provider variables the execution policy names,
     and private OpenCode state. Nothing else from the Lead's environment reaches OpenCode.
 
@@ -211,6 +220,7 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     # SHELL: OpenCode picks the agent's shell from it (else PowerShell on Windows), as for the operator's own use.
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper() in ("PATH", "SHELL")
            or (sys.platform != "win32" and k.startswith("LC_"))}
+    provider_env = netns.worker_provider_names(provider, provider_env)
     problems = agentenv.provider_env_problems(provider_env, base)
     if problems:
         raise HarnessIncompatible("the execution policy's provider_env cannot be passed to the harness server: "
@@ -381,6 +391,10 @@ class OpenCodeAdapter(HarnessAdapter):
                                                         "there is no role of its own"),
         "read_model_list": Support(CAP_YES, "`GET /api/model` on a server started as a launch starts it, with no "
                                             "session"),
+        "report_step_and_shell_calls": Support(CAP_PARTIAL, "call/step/reconnect binding on qualified Linux 2.2.6; "
+                                               "Windows runtime NOT RUN and worker wait refused there; deterministic "
+                                               "fake/process coverage on both hosts is not runtime qualification",
+                                               "E175"),
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -406,6 +420,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self._idle_seen: str | None = None
         self._lead_interrupted = False
         self._lock = threading.RLock()
+        self._wait_calls = Calls()
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._monitor: threading.Thread | None = None
@@ -477,7 +492,15 @@ class OpenCodeAdapter(HarnessAdapter):
         command = binary_command()
         if metered:
             self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
-        env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
+        names = list(contract.extra.get("provider_env") or [])
+        plan_provider = (str(contract.execution_profile["provider"])
+                         if contract.execution_profile.get("credential") == "plan_login" else None)
+        if plan_provider is not None:
+            names = [name for name in names if name != netns.PROVIDER_KEY_ENV.get(plan_provider)]
+        if network is not None and network.stored_key_variable is not None:
+            names = [name for name in names if name != network.stored_key_variable]
+        env = server_env(dict(os.environ), self.state_dir, provider_env=names,
+                         provider=contract.execution_profile.get("provider"),
                          config=config, password=secrets.token_urlsafe(32))
         if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
             env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
@@ -490,12 +513,85 @@ class OpenCodeAdapter(HarnessAdapter):
                                           "keep the provider's key out of every other variable and setting",
                                           reason=KEY_IN_SANDBOX, variables=leaked)
         spawn = self.tree.spawn if network is None else functools.partial(self.tree.spawn, network_shim=True)
+        if plan_provider is not None:
+            if network is None or plan_provider not in network.login_sentinels:
+                raise HarnessIncompatible("the plan login needs the provider relay on Linux", reason="plan_login_route")
+            self._seed_plan_login(command, env, plan_provider, network.login_sentinels[plan_provider])
         self.server = Server.start(spawn, command, env=env, cwd=self.directory, log_path=self.state_dir / "server.log",
                                    timeout=timeout, **({"port": netns.SERVER_PORT, "unix": network.server_socket}
                                                        if network is not None else {}))
         del env
         self.client = self.server.client
         return config
+
+    def _seed_plan_login(self, command: list[str], env: dict[str, str], provider: str, sentinel: str) -> None:
+        from aew.engine.lock import FileLock
+        from aew.errors import LockTimeout
+        from aew.harness.opencode import login
+
+        # Neither offline command gets the relay shim. SQLite backs up the empty store before the sentinel is inserted.
+        def offline(*args: str) -> str:
+            # Each short-lived command owns its group. The server needs a fresh tree for its own lifetime.
+            offline_tree = procs.ProcessTree(layout=self.tree.layout, require_layout=True)
+            try:
+                child = offline_tree.spawn([*command, *args], cwd=self.directory, env=env, stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                try:
+                    output, _ = child.communicate(timeout=PLAN_SEED_COMMAND_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.communicate(timeout=PLAN_SEED_KILL_TIMEOUT_S)
+                    raise
+                if child.returncode:
+                    raise subprocess.CalledProcessError(child.returncode, args)
+                return output.strip()
+            finally:
+                offline_tree.close()
+
+        db = self.state_dir / "xdg-data" / "opencode" / login.DB
+        try:
+            version = capabilities.cli_version(offline("--version"))
+            if version not in capabilities.TESTED_VERSIONS or version not in capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS:
+                raise HarnessIncompatible("this OpenCode binary is not qualified for a worker plan login",
+                                          reason="plan_login_version")
+            cache = self.run_dir.parent.parent / "plan-login-seeds"
+            cache.mkdir(exist_ok=True)
+            seed = cache / f"opencode-{version}.db"
+            login.own_store(seed, self.run_dir.parent.parent)
+            login.own_store(db, self.state_dir)
+            with FileLock(seed.with_suffix(".lock"), timeout=PLAN_SEED_LOCK_TIMEOUT_S):
+                if seed.is_file():
+                    db.parent.mkdir(parents=True, exist_ok=True)
+                    if db.exists():
+                        raise FileExistsError
+                    shutil.copyfile(seed, db)
+                else:
+                    offline("session", "list")
+                if not db.is_file():
+                    raise FileNotFoundError
+                login.own_store(db, self.state_dir)
+                with closing(sqlite3.connect(db, timeout=login.BUSY_TIMEOUT_S)) as con:
+                    login.require_schema(con, "credential", login.CREDENTIAL_SCHEMA)
+                    if con.execute("SELECT 1 FROM credential LIMIT 1").fetchone():
+                        raise sqlite3.DatabaseError("the seed has a credential")
+                    if not seed.exists():
+                        temp = seed.with_suffix(".tmp")
+                        try:
+                            with closing(sqlite3.connect(temp)) as empty:
+                                con.backup(empty)
+                            temp.replace(seed)
+                        finally:
+                            temp.unlink(missing_ok=True)
+                    now = int(time.time() * 1000)
+                    value = {"type": "oauth", "methodID": "chatgpt-browser", "access": sentinel,
+                             "refresh": login.RELAY_NO_REFRESH, "expires": now + 365 * 86400 * 1000,
+                             "metadata": {"accountID": "aew-relay-placeholder"}}
+                    with con:
+                        con.execute(login.CREDENTIAL_INSERT, (f"cred_aew_{provider}", provider, "AEW relay",
+                                    json.dumps(value), "chatgpt-browser", 1, now, now))
+        except (OSError, sqlite3.Error, subprocess.SubprocessError, LockTimeout, ContainmentUnavailable):
+            raise HarnessIncompatible("OpenCode could not prepare the private plan login seed",
+                                      reason="plan_login_seed") from None
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         config = self._start_server(contract, agent_env)
@@ -511,7 +607,8 @@ class OpenCodeAdapter(HarnessAdapter):
         if self.meter is not None:
             self.meter.main_session = self.session
         self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(agent_env)})
-        self.events = EventStream(self.client, self._on_event, self.server.alive)
+        self.events = EventStream(self.client, self._on_event, self.server.alive, on_drop=self._stream_dropped,
+                                  on_reconnect=self._stream_reconnected)
         self.events.start()
         self._monitor = threading.Thread(target=self._watch, name="aew-opencode-monitor", daemon=True)
         self._monitor.start()
@@ -532,7 +629,8 @@ class OpenCodeAdapter(HarnessAdapter):
         the stored-credential check, the session, its environment and the first prompt; the event stream's connect."""
         request = REQUEST_TIMEOUT_S
         return (START_TIMEOUT_S + request + OPENAPI_TIMEOUT_S + 2 * (CATALOG_WAIT_S + request) + 4 * request
-                + EVENT_CONNECT_S)
+                  + EVENT_CONNECT_S + 2 * (PLAN_SEED_COMMAND_TIMEOUT_S + PLAN_SEED_KILL_TIMEOUT_S)
+                  + PLAN_SEED_LOCK_TIMEOUT_S)
 
     # ------------------------------------------------------------------ live usage (F25 L2)
 
@@ -546,7 +644,9 @@ class OpenCodeAdapter(HarnessAdapter):
                            pinned_model=projection.model_ref(contract.execution_profile),
                            progress=progress.Tracker(run=self.run_dir.name, workspace=contract.workspace,
                                                      scope_paths=contract.extra.get(progress.SCOPE_PATHS),
-                                                     clock=time.time, changed=_changed_now(contract)),
+                                                      clock=time.time, changed=_changed_now(contract),
+                                                      messaging=(contract.extra.get("coordination") or {}).get(
+                                                          "messaging") == "enabled"),
                            progress_path=self.run_dir / runlog.PROGRESS_FILE)
         try:
             self.meter.set_prompt_state("unsent")
@@ -650,16 +750,32 @@ class OpenCodeAdapter(HarnessAdapter):
                 "plugin_waits": self._plugin_waits}  # both waits' count, the model's and the agent's (#364 n1)
 
     def _stored_credentials(self, spec: Any) -> int:
-        """A run's server must hold no stored integration credential. OpenCode 2.0.22 serves them, values included,
-        at ``GET /api/credential``, and the server password is readable from the agent's shell (ADR-0009 residual),
-        so one stored there would be the agent's. A run's state is private and starts empty; this proves it at each
-        launch and refuses otherwise (register E17). A server without the endpoint holds none it could serve."""
+        """E17: the agent can read the server's credential endpoint. An API-key worker's store must be empty.
+        A plan worker must see exactly its synthetic row, so that route also requires the endpoint."""
         assert self.client is not None
+        from aew.harness.opencode import login
+
+        network = self.tree.network
+        expected = network.login_sentinels if network is not None else {}
         paths = spec.get("paths") if isinstance(spec, dict) else None
-        if not isinstance(paths, dict) or "get" not in (paths.get(CREDENTIALS) or {}):
-            return 0
-        found = self.client.get(CREDENTIALS)
+        route = paths.get(CREDENTIALS) if isinstance(paths, dict) else None
+        try:
+            found = self.client.get(CREDENTIALS) if isinstance(route, dict) and "get" in route else None
+        except OpenCodeError:
+            if not expected:
+                raise
+            found = None  # the endpoint can carry credential values; its failure body stays out of the refusal
         items = found.get("data") if isinstance(found, dict) else found
+        if expected:
+            provider, sentinel = next(iter(expected.items()))
+            if len(expected) == 1 and isinstance(items, list) and len(items) == 1 and isinstance(items[0], dict):
+                item = items[0]
+                value = item.get("value")
+                if (item.get("id") == f"cred_aew_{provider}" and isinstance(value, dict)
+                        and value.get("access") == sentinel and value.get("refresh") == login.RELAY_NO_REFRESH):
+                    return 1
+            raise HarnessIncompatible("OpenCode could not verify the run's one synthetic plan login",
+                                      reason="plan_login_seed_check")
         count = len(items) if isinstance(items, (list, dict)) else int(bool(items))
         if count:
             raise HarnessIncompatible(f"the run's OpenCode server holds {count} stored credential(s), which its agent "
@@ -710,6 +826,10 @@ class OpenCodeAdapter(HarnessAdapter):
             if declared:
                 match = None
             if match is not None:
+                if ref["providerID"] == "opencode":
+                    problem = model_pricing.paid_base_problem(match)
+                    if problem:
+                        raise HarnessIncompatible(problem, model=ref)
                 variants = [v.get("id") for v in match.get("variants") or []]
                 # Each refusal of the pin, here and the catalog's below, names the way on: a new invocation where the
                 # pin must change, a relaunch where the cause is outside it (ADR-0010; CS-4 addendum 11; #304 m1).
@@ -769,7 +889,9 @@ class OpenCodeAdapter(HarnessAdapter):
         assert self.client is not None and self.server is not None
         wanted = projection.model_ref(contract.execution_profile)
         try:
-            version, _ = self._probe_version()
+            version, spec = self._probe_version()
+            if contract.execution_profile.get("credential") == "plan_login":
+                self._stored_credentials(spec)
             t0 = time.monotonic()
             first_seen: float | None = None
             while True:
@@ -787,7 +909,9 @@ class OpenCodeAdapter(HarnessAdapter):
                             "empty": settled and not done and not offered,
                             "models": [{"providerID": str(m.get("providerID")), "id": str(m.get("id")),
                                         "variants": [str(v.get("id")) for v in m.get("variants") or []],
-                                        "enabled": m.get("enabled") is not False} for m in offered]}
+                                        "enabled": m.get("enabled") is not False,
+                                        **({"price_problem": model_pricing.paid_base_problem(m)}
+                                           if m.get("providerID") == "opencode" else {})} for m in offered]}
                 time.sleep(min(0.25, max(0.0, until - now)))
         finally:
             self.server.close(wait_s=3.0)
@@ -898,6 +1022,54 @@ class OpenCodeAdapter(HarnessAdapter):
 
     # ------------------------------------------------------------------ watching
 
+    @property
+    def reports_steps(self) -> bool:
+        # Only the measured platform/version may serve a bound worker wait. Windows remains NOT RUN / GAP.
+        return qualified(sys.platform, str(self.health.get("version")))
+
+    def open_step(self) -> str | None:
+        with self._lock:
+            return self._wait_calls.step
+
+    def open_shell_calls(self) -> list[str]:
+        with self._lock:
+            return sorted(self._wait_calls.calls)
+
+    def wait_binding(self) -> Binding | None:
+        with self._lock:
+            return self._wait_calls.snapshot()
+
+    def wait_binding_valid(self, binding: Binding) -> bool:
+        with self._lock:
+            return not self._stop.is_set() and self._wait_calls.valid(binding)
+
+    def while_wait_bound(self, binding: Binding, action: Callable[[], None]) -> bool:
+        """Final bridge send and the stream's lifetime updates share the adapter lock."""
+        with self._lock:
+            if not self.wait_binding_valid(binding):
+                return False
+            action()
+            return True
+
+    def wait_binding_at_deadline(self) -> tuple[Binding | None, str, str | None]:
+        with self._lock:
+            binding = self.wait_binding()
+            lost_at = self._wait_calls.lost_at
+            reason = ("stream_drop" if lost_at is not None else
+                      "no_step" if self._wait_calls.step is None else "no_open_calls")
+            return binding, reason, lost_at
+
+    def _stream_dropped(self) -> None:
+        with self._lock:
+            at = utc_now()
+            had_calls = bool(self._wait_calls.calls)
+            self._wait_calls.stream_dropped(at)
+            self.emit({"event": "opencode.stream.dropped", "at": at, "had_open_shell_calls": had_calls,
+                       "last_error": self.events.last_error if self.events is not None else None})
+
+    def _stream_reconnected(self) -> None:
+        self.emit({"event": "opencode.stream.reconnected"})
+
     def _on_event(self, frame: dict[str, Any]) -> None:
         kind = str(frame.get("type") or "")
         raw = frame.get("data")
@@ -910,8 +1082,11 @@ class OpenCodeAdapter(HarnessAdapter):
             return
         if kind == "session.step.started" and isinstance(data.get("model"), dict):
             self.step_models.append(data["model"])
-        if kind == "session.tool.input.started" and data.get("id"):
+        if kind == "session.tool.input.started" and data.get("id") and sid == self.session and self.session is not None:
             self.tool_names[str(data["id"])] = str(data.get("name"))
+        if sid == self.session and self.session is not None:
+            with self._lock:
+                self._wait_calls.event(kind, data, self.tool_names.get(str(data.get("id"))))
         if kind in LOGGED_EVENTS:
             summary: dict[str, Any] = {"event": f"opencode.{kind}"}
             for key in ("finish", "reason", "action", "inboxID", "assistantMessageID"):
@@ -1037,6 +1212,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn == "ended":
                 return
             self.turn, self.exit_code, self.detail, self.reason_code = "ended", code, detail, reason_code
+            self._wait_calls.clear()
         self.emit({"event": "opencode.ended", "exit_code": code, "detail": detail,
                    **({"reason_code": reason_code} if reason_code else {})})
 

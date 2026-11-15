@@ -28,6 +28,7 @@ from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control, retry_lock_free
 from aew.engine.workspace_ops import mutating_cap
+from aew.harness import seat
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -45,6 +46,19 @@ def load_control(root: Path) -> dict[str, Any]:
     racing read waits instead of failing the test at random (PR #242 review, F1)."""
     path = root / ".aew/state/control.yaml"
     return deserialize_control(retry_lock_free(path.read_bytes), source=str(path))
+
+
+def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip unrelated additive keys so each downgrade test still proves its own feature's rejection."""
+    state = dict(state)
+    if "steering" not in schema["properties"]:
+        state.pop("steering", None)
+    lead = dict(state["lead"])
+    properties = schema["properties"]["lead"]["properties"]
+    for key in ("host_uid", "start"):
+        if key not in properties:
+            lead.pop(key, None)
+    return {**state, "lead": lead}
 
 
 def with_cold(root: Path, hot: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -146,6 +160,15 @@ def control_violations(root: Path) -> list[str]:
     tokens = state["tokens"]
     problems: list[str] = []
     evidence: dict[str, dict[str, dict[str, Any]]] = {}
+    lead = state["lead"]
+    start = lead.get("start") or {}
+    if start and (start.get("generation") != lead["generation"] or start.get("at") != lead["acquired_at"]):
+        problems.append("Lead seat start does not match its generation and acquisition time")
+    if lead["status"] == "active" and start.get("kind") in seat.RESUMABLE:
+        if not (start.get("host") and start.get("user") is not None and start.get("pid") and start.get("start_id")):
+            problems.append("active OpenCode seat lacks its host, user or session identity")
+        if isinstance(start.get("user"), int) and lead.get("host_uid") != start["user"]:
+            problems.append("OpenCode seat's host uid differs from its acquisition user")
 
     # 1. Live mutating workspaces never share a path. The policy cap (`mutating_concurrency`) is an admission rule,
     #    enforced by the `cap.mutating` dispatch guard, not an invariant of the state: lowering the cap never makes
@@ -395,6 +418,15 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
             problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
+        if si["status"] == S.COMPLETED and stop is not None:
+            problems.append(f"{where}: a completed intent still carries a stop")
+        if si["status"] == S.ACTIVE and stop is not None:
+            error = stop["error"]
+            if not (error["code"] == "STALE_REVISION" and error.get("reason") == "resolve_stage"
+                    and stop["boundary"] == "stale_revision" and 0 < done < len(si["plan"])):
+                problems.append(f"{where}: an ACTIVE stop is not a partial stale stop awaiting resolve")
+            if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
+                problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
 
     def resolutions(si: dict[str, Any], where: str) -> None:
@@ -747,6 +779,15 @@ def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
     try:
         for record in outbox.read_transitions(aew_root, through, state["revision"], outbox=marker, prev_h=prev_h):
             raw = view.resolve(record["revision"]) or {}
+            if record.get("op") == "lead.resume":
+                events = record["events"] or []
+                generations = [e for e in events if e["kind"] == "lead.generation"]
+                decisions = [e for e in events if e["kind"] == "decision.recorded" and e.get("type") == "seat_resume"]
+                actor = record.get("actor") or {}
+                if (len(generations) != 1 or generations[0]["to"] != generations[0]["from"] + 1
+                        or actor.get("generation") != generations[0]["to"] or actor.get("kind") != "operator"
+                        or not actor.get("authorized_by") or len(decisions) != 1):
+                    problems.append(f"seat resume at revision {record['revision']} lacks its generation or decision")
             if len(raw.get("events") or []) > outbox.MAX_HOT_EVENTS:
                 problems.append(f"26: revision {record['revision']} holds {len(raw['events'])} hot events")
             if (raw.get("event_overflow") is None) != (len(record["events"] or []) <= outbox.MAX_HOT_EVENTS):

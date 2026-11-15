@@ -7,9 +7,13 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.capability.store:locked`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.dashboard.service:Service._lock`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.engine.store:ControlStore.control_lock`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.operator_client:sessions_lock`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.operator_endpoint:OperatorEndpoint._within`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.told_messages:record`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.weaker_register:_locked`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.maps.store:select`: a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen
 - `aew.process_kind`: a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed
@@ -42,6 +46,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.dashboard.projections`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.engine.history_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.engine.migrate_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
+- `aew.harness.opencode.adapter`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.harness.opencode.lead`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.harness.opencode.login`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 
@@ -89,12 +94,14 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.faults:pause`: open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.engine.lock:FileLock._join_queue`: Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._join_queue`: open of a path this reading cannot place: a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._open`: Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._open`: open of a path this reading cannot place: a relative path, `aew/capability/register.lock`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._join_queue`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._join_queue`: open of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._open`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._open`: open of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability/register.lock`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.migrate_ops:Migration.discard_unreachable`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
@@ -123,6 +130,11 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.model_list:read`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.notify:DeliveryLog.record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.notify:Watcher._write_state`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: Path.replace of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: Path.unlink of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: shutil.copyfile of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login`: sqlite3.connect of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:OpenCodeAdapter._start_server`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:OpenCodeAdapter._start_server`: Path.write_text of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:server_env`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
@@ -132,8 +144,10 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.login:StoredLogin._deciding_row`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:worker_keys`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
@@ -143,10 +157,11 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.supervisor:Supervisor.start`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.supervisor:contain_launch`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
-- `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.usage_live:Meter._persist`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:mark_serving`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.weaker_register:Entry.end`: atomic_write of a path this reading cannot place: a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:_checked_root`: Path.mkdir of a path this reading cannot place: a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:_ensure_created`: create_exclusive of a path this reading cannot place: a relative path, `aew/weaker-contexts/created.json`, with no root this reading can name; a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -155,6 +170,10 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.weaker_register:sweep`: atomic_write of a path this reading cannot place: a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.history.store:History.append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.kit:prepare`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare`: Path.write_text of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt`: atomic_write of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here
 - `aew.profile:cli_finish`: open of a path this reading cannot place: the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

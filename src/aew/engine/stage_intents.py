@@ -32,6 +32,9 @@ state (§2.7):
 
 A stop the runner cannot record leaves the intent ACTIVE, for ``resume`` and the Lead's ``resolve``: a crash, a seat
 lost to a takeover, or policy drift pending adoption (every Lead commit is refused then, ``lead_txn``).
+A partial stale stop with no known fresh-call continuation also stays ACTIVE (E137), with its stop boundary recorded:
+only renewed Lead judgment continues or abandons it. A successful continue supersedes that diagnostic; the original
+stop transaction remains in history. Terminal records are never reopened.
 
 Resolving an ACTIVE intent (E3c) is the current Lead's explicit choice, never inferred from state (rule 8):
 
@@ -60,6 +63,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from aew.engine import approval
 from aew.engine import primitives as P
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
@@ -266,12 +270,17 @@ class StageIntents:
         return {"intent": sid, "revision": revision, "binding": dict(intent["binding"])}
 
     def stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-             reason: str | None = None) -> dict[str, Any]:
+             reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         """Record that the stage stopped at step ``n`` (rule 3: the first refusal stops it), and end the intent:
-        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand."""
+        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand. A partial stale stop
+        may instead stay ACTIVE awaiting the Lead's explicit resolution (E137); this never runs another step."""
         with self.k.lead_txn(token, expect_rev, "stage.stop") as ctx:
             si = self._active(ctx.state, intent, owner=True)
             done = len(si["steps"])
+            if await_resolution and not (code == "STALE_REVISION" and boundary == "stale_revision"
+                                         and 0 < done < len(si["plan"])):
+                raise IllegalTransition("only a partially committed stage stopped stale can await resolution",
+                                        reason="not_resolvable_stop")
             # The stop is at the next step, or at the last when every step committed and what followed its commit
             # failed (a launch: rule 7). Never at a step that does not exist (#140 review, finding 3).
             if n != done + 1 and not (n == done == len(si["plan"])):
@@ -280,8 +289,11 @@ class StageIntents:
             si["stopped"] = {"n": n, "boundary": boundary,
                              "error": {"code": code, "message": message[:2000], "reason": reason},
                              "rev": ctx.session.revision + 1, "at": utc_now()}
-            status = STOPPED if si["steps"] else REFUSED
-            self._end(ctx, si, status)
+            status = ACTIVE if await_resolution else STOPPED if si["steps"] else REFUSED
+            if await_resolution:
+                self._validate(si)
+            else:
+                self._end(ctx, si, status)
             ctx.summary = f"stage {si['tool']} ({intent}) stopped at step {n}: {boundary}"
             ctx.refs.append(intent)
             revision = ctx.session.revision + 1
@@ -318,7 +330,7 @@ class StageIntents:
         return {"intent": intent, "status": ABANDONED, "revision": revision}
 
     def continue_(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
-                  plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+                  plan: list[dict[str, Any]] | None, rationale: str, binding: str | None = None) -> dict[str, Any]:
         """The current Lead's explicit continue (rule 8; F18 §14): every recheck must pass now, or nothing commits and
         the intent stays ACTIVE for another choice. ``contract_digest`` and ``plan`` are the stage contract and plan
         the surface re-resolved from its catalog now (``None``: it has none for this tool any more).
@@ -335,6 +347,8 @@ class StageIntents:
             state = ctx.state
             si = self._active(state, intent)
             check = self.recheck(state, si, contract_digest=contract_digest, plan=plan)
+            if binding is not None:
+                approval.compare("stage.continue", intent, binding, check["approval"]["digest"])
             _refuse_unless_continuable(si, check)
             rev = ctx.session.revision + 1
             generation = state["lead"]["generation"]
@@ -343,7 +357,12 @@ class StageIntents:
                                   "at": at, "rationale": rationale.strip()[:2000]})
             si["generation"] = generation
             si["resolution"] = {"choice": "continue", "rationale": rationale.strip()[:2000], "generation": generation,
-                                "rev": rev, "at": at}
+                                 "rev": rev, "at": at}
+            if binding is not None:
+                si["rebound"][-1]["approval_ref"] = f"{intent}@record:{binding}"
+                si["resolution"]["approval_ref"] = f"{intent}@record:{binding}"
+            # The renewed judgment supersedes a recoverable stale stop; its original transaction remains in history.
+            si["stopped"] = None
             done, planned = len(si["steps"]), len(si["plan"])
             launch = check["checks"]["launch"]
             if launch["status"] not in (OK, NOT_APPLICABLE):
@@ -401,10 +420,10 @@ class StageIntents:
         else:
             checks["contract"] = {"status": OK, "message": "the stage contract and plan re-resolve unchanged"}
         subject = si["subject"]
+        unit = state["work"].get(subject["id"]) if subject["kind"] == "unit" else None
         if subject["kind"] != "unit":
             checks["subject"] = {"status": NOT_APPLICABLE, "message": "a project stage"}
         else:
-            unit = state["work"].get(subject["id"])
             expected = steps[-1]["subject_after"] if steps else subject["start"]
             if unit is None:
                 checks["subject"] = {"status": "gone", "message": f"{subject['id']} is no longer in flight"}
@@ -430,7 +449,12 @@ class StageIntents:
             boundary = "launch_failed"
         elif nxt is None:
             boundary = "completed"
-        return {"intent": si["id"], "checks": checks, "owner_generation": si["generation"],
+        approval_subject = {"intent": si["id"], "contract": contract_digest, "plan": _plan_of(plan) if plan else plan,
+                            "subject": subject,
+                            "state": unit_state(unit),
+                            "owner_generation": si["generation"], "steps_committed": len(steps)}
+        return {"approval": {"subject": approval_subject, "digest": approval.digest(approval_subject)},
+                "intent": si["id"], "checks": checks, "owner_generation": si["generation"],
                 "current_generation": state["lead"]["generation"],
                 "rebind": si["generation"] != state["lead"]["generation"],
                 "next_step": None if nxt is None else {k: nxt[k] for k in ("n", "primitive", "operation_class", "key")}

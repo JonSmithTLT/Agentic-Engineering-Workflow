@@ -591,7 +591,7 @@ components:
           type: string
           x-known-values: [$ref, additionalProperties, const, enum, exclusiveMinimum, items, maximum, minItems,
             minLength, minimum, oneOf, pattern, properties, propertyNames, required, type, uniqueItems,
-            NO_SUCH_PROFILE, NO_DEFAULT_ROUTE, UNPROCESSABLE]
+            NO_SUCH_PROFILE, NO_DEFAULT_ROUTE, PLAN_OVERRIDE, PLAN_PROVIDER, PLAN_QUALIFICATION, UNPROCESSABLE]
           description: Open semantic value. The schema keyword that failed, or a semantic code.
         expected:
           anyOf:

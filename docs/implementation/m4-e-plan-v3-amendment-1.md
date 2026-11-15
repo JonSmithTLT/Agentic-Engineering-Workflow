@@ -122,7 +122,7 @@ tests. A test with cases in two slices is one parametrized test, and each case i
 | N2c | `test_relaunch_only_at_the_stage_launch_failed_stop` | E8b |
 | N3: notification with no broker | `test_notifies_with_no_broker_running` | E7a (`takeover`, `broker_crash`: `generation_ended` and, in Run, `broker_gone`; `clean_close_in_run`: `broker_gone` with reason `closed`, R3-m1); E7d (`envelope_ended`) |
 | n8: unmapped failures are `unknown` | `test_unmapped_launch_failure_is_unknown` | E8a (the mapping only) |
-| TLS-16 | `test_the_normal_list_..._fits_the_budget` | no E7 or E8 slice changes the list (§1) |
+| TLS-16 | `test_the_contained_normal_lead_fits_its_context_pool` (E231) | no E7 or E8 slice changes the list (§1) |
 | E7 §, n5 | `test_loop_commit_stales_a_judgment_call_which_is_never_replayed`, `test_two_intents_in_flight` | E7b |
 | E7 §, N3 | `test_loop_refuses_run_without_a_live_endpoint` | E7b |
 | E7 §, confirmation | `test_a_forged_pending_file_never_executes`, `test_confirmation_is_single_use`, `test_confirmation_ends_with_its_generation` | E7c |

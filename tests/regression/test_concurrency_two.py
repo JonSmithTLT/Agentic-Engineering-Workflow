@@ -8,12 +8,16 @@ so no model is called.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from aewflow import create_planned_ticket, integrate, review, sample_project, verify
 from conftest import git
 from fake_harness import HarnessLab
 from invariants import assert_control_invariants
 
+from aew.kit import KIT_RECORD
+from aew.kit.receipt import write_receipt
 from aew.knowledge.manifest import DEFAULT_GATES
 from aew.util import dump_yaml, load_yaml
 
@@ -91,6 +95,19 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
     assert git("rev-parse", f"{two['integrated_commit']}~1", cwd=p.root) == one["integrated_commit"]
     tree = git("ls-tree", "-r", "--name-only", "main", cwd=p.root).splitlines()
     assert set(ONE) | set(TWO) <= set(tree)
+
+    # Read the world this test just generated, including the durable coverage and queue records.
+    (tmp_path / KIT_RECORD).write_text(json.dumps({"seed_digest": "a" * 64}), encoding="utf-8")
+    receipt = json.loads(write_receipt(tmp_path).read_text(encoding="utf-8"))
+    evidence = receipt["systems"]["SYS-39"]
+    assert evidence["overlapping_mutating_runs"] == [runs]
+    assert evidence["queue_publications"] == [first, second]
+    for work_id, files in ((first, ONE), (second, TWO)):
+        assert receipt["scope"]["tickets"][work_id]["changed"] == {"paths": sorted(files), "withheld": 0}
+        width = receipt["validation_width"][work_id]
+        assert {"check": "unit", "result": "pass"} in width["checks"]
+        assert width["neighbour_test"].endswith("(no_project_source)")
+        assert width["lint"].endswith("(no_project_source)")
     assert_control_invariants(p)
 
 

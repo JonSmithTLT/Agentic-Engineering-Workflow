@@ -51,6 +51,7 @@ NOT_TOOLS = {
     "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",
     "use_when": "a role card's field",
     "why": "a wait result's field: why it returned (E122)",
+    "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
     "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
     "loop": "a field of a push wake: the steering loop's stop a `loop_waiting` wake is about (A-58 CL-R07)",

@@ -88,7 +88,7 @@ Each state and the moves out of it (the engine refuses any other):
 
 When things go wrong:
 
-- **`resolve`** settles only what `resume` or a decision lists; a stage that already stopped is not one.
+- **`resolve`** settles only what `resume` or a decision lists. A partial stale stage whose result names `resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.
 - **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, `aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>`. The open findings reach it through its pack.
 - **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`: `LOCAL_IMPLEMENTATION_DEFECT` → RUNNING, `PLAN_OR_DESIGN_DEFECT` → REPLAN_REQUIRED, `CONTRACT_VIOLATION` → REPLAN_REQUIRED, `ENVIRONMENT_OR_EVIDENCE_BLOCKED` → VERIFICATION_INCONCLUSIVE.
 - **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>`.

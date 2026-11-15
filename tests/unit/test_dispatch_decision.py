@@ -22,6 +22,7 @@ NOT_DISPATCHING = {
     "authority accept", "authority list", "authority reject", "check run", "checkpoint", "context pack",
     "context show", "dashboard open", "dashboard serve", "dashboard status",  # reads only (F20.3)
     "lead mode lower", "lead mode raise", "operator ping", "operator serve",  # steering records only (M4-E E2)
+    "notify desktop",  # shows a notification, opens no project (register E104)
     "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",
@@ -39,6 +40,7 @@ NOT_DISPATCHING = {
     "lead takeover", "manifest adopt",
     "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
     "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
+    "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
@@ -64,7 +66,8 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 
 def test_every_cli_command_is_a_registered_dispatch_or_classified_as_not_dispatching():
     # every command, the switched ones too
-    commands = {" ".join(p) for p in leaves(build_parser(recall_search=True, coordination_reads=True))}
+    commands = {" ".join(p) for p in leaves(build_parser(
+        recall_search=True, coordination_reads=True, worker_messaging=True))}
     dispatching = {" ".join(p) for p in CLI_DISPATCHES}
     assert dispatching <= commands, dispatching - commands
     assert not dispatching & NOT_DISPATCHING

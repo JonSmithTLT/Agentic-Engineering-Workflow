@@ -163,3 +163,11 @@ def from_catalog(provider: str, listed: str) -> ModelIdentity:
         raise ModelIdRefused(f"catalog entry {provider!r}/{listed!r} is not a provider and a model id",
                              reason=MALFORMED, field="catalog", value=str(listed))
     return ModelIdentity(listed_text, provider_text, listed_text)
+
+
+def free_model_id(ref: str) -> str | None:
+    """Identify free models by the harness reference alone. Catalog pricing is separate evidence."""
+    _, _, model = ref.partition(SEP)
+    if model.endswith("-free") or "-free-" in model or model == "free":
+        return f"{ref}: a -free id"
+    return None

@@ -17,17 +17,19 @@ acknowledged by the Lead for the current authoritative commit (``freshness``).
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, transitions
 from aew.engine import freshness as F
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
-from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import (
     GATE,
     GATE_CONTEXT,
@@ -50,7 +52,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.snapshot.fingerprint import changed_paths
@@ -168,6 +170,7 @@ class Inputs:
         inputs = self.consumed_inputs(state, work_id)
         if not inputs:  # most units: no git subprocess for a commit nothing would be compared with (M3 step 7)
             return []
+        head = self.k.authoritative_commit()
         commit = self.dispatch_commit(unit)
         out = []
         for inp in inputs:
@@ -178,7 +181,13 @@ class Inputs:
                 continue
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             ack = self.acknowledged(unit, inp["id"], inp["sha256"], commit or "")
-            out.append({**inp, "freshness": fresh["status"], "basis": fresh.get("basis"),
+            shown = approval.input_subject(inp["id"], ev["_sha256"], head)
+            digest = shown["digest"]
+            argv = approval.command("input.acknowledge", work_id, state["revision"], digest,
+                                    "--input", inp["id"], "--from", inp["from"], "--reason", "<reason>")
+            out.append({**inp, "acknowledgement_subject": shown["subject"], "approval_digest": digest,
+                        "acknowledgement_argv": argv,
+                        "freshness": fresh["status"], "basis": fresh.get("basis"),
                         "acknowledgement": (ack or {}).get("decision"),
                         "blocks_dispatch": ev["_sha256"] != inp["sha256"]
                         or not (F.is_acceptable_input(fresh) or ack)})
@@ -302,10 +311,10 @@ class NonMutating:
             raise ObservationMutated(
                 f"{inv_id} changed its read-only observation workspace; a non-mutating invocation may not mutate "
                 "source (the Lead redispatches the attempt, or dispatches another reviewer or verifier)",
-                changed=changed_paths(path, obs["commit"]), invocation=inv_id)
+                changed=changed_paths(path, obs["commit"], **self.k.check_cache_inputs()), invocation=inv_id)
 
     def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
-                               source: str, reason: str) -> dict[str, Any]:
+                               source: str, reason: str, binding: str | None = None) -> dict[str, Any]:
         if not (reason and reason.strip()):
             raise UsageError("acknowledging a stale input needs a reason (what was rechecked)")
         with self.k.lead_txn(token, expect_rev, "input.acknowledge", reason=reason) as ctx:
@@ -319,11 +328,15 @@ class NonMutating:
                 raise UsageError(f"{evidence_id} is not the accepted record of a DONE non-mutating Ticket {source}")
             commit = self.k.authoritative_commit()
             ev = self.inputs.find_unit_evidence(source, evidence_id)
+            if binding is not None:
+                approval.compare("input.acknowledge", evidence_id, binding,
+                                 approval.input_subject(evidence_id, ev["_sha256"], commit)["digest"])
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             decision = self.k.new_decision(
                 ctx, "input_acknowledgement",
                 f"{work_id}: input {evidence_id} ({fresh['status']}) acknowledged for commit {(commit or '')[:12]}",
-                work_unit=work_id, evidence_refs=[ev["_path"]], reason=reason,
+                work_unit=work_id, reason=reason,
+                evidence_refs=[f"{ev['_path']}@record:{binding}" if binding else ev["_path"]],
                 body=f"Freshness at acknowledgement: {fresh}\n")
             unit.setdefault("input_acknowledgements", []).append(
                 {"evidence": evidence_id, "sha256": ev["_sha256"], "from": source, "commit": commit,
@@ -442,6 +455,8 @@ class NonMutating:
             gc = self.gates.gate_context(state, work_id)
             chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
+            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id,
+                                                         scope="observation")
             record = (unit.get("execution") or {}).get("record")
             if not record:
                 raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
@@ -513,11 +528,19 @@ class NonMutating:
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str,
                         card: str | None = None, execution_profile: dict[str, Any] | None = None,
-                        launch: bool = False) -> dict[str, Any]:
+                        launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
         """Supersede the current attempt atomically and start the next one (operator review #2)."""
-        if not (reason and reason.strip()):
-            raise UsageError("a redispatch supersedes the current attempt; it needs a reason")
-        with self.k.lead_txn(token, expect_rev, "work.redispatch", reason=reason) as ctx:
+        missing_reason = not (reason and reason.strip())
+        reason_required = "a redispatch supersedes the current attempt; it needs a reason"
+        if request_id is None and missing_reason:
+            raise UsageError(reason_required)
+        request = ControlRequest.prepare(request_id, work_id=work_id, reason=reason, card=card,
+                                         execution_profile=execution_profile, launch=launch)
+        with self.k.lead_txn(token, expect_rev, "work.redispatch", reason=reason, request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                return ctx.replayed
+            if missing_reason:
+                raise UsageError(reason_required)
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)
@@ -537,6 +560,9 @@ class NonMutating:
                  "reason": f"{reason} ({record}); attempt {unit['execution']['attempt']} = {inv_id}"})
             ctx.summary = f"{work_id} redispatched: attempt {unit['execution']['attempt']} ({inv_id})"
             self.units.before_commit(ctx)
+            if request is not None:
+                ctx.request_ref = (work_id, inv_id)
+                ctx.request_metadata = {"decision": record, "execution": unit["execution"], "superseded": previous}
         self.prune_observations()
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
@@ -729,13 +755,18 @@ class NonMutating:
         self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
         ctx.accepted_gates = gc  # type: ignore[attr-defined]  (read by work_accept for the completion record)
 
-    def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
+    def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+                    binding: str | None = None) -> dict[str, Any]:
         """The Lead accepts a non-mutating Ticket's record: -> DONE with an evidence-only completion record."""
         with self.k.lead_txn(token, expect_rev, "work.accept", reason=reason) as ctx:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if unit["kind"] != "ticket":
                 raise IllegalTransition("Stories and Epics are closed with `aew work close`")
+            rec = (unit.get("execution") or {}).get("record")
+            if binding is not None:
+                approval.compare("work.accept", rec["id"] if rec else work_id, binding,
+                                 approval.execution_record_digest(rec) if rec else None)
             rule = transitions.check(unit["state"], "DONE", "accept")
             self.units.check_guard(rule.guard, ctx, work_id, unit, "DONE")
             gc = ctx.accepted_gates  # type: ignore[attr-defined]
@@ -743,7 +774,7 @@ class NonMutating:
             decision = self.k.new_decision(
                 ctx, "evidence_acceptance", f"{work_id} record {execution['record']['id']} accepted", work_unit=work_id,
                 evidence_refs=[r["path"] for r in unit.get("evidence", []) if r["id"] == execution["record"]["id"]],
-                reason=reason)
+                reason=reason, body=f"{execution['record']['id']}@record:{binding}\n" if binding else "")
             path = f"work/{work_id}/completion.md"
             text = self._evidence_only_completion(state, work_id, unit, gc, decision)
             ctx.session.write(path, text)
@@ -788,9 +819,10 @@ class NonMutating:
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Review/verify invocations for a non-mutating Ticket, bound to the record they evaluate."""
-        with self.k.lead_txn(token, expect_rev, "invoke.create") as ctx:
+        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else nullcontext(_ctx)
+        with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             decision = self.dispatch.decide_in(ctx, "invoke.create.non_mutating", work_id, role=role, card_id=card,
                                                scope=scope)
@@ -895,6 +927,17 @@ class NonMutating:
                     and rec.get("kind") == "plan_proposal"):
                 raise UsageError(f"{evidence_id} is not the accepted plan_proposal of a DONE planning Ticket {source}")
             ev = self.inputs.find_unit_evidence(source, evidence_id)
+            if ev["_sha256"] != rec["sha256"]:
+                create = fields_command(
+                    f"aew work create ticket --non-mutating --card planner --class <0-4> --scope '<path glob>' "
+                    f"--goal '<goal>' {EXPECT_REV}", "title", "<title>",
+                )
+                raise GateUnsatisfied(
+                    f"{evidence_id} no longer matches {source}'s accepted plan proposal. "
+                    f"First create a new planning Ticket:\n\n{create}\n\nAccept its plan, then dispatch it with "
+                    f"`aew work dispatch <T> {EXPECT_REV}`",
+                    evidence=evidence_id, expected=rec["sha256"], current=ev["_sha256"],
+                )
             commit = self.k.authoritative_commit()
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             if not F.is_acceptable_input(fresh) and not self.inputs.acknowledged(unit, evidence_id, ev["_sha256"],
@@ -916,7 +959,8 @@ class NonMutating:
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
 
-    def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+    def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                       binding: str | None = None) -> dict[str, Any]:
         """Rebind an accepted plan to its ancestors' current plans after they changed (fail-closed binding)."""
         if not (reason and reason.strip()):
             raise UsageError("reconfirming a plan under changed ancestor plans needs a reason")
@@ -927,11 +971,15 @@ class NonMutating:
             if problem is None:
                 raise UsageError(f"{work_id}'s accepted plan is bound to its ancestors' current plans; nothing to "
                                  "reconfirm")
+            snapshot = self.units.ancestor_plan_snapshot(state, work_id)
+            if binding is not None:
+                approval.compare("plan.reconfirm", work_id, binding, approval.digest(snapshot))
             decision = self.k.new_decision(ctx, "plan_reconfirmation",
                                          f"{work_id} plan v{unit['plan']['accepted']} reconfirmed under current "
                                          "ancestor plans", work_unit=work_id, reason=reason,
-                                         body=f"Binding problem resolved: {problem}\n")
-            unit["plan"]["ancestor_plans"] = self.units.ancestor_plan_snapshot(state, work_id)
+                                         body=f"Binding problem resolved: {problem}\n",
+                                         evidence_refs=[f"{work_id}@record:{binding}"] if binding else [])
+            unit["plan"]["ancestor_plans"] = snapshot
             unit["plan"].pop("bindings_invalidated", None)
             unit["plan"].setdefault("reconfirmations", []).append({"decision": decision, "at": utc_now()})
             ctx.summary = f"{work_id} plan reconfirmed ({decision})"

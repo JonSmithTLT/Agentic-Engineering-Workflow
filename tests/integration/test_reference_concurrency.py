@@ -73,8 +73,7 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     constructions = sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for src in CTX.sources().values())
     sites = CO.lock_sites(PROGRAM, F.Evaluator(PROGRAM))
     placed = sum(len(r.fact["openers"]) for r in BUILT.records if r.key.startswith("lock:"))
-    # 7: CAP-1's register, E112's register of weaker contexts (G3 addendum 7, ruling 2), and the operator's sessions
-    assert constructions == len(sites) == placed == 7, (constructions, len(sites), placed)
+    assert constructions == len(sites) == placed == 1 + len(KNOWN_LOCKS), (constructions, len(sites), placed)
 
 
 def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
@@ -136,13 +135,17 @@ def _initialized(tmp_path: Path) -> tuple[Path, Path]:
 # -------------------------------------------------------------------------------------------- the other locks
 
 KNOWN_LOCKS = {
+    "unplaced:aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login": (
+        "aew.harness.opencode.adapter", "OpenCodeAdapter._seed_plan_login", {"OpenCodeAdapter._seed_plan_login"}),
+    "local/lead/told-messages.lock": ("aew.harness.told_messages", "record", {"record"}),
     "local/dashboard/endpoint.lock": ("aew.dashboard.service", "Service._lock",
                                       {"Service.start", "Service._remove_endpoint"}),
     "local/operator/endpoint.lock": ("aew.harness.operator_endpoint", "OperatorEndpoint._within",
                                      {"OperatorEndpoint._claim"}),
     # a session naming itself and a background endpoint's last look at them
     "local/operator/sessions.lock": ("aew.harness.operator_client", "sessions_lock",
-                                     {"name_session", "no_session_left", "no_session_live", "withdraw_locator"}),
+                                     {"name_session", "no_session_left", "no_session_live", "unname_session",
+                                      "withdraw_locator"}),
     "local/maps/registry.lock": ("aew.maps.store", "select", {"select"}),
     # the host's capability register (STG-15, CAP-1): outside `.aew`, so unplaced, keyed by its opener
     "unplaced:aew.capability.store:locked": ("aew.capability.store", "locked", {"locked"}),
@@ -159,7 +162,9 @@ def test_the_locks_are_those_the_code_was_read_to_take():
         fact = RECORDS[f"lock:{path}"].fact
         assert fact["openers"] == [{"module": module, "symbol": symbol}], path
         assert {t["symbol"] for t in fact["takers"]} == takers and all(t["module"] == module for t in fact["takers"])
-        assert fact["control"] is False and fact["refused_in_non_writer"] is False, path
+        assert fact["control"] is False, path
+        # Told-ID receipts are broker-owned: the other auxiliary locks have no explicit non-writer guard.
+        assert fact["refused_in_non_writer"] is (path == "local/lead/told-messages.lock"), path
         assert RECORDS[f"lock:{path}"].coverage["label"] == C.LOWER
 
 

@@ -656,6 +656,20 @@ def test_a_stopped_loop_wakes_the_lead_once_in_the_wakes_own_slot_with_no_run(la
     assert len(lab.poster.posts) == 1
 
 
+def test_until_e7c_a_confirmation_stop_wakes_no_one_and_any_other_stop_still_does(lab):
+    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c): ``CONFIRMATION_UNAVAILABLE`` is held
+    from the Lead's wake until E7c (``steering_loop.HELD_UNTIL_E7C``), since nothing can act on it before then. The
+    hold is that code's only: the next stop, another reason on the same Ticket, is posted as ``loop_waiting``."""
+    lab.loop("CONFIRMATION_UNAVAILABLE", message="ticket_start on T-1 needs a confirmation")
+    q = lab.queue()
+    q.tick()
+    assert q.doc["wake"] is None and lab.poster.posts == []
+    lab.now += 30
+    lab.loop("ACTION_STOPPED", message="ticket_start on T-1 stopped: launch_failed", occurrence=2)
+    q.tick()
+    assert len(lab.poster.posts) == 1 and lab.shape()["loop"]["code"] == "ACTION_STOPPED"
+
+
 def test_a_stop_that_arose_during_the_leads_turn_is_told_when_the_turn_ends(lab):
     """Review of E228's PR, M1: a Lead call doesn't clear the wake (only `status` shows the loop's stop), so a stop
     the loop recorded while the Lead's turn ran is posted once that turn ends, whatever the Lead called meanwhile."""

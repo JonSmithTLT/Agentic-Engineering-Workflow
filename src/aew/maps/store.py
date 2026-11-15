@@ -22,6 +22,7 @@ it is what F22.2 adds).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -32,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aew.engine.lock import FileLock
+from aew.engine.lock import DEFAULT_TIMEOUT_S, FileLock
 from aew.errors import (
     IntegrityError,
     MapArtifactCorrupt,
@@ -71,7 +72,7 @@ def _check_sha(sha: str) -> None:
 
 def write_artifact(aew_root: Path, record: dict[str, Any]) -> tuple[str, str]:
     """Publish ``record`` as an immutable artifact; returns ``(artifact_sha256, root)``. Idempotent: a concurrent or
-    repeated write of the same bytes succeeds."""
+    repeated write of the same bytes succeeds, and marks the artifact as just made (its modification time)."""
     sha, data = seal(record)
     rel = artifact_rel(sha)
     path = aew_root / rel
@@ -83,6 +84,11 @@ def write_artifact(aew_root: Path, record: dict[str, Any]) -> tuple[str, str]:
             raise MapArtifactCorrupt(
                 f"{rel} exists and does not hold the bytes that hash to its name: the stored artifact is corrupt "
                 f"(delete it and generate again)", root=sha, reason="hash_mismatch") from None
+        # E184 quick check QC-MIN-1: ``find_structural`` reads the newest SCAN_MAX artifacts by modification time, so a
+        # map made again because it fell outside them is touched back in; untouched, every later dispatch at its base
+        # would make it again. Best effort: a touch that fails costs a later generation, never a wrong map.
+        with contextlib.suppress(OSError):
+            os.utime(path)
     return sha, rel
 
 
@@ -252,6 +258,59 @@ def read_selected(aew_root: Path) -> Available | Unavailable:
 # ------------------------------------------------------------------------------------------- the registry
 
 
+# How many stored artifacts ``find_structural`` reads, newest first. Measured (`python tools/perf/map_artifact_scan.py`,
+# Windows, 2026-11-11): about 0.9 ms each at the generator's caps (78 KB, `tests/fixtures/maps/caps.json`), so a scan
+# that finds nothing costs about 60 ms: 0.6% of the dispatch refresh's 10 s (``service.REFRESH_S``) and a tenth of a
+# 10,000-path generation (0.67 s), which every refresh that finds nothing pays on top. A window of 256 measured 190 ms
+# (`--count 256 --newest 256`). 64 holds
+# the maps made between one Ticket's dispatches: one per base the dispatches meet (each head an integration or an
+# outside commit moves to, and each older base dispatched at). A base older than the 64 newest maps is generated
+# again, as before: one generation, never a wrong map.
+SCAN_MAX = 64
+
+
+def find_structural(aew_root: Path, *, source_revision: str, generator: dict[str, Any],
+                    deadline: float | None = None, newest: int = SCAN_MAX) -> tuple[str, dict[str, Any]] | None:
+    """A stored artifact made from ``source_revision`` by ``generator`` (``{name, version, ruleset_sha256}``), as
+    ``(artifact_sha256, record)``, or None. Reads and writes nothing else: no index, so the store keeps its two
+    kinds of file (register E184 review MAJ-1; ADR-0015, amended 2026-11-11). Reads at most ``newest`` artifacts,
+    newest first by modification time, and none once ``deadline`` (``time.monotonic``) has passed. A file is matched on
+    the two fields' canonical bytes, then read strictly (``parse_artifact``), so a damaged artifact is passed over,
+    never returned. Never raises."""
+    import time
+
+    from aew.maps.canonical import canonical_json
+
+    want = (b'"source_revision":' + canonical_json(source_revision),
+            b'"generator":' + canonical_json({k: generator[k] for k in ("name", "ruleset_sha256", "version")}))
+    try:
+        with os.scandir(aew_root / STRUCTURAL_REL) as listing:
+            found = [(e.stat(follow_symlinks=False).st_mtime_ns, e.name) for e in listing
+                     if e.name.endswith(".json") and SHA.match(e.name[:-5])]
+    except OSError:
+        return None
+
+    def match(name: str) -> dict[str, Any] | None:
+        try:
+            raw, _ = read_bounded(aew_root / STRUCTURAL_REL / name, MAP_FILE_MAX)
+            if not all(w in raw for w in want):
+                return None
+            record = parse_artifact(name[:-5], raw)
+        except Exception:  # a file that vanished, is damaged or is not a regular file: never this base's map
+            return None
+        same = record["source_revision"] == source_revision and all(
+            record["generator"].get(k) == generator[k] for k in ("name", "ruleset_sha256", "version"))
+        return record if same else None
+
+    for _, name in sorted(found, reverse=True)[:newest]:
+        if deadline is not None and time.monotonic() >= deadline:
+            return None
+        record = match(name)
+        if record is not None:
+            return name[:-5], record
+    return None
+
+
 def read_registry(aew_root: Path) -> dict[str, Any] | None:
     """The registry, or None when there is none; ``MAP_REGISTRY_INVALID`` when it is malformed."""
     path = aew_root / REGISTRY_REL
@@ -286,14 +345,16 @@ CAPABILITIES = {"structural": "sha256", "architecture": "evidence_id"}  # what i
 
 
 def select_structural(aew_root: Path, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
-                      note: dict[str, Any] | None = None,
-                      authorize: Callable[[], object] | None = None) -> dict[str, Any]:
+                      note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None,
+                      lock_timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
     """Select ``entry`` as the structural map (``select``)."""
-    return select(aew_root, "structural", expect=expect, entry=entry, actor=actor, note=note, authorize=authorize)
+    return select(aew_root, "structural", expect=expect, entry=entry, actor=actor, note=note, authorize=authorize,
+                  lock_timeout=lock_timeout)
 
 
 def select(aew_root: Path, capability: str, *, expect: str, entry: dict[str, Any], actor: dict[str, Any],
-           note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None) -> dict[str, Any]:
+           note: dict[str, Any] | None = None, authorize: Callable[[], object] | None = None,
+           lock_timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
     """Select ``entry`` for ``capability`` (``structural`` or ``architecture``): compare-and-set on the registry's
     epoch and revision, under the registry's own lock. ``authorize`` is called under that lock, after the compare and
     before anything is written, and refuses by raising: the writer's authority is proven at the moment of the write,
@@ -301,7 +362,10 @@ def select(aew_root: Path, capability: str, *, expect: str, entry: dict[str, Any
     the new registry. One revision domain covers every capability: a selection of either moves ``map_revision``."""
     key = CAPABILITIES[capability]
     expected = parse_expectation(expect)
-    with FileLock(aew_root / LOCK_REL) as lock:
+    # ``lock_timeout``: the wait for the registry lock, ``FileLock``'s own by default; a dispatch's refresh passes the
+    # time it has left (``service.refresh_at_dispatch``), so its selection stays inside its one bound. One
+    # construction: the concurrency reference counts each as an opener (E184 review, CI at a0d92878)
+    with FileLock(aew_root / LOCK_REL, timeout=lock_timeout) as lock:
         registry = read_registry(aew_root)
         current = revision_of(registry)
         if expected != parse_expectation(current):

@@ -63,6 +63,10 @@ class UnknownCheck(ValueError):
     """An ``only`` id that names no check of the pack: a usage error, never a run that skips everything."""
 
 
+class NetworkIsolationError(ValueError):
+    """Requested egress isolation could not be verified before starting the harness."""
+
+
 @dataclass
 class Outcome:
     """What one check found: ``pass`` or ``fail``, the facts it measured (JSON values by fact id), and notes."""
@@ -222,17 +226,38 @@ NETWORK_BLOCKED_ENV = "HQ_UNSHARE_NET"  # set by the CLI when it runs the tool u
 
 
 def network_state() -> str:
-    """Whether egress was blocked, and how that was seen: under ``bwrap --unshare-net`` a connection to a public
-    address finds no route at once."""
+    """Observe isolation, not merely the namespace marker: loopback only, no external route, usable loopback,
+    and an external connection denied with no route. Called before any binary/server/model action."""
     if os.environ.get(NETWORK_BLOCKED_ENV) != "1":
         return ("not blocked: no check needs the network (no provider, no key, a loopback model), but the harness may "
                 "still try its own fetches")
     try:
+        if not sys.platform.startswith("linux"):
+            return "not verified: network namespaces require Linux"
+        # /proc/net follows this process's namespace; a bind-mounted /sys may still describe the host namespace.
+        devices = Path("/proc/net/dev").read_text(encoding="ascii").splitlines()[2:]
+        interfaces = {row.split(":", 1)[0].strip() for row in devices if ":" in row}
+        if interfaces != {"lo"}:
+            return "not verified: interfaces are not loopback only"
+        routes = Path("/proc/net/route").read_text(encoding="ascii").splitlines()[1:]
+        ipv6 = Path("/proc/net/ipv6_route").read_text(encoding="ascii").splitlines()
+        if any(row.split() and row.split()[0] != "lo" for row in routes) or any(
+                row.split() and row.split()[-1] != "lo" for row in ipv6):
+            return "not verified: an external route exists"
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            with socket.create_connection(listener.getsockname(), timeout=2):
+                peer, _ = listener.accept()
+                peer.close()
+    except OSError as exc:
+        return f"not verified: loopback/route observation failed ({type(exc).__name__})"
+    try:
         socket.create_connection(("192.0.2.1", 443), timeout=2).close()  # TEST-NET-1 (RFC 5737): never a real host
     except OSError as exc:
         if exc.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
-            return "blocked: run under bwrap --unshare-net (verified: no route out)"
-        return f"blocked: run under bwrap --unshare-net (not verified: {type(exc).__name__})"
+            return "blocked: run under bwrap --unshare-net (verified: loopback only, no external route, egress denied)"
+        return f"not verified: external-egress observation failed ({type(exc).__name__})"
     return "NOT blocked: a connection out succeeded under --unshare-net"
 
 
@@ -253,6 +278,9 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
     unknown = sorted(set(only or ()) - set(ids))
     if unknown:  # a typo would otherwise skip everything and look clean (review of #357, minor 1)
         raise UnknownCheck(f"no such check: {', '.join(unknown)} (the checks: {', '.join(ids)})")
+    network = network_state()
+    if os.environ.get(NETWORK_BLOCKED_ENV) == "1" and not network.startswith("blocked: run under"):
+        raise NetworkIsolationError(network)
     out.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="hq-", dir=out))
     t0 = time.monotonic()
@@ -290,7 +318,7 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
         return Record(harness=pack.harness, version=version, binary_sha256=sha256_file(binary),
                       platform=sys.platform, checks=results, capabilities=capability_report(pack.declared(), results),
                       facts=facts, unmeasured=dict(pack.unmeasured()), started=started,
-                      seconds=round(time.monotonic() - t0, 1), network=network_state(), aew_revision=aew_revision())
+                      seconds=round(time.monotonic() - t0, 1), network=network, aew_revision=aew_revision())
     finally:
         if not keep:
             shutil.rmtree(root, ignore_errors=True)

@@ -14,6 +14,7 @@ flowchart LR
     subgraph kind_store_writer["kind: store_writer"]
         proc_aew["aew"]
         proc_aew_harness_supervisor["aew.harness.supervisor"]
+        proc_aew_kit_main["aew.kit.__main__"]
     end
     subgraph aew_dir[".aew"]
         subgraph group_store["the control store"]
@@ -54,6 +55,13 @@ flowchart LR
     proc_aew --> path_work
     proc_aew_dashboard_serve --> path_local
     proc_aew_harness_supervisor --> path_local
+    proc_aew_kit_main --> path_gitignore
+    proc_aew_kit_main --> path_knowledge
+    proc_aew_kit_main --> path_local
+    proc_aew_kit_main --> path_policy
+    proc_aew_kit_main --> path_project_yaml
+    proc_aew_kit_main --> path_roles
+    proc_aew_kit_main --> path_state
     no_writer --> path_coordination
     no_writer --> path_history
     no_writer --> path_local
@@ -71,6 +79,11 @@ flowchart LR
     path_state -.-> proc_aew
     path_local -.-> proc_aew_dashboard_serve
     path_local -.-> proc_aew_harness_supervisor
+    path_knowledge -.-> proc_aew_kit_main
+    path_local -.-> proc_aew_kit_main
+    path_policy -.-> proc_aew_kit_main
+    path_roles -.-> proc_aew_kit_main
+    path_state -.-> proc_aew_kit_main
     path_coordination -.-> no_reader
     path_decisions -.-> no_reader
     path_evidence -.-> no_reader
@@ -94,25 +107,26 @@ flowchart LR
 | `aew dashboard serve` | non_writer | the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock |
 | `aew lead mcp` | non_writer | the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential |
 | `aew.harness.supervisor` | store_writer | a run's supervisor: holds the run's credential and commits through the engine |
+| `aew.kit.__main__` | store_writer | the operator's seeded kit initializes and maps its own repository |
 | `aew.stg02.server` | non_writer | the STG-02 slice's producer: it reads a project's committed state lock-free (dashboard.reader) and writes only its own state directory, never the store |
 
 ## Entries of `.aew`
 
 | Entry | Group | Written by | Read by | Written by no entry point | Read by no entry point |
 |---|---|---|---|---|---|
-| `.gitignore` | other entries of .aew | `aew` | - | - | - |
+| `.gitignore` | other entries of .aew | `aew`, `aew.kit.__main__` | - | - | - |
 | `coordination` | other entries of .aew | `aew` | `aew` | yes | yes |
 | `decisions` | other entries of .aew | `aew` | - | - | yes |
 | `evidence` | other entries of .aew | `aew` | `aew` | - | yes |
 | `history` | other entries of .aew | `aew` | - | yes | yes |
-| `knowledge` | other entries of .aew | `aew` | `aew` | - | - |
-| `local` | masked from a contained run | `aew`, `aew dashboard serve`, `aew.harness.supervisor` | `aew`, `aew dashboard serve`, `aew.harness.supervisor` | yes | yes |
-| `policy` | other entries of .aew | `aew` | `aew` | - | yes |
+| `knowledge` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | - |
+| `local` | masked from a contained run | `aew`, `aew dashboard serve`, `aew.harness.supervisor`, `aew.kit.__main__` | `aew`, `aew dashboard serve`, `aew.harness.supervisor`, `aew.kit.__main__` | yes | yes |
+| `policy` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | yes |
 | `pricing` | other entries of .aew | - | - | yes | yes |
-| `project.yaml` | other entries of .aew | `aew` | - | - | yes |
+| `project.yaml` | other entries of .aew | `aew`, `aew.kit.__main__` | - | - | yes |
 | `records` | other entries of .aew | `aew` | `aew` | yes | yes |
-| `roles` | other entries of .aew | `aew` | `aew` | - | - |
-| `state` | the control store | `aew` | `aew` | yes | yes |
+| `roles` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | - |
+| `state` | the control store | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | yes | yes |
 | `work` | other entries of .aew | `aew` | - | yes | yes |
 
 ## Not drawn
@@ -131,7 +145,9 @@ The `writers` fact of the `writers` records.
 - `aew.engine.disposition_ops:Dispositions._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.disposition_ops:_unlink`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
@@ -151,9 +167,10 @@ The `writers` fact of the `writers` records.
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:mark_serving`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:History.append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here

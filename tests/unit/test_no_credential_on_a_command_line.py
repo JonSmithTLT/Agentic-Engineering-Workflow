@@ -87,7 +87,7 @@ def helps() -> dict[str, str]:
                 for name, sub in action.choices.items():
                     walk(sub, f"{path} {name}")
 
-    walk(build_parser(recall_search=True, coordination_reads=True), "aew")
+    walk(build_parser(recall_search=True, coordination_reads=True, worker_messaging=True), "aew")
     return out
 
 

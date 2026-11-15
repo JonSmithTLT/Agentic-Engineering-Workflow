@@ -347,6 +347,9 @@ def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
 
 
 CONDITIONS = ["none", "stale", "missing", "corrupt", "registry_invalid"]
+# What the Lead's dispatch refreshes for the work's base (ADR-0015, amended 2026-11-11): the other two are the
+# operator's to look at, and keep their UNAVAILABLE line.
+REFRESHED = "refresh at dispatch: this map was made for the work's base"
 
 
 def set_condition(p: Project, condition: str, n: int) -> str:
@@ -354,15 +357,16 @@ def set_condition(p: Project, condition: str, n: int) -> str:
     maps = p.root / MAPS
     shutil.rmtree(maps, ignore_errors=True)
     if condition == "none":
-        return "- UNAVAILABLE (none)"
+        return REFRESHED
     selected = select_map(p)
     artifact = p.root / ".aew" / store.artifact_rel(selected["root"])
     if condition == "stale":
         advance_main(p, f"walk-{n}.txt")
-        return "STALE (path_listing)"
+        return REFRESHED
     if condition == "missing":
         artifact.unlink()
-    elif condition == "corrupt":
+        return REFRESHED
+    if condition == "corrupt":
         artifact.write_bytes(b"{}")
     else:
         (maps / "registry.json").write_text("{not json", encoding="utf-8")
@@ -372,7 +376,9 @@ def set_condition(p: Project, condition: str, n: int) -> str:
 def test_no_map_state_changes_dispatch_gates_transitions_or_resume(tmp_path):
     """T5-INV-01 with the switch on: a stale, missing or corrupt map, or a malformed registry, gives the same outcomes
     as no map at all: the investigation dispatches, its record is ingested and accepted, its gates read the same, and
-    resume works, with the map reported for what it is."""
+    resume works, with the map reported for what it is. A stale, absent or missing map is refreshed at the Lead's
+    dispatch first (the base is the head, so it is selected and the resume row reads CURRENT); a corrupt one or a
+    malformed registry is left as it is."""
     p = sample_project(tmp_path)
     switch_on(p)
     outcomes = {}
@@ -387,7 +393,7 @@ def test_no_map_state_changes_dispatch_gates_transitions_or_resume(tmp_path):
         p.lead("work", "accept", wid)
         state = p.ok("work", "show", wid)["control"]["state"]
         row = {r["name"]: r for r in derived(p)}["codebase_map"]
-        assert row["freshness"] in {"UNAVAILABLE", "STALE"}, row
+        assert row["freshness"] == ("CURRENT" if shown == REFRESHED else "UNAVAILABLE"), (condition, row)
         outcomes[condition] = (gates, state)
     assert all(o == outcomes["none"] for o in outcomes.values()), outcomes
     assert outcomes["none"][1] == "DONE"

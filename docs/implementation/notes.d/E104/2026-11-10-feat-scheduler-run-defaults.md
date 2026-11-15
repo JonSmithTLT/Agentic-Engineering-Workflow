@@ -1,0 +1,13 @@
+**Part of slice S3 built (`feat/scheduler-run-defaults`, register E228's third PR):** the minimal `aew notify desktop`, the init template's default `notify.command`, and `BOY-12.d`'s gate on it.
+- **Built:**
+  - `aew notify desktop [--check]` turns the event on stdin into one notification through `notify-send` on Linux. It shows the event's kind, subject and project, never its reason. With no desktop session it refuses `CAPABILITY_UNAVAILABLE` (`no_desktop_session`), with the fix.
+  - **The Windows toast (`BOY-B5`), pulled into V-01.** The operator, 2026-11-10: "yes to the windows toast". `BOY-12` had Windows report `unavailable` in V-01, with the toast in the backlog under E99. On Windows the command now shows a toast from Windows PowerShell 5.1, with no console window and the text passed as data, never as script. It is available only in an interactive session with `powershell.exe`, so Run's gate accepts the default there. Its limit: the toast's exit code says Windows took it, not that the operator saw it, for example with Focus Assist on or notifications turned off for Windows PowerShell.
+  - The notifier's child gets only `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` beyond the keep-list, never `DISPLAY`, `WAYLAND_DISPLAY` or `XAUTHORITY` (`BOY-12.a`). A test pins that keep-list.
+  - The endpoint runs the default as its own engine (its interpreter, `-m aew`), never an `aew` found on `PATH`.
+  - Run's raise, and each Run activation, refuse the default while it is unavailable (`BOY-12.d`).
+  - The command is operator-only on the Lead's side.
+- **Not built, still this row's:**
+  - the `unavailable` outcome shown once (`BOY-12`): today each event's delivery fails with the reason `unavailable`;
+  - the v2 payload (`BOY-12.c`) and the partition (`BOY-11`);
+  - the settings-path offer for existing projects;
+  - the activation's check run in the endpoint's process rather than the broker's: the ping carries the notifier's state (`BOY-12.d`).

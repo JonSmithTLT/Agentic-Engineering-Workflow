@@ -170,11 +170,12 @@ def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(
 
 
 def test_the_leads_results_carry_the_slices_bytes_and_never_its_body(tmp_path):
-    """Register E184 (owed since its review of 2026-11-08): a dispatch's result, and `aew invoke show`, stay in the
+    """ADR-0015 (amended 2026-11-11, second): a dispatch's result, `aew invoke show` and `aew history` stay in the
     Lead's context, so the map's entry there names the pinned map and the section's bytes, never the body, which is
     the worker's. Control state keeps the body: a regenerated pack is rendered from it."""
     p = sample_project(tmp_path)  # maps on: a new project's default
-    _, out = dispatch(p, create_investigation(p, tmp_path))
+    wid = create_investigation(p, tmp_path)
+    role, out = dispatch(p, wid)
     to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
     packed = {k: i for k, i in invocations(p).items() if i.get("pack")}
     assert {i["role"] for i in packed.values()} >= {"implementer", "reviewer", "verifier", "investigator"}
@@ -206,10 +207,25 @@ def test_the_leads_results_carry_the_slices_bytes_and_never_its_body(tmp_path):
     assert len(units) >= 2, units
     views = [("status",), ("resume",), ("resume", "--json"), *[("work", "show", w) for w in units],
              *[("context", "pack", i) for i in packed]]
-    for command in views:
-        out = p.aew(*command)
-        assert out.returncode == 0, (command, out.stderr)
-        assert not any(line in out.stdout or json.dumps(line)[1:-1] in out.stdout for line in body), command
+
+    def never_the_body(commands: list[tuple[str, ...]]) -> None:
+        for command in commands:
+            shown = p.aew(*command)
+            assert shown.returncode == 0, (command, shown.stderr)
+            assert not any(line in shown.stdout or json.dumps(line)[1:-1] in shown.stdout for line in body), command
+
+    never_the_body(views)
+    # Archived, the investigation's record and its invocation are the Lead's through `aew history`: shown and searched.
+    p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
+    p.lead("work", "accept", wid)
+    assert lead_sees(p.ok("history", "show", out["invocation"])["record"])["slice_bytes"] > 0
+    policy = p.root / ".aew/policy/execution.yaml"  # raw-history search is the operator's to switch on
+    policy.write_text(policy.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n",
+                      encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    never_the_body([("history", "show", out["invocation"]), ("history", "show", wid),
+                    ("history", "search", "omissions")])
+    assert p.ok("history", "search", "omissions")["hits"] == []  # a word only the slice's limits line holds
 
 
 def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_with_the_switch_on(tmp_path):

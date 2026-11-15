@@ -23,7 +23,8 @@ TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shap
 def test_defect_message_redacts_provider_keys_and_keeps_public_identifiers():
     from aew.harness.defects import bounded_message
 
-    key = "sk-" + "lowercase"
+    # An opaque mixed-case token exercises the broad long-token form without a provider prefix.
+    key = "Ab3" * 11
     public = f"token_id: tk_{0x0123456789ABCDEF:016x} openapi_sha256: " + "ab012345" * 8
     assert bounded_message(f"{key} {public}") == f"<redacted> {public}"
 
@@ -89,6 +90,28 @@ def test_shell_failure_names_the_directory_exit_and_redacted_last_40_lines(tmp_p
     assert TOKEN not in text and "aew1.<redacted>" in text
     output.unlink()
     assert "<unreadable: FileNotFoundError>" in D.describe_shell(tmp_path, result)
+
+
+def test_shell_admission_process_evidence_and_output_survive_the_harness_bundle(tmp_path):
+    lab = Lab(tmp_path / "project")
+    directory = a_run(lab, "R-INV-0001-1")
+    output = directory / "harness/shell-2.stdout"
+    admission = output.with_suffix(".admission")
+    output.write_text(f"planted startup refusal {TOKEN}\n", encoding="utf-8")
+    admission.write_text("shell_pid: 12; exit: 7\naew child started: OBSERVED pids [13]\n"
+                         f"13 12 aew.exe message wait {TOKEN}\n", encoding="utf-8")
+    (directory / "events.jsonl").write_text('{"event": "opencode.session.tool.called"}\n', encoding="utf-8")
+    text = D.describe_shell(directory / "harness", {"exit": 7, "timed_out": False,
+                            "stdout_file": str(output), "admission_file": str(admission)})
+    assert "planted startup refusal" in text and "OBSERVED pids [13]" in text and "run events" in text
+    copied, failed = D.copy_evidence(lab, tmp_path / "bundle")
+    assert not failed
+    kept = {p.name: p.read_text(encoding="utf-8") for p in copied}
+    assert "planted startup refusal" in kept["harness__shell-2.stdout.txt"]
+    assert "aew child started: OBSERVED pids [13]" in kept["harness__shell-2.admission.txt"]
+    assert "opencode.session.tool.called" in kept["events.jsonl.txt"]
+    assert TOKEN not in text and all(TOKEN not in value for value in kept.values())
+    assert "aew child started: OBSERVED pids [13]" in D.describe_run(directory)
 
 
 def test_a_credential_cut_by_a_bound_is_still_redacted(tmp_path):

@@ -321,10 +321,10 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     autopsy.mkdir(parents=True)
     (autopsy / "failure.txt").write_text("private contentsTAIL\nprivate contents\n", encoding="utf-8")
     (autopsy / "other.txt").write_text("context private contents", encoding="utf-8")
-    # This short provider shape is covered by redact_text, outside gitleaks' OpenAI rule.
-    provider_key = "sk-" + "lowercase"
-    (source / "junit.xml").write_text(f"<failure>private contents {provider_key}</failure>", encoding="utf-8")
-    (source / "vertical-summary.txt").write_text(f"private contents {provider_key}", encoding="utf-8")
+    # The scanner reports only the repeated literal. The opaque key needs the report's broad redactor.
+    opaque_key = "Xy7" * 11
+    (source / "junit.xml").write_text(f"<failure>private contents {opaque_key}</failure>", encoding="utf-8")
+    (source / "vertical-summary.txt").write_text(f"private contents {opaque_key}", encoding="utf-8")
     (autopsy / "still-dirty.txt").write_text("other value", encoding="utf-8")
     (autopsy / "copy-of-dirty.txt").write_text("copy of other value", encoding="utf-8")
     calls = []
@@ -353,8 +353,7 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
         "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
         "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
     }
-    for path, content in expected.items():
-        assert (destination / path).read_text(encoding="utf-8") == content
+    assert {path: (destination / path).read_text(encoding="utf-8") for path in expected} == expected
     log = capsys.readouterr().err
     assert log.splitlines() == [
         "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",

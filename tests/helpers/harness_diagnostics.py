@@ -88,6 +88,11 @@ def run_dirs(lab: Any) -> list[Path]:
     return sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
 
 
+def shell_files(directory: Path) -> list[str]:
+    return sorted(p.relative_to(directory).as_posix() for p in (directory / "harness").glob("shell-*")
+                  if p.suffix in (".stdout", ".stderr", ".admission") and p.is_file())
+
+
 def describe_run(directory: Path) -> str:
     """One run as a failure report shows it: what its record says, what an observer sees, and its logs' tails."""
     record = runlog.read_record(directory) or {}
@@ -98,7 +103,8 @@ def describe_run(directory: Path) -> str:
              f"  reason: {record.get('reason')}",
              f"  custody_at {record.get('custody_at')}, started_at {record.get('started_at')}, "
              f"ended_at {record.get('ended_at')}, supervisor_pid {record.get('supervisor_pid')}"]
-    for name in ("supervisor.log", "events.jsonl", "harness/agent.log", "harness/transcript.jsonl"):
+    names = ("supervisor.log", "events.jsonl", "harness/agent.log", "harness/transcript.jsonl", *shell_files(directory))
+    for name in names:
         path = directory / name
         if path.exists():
             lines.append(f"  --- {name} (last {TAIL_LINES} lines)")
@@ -123,6 +129,13 @@ def describe_shell(directory: Path, result: dict[str, Any]) -> str:
     for name in paths:
         lines.append(f"--- shell stdout/stderr: {name} (last 40 lines)")
         lines.append(_tail(Path(name), lines=40))
+    if result.get("admission_file"):
+        lines.append("--- shell admission/process evidence")
+        lines.append(_tail(Path(result["admission_file"]), lines=40))
+    events = directory.parent / "events.jsonl"
+    if events.exists():
+        lines.append("--- run events (last 40 lines)")
+        lines.append(_tail(events, lines=40))
     return "\n".join(lines)
 
 
@@ -137,7 +150,7 @@ def copy_evidence(lab: Any, dest: Path) -> tuple[list[Path], list[str]]:
     Returns what was copied and what could not be: one unreadable file never stops the rest (#136 review, F3)."""
     copied, failed = [], []
     for directory in run_dirs(lab):
-        for name in EVIDENCE:
+        for name in (*EVIDENCE, *shell_files(directory)):
             src = directory / name
             if not src.is_file():
                 continue

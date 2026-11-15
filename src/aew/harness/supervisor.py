@@ -59,6 +59,7 @@ from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
 
 TICK_S = 0.25
+REQUEST_ORDER_WAIT_TICKS = 4  # give a sharing conflict four watchdog scans before letting later requests through
 STATE_POLL_S = 2.0
 HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
@@ -223,6 +224,8 @@ class Supervisor:
         self.ack = ack
         self.events = runlog.EventLog(run_dir / "events.jsonl")
         self._handled: set[str] = set()  # request files acted on (a replayed one is refused)
+        self._unread_reported: set[str] = set()
+        self._request_order_waits: dict[str, int] = {}
         self.record: dict[str, Any] = {"schema": K.RUN_SCHEMA, "run": self.run, "invocation": self.inv_id,
                                        "containment": containment.label(contained=False),
                                        "status": K.STARTING, "supervisor_pid": os.getpid(),
@@ -248,7 +251,7 @@ class Supervisor:
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
-        self._deferred: dict[str, str] = {}  # request files taken while the state was unreadable: name -> text
+        self._deferred: dict[str, str] = {}  # requests waiting for readable control state or an earlier file
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ record
@@ -620,6 +623,12 @@ class Supervisor:
                 self._event("request", kind=kind)
                 if kind == "stop":
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
+                bound = self.adapter.STEERING_BOUND_S
+                until = time.monotonic() + bound
+                if deadline is not None:
+                    until = min(until, deadline)
+                # Keep beating while the local server answers, up to the heartbeat bound.
+                steering = self._background_beats("aew-steering-heartbeat", until=until) if bound else None
                 try:
                     if kind == "send":  # only `next-step` is ever a request file (F9-A amendment 2 §3.3; E55)
                         self.adapter.send(str(req.get("text") or ""), WHEN_DELIVERY[NEXT_STEP])
@@ -627,6 +636,9 @@ class Supervisor:
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
+                finally:
+                    if steering is not None:
+                        steering.set()
             if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
                 read, problem = self._authority()
                 if problem:
@@ -652,12 +664,22 @@ class Supervisor:
 
         The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
-        else is recorded and discarded (independent review R1)."""
+        else is recorded and discarded (independent review R1). An unread recorded file holds later requests
+        for a bounded number of ticks. After that, the supervisor logs the order break and lets them through."""
         # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
         # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). That is all the
         # `setdefault` merge is for: the sort below decides the order. They are bounded by the queue's distinct names.
         pending = dict(self._deferred)
-        for name, text in runlog.take_requests(self.run_dir):
+        unread: set[str] = set()
+
+        def note_unread(name: str, exc: PermissionError) -> None:
+            unread.add(name)
+            if name not in self._unread_reported:
+                self._unread_reported.add(name)
+                self.events({"event": "request_unread", "file": name[:200],
+                             "errno": exc.errno, "winerror": getattr(exc, "winerror", None)})
+
+        for name, text in runlog.take_requests(self.run_dir, on_unread=note_unread):
             pending.setdefault(name, text)
         self._deferred = {}
         if not pending:
@@ -670,11 +692,8 @@ class Supervisor:
         inv = state["invocations"].get(self.inv_id) or {}
         entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
         recorded = {r["file"]: r for r in entry.get("requests") or []}
-        out = []
-        # In issue order, kept files with new ones: a request file's name starts with its issue time
-        # (runlog._next_request_ns), so the sort alone decides the order, whichever tick took a file and however late it
-        # was delivered; the merge order above decides nothing (#366 review, N4)
-        for name, text in sorted(pending.items()):
+        ready: dict[str, dict[str, Any]] = {}
+        for name, text in pending.items():
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else
                    "already handled" if name in self._handled else
@@ -691,9 +710,33 @@ class Supervisor:
             if why is not None:  # the event log only: a flood of files never grows the run record
                 self.events({"event": "request_refused", "file": name[:200], "why": why})
                 continue
-            self._handled.add(name)
-            out.append(req)
+            ready[name] = req
+        # Names sort by issue time (runlog._next_request_ns). Sort this batch, including requests deferred from
+        # earlier ticks. Only unread recorded requests can hold later entries, and only for a bounded wait.
+        barrier = self._request_order_barrier((unread & recorded.keys()) - self._handled - ready.keys(), ready)
+        out = []
+        for name in sorted(ready):
+            if barrier is not None and name > barrier:
+                self._deferred[name] = pending[name]
+            else:
+                self._handled.add(name)
+                out.append(ready[name])
         return out
+
+    def _request_order_barrier(self, unread: set[str], ready: dict[str, dict[str, Any]]) -> str | None:
+        """Return the first unread name that still holds a later ready request."""
+        latest = max(ready, default="")
+        for name in sorted(unread):
+            if name >= latest:
+                break
+            waited = self._request_order_waits.get(name, 0)
+            if waited < REQUEST_ORDER_WAIT_TICKS:
+                self._request_order_waits[name] = waited + 1
+                return name
+            if waited == REQUEST_ORDER_WAIT_TICKS:
+                self._request_order_waits[name] = waited + 1  # report this order break once
+                self.events({"event": "request_order_bypassed", "file": name[:200], "ticks": waited})
+        return None
 
     def _finish_exited(self, status: dict[str, Any]) -> None:
         """The harness exited. Its exit status is never success: only a recorded expected output is progress,

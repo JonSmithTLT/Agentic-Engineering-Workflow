@@ -341,6 +341,8 @@ def catalog_routes(catalog: list[dict[str, Any]], table: U.SemanticsTable) -> di
 
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
+    # Use the local HTTP socket-operation timeout as the heartbeat bound. The whole call can take longer.
+    STEERING_BOUND_S = REQUEST_TIMEOUT_S
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
     # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
     PROVIDER_RELAY = True

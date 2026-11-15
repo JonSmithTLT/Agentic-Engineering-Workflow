@@ -7,7 +7,9 @@ can declare the session totals the adapter reports, as the OpenCode adapter read
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -233,11 +235,16 @@ def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path,
         monkeypatch.setenv("AEW_RUN_STALE_S", "3600")
     if beat:
         runlog.beat(directory)
+    if status == K.STARTING:
+        # Reproduce the nightly's stale synthetic heartbeat without waiting on the runner's clock.
+        aged = time.time() - 15
+        os.utime(directory / "heartbeat", (aged, aged))
     lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
     lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
     [usage] = archived_usage(lab, wid, inv)
-    assert (usage["run"], usage["status"], usage["tokens_trust"], usage["model_check"]) == (
-        run, status, "absent", "unreported")
+    actual = tuple(usage[key] for key in ("run", "status", "tokens_trust", "model_check"))
+    expected = (run, status, "absent", "unreported")
+    assert actual == expected, f"archived (run, status, tokens_trust, model_check): {actual!r}, expected {expected!r}"
     assert_control_invariants(lab.project)
 
 

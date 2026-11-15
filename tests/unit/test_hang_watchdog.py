@@ -118,15 +118,35 @@ def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
     assert dumps(tmp_path / "hangs") == []
 
 
+def run_windows_supervisor(root, progress, hangs):
+    runner = HELPERS.parents[1] / "tools" / "ci" / "windows_lane.py"
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
+    # The venv launcher can kill leaked descendants by itself. Use the base interpreter as CI does.
+    clean_env["PYTHONPATH"] = os.pathsep.join(path for path in sys.path if path)
+    bootstrap = ("import runpy,sys,time; "
+                 "supervise=runpy.run_path(sys.argv[1])['supervise']; "
+                 "from pathlib import Path; "
+                 "raise SystemExit(supervise(Path(sys.argv[2]), sys.argv[3:], time.monotonic()+15))")
+    return subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q", "-s",
+                           "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",
+                           f"--hang-dir={hangs}", "tests"],
+                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35,
+                          creationflags=subprocess.CREATE_NO_WINDOW)
+
+
 def run_windows_cutoff(tmp_path, test_body):
     identity_file = tmp_path / "child.txt"
     child_code = (f"import os,sys,time; from pathlib import Path; sys.path.insert(0,{str(HELPERS)!r}); "
-                  f"import proctree; pid=os.getpid(); Path({str(identity_file)!r}).write_text("
-                  "f'{pid} {proctree.start_time(pid)}'); time.sleep(120)")
+                  f"import proctree; pid=os.getpid(); identity=Path({str(identity_file)!r}); "
+                  "pending=identity.with_suffix('.tmp'); pending.write_text(f'{pid} {proctree.start_time(pid)}'); "
+                  "pending.replace(identity); time.sleep(120)")
     planted = f"""
 import socket
 import subprocess
 import sys
+from pathlib import Path
+
+import bounds
 import pytest
 
 @pytest.mark.parametrize('value', [1], ids=['private-parameter'])
@@ -134,34 +154,40 @@ def test_plant(value):
     subprocess.Popen([sys.executable, '-c', {child_code!r}], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=subprocess.CREATE_NO_WINDOW)
+    bounds.bounded_wait("test.planted_child_identity", Path({str(identity_file)!r}).is_file, seconds=5)
 {test_body}
 """
     root = project(tmp_path, planted)
     progress = tmp_path / "progress"
-    runner = HELPERS.parents[1] / "tools" / "ci" / "windows_lane.py"
-    clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
-    # The venv launcher can kill leaked descendants by itself. Use the base interpreter as CI does.
-    clean_env["PYTHONPATH"] = os.pathsep.join(path for path in sys.path if path)
-    # Shorten the outer cutoff and leave the inner deadline off to plant a stuck pytest session.
-    bootstrap = ("import runpy,sys,time; "
-                 "supervise=runpy.run_path(sys.argv[1])['supervise']; "
-                 "from pathlib import Path; "
-                 "raise SystemExit(supervise(Path(sys.argv[2]), sys.argv[3:], time.monotonic()+15))")
-    proc = subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q",
-                           "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",
-                           f"--hang-dir={tmp_path / 'hangs'}", "tests"],
-                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35,
-                          creationflags=subprocess.CREATE_NO_WINDOW)
-    pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
     try:
+        proc = run_windows_supervisor(root, progress, tmp_path / "hangs")
         assert proc.returncode == SUPERVISOR_CUTOFF_EXIT, proc.stdout + proc.stderr
+        pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
         assert not proctree.same((pid, started)), f"the planted child {pid} survived the cutoff"
         status = (progress / "step.txt").read_text(encoding="utf-8")
         assert f"  {pid} python.exe" in status.lower(), status
         assert "time.sleep(120)" not in status
         return progress, status
     finally:
-        proctree.end((pid, started))  # also reap the plant when a cutoff ablation leaves it alive
+        if identity_file.is_file():
+            pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
+            proctree.end((pid, started))  # also reap the plant when a cutoff ablation leaves it alive
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_supervisor_forwards_pytest_output(tmp_path):
+    root = project(tmp_path, """\
+import sys
+
+def test_output():
+    print("planted pytest stdout")
+    print("planted pytest stderr", file=sys.stderr)
+""")
+    proc = run_windows_supervisor(root, tmp_path / "progress", tmp_path / "hangs")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "planted pytest stdout" in proc.stdout
+    assert "planted pytest stderr" in proc.stderr
+    assert "1 passed" in proc.stdout
 
 
 @pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")

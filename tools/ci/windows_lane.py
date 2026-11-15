@@ -17,7 +17,9 @@ import proctree
 from bounds import DEADLINE_MARGIN_S, SESSION_END_MARGINS
 from session_deadline import SUPERVISOR_CUTOFF_EXIT
 
-PYTHON_MODULE_PATH = sys.path[2:]  # omit the helper and script directories, as in python -m pytest
+SCRIPT_DIR = Path(__file__).resolve().parent
+HELPERS_DIR = SCRIPT_DIR.parents[1] / "tests" / "helpers"
+PYTHON_MODULE_PATH = [path for path in sys.path if Path(path).resolve() not in {SCRIPT_DIR, HELPERS_DIR}]
 CUTOFF_CLEARANCE_S = 10  # let the sentinel finish its last process scan and writes after its backstop acts
 CUTOFF_GRACE_S = SESSION_END_MARGINS * DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
 
@@ -34,6 +36,7 @@ def supervise(directory: Path, pytest_args: list[str], cutoff: float) -> int:
     job = proctree.Job(name)
     child = subprocess.Popen([sys.executable, __file__, "_pytest", name,
                               f"--running-tests-dir={directory.resolve()}", *pytest_args],
+                             stdout=sys.stdout, stderr=sys.stderr,
                              creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         code = child.wait(timeout=max(0, cutoff - time.monotonic()))

@@ -1,11 +1,33 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Public AEW credential IDs and SHA-256 digests in evidence"
-targetRules = ["generic-api-key"]
+# Attach allowlists to the extended rule directly for the evidence scanner's 8.28.0 pin.
+[[rules]]
+id = "generic-api-key"
+
+# token_id is the public ID of an AEW credential. Match its field and value shape in
+# decision, control, and transition records, including copies staged as .txt.
+# Staging renames the hidden .aew directory to file-<hash>-.aew.
+[[rules.allowlists]]
+description = "Public AEW token IDs in state and decision records"
+condition = "AND"
 regexTarget = "match"
+paths = [
+  '''(?:^|[\\/])(?:file-[0-9a-f]{12}-)?\.aew[\\/]decisions[\\/]D-[0-9]+\.md(?:\.txt)?$''',
+  '''(?:^|[\\/])(?:file-[0-9a-f]{12}-)?\.aew[\\/]state[\\/](?:control|log[\\/][0-9]+)\.yaml(?:\.txt)?$''',
+]
 regexes = [
   '''^token_id['"]?[ \t]*:[ \t]*['"]?tk_[0-9a-f]{16}['"]?[ \t\r\n]*$''',
+]
+
+# The harness records a SHA-256 of the OpenAPI document as public version evidence.
+[[rules.allowlists]]
+description = "OpenAPI document digest in a harness run record"
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''(?:^|[\\/])(?:file-[0-9a-f]{12}-)?\.aew[\\/]local[\\/]harness[\\/]runs[\\/]R-INV-[0-9]+-[0-9]+[\\/]run\.json(?:\.txt)?$''',
+]
+regexes = [
   '''^openapi_sha256['"]?[ \t]*:[ \t]*['"]?[0-9a-f]{64}['"]?[ \t\r\n]*$''',
 ]

@@ -18,6 +18,7 @@ from aew.harness import models
 from aew.harness.opencode.projection import LEAD_DENIED_PROVIDERS
 from aew.maps.service import first_map
 from aew.policy import execution
+from aew.policy.checks import PYTEST_CACHES
 from aew.util import dump_yaml, load_yaml, utc_now
 
 CHECK_COMMAND = "{python} -m pytest -q tests/unit"
@@ -75,7 +76,7 @@ def prepare(dest: Path, model: str | None, lead_model: str | None, provider: str
                                            provider=provider)
     assert given is not None
     configuration = KitConfiguration(given.argv, given.timeout_s, given.identity, given.provider, given.model,
-                                     given.provider_env)
+                                     given.provider_env, check_caches=PYTEST_CACHES)
     dest = dest.resolve()
     repo = dest / "repo"
     if repo.exists() or (dest / KIT_RECORD).exists():

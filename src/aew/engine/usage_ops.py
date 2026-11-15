@@ -54,6 +54,7 @@ UNPRICED_TOKENS_ABSENT = "unpriced_tokens_absent"  # the harness reported no cou
 UNPRICED_TOKENS_PARTIAL = "unpriced_tokens_partial"  # some categories unreported: their zeros are not counts
 UNPRICED_NOT_RECORDED = "unpriced_not_recorded"    # a provisional row has no record-time snapshot yet (R6)
 UNPRICED_USAGE_MISSING = "unpriced_usage_missing"  # neither a copy nor a run directory (R6 `missing`)
+UNPRICED_PLAN_LOGIN = "plan_login"
 # The harness could not enumerate every model call (its message paging stopped short): the models it saw are not
 # all the models that ran, so no attribution, and no semantics declared for them, covers the totals (#133 review, 1).
 UNPRICED_INCOMPLETE = "unpriced_model_enumeration_incomplete"
@@ -609,7 +610,7 @@ class Reader:
             self._snapshots[sha] = read_pricing_snapshot(self.aew_root, sha)
         return self._snapshots[sha]
 
-    def run_row(self, entry: Mapping[str, Any], inv_id: str) -> dict[str, Any]:
+    def run_row(self, entry: Mapping[str, Any], inv_id: str, *, plan_login: bool = False) -> dict[str, Any]:
         """One run: its record and where it came from (R6: ``recorded`` in control state, ``provisional`` from the run
         directory, ``missing`` from neither), both derived figures, and the provider's cost with its trust."""
         record = entry.get("usage")
@@ -638,6 +639,9 @@ class Reader:
             at_record, at_parts = {"unpriced": UNPRICED_NOT_RECORDED}, []
         current, current_parts = derive(record, self.current) if not self.unusable else (
             {"unpriced": UNPRICED_TABLE_UNUSABLE}, [])
+        if plan_login:
+            at_record = current = {"unpriced": UNPRICED_PLAN_LOGIN}
+            at_parts, current_parts = [], []
         recorded = self.snapshot(sha) if sha else None
         source = recorded.table.get("source") if recorded else None
         current_source = self.current.table.get("source") if self.current and not self.unusable else None
@@ -645,6 +649,7 @@ class Reader:
                  "estimated_under_current_prices": self.current.table["as_of"]
                  if self.current and not self.unusable else None}
         return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
+                **({"credential": "plan_login"} if plan_login else {}),
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
                 "prices_as_of": as_of, "at_record_source": source if source != current_source else None,
@@ -653,7 +658,8 @@ class Reader:
     def invocation(self, inv_id: str, inv: Mapping[str, Any]) -> dict[str, Any]:
         """One invocation: its rows and their sum. An invocation without runs (a custody invocation, or one not yet
         launched) is normal: counted in ``invocations_without_runs`` and nothing else (R7)."""
-        rows = [self.run_row(entry, inv_id) for entry in inv.get("runs") or []]
+        plan_login = (inv.get("execution_profile") or {}).get("credential") == "plan_login"
+        rows = [self.run_row(entry, inv_id, plan_login=plan_login) for entry in inv.get("runs") or []]
         totals = empty_totals()
         totals["invocations"] = 1
         totals["invocations_without_runs"] = 0 if rows else 1
@@ -700,13 +706,15 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
     ``unpriced_effective_model_mix`` and a run with no effective model under ``no_effective_model``; never under the
     requested model (R7). A partitioned run counts once under each of its models."""
     record = row["usage"]
+    plan = row.get("credential") == "plan_login"
     pieces = _pieces(record)
     if isinstance(pieces, str):
         key = UNPRICED_MIX if pieces == UNPRICED_MIX else "no_effective_model"
         model = by_model.setdefault(key, _empty_model())
         model["runs"] += 1
-        model["estimated_at_record_unpriced"] += 1
-        model["estimated_under_current_prices_unpriced"] += 1
+        if not plan:
+            model["estimated_at_record_unpriced"] += 1
+            model["estimated_under_current_prices_unpriced"] += 1
         for cat in U.CATEGORIES:
             model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
         return
@@ -725,6 +733,8 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
             continue
         counted.add(key)
         model["runs"] += 1
+        if plan:
+            continue
         model["estimated_at_record_usd"] = _plus(model["estimated_at_record_usd"], at_parts.get(key))
         model["estimated_under_current_prices_usd"] = _plus(model["estimated_under_current_prices_usd"],
                                                             current_parts.get(key))
@@ -897,6 +907,12 @@ def _amount(usd: Decimal, floor_above: int | None) -> str:
 def figure_text(figure: Mapping[str, Any]) -> str:
     """A summed figure (``priced``, ``unpriced``, ``usd``, ``reasons``) as text. A dollar amount is printed only over
     priced runs, and the unpriced runs are always counted beside it with their reasons (R4: unpriced is never zero)."""
+    reasons = dict(figure.get("reasons") or {})
+    plan = reasons.pop(UNPRICED_PLAN_LOGIN, 0)
+    unknown = figure["unpriced"] - plan
+    if plan:
+        other = figure_text({**figure, "unpriced": unknown, "reasons": reasons}) if unknown or figure["priced"] else ""
+        return (other + ", and " if other else "") + f"{plan} plan login run(s): not billed per token"
     if not figure["priced"] and not figure["unpriced"]:
         return "no runs"
     if not figure["priced"]:
@@ -968,13 +984,17 @@ def _totals_lines(totals: Mapping[str, Any], indent: str) -> list[str]:
 def _model_figure(model: Mapping[str, Any]) -> str:
     """One model's current figure, saying how many of its runs the sum covers: a partial sum never reads as whole."""
     priced, unpriced = model["estimated_under_current_prices_priced"], model["estimated_under_current_prices_unpriced"]
+    plan = model["runs"] - priced - unpriced
+    plan_text = f"{plan} plan login run(s): not billed per token" if plan else ""
     usd = model["estimated_under_current_prices_usd"]
     if not priced:
-        return f"{UNKNOWN_EXPOSURE} over {unpriced} run(s)"
+        if not unpriced and plan:
+            return plan_text
+        return f"{UNKNOWN_EXPOSURE} over {unpriced} run(s)" + (f", and {plan_text}" if plan else "")
     text = f"{_amount(usd, model['under_current_prices_floor_above'])} over {priced} run(s)"
     if model["under_current_prices_as_of"]:
         text += f", oldest prices as of {model['under_current_prices_as_of']}"
-    return text + (f", and {unpriced} {UNKNOWN_EXPOSURE}" if unpriced else "")
+    return text + (f", and {unpriced} {UNKNOWN_EXPOSURE}" if unpriced else "") + (f", and {plan_text}" if plan else "")
 
 
 def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
@@ -982,6 +1002,9 @@ def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
     tokens = tokens_text(record.get("tokens") or {}) if record else "none"
     trust = record.get("tokens_trust", "absent") if record else "missing"
     fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    if row.get("credential") == "plan_login":
+        return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
+                f"{indent}  plan login: not billed per token"]
     as_of = row["prices_as_of"]
     return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
             f"{indent}  cost at record prices "

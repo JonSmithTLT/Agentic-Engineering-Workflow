@@ -370,7 +370,7 @@ class Harness:
             changed = None
             if inv["role"] == "implementer" and base:
                 try:
-                    changed = changed_paths(workspace, base)
+                    changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
                 except Exception:
                     changed = None
             # Evidence evaluated on a workspace state that is no longer the current one satisfies no gate: say so,
@@ -422,7 +422,8 @@ class Harness:
                    "provider_env": list((policy or {}).get("provider_env") or []),
                    **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
                        r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
-                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
+                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base,
+                   **(self.k.check_cache_inputs() if base else {})})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         """Why a run may no longer act (None while it may). The engine's credential checks remain authoritative;
@@ -492,6 +493,9 @@ class Harness:
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
                             "reason_code": _reason_code(record),
+                            **({"cause": (record or {}).get("cause")}
+                               if isinstance((record or {}).get("cause"), str)
+                               and (record or {}).get("cause") in K.PLAN_LOGIN_FAILURES else {}),
                             # its missing tools are the Lead's one list, `missing_tools` (review of #356, m2)
                             "containment": {k: v for k, v in containment.normalize(
                                 (record or {}).get("containment")).items() if k != "missing_tools"},
@@ -908,6 +912,14 @@ class Harness:
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
+            elif plan_failure := K.plan_login_failure(
+                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
+            ):
+                action = f"{run} ended because {plan_failure}"
+            elif (_reason_code(record) == K.PROVIDER_AUTH_FAILED
+                  and (inv.get("execution_profile") or {}).get("credential") == "plan_login"):
+                action = (f"{run} ended because the provider rejected the operator's plan login. "
+                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id))
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
                     try:
@@ -1148,7 +1160,13 @@ def _reason_code(record: dict[str, Any] | None) -> str | None:
 
 def _headline(run: str, status: str, record: dict[str, Any] | None) -> str | None:
     """One line for a run that ended without its expected output in a way a caller could miss (register U8; V1)."""
+    cause = (record or {}).get("cause")
+    if status != K.ENDED_WITH_EVIDENCE and isinstance(cause, str) and cause in K.PLAN_LOGIN_FAILURES:
+        provider = _field(record, "execution_profile").get("provider", "")
+        return f"{run} FAILED: the operator's {provider} plan login {K.PLAN_LOGIN_FAILURES[cause]}. See next_action"
     if _reason_code(record) == K.PROVIDER_AUTH_FAILED and status != K.ENDED_WITH_EVIDENCE:
+        if ((record or {}).get("execution_profile") or {}).get("credential") == "plan_login":
+            return f"{run} FAILED: the model provider rejected the operator's plan login"
         return (f"{run} FAILED: the model provider rejected the credential ({K.PROVIDER_AUTH_FAILED}); its "
                 "expected output was not recorded. See next_action")
     if status != K.ENDED_WITHOUT_EVIDENCE:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,8 +55,13 @@ def send(lab, body="Check the shutdown edge."):
                                       to="INV-0001", body=body)
 
 
-def steps_done(lab, run, i):
-    lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), what=f"worker step {i}")
+def steps_done(lab, run, i, *, watchdog_only=False):
+    if watchdog_only:
+        # Startup/admission is bounded by pytest's watchdog, not another deadline inside the orphan scenario.
+        while not any(row["i"] == i for row in lab.transcript(run)):
+            time.sleep(0.05)
+    else:
+        lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), what=f"worker step {i}")
     return lab.step(run, i)
 
 
@@ -101,12 +108,35 @@ def test_message_wait_delivers_exactly_the_returned_lead_message_once(lab, tmp_p
 
 
 def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp_path):
+    orphan_wait(lab, tmp_path, "aew message wait --timeout 5")
+
+
+def test_a_shell_exiting_before_admission_fails_with_output_events_and_process_evidence(lab, tmp_path):
+    bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
+    command = ("Write-Output 'planted early shell exit'; exit 7" if sys.platform == "win32"
+               else "echo 'planted early shell exit'; exit 7")
+    run, sync = launch(lab, tmp_path, [{"do": "shell", "command": command, "timeout_s": 1,
+                                      "timeout_after_file": str(bound)}], wait_barrier=True)
+    (sync / "go").touch()
+    shell = steps_done(lab, run, 2, watchdog_only=True)
+    with pytest.raises(AssertionError) as failure:
+        assert not shell.get("barrier_error"), describe_shell(bound.parent, shell)
+    text = str(failure.value)
+    assert shell["exit"] == 7 and not shell["timed_out"] and not bound.exists(), text
+    for expected in ("shell exited before wait binding", "planted early shell exit", "shell exit: 7",
+                     "run events", "shell_pid:", "aew child started:", "observed shell process tree"):
+        assert expected in text, text
+    (sync / "end").touch()
+    lab.wait(run)
+
+
+def orphan_wait(lab, tmp_path, command):
     bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     run, sync = launch(lab, tmp_path, [
-        {"do": "shell", "command": "aew message wait --timeout 5", "timeout_s": 1,
+        {"do": "shell", "command": command, "timeout_s": 1,
          "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
-    shell = steps_done(lab, run, 2)
+    shell = steps_done(lab, run, 2, watchdog_only=True)
     try:
         assert not shell.get("barrier_error"), shell
         assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"

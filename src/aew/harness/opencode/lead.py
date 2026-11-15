@@ -216,7 +216,7 @@ def check_version() -> str:
     kwargs: dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
     out = subprocess.run([*binary_command(), "--version"], capture_output=True, text=True, timeout=60,
                          stdin=subprocess.DEVNULL, **kwargs)
-    version = (out.stdout or "").strip().split()[-1].lstrip("v") if out.stdout.strip() else ""
+    version = capabilities.cli_version(out.stdout)
     gaps = capabilities.version_problems(version)
     if out.returncode != 0 or gaps:
         raise HarnessIncompatible(f"the OpenCode CLI is not usable for the Lead: {gaps or out.stderr.strip()[-300:]}",
@@ -928,7 +928,7 @@ class ContainedLead:
                     entry = self.refreshing[provider]
                     meta = {k: "aew-relay-placeholder" for k in login.LOGIN_HEADERS.get(provider, {}).values()
                             if entry.metadata.get(k)}
-                    value = {"type": "oauth", "methodID": entry.method, "refresh": "aew-relay-no-refresh",
+                    value = {"type": "oauth", "methodID": entry.method, "refresh": login.RELAY_NO_REFRESH,
                              "access": token, "expires": now + INSIDE_LOGIN_S * 1000, "metadata": meta}
                     con.execute("UPDATE credential SET active = 0 WHERE integration_id = ?", (provider,))
                     row = (f"cred_aew_{provider}", provider, "AEW relay", json.dumps(value), entry.method, 1, now, now)

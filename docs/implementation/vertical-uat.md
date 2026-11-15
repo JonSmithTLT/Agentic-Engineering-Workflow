@@ -99,7 +99,6 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | A decision has no typed tool | its `cli_fallback`, from the shell; for `RECONCILE` (an INTERRUPTED Ticket), with the phase it was interrupted from and a reason |
 | Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and a reason in the Lead's own words filled in, `--launch` as a refusal asks). A hint with any other placeholder runs nothing and is the gap `hint_not_followable`; a command that doesn't parse is the observation `hint_usage_error`. Neither has a counter or a threshold, and the summary always prints both |
 | A prepared candidate with no decision offered: the publish decision reads the routed report, so this leaves a report that wasn't clean, or none | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
-| The gate still lacks the local check after the operator's own workaround (U14) | `aew harness launch` of the implementer's invocation, from the shell, so its check runs again |
 | After a takeover and a reconcile, no implementer is active and nothing is offered (the hint's transition is refused) | a new attempt: `aew invoke create --role implementer --launch` (`work redispatch` for a non-mutating Ticket); the refused hint is recorded as `stale_hint` |
 | A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete (for `RESOLVE_STAGE`, `aew stage continue` with the Lead's own rationale; when that is refused and the refusal names `abandon`, `aew stage abandon` with the Lead's rationale), then stuck |
 | Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
@@ -107,10 +106,7 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 **The workers** come from the fake harness: implementer, reviewer, verifier and integration verifier, each run's
 script chosen by its role and scope (the operator and the Lead never name a run). They make **a real one-line fix**
 to a real Python sample, with a real test. **The project's unit check is a real `python -m pytest`**, which writes
-`__pycache__`; no fake hides it, and the sample has **no `.gitignore`** for the caches (a fresh project has none). If
-the gate is then observed to refuse (the Lead stuck on `GATE_UNSATISFIED` with the caches in the Ticket's workspace),
-the operator's counted fallback is today's U14 workaround: the caches go into `.git/info/exclude`, and the operator
-tells the Lead to carry on.
+`__pycache__`. The sample declares its pytest caches in `policy/checks.yaml` and has no Git ignore entry for them.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
 installed tool: its variables are not the operator's.

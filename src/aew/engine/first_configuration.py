@@ -152,6 +152,7 @@ class FirstConfiguration:
     provider: str | None  # as typed
     model: str | None  # as typed
     provider_env: tuple[str, ...] = ()
+    check_caches: tuple[str, ...] = ()
 
     def files(self) -> dict[str, str]:
         """The text of each policy file the flags change, by its path under ``.aew``."""
@@ -168,6 +169,8 @@ class FirstConfiguration:
         unit.update(configured=True, command=list(self.argv or ()), description=DESCRIPTION)
         if self.timeout_s is not None:
             unit["timeout_s"] = self.timeout_s
+        if self.check_caches:
+            unit["caches"] = list(self.check_caches)
         return dump_yaml(checks)
 
     def _execution_text(self) -> str:

@@ -598,6 +598,7 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.operator`
+- `aew.policy.checks`
 - `aew.policy.execution`
 - `aew.schemas`
 - `aew.util`
@@ -665,10 +666,12 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.knowledge.render`
+- `aew.policy.checks`
 - `aew.policy.classes`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.schemas`
+- `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
 
@@ -1085,6 +1088,7 @@ None.
 - `aew.harness.agentenv`
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
+- `aew.harness.opencode.lead`
 - `aew.harness.registry`
 - `aew.policy.execution`
 
@@ -1408,7 +1412,10 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
+- `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
+- `aew.harness.registry`
+- `aew.policy.execution`
 
 ### `aew.harness.containment.peer`
 
@@ -1561,6 +1568,7 @@ None.
 
 ### `aew.harness.opencode.adapter`
 
+- `aew.engine.lock`
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.base`
@@ -1569,8 +1577,10 @@ None.
 - `aew.harness.harness_capabilities`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
+- `aew.harness.opencode.login`
 - `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
+- `aew.harness.procs`
 - `aew.harness.progress`
 - `aew.harness.runlog`
 - `aew.harness.usage`
@@ -1727,6 +1737,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.event_spool`
 - `aew.harness.operator_client`
+- `aew.harness.runlog`
 - `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
@@ -1881,6 +1892,7 @@ Imports from the groups:
 - `aew.harness.models`
 - `aew.harness.opencode.projection`
 - `aew.maps.service`
+- `aew.policy.checks`
 - `aew.policy.execution`
 - `aew.util`
 
@@ -2041,6 +2053,7 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.schemas`
+- `aew.workspace`
 
 ### `aew.policy`
 
@@ -2055,6 +2068,7 @@ None.
 - `aew.harness.containment.layout`
 - `aew.harness.contract`
 - `aew.harness.procs`
+- `aew.workspace.git`
 
 ### `aew.policy.classes`
 
@@ -2073,7 +2087,9 @@ None.
 ### `aew.policy.execution`
 
 - `aew.errors`
+- `aew.harness.containment.netns`
 - `aew.harness.models`
+- `aew.harness.opencode.capabilities`
 - `aew.schemas`
 - `aew.util`
 

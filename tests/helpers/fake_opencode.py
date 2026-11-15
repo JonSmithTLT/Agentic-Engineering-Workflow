@@ -86,6 +86,10 @@ def _pinned() -> str:
 
 
 PINNED = _pinned()
+# OpenCode 2.0.18's credential table as its migrations create it (pinned bundle, 2026-10-25).
+CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value "
+                    "text NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
+                    "time_updated integer NOT NULL)")
 SPEC = HERE.parent / "fixtures" / "opencode" / f"openapi-{PINNED}.min.json"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 DEFAULT_MODELS = [
@@ -300,7 +304,12 @@ class FakeOpenCode:
             return None
         import hashlib
 
-        key = os.environ.get(knob["variable"]) or ""
+        if knob.get("plan_login"):
+            assert "OPENAI_API_KEY" not in os.environ
+            [row] = self.plan_credentials()
+            key = row["value"]["access"]
+        else:
+            key = os.environ.get(knob["variable"]) or ""
         base = provider_base(s.info["model"])
         if knob.get("require_sentinel"):
             from aew.harness.containment.relay import SENTINEL_PREFIX
@@ -468,9 +477,20 @@ class FakeOpenCode:
         for entry in self.knobs.get("openapi_drop") or []:
             method, path = entry.split(" ", 1)
             spec["paths"].get(path, {}).pop(method.lower(), None)
-        if "stored_credentials" in self.knobs:  # 2.0.22's credential store
+        if "stored_credentials" in self.knobs or self.knobs.get("plan_credentials"):  # 2.0.22's credential store
             spec["paths"]["/api/credential"] = {"get": {"operationId": "credential.list"}}
         return spec
+
+    def plan_credentials(self) -> list[dict[str, Any]]:
+        import sqlite3
+        from contextlib import closing
+
+        from aew.harness.opencode import login
+
+        path = self.data_home / "opencode" / login.DB
+        with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as con:
+            return [{"id": row_id, "value": json.loads(value)}
+                    for row_id, value in con.execute("SELECT id, value FROM credential")]
 
     def plugins_activating(self) -> bool:
         """The ``plugins_activating_s`` knob: still activating, counted from the first location listing."""
@@ -547,6 +567,8 @@ class FakeOpenCode:
             return 200, self.spec()
         if (method, path) == ("GET", "/api/credential") and "stored_credentials" in self.knobs:
             return 200, {"data": self.knobs["stored_credentials"]}
+        if (method, path) == ("GET", "/api/credential") and self.knobs.get("plan_credentials"):
+            return 200, {"data": self.plan_credentials()}
         if (method, path) == ("GET", "/api/info"):
             return 200, {"version": self.knobs.get("version") or PINNED, "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}
@@ -1027,6 +1049,15 @@ def main(argv: list[str], scripts: Path) -> int:
         return 0
     if argv[:1] == ["--server"]:
         return tui(argv, scripts)
+    if argv == ["session", "list"]:
+        import sqlite3
+        from contextlib import closing
+
+        db = Path(os.environ["XDG_DATA_HOME"]) / "opencode" / "opencode.db"
+        db.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(db)) as con, con:
+            con.execute(CREDENTIAL_TABLE)
+        return 0
     if argv[:1] != ["serve"] or "--stdio" not in argv:
         print(f"fake opencode: unsupported arguments {argv}", file=sys.stderr)
         return 2

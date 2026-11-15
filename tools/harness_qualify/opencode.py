@@ -56,17 +56,17 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # ------------------------------------------------------------------------------------------------ starting the server
 
-def server_config(base_url: str | None = None) -> dict[str, Any]:
+def server_config(base_url: str | None = None, *, model_id: str = MODEL) -> dict[str, Any]:
     config: dict[str, Any] = {"snapshots": False, "update": "disable", "share": "disabled", "lsp": False,
                               "formatter": False}
     if base_url is not None:
-        ref = {"providerID": "openai", "model": MODEL}
+        ref = {"providerID": "openai", "model": model_id}
         agent = {"model": ref, "mode": "primary", "system": "Do exactly what the scripted model says.",
                  "permissions": _ALL_ALLOWED}
         config.update({"default_agent": AGENT, "agents": {AGENT: agent, **{a: {"model": ref} for a in
                                                                            ("title", "summary", "compaction")}},
                        "providers": {"openai": {"settings": {"baseURL": base_url, "transport": "http"},
-                                                "models": {MODEL: {"settings": {"baseURL": base_url}}}}}})
+                                                "models": {model_id: {"settings": {"baseURL": base_url}}}}}})
     return config
 
 
@@ -555,6 +555,8 @@ class OpenCodePack:
 
     def checks(self) -> list[Check]:
         from .messaging import checks as messaging_checks
+        from .worker_plan import FACT
+        from .worker_plan import check as check_worker_plan
 
         fx, pin = self.fixtures, self.pinned_version
         api = [
@@ -592,6 +594,8 @@ class OpenCodePack:
         behaviour.append(Check("login.store", check_login_store, measures=("login.store", "store.schema"),
                                says="a synthetic key, stored by the server in a private home, reads as AEW's login "
                                     "reader expects; the store is the one the Lead's own store handling knows"))
+        behaviour.append(Check(FACT, check_worker_plan, slow=True, measures=(FACT,),
+                               says="a synthetic worker OAuth login through a loopback-only provider relay"))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, live_usage_version(fx, pin)),
                   ("read_usage",),

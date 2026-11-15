@@ -29,19 +29,16 @@ from aewflow import sample_project
 from conftest import clean_env
 from discovery.rules import split_refusal
 from fake_harness import AGENT, POLICY, HarnessLab
+from fake_opencode import CREDENTIAL_TABLE as CREDENTIAL_TABLE
 
 from aew.harness import procs
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003"}
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
-# OpenCode 2.0.18's credential table, as its migrations create it (read in the pinned bundle, 2026-10-25).
 # The operator's TUI preferences (`cli.json`, with a plugin the Lead leaves out) and recent models (`model.json`).
 PREFERENCES = {"theme": {"name": "synthetic"}, "plugins": ["synthetic-plugin"]}
 RECENT_MODELS = {"recent": [{"providerID": "openai", "modelID": "gpt-5.5"}]}
-CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value "
-                    "text NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
-                    "time_updated integer NOT NULL)")
 
 LAUNCHER = """import json, os, pathlib, sqlite3, sys, time
 here = pathlib.Path(__file__).resolve().parent

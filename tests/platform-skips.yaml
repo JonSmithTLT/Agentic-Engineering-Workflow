@@ -384,6 +384,8 @@ skipped:
     tests/integration/test_containment.py::test_a_check_runs_inside_the_runs_layout: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_opencode_adapter.py::test_plan_worker_uses_a_synthetic_store_through_the_fake_upstream: >-
+      The worker plan login requires the Linux relay (E341); covered on Linux.
     tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[dispatch]: >-
       The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
     tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[direct]: >-

@@ -60,7 +60,7 @@ from aew.policy import execution as X
 from aew.roles import archetype
 from aew.skills import plan as skills_plan
 from aew.snapshot.fingerprint import changed_paths
-from aew.util import sha256_text, utc_now
+from aew.util import IS_WINDOWS, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
@@ -93,13 +93,19 @@ def record_told(aew_root: Path, result: Mapping[str, Any], *, lead: bool) -> Non
     if isinstance(triggers, list):  # a trigger: the run still works
         seqs = [t["seq"] for t in triggers if isinstance(t, Mapping) and type(t.get("seq")) is int]
         if seqs:
-            runlog.write_returned(directory, max(seqs))
+            try:
+                runlog.write_returned(directory, max(seqs))
+            except PermissionError:
+                pass  # the completed wait is still deliverable
         return
     if lead:
         runlog.write_end_returned(directory)
     digest = (result.get("runs") or {}).get(run)
     if isinstance(digest, Mapping) and type(digest.get("trigger_seq")) is int:  # the run is over: none of it is news
-        runlog.write_returned(directory, digest["trigger_seq"])
+        try:
+            runlog.write_returned(directory, digest["trigger_seq"])
+        except PermissionError:
+            pass  # the end receipt above remains valid
 
 
 def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
@@ -606,7 +612,8 @@ class Harness:
         try:
             returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
         except PermissionError as exc:
-            raise IllegalTransition("the returned progress watermark cannot be read yet; retry the wait",
+            remedy = "retry the wait" if IS_WINDOWS else "check the watermark file permissions"
+            raise IllegalTransition(f"the returned progress watermark cannot be read; {remedy}",
                                     reason="run_progress_unreadable") from exc
 
         def digests() -> dict[str, Any]:

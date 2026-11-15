@@ -1051,6 +1051,8 @@ skipped:
       refusal run on every platform in tests/unit/test_provider_key_refusal.py, and Windows' side (no provider-key
       line) in test_doctor_judges_no_provider_key_off_the_relay_route.
   linux:
+    tests/unit/test_runlog_reads.py::test_run_files_keep_the_five_second_windows_sharing_budget: >-
+      Windows handle sharing exercises the longer run-file retry budget. Covered on Windows.
     tests/integration/test_lead_wake_status.py::test_an_unreadable_serving_mark_is_unknown_and_is_not_removed: >-
       A Windows handle refuses the serving mark read. Covered on Windows.
     tests/integration/test_lead_wake_status.py::test_a_clean_broker_close_waits_out_a_held_liveness_record: >-

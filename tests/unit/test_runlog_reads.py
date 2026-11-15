@@ -144,6 +144,32 @@ def test_a_genuinely_absent_run_record_does_not_spend_the_windows_retry_budget(d
     assert attempts == [directory / runlog.RECORD] and sleeps == []
 
 
+def test_a_heartbeat_before_first_publication_does_not_log_an_unreadable_record(directory, monkeypatch):
+    from sleep_patch import patch_sleep
+
+    from aew.engine import store
+
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    monkeypatch.setattr(runlog, "IS_WINDOWS", True)
+    patch_sleep(monkeypatch, store)
+    runlog.beat(directory)
+    assert runlog.observed_status(directory) == (K.UNCONFIRMED, None)
+    assert not (directory / "events.jsonl").exists()
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_run_files_keep_the_five_second_windows_sharing_budget(directory):
+    from windows_sharing import blocked_read
+
+    from aew.engine.store import READ_RETRIES
+
+    assert runlog.READ_BUDGET_S == 5.0
+    record(directory, status=K.ENDED_WITH_EVIDENCE)
+    with blocked_read(directory / runlog.RECORD, release_after=READ_RETRIES + 1):
+        assert runlog.observed_status(directory)[0] == K.ENDED_WITH_EVIDENCE
+
+
 def test_a_refused_watermark_read_does_not_reset_or_overwrite_it(directory, monkeypatch):
     from aew.engine import store
 

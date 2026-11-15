@@ -50,7 +50,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, nullcontext, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple, Protocol
@@ -474,7 +474,10 @@ class WakeQueue:
 
     def _shown(self, run: str, mark: Mapping[str, Any]) -> int:
         """The newest trigger the Lead has been shown for ``run``, by a wake or by a wait."""
-        return max(int(mark["seq"]), runlog.read_returned(self._dir(run)))
+        seq = int(mark["seq"])
+        with suppress(PermissionError):
+            return max(seq, runlog.read_returned(self._dir(run)))
+        return seq
 
     def _ended(self, run: str, mark: Mapping[str, Any]) -> bool:
         status_, _record = runlog.observed_status(self._dir(run))
@@ -732,7 +735,8 @@ class WakeQueue:
             if mark is None:
                 continue
             mark["seq"] = max(int(mark["seq"]), int(entry["newest"]))
-            runlog.write_returned(self._dir(run), int(mark["seq"]))
+            with suppress(PermissionError):
+                runlog.write_returned(self._dir(run), int(mark["seq"]))
             mark["last_wake_at"] = now
             digest = runlog.read_progress(self._dir(run)) or {}
             counts = digest.get("counts") or {}

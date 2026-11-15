@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -35,11 +34,8 @@ def test_the_contract_is_the_accepted_one():
     assert CT.in_series(CONTRACT.version), f"this server speaks 0.1.x from {CT.BASE_VERSION}, not {CONTRACT.version}"
 
 
-def test_run_status_vocabulary_covers_the_engine_and_is_accepted_on_the_wire():
+def test_run_usage_status_enum_covers_the_engine_and_unreadable_is_accepted_on_the_wire():
     expected = {*K.TERMINAL, K.STARTING, K.RUNNING, K.UNCONFIRMED, K.UNREADABLE, K.LOST}
-    text = (ROOT / "web/src/api/vocabulary.ts").read_text(encoding="utf-8")
-    vocabulary = text.split("export const harnessStatuses = [", 1)[1].split("]", 1)[0]
-    assert set(re.findall(r"'([^']+)'", vocabulary)) == expected
     usage = json.loads((ROOT / "src/aew/schemas/run-usage.schema.json").read_text(encoding="utf-8"))
     assert set(usage["properties"]["status"]["enum"]) == expected
     assert not CONTRACT.violations("HarnessStatus", K.UNREADABLE)

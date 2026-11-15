@@ -105,7 +105,7 @@ def _read_text(path: Path) -> str | None:
         return retry_lock_free(lambda: _read_regular(path), also=MISSING_MID_REPLACE,
                                budget_s=READ_BUDGET_S, missing_when=known).decode("utf-8")
     except FileNotFoundError as exc:
-        if IS_WINDOWS and known():
+        if IS_WINDOWS and replace_pending(path):
             _read_problem(path, exc)
         return None
     except (OSError, ValueError) as exc:

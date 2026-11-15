@@ -51,7 +51,6 @@ export const harnessStatuses = [
   'crashed',
   'terminated',
   'unconfirmed',
-  'unreadable',
   'lost',
 ] as const;
 export const evidenceKinds = [

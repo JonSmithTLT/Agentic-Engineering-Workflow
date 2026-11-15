@@ -141,6 +141,47 @@ def test_a_working_run_with_no_news_wakes_no_one(lab: Lab) -> None:
     assert lab.poster.posts == []
 
 
+def test_a_broker_tick_posts_other_runs_when_one_watermark_is_unreadable(lab: Lab, monkeypatch) -> None:
+    lab.live()
+    lab.live(OTHER)
+    queue = lab.queue()
+    queue.tick()
+    queue.doc["marks"][RUN]["seq"] = 1
+    lab.digest(triggers=[OUTSIDE, {"seq": 2, "why": K.WORKER_IDLE}], state=P.IDLE)
+    lab.digest(OTHER, triggers=[{"seq": 1, "why": K.WORKER_IDLE}], state=P.IDLE)
+    read = runlog.read_returned
+
+    def unreadable(directory: Path) -> int:
+        if directory.name == RUN:
+            raise PermissionError(13, "held watermark")
+        return read(directory)
+
+    monkeypatch.setattr(runlog, "read_returned", unreadable)
+    assert queue._shown(RUN, queue.doc["marks"][RUN]) == 1
+    queue.tick()
+    assert len(lab.poster.posts) == 1
+    assert lab.shape()["why"] == [K.WORKER_IDLE]
+    assert set(lab.shape()["runs"]) == {RUN, OTHER}
+    assert queue.doc["marks"][RUN]["seq"] == 2
+    assert runlog.read_returned(runlog.run_dir(lab.root, OTHER)) == 1
+
+
+def test_record_told_keeps_delivered_wait_results_when_the_watermark_is_unreadable(tmp_path, monkeypatch):
+    from aew.engine.harness_ops import record_told
+
+    directory = runlog.run_dir(tmp_path, RUN)
+    directory.mkdir(parents=True)
+
+    def unreadable(_directory: Path) -> int:
+        raise PermissionError(13, "held watermark")
+
+    monkeypatch.setattr(runlog, "read_returned", unreadable)
+    record_told(tmp_path, {"run": RUN, "timed_out": False, "triggers": [{"seq": 1}]}, lead=True)
+    record_told(tmp_path, {"run": RUN, "timed_out": False, "runs": {RUN: {"trigger_seq": 2}}}, lead=True)
+    assert runlog.end_returned(directory)
+    assert not (directory / runlog.RETURNED_FILE).exists()
+
+
 def test_a_wake_is_held_while_the_lead_is_mid_turn_and_two_triggers_become_one_wake(lab: Lab) -> None:
     lab.live()
     lab.live(OTHER)

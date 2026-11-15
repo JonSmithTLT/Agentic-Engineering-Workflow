@@ -33,7 +33,6 @@ def test_archival_refuses_unreadable_usage_until_the_run_record_can_be_copied(tm
     directory = runlog.run_dir(tmp_path, run)
     directory.mkdir(parents=True)
     runlog.write_record(directory, {"status": K.ENDED_WITH_EVIDENCE})
-    runlog.beat(directory)
     monkeypatch.setattr(runlog, "READ_BUDGET_S", 0)
     with blocked_read(directory / runlog.RECORD, release=False):
         with pytest.raises(IllegalTransition, match="retry archival"):
@@ -41,6 +40,17 @@ def test_archival_refuses_unreadable_usage_until_the_run_record_can_be_copied(tm
         assert "usage" not in entry
     assert O.copy_run_usage(state, "INV-0001", tmp_path, pricing=None, final=True) == [run]
     assert entry["usage"]["status"] == K.ENDED_WITH_EVIDENCE
+
+
+def test_archival_refuses_an_explicit_unreadable_status(tmp_path, monkeypatch):
+    from aew.errors import IllegalTransition
+
+    entry = {"run": "R-INV-0001-1", "harness": "fake"}
+    state = {"invocations": {"INV-0001": {"runs": [entry]}}}
+    monkeypatch.setattr(runlog, "observed_status", lambda directory, **kwargs: (K.UNREADABLE, None))
+    with pytest.raises(IllegalTransition, match="retry archival"):
+        O.copy_run_usage(state, "INV-0001", tmp_path, pricing=None, final=True)
+    assert "usage" not in entry
 
 
 TABLE = (b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\n"

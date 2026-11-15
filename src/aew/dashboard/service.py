@@ -26,7 +26,7 @@ from aew.dashboard.server import DashboardServer
 from aew.dashboard.session import DEFAULT_HOURS, SessionTable
 from aew.engine.api import Engine
 from aew.engine.lock import FileLock
-from aew.engine.store import retry_lock_free
+from aew.engine.store import read_replaced
 from aew.errors import LockTimeout, UsageError
 from aew.harness import procs
 from aew.knowledge.manifest import load_manifest
@@ -193,8 +193,8 @@ def locate(aew_root: Path) -> dict[str, Any] | None:
     """The running server this project's ``local/dashboard/server.json`` names, with its control key, or ``None``
     when there is none (no file, or the recorded process is gone: a stale file is never trusted)."""
     try:
-        info = json.loads(retry_lock_free((aew_root / SERVER_JSON_REL).read_bytes))
-        key = retry_lock_free(lambda: (aew_root / KEY_REL).read_text(encoding="utf-8")).strip()
+        info = json.loads(read_replaced(aew_root / SERVER_JSON_REL))
+        key = read_replaced(aew_root / KEY_REL).decode("utf-8").strip()
     except (OSError, ValueError):
         return None
     if not isinstance(info, dict) or not isinstance(info.get("pid"), int):

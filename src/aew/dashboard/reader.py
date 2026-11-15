@@ -125,7 +125,8 @@ class StateReader:
         committed state), without the engine's locked manifest path; an unreadable, invalid or unadopted policy counts
         as empty, as the audit's own ``_policy`` treats it."""
         try:
-            raw = committed.retry_lock_free(path.read_bytes, also=committed.MISSING_MID_REPLACE)
+            raw = committed.retry_lock_free(path.read_bytes, also=committed.MISSING_MID_REPLACE,
+                                            missing_when=lambda: committed.replace_pending(path))
             if pinned and sha256_bytes(raw) != pin:
                 return {}
             data = load_yaml(raw.decode("utf-8"), source=str(path))
@@ -227,11 +228,13 @@ class MapsReader:
         regular file or malformed: ``INVALID``); only a read that failed raises its ``OSError`` (the server's
         ``500``, which the frontend shows as stale). The store owns the replace retries, including missing files on
         Windows, as for ``read_lock_free``; the read itself stays bounded and regular-file-only. An absent maps
-        directory returns ``NONE`` at once. If the directory exists but no registry is selected, Windows spends about
-        0.28 s retrying absence; POSIX returns at once. A persistent ``PermissionError`` is retried for about 0.28 s
-        on every platform, including POSIX, before it propagates (the store's policy)."""
+        directory or never-published registry returns ``NONE`` at once. Windows retries sharing failures and missing
+        names with evidence of publication. On POSIX the first permission error propagates."""
         try:
-            return committed.retry_lock_free(self._registry_read, also=committed.MISSING_MID_REPLACE)
+            path = self.aew_root / MS.REGISTRY_REL
+            return committed.retry_lock_free(self._registry_read, also=committed.MISSING_MID_REPLACE,
+                                            missing_when=lambda: self._registry is not None
+                                            or committed.replace_pending(path))
         except FileNotFoundError:
             return Registry(NONE)
 
@@ -273,8 +276,7 @@ class MapsReader:
         (``not_a_file``, ``too_large``); ``NOT_FOUND`` when there is none. Nothing is opened."""
         try:
             return committed.retry_lock_free(
-                lambda: MS.lstat_regular(self.aew_root / MS.artifact_rel(root), MS.MAP_FILE_MAX),
-                also=committed.MISSING_MID_REPLACE)
+                lambda: MS.lstat_regular(self.aew_root / MS.artifact_rel(root), MS.MAP_FILE_MAX))
         except FileNotFoundError:
             raise NotFound(f"no stored map {root}", root=root) from None
         except MS.NotARegularFile as exc:

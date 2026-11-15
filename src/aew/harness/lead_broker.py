@@ -342,7 +342,11 @@ class LeadBroker:
                     if off:  # turned off mid-session: posts stop now
                         clear_serving(own.aew_root, self.generation)
                         continue
-                    if serving(own.aew_root) != self.generation:  # turned on again; a later generation's stops this one
+                    try:
+                        marked = serving(own.aew_root)
+                    except PermissionError:
+                        marked = self.generation  # leave an unreadable mark in place and still tick
+                    if marked != self.generation:  # turned on again; a later generation's stops this one
                         mark_serving(own.aew_root, self.generation)
                     queue.tick()
                 except Exception as exc:  # noqa: BLE001 - a wake must never take the session down

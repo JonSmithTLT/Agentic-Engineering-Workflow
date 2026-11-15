@@ -429,6 +429,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live` (direct: Path.unlink): a loop variable over `files`, a list this reading cannot read
+- `aew.harness.runlog:_open_append` (direct: os.open): `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow

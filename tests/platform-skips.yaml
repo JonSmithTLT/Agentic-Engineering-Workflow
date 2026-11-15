@@ -1051,6 +1051,16 @@ skipped:
       refusal run on every platform in tests/unit/test_provider_key_refusal.py, and Windows' side (no provider-key
       line) in test_doctor_judges_no_provider_key_off_the_relay_route.
   linux:
+    tests/integration/test_lead_wake_status.py::test_an_unreadable_serving_mark_is_unknown_and_is_not_removed: >-
+      A Windows handle refuses the serving mark read. Covered on Windows.
+    tests/integration/test_lead_wake_status.py::test_a_clean_broker_close_waits_out_a_held_liveness_record: >-
+      A Windows handle refuses the liveness record read during shutdown. Covered on Windows.
+    tests/unit/test_capability_register.py::test_the_capability_register_read_recovers_from_a_held_handle: >-
+      A Windows handle refuses the capability register read. Covered on Windows.
+    tests/unit/test_runlog_reads.py::test_an_unreadable_request_stays_queued_after_retries: >-
+      Windows handle sharing can permit unlink while refusing the request read. Covered on Windows.
+    tests/unit/test_usage_ops.py::test_archival_refuses_unreadable_usage_until_the_run_record_can_be_copied: >-
+      A Windows held handle keeps the usage source unreadable during archival. Covered on Windows.
     tests/integration/test_lead_wake_status.py::test_a_held_liveness_record_does_not_make_a_live_broker_look_absent: >-
       Windows handle sharing prevents opening a live broker's record. Covered on Windows.
     tests/unit/test_map_store.py::test_an_identical_map_write_succeeds_while_the_published_artifact_is_held: >-

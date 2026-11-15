@@ -219,12 +219,13 @@ class Harness:
                                      "next_action": self._wait_on([run])})
 
     def wakes_reach_lead(self) -> bool:
+        """Whether a live broker is confirmed to post wakes for the Lead."""
         return self._wake_posting() is True
 
     def _wake_posting(self) -> bool | None:
         """Whether a wake would reach the Lead now: the policy has push wakes on, and a live broker posts them (steering
         design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback. It costs no second parse of
-        the control state: each run `aew status` reports asks, and so does a wait's end (OBX-38). **Limit:** right after
+        the control state. None means the broker's posting state could not be checked. **Limit:** right after
         a takeover the old mark can count until the old broker's watchdog closes its record, within a poll (0.83 s and
         0.88 s, measured), and longer only if that watchdog is stuck on the control lock."""
         try:
@@ -602,7 +603,11 @@ class Harness:
                     None, {"why": K.WORKER_MESSAGE, "message": m["id"]}, eligible_messages=eligible)]
             return view
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
-        returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+        try:
+            returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+        except PermissionError as exc:
+            raise IllegalTransition("the returned progress watermark cannot be read yet; retry the wait",
+                                    reason="run_progress_unreadable") from exc
 
         def digests() -> dict[str, Any]:
             return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}

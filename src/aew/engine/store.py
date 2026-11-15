@@ -114,19 +114,46 @@ _T = TypeVar("_T")
 MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
 
 
-def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = ()) -> _T:
+def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = (),
+                    budget_s: float | None = None, missing_when: Callable[[], bool] | None = None) -> _T:
     """``read()``, retried briefly on ``PermissionError`` (and on ``also``): on Windows a lock-free reader's open can
     collide with a writer's atomic replace for a moment (a sharing violation), as the writer's own
     ``replace_with_retry`` does on its side. The one owner of that retry, for every lock-free read of a file that may
-    be replaced. The last attempt's error is raised."""
-    for attempt in range(READ_RETRIES):
+    be replaced. The last attempt's error is raised. A longer budget applies to sharing refusals only.
+    A missing-name retry can require evidence that publication is in progress."""
+    if not IS_WINDOWS:
+        return read()
+    deadline = time.monotonic() + budget_s if budget_s is not None else None
+    attempt = 0
+    while True:
         try:
             return read()
-        except (PermissionError, *also):
-            if attempt == READ_RETRIES - 1:
+        except (PermissionError, *also) as exc:
+            if isinstance(exc, FileNotFoundError) and missing_when is not None and not missing_when():
                 raise
-            time.sleep(0.01 * (attempt + 1))
-    raise AssertionError("unreachable")
+            pause = 0.01 * min(attempt + 1, READ_RETRIES - 1)
+            if deadline is not None and isinstance(exc, PermissionError):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                pause = min(pause, remaining)
+            elif attempt >= READ_RETRIES - 1:
+                raise
+            time.sleep(pause)
+            attempt += 1
+
+
+def replace_pending(path: Path) -> bool:
+    """Evidence of publication: the name is now visible, or its temporary sibling is visible."""
+    try:
+        return path.is_file() or any(path.parent.glob(f".{path.name}.*.tmp"))
+    except OSError:
+        return False
+
+
+def read_replaced(path: Path) -> bytes:
+    """Read an atomic publication, retrying a missing name only while publication is in flight."""
+    return retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path))
 
 
 def read_lock_free(path: Path) -> bytes | None:

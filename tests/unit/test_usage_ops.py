@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import IS_WINDOWS
 
 from aew.engine import usage_ops as O
 from aew.errors import IntegrityError, ValidationFailed
@@ -18,6 +19,29 @@ from aew.harness import contract as K
 from aew.harness import runlog
 from aew.harness import usage as U
 from aew.schemas import validate
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_archival_refuses_unreadable_usage_until_the_run_record_can_be_copied(tmp_path, monkeypatch):
+    from windows_sharing import blocked_read
+
+    from aew.errors import IllegalTransition
+
+    run = "R-INV-0001-1"
+    entry = {"run": run, "harness": "fake"}
+    state = {"invocations": {"INV-0001": {"runs": [entry]}}}
+    directory = runlog.run_dir(tmp_path, run)
+    directory.mkdir(parents=True)
+    runlog.write_record(directory, {"status": K.ENDED_WITH_EVIDENCE})
+    runlog.beat(directory)
+    monkeypatch.setattr(runlog, "READ_BUDGET_S", 0)
+    with blocked_read(directory / runlog.RECORD, release=False):
+        with pytest.raises(IllegalTransition, match="retry archival"):
+            O.copy_run_usage(state, "INV-0001", tmp_path, pricing=None, final=True)
+        assert "usage" not in entry
+    assert O.copy_run_usage(state, "INV-0001", tmp_path, pricing=None, final=True) == [run]
+    assert entry["usage"]["status"] == K.ENDED_WITH_EVIDENCE
+
 
 TABLE = (b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\n"
          b"source: \"the provider's published list prices on the date above\"\nprices:\n"

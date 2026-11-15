@@ -70,10 +70,96 @@ def test_an_unreadable_run_record_is_distinct_from_an_absent_one(directory, capl
     from windows_sharing import blocked_read
 
     record(directory)
+    runlog.beat(directory)
     with blocked_read(directory / runlog.RECORD, release=False):
         status, _ = runlog.observed_status(directory)
     assert status == K.UNREADABLE and runlog.possibly_live(status, None)
-    assert "run_record_unreadable" in caplog.text
+    assert "PermissionError errno=13 winerror=None" in caplog.text
+    [event] = [json.loads(line) for line in (directory / "events.jsonl").read_text().splitlines()]
+    assert event["event"] == "run_file_unreadable" and event["file"] == runlog.RECORD
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_unreadable_request_stays_queued_after_retries(directory):
+    from windows_sharing import blocked_read
+
+    name, text = runlog.new_request("send", {"text": "continue"})
+    path = runlog.deliver_request(directory, name, text)
+    unread = []
+    with blocked_read(path, release=False):
+        assert runlog.take_requests(directory, on_unread=lambda name, exc: unread.append((name, exc.errno))) == []
+        assert path.is_file()
+    assert unread == [(name, 13)]
+    with blocked_read(path):
+        assert runlog.take_requests(directory) == [(name, text)]
+
+
+def test_an_unreadable_windows_record_needs_a_fresh_heartbeat_to_keep_custody(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.engine import store
+    from aew.engine.custody_ops import RUN_LOST, Custody
+
+    run = "R-INV-0001-1"
+    directory = runlog.run_dir(tmp_path, run)
+    directory.mkdir(parents=True)
+    monkeypatch.setattr(runlog, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(runlog, "READ_BUDGET_S", 0)
+
+    def denied(_):
+        raise PermissionError(13, "held")
+
+    monkeypatch.setattr(runlog, "_read_regular", denied)
+    custody = Custody.__new__(Custody)
+    custody.k = SimpleNamespace(aew_root=tmp_path)
+    child = ("INV-0001", {"runs": [{"run": run}]})
+    runlog.beat(directory)
+    assert runlog.observed_status(directory) == (K.UNREADABLE, None)
+    assert custody._ended({}, child) is None
+    os.utime(directory / "heartbeat", (0, 0))
+    assert runlog.observed_status(directory) == (K.LOST, None)
+    assert custody._ended({}, child) == RUN_LOST
+    (directory / "heartbeat").unlink()
+    assert runlog.observed_status(directory) == (K.LOST, None)
+    assert custody._ended({}, child) == RUN_LOST
+
+
+def test_a_genuinely_absent_run_record_does_not_spend_the_windows_retry_budget(directory, monkeypatch):
+    from sleep_patch import patch_sleep
+
+    from aew.engine import store
+
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    attempts = []
+
+    def missing(path):
+        attempts.append(path)
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(runlog, "_read_regular", missing)
+    sleeps = patch_sleep(monkeypatch, store)
+    assert runlog.observed_status(directory) == (K.UNCONFIRMED, None)
+    assert attempts == [directory / runlog.RECORD] and sleeps == []
+
+
+def test_a_refused_watermark_read_does_not_reset_or_overwrite_it(directory, monkeypatch):
+    from aew.engine import store
+
+    runlog.write_returned(directory, 7)
+    monkeypatch.setattr(store, "IS_WINDOWS", False)
+
+    def denied(_):
+        raise PermissionError(13, "held")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(runlog, "_read_regular", denied)
+        with pytest.raises(PermissionError):
+            runlog.read_returned(directory)
+        with pytest.raises(PermissionError):
+            runlog.write_returned(directory, 4)
+    assert runlog.read_returned(directory) == 7
 
 
 def test_a_record_past_its_bound_is_not_read(directory, monkeypatch):
@@ -150,6 +236,24 @@ def test_a_request_past_the_bound_is_dropped(directory, monkeypatch):
     monkeypatch.setattr(runlog, "MAX_RECORD_BYTES", 32)
     assert runlog.take_requests(directory) == [("a.json", '{"kind": "stop"}')]
     assert not list(queue.iterdir())  # taken or dropped, never read again
+
+
+def test_a_windows_sharing_violation_leaves_the_unread_request_queued(directory, monkeypatch):
+    name, text = runlog.new_request("send", {"text": "resume the session"})
+    path = runlog.deliver_request(directory, name, text)
+
+    def sharing_violation(_path):
+        # Windows os.open reports EACCES without a winerror. Release the sharing conflict before unlink could run.
+        raise PermissionError(13, "Permission denied")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(runlog, "IS_WINDOWS", True)
+        fault.setattr(runlog, "_read_regular", sharing_violation)
+        assert runlog.take_requests(directory) == []
+        assert path.is_file(), "the supervisor deleted a request it never read"
+
+    assert runlog.take_requests(directory) == [(name, text)]
+    assert runlog.take_requests(directory) == []
 
 
 def test_requests_issued_on_one_clock_tick_each_keep_their_own_file_in_issue_order(directory, monkeypatch):

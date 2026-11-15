@@ -313,9 +313,6 @@ def summary(aew_root: Path) -> dict[str, Any] | None:
     field: a local file, never trusted for anything but display."""
     path = notify_dir(aew_root) / STATE
     try:
-        info = os.lstat(path)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > STATE_MAX_BYTES:
-            return None
         data = json.loads(_read_state(path))
     except (OSError, ValueError, RecursionError):
         return None
@@ -804,7 +801,7 @@ class Watcher:
 
     def _write_state(self, text: str) -> None:
         path = notify_dir(self.aew_root) / STATE
-        tmp = path.with_name(f".state.{os.getpid()}.tmp")
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_text(text, encoding="utf-8")
@@ -837,17 +834,18 @@ def _count(value: Any) -> int:
 
 
 def _read_state(path: Path) -> bytes:
-    from aew.engine.store import retry_lock_free
+    from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 
-    return retry_lock_free(path.read_bytes)
+    def read() -> bytes:
+        info = os.lstat(path)
+        return path.read_bytes() if stat.S_ISREG(info.st_mode) and info.st_size <= STATE_MAX_BYTES else b"null"
+
+    return retry_lock_free(read, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path))
 
 
 def _saved_state(aew_root: Path) -> dict[str, Any]:
     path = notify_dir(aew_root) / STATE
     try:
-        info = os.lstat(path)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > STATE_MAX_BYTES:
-            return {}
         data = json.loads(_read_state(path))
     except (OSError, ValueError, RecursionError):
         return {}

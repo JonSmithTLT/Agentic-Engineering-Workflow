@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import ctypes
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from aew.engine import store
+
 
 @contextmanager
-def blocked_read(path: Path, *, release: bool = True, replace_gap: bool = False) -> Iterator[None]:
+def blocked_read(path: Path, *, release: bool = True, replace_gap: bool = False,
+                 release_after: int = 1) -> Iterator[None]:
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
                                    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
@@ -23,16 +28,30 @@ def blocked_read(path: Path, *, release: bool = True, replace_gap: bool = False)
     # DELETE access plus full sharing: the CRT open does not grant FILE_SHARE_DELETE to this handle.
     handle = kernel.CreateFileW(str(path), 0x00010000, 0x7, None, 3, 0, None)
     assert handle != wintypes.HANDLE(-1).value, ctypes.get_last_error()
-    timer = None
-    hidden = path.with_suffix(".pending")
+    hidden = path.with_name(f".{path.name}.held.tmp")
     moved = False
+    released = False
+    sleeps = 0
+    owner = threading.get_ident()
 
     def publish() -> None:
+        nonlocal released
+        if released:
+            return
         try:
             if moved:
                 hidden.rename(path)
         finally:
             kernel.CloseHandle(handle)
+            released = True
+
+    def release_on_retry(delay: float) -> None:
+        nonlocal sleeps
+        if threading.get_ident() == owner:
+            sleeps += 1
+            if sleeps == release_after:
+                publish()
+        time.sleep(delay)
 
     try:
         with pytest.raises(PermissionError):
@@ -43,13 +62,12 @@ def blocked_read(path: Path, *, release: bool = True, replace_gap: bool = False)
             moved = True
             with pytest.raises(FileNotFoundError):
                 path.read_bytes()
-        if release:
-            # Remain held past the first read but release within the shared retry budget (280 ms).
-            timer = threading.Timer(0.1, publish)
-            timer.start()
-        yield
+        with pytest.MonkeyPatch.context() as patch:
+            if release:
+                # The first actual retry releases the handle, independent of imports and scheduling.
+                patch.setattr(store, "time", SimpleNamespace(monotonic=time.monotonic, sleep=release_on_retry))
+            yield
+            if release:
+                assert released, "the reader did not retry the held handle"
     finally:
-        if timer is None:
-            publish()
-        else:
-            timer.join()
+        publish()

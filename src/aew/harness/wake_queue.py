@@ -158,10 +158,11 @@ def clear_serving(aew_root: Path, generation: int) -> None:
 
 def serving(aew_root: Path) -> int | None:
     """The generation whose broker posts wakes, or None if there is no valid mark."""
-    from aew.engine.store import retry_lock_free
+    from aew.engine.store import read_replaced
 
+    path = Path(aew_root) / SERVING_REL
     try:
-        return int(retry_lock_free(lambda: (Path(aew_root) / SERVING_REL).read_text(encoding="utf-8")))
+        return int(read_replaced(path))
     except PermissionError as exc:
         logging.getLogger(__name__).warning("broker_serving_unreadable: errno=%s winerror=%s",
                                            exc.errno, getattr(exc, "winerror", None))
@@ -207,10 +208,12 @@ def _empty() -> dict[str, Any]:
 def read(aew_root: Path) -> dict[str, Any] | None:
     """The queue's file, or None: missing, unreadable, or not this module's. The queue then starts empty: the runs'
     returned marks stop it repeating what the Lead has seen, and the worst case is one more wake."""
-    from aew.engine.store import retry_lock_free
+    from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 
+    path = Path(aew_root) / WAKES_REL
     try:
-        doc = json.loads(retry_lock_free((Path(aew_root) / WAKES_REL).read_bytes))
+        doc = json.loads(retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE,
+                                        missing_when=lambda: replace_pending(path)))
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:

@@ -190,6 +190,7 @@ None.
 ### `aew.capability.store`
 
 - `aew.engine.lock`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.hoststate`
 - `aew.util`
@@ -1360,6 +1361,7 @@ None.
 - `aew.engine.store`
 - `aew.harness.operator_client`
 - `aew.harness.procs`
+- `aew.harness.wake_queue`
 - `aew.util`
 
 ### `aew.harness.check_changes`

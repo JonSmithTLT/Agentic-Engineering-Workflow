@@ -55,6 +55,7 @@
 - **"Possibly live" means:**
   - a supervisor heartbeat within `STALE_AFTER_S` (10 s); or
   - an `unconfirmed` run launched less than 30 s ago, which could still be between its launch commit and its spawn.
+  - an `unreadable` run whose heartbeat is fresh.
 
   A possibly-live run needs `--replace` (`RUN_LIVE`). Its credential dies in the relaunch commit either way, and a best-effort stop request for its supervisor is recorded in the same commit.
 - **A session id is correlation only**, recorded in the local run record.
@@ -65,6 +66,7 @@
 | status | meaning |
 |---|---|
 | `unconfirmed` | derived: recorded in control state, but no supervisor ever wrote a record. No process holds its credential. |
+| `unreadable` | derived: Windows refused the run-record read through the shared retry budget, and the heartbeat is fresh. A stale or missing heartbeat gives `lost`. |
 | `starting`, `running` | a supervisor holds custody and beats a heartbeat |
 | `launch_failed` | custody refused, no credential handoff, or the harness failed to start (health, capability, model) |
 | `ended_with_evidence` | the harness exited after this run recorded evidence of an **expected kind** |

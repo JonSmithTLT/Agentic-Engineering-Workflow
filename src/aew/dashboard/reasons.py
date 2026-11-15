@@ -61,6 +61,7 @@ REASONS: dict[str, str] = {
     # health and attention
     "CONTRADICTION": "the engine detected an inconsistency the Lead must resolve",
     "RUN_LOST": "a harness run's supervisor stopped reporting",
+    "RUN_UNREADABLE": "a harness run has a fresh heartbeat but its status could not be read",
     "RUN_CRASHED": "a harness run ended abnormally",
     "NOTIFY_DELIVERY_FAILED": "the operator endpoint could not deliver a notification through the configured notifier",
     "MANIFEST_PIN_MISMATCH": "project.yaml does not match the hash control state pins",

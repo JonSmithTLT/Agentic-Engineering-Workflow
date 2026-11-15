@@ -78,10 +78,10 @@ def _path(root: Path, generation: int) -> Path:
 
 
 def read_leftovers(root: Path, generation: int) -> Leftovers:
-    from aew.engine.store import retry_lock_free
+    from aew.engine.store import read_replaced
 
     try:
-        record = json.loads(retry_lock_free(_path(root, generation).read_bytes))
+        record = json.loads(read_replaced(_path(root, generation)))
     except (OSError, ValueError):
         return None
     if not isinstance(record, dict) or type(record.get("generation")) is not int or record["generation"] != generation:

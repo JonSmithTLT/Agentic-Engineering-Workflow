@@ -16,9 +16,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from aew import util
 from aew.engine.conflicts import overlapping_scopes
 from aew.errors import UsageError
-from aew.harness import runlog, supervisor
+from aew.harness import runlog
 from aew.harness.containment import netns
 from aew.kit import CHECK_COMMAND, DATES_SCOPE, MONEY_SCOPE, OPENING_REQUEST, git, launch_argv, prepare
 from aew.kit import __main__ as kit_main
@@ -237,9 +238,9 @@ def _receipt_overlap(tmp_path, first, second):
 
 def test_sys39_counts_runs_overlapping_inside_one_second(tmp_path, monkeypatch):
     clock = iter(datetime(2026, 11, 11, 16, 20, 30, us, tzinfo=UTC) for us in (100, 300, 200, 400))
-    monkeypatch.setattr(supervisor, "datetime", SimpleNamespace(now=lambda _: next(clock)))
-    first = (supervisor._run_stamp(), supervisor._run_stamp())
-    second = (supervisor._run_stamp(), supervisor._run_stamp())
+    monkeypatch.setattr(util, "datetime", SimpleNamespace(now=lambda _: next(clock)))
+    first = (util.utc_now_precise(), util.utc_now_precise())
+    second = (util.utc_now_precise(), util.utc_now_precise())
     assert _receipt_overlap(tmp_path, first, second) == [["R-INV-0001-1", "R-INV-0002-1"]]
 
 

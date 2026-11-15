@@ -34,7 +34,6 @@ import sys
 import threading
 import time
 import traceback
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +56,7 @@ from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter, refusal_of, relay_family_of
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
 from aew.knowledge import evidence as E
-from aew.util import sha256_text, utc_now
+from aew.util import sha256_text, utc_now, utc_now_precise
 
 TICK_S = 0.25
 STATE_POLL_S = 2.0
@@ -209,11 +208,6 @@ def spool(run_dir: Path, event: str, reason: str) -> None:
         return
     event_spool.append(aew_root, event_spool.run_writer(run_dir.name), event, subject=run_dir.name,
                        reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}")
-
-
-def _run_stamp() -> str:
-    """Preserve sub-second overlap in the run's recorded interval."""
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class Supervisor:
@@ -447,7 +441,7 @@ class Supervisor:
             return self._launch_failed(f"the start took longer than {self._start_s:g}s ({START_ENV}); the run was "
                                        "abandoned")
         self.record["status"] = K.RUNNING
-        self.record["started_at"] = _run_stamp()
+        self.record["started_at"] = utc_now_precise()
         self._started_mono = time.monotonic()
         self.record["harness_pids"] = list(self.tree.pids)
         self.record["harness_start_ids"] = [procs.start_id(pid) for pid in self.tree.pids]
@@ -569,7 +563,7 @@ class Supervisor:
     def _refuse(self, reason: str, error_code: str | None = None) -> bool:
         code = K.launch_failure_code(K.CUSTODY, error_code)
         self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", reason_code=code,
-                           ended_at=_run_stamp())
+                           ended_at=utc_now_precise())
         self._event("custody_refused", reason=reason, reason_code=code)
         spool(self.run_dir, "launch_failed", self.record["reason"])  # site 1 (R2-m5), before the terminal record
         self._save()
@@ -809,7 +803,7 @@ class Supervisor:
         self._record_usage()
         self._compare_effective()
         self.record["evidence"] = self._evidence()
-        self.record.update(status=status, reason=reason, ended_at=_run_stamp())
+        self.record.update(status=status, reason=reason, ended_at=utc_now_precise())
         if self.record.pop("cause", None) is not None:
             self.record.pop("next_action", None)
         # The vocabulary follows the status (amendment 1, R2-m2): a launch-failure code is written with `launch_failed`
@@ -929,7 +923,7 @@ def main(argv: list[str] | None = None) -> int:
                                       "reason": "no credential handoff: the launching process ended before handing "
                                                 "over custody; no process holds this run's credential",
                                       "reason_code": K.launch_failure_code(K.HANDOFF),
-                                      "supervisor_pid": os.getpid(), "ended_at": _run_stamp()})
+                                      "supervisor_pid": os.getpid(), "ended_at": utc_now_precise()})
         return 3
     try:
         handoff = json.loads(raw.decode("utf-8"))
@@ -937,7 +931,7 @@ def main(argv: list[str] | None = None) -> int:
         spool(run_dir, "launch_failed", "malformed credential handoff")
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "malformed credential handoff",
-                                      "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": _run_stamp()})
+                                      "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": utc_now_precise()})
         return 3
     del raw
     sup = Supervisor(run_dir, handoff, ack)

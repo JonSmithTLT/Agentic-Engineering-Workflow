@@ -78,6 +78,7 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
     for run in runs:
         assert lab.wait(run)["status"] == "ended_with_evidence", lab.record(run)
         record = lab.record(run)
+        # Pin microsecond precision even when scheduling makes this particular overlap span whole seconds.
         for field in ("started_at", "ended_at"):
             assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z", record[field]), record[field]
     # Each run waited for the other's announcement before it wrote, so each having seen it proves both ran at once: a

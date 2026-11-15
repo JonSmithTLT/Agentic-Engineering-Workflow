@@ -40,7 +40,8 @@ ZERO = "0" * 64
 MUTATING, TABLE, MAPS = (o.switch for o in switch_offer.OFFERS)
 EXECUTION = "policy/execution.yaml"
 GATES, PRICES, MANIFEST = "policy/gates.yaml", "policy/pricing.yaml", "project.yaml"
-BOTH = [MUTATING, TABLE]
+BOTH = [MUTATING, TABLE]  # the rows a project from before the first two defaults moved is offered
+ROWS = [o.switch for o in switch_offer.OFFERS]  # every row: the shared row tests run over each
 FROZEN = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
 
 
@@ -59,9 +60,23 @@ class Terminal:
         return re.search(r"Type ([0-9A-F]{6}) and", prompt)[1] if reply == "CODE" else reply
 
 
+def _strip_maps(p) -> bool:
+    """The execution policy as the template wrote it before maps were on by default: no ``maps`` key at all. Whether
+    it had to be changed."""
+    policy = p.root / ".aew" / EXECUTION
+    text = policy.read_text(encoding="utf-8")
+    if "\n# Project maps" not in text:
+        return False
+    assert text.count("\n# Project maps") == 1
+    assert text.rstrip().endswith(f"pack_slices: {X.NEW_PROJECT_PACK_SLICES}")
+    policy.write_text(text[:text.index("\n# Project maps") + 1], encoding="utf-8", newline="\n")
+    return True
+
+
 @pytest.fixture
-def old(tmp_path):
-    """A project from before both defaults moved, adopted as it is: `mutating_concurrency` 1, no table."""
+def old(tmp_path, request):
+    """A project from before both defaults moved, adopted as it is: `mutating_concurrency` 1, no table. A test run
+    over one ``row`` gets one from before maps were on as well, so every row is pending and the test's own is asked."""
     p = sample_project(tmp_path)
     gates = p.root / ".aew" / GATES
     default = f"mutating_concurrency: {DEFAULT_GATES['mutating_concurrency']}"
@@ -70,6 +85,8 @@ def old(tmp_path):
                      newline="\n")
     _manifest(p, lambda policy: policy.pop("pricing"))
     (p.root / ".aew" / PRICES).unlink()
+    if "row" in getattr(getattr(request.node, "callspec", None), "params", {}):
+        _strip_maps(p)
     p.adopt_policy()
     return p
 
@@ -78,11 +95,8 @@ def old(tmp_path):
 def before_maps(old):
     """``old`` initialized before maps were on by default as well (register E184): its execution policy is the
     template of then, with no ``maps`` key at all, so all three rows are pending."""
-    policy = old.root / ".aew" / EXECUTION
-    text = policy.read_text(encoding="utf-8")
-    assert text.count("\n# Project maps") == 1 and text.rstrip().endswith(f"pack_slices: {X.NEW_PROJECT_PACK_SLICES}")
-    policy.write_text(text[:text.index("\n# Project maps") + 1], encoding="utf-8", newline="\n")
-    old.adopt_policy()
+    if _strip_maps(old):  # a test run over one row has it so already
+        old.adopt_policy()
     return old
 
 
@@ -202,7 +216,7 @@ def test_aew_lead_session_never_offers(old, at_terminal, monkeypatch):
 
 
 @pytest.mark.parametrize("variable", ["AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"])
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_lead_session_is_never_asked_a_switch_offer(old, at_terminal, monkeypatch, row, variable):
     only_row(monkeypatch, row)
     term = at_terminal("CODE")
@@ -211,7 +225,7 @@ def test_a_lead_session_is_never_asked_a_switch_offer(old, at_terminal, monkeypa
     assert term.prompts == [] and decision.taken == [] and out.getvalue() == ""
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_an_agents_own_aew_never_asks_a_switch_offer(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     term = at_terminal("CODE")
@@ -428,7 +442,7 @@ def test_a_quoted_key_is_refused_rather_than_given_a_second_key(raw, key_path):
         switch_offer.edit_key(raw, key_path, 2)
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_taking_it_adopts_as_the_operators_with_manifest_adopts_record(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     before = len(decisions(old))
@@ -450,7 +464,16 @@ def _follow_the_hand_route(p, line: str, monkeypatch) -> None:
     if set_key:
         key, value, rel = set_key.groups()
         path = root / rel
-        path.write_bytes(re.sub(rf"(?m)^{key}: .*$", f"{key}: {value}", path.read_bytes().decode()).encode())
+        text = path.read_bytes().decode()
+        if "." in key:  # a nested key, `block.key`: set it under its block, adding the block when it is absent
+            block, leaf = key.split(".", 1)
+            if re.search(rf"(?m)^{block}:", text):
+                text = re.sub(rf"(?m)^(  {leaf}): .*$", rf"\1: {value}", text)
+            else:
+                text = text.rstrip("\n") + f"\n{block}:\n  {leaf}: {value}\n"
+        else:
+            text = re.sub(rf"(?m)^{key}: .*$", f"{key}: {value}", text)
+        path.write_bytes(text.encode())
     else:
         steps = r"copy `(.+?)` to (\S+), add `(.+?)` under `policy:` in (\S+);"
         source, rel, entry, manifest = re.search(steps, line).groups()
@@ -465,25 +488,27 @@ def _follow_the_hand_route(p, line: str, monkeypatch) -> None:
     assert cli.main(["-C", str(root), *argv]) in (0, None)
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_the_hand_route_runs_as_printed_and_takes_the_declined_switch(old, at_terminal, monkeypatch, row):
     """The only way back from a remembered no, followed as the screen and doctor print it."""
     only_row(monkeypatch, row)
     _, said = take(old, "", at_terminal=at_terminal)
     line = doctor(old)[f"switch-offer:{row}"]
-    assert line.split("To take it: ")[1].rstrip(".") in said
+    assert line.split("To take it: ")[1].split(". Or to be asked again")[0] in said
     _follow_the_hand_route(old, line, monkeypatch)
     assert doctor(old) == {}
     state = load_control(old.root)
     assert engine(old).policy_pin_drift(state) == [] and engine(old).manifest_pin_ok(state)
     if row == MUTATING:
         assert engine(old)._k.policy("gates")["mutating_concurrency"] == DEFAULT_GATES["mutating_concurrency"]
-    else:
+    elif row == TABLE:
         assert engine(old).manifest["policy"]["pricing"] == PRICES
         assert (old.root / ".aew" / PRICES).read_bytes() == O.bundled_table()
+    else:
+        assert X.pack_slices(engine(old).execution_policy()[0]) == X.NEW_PROJECT_PACK_SLICES
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_every_line_naming_the_adopt_gives_the_paths_and_flags_it_needs(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     adopt = f"`aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
@@ -513,7 +538,8 @@ def _second_call(row: switch_offer.SwitchOffer, then: Any) -> switch_offer.Switc
 
 @pytest.mark.parametrize("row,own,edit", [
     (MUTATING, GATES, lambda data: data.update(non_mutating_concurrency=7)),
-    (TABLE, MANIFEST, lambda data: data.setdefault("workspaces", {}).update(root="../somewhere-else"))])
+    (TABLE, MANIFEST, lambda data: data.setdefault("workspaces", {}).update(root="../somewhere-else")),
+    (MAPS, EXECUTION, lambda data: data.update(provider_env=["SYNTHETIC_PROVIDER_KEY"]))])
 def test_another_edit_of_the_rows_own_file_while_the_prompt_waits_is_not_adopted_with_it(old, at_terminal, monkeypatch,
                                                                                          row, own, edit):
     """`only=` compares names, so the row's own file has to be seen as drifted before the row writes it."""
@@ -532,7 +558,7 @@ def test_another_edit_of_the_rows_own_file_while_the_prompt_waits_is_not_adopted
     assert not decisions(old)[-1]["reason"].startswith("switch offer")
 
 
-@pytest.mark.parametrize("row,theirs", [(MUTATING, GATES), (TABLE, PRICES)])
+@pytest.mark.parametrize("row,theirs", [(MUTATING, GATES), (TABLE, PRICES), (MAPS, EXECUTION)])
 def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_terminal, monkeypatch, row, theirs):
     only_row(monkeypatch, row)
     at_terminal("CODE")
@@ -541,6 +567,8 @@ def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_
     path = old.root / ".aew" / theirs
     if row == MUTATING:
         path.write_bytes(path.read_bytes().replace(b"mutating_concurrency: 1", b"mutating_concurrency: 7"))
+    elif row == MAPS:  # the operator's own value, the one the offer would have written
+        path.write_bytes(path.read_bytes() + f"maps:\n  pack_slices: {X.NEW_PROJECT_PACK_SLICES}\n".encode())
     else:
         path.write_bytes(b"theirs\n")
     held = path.read_bytes()
@@ -548,7 +576,7 @@ def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_
     assert "left as it is" in out.getvalue() and path.read_bytes() == held and old.rev() == rev
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_an_unadopted_manifest_refuses_and_is_named(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     path = old.root / ".aew" / MANIFEST
@@ -568,7 +596,7 @@ def test_a_row_whose_own_file_has_an_unadopted_edit_is_not_asked(old, at_termina
     assert term.prompts == [] and GATES in out.getvalue()
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_any_other_drift_refuses_and_lists_it(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     guard = old.root / ".aew/policy/guardrails.yaml"
@@ -580,7 +608,7 @@ def test_any_other_drift_refuses_and_lists_it(old, at_terminal, monkeypatch, row
     assert "policy/guardrails.yaml" in doctor(old)[f"switch-offer:{row}"]
 
 
-@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST])])
+@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION])])
 def test_a_drift_after_the_check_is_refused_inside_the_adopt_and_leaves_neither_file(old, at_terminal, monkeypatch, row,
                                                                                      files):
     """A real refusal, by `only=` inside the real adoption's transaction."""
@@ -600,7 +628,7 @@ def test_a_drift_after_the_check_is_refused_inside_the_adopt_and_leaves_neither_
     assert guard.read_text(encoding="utf-8") == edited  # never the offer's to touch
 
 
-@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST])])
+@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION])])
 def test_a_failed_adopt_restores_every_file_it_wrote(old, at_terminal, monkeypatch, row, files):
     """A real failure: the real adoption refuses a credential that isn't the Lead's."""
     only_row(monkeypatch, row)
@@ -829,7 +857,7 @@ def test_the_switch_prompt_names_what_changes_and_no_credential_destination(old,
     assert "Enter alone keeps 1" in term.prompts[0] and "Enter alone keeps no table" in term.prompts[1]
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_declined_offer_is_not_asked_again_and_doctor_keeps_showing_it(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     term = at_terminal("")
@@ -845,7 +873,7 @@ def test_a_declined_offer_is_not_asked_again_and_doctor_keeps_showing_it(old, at
     assert f"{label} keeps" in out.getvalue() and f"{row} keeps" not in out.getvalue()
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_process_that_cant_read_the_answers_says_so_rather_than_pending(old, at_terminal, monkeypatch, row):
     """A contained Lead's `aew doctor` runs in its sandbox, where `.aew/local` is masked: stood in for by moving it."""
     only_row(monkeypatch, row)
@@ -871,7 +899,7 @@ def test_each_answer_stands_alone(old, at_terminal, answers, taken, left_pending
 
 @pytest.mark.parametrize("reply", ["wrong", PermissionDenied("operator authorization timed out")],
                          ids=["wrong_code", "timeout"])
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_wrong_code_or_a_timeout_is_not_remembered(old, at_terminal, monkeypatch, reply, row):
     only_row(monkeypatch, row)
     at_terminal(reply)
@@ -883,7 +911,7 @@ def test_a_wrong_code_or_a_timeout_is_not_remembered(old, at_terminal, monkeypat
     assert len(term.prompts) == 1
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_damaged_memory_reads_as_no_answers(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
     path = old.root / ".aew/local/switch-offers.json"
@@ -1089,12 +1117,12 @@ def test_aew_doctor_shows_the_offer_through_the_real_command(old):
     assert "Switch offer: the price table, no table -> " in rows[f"switch-offer:{TABLE}"]["detail"]
 
 
-@pytest.mark.parametrize("row", BOTH)
+@pytest.mark.parametrize("row", ROWS)
 def test_a_start_refused_after_the_answer_writes_nothing(old, at_terminal, monkeypatch, row):
     """A real refusal: the real session, asked to acquire a seat that is really held."""
     only_row(monkeypatch, row)
     _fake_session(monkeypatch)
-    before = snapshot(old, GATES, PRICES, MANIFEST)
+    before = snapshot(old, GATES, PRICES, MANIFEST, EXECUTION)
     rev = old.rev()
     at_terminal("CODE")
     decision, _ = start(old)
@@ -1103,7 +1131,7 @@ def test_a_start_refused_after_the_answer_writes_nothing(old, at_terminal, monke
     with pytest.raises(AEWError):
         lead_broker.run_session(decision.engine, ["harness"], acquire=True, session_label=None, keep_seat=True, env={},
                                 contained=_contained, with_token=decision.apply)
-    assert snapshot(old, GATES, PRICES, MANIFEST) == before and old.rev() == rev
+    assert snapshot(old, GATES, PRICES, MANIFEST, EXECUTION) == before and old.rev() == rev
     term = at_terminal("")
     start(old)
     assert len(term.prompts) == 1  # asked again

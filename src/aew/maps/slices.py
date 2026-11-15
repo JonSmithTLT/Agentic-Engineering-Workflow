@@ -149,9 +149,9 @@ def _refreshed(aew_root: Path, repo_root: Path, base: str, entry: dict[str, Any]
         if record is None:
             entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
         return entry, record, note
-    record = got["record"]
-    entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
-             "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
+    made: dict[str, Any] = got["record"]
+    entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": made["source_tree"],
+             "source_revision": made["source_revision"], "freshness": _current_at_source(made)}
     how = "found stored" if got.get("reused") else "made"
     # no seconds here: the line is pinned in the pack and control state, so a refresh that succeeded pins the same
     # bytes however long it took (two equal dispatches, one pack)
@@ -159,7 +159,7 @@ def _refreshed(aew_root: Path, repo_root: Path, base: str, entry: dict[str, Any]
             + ("and is now the selected map" if got["selected"] else
                "stored and not selected (the base is not the authoritative head, or another selection "
                "landed or held the registry meanwhile)"))
-    return entry, record, note
+    return entry, made, note
 
 
 def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:

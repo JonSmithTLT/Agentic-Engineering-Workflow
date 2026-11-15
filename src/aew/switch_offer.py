@@ -509,8 +509,19 @@ def _askable_but_for_the_terminal() -> bool:
 
 def _say_pending(engine: Any, out: Any) -> None:
     """One line naming every offer this start skipped for want of a terminal (rule 1's addition of 2026-11-12), so a
-    start with no terminal never waits on an offer and never leaves it unsaid. Nothing when none is pending."""
-    pending = [s.offer.label for s in standings(engine) if s.declined_at is None]
+    start with no terminal never waits on an offer and never leaves it unsaid. Nothing when none is pending. Only an
+    offer a terminal would ask is named there: one blocked by drift, or one the operator makes by hand, prints its own
+    line, as it does at a terminal."""
+    pending = []
+    for s in standings(engine):
+        if s.declined_at is not None:
+            continue
+        if s.blocked:
+            _say(out, _blocked_line(s))
+        elif s.hand:
+            _say(out, _hand_line(s))
+        else:
+            pending.append(s.offer.label)
     if pending:
         _say(out, f"switch offer pending ({', '.join(pending)}); answer it at your own terminal, or see `aew doctor`.")
 

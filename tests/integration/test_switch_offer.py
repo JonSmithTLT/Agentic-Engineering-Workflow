@@ -191,6 +191,21 @@ def test_a_start_with_no_terminal_names_the_pending_offers_in_one_line_and_never
     assert set(doctor(before_maps)) == {f"switch-offer:{r}" for r in (MUTATING, TABLE, MAPS)}  # still pending
 
 
+def test_a_start_with_no_terminal_names_as_pending_only_what_a_terminal_would_ask(before_maps, at_terminal,
+                                                                                monkeypatch):
+    """An offer blocked by drift is never asked, at a terminal or off one: off one it prints the same line a terminal
+    start does, and the pending line names only the offers a terminal would ask."""
+    guard = before_maps.root / ".aew/policy/guardrails.yaml"
+    guard.write_text(guard.read_text(encoding="utf-8") + "# an edit nobody adopted\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(operator, "ask", lambda *a, **k: pytest.fail("a start with no terminal asked"))
+    _, off = start(before_maps)
+    term = at_terminal()
+    _, at = start(before_maps)
+    assert term.prompts == []  # blocked: nothing is asked at the terminal either
+    assert "switch offer pending" not in off.getvalue() and off.getvalue() == at.getvalue()
+    assert off.getvalue().count("the offer returns") == 3  # each row's own blocked line, as the terminal prints
+
+
 def test_a_start_with_no_terminal_and_nothing_pending_says_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(operator, "ask", lambda *a, **k: pytest.fail("a start with no terminal asked"))
     p = sample_project(tmp_path)  # a new project: every default already holds

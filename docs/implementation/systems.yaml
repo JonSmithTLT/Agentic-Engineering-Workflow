@@ -1018,7 +1018,7 @@ systems:
     dashboard/reader, engine/context_ops, engine/resume_ops, engine/evidence_ops, engine/hierarchy_ops, engine/nonmutating_ops,
     engine/request_ids (slices.for_lead), engine/archive_ops (for_display), kit, kit/receipt, knowledge/context, switch_offer;
     none in integration code, so no regeneration on publish'
-  - src/aew/surface/readable.py the only surface mention of aew map is a code comment; no Lead text names it
+  - src/aew/engine/guide.py the Lead guide's maps line names codebase_map, slice_bytes and aew map generate --select
   - 'src/aew/maps/store.py LOG_REL and LOCK_REL: the registry log and the registry lock'
   - docs/implementation/future-work.yaml (row F22.1, at c11a61ea) F22.1 closed with the switch off and investigator only
   - docs/implementation/future-work.yaml (row HOLD-14, at c11a61ea) HOLD-14 members E62, F22, F22.2, F22.3, F30, F41.7

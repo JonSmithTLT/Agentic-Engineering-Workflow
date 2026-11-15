@@ -114,3 +114,12 @@ def test_the_committed_lead_guide_matches_what_aew_renders_for_its_defaults():
     """docs/guides/lead-guide.md is the guide for a project on AEW's default policy (`aew init`). It is
     generated, never edited: if this fails, regenerate it from `lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)`."""
     assert lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS) in DOC.read_text(encoding="utf-8")
+
+
+def test_the_guide_tells_the_lead_what_a_packs_map_entry_says_and_how_to_refresh_the_map():
+    """Maps are on in a new project, so every dispatch's result names a `codebase_map` source: the guide says, leanly
+    (operator, 2026-11-15), what it carries, that the slice is the worker's, and the command that refreshes it."""
+    text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    line = next(line for line in text.splitlines() if line.startswith("Maps: "))
+    for words in ("`codebase_map`", "`slice_bytes`", "the worker's", "`aew map generate --select`"):
+        assert words in line, words

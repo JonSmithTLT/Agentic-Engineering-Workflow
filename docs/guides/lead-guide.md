@@ -104,6 +104,8 @@ Its gates in this project: Class 0: the executor's record (discovery, research o
 
 A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>`, then ingest), then `aew work close <S> --reason <reason> --expect-rev <revision from aew status>`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev <revision from aew status>` first.
 
+Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice is the worker's and never comes to you. A stale map refreshes at the next dispatch; to refresh now, `aew map generate --select`.
+
 ## Finished work
 
 When reporting validation or completion, quote AEW's recorded coverage and its limitations with the verdict; never compose coverage yourself or drop its unknowns. Validated within its scope is not plain validated. Coverage not recorded is not complete coverage. Status and completion records carry the engine's words.

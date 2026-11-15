@@ -13,9 +13,11 @@ import time
 from pathlib import Path
 
 import lanes
+import proctree
 import pytest
 import watchdog
 from conftest import IS_WINDOWS
+from session_deadline import SUPERVISOR_CUTOFF_EXIT
 
 HELPERS = Path(lanes.__file__).resolve().parent
 CONFTEST = f'''
@@ -116,13 +118,24 @@ def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
     assert dumps(tmp_path / "hangs") == []
 
 
-@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
-def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_path):
-    planted = HANGS.replace("def test_hangs_forever():",
-                            "import pytest\nimport subprocess\nimport sys\n\n"
-                            "@pytest.mark.parametrize('value', [1], ids=['private-parameter'])\n"
-                            "def test_hangs_forever(value):\n"
-                            "    subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])")
+def run_windows_cutoff(tmp_path, test_body):
+    identity_file = tmp_path / "child.txt"
+    child_code = (f"import os,sys,time; from pathlib import Path; sys.path.insert(0,{str(HELPERS)!r}); "
+                  f"import proctree; pid=os.getpid(); Path({str(identity_file)!r}).write_text("
+                  "f'{pid} {proctree.start_time(pid)}'); time.sleep(120)")
+    planted = f"""
+import socket
+import subprocess
+import sys
+import pytest
+
+@pytest.mark.parametrize('value', [1], ids=['private-parameter'])
+def test_plant(value):
+    subprocess.Popen([sys.executable, '-c', {child_code!r}], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=subprocess.CREATE_NO_WINDOW)
+{test_body}
+"""
     root = project(tmp_path, planted)
     progress = tmp_path / "progress"
     runner = HELPERS.parents[1] / "tools" / "ci" / "windows_lane.py"
@@ -137,11 +150,33 @@ def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_
     proc = subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q",
                            "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",
                            f"--hang-dir={tmp_path / 'hangs'}", "tests"],
-                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35)
-    assert proc.returncode == 70, proc.stdout + proc.stderr
-    assert "outlived the independent step cutoff" in (progress / "step.txt").read_text(encoding="utf-8")
+                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35,
+                          creationflags=subprocess.CREATE_NO_WINDOW)
+    pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
+    try:
+        assert proc.returncode == SUPERVISOR_CUTOFF_EXIT, proc.stdout + proc.stderr
+        assert not proctree.same((pid, started)), f"the planted child {pid} survived the cutoff"
+        status = (progress / "step.txt").read_text(encoding="utf-8")
+        assert f"  {pid} python.exe" in status.lower(), status
+        assert "time.sleep(120)" not in status
+        return progress, status
+    finally:
+        proctree.end((pid, started))  # also reap the plant when a cutoff ablation leaves it alive
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_path):
+    progress, status = run_windows_cutoff(tmp_path, "    a, b = socket.socketpair()\n    a.recv(1)")
+    assert "Pytest was still running" in status
     [running] = progress.glob("running-*.txt")
-    assert running.read_text(encoding="utf-8").splitlines() == ["tests/unit/test_w.py::test_hangs_forever"]
+    assert running.read_text(encoding="utf-8").splitlines() == ["tests/unit/test_w.py::test_plant"]
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_step_cutoff_waits_for_a_leaked_child_after_pytest_passes(tmp_path):
+    progress, status = run_windows_cutoff(tmp_path, "    pass")
+    assert "Pytest had exited with code 0" in status
+    assert not list(progress.glob("running-*.txt"))
 
 
 @pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])

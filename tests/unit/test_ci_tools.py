@@ -3501,13 +3501,17 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
 
 def test_windows_regression_uploads_active_test_names_before_scanning_autopsies():
     import bounds
+    import session_deadline
 
     lane = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))["jobs"]["lanes"]
     steps = lane["steps"]
     deadline = bounds.JOB_DEADLINE_RE.search(steps[0]["run"])
     assert deadline
     supervisor = _load("windows_lane")
-    assert lane["timeout-minutes"] * 60 - int(deadline[1]) - supervisor.CUTOFF_GRACE_S >= 120
+    grace = supervisor.CUTOFF_GRACE_S
+    assert grace >= bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S
+    assert lane["timeout-minutes"] * 60 - int(deadline[1]) - grace >= bounds.UPLOAD_CLEARANCE_S
+    assert supervisor.SUPERVISOR_CUTOFF_EXIT != session_deadline.DEADLINE_EXIT
     run, upload, lane_report, scan = steps[5:9]
     assert "matrix.lane == 'regression' && 'python tools/ci/windows_lane.py'" in run["run"]
     assert 'format(\'"{0}/running-tests"\', runner.temp)' in run["run"]

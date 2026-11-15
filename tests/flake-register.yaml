@@ -141,6 +141,9 @@ entries:
     shard-membership lead. The last confirmed overrun already included PR 451. PR 455 changed operator-session
     cleanup locking and test timing. The original jobs
     have no surviving deadline markers or running-test evidence to connect that change to the overruns.
+    Matching requires a confirmed time limit, including jobs that hit it after a concurrency cancellation.
+    A job still in progress after its workflow was cancelled is no longer counted for any session entry,
+    including windows-integration-no-response.
   owner: CI flake triage
   row: E3
   evidence:

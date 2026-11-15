@@ -64,6 +64,7 @@ INDEX_MEMBER = "sightings.json"
 MAX_INDEX_BYTES = 1024 * 1024
 TEST_NAME = re.compile(r"test_\w+\Z")
 JOB_TIME_LIMIT = re.compile(r"has exceeded the maximum execution time", re.I)
+JOB_TIME_LIMIT_CLASS = "job time limit"  # this register class matches only positive timeout evidence
 RUNNER_LOST = re.compile(r"stopped hearing from|not responding", re.I)
 CONCURRENCY_CANCEL = re.compile(r"canceling since a higher priority waiting request", re.I)
 PYTEST_STEP = re.compile(
@@ -320,12 +321,13 @@ def _started_pytest(steps: list[dict[str, Any]]) -> bool:
 
 
 def session_problem(entry: dict[str, Any], job: dict[str, Any], annotations: list[dict[str, Any]]) -> bool:
+    """Count a confirmed timeout even after a cancel. An in-progress job after cancellation proves neither."""
     messages = [annotation["message"] for annotation in annotations]
-    if any(CONCURRENCY_CANCEL.search(message) for message in messages):
-        return False
     if job["conclusion"] == "timed_out" or any(JOB_TIME_LIMIT.search(message) for message in messages):
         return True
-    return entry["class"] != "job time limit" and any(RUNNER_LOST.search(message) for message in messages)
+    if any(CONCURRENCY_CANCEL.search(message) for message in messages):
+        return False
+    return entry["class"] != JOB_TIME_LIMIT_CLASS and any(RUNNER_LOST.search(message) for message in messages)
 
 
 def _platform(name: str) -> str | None:

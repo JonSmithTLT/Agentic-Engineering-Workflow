@@ -33,6 +33,7 @@ import re
 import signal
 import tempfile
 from collections.abc import Generator
+from contextlib import suppress
 from pathlib import Path
 from typing import IO, Any
 
@@ -129,9 +130,10 @@ class HangWatchdog:
         if self.running is not None:
             node = item.nodeid.split("[", 1)[0]
             pending = self.running.with_suffix(".tmp")
-            pending.write_text((node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>") + "\n",
-                               encoding="utf-8")
-            pending.replace(self.running)
+            with suppress(OSError):
+                pending.write_text((node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>") + "\n",
+                                   encoding="utf-8")
+                pending.replace(self.running)
         self._fired = 0
         f = self._reset(self._header(item))
         armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
@@ -174,7 +176,8 @@ class HangWatchdog:
             else:
                 self._discard()  # a test that finished leaves no dump
             if self.running is not None:
-                self.running.unlink(missing_ok=True)
+                with suppress(OSError):
+                    self.running.unlink(missing_ok=True)
 
     def _discard(self) -> None:
         """Remove the dump file between tests, not only at exit: the isolation guard (lanes.py) checks the checkout

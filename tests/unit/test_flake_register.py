@@ -288,31 +288,38 @@ def test_session_sightings_require_timeout_evidence_and_exclude_concurrency_canc
             {"id": 124, "conclusion": "cancelled", "updated_at": (NOW - timedelta(seconds=5)).isoformat()},
             {"id": 125, "conclusion": "success"}]
 
-    def job(ident, steps, *, active=False, platform="windows"):
+    def job(ident, steps, *, active=False, platform="windows", conclusion="cancelled"):
         return {"id": ident, "name": f"regression 2/3 ({platform}-latest)", "started_at": started, "steps": steps,
-                "status": "in_progress" if active else "completed", "conclusion": None if active else "cancelled"}
+                "status": "in_progress" if active else "completed", "conclusion": None if active else conclusion}
 
     def jobs(run):
         assert run["id"] != 125
         return ([job(1, [pytest_step]), job(2, []), job(3, [pytest_step], active=True), job(5, [setup]),
-                 job(6, [pytest_step], platform="ubuntu"), job(7, [pytest_step]), job(8, [pytest_step])]
+                 job(6, [pytest_step], platform="ubuntu"), job(7, [pytest_step]), job(8, [pytest_step]),
+                 job(9, [pytest_step], conclusion="timed_out"), job(10, [pytest_step])]
                 if run["id"] == 123 else [job(4, [pytest_step], active=True)])
 
     def annotations(ident):
-        assert ident in {1, 2, 7, 8}
+        assert ident in {1, 2, 7, 8, 9, 10}
         timeout = {"message": "The job has exceeded the maximum execution time of 34m0s"}
+        cancel = {"message": "Canceling since a higher priority waiting request exists"}
         if ident == 7:
-            return [timeout, {"message": "Canceling since a higher priority waiting request exists"}]
+            return [timeout, cancel]
         if ident == 8:
             return [{"message": "We stopped hearing from the runner"}]
+        if ident == 9:
+            return []
+        if ident == 10:
+            return [cancel, {"message": "We stopped hearing from the runner"}]
         return [timeout]
 
     entry = row("session", scope="session", lane="regression")
-    entry["class"] = "job time limit"
+    entry["class"] = flake.JOB_TIME_LIMIT_CLASS
     doc = document(entry, row("overlap", scope="session", lane="regress*"))
     got = list(flake.session_sightings(doc, runs, jobs, annotations))
     assert [(ident, item["job"]) for ident, item in got] == [
-        ("session", 1), ("overlap", 1), ("session", 2), ("overlap", 2), ("overlap", 8),
+        ("session", 1), ("overlap", 1), ("session", 2), ("overlap", 2),
+        ("session", 7), ("overlap", 7), ("overlap", 8), ("session", 9), ("overlap", 9),
     ]
 
 

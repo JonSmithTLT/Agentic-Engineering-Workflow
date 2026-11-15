@@ -283,6 +283,15 @@ def test_a_project_from_before_maps_is_offered_them_once_and_keeps_its_answer(be
     assert "pack_slices" not in (before_maps.root / ".aew" / EXECUTION).read_text(encoding="utf-8")
     declined = doctor(before_maps)[f"switch-offer:{MAPS}"]
     assert "Declined switch: project maps keeps off" in declined and "set maps.pack_slices to structural" in declined
+    # The seat-free route back to the question: delete the switch's row, and the next start asks again.
+    assert f"delete its row (switch {MAPS}) from .aew/{switch_offer.REMEMBERED}" in declined
+    remembered = before_maps.root / ".aew" / switch_offer.REMEMBERED
+    rows = json.loads(remembered.read_text(encoding="utf-8"))
+    rows["declined"] = [r for r in rows["declined"] if r["switch"] != MAPS]
+    remembered.write_text(json.dumps(rows), encoding="utf-8")
+    asked = at_terminal("")
+    start(before_maps)
+    assert len(asked.prompts) == 1 and "This project holds off." in asked.prompts[0]
 
 
 @pytest.mark.parametrize("held", [None, '"off"'])

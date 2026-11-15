@@ -407,7 +407,8 @@ def doctor_rows(engine: Any) -> list[tuple[str, str, str]]:
     for s in standings(engine):
         if s.declined_at is not None:
             detail = (f"Declined switch: {s.offer.label} keeps {s.opening.held} (declined {s.declined_at}). To take "
-                      f"it: {s.offer.by_hand(s.opening)}.")
+                      f"it: {s.offer.by_hand(s.opening)}. Or to be asked again at the next `aew opencode` start, "
+                      f"with no seat needed: delete its row (switch {s.offer.switch}) from .aew/{REMEMBERED}.")
         elif s.blocked:
             detail = _blocked_line(s)
         elif s.hand:

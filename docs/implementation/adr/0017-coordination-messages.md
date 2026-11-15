@@ -203,7 +203,9 @@ each is built with the slice named.
   binds the wait to the shell call or calls open when it starts, with the open step as backstop. When a bound call
   completes, any step ends or another starts, the event stream reconnects or the run ends while the wait is pending, the
   wait ends `client_gone`: no fact, the hold on live delivery released, the connection closed. A wait with no open shell
-  call after a 2 s grace is refused (`WAIT_OUTSIDE_A_STEP`), and an adapter that reports no steps refuses
+  call after a 2 s grace is refused (`WAIT_OUTSIDE_A_STEP`). If the event stream drops while a call is open, its
+  lifetime becomes unknown. An unbound wait is refused (`WAIT_BINDING_LOST_ON_RECONNECT`) until a new foreground
+  shell call can be observed. A reconnect cannot restore a prior binding. An adapter that reports no steps refuses
   `message.wait` (`WAIT_UNSUPPORTED`). Before recording `DELIVERED via: wait`, the bridge checks the bound call, step and
   connection once more under the delivery lock. **The residuals:** a reply sent to an orphan within the event stream's
   latency between a step's end and its frame; and a client killed after the reply is written but before it reads it.

@@ -540,6 +540,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `MIGRATION_REQUIRED` | The project's control state is v1 and must be migrated first | `migration_pending` | Lead |
 | `MESSAGING_DISABLED` | A coordination message while messaging is off | `messaging_off` | operator |
 | `WAIT_UNSUPPORTED` | The worker adapter or platform has no qualified foreground wait binding | `wait_binding_unavailable` | engine |
+| `WAIT_BINDING_LOST_ON_RECONNECT` | An event stream drop invalidated the observed shell call. Retry from a new foreground shell call | `wait_binding_lost` | engine |
 | `WAIT_OUTSIDE_A_STEP` | No foreground shell call became available within the worker wait's grace | `wait_outside_step` | engine |
 | `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
 | `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |

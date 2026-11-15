@@ -21,9 +21,10 @@ from the projection),
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
-``drop_events_every`` (close each event connection after N frames), ``tool_parts`` (a ``write`` step records
-2.0.18's ``write`` tool parts, which the run's progress digest reads), ``ask`` (a permission request before
-the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
+``drop_events_every`` (close each event connection after N matching frames, optionally by event type),
+``tool_parts`` (a ``write`` step records 2.0.18's ``write`` tool parts, which the run's progress digest reads),
+``ask`` (a permission request before the first step), ``form`` (a form before the first step),
+``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
 2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry; optional ``status``, ``type`` and ``message``
@@ -864,14 +865,17 @@ def handler_for(app: FakeOpenCode) -> type[http.server.BaseHTTPRequestHandler]:
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            every = int(app.knobs.get("drop_events_every") or 0)
+            drop = app.knobs.get("drop_events_every") or 0
+            event_type = drop["type"] if isinstance(drop, dict) else None
+            every = int(drop["count"] if isinstance(drop, dict) else drop)
             sent = 0
             try:
                 frame: dict[str, Any] | None = {"id": new_id("evt"), "type": "server.connected", "data": {}}
                 while frame is not None:
                     self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode())
                     self.wfile.flush()
-                    sent += 1
+                    if event_type is None or frame["type"] == event_type:
+                        sent += 1
                     if every and sent >= every:  # the stream is lost; the client must not depend on it
                         break
                     frame = q.get()

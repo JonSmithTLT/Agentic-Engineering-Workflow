@@ -1583,6 +1583,7 @@ None.
 - `aew.harness.wait_binding`
 - `aew.harness.weaker_register`
 - `aew.snapshot.fingerprint`
+- `aew.util`
 
 ### `aew.harness.opencode.capabilities`
 

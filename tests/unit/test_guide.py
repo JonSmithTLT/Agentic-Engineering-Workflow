@@ -121,5 +121,5 @@ def test_the_guide_tells_the_lead_what_a_packs_map_entry_says_and_how_to_refresh
     (operator, 2026-11-15), what it carries, that the slice is the worker's, and the command that refreshes it."""
     text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
     line = next(line for line in text.splitlines() if line.startswith("Maps: "))
-    for words in ("`codebase_map`", "`slice_bytes`", "the worker's", "`aew map generate --select`"):
+    for words in ("`codebase_map`", "`slice_bytes`", "the worker's", "to refresh now, `aew map generate`."):
         assert words in line, words

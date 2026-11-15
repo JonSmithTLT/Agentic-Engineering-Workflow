@@ -672,14 +672,15 @@ def _lines_for(root: Path, event_name: str) -> list[tuple[str, str | None]]:
 
 def _no_notifier(project) -> None:
     """A steering mode and no notifier at all: the policy as it was before the template shipped the desktop default."""
+    import yaml
+
     from aew.harness import desktop_notifier as D
 
     adopt(project)
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    text = path.read_text(encoding="utf-8")
-    default = "notify:\n  command: [" + ", ".join(D.COMMAND) + "]\n"
-    assert text.count(default) == 1, "the template's notifier lines moved"
-    path.write_bytes(text.replace(default, "").encode("utf-8"))
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert doc.pop("notify") == {"command": list(D.COMMAND)}, "the template's notifier moved"
+    path.write_bytes(yaml.safe_dump(doc, sort_keys=False).encode("utf-8"))
     project.adopt_policy()
 
 

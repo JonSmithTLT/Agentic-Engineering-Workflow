@@ -292,7 +292,7 @@ def test_a_base_that_needs_an_untrusted_filter_is_described_with_the_way_forward
     found = git.untrusted_filters(hostile.repo, hostile.base)
     assert [f["driver"] for f in found] == ["p", "x"]
     msg = git.untrusted_filters_message(found, ".aew/policy/execution.yaml")
-    for needed in ("filter 'x' (applied to *.dat by .gitattributes", "filter.x.clean = `AEW_KIND=clean sh ./tool.sh`",
+    for needed in ("filter 'x' (assigned by *.dat (.gitattributes)", "filter.x.clean = `AEW_KIND=clean sh ./tool.sh`",
                    f"defined in {hostile.repo.as_posix()}/.git/config", "trusted_git_drivers: [p, x]",
                    "under `containment:` in .aew/policy/execution.yaml", "move the script outside the repository",
                    "aew doctor"):
@@ -330,3 +330,145 @@ def test_dispatch_on_a_base_that_needs_an_untrusted_filter_is_refused_until_trus
     p.pin_policy()
     res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert "GIT_DRIVER_UNTRUSTED" not in (res.stdout + res.stderr), res.stdout
+
+
+@pytest.fixture
+def attribute_repo(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "global-config"))
+    monkeypatch.setenv("GIT_ATTR_NOSYSTEM", "1")
+    monkeypatch.setattr(git, "_trusted", frozenset())
+    assert plain_git("init", "-q", "-b", "main", cwd=repo).returncode == 0
+    assert plain_git("commit", "--allow-empty", "-qm", "Initialize", cwd=repo).returncode == 0
+    assert plain_git("config", "filter.synthetic.clean", "cat", cwd=repo).returncode == 0
+    return repo
+
+
+@pytest.mark.parametrize("source", ["committed", "info", "system", "xdg", "default", "relative", "absolute"])
+def test_filter_scan_names_the_git_attribute_source(attribute_repo, tmp_path, monkeypatch, source):
+    repo = attribute_repo
+    sources = {
+        "committed": repo / ".GITATTRIBUTES",
+        "info": repo / ".git/info/attributes",
+        "system": tmp_path / "system-attributes",
+        "xdg": tmp_path / "xdg/git/attributes",
+        "default": tmp_path / "home/.config/git/attributes",
+        "relative": repo / "named attributes",
+        "absolute": tmp_path / "named attributes",
+    }
+    path = sources[source]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("*.sample filter=synthetic\n", encoding="utf-8")
+    name = str(path)
+    if source == "committed":
+        assert plain_git("add", path.name, cwd=repo).returncode == 0
+        assert plain_git("commit", "-qm", "Add attributes", cwd=repo).returncode == 0
+        name = path.name
+    elif source in {"relative", "absolute"}:
+        value = path.name if source == "relative" else str(path)
+        assert plain_git("config", "core.attributesFile", value, cwd=repo).returncode == 0
+    elif source == "xdg":
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    real_git = git.git
+
+    def with_attribute_vars(*args, **kwargs):
+        if args == ("var", "GIT_ATTR_SYSTEM") and source == "system":
+            return subprocess.CompletedProcess(args, 0, os.fsencode(path) + b"\n")
+        if args == ("var", "GIT_ATTR_GLOBAL") and source in {"xdg", "default", "relative"}:
+            return subprocess.CompletedProcess(args, 129, b"")
+        return real_git(*args, **kwargs)
+
+    monkeypatch.setattr(git, "git", with_attribute_vars)
+    found = git.untrusted_filters(repo, "HEAD")
+    [driver] = found
+    assert driver["driver"] == "synthetic"
+    assert driver["patterns"] == [f"*.sample ({name})"]
+    message = git.untrusted_filters_message(found, "execution.yaml")
+    assert f"*.sample ({name})" in message
+    assert "remove the filter assignment from each attributes file listed above" in message
+
+
+def test_attribute_sources_use_the_paths_reported_by_git(attribute_repo, tmp_path, monkeypatch):
+    repo = attribute_repo
+    monkeypatch.delenv("GIT_ATTR_NOSYSTEM")
+    if os.name == "nt":
+        monkeypatch.delenv("HOME")
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "userprofile"))
+        monkeypatch.setenv("HOMEDRIVE", tmp_path.drive)
+        monkeypatch.setenv("HOMEPATH", str(tmp_path)[len(tmp_path.drive):])
+    system = git.git("var", "GIT_ATTR_SYSTEM", cwd=repo, check=False)
+    if system.returncode == 129:
+        pytest.skip("Git before 2.42 does not report the attributes paths")
+    assert system.returncode == 0, system.stderr
+    global_file = git.git("var", "GIT_ATTR_GLOBAL", cwd=repo)
+    assert git._attribute_files(repo) == [  # noqa: SLF001
+        repo / os.fsdecode(global_file.stdout.rstrip(b"\r\n")),
+        Path(os.fsdecode(system.stdout.rstrip(b"\r\n"))),
+    ]
+    monkeypatch.setenv("GIT_ATTR_NOSYSTEM", "1")
+    assert git._attribute_files(repo) == [repo / os.fsdecode(global_file.stdout.rstrip(b"\r\n"))]  # noqa: SLF001
+
+
+def test_a_relative_git_attribute_var_resolves_from_the_repo_top(attribute_repo, monkeypatch):
+    repo = attribute_repo
+    relative = Path("attrs") / "global patterns"
+    path = repo / relative
+    path.parent.mkdir()
+    path.write_text("*.sample filter=synthetic\n", encoding="utf-8")
+    real_git = git.git
+
+    def relative_global(*args, **kwargs):
+        if args == ("var", "GIT_ATTR_GLOBAL"):
+            return subprocess.CompletedProcess(args, 0, os.fsencode(relative) + b"\n")
+        return real_git(*args, **kwargs)
+
+    monkeypatch.setattr(git, "git", relative_global)
+    found = git.untrusted_filters(repo, "HEAD")
+    assert [driver["patterns"] for driver in found] == [[f"*.sample ({path})"]]
+
+
+def test_a_filter_refusal_names_each_file_and_caps_each_patterns_group(attribute_repo, tmp_path):
+    repo = attribute_repo
+    info = git.git_dir(repo) / "info" / "attributes"
+    global_file = tmp_path / "Global (test)/attributes"
+    global_file.parent.mkdir()
+    assert plain_git("config", "core.attributesFile", str(global_file), cwd=repo).returncode == 0
+    for location, name in ((info, "local"), (global_file, "global")):
+        location.write_text("".join(f"{name}{n}.dat filter=synthetic\n" for n in range(7)), encoding="utf-8")
+
+    found = git.untrusted_filters(repo, "HEAD")
+    message = git.untrusted_filters_message(found, "execution.yaml")
+    for location, name in ((info, "local"), (global_file, "global")):
+        expected = ", ".join(f"{name}{n}.dat" for n in range(5))
+        assert f"{expected} and 2 more ({location})" in message
+        assert f"{name}5.dat" not in message and f"{name}6.dat" not in message
+    assert len(found[0]["patterns"]) == 14
+
+
+def test_legacy_system_attributes_follow_the_git_installation(attribute_repo, tmp_path, monkeypatch):
+    repo = attribute_repo
+    monkeypatch.delenv("GIT_ATTR_NOSYSTEM")
+    prefix = tmp_path / "install"
+    exec_path = prefix / "libexec/git-core"
+    real_git = git.git
+
+    def legacy_git(*args, **kwargs):
+        if args in {("var", "GIT_ATTR_SYSTEM"), ("var", "GIT_ATTR_GLOBAL")}:
+            return subprocess.CompletedProcess(args, 129, b"")
+        if args == ("--exec-path",):
+            return subprocess.CompletedProcess(args, 0, os.fsencode(exec_path) + b"\n")
+        return real_git(*args, **kwargs)
+
+    monkeypatch.setattr(git, "git", legacy_git)
+    global_file = tmp_path / "home/.config/git/attributes"
+    assert git._attribute_files(repo) == [  # noqa: SLF001
+        global_file, Path("/etc/gitattributes"), prefix / "etc/gitattributes",
+        tmp_path / "etc/gitattributes", tmp_path.parent / "etc/gitattributes",
+    ]
+    monkeypatch.setenv("GIT_ATTR_NOSYSTEM", "1")
+    assert git._attribute_files(repo) == [global_file]  # noqa: SLF001

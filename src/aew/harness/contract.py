@@ -251,6 +251,7 @@ def _scalar(value: str) -> str:
 
     return '"' + clean(value, escape="yaml") + '"'
 
+
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
 _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "

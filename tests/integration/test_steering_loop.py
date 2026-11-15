@@ -32,7 +32,7 @@ from aewflow import (
 from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
-from notifier import Console, loop_chain, raise_to, recorder, seed, until
+from notifier import Console, deadlines, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
 from test_stage_runner import PROBES, call, intent, intervene, launching
@@ -62,8 +62,9 @@ CTX = SurfaceContext.outside_session()
 
 
 def policy_text(project: Any, *, mode: str = "crawl", command: list[str] | None = None,
-                envelope: dict[str, int] | None = None, notify: bool = True) -> None:
-    """Write the execution policy's steering, envelope and notifier, then have the operator adopt it."""
+                envelope: dict[str, int] | None = None, notify: bool = True, ready: bool = True) -> None:
+    """Write the execution policy's steering, envelope and notifier, and (``ready``) a deadline on every profile routing
+    can pick, which a raise to Run needs, then have the operator adopt it."""
     path = project.root / ".aew" / "policy" / "execution.yaml"
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     doc["steering"] = {"mode": mode, **({"envelope": envelope} if envelope else {})}
@@ -71,6 +72,7 @@ def policy_text(project: Any, *, mode: str = "crawl", command: list[str] | None 
         doc["notify"] = {"command": command}
     else:
         doc.pop("notify", None)
+    deadlines(doc, ready=ready)
     path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
     project.adopt_policy()
 
@@ -653,6 +655,8 @@ def _held_ahead(tmp_path: Path, held: str) -> tuple[Any, str, str | None]:
     if held == "project_anomaly":
         seed_anomaly(sp, None)
     raise_to(Engine.discover(sp.root), "run")
+    if held == "ticket_ahead":  # the deadlines go after the raise, which refuses a policy without them
+        policy_text(sp, command=command, ready=False)
     return sp, wid, first
 
 
@@ -735,12 +739,16 @@ def test_an_endpoint_lost_mid_activation_stops_run_before_its_next_action(p, end
 
 def test_run_never_auto_starts_a_run_without_a_hard_deadline(p, endpoint):
     """A1 §3.2 / plan v3 E7: in Run, a dispatching action is refused (NO_HARD_DEADLINE) unless every execution
-    profile policy routing can pick sets deadline_s; nothing is executed."""
+    profile policy routing can pick sets deadline_s; nothing is executed. The raise itself refuses such a policy, so
+    the deadlines go after it, by an adopt, which keeps the raise for its generation: the loop's rule still holds."""
     mode(p, "run")
+    policy_text(p, command=p.extra["notify"], ready=False)
     spy = Spy()
     stop = loop(p, Scripted(lambda rev: [action("ticket_start", {"expect_rev": rev, "work_id": "T-0001"})]),
                 executor=spy).activate()
     assert stop.code == L.NO_HARD_DEADLINE and spy.calls == [], stop
+    # an unconfigured policy is said to be one, with the route, never a profile named `<none>`
+    assert "the execution policy is not configured" in stop.message and "<none>" not in stop.message, stop
 
 
 # ---------------------------------------------------------------------------------------------- execution (CWR §7)

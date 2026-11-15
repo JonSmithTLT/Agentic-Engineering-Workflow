@@ -134,6 +134,16 @@ class WorkerMessages:
             with server.serialized():
                 sup.require_message_authority()
             if time.monotonic() >= grace:
+                binding, reason, lost_at = adapter.wait_binding_at_deadline()
+                if binding is not None:
+                    return binding
+                refusal = errors.WaitBindingLostOnReconnect if lost_at is not None else errors.WaitOutsideAStep
+                sup.events({"event": "message_wait_binding_refused", "run": sup.run, "reason": reason,
+                            "binding_lost_at": lost_at, "code": refusal.code})
+                if lost_at is not None:
+                    raise refusal("the OpenCode event stream dropped since the last observed step boundary; "
+                                  "the foreground shell call's lifetime is unknown and nothing was delivered. "
+                                  "Retry the wait from a foreground shell call in a new step")
                 raise errors.WaitOutsideAStep("no foreground shell call is open after the 2 s grace; nothing was "
                                               "delivered. Use a foreground shell call; otherwise reply and end "
                                               "your turn. Messages remain available for live delivery")

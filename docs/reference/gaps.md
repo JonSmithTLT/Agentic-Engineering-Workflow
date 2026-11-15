@@ -125,6 +125,9 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.containment.shim:start_server`: os.open of a path this reading cannot place: a relative path, `{}.tmp`, with no root this reading can name
 - `aew.harness.containment.shim:start_server`: os.replace of a path this reading cannot place: `serve['url_file']`, from a value that is not a dict literal
 - `aew.harness.event_spool:Reader.retire`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.file_notifier:append`: Path.mkdir of a path this reading cannot place: the attribute `a.path` is not a value this reading can follow
+- `aew.harness.file_notifier:append`: Path.open of a path this reading cannot place: the attribute `a.path` is not a value this reading can follow
+- `aew.harness.file_notifier:append`: os.replace of a path this reading cannot place: the attribute `a.path` is not a value this reading can follow
 - `aew.harness.lead_broker:lead_run_dir`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.lead_broker:record_label`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.model_list:read`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow; the attribute `contract.workspace` is not a value this reading can follow

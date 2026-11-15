@@ -331,6 +331,7 @@ None.
 ### `aew.cli.notify_commands`
 
 - `aew.harness.desktop_notifier`
+- `aew.harness.file_notifier`
 
 ### `aew.cli.operator_commands`
 
@@ -1186,12 +1187,15 @@ None.
 ### `aew.engine.steering`
 
 - `aew.engine.base`
+- `aew.engine.first_configuration`
 - `aew.engine.primitives`
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.desktop_notifier`
+- `aew.harness.file_notifier`
 - `aew.knowledge.records`
+- `aew.policy.execution`
 - `aew.util`
 
 ### `aew.engine.store`
@@ -1468,12 +1472,20 @@ None.
 ### `aew.harness.desktop_notifier`
 
 - `aew.errors`
+- `aew.harness.file_notifier`
 - `aew.harness.procs`
 
 ### `aew.harness.event_spool`
 
 - `aew.errors`
 - `aew.schemas`
+- `aew.util`
+
+### `aew.harness.file_notifier`
+
+- `aew.errors`
+- `aew.harness.desktop_notifier`
+- `aew.harness.notify`
 - `aew.util`
 
 ### `aew.harness.g3_adapter`
@@ -1551,6 +1563,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.desktop_notifier`
 - `aew.harness.event_spool`
+- `aew.harness.file_notifier`
 - `aew.harness.lead_broker`
 - `aew.harness.procs`
 - `aew.harness.runlog`
@@ -1583,6 +1596,7 @@ None.
 - `aew.harness.wait_binding`
 - `aew.harness.weaker_register`
 - `aew.snapshot.fingerprint`
+- `aew.util`
 
 ### `aew.harness.opencode.capabilities`
 

@@ -9,6 +9,7 @@ import { JumpToId } from './JumpToId';
 const navigation = [
   ['/', 'Overview'],
   ['/attention', 'Attention'],
+  ['/activity', 'Activity'],
   ['/work', 'Work'],
   ['/runs', 'Runs'],
   ['/evidence', 'Evidence'],
@@ -77,7 +78,7 @@ export function Shell({
           </div>
         </div>
         <nav aria-label="Main navigation">
-          {[...navigation.slice(0, 7), ...(caps?.maps ? [['/maps', 'Maps']] : []), ...(caps?.history_search ? [['/history/search', 'Raw history search']] : []), ...navigation.slice(7), ...(demo ? [['/settings', 'Settings preview']] : [])].map(([path, label]) => (
+          {[...navigation.slice(0, 8), ...(caps?.maps ? [['/maps', 'Maps']] : []), ...(caps?.history_search ? [['/history/search', 'Raw history search']] : []), ...navigation.slice(8), ...(demo ? [['/settings', 'Settings preview']] : [])].map(([path, label]) => (
             <NavLink
               key={path}
               end={path === '/' || (path === '/history' && location.pathname === '/history/search')}

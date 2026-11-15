@@ -1,7 +1,7 @@
 import { RecordInspection } from './Investigation';
 import type { EntityKind } from '../client/investigation-model';
 import { accessRefused } from '../api/transport';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Link,
   useLocation,
@@ -10,7 +10,8 @@ import {
 } from 'react-router-dom';
 import type { z } from 'zod';
 import type { Projection } from '../api/transport';
-import { useProjection, comparisonScope } from '../client/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useProjection, comparisonScope, projectionKey } from '../client/queries';
 import {
   CapabilityGate,
   PageSnapshot,
@@ -39,8 +40,9 @@ export function listRoute(
   path: string,
   params: URLSearchParams,
   filters: readonly string[] = [],
+  pageSize = 100,
 ) {
-  const query = new URLSearchParams({ limit: '100' });
+  const query = new URLSearchParams({ limit: String(pageSize) });
   for (const key of [...filters, 'cursor']) {
     const value = params.get(key);
     if (value) query.set(key, value);
@@ -51,11 +53,13 @@ export function Pager({
   next,
   cursorKey = 'cursor',
   resetKey = '',
+  onFirstPage,
   children,
 }: {
   next: string | null;
   cursorKey?: string;
   resetKey?: string;
+  onFirstPage?: () => void;
   children?: ReactNode;
 }) {
   const [params, setParams] = useSearchParams();
@@ -76,7 +80,7 @@ export function Pager({
   }
   return (
     <div className="pagination">
-      <button disabled={!current} onClick={() => page('', [])}>
+      <button disabled={!current} onClick={() => { onFirstPage?.(); page('', []); }}>
         First page
       </button>
       <button
@@ -105,6 +109,10 @@ export function CollectionView<T>({
   filters = [],
   filterUI,
   valid = true,
+  pageSize = 100,
+  automaticRevalidation = true,
+  focusOnPageChange = false,
+  refreshFirstPage = false,
   children,
 }: {
   name: string;
@@ -116,6 +124,10 @@ export function CollectionView<T>({
   filters?: readonly string[];
   filterUI?: ReactNode;
   valid?: boolean;
+  pageSize?: number;
+  automaticRevalidation?: boolean;
+  focusOnPageChange?: boolean;
+  refreshFirstPage?: boolean;
   children: (
     items: T[],
     projection: Projection<Envelope<List<T>>>,
@@ -123,15 +135,28 @@ export function CollectionView<T>({
 }) {
   const [params] = useSearchParams();
   const available = useCapability(name).available;
-  const route = listRoute(path, params, filters);
+  const queryClient = useQueryClient();
+  const route = listRoute(path, params, filters, pageSize);
   const query = useProjection(
     route,
     schema,
     historical ? 'history' : 'list',
     available && valid,
+    true,
+    undefined,
+    automaticRevalidation,
   );
   const scope = new URLSearchParams(params);
   scope.delete('cursor');
+  const heading = useRef<HTMLHeadingElement>(null);
+  const lastDisplayedRoute = useRef(route);
+  useEffect(() => {
+    if (focusOnPageChange && route !== lastDisplayedRoute.current && query.data && !query.isFetching) {
+      heading.current?.focus({ preventScroll: true });
+      heading.current?.scrollIntoView?.({ block: 'start' });
+      lastDisplayedRoute.current = route;
+    }
+  }, [focusOnPageChange, route, query.data, query.isFetching]);
   return (
     <>
       <div className="page-heading">
@@ -174,7 +199,7 @@ export function CollectionView<T>({
             )}
             <section className="panel collection-panel">
               <div className="panel-heading">
-                <h2>{title} records</h2>
+                <h2 ref={heading} tabIndex={focusOnPageChange ? -1 : undefined}>{title} records</h2>
                 <span>
                   {query.data.value.data.items.length} records on this page
                 </span>
@@ -187,6 +212,10 @@ export function CollectionView<T>({
               <Pager
                 next={query.data.value.data.next_cursor}
                 resetKey={scope.toString()}
+                onFirstPage={refreshFirstPage ? () => {
+                  const first = listRoute(path, scope, filters, pageSize);
+                  void queryClient.invalidateQueries({ queryKey: projectionKey(first), exact: true, refetchType: 'none' });
+                } : undefined}
               >
                 <button
                   onClick={() => {

@@ -1305,11 +1305,11 @@ summary {
   margin: 0 16px;
 }
 .developer-requests summary::before {
-  content: '▸';
+  content: 'â–¸';
   color: var(--muted);
 }
 .developer-requests details[open] summary::before {
-  content: '▾';
+  content: 'â–¾';
 }
 
 .lab-tabs {
@@ -1791,3 +1791,13 @@ summary {
 .facts dt, .facts dd { margin: 0; }
 .map-architecture > span { margin-right: 12px; }
 @media (max-width: 1023px) { .map-fields > div { display: block; } .map-fields > div > dd { margin-top: 6px; } }
+
+.activity-toolbar { margin-bottom: 16px; }
+.activity-record { padding: 16px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.activity-facts { margin: 12px 0; }
+.activity-facts > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 6px 0; }
+.activity-facts dt { color: var(--muted); }
+.activity-facts dd { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .activity-facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+.collection-panel h2[tabindex] { scroll-margin-top: 140px; }

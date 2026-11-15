@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from aew import errors, operator
+from aew import errors, lead_credential, operator
 from aew.cli import credentials
 from aew.cli.main import build_parser
 from aew.harness import procs
@@ -130,8 +130,52 @@ def test_the_operator_prompt_escapes_ancestor_and_supplied_requesters(monkeypatc
 
 def test_the_windows_process_chain_stops_at_a_reused_parent_pid():
     snapshot = {30: (20, "aew"), 20: (10, "shell"), 10: (0, "unrelated")}
-    created = {30: 300, 20: 200, 10: 250}
-    assert procs._render_process_chain(snapshot, 30, 6, created=created.get) == ["aew (30)", "shell (20)"]
+    for created in ({30: 300, 20: 200, 10: 250}, {30: 300, 20: 200, 10: 200}):
+        assert procs._render_process_chain(snapshot, 30, 6, created=created.get) == [
+            "aew (30)", "shell (20)", "(unverified parent, pid 10)",
+        ]
+
+
+def test_the_operator_prompt_preserves_preview_lines_and_escapes_fields_inside_them():
+    from aew.harness.operator_client import capability_prompt
+
+    preview = "candidate\x1b[0m\r\nname"
+    for prompt in (
+        operator.challenge("ABC123", ["Review the change:", preview]),
+        capability_prompt({"change": [preview]}, "shell"),
+    ):
+        assert r"candidate\u001b[0m\r\nname" in prompt.splitlines()
+        assert operator.RELAY_WARNING in prompt
+    plain = operator.challenge("ABC123", "First line\nSecond line\x1b")
+    assert "First line\nSecond line\\u001b\n" in plain
+
+
+def test_the_requester_cap_applies_to_visible_escapes_and_preserves_attribution():
+    prompt = operator.challenge("ABC123", "Confirm", requested_by="\\n\n" + "\x1b" * 400,
+                                requester_reported=True)
+    field = next(line for line in prompt.splitlines() if "requested by" in line)
+    value, attribution = field.split(" : ", 1)[1].split(" (as reported", 1)
+    assert value.startswith(r"\\n\n")
+    assert len(value) == 400 and value.endswith(" (cut)")
+    assert "the code below is the authorization" in attribution
+
+
+def test_the_hidden_lead_credential_prompt_escapes_ancestor_names(monkeypatch):
+    shown = []
+
+    def ask(prompt: str, **_):
+        shown.append(prompt)
+        return ""
+
+    monkeypatch.setattr(lead_credential, "_prompted", None)
+    monkeypatch.setattr(lead_credential, "session_kind", lambda: None)
+    monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
+    monkeypatch.setattr(operator, "ask_hidden", ask)
+    monkeypatch.setattr(procs, "process_chain", lambda: ["shell\x1b[0m (2)"])
+    with pytest.raises(errors.UsageError, match="no Lead credential was entered"):
+        lead_credential.required(force_prompt=True)
+    assert r"requested by : shell\u001b[0m (2)" in shown[0]
+    assert operator.RELAY_WARNING in shown[0]
 
 
 def test_host_side_git_never_inherits_a_credential(monkeypatch, tmp_path: Path):

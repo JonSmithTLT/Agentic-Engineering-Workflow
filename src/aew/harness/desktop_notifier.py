@@ -124,8 +124,8 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     return None
 
 
-_VISIBLE_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
-_YAML_ESCAPES = {**_VISIBLE_ESCAPES, "\\": "\\\\", '"': '\\"'}
+_VISIBLE_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t", "\\": "\\\\"}
+_YAML_ESCAPES = {**_VISIBLE_ESCAPES, '"': '\\"'}
 
 
 def clean(value: Any, *, escape: Literal["visible", "yaml"] | None = None) -> str:

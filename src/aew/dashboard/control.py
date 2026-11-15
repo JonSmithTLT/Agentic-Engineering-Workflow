@@ -90,7 +90,7 @@ class ControlServer:
             conn.close()
 
     def _open(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
-        requester = str(args.get("requester") or "unknown")[:400]
+        requester = str(args.get("requester") or "unknown")
         if self.console is None:
             # The one later-open refusal for an auto-started dashboard, on Windows too (operator, 2026-11-09).
             # Future in-process G3 approval goes here wherever doctor's g3 check counts, not in another mint route.
@@ -105,7 +105,7 @@ class ControlServer:
             code = operator.new_code()
             self.console(operator.challenge(
                 code, "ISSUE a browser session on the read-only dashboard",
-                requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
+                requested_by=requester, requester_reported=True,
                 destination="the requesting terminal, as a one-time URL",
                 instruction=f"Type the confirmation code {code} into the terminal that ran `aew dashboard open` "
                             "(not here); anything else there refuses."))

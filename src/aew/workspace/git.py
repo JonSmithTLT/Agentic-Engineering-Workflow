@@ -325,8 +325,7 @@ def untrusted_filters(cwd: Path, commit: str) -> list[dict[str, Any]]:
             for name in ATTR_FILTER.findall(line):
                 if name in needed:
                     uses.setdefault(name, {}).setdefault(where, []).append(line.split()[0])
-    return [{"driver": name, "patterns": [f"{p} ({where})" for where, pats in uses[name].items() for p in pats],
-             "patterns_by_file": uses[name],
+    return [{"driver": name, "patterns_by_file": uses[name],
              "commands": [{"config": d["config"], "value": d["value"], "origin": d["origin"]} for d in needed[name]]}
             for name in sorted(uses)]
 

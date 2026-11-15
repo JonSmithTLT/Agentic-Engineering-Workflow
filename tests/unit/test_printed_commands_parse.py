@@ -34,6 +34,13 @@ from aew.engine.custody_ops import LEAD_KEPT_OUT, operator_terminal_refusal
 from aew.harness import contract as K
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 
+
+def test_a_fields_block_keeps_yaml_quotes_backslashes_and_controls_distinct():
+    raw = 'a"' + "\\" + "\x1b"
+    block = K.fields_block("aew invoke cancel INV-1", {"reason": raw})
+    assert block.splitlines()[2] == r'reason: "a\"\\\u001b"'
+
+
 # Files B3 is changing on fix/e112-weaker-contexts (the ITEMS 56 brief, "Don't overlap"): their failing sites wait for
 # a follow-up once that branch merges, rather than conflict with it. Each is pinned by (file, printed text), since B3's
 # edits move its line: a failing site in these files that is not pinned fails the check, and a pinned one that is gone

@@ -628,11 +628,16 @@ def _render_process_chain(parents: dict[int, tuple[int, str]], pid: int, limit: 
     while pid in parents and len(chain) < limit:
         ppid, name = parents[pid]
         chain.append(f"{name[:80]} ({pid})")
-        if ppid == pid or ppid not in parents or len(chain) == limit:
+        if ppid in (0, pid) or len(chain) == limit:
+            break
+        if ppid not in parents:
+            if created is not None:
+                chain.append(f"(parent pid {ppid} gone)")
             break
         if created is not None:
             parent_created = created(ppid)
             if child_created is None or parent_created is None or parent_created >= child_created:
+                chain.append(f"(unverified parent, pid {ppid})")
                 break  # an unverified or reused parent PID cannot establish ancestry
             child_created = parent_created
         pid = ppid

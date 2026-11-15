@@ -387,7 +387,7 @@ def test_filter_scan_names_the_git_attribute_source(attribute_repo, tmp_path, mo
     found = git.untrusted_filters(repo, "HEAD")
     [driver] = found
     assert driver["driver"] == "synthetic"
-    assert driver["patterns"] == [f"*.sample ({name})"]
+    assert driver["patterns_by_file"] == {name: ["*.sample"]}
     message = git.untrusted_filters_message(found, "execution.yaml")
     assert f"*.sample ({name})" in message
     assert "remove the filter assignment from each attributes file listed above" in message
@@ -429,7 +429,7 @@ def test_a_relative_git_attribute_var_resolves_from_the_repo_top(attribute_repo,
 
     monkeypatch.setattr(git, "git", relative_global)
     found = git.untrusted_filters(repo, "HEAD")
-    assert [driver["patterns"] for driver in found] == [[f"*.sample ({path})"]]
+    assert [driver["patterns_by_file"] for driver in found] == [{str(path): ["*.sample"]}]
 
 
 def test_a_filter_refusal_names_each_file_and_caps_each_patterns_group(attribute_repo, tmp_path):
@@ -447,7 +447,7 @@ def test_a_filter_refusal_names_each_file_and_caps_each_patterns_group(attribute
         expected = ", ".join(f"{name}{n}.dat" for n in range(5))
         assert f"{expected} and 2 more ({location})" in message
         assert f"{name}5.dat" not in message and f"{name}6.dat" not in message
-    assert len(found[0]["patterns"]) == 14
+    assert [len(patterns) for patterns in found[0]["patterns_by_file"].values()] == [7, 7]
 
 
 def test_legacy_system_attributes_follow_the_git_installation(attribute_repo, tmp_path, monkeypatch):

@@ -38,7 +38,8 @@ def selected_sha(p: Project) -> str | None:
 
 
 def artifacts(p: Project) -> set[str]:
-    return {f.name for f in (aew_root(p) / store.MAPS_REL).rglob("*.json") if f.name != "registry.json"}
+    local = {"registry.json", Path(service.REFRESH_FAILED_REL).name}
+    return {f.name for f in (aew_root(p) / store.MAPS_REL).rglob("*.json") if f.name not in local}
 
 
 def log_lines(p: Project) -> list[str]:
@@ -265,6 +266,38 @@ def test_a_failed_refresh_of_an_absent_map_is_pinned_in_its_unavailable_reason(t
     entry, lines = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
     assert entry["unavailable"].startswith("none; refresh at dispatch: not refreshed (OSError")
     assert slices.lines(aew_root(p), p.root, entry, []) == lines
+
+
+def test_a_failed_refresh_is_tried_once_per_base_until_a_map_is_generated(tmp_path, monkeypatch):
+    """A refresh that failed for a base is not tried again at the next dispatch at that base: its line says so, with
+    the time the failure took, and no git runs. A new base tries again; so does the old base once a map is generated."""
+    p = sample_project(tmp_path)
+    select_map(p)
+    head = advance_main(p, "moved.txt")
+    tried: list[str] = []
+
+    def broken(_repo: Path, commit: str, **_kw: Any) -> Any:
+        tried.append(commit)
+        raise OSError("the commit's objects cannot be read")
+
+    monkeypatch.setattr(service, "build", broken)
+    first, lines = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
+    assert first["refresh"].startswith("refresh at dispatch: not refreshed (OSError, after ") and tried == [head]
+    again, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
+    took = re.search(r"after ([\d.]+) s", first["refresh"])
+    assert tried == [head] and f"after {took.group(1)} s of the" in again["refresh"]  # the recorded time, not tried
+    assert "at an earlier dispatch for this base, and not tried again for it" in again["refresh"]
+    assert slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)[0] == again  # equal dispatches, equal pins
+    assert slices.lines(aew_root(p), p.root, first, []) == lines
+
+    moved = advance_main(p, "moved-again.txt")
+    slices.pin(aew_root(p), p.root, moved, [], lead=LEAD, head=moved)
+    assert tried == [head, moved]  # a new base is tried
+    monkeypatch.undo()
+    select_map(p)  # `aew map generate` succeeded: the failure is forgotten
+    assert not (aew_root(p) / service.REFRESH_FAILED_REL).exists()
+    entry, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=moved)
+    assert entry.get("refresh", "").startswith((FOUND, REFRESHED)), entry  # the old base is tried again
 
 
 def test_a_selection_that_lands_during_a_refresh_wins_and_the_pack_pins_its_own_map(tmp_path, monkeypatch):

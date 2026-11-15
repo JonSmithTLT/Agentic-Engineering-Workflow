@@ -121,25 +121,10 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     entry, record = _selected(aew_root, repo_root, base_commit)
     note = None
     if lead is not None and base_commit and _wants_refresh(entry):
-        from aew.maps import service
-
-        got = service.refresh_at_dispatch(aew_root, repo_root, base_commit, actor=lead, select=base_commit == head)
-        if "failed" in got:
-            note = (f"refresh at dispatch: not refreshed ({got['failed']}, after {got['seconds']:g} s of the "
-                    f"{service.REFRESH_S:g} s allowed); the selected map is used as it is")
-            if record is None:
-                entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
-        else:
-            record = got["record"]
-            entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
-                     "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
-            how = "found stored" if got.get("reused") else "made"
-            # no seconds here: the note is pinned in the pack and control state, so a refresh that succeeded pins the
-            # same bytes however long it took (two equal dispatches, one pack); a failure says its time, which is why
-            note = (f"refresh at dispatch: this map was {how} for the work's base, "
-                    + ("and is now the selected map" if got["selected"] else
-                       "stored and not selected (the base is not the authoritative head, or another selection "
-                       "landed or held the registry meanwhile)"))
+        try:
+            entry, record, note = _refreshed(aew_root, repo_root, base_commit, entry, record, lead=lead, head=head)
+        except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
+            return _unknown(), _unavailable("unknown")
     if record is None:
         return entry, _unavailable(str(entry["unavailable"]))
     try:
@@ -147,6 +132,34 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
         return _unknown(), _unavailable("unknown")
     return {**entry, **({"refresh": note} if note else {}), "slice": rows}, frame(rows)
+
+
+def _refreshed(aew_root: Path, repo_root: Path, base: str, entry: dict[str, Any], record: dict[str, Any] | None, *,
+               lead: dict[str, Any], head: str | None) -> tuple[dict[str, Any], dict[str, Any] | None, str]:
+    """:func:`pin`'s refresh at dispatch: the entry and record the pack uses, and the line that says what happened."""
+    from aew.maps import service
+
+    got = service.refresh_at_dispatch(aew_root, repo_root, base, actor=lead, select=base == head)
+    if "failed" in got:
+        # A failure says its time, since that is what failed it. One read back from an earlier dispatch says so, and
+        # its time is the one recorded then, so equal dispatches still pin equal lines.
+        earlier = ", at an earlier dispatch for this base, and not tried again for it" if got.get("remembered") else ""
+        note = (f"refresh at dispatch: not refreshed ({got['failed']}, after {got['seconds']:g} s of the "
+                f"{service.REFRESH_S:g} s allowed{earlier}); the selected map is used as it is")
+        if record is None:
+            entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
+        return entry, record, note
+    record = got["record"]
+    entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
+             "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
+    how = "found stored" if got.get("reused") else "made"
+    # no seconds here: the line is pinned in the pack and control state, so a refresh that succeeded pins the same
+    # bytes however long it took (two equal dispatches, one pack)
+    note = (f"refresh at dispatch: this map was {how} for the work's base, "
+            + ("and is now the selected map" if got["selected"] else
+               "stored and not selected (the base is not the authoritative head, or another selection "
+               "landed or held the registry meanwhile)"))
+    return entry, record, note
 
 
 def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:

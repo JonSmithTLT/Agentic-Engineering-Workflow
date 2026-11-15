@@ -64,8 +64,9 @@ def test_the_lead_gets_the_slices_bytes_in_place_of_its_body_and_every_other_pac
         assert slices.for_lead(unchanged) == unchanged
 
 
-# The engine's writes of a pack into control state: the pin, which keeps the slice body (rendered as `file: target`).
-PACK_STORES = {"context_ops.py: inv['pack']"}
+# The engine's writes of a pack into control state, each listed once per store (`file: target`): the pin, which keeps
+# the slice body. A second store of the same text is a second entry, so it fails until it is listed.
+PACK_STORES = ["context_ops.py: inv['pack']"]
 
 
 def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it():
@@ -81,7 +82,7 @@ def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it(
                 or isinstance(value, ast.Constant) and value.value is None)
 
     engine = Path(slices.__file__).resolve().parents[1] / "engine"
-    unwrapped, stores = [], set()
+    unwrapped, stores = [], []
     for path in sorted(engine.glob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Dict):
@@ -92,8 +93,8 @@ def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it(
                 for target in node.targets:
                     if (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
                             and target.slice.value == "pack" and not as_the_lead_sees_it(node.value)):
-                        stores.add(f"{path.name}: {ast.unparse(target)}")
-    assert unwrapped == [] and stores == PACK_STORES
+                        stores.append(f"{path.name}: {ast.unparse(target)}")
+    assert unwrapped == [] and sorted(stores) == sorted(PACK_STORES)
 
 
 @pytest.mark.parametrize("body", [b"maps: {pack_slices: off}\n", b"maps:\n  pack_slices: off\n",

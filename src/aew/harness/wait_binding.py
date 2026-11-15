@@ -51,7 +51,7 @@ class Calls:
 
     def stream_dropped(self, at: str) -> None:
         # Repeated drops with no newly observed step must keep the first loss available for diagnosis.
-        lost_at = at if self.calls else self.lost_at
+        lost_at = self.lost_at or at
         self.clear()
         self.lost_at = lost_at
 

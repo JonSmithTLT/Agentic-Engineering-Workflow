@@ -106,7 +106,7 @@ def test_no_loopback_call_ever_reaches_a_configured_proxy(server, monkeypatch):
     assert (proxy.connections, proxy.request_lines) == (0, [])
 
 
-def test_an_unframed_event_stream_keeps_its_socket_for_idle_reads_and_shutdown(monkeypatch):
+def test_an_unframed_event_stream_keeps_its_socket_and_clears_the_read_timeout(monkeypatch):
     client = Client("http://127.0.0.1:1", "pw")
     local, peer = socket.socketpair()
     with local, peer:

@@ -203,9 +203,7 @@ each is built with the slice named.
   binds the wait to the shell call or calls open when it starts, with the open step as backstop. When a bound call
   completes, any step ends or another starts, the event stream reconnects or the run ends while the wait is pending, the
   wait ends `client_gone`: no fact, the hold on live delivery released, the connection closed. A wait with no open shell
-  call after a 2 s grace is refused (`WAIT_OUTSIDE_A_STEP`). If the event stream drops while a call is open, its
-  lifetime becomes unknown. An unbound wait is refused (`WAIT_BINDING_LOST_ON_RECONNECT`) until a new foreground
-  shell call can be observed. A reconnect cannot restore a prior binding. An adapter that reports no steps refuses
+  call after a 2 s grace is refused (`WAIT_OUTSIDE_A_STEP`), and an adapter that reports no steps refuses
   `message.wait` (`WAIT_UNSUPPORTED`). Before recording `DELIVERED via: wait`, the bridge checks the bound call, step and
   connection once more under the delivery lock. **The residuals:** a reply sent to an orphan within the event stream's
   latency between a step's end and its frame; and a client killed after the reply is written but before it reads it.
@@ -349,6 +347,13 @@ left to the implementation, and what this slice adds beside them:
 - **Not here.** The shared diff helper does not exist yet (E5a, E7 and F4 S2a have not merged), so its named exclusion
   and the stage-step equivalence test land with whichever creates it (the plan's coupling table). The oracle rules are
   52 to 58 (C1 to C7, `tests/helpers/invariants.py`; 51 is E3c's).
+
+## Amendment of 2026-11-15: stream loss and worker waits (D8)
+
+A stream drop invalidates pending wait bindings. Until the next observed step boundary, a new wait that cannot bind
+returns `WAIT_BINDING_LOST_ON_RECONNECT`. After a new step starts, an observed foreground shell call in that step can
+bind. A reconnect alone provides no evidence of a step or call's lifetime. Run events record each drop and reconnect
+and identify the first drop since the last observed boundary when refusing an unbound wait.
 
 ## Build status
 

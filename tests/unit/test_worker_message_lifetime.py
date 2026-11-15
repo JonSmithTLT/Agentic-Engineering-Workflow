@@ -116,6 +116,27 @@ def test_missing_shell_call_has_a_bounded_grace_and_never_falls_back_to_run_end(
     assert recorded == [] and not messages.waiting
 
 
+@pytest.mark.parametrize("between_steps", [False, True], ids=["before-shell-call", "between-steps"])
+def test_wait_names_a_drop_even_if_no_shell_call_was_open(tmp_path, between_steps):
+    s, a, messages, conn, recorded = setup(tmp_path, open_call=False)
+    rows = []
+    s.events = rows.append
+    calls = a._wait_calls
+    step = {"assistantMessageID": "step-1"}
+    calls.event("session.step.started", step, None)
+    if between_steps:
+        calls.event("session.step.ended", step, None)
+    a._stream_dropped()
+    # In either case the call arrives without a start frame observed since the drop.
+    calls.event("session.tool.called", {"assistantMessageID": "step-2" if between_steps else "step-1",
+                                       "id": "shell-1"}, "shell")
+    with pytest.raises(errors.WaitBindingLostOnReconnect, match="dropped since the last observed step boundary"):
+        messages.wait({"after": "", "timeout_s": "0"}, conn).deliver(lambda value: pytest.fail("unexpected result"))
+    assert rows == [{"event": "message_wait_binding_refused", "run": s.run, "reason": "stream_drop",
+                     "binding_lost_at": calls.lost_at, "code": "WAIT_BINDING_LOST_ON_RECONNECT"}]
+    assert calls.lost_at is not None and recorded == [] and not messages.waiting
+
+
 def test_a_shell_call_arriving_in_the_grace_can_bind(tmp_path, monkeypatch):
     s, a, messages, conn, recorded = setup(tmp_path, open_call=False)
 

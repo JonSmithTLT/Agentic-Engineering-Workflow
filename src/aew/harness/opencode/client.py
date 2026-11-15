@@ -259,10 +259,10 @@ class EventStream:
         self._drop()
 
     def _drop(self) -> None:
-        """Break the current connection (also used by tests to simulate a lost stream).
+        """Request socket shutdown without waiting for the buffered response's read lock.
 
-        The socket is shut down, not the response closed: closing a buffered response from another thread
-        waits for the lock its blocked reader holds."""
+        Shutdown may leave a blocked reader on Windows. The server's exit closes the connection.
+        Tests also call this to simulate a lost stream."""
         sock, self._sock = self._sock, None
         if sock is not None:
             try:

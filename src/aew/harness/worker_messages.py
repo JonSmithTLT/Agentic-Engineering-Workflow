@@ -141,9 +141,9 @@ class WorkerMessages:
                 sup.events({"event": "message_wait_binding_refused", "run": sup.run, "reason": reason,
                             "binding_lost_at": lost_at, "code": refusal.code})
                 if lost_at is not None:
-                    raise refusal("the OpenCode event stream dropped while a foreground shell call was open; "
-                                  "its lifetime is now unknown and nothing was delivered. Retry the wait from a "
-                                  "new foreground shell call")
+                    raise refusal("the OpenCode event stream dropped since the last observed step boundary; "
+                                  "the foreground shell call's lifetime is unknown and nothing was delivered. "
+                                  "Retry the wait from a foreground shell call in a new step")
                 raise errors.WaitOutsideAStep("no foreground shell call is open after the 2 s grace; nothing was "
                                               "delivered. Use a foreground shell call; otherwise reply and end "
                                               "your turn. Messages remain available for live delivery")

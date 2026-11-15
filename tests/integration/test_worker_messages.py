@@ -112,7 +112,8 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
 
 
 def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(lab, tmp_path):
-    go = tmp_path / "wait-after-reconnect"
+    # The lab mounts sync into the contained fake harness on Linux.
+    go = sync_dir(tmp_path) / "wait-after-reconnect"
     run, sync = launch(lab, tmp_path, [
         {"do": "shell", "command": "aew message wait --timeout 0", "start_after_file": str(go)}],
         drop_events_every={"type": "session.tool.called", "count": 3})

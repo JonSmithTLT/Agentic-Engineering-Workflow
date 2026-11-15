@@ -1,5 +1,7 @@
 """A fresh revision cannot let a writer act on a value that another writer changed."""
 
+import shlex
+
 import pytest
 from aewflow import create_planned_ticket, create_unit, sample_project
 
@@ -8,6 +10,7 @@ from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.queue_ops import empty as empty_queue
 from aew.engine.store import Transition
 from aew.errors import ChangedSinceRead
+from aew.harness import contract as K
 from aew.harness.lead_broker import run_cli
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project as projected
@@ -16,14 +19,41 @@ B_OPS = sorted(op for op, specs in CONTROL_OP_SPECS.items()
                if any(spec.revision_class == "B" for spec in specs))
 
 
-@pytest.mark.parametrize("route", ["move", "promote", "staff", "defer", "requeue", "requeue_text", "lower"])
-def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, route):
-    import shlex
-
+@pytest.mark.parametrize("route", [
+    "move", "promote", "staff", "defer", "requeue", "requeue_deferred_text", "requeue_disposition_text",
+    "lower", "relaunch_text",
+])
+def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, request, route):
     from aew.surface.run import run_tool
 
     p = sample_project(tmp_path)
     engine = Engine.discover(p.root)
+    if route == "relaunch_text":
+        from fake_harness import HarnessLab
+
+        lab = HarnessLab.create(p, tmp_path)
+        request.addfinalizer(lab.cleanup)
+        for key, value in lab.env.items():
+            monkeypatch.setenv(key, value)
+        engine = Engine.discover(p.root)
+        ticket = create_planned_ticket(p, tmp_path)
+        inv = engine.work_assign(token=p.token, expect_rev=p.rev(), work_id=ticket)["invocation"]
+        monkeypatch.setattr(type(engine._harness), "_spawn_run", lambda _self, _inv, run, _token: {"run": run})
+        first = engine.harness_launch(token=p.token, expect_rev=p.rev(), invocation=inv, prior_value="none")
+        # Age the unconfirmed run past launch grace without sleeping. It has no supervisor record.
+        with engine.store.session() as session:
+            run = session.state["invocations"][inv]["runs"][-1]
+            run["launched_at"] = "2000-01-01T00:00:00Z"
+            session.commit(Transition(op="test.expire_launch_grace", actor={"kind": "test"},
+                                      summary="age the unconfirmed run"))
+        status = engine.harness_status(inv)
+        text = status["runs"][-1]["next_action"]
+        argv = _printed_argv(text, p.rev())
+        assert argv == status["launch_argv"] and argv[-1] == first["run"]
+        before = p.rev()
+        result = run_cli(engine, p.token, argv, str(p.root), "", channel="lead.cli")["result"]
+        assert result["ok"] and result["superseded"] == first["run"] and p.rev() == before + 1
+        return
     parent = create_unit(p, "story", "Parent", cls=0)
     wid = create_unit(p, "ticket", "Child", cls=0, parent=parent)
     if route == "lower":
@@ -43,11 +73,13 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, route):
         _change_prior(engine, "integrate.defer", wid, parent, {})
         with engine.store.session() as session:
             [entry] = session.state["queue"]["entries"].values()
-            entry["state"] = "VALIDATED" if route == "defer" else "DEFERRED"
+            entry["state"] = {"defer": "VALIDATED", "requeue_disposition_text": "AWAITING_DISPOSITION"}.get(
+                route, "DEFERRED")
             session.commit(Transition(op="test.queue_state", actor={"kind": "test"}, summary="set queue state"))
-        if route == "requeue_text":
+        if route.endswith("_text"):
             hint = engine._resume._queue_wait(engine.store.current(), wid)
-            argv = shlex.split(hint.split("`")[1].replace("<revision from aew status>", str(p.rev())))[1:]
+            argv = _printed_argv(hint, p.rev())
+            assert argv[-2:] == ["--prior-value", entry["state"]]
         else:
             argv = projected(engine, SurfaceContext.outside_session(), wid)["cli_fallback"][f"integrate.{route}"]
     values = {"<parent>": "none", "<kind>": "story", "<title>": "Promoted", "<reason>": "reviewed"}
@@ -61,6 +93,14 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, route):
         assert result["to"] == "QUEUED"
     elif route == "staff":
         assert result["staff_argv"][-1] == result["role_plan_digest"]
+
+
+def _printed_argv(text, revision):
+    import printed_commands
+
+    [(command, fenced)] = printed_commands.commands(text)
+    printed_commands.check(command, "fence" if fenced else "span")
+    return shlex.split(command.replace(K.REVISION, str(revision)))[1:]
 
 
 def test_a_retired_queue_entry_names_the_commit(tmp_path):

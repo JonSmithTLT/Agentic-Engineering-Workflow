@@ -112,10 +112,11 @@ class StatusViews:
                              "auto-run action(s) this activation)"
                              + (f"; stopped: {stop.get('code')}: {stop.get('message')}" if stop.get("code") else ""))
             lines.append(f"  operator endpoint: running (pid {endpoint.get('pid')}, guarantee "
-                         f"{endpoint.get('guarantee')})" if endpoint.get("running") else
+                         f"{endpoint.get('guarantee')}; its process is alive, and `aew doctor` checks it answers)"
+                         if endpoint.get("running") else
                          "  operator endpoint: not running (`aew operator serve --dev`)")
             problems = steering.get("run_problems")
-            if problems is not None:  # the RUN readiness walk of 2026-11-11, findings 1 and 6: before and under Run
+            if problems is not None:  # what Run lacks, before and under Run, each with its fix
                 in_force = " (Run is in force, and cannot act)" if steering["effective"] == "run" else ""
                 lines += ["  Run: ready"] if not problems else [f"  Run: not ready{in_force}:",
                                                                 *(f"    - {p}" for p in problems)]

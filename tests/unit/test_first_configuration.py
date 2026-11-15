@@ -361,7 +361,7 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
 # The literals that name `aew lead acquire` without the seat's sentence, and why each may.
 NO_SEAT_SENTENCE = {
     "lead_ops.py": "a takeover refused on a vacant seat: not a first step, and its reader already holds the route",
-    "first_configuration.py": "`post_pin_route`: each caller adds the sentence, as the tests above and below say",
+    "first_configuration.py": "`post_pin_route` itself: each caller adds the sentence, and the detector checks it",
 }
 
 
@@ -381,16 +381,18 @@ def shown_texts(tree: ast.AST) -> Iterator[str]:
 def test_every_text_that_names_lead_acquire_says_it_holds_the_seat():
     """Review of #329, F3's class: an operator who follows such a text gets a held seat, which then refuses the
     `--acquire` that `aew init`'s `next` named. So the text says so, in the one sentence with the way back. Limits: the
-    literal spelling `aew lead acquire`, in what `src/aew` can show (the guides are the test below); it reads no
-    meaning, so an entry above stays only for the reason it gives."""
+    literal spelling `aew lead acquire`, or a call of `post_pin_route`, which prints it, in one f-string of what
+    `src/aew` can show (the guides are the test below); it reads no meaning, so an entry above stays only for the
+    reason it gives, and never excuses a caller of `post_pin_route`."""
     src = Path(aew.__file__).parent
     exempt = set()
     missing = []
     for path in sorted(src.rglob("*.py")):
         for text in shown_texts(ast.parse(path.read_text(encoding="utf-8"))):
-            if "aew lead acquire" not in text or "HELD_SEAT" in text:
+            caller = "post_pin_route(" in text
+            if not (caller or "aew lead acquire" in text) or "HELD_SEAT" in text:
                 continue
-            if path.name in NO_SEAT_SENTENCE:
+            if path.name in NO_SEAT_SENTENCE and not caller:
                 exempt.add(path.name)
             else:
                 missing.append(f"{path.name}: {text[:100]}")

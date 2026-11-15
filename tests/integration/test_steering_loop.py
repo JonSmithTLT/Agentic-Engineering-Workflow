@@ -747,7 +747,7 @@ def test_run_never_auto_starts_a_run_without_a_hard_deadline(p, endpoint):
     stop = loop(p, Scripted(lambda rev: [action("ticket_start", {"expect_rev": rev, "work_id": "T-0001"})]),
                 executor=spy).activate()
     assert stop.code == L.NO_HARD_DEADLINE and spy.calls == [], stop
-    # an unconfigured policy is said to be one, with the route, never a profile named `<none>` (the readiness walk, 3)
+    # an unconfigured policy is said to be one, with the route, never a profile named `<none>`
     assert "the execution policy is not configured" in stop.message and "<none>" not in stop.message, stop
 
 

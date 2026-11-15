@@ -1,6 +1,6 @@
-"""`aew notify file PATH`, the headless notifier (the RUN readiness walk of 2026-11-11, finding 5; the operator's yes
-the same day): one JSON line per event, never its reason; `--check` says whether the path can take them; Run's
-notifier gate passes with it on a host with no desktop session; it is bounded and rotated like the delivery log."""
+"""`aew notify file PATH`, the headless notifier for an endpoint with no desktop session: one JSON line per event, never
+its reason; `--check` says whether the path can take them; Run's notifier gate passes with it on a host with no desktop
+session; it is bounded and rotated like the delivery log; a delivery it cannot make is the notifier's failure."""
 
 from __future__ import annotations
 

@@ -1,6 +1,5 @@
 """`aew notify file PATH`: a headless notifier AEW ships, for an endpoint with no desktop session (an ssh login on a
-Linux host). The operator approved it on 2026-11-11 ("right if its small sure"), from the RUN readiness walk's
-finding 5.
+Linux host).
 
 The operator endpoint runs it as it runs ``aew notify desktop``: as its own engine (``desktop_notifier.runnable``),
 with one ``aew/notify-event/v1`` object on stdin. It appends one JSON line per event to ``PATH``: the time, the
@@ -76,7 +75,7 @@ def line(event: Mapping[str, Any], at: str) -> dict[str, Any]:
     from aew.harness import desktop_notifier
 
     title, body = desktop_notifier.text(event)
-    clean = desktop_notifier._clean  # the toast's own cleaning: printable, bounded
+    clean = desktop_notifier.clean  # the toast's own cleaning: printable, bounded
     return {"at": at, "title": title, "body": body, "event": clean(event.get("event")),
             "subject": clean(event.get("subject")), "project_id": clean(event.get("project_id")),
             "revision": event.get("revision") if isinstance(event.get("revision"), int) else None,

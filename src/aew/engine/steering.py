@@ -242,43 +242,83 @@ def profiles_without_deadline(policy: dict[str, Any] | None) -> list[str]:
 
 
 ENDPOINT_DOWN = ("the operator endpoint is not running: start `aew operator serve --dev` in the operator's own "
-                 "terminal, and keep it up while Run is in force (each Run activation needs it live, and it delivers "
-                 "the notifications)")
+                 "terminal (on Windows, `aew opencode` starts one), and keep it up while Run is in force (each Run "
+                 "activation needs it live, and it delivers the notifications)")
+SEAT_VACANT = ("no Lead holds the seat: start the Lead session with `aew opencode --acquire`. A raise binds its "
+               "generation, and the steering loop runs in that session")
+PINNED_EDIT = "Edit pinned settings or classify authority candidates"  # the quickstart's section for a pinned edit
 
 
-def run_problems(policy: dict[str, Any] | None, *, endpoint_running: bool) -> list[str]:
-    """What stands between this project and a Run that can act, each with its fix: the notifier, a deadline on every
-    profile routing can pick, and the live operator endpoint. Empty when Run is ready. ``doctor``'s
-    `steering:run-ready` and ``status``'s Run line show it (the RUN readiness walk of 2026-11-11, findings 1 and 6);
-    the raise and each Run activation refuse on the same functions."""
-    out = []
+def endpoint_silent(why: str) -> str:
+    """The problem when the endpoint's process is alive but does not answer a ping, as each Run activation pings it."""
+    return (f"the operator endpoint's process is running but it does not answer: {why}. Stop it and start it again "
+            "(`aew operator serve --dev`, or on Windows `aew opencode`)")
+
+
+def run_problems(policy: dict[str, Any] | None, *, seat_held: bool, endpoint: str | None) -> list[str]:
+    """What stands between this project and a Run that can act, each with its fix: a Lead in the seat (the raise binds
+    its generation, and the loop runs in its session), the notifier, a deadline on every profile routing can pick (A1
+    §3.2), and ``endpoint``, the operator endpoint's problem or ``None``. Empty when Run is ready. ``doctor``'s
+    `steering:run-ready` and ``status``'s Run line show it, before and under Run; the raise and each Run activation
+    refuse on the same functions.
+
+    The notifier is judged in this process's environment; the endpoint judges it in its own, so the text says where."""
+    out = [] if seat_held else [SEAT_VACANT]
     notifier = notifier_problem(policy)
     if notifier:
-        out.append(f"the notifier cannot deliver: {notifier}")
-    deadline = deadline_problem(policy)
+        out.append(f"the notifier cannot deliver, judged in this terminal's environment "
+                   f"({notifier_check(policy)}): {notifier}")
+    deadline = deadline_problem(policy, seat_held=seat_held)
     if deadline:
         out.append(deadline)
-    if not endpoint_running:
-        out.append(ENDPOINT_DOWN)
+    if endpoint:
+        out.append(endpoint)
     return out
 
 
-def deadline_problem(policy: dict[str, Any] | None) -> str | None:
-    """Why Run could not auto-start a run under ``policy``, with the route to fix it, or ``None``: the one text the
-    raise to Run, each Run activation and ``doctor`` give for :func:`profiles_without_deadline` (the RUN readiness
-    walk of 2026-11-11, findings 2 and 3)."""
+def notifier_check(policy: dict[str, Any] | None) -> str:
+    """Where the notifier's own judgement is made: the endpoint delivers from its own environment, so the check that
+    counts is run from its terminal (AEW's notifiers have `--check`; an operator's own is checked by running it)."""
+    from aew.harness import desktop_notifier, file_notifier
+
+    command = ((policy or {}).get("notify") or {}).get("command") or []
+    if desktop_notifier.is_default(command):
+        return "the endpoint delivers from its own: run `aew notify desktop --check` in the endpoint's terminal"
+    if file_notifier.matches(command):
+        return (f"the endpoint delivers from its own: run `aew notify file {command[3]} --check` in the endpoint's "
+                "terminal")
+    return "the endpoint delivers from its own, so check the notifier from the endpoint's terminal"
+
+
+def deadline_problem(policy: dict[str, Any] | None, *, seat_held: bool = False) -> str | None:
+    """Why Run could not auto-start a run under ``policy`` (A1 §3.2: a hard deadline is set before unattended execution
+    begins), with the route to fix it, or ``None``. The raise to Run, each Run activation, ``doctor`` and ``status``
+    give this one text.
+
+    The fix is an edit of a pinned file, which starts with the operator taking the seat. With ``seat_held`` (the raise
+    and the loop always: both need a Lead in the seat) that step is refused until the Lead session ends, so the route
+    starts there and names the quickstart section the operator follows; otherwise it names the commands. Either way it
+    ends with the Lead started again and the raise asked again, since a raise binds one Lead generation."""
     from aew.engine.first_configuration import post_pin_route
+    from aew.harness import contract as K
     from aew.policy import execution as X
 
     missing = profiles_without_deadline(policy)
     if not missing:
         return None
     if missing == ["<none>"]:
-        return ("the execution policy is not configured: no profile can be routed, so no run has a deadline. Set the "
-                "workers' model with its deadline, as first configuration (`aew init` with --model) writes them: "
-                f"{post_pin_route(X.REL_PATH)}, giving the profile a deadline_s (seconds)")
-    return (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: "
-            f"{post_pin_route(X.REL_PATH)}, giving each a deadline_s (seconds)")
+        what = ("the execution policy is not configured: no profile can be routed, so no run has a deadline. Set the "
+                "workers' model with its deadline_s (seconds), as first configuration (`aew init` with --model) "
+                "writes them")
+    else:
+        what = (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: give each a "
+                "deadline_s (seconds)")
+    again = "start the Lead again with `aew opencode --acquire` and raise to Run again"
+    if seat_held:
+        return (f"{what}. That is an edit of .aew/{X.REL_PATH}, a pinned file: end the Lead session first, so it "
+                f"gives up the seat; then, at the operator's terminal, follow the quickstart's \"{PINNED_EDIT}\" "
+                f"(it ends with {K.MANIFEST_ADOPT} and the release of the seat); then {again}")
+    return f"{what}. To do that, {post_pin_route(X.REL_PATH)}. {K.HELD_SEAT}. Then {again}"
 
 
 LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)
@@ -489,8 +529,8 @@ class Steering:
                 raise IllegalTransition(f"unattended Run needs an executable notifier: {problem} (operator decision 1)",
                                         reason="notifier_unavailable")
             # The loop's own fail-closed rule, applied before the operator is asked: a Run in which no run could
-            # start is refused here, not found at its first activation (A1 §3.2; the RUN readiness walk, finding 2).
-            missing = deadline_problem(policy)
+            # start is refused here, not found at its first activation (A1 §3.2). The seat is held here (above).
+            missing = deadline_problem(policy, seat_held=True)
             if missing:
                 raise IllegalTransition(f"Run never auto-starts a run without a hard deadline (A1 §3.2): {missing}",
                                         reason="no_hard_deadline")

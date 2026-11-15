@@ -124,7 +124,8 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     return None
 
 
-def _clean(value: Any) -> str:
+def clean(value: Any) -> str:
+    """``value`` as a notification shows it: its printable characters, at most ``MAX_TEXT`` of them."""
     text = "" if value is None else str(value)
     return "".join(c if c.isprintable() else " " for c in text)[:MAX_TEXT]
 
@@ -133,10 +134,10 @@ def text(event: Mapping[str, Any]) -> tuple[str, str]:
     """The title and body for ``event``: its kind, subject and project, never its reason. A ``raise_requested``
     also names the mode asked for (its ``ref``), and only when that is one of steering's modes: a mode is an enum, not
     agent text, while the reason is the Lead's rationale (the designer's ruling of 2026-11-11 on SYS-04, part 4(b))."""
-    kind = _clean(event.get("event")).replace("_", " ") or "event"
+    kind = clean(event.get("event")).replace("_", " ") or "event"
     if event.get("event") == "raise_requested" and event.get("ref") in MODES:
         kind = f"{kind} to {event['ref']}"
-    subject, project = _clean(event.get("subject")), _clean(event.get("project_id"))
+    subject, project = clean(event.get("subject")), clean(event.get("project_id"))
     body = " ".join(p for p in (subject, f"(project {project})" if project else "") if p)
     return f"AEW: {kind}", body or "the operator endpoint has news for you"
 
@@ -188,7 +189,7 @@ def show(event: Mapping[str, Any], *, env: Mapping[str, str] | None = None, plat
     except OSError as exc:
         raise AEWError(f"the desktop notifier could not start: {exc}") from None
     if done.returncode != 0:
-        tail = _clean((done.stdout or b"").decode("utf-8", "replace").strip()[-MAX_TEXT:])
+        tail = clean((done.stdout or b"").decode("utf-8", "replace").strip()[-MAX_TEXT:])
         raise AEWError(f"the desktop notifier exited {done.returncode}: {tail or 'no output'}")
     return {"ok": True, "shown": {"title": title, "body": body}}
 

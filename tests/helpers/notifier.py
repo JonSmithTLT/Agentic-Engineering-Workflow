@@ -53,8 +53,8 @@ def received(out: Path) -> list[dict[str, Any]]:
 
 
 # A profile routing picks, with the hard deadline Run needs, as first configuration writes one (`aew init --model`): the
-# raise to Run refuses a policy in which any profile routing can pick has none (A1 §3.2; the RUN readiness walk of
-# 2026-11-11, finding 2). The model is a name only: these tests launch nothing through it.
+# raise to Run refuses a policy in which any profile routing can pick has none (A1 §3.2).
+# The model is a name only: these tests launch nothing through it.
 RUN_READY = {"configured": True, "harness": "opencode",
              "profiles": {"default": {"model": "openai/gpt-test", "deadline_s": 3600, "deadline_scope": "run"}},
              "routing": {"default": "default", "archetypes": {}, "classes": {}, "cards": {}}}

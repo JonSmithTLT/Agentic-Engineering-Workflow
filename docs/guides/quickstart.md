@@ -293,20 +293,24 @@ A run's end moves nothing: the Lead still ingests and transitions, as above. Eve
 ## Unattended Run
 
 Under Run, the steering loop starts Tickets and requests reviews itself, for one Lead generation, and the operator
-endpoint tells you what stops it. A project starts in crawl. Run needs three things, and `aew doctor`'s
+endpoint tells you what stops it. A project starts in crawl. Run needs four things, and `aew doctor`'s
 `steering:run-ready` line says which are missing, each with its fix:
+
+- **a Lead in the seat.** The raise binds its generation, and the steering loop runs in its session, so doctor run
+  before terminal 2 below says the seat is vacant.
 
 - **a notifier that can deliver.** `aew init` sets the desktop one (`[aew, notify, desktop]`). Check it from the
   terminal the endpoint will run in: `aew notify desktop --check`. With no desktop session there (an ssh login on a
   Linux host), use the headless one, which appends each event to a file you watch (`tail -f`):
   `notify.command: [aew, notify, file, /home/you/aew-events.jsonl]`. Check it with
-  `aew notify file /home/you/aew-events.jsonl --check`.
+  `aew notify file /home/you/aew-events.jsonl --check`. Doctor judges the notifier in its own terminal's environment,
+  so run the check from the endpoint's terminal.
 - **a `deadline_s` on every profile routing can pick.** First configuration (`aew init` with `--model`) writes one
   (provisional, bounding only runs started under Run). Without it, the raise is refused and names the profiles.
-- **the operator endpoint, up the whole time.** Each Run activation checks it is live.
+- **the operator endpoint, up the whole time.** Each Run activation pings it, and so does doctor.
 
-Changing `notify.command` or a profile is an edit of `.aew/policy/execution.yaml`, a pinned file: the commands are in
-"Edit pinned settings or classify authority candidates" above.
+Changing `notify.command` or a profile is an edit of `.aew/policy/execution.yaml`, a pinned file: end the Lead session
+first, then follow "Edit pinned settings or classify authority candidates" above, start the Lead again and raise again.
 
 Then, in three terminals:
 

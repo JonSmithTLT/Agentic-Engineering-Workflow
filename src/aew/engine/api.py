@@ -83,6 +83,10 @@ if TYPE_CHECKING:
 
 AEW_GITIGNORE = "# Rebuildable/runtime data (KC §5.3) and spent redo records.\nlocal/\nstate/txn/\n"
 AUTHORITY_CLASSES = ("contracts", "decisions", "schemas", "source", "orientation")
+# `aew doctor` pings the operator endpoint for Run's readiness and waits at most this long: shorter than a Run
+# activation's own ping (`operator_client.PING_TIMEOUT_S`), because doctor runs many checks and a live endpoint
+# answers at once; a slower answer is reported as no answer, which the operator can re-check.
+DOCTOR_PING_S = 2.0
 
 
 def _slug(name: str) -> str:
@@ -373,30 +377,53 @@ class ProjectAdmin:
                         f"process dumpable: {info.get('dumpable')}; same-uid residuals: "
                         + "; ".join(info.get("residuals") or []))
 
-    def run_problems(self, endpoint_running: bool) -> list[str]:
-        """``steering.run_problems`` for the adopted execution policy; an unreadable one is the problem itself."""
+    def run_problems(self, state: dict[str, Any], *, ping: bool = False) -> list[str]:
+        """``steering.run_problems`` for the adopted execution policy and the seat in ``state``; an unreadable policy is
+        the problem itself. The endpoint is judged by :meth:`endpoint_problem`, pinged only with ``ping``."""
+        seat_held = state["lead"]["status"] != "vacant"
+        endpoint = self.endpoint_problem(ping=ping)
         try:
             policy, _ = self.k.execution_policy()
         except Exception as exc:  # noqa: BLE001  reported as Run's problem, and by policy:execution in doctor
-            return [f"the execution policy cannot be read: {getattr(exc, 'code', type(exc).__name__)}: {exc}"]
-        return steering_mod.run_problems(policy, endpoint_running=endpoint_running)
+            unreadable = f"the execution policy cannot be read: {getattr(exc, 'code', type(exc).__name__)}: {exc}"
+            return [p for p in ([] if seat_held else [steering_mod.SEAT_VACANT]) + [unreadable, endpoint] if p]
+        return steering_mod.run_problems(policy, seat_held=seat_held, endpoint=endpoint)
 
-    def _run_ready_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
-        """`steering:run-ready`: whether a raise to Run would be accepted and could act, and each fix (the RUN readiness
-        walk of 2026-11-11, finding 1). Nothing to report where steering is not configured."""
+    def endpoint_problem(self, *, ping: bool) -> str | None:
+        """Why the operator endpoint cannot serve Run, or ``None``: its process is not running, or (``ping``) it does
+        not answer a ping within ``DOCTOR_PING_S``, the check each Run activation makes before each action. Without
+        ``ping``, the locator and its process only (``status``'s cheap read)."""
         from aew.harness import operator_client
 
+        if not operator_client.status(self.k.aew_root).get("running"):
+            return steering_mod.ENDPOINT_DOWN
+        if ping:
+            try:
+                operator_client.ping(self.k.aew_root, timeout_s=DOCTOR_PING_S)
+            except AEWError as exc:
+                return steering_mod.endpoint_silent(exc.message)
+        return None
+
+    def _run_ready_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
+        """`steering:run-ready`: whether a raise to Run would be accepted and could act, and each fix. Nothing to report
+        where steering is not configured. The endpoint is pinged, as each Run activation pings it."""
         try:
             configured = self.steering.policy_default() is not None
         except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
             configured = False
         if not configured and "steering" not in state:
             return "PASS", "steering is not configured: Run is not available until the policy names `steering.mode`"
-        problems = self.run_problems(bool(operator_client.status(self.k.aew_root).get("running")))
+        problems = self.run_problems(state, ping=True)
         if problems:
             return "WARN", "Run is not ready: " + "; ".join(f"({i}) {p}" for i, p in enumerate(problems, 1))
-        return "PASS", ("Run is ready: the notifier can deliver, every profile routing can pick has a deadline_s, and "
-                        "the operator endpoint is running; the operator raises it with `aew lead mode raise run`")
+        try:
+            policy, _ = self.k.execution_policy()
+        except Exception:  # noqa: BLE001 (unreachable: an unreadable policy is a problem above)
+            policy = None
+        return "PASS", ("Run is ready: a Lead holds the seat, the notifier can deliver as judged in this terminal's "
+                        f"environment ({steering_mod.notifier_check(policy)}), every profile routing can pick has a "
+                        "deadline_s, and the operator endpoint answers a ping; the operator raises it with "
+                        "`aew lead mode raise run`")
 
     def doctor_checks(self) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
@@ -1279,7 +1306,7 @@ class Engine:
 
                 endpoint = operator_client.status(self._k.aew_root)
                 out["steering"] = view | {"operator_endpoint": endpoint,
-                                          "run_problems": self._project.run_problems(bool(endpoint.get("running")))}
+                                          "run_problems": self._project.run_problems(state)}
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier

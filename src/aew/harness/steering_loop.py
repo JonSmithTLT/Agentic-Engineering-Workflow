@@ -533,7 +533,7 @@ class SteeringLoop:
             return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
                                           f"notifications, to be live: {exc.message}")
         if t.dispatches:
-            missing = S.deadline_problem(policy)
+            missing = S.deadline_problem(policy, seat_held=True)  # the loop runs in the seated Lead's broker
             if missing:
                 return NO_HARD_DEADLINE, (f"{t.name} would start a run, but Run never auto-starts a run without a hard "
                                           f"deadline (A1 §3.2): {missing}")

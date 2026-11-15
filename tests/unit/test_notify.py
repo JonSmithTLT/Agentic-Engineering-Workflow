@@ -722,6 +722,23 @@ def test_a_request_recorded_before_the_notifier_is_delivered_once_it_is(project,
     assert "the test asks" not in title + body
 
 
+def test_a_delivery_the_file_notifier_cannot_make_is_the_notifier_unavailable_never_not_executable(project):
+    """AEW's headless notifier is run as the endpoint's own engine, so a path it cannot write is the notifier being
+    unavailable (a fix in its path), not a command that cannot be executed: the delivery's reason says which."""
+    adopt(project, command=["aew", "notify", "file", "relative.jsonl"])  # not absolute: it can take no event
+    root = project.root / ".aew"
+    request(project, "raise")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher)
+    finally:
+        watcher.close()
+    assert _lines_for(root, "raise_requested") == [("failed", "unavailable")]
+    [entry] = [x for x in notify.deliveries(root) if x["event"] == "raise_requested"]
+    assert "is not absolute" in entry["detail"], entry
+
+
 def test_a_request_recorded_while_the_default_desktop_notifier_was_unavailable_is_delivered_once_it_is(
         project, monkeypatch):
     """The shipped default, configured but with no desktop to show on (conftest makes it so in every test), fails as

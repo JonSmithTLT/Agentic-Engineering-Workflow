@@ -296,27 +296,75 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         assert proof["if"] == condition
 
 
-def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
+def evidence_hit(path):
+    return {"File": str(path), "StartLine": 1, "EndLine": 1, "StartColumn": 1, "EndColumn": 16,
+            "Match": "private contents", "Secret": "private contents", "RuleID": "planted-rule"}
+
+
+def test_evidence_findings_reject_unattributed_paths(tmp_path):
+    stage = _load("stage_evidence")
+    report = tmp_path / "scan.json"
+    candidate = tmp_path / "contents"
+    known = Path("autopsy/failure.txt")
+    report.write_text(json.dumps([evidence_hit(candidate / known)]), encoding="utf-8")
+    assert set(stage.findings(report, candidate, {known})) == {known}
+    with pytest.raises(ValueError, match="unattributable"):
+        stage.findings(report, candidate, {Path("other.txt")})
+
+
+def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
 
-    stage_evidence = _load("stage_evidence")
+    stage = _load("stage_evidence")
     source = tmp_path / "raw"
     autopsy = source / "autopsy"
     autopsy.mkdir(parents=True)
-    (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
-    destination = tmp_path / "public"
+    (autopsy / "failure.txt").write_text("private contentsTAIL\nprivate contents\n", encoding="utf-8")
+    (autopsy / "other.txt").write_text("context private contents", encoding="utf-8")
+    # The scanner reports only the repeated literal. The opaque key needs the report's broad redactor.
+    opaque_key = "Xy7" * 11
+    (source / "junit.xml").write_text(f"<failure>private contents {opaque_key}</failure>", encoding="utf-8")
+    (source / "vertical-summary.txt").write_text(f"private contents {opaque_key}", encoding="utf-8")
+    (autopsy / "still-dirty.txt").write_text("other value", encoding="utf-8")
+    (autopsy / "copy-of-dirty.txt").write_text("copy of other value", encoding="utf-8")
+    calls = []
 
     def scan(argv, **kwargs):
-        assert "--ignore-gitleaks-allow" in argv
+        assert kwargs["capture_output"]
+        candidate = Path(argv[-1])
+        name = "failure.txt" if not calls else "still-dirty.txt"
+        calls.append(name)
+        hit = evidence_hit(candidate / "autopsy" / name)
+        if name == "still-dirty.txt":
+            hit.update(Match="other value", Secret="other value")
         report = Path(argv[argv.index("--report-path") + 1])
-        report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
-        return SimpleNamespace(returncode=1)
+        report.write_text(json.dumps([hit]), encoding="utf-8")
+        return SimpleNamespace(returncode=stage.FINDINGS_EXIT, stderr="private contents")
 
-    monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
-    assert "planted-rule" in stage_evidence.stage(source, destination)
-    [listing] = list(destination.iterdir())
-    assert listing.name == "inventory.txt"
-    assert "private contents" not in listing.read_text(encoding="utf-8")
+    monkeypatch.setattr(stage.subprocess, "run", scan)
+    destination = tmp_path / "public"
+    stage.main([str(source), str(destination)])
+    assert calls == ["failure.txt", "still-dirty.txt"]
+    assert not (destination / "autopsy/still-dirty.txt").exists()
+    assert not (destination / "autopsy/copy-of-dirty.txt").exists()
+    expected = {
+        "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
+        "autopsy/other.txt": "context <redacted:planted-rule>",
+        "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
+        "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
+    }
+    assert {path: (destination / path).read_text(encoding="utf-8") for path in expected} == expected
+    log = capsys.readouterr().err
+    assert log.splitlines() == [
+        "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:2 (planted-rule)",
+        "masked autopsy/other.txt:1 (planted-rule)",
+        "withheld autopsy/still-dirty.txt:1 (planted-rule)",
+        "masked junit.xml:1 (planted-rule)",
+        "masked vertical-summary.txt:1 (planted-rule)",
+    ]
+    assert log in (destination / "inventory.txt").read_text(encoding="utf-8")
 
 
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):

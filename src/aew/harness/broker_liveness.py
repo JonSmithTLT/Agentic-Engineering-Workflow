@@ -56,6 +56,9 @@ def wedge_threshold_s(lock_timeout: float, poll_s: float) -> float:
     return float(lock_timeout) + 2.0 * float(poll_s)
 
 
+READ_BUDGET_S = 5.0  # sharing refusals during the final ownership read
+
+
 class Beat:
     """The broker's beat thread. :meth:`tick` is the watchdog's: it records a completed iteration (memory only).
     ``clock`` (the stamps) and ``idle`` (the event the thread waits on between beats, set to stop it) are the broker's
@@ -92,7 +95,7 @@ class Beat:
             if self._closed:
                 return
             self._closed = True
-            current = read(self.aew_root, budget_s=5.0)
+            current = read(self.aew_root, budget_s=READ_BUDGET_S)
             if current is None or (isinstance(current, dict)
                                    and (current["pid"], current.get("start_id"), current.get("process_started"))
                                    == (self.pid, self.start_id, self.process_started)):

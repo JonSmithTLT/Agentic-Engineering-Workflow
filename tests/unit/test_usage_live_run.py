@@ -23,6 +23,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import bounds
 import fake_opencode as F
 import pytest
 
@@ -39,15 +40,11 @@ PROFILE = {"profile": "standard", "harness": "opencode", "provider": "fakeprov",
            "effort": "high", "max_steps": None, "deadline_s": None, "selected_by": "policy", "rule": "default",
            "policy_sha256": "1" * 64}
 PROMPT_TEXT = "PACK-TEXT-THAT-MUST-NOT-REACH-THE-LIVE-FILE"
-HANG_S = 60.0  # a guard against a hang on an event, never a timing expectation
+HANG_S = bounds.declare("live_run.hang", 60, why="a guard against a hang on an event, never a timing expectation")
 
 
-def wait_for(cond: Any, timeout: float = 10.0, what: str = "condition") -> None:
-    deadline = time.monotonic() + timeout
-    while not cond():
-        if time.monotonic() > deadline:
-            raise AssertionError(f"timed out waiting for {what}")
-        time.sleep(0.02)
+def wait_for(cond: Any, bound: str | float, what: str = "condition") -> None:
+    bounds.until(cond, bound, what, every=0.02)
 
 
 class StubProc:
@@ -143,7 +140,7 @@ def rig(tmp_path, monkeypatch):
 
 def run_to_end(rig: Rig, adapter: A.OpenCodeAdapter) -> None:
     adapter.launch(rig.contract(), {"PATH": os.environ.get("PATH", "")})
-    wait_for(lambda: not adapter.inspect()["alive"], what="the turn to end")
+    wait_for(lambda: not adapter.inspect()["alive"], "wait.meter", what="the turn to end")
 
 
 class Manual(A.OpenCodeAdapter):
@@ -176,7 +173,7 @@ def test_a_weaker_runs_opencode_server_carries_its_marker_and_a_contained_ones_n
     adapter = rig.adapter()
     marker = {W.MARKER: str(rig.run_dir / "run.json")} if marked else {}
     adapter.launch(rig.contract(), {"PATH": os.environ.get("PATH", ""), **marker})
-    wait_for(lambda: not adapter.inspect()["alive"], what="the turn to end")
+    wait_for(lambda: not adapter.inspect()["alive"], "wait.meter", what="the turn to end")
     [start] = rig.started
     assert start["env"].get(W.MARKER) == marker.get(W.MARKER)
     adapter.terminate()
@@ -211,7 +208,8 @@ def test_the_meter_polls_before_the_contract_is_delivered(rig):
     class Watched(A.OpenCodeAdapter):
         def deliver_contract(self, contract: LaunchContract) -> None:
             assert self.meter is not None
-            wait_for(lambda: self.meter is not None and self.meter.last_success is not None, what="a meter poll")
+            wait_for(lambda: self.meter is not None and self.meter.last_success is not None, "wait.meter",
+                     what="a meter poll")
             seen["polled"] = self.meter.last_success is not None
             seen["live"] = runlog.read_live(self.run_dir)
             super().deliver_contract(contract)
@@ -295,7 +293,7 @@ def stays_fresh(rig: Rig, monkeypatch: pytest.MonkeyPatch, turn: str) -> None:
     run_to_end(rig, adapter)
     adapter.turn = turn  # nothing watches the session now; the meter samples it all the same
     seq = rig.live()["seq"]
-    wait_for(lambda: rig.live()["seq"] >= seq + 2, what="two more samples")
+    wait_for(lambda: rig.live()["seq"] >= seq + 2, "wait.meter", what="two more samples")
     adapter.terminate()
 
 
@@ -314,14 +312,14 @@ def test_the_turn_over_snapshot_is_published(rig, monkeypatch):
 
     class FirstPollFirst(A.OpenCodeAdapter):
         def deliver_contract(self, contract: LaunchContract) -> None:
-            wait_for(lambda: self.meter is not None and self.meter.last_success is not None, timeout=HANG_S,
+            wait_for(lambda: self.meter is not None and self.meter.last_success is not None, bound=HANG_S,
                      what="the meter's first poll")
             super().deliver_contract(contract)
 
     monkeypatch.setattr(A, "METER_POLL_S", 3600.0)
     adapter = rig.adapter(FirstPollFirst)
     run_to_end(rig, adapter)
-    wait_for(lambda: rig.live()["steps"] == 1, timeout=HANG_S, what="the turn's step in the live file")
+    wait_for(lambda: rig.live()["steps"] == 1, bound=HANG_S, what="the turn's step in the live file")
     adapter.terminate()
 
 
@@ -349,7 +347,7 @@ def test_a_slow_adapter_request_never_delays_the_live_sample(rig, monkeypatch):
     try:
         assert held.wait(HANG_S), "the adapter's request never started"
         seq = rig.live()["seq"]
-        wait_for(lambda: rig.live()["seq"] >= seq + 2, timeout=HANG_S, what="samples while an adapter request is held")
+        wait_for(lambda: rig.live()["seq"] >= seq + 2, bound=HANG_S, what="samples while an adapter request is held")
         assert not returned.is_set(), "the samples were published only after the adapter's request returned"
     finally:
         release.set()
@@ -698,7 +696,7 @@ def test_a_meter_failure_never_ends_or_delays_the_run(rig, monkeypatch):
     assert (state["exit_code"], state["detail"]) == (0, "the agent's turn ended: succeeded")
     # The meter thread may first poll after the turn ended (a loaded runner schedules it late): wait for the failure.
     wait_for(lambda: adapter.meter_errors >= 1 and any(e.get("event") == "opencode.meter_error" for e in rig.events),
-             timeout=HANG_S, what="a failed meter poll, counted and reported")
+             bound=HANG_S, what="a failed meter poll, counted and reported")
     adapter.terminate()
     assert rig.live()["state"] == "final"
 

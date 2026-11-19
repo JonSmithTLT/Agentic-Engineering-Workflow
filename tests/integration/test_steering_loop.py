@@ -1068,7 +1068,7 @@ def test_hard_deadline_terminates_and_releases_no_lease(tmp_path, monkeypatch):
         inv_id = state["work"][wid]["implementer_invocation"]
         [run] = [r["run"] for r in state["invocations"][inv_id]["runs"]]
         until(lambda: (runlog.read_record(runlog.run_dir(p.root / ".aew", run)) or {}).get("status") == "terminated",
-              60, "the hard deadline")
+              "wait.condition", "the hard deadline")
         before = load_control(p.root)
         Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="after the deadline",
                                            next_action=None)
@@ -1116,13 +1116,16 @@ def test_a_run_started_under_run_keeps_its_deadline_when_run_ends_during_its_lau
         res = lab.lead_res("work", "assign", wid, "--launch", env={
             "AEW_FAULT": "harness.launch.after_handoff", "AEW_PAUSE": f"harness.supervisor.launched={held}"})
         assert res.returncode == 86, res.stdout  # the launcher ends at the hand-off; its supervisor goes on
-        lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held after its launch")
+        lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition",
+                  what="the supervisor held after its launch")
         Engine.discover(p.root).steering_lower(token=p.token, expect_rev=p.rev(), mode="crawl",
                                                rationale="Run ends while the harness starts")
         held.unlink()
         run = lab.until(lambda: next(iter(load_control(p.root)["invocations"].values()))["runs"][0]["run"],
+                        "wait.condition",
                         what="the run recorded")
-        record = lab.until(lambda: (r := lab.record(run)).get("status") == "terminated" and r, what="the deadline")
+        record = lab.until(lambda: (r := lab.record(run)).get("status") == "terminated" and r, "wait.condition",
+                           what="the deadline")
         assert f"deadline of {RUN_ONLY}s exceeded" in record["reason"], record
     finally:
         held.unlink(missing_ok=True)
@@ -1137,7 +1140,7 @@ def test_an_attended_run_never_gets_a_run_only_deadline(tmp_path, monkeypatch):
     p, lab, wid = _run_scoped_lab(tmp_path, monkeypatch, run=False)
     try:
         run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-        lab.until(lambda: lab.record(run).get("status") == "running", what="the run running")
+        lab.until(lambda: lab.record(run).get("status") == "running", "wait.condition", what="the run running")
         time.sleep(3 * RUN_ONLY)
         record = lab.record(run)
         assert record.get("status") == "running", record

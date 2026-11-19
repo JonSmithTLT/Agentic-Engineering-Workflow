@@ -211,7 +211,7 @@ def test_damaging_the_map_after_dispatch_never_changes_the_pack_a_launch_relaunc
         lab.script(f"R-{inv}-2", [{"do": "touch", "path": str(sync / "ready")},
                                   {"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
         second = lab.lead("harness", "launch", inv)["run"]
-        lab.until(lambda: (sync / "ready").exists(), what="the relaunched run")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the relaunched run")
 
         (p.root / MAPS / "registry.json").write_text("{not json", encoding="utf-8")  # and a malformed registry
         lab.script(f"R-{inv}-3", [{"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])

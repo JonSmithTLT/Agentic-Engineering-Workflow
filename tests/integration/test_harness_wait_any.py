@@ -54,7 +54,7 @@ def held(lab, tmp_path, *names: str) -> dict[str, Path]:
         lab.lead("work", "assign", wid, "--launch")
         lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     for i in range(len(names)):
-        lab.until(lambda i=i: (tmp_path / "sync" / f"started-{i}").exists(), what=f"run {i} started")
+        lab.until(lambda i=i: (tmp_path / "sync" / f"started-{i}").exists(), "wait.condition", what=f"run {i} started")
     return release
 
 
@@ -177,10 +177,11 @@ def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeyp
     waiter = threading.Thread(target=wait, daemon=True)
     waiter.start()
     try:
-        lab.until(lambda: waiting(lambda: reads), what="the waiter's initial read")
+        lab.until(lambda: waiting(lambda: reads), "wait.condition", what="the waiter's initial read")
         create_planned_ticket(lab.project, tmp_path, title="A commit")  # several commits, all after that read
         last = engine.store.read_committed()["revision"]
-        lab.until(lambda: waiting(lambda: reads[-1] >= last), what="the waiter to parse the last commit")
+        lab.until(lambda: waiting(lambda: reads[-1] >= last), "wait.condition",
+                  what="the waiter to parse the last commit")
     finally:
         over.set()
         outbox.bump_wake(lab.aew_root)

@@ -46,7 +46,7 @@ def launch_held_open(lab: HarnessLab, tmp_path: Path) -> str:
                                           {"do": "wait_file", "path": str(sync / "go"), "timeout": 300}]})
     wid = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     return run
 
 
@@ -111,10 +111,10 @@ def test_harness_send_defaults_to_next_step_and_posts_steer(lab, tmp_path):
     out = lab.ok("harness", "send", run, "--text", "Also note the changed files.",
                  env={"AEW_LEAD_TOKEN": lab.project.token})
     assert out["requested"] == "send" and out["file"]
-    lab.until(lambda: lead_posts(lab, run), what="the message posted")
+    lab.until(lambda: lead_posts(lab, run), "wait.condition", what="the message posted")
     assert lead_posts(lab, run) == ["steer"]
     # The adapter posts, then emits: the post being there says nothing about the event yet.
-    lab.until(lambda: prompt_events(lab, run)[1:], what="the message's event")
+    lab.until(lambda: prompt_events(lab, run)[1:], "wait.condition", what="the message's event")
     assert [e["delivery"] for e in prompt_events(lab, run)][1:] == ["steer"]
     release(tmp_path)
     assert lab.wait(run)["status"] == "ended_without_evidence"
@@ -140,7 +140,7 @@ def test_harness_send_when_turn_end_is_refused_while_messaging_is_off_and_writes
     # a `next-step` send after it is the first and only Lead post: the refused one never reached the queue
     lab.ok("harness", "send", run, "--text", "Now this.", "--when", "next-step",
            env={"AEW_LEAD_TOKEN": lab.project.token})
-    lab.until(lambda: lead_posts(lab, run), what="the next-step message posted")
+    lab.until(lambda: lead_posts(lab, run), "wait.condition", what="the next-step message posted")
     release(tmp_path)
     assert stop_and_requests(lab, run) in (["send", "stop"], ["send"])
     assert lead_posts(lab, run) == ["steer"]
@@ -179,7 +179,7 @@ def test_with_messaging_off_no_lead_path_posts_queue(lab, tmp_path, monkeypatch)
     finally:
         broker.close()
     sends = len(accepted) + 2  # the four own-shell forms, stdin and the cli row
-    lab.until(lambda: len(lead_posts(lab, run)) == sends, what="every accepted send posted")
+    lab.until(lambda: len(lead_posts(lab, run)) == sends, "wait.condition", what="every accepted send posted")
     release(tmp_path)
     assert stop_and_requests(lab, run).count("send") == sends
     assert lead_posts(lab, run) == ["steer"] * sends

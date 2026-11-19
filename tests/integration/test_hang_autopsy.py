@@ -32,6 +32,10 @@ DEADLINE_EXIT = 70
 # sentinel acts only two of these after the deadline, so a runner slow to collect is not ended for it (a Windows run
 # of 2026-10-24, under 3 s margins). A test of the sentinel acting sets its own small margin.
 MARGIN = f"{bounds.DEADLINE_MARGIN_S:g}"
+bounds.declare("test.sentinel_exits", 60, why="a session's sentinel exits after its session ended")
+bounds.declare("test.inner_started", 120, why="the inner session's controller writes its pid")
+bounds.declare("test.snapshot_has_child", 60, why="the sentinel's snapshot lists the session's child")
+bounds.declare("test.abnormal_exit", 60, why="the sentinel records the controller's abnormal exit")
 
 CONFTEST = f'''
 import sys
@@ -175,7 +179,7 @@ def sentinel_ends(session: Path) -> None:
     configure, before the inner session returned, so it is either listed with its command line or already gone. Its pid
     is not used instead: only the controller knew it, and the controller has exited, leaving it only in the folder."""
     for ident in [p.identity for p in proctree.table() if "sentinel" in p.cmdline and session.name in p.cmdline]:
-        bounds.bounded_wait("test.sentinel_exits", lambda ident=ident: not proctree.same(ident), seconds=60)
+        bounds.bounded_wait("test.sentinel_exits", lambda ident=ident: not proctree.same(ident))
 
 
 def unrelated() -> subprocess.Popen[bytes]:
@@ -478,7 +482,7 @@ def test_a_controller_killed_abruptly_leaves_no_session_process_alive(tmp_path, 
         assert other_id is not None
         # controller.pid is the inner test's last file, so both are there (a CI run of 2026-10-24 waited for
         # child.pid alone and read controller.pid before it was written)
-        bounds.bounded_wait("test.inner_started", lambda: (out / "controller.pid").exists(), seconds=120,
+        bounds.bounded_wait("test.inner_started", lambda: (out / "controller.pid").exists(),
                             gone=lambda: session.poll() is not None)
         child = alive_identity(out / "child.pid")
         controller = alive_identity(out / "controller.pid")
@@ -486,9 +490,9 @@ def test_a_controller_killed_abruptly_leaves_no_session_process_alive(tmp_path, 
         if not IS_WINDOWS:  # by event: the sentinel's snapshot (its view of the set on Linux) includes the child
             snapshot = sdir / "sentinel-snapshot.txt"
             bounds.bounded_wait("test.snapshot_has_child", lambda: re.search(
-                rf"^\s*{child[0]}\s", read_text_or_none(snapshot) or "", re.M), seconds=60)
+                rf"^\s*{child[0]}\s", read_text_or_none(snapshot) or "", re.M))
         assert proctree.end(controller)  # abrupt: no hook runs
-        bounds.bounded_wait("test.abnormal_exit", lambda: (sdir / "abnormal-exit.txt").exists(), seconds=60)
+        bounds.bounded_wait("test.abnormal_exit", lambda: (sdir / "abnormal-exit.txt").exists())
         sentinel_ends(sdir)
         assert not proctree.same(child)  # the session's process was ended
         assert proctree.same(other_id)  # the unrelated one was not

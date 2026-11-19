@@ -123,7 +123,8 @@ def test_a_run_record_names_its_supervisor_and_harness_processes_by_start_id(lab
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", [{"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    record = lab.until(lambda: (r := lab.record(run)).get("harness_pids") and r, what="the run's harness processes")
+    record = lab.until(lambda: (r := lab.record(run)).get("harness_pids") and r, "wait.condition",
+                       what="the run's harness processes")
     assert record["supervisor_start_id"] == procs.start_id(record["supervisor_pid"])
     assert record["harness_start_ids"] == [procs.start_id(pid) for pid in record["harness_pids"]]
     assert all(record["harness_start_ids"])
@@ -131,4 +132,4 @@ def test_a_run_record_names_its_supervisor_and_harness_processes_by_start_id(lab
     assert not supervisor_gone(record)
     assert all(procs.same_process(pid, named) for pid, named in harness_processes(record))
     assert runlog.end_supervisor(runlog.run_dir(lab.aew_root, run)) is True
-    lab.until(lambda: supervisor_gone(record), 30, "the supervisor to exit")
+    lab.until(lambda: supervisor_gone(record), "wait.exit", "the supervisor to exit")

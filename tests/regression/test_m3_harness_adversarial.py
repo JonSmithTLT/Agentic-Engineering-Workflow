@@ -147,9 +147,10 @@ def test_supervisor_spawns_then_the_launcher_crashes_before_handing_over_custody
     lab.script(R2, IMPLEMENT)
     res = lab.lead_res("work", "assign", wid, "--launch", env={"AEW_FAULT": "harness.launch.after_spawn"})
     assert res.returncode == 86
-    record = lab.until(lambda: lab.record(R1).get("status") == "launch_failed" and lab.record(R1), what="launch_failed")
+    record = lab.until(lambda: lab.record(R1).get("status") == "launch_failed" and lab.record(R1), "wait.condition",
+                       what="launch_failed")
     assert "no credential handoff" in record["reason"]
-    lab.until(lambda: not procs.pid_alive(record["supervisor_pid"]), what="supervisor exit")
+    lab.until(lambda: not procs.pid_alive(record["supervisor_pid"]), "wait.condition", what="supervisor exit")
     inv = control(lab, wid)["implementer_invocation"]
     lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     assert lab.lead("harness", "launch", inv)["run"] == R2  # a failed launch is not live: no --replace needed
@@ -179,7 +180,8 @@ def test_harness_wait_keeps_waiting_while_a_just_launched_run_may_still_start(la
     res = lab.lead_res("work", "assign", wid, "--launch", env={
         "AEW_FAULT": "harness.launch.after_handoff", **pause_env(("harness.supervisor.before_custody", held))})
     assert res.returncode == 86
-    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held before its first record")
+    lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition",
+              what="the supervisor held before its first record")
     early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
     assert early.returncode == 0 and early.json["timed_out"], early.json  # possibly live: still waited on
     held.unlink()
@@ -199,7 +201,8 @@ def test_a_run_is_never_reported_lost_before_its_first_heartbeat(lab, tmp_path):
     res = lab.lead_res("work", "assign", wid, "--launch", env={
         "AEW_FAULT": "harness.launch.after_handoff", **pause_env(("harness.supervisor.after_custody_record", held))})
     assert res.returncode == 86
-    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held right after its first record")
+    lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition",
+              what="the supervisor held right after its first record")
     early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
     assert early.returncode == 0 and early.json["timed_out"], early.json  # held, alive and waited on: never `lost`
     held.unlink()
@@ -214,7 +217,7 @@ def test_a_run_that_takes_long_to_end_is_not_reported_lost(lab, tmp_path):
     the watch loop, where nothing beat, so on a loaded machine the heartbeat went stale before the final record."""
     held = hold(tmp_path / "ending")
     assigned(lab, tmp_path, IMPLEMENT, env=pause_env(("harness.supervisor.finishing", held)))
-    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor ending the run")
+    lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition", what="the supervisor ending the run")
     # The wait outlasts the stale window, so a heartbeat that stopped while ending would be reported `lost`. The
     # window leaves 3 s of slack over the 1 s beat for a loaded machine (register E3: under coverage on 16 workers, a
     # 2 s window once saw a beat arrive late; raise test-side timeouts, never the product's).
@@ -242,22 +245,24 @@ def test_a_start_that_wedges_after_custody_reads_lost_within_its_bound_and_never
         "AEW_FAULT": "harness.launch.after_handoff", "AEW_RUN_START_S": "3",
         **pause_env(("harness.supervisor.launched", held), ("harness.supervisor.finishing", ending))})
     assert res.returncode == 86
-    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor wedged after launching the harness")
+    lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition",
+              what="the supervisor wedged after launching the harness")
     # 3 s of start, then the 4 s stale window: well inside the wait's own 60 s, which must not be what ends it.
     stale = {**lab.env, "AEW_RUN_STALE_S": "4"}
     lost = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "60", env=stale, timeout=180)
     assert lost.returncode == 0 and lost.json["status"] == "lost" and not lost.json["timed_out"], lost.json
     (sync / "go").touch()  # the agent, still alive under the wedged supervisor, tries to act
-    lab.until(lambda: (sync / "asked").exists(), what="the agent's bridge call")
+    lab.until(lambda: (sync / "asked").exists(), "wait.condition", what="the agent's bridge call")
     who = lab.step(R1, 1)
     assert who["exit"] != 0 and error_code(who) == "HARNESS_LAUNCH_FAILED", who
     status = {"AEW_RUN_STALE_S": "4"}
     assert lab.ok("harness", "status", "INV-0001", env=status)["runs"][0]["status"] == "lost"
     held.unlink()  # the start comes back: it ends the run instead of running it, and does not beat again meanwhile
-    lab.until(lambda: Path(f"{ending}.reached").exists(), what="the abandoned start ending")
+    lab.until(lambda: Path(f"{ending}.reached").exists(), "wait.condition", what="the abandoned start ending")
     assert lab.ok("harness", "status", "INV-0001", env=status)["runs"][0]["status"] == "lost"
     ending.unlink()
-    record = lab.until(lambda: (r := lab.record(R1)).get("status") == "launch_failed" and r, what="launch_failed")
+    record = lab.until(lambda: (r := lab.record(R1)).get("status") == "launch_failed" and r, "wait.condition",
+                       what="launch_failed")
     assert "the start took longer than 3s (AEW_RUN_START_S)" in record["reason"], record
     assert "started" not in [e["event"] for e in record["timeline"]], record["timeline"]
     lab.script(R2, IMPLEMENT)
@@ -270,7 +275,7 @@ def test_a_run_that_outlasts_the_start_deadline_once_running_is_unaffected_by_it
     """The start deadline caps the start only (review of PR #149, mutation M5): a running run past it keeps its bridge
     and its heartbeat, and ends with its evidence."""
     wid, out = assigned(lab, tmp_path, [wait(sync / "go"), *IMPLEMENT], env={"AEW_RUN_START_S": "10"})
-    lab.until(lambda: lab.record(R1).get("status") == "running", what="the run running")
+    lab.until(lambda: lab.record(R1).get("status") == "running", "wait.condition", what="the run running")
     time.sleep(11)  # past the deadline, measured from custody, which came before `running`
     (sync / "go").touch()
     done = lab.wait(R1)
@@ -282,13 +287,14 @@ def test_supervisor_crash_takes_the_whole_harness_tree_with_it(lab, tmp_path, sy
     wid, out = assigned(lab, tmp_path, [{"do": "spawn_orphan", "pidfile": str(sync / "orphan")},
                                         {"do": "pid", "path": str(sync / "agent")}, touch(sync / "ready"),
                                         wait(sync / "never", 300)])
-    lab.until(lambda: (sync / "ready").exists(), what="agent ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="agent ready")
     agent, orphan = (watch_agent_pid(lab, R1, int((sync / n).read_text())) for n in ("agent", "orphan"))
     assert agent.alive() and orphan.alive()
     procs.kill_pid(lab.record(R1)["supervisor_pid"])  # the supervisor dies abruptly: no cleanup code runs
-    lab.until(lambda: not agent.alive() and not orphan.alive(), 30, "harness tree killed by the OS")
+    lab.until(lambda: not agent.alive() and not orphan.alive(), "wait.exit", "harness tree killed by the OS")
     stale = {"AEW_RUN_STALE_S": "2"}
     lab.until(lambda: lab.ok("harness", "status", out["invocation"], env=stale)["runs"][0]["status"] == "lost",
+              "wait.condition",
               what="run observed lost")
     lab.script(R2, IMPLEMENT)
     assert lab.lead("harness", "launch", out["invocation"], env=stale)["run"] == R2  # lost is not live
@@ -332,11 +338,11 @@ def test_old_run_alive_then_rotation_then_old_process_immediately_submits(lab, t
                                         {"do": "aew", "args": ["whoami"]}, touch(sync / "done1")],
                         env=pause_env((WATCHDOG, watchdog)))
     inv = out["invocation"]
-    lab.until(lambda: (sync / "ready1").exists(), what="run 1 ready")
+    lab.until(lambda: (sync / "ready1").exists(), "wait.condition", what="run 1 ready")
     lab.script(R2, [wait(sync / "go2"), *IMPLEMENT])
     assert lab.lead("harness", "launch", inv, "--replace")["run"] == R2
     (sync / "go1").touch()
-    lab.until(lambda: (sync / "done1").exists(), what="old run's attempts")
+    lab.until(lambda: (sync / "done1").exists(), "wait.condition", what="old run's attempts")
     submit, who = lab.step(R1, 3), lab.step(R1, 4)
     assert submit["exit"] == 3 and error_code(submit) == "STALE_AUTHORITY", submit
     assert who["exit"] == 3 and error_code(who) == "STALE_AUTHORITY"
@@ -356,11 +362,11 @@ def test_rotation_while_the_old_runs_submission_is_in_flight(lab, tmp_path, sync
                                         {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
                                         touch(sync / "done1")],
                         env=pause_env((WATCHDOG, watchdog), (BRIDGE, in_flight)))
-    lab.until(lambda: Path(str(in_flight) + ".reached").exists(), what="submission in flight")
+    lab.until(lambda: Path(str(in_flight) + ".reached").exists(), "wait.condition", what="submission in flight")
     lab.script(R2, [wait(sync / "go2")])
     lab.lead("harness", "launch", out["invocation"], "--replace")
     in_flight.unlink()
-    lab.until(lambda: (sync / "done1").exists(), what="old submission answered")
+    lab.until(lambda: (sync / "done1").exists(), "wait.condition", what="old submission answered")
     submit = lab.step(R1, 1)
     assert submit["exit"] == 3 and error_code(submit) == "STALE_AUTHORITY", submit
     assert "rotated: R-INV-0001-2" in submit["stderr_json"]["error"]["message"]
@@ -384,11 +390,11 @@ def test_rotation_while_the_old_runs_check_is_running(lab, tmp_path, sync):
     watchdog = hold(sync / "watchdog")
     wid, out = assigned(lab, tmp_path, [{"do": "check", "id": "slow"}, touch(sync / "done1")],
                         env=pause_env((WATCHDOG, watchdog)))
-    lab.until(lambda: Path(str(slow) + ".reached").exists(), what="check running")
+    lab.until(lambda: Path(str(slow) + ".reached").exists(), "wait.condition", what="check running")
     lab.script(R2, [wait(sync / "go2")])
     lab.lead("harness", "launch", out["invocation"], "--replace")
     slow.unlink()
-    lab.until(lambda: (sync / "done1").exists(), what="old check answered")
+    lab.until(lambda: (sync / "done1").exists(), "wait.condition", what="old check answered")
     assert error_code(lab.step(R1, 0)) == "STALE_AUTHORITY"
     assert not [e for e in evidence_of(lab, wid) if e["kind"] == "check_result"]
     assert not list((lab.aew_root / "evidence").rglob("*check-slow*"))  # not even its log
@@ -406,7 +412,7 @@ def test_rotation_racing_submissions_never_admits_evidence_after_revocation(lab,
                                         {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
     inv = out["invocation"]
     for n in range(1, 4):
-        lab.until(lambda n=n: (sync / f"ready{n}").exists(), what=f"run {n} ready")
+        lab.until(lambda n=n: (sync / f"ready{n}").exists(), "wait.condition", what=f"run {n} ready")
         nxt = f"R-{inv}-{n + 1}"
         lab.script(nxt, [touch(sync / f"ready{n + 1}"), wait(sync / f"go{n + 1}"),
                          {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
@@ -428,17 +434,17 @@ def test_broker_alive_then_invocation_cancelled(lab, tmp_path, sync):
                                         {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
                                         touch(sync / "done")],
                         env=pause_env((WATCHDOG, watchdog)))
-    lab.until(lambda: (sync / "ready").exists(), what="ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     harness = [procs.Watch(p) for p in lab.record(R1)["harness_pids"]]
     lab.lead("invoke", "cancel", out["invocation"], "--reason", "the Lead changed course")
     (sync / "go").touch()
-    lab.until(lambda: (sync / "done").exists(), what="attempt after cancel")
+    lab.until(lambda: (sync / "done").exists(), "wait.condition", what="attempt after cancel")
     assert error_code(lab.step(R1, 3)) == "STALE_AUTHORITY"
     watchdog.unlink()
     done = lab.wait(R1)
     assert done["status"] == "terminated" and "invocation cancelled" in done["reason"]
     agent_env = json.loads((sync / "env").read_text())
-    lab.until(lambda: not any(w.alive() for w in harness), 30, "harness tree killed")
+    lab.until(lambda: not any(w.alive() for w in harness), "wait.exit", "harness tree killed")
     with pytest.raises(Exception) as closed:  # the bridge is gone, whoever holds its coordinates
         bridge.call("whoami", {}, endpoint=agent_env[bridge.ENV_ENDPOINT], key=agent_env[bridge.ENV_KEY])
     assert getattr(closed.value, "code", None) == "STALE_AUTHORITY"
@@ -454,13 +460,13 @@ def test_broker_alive_then_takeover(lab, tmp_path, sync, monkeypatch):
     wid, out = assigned(lab, tmp_path, [touch(sync / "ready"), wait(sync / "go"),
                                         {"do": "aew", "args": ["whoami"]}, touch(sync / "done")],
                         env=pause_env((WATCHDOG, watchdog)))
-    lab.until(lambda: (sync / "ready").exists(), what="ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator (test)"})
     taken = Engine.discover(lab.root).lead_takeover(expect_rev=lab.project.rev(), reason="Lead unresponsive",
                                                     session_label="lead-b")
     lab.project.token = taken["token"]
     (sync / "go").touch()
-    lab.until(lambda: (sync / "done").exists(), what="attempt after takeover")
+    lab.until(lambda: (sync / "done").exists(), "wait.condition", what="attempt after takeover")
     assert error_code(lab.step(R1, 2)) == "STALE_AUTHORITY"
     watchdog.unlink()
     done = lab.wait(R1)
@@ -474,7 +480,7 @@ def test_a_carried_run_keeps_working_across_a_cooperative_handoff(lab, tmp_path,
     lab.script("R-INV-0001-1", [touch(sync / "ready"), wait(sync / "go"),
                                 {"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
     out = lab.lead("work", "dispatch", wid, "--launch")
-    lab.until(lambda: (sync / "ready").exists(), what="ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     offer = lab.lead("lead", "handoff", "offer", "--carry", out["invocation"])["offer"]
     accepted = lab.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(lab.project.rev()),
                       "--session-label", "lead-b")
@@ -493,12 +499,12 @@ def test_run_dies_then_lead_relaunches_then_old_process_wakes_up(lab, tmp_path, 
                                         touch(sync / "done1")],
                         env=pause_env((WATCHDOG, watchdog)))
     inv = out["invocation"]
-    lab.until(lambda: (sync / "ready1").exists(), what="run 1 ready")
+    lab.until(lambda: (sync / "ready1").exists(), "wait.condition", what="run 1 ready")
     supervisor = lab.record(R1)["supervisor_pid"]
     procs.suspend(supervisor)      # the old supervisor freezes (a sleeping machine, a stopped process)
     try:
         stale = {"AEW_RUN_STALE_S": "2"}
-        lab.until(lambda: lab.ok("harness", "status", inv, env=stale)["runs"][0]["status"] == "lost",
+        lab.until(lambda: lab.ok("harness", "status", inv, env=stale)["runs"][0]["status"] == "lost", "wait.condition",
                   what="run 1 lost")
         lab.script(R2, IMPLEMENT)
         assert lab.lead("harness", "launch", inv, env=stale)["run"] == R2
@@ -506,7 +512,7 @@ def test_run_dies_then_lead_relaunches_then_old_process_wakes_up(lab, tmp_path, 
         (sync / "go1").touch()  # the old agent acts while its supervisor is still frozen
     finally:
         procs.resume(supervisor)
-    lab.until(lambda: (sync / "done1").exists(), what="the woken run's submission answered")
+    lab.until(lambda: (sync / "done1").exists(), "wait.condition", what="the woken run's submission answered")
     submit = lab.step(R1, 3)
     assert submit["exit"] == 3 and error_code(submit) == "STALE_AUTHORITY", submit
     assert "superseded by R-INV-0001-2" in submit["stderr_json"]["error"]["message"]
@@ -580,7 +586,7 @@ def test_run_a_cannot_act_as_run_b(lab, tmp_path, sync):
     lab.script("R-INV-0001-1", [touch(sync / "readyB"), wait(sync / "goB"),
                                 {"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
     b = lab.lead("work", "dispatch", wid_b, "--launch")
-    lab.until(lambda: (sync / "readyB").exists(), what="B ready")
+    lab.until(lambda: (sync / "readyB").exists(), "wait.condition", what="B ready")
     b_endpoint = lab.record("R-INV-0001-1")["bridge"]["endpoint"]
     report = "---\nclaim: forged\nresult: pass\n---\nx\n"
     lab.script("R-INV-0002-1", [
@@ -720,7 +726,7 @@ def test_the_retired_implementers_run_stops_when_review_begins(lab, tmp_path, sy
     """Attack 2 and the M3-B6 companion: once the Lead moves a Ticket to review, the implementer's invocation is
     complete; a run still alive loses its authority, is stopped, and its invocation cannot be relaunched."""
     wid, out = assigned(lab, tmp_path, [*IMPLEMENT, touch(sync / "reported"), wait(sync / "never", 300)])
-    lab.until(lambda: (sync / "reported").exists(), what="the implementer reported")
+    lab.until(lambda: (sync / "reported").exists(), "wait.condition", what="the implementer reported")
     lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     done = lab.wait(R1)
     assert done["status"] == "terminated" and "invocation completed" in done["reason"], done
@@ -737,9 +743,9 @@ def test_a_single_run_wait_returns_the_runs_own_end_not_its_invocations(lab, tmp
     held = hold(tmp_path / "ending")
     wid, _ = assigned(lab, tmp_path, [*IMPLEMENT, touch(sync / "reported"), wait(sync / "never", 300)],
                       env=pause_env(("harness.supervisor.finishing", held)))
-    lab.until(lambda: (sync / "reported").exists(), what="the implementer reported")
+    lab.until(lambda: (sync / "reported").exists(), "wait.condition", what="the implementer reported")
     lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
-    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor ending the retired run")
+    lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition", what="the supervisor ending the retired run")
     early = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "3", env=lab.env, timeout=120)
     assert early.returncode == 0 and early.json["timed_out"] and early.json["status"] == "running", early.json
     anyway = lab.ok("harness", "wait", R1, "--any", "--timeout", "3")  # the control lane, where it is asked for

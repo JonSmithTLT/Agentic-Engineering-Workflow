@@ -31,20 +31,29 @@ import faulthandler
 import os
 import signal
 import tempfile
+import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import IO, Any
 
+import bounds
 import pytest
 
 HEADER = "aew hang watchdog: "
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
+_deadline: float | None = None  # the running test's limit (monotonic), while the watchdog is on
+
+
+def left() -> float | None:
+    """Seconds left until the running test's limit, or None when the watchdog is off (``bounds.WATCHDOG``'s bound)."""
+    return None if _deadline is None else max(0.0, _deadline - time.monotonic())
 
 
 def addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("aew-lanes")
-    group.addoption("--test-timeout", dest="aew_test_timeout", type=float, default=0.0, metavar="SECONDS",
-                    help="fail a test still running after SECONDS, with every thread's stack (0: off)")
+    group.addoption("--test-timeout", dest="aew_test_timeout", type=float, default=bounds.TEST_TIMEOUT_S,
+                    metavar="SECONDS", help="fail a test still running after SECONDS, with every thread's stack "
+                    f"(default {bounds.TEST_TIMEOUT_S:g}, as CI passes; 0: off, as under a debugger)")
     group.addoption("--hang-dir", dest="aew_hang_dir", default=None, metavar="DIR",
                     help="where the watchdog writes stack dumps (default: the lane report's directory)")
 
@@ -119,7 +128,9 @@ class HangWatchdog:
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
+        global _deadline
         self._fired = 0
+        _deadline = time.monotonic() + self.timeout
         f = self._reset(self._header(item))
         armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
         if USE_ALARM:
@@ -138,6 +149,7 @@ class HangWatchdog:
         try:
             yield
         finally:
+            _deadline = None
             if USE_ALARM:
                 signal.setitimer(signal.ITIMER_REAL, 0)
                 signal.signal(signal.SIGALRM, previous)

@@ -204,7 +204,7 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
 
         # The run's own record: read with no lock, as nothing here needs the store's
         lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
-                  what="the Lead's run to be in flight", timeout=120)
+                  what="the Lead's run to be in flight", bound="wait.run_end")
         kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER
         kill.write_text("", encoding="utf-8")
         res, _steps = session.result(timeout=120)

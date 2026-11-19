@@ -222,9 +222,9 @@ def observe(lab: HarnessLab, wid: str, inv: str, run: str, before: dict[str, Any
     assert pin["status"] == "active"
     if read_only and changed:
         assert not produced & expected, "a read-only role's evidence was accepted from a workspace it changed"
-    lab.until(lambda: supervisor_gone(record), 30, "the supervisor to exit")
+    lab.until(lambda: supervisor_gone(record), "wait.exit", "the supervisor to exit")
     for pid, named in harness_processes(record) if record.get("harness_pids") else []:
-        lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), 30,
+        lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), "wait.exit",
                   f"harness process {pid} to exit")
     assert_control_invariants(lab.project)
 

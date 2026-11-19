@@ -455,12 +455,12 @@ def test_fresh_shell_workers_start_from_the_named_stored_login(lab, tmp_path, mo
                 {"do": "wait_file", "path": str(removed_gate), "timeout": 60},
                 broker_command("harness", "launch", inv, "--replace"),
             ])
-            lab.until(lambda: len(lab.provider.seen) == 1, what="first relayed request")
+            lab.until(lambda: len(lab.provider.seen) == 1, "wait.condition", what="first relayed request")
             with sqlite3.connect(db) as con:
                 con.execute("UPDATE credential SET value = ?, time_updated = 2 WHERE integration_id = 'openai'",
                             (json.dumps({"type": "key", "key": rotated}),))
             rotated_gate.touch()
-            lab.until(lambda: len(lab.provider.seen) == 2, what="second relayed request")
+            lab.until(lambda: len(lab.provider.seen) == 2, "wait.condition", what="second relayed request")
             with sqlite3.connect(db) as con:
                 con.execute("DELETE FROM credential WHERE integration_id = 'openai'")
             removed_gate.touch()
@@ -822,9 +822,10 @@ def test_a_queue_input_at_the_turn_boundary_is_answered_before_the_run_ends(lab,
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "wait_file", "path": str(sync / "go")}],
            idle_before_queue_s=3)
     _, _, run = launch(lab, tmp_path)
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     lab.ok("harness", "send", run, "--text", "Also note the changed files.", env={"AEW_LEAD_TOKEN": lab.project.token})
     lab.until(lambda: any(e["event"] == "opencode.prompt" and e["delivery"] == "queue" for e in events(lab)),
+              "wait.condition",
               what="the message queued")
     (sync / "go").write_text("x")
     assert lab.wait(run)["status"] == "ended_without_evidence"
@@ -839,9 +840,10 @@ def test_a_lead_interrupt_holds_the_session_until_send(lab, tmp_path):
     sync = sync_dir(tmp_path)
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "hang"}])
     _, _, run = launch(lab, tmp_path)
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     lab.ok("harness", "interrupt", run, env={"AEW_LEAD_TOKEN": lab.project.token})
-    lab.until(lambda: any(e["event"] == "opencode.held" for e in events(lab)), what="the session held")
+    lab.until(lambda: any(e["event"] == "opencode.held" for e in events(lab)), "wait.condition",
+              what="the session held")
     assert lab.ok("harness", "status")["runs"][0]["status"] == "running"
     lab.ok("harness", "send", run, "--text", "Continue and finish.", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "ended_without_evidence"
@@ -888,7 +890,7 @@ def test_the_server_dying_mid_run_is_a_crash(lab, tmp_path):
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "wait_file", "path": str(sync / "go")},
                  {"do": "exit", "code": 9}])
     _, inv, run = launch(lab, tmp_path)
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     rev = lab.project.rev()
     (sync / "go").write_text("x")
     done = lab.wait(run)

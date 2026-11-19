@@ -91,7 +91,7 @@ def refuse(lab, tmp_path, monkeypatch) -> tuple[dict[str, Any] | None, errors.Ha
     thread = threading.Thread(target=launch, name="launch-under-test", daemon=True)
     thread.start()
     try:
-        lab.until(lambda: Path(f"{pause}.reached").exists(), 60, "the supervisor to reach custody")
+        lab.until(lambda: Path(f"{pause}.reached").exists(), "wait.condition", "the supervisor to reach custody")
         lab.lead("invoke", "cancel", inv, "--reason", "cancelled before custody")
     finally:
         pause.unlink()

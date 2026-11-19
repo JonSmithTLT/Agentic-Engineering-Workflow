@@ -3522,6 +3522,15 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 
 
+def test_ci_passes_the_test_limit_that_is_also_the_watchdogs_default():
+    """One value: ``--test-timeout``'s default, which a local run gets and a ``bounds.WATCHDOG`` wait reads, is what
+    every lane of ci.yml passes."""
+    import bounds
+
+    limits = {(lane.label, lane.test_timeout_s) for lane in _workflow_lanes() if lane.workflow == "ci.yml"}
+    assert limits and {t for _, t in limits} == {bounds.TEST_TIMEOUT_S}, sorted(limits)
+
+
 def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():
     """H3: the scanned publisher covers each lane's hang directory or lane-report parent."""
     problems = []

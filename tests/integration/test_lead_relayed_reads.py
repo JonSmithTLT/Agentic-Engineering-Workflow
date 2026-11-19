@@ -111,7 +111,7 @@ def settled(lab: HarnessLab, broker: lead_broker.LeadBroker) -> None:
         stop = (steering.loop_state(lab.aew_root, broker.generation) or {}).get("stop")
         return isinstance(stop, dict) and stop.get("revision") == str(revision)  # shown as `status` shows it
 
-    lab.until(recorded, what=f"the steering loop's record of revision {revision}")
+    lab.until(recorded, "wait.condition", what=f"the steering loop's record of revision {revision}")
 
 
 def contained(lab: HarnessLab, broker: lead_broker.LeadBroker) -> dict[str, str]:
@@ -241,11 +241,11 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
             directory = runlog.run_dir(lab.aew_root, run)
             lab.until(lambda: not runlog.possibly_live(runlog.observed_status(directory)[0], None)
                       and (runlog.read_progress(directory) or {}).get("state") == P.ENDED, what="the run to end",
-                       timeout=120)
+                       bound="wait.run_end")
             # The terminal record precedes the supervisor's final advisory wake bump. Observe process exit before
             # attributing every subsequent .aew byte change to the read: do not exempt the wake file from the proof.
             record = lab.record(run)
-            lab.until(lambda: supervisor_gone(record), 30, "the ended run's supervisor to exit")
+            lab.until(lambda: supervisor_gone(record), "wait.exit", "the ended run's supervisor to exit")
             seq = int(runlog.read_progress(directory)["trigger_seq"])
             assert seq > 0 and runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
             before = worker_surface.snapshot(lab.aew_root)
@@ -287,14 +287,14 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
             directory = runlog.run_dir(lab.aew_root, run)
             try:
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
-                          what="the write outside the scope", timeout=120)
+                          what="the write outside the scope", bound="wait.run_end")
                 # A digest is published before its advisory wake bump. A later digest is the producer's completion
                 # barrier: the first poll finished its bump before it could enter the next poll. Keep local/wake in
                 # the exact no-write assertion rather than attributing a still-running producer's bump to the read.
                 observed = lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at"),
-                                     what="the trigger poll's observation", timeout=120)
+                                     what="the trigger poll's observation", bound="wait.run_end")
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at") not in (None, observed),
-                          what="the poll after the trigger's advisory wake update", timeout=120)
+                          what="the poll after the trigger's advisory wake update", bound="wait.run_end")
                 own = f"{runlog.RUNS_REL}/{run}/"
 
                 def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
@@ -367,7 +367,7 @@ def launch_held_open(lab: HarnessLab, tmp_path: Path) -> str:
                            {"do": "wait_file", "path": str(sync / "go"), "timeout": 300}])
     wid = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     return run
 
 
@@ -377,7 +377,8 @@ def wait_in_flight(lab: HarnessLab, broker: lead_broker.LeadBroker, run: str) ->
                                stderr=subprocess.PIPE, text=True, encoding="utf-8",
                                **({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                   else {"start_new_session": True}))
-    lab.until(lambda: broker._reads, what="the relayed wait is in flight on the broker")  # its own process
+    lab.until(lambda: broker._reads, "wait.condition",
+              what="the relayed wait is in flight on the broker")  # its own process
     return waiting
 
 

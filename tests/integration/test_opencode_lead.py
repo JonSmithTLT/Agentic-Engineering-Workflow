@@ -199,8 +199,8 @@ def test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session(
     assert res.returncode == 0, res.stderr
     assert "starting the operator endpoint" in res.stderr and "AEW_OPERATOR_AUTOSTART=off" in res.stderr
     log = lab.root / ".aew" / "local" / "operator" / "endpoint.log"
-    pid = until(lambda: re.search(r'"pid": (\d+)', read_text_or_none(log) or ""), 60, "its start")
-    until(lambda: not procs.pid_alive(int(pid.group(1))), 60, "the endpoint to stop with the session")
+    pid = until(lambda: re.search(r'"pid": (\d+)', read_text_or_none(log) or ""), "wait.condition", "its start")
+    until(lambda: not procs.pid_alive(int(pid.group(1))), "wait.condition", "the endpoint to stop with the session")
 
 
 def test_print_config_says_a_session_starts_the_endpoint_and_how_to_turn_that_off(lab):

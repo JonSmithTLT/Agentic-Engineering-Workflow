@@ -148,7 +148,7 @@ def test_lead_stop_ends_the_run_but_not_the_invocation(lab, tmp_path, sync):
                                 {"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
     out = lab.lead("work", "assign", wid, "--launch")
     run = out["launch"]["run"]
-    lab.until(lambda: (sync / "ready").exists(), what="ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     rev = lab.project.rev()
     lab.ok("harness", "stop", run, "--reason", "wrong approach", env={"AEW_LEAD_TOKEN": lab.project.token})
     done = lab.wait(run)
@@ -180,7 +180,7 @@ def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    lab.until(lambda: beat.exists(), what="the check running")
+    lab.until(lambda: beat.exists(), "wait.condition", what="the check running")
     started = time.monotonic()
     lab.ok("harness", "stop", run, "--reason", "check cut short", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
@@ -214,7 +214,8 @@ def test_a_check_in_flight_when_its_run_ends_starts_nothing(lab, tmp_path, sync)
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
     run = lab.lead("work", "assign", wid, "--launch", env={"AEW_PAUSE": f"checks.before_spawn={gate}"})["launch"]["run"]
-    lab.until(lambda: Path(str(gate) + ".reached").exists(), what="the check registered and held before its start")
+    lab.until(lambda: Path(str(gate) + ".reached").exists(), "wait.condition",
+              what="the check registered and held before its start")
     lab.ok("harness", "stop", run, "--reason", "ended mid-check", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
     gate.unlink()  # the held request now carries on, after its run ended
@@ -240,12 +241,12 @@ def test_every_process_the_harness_started_ends_with_the_run(lab, tmp_path, sync
     lab.script("default", [{"do": "spawn_orphan", "pidfile": str(sync / "orphan")}, touch_step(sync / "spawned"),
                            {"do": "wait_file", "path": str(sync / "go"), "timeout": 120}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    lab.until(lambda: (sync / "spawned").exists(), what="orphan spawned")
+    lab.until(lambda: (sync / "spawned").exists(), "wait.condition", what="orphan spawned")
     orphan = watch_agent_pid(lab, run, int((sync / "orphan").read_text()))
     assert orphan.alive()
     (sync / "go").touch()  # the agent exits normally; its descendant must not outlive the run
     assert lab.wait(run)["status"] == "ended_without_evidence"
-    lab.until(lambda: not orphan.alive(), 30, "the orphan to be killed with the run's tree")
+    lab.until(lambda: not orphan.alive(), "wait.exit", "the orphan to be killed with the run's tree")
 
 
 def test_relaunch_delivers_the_same_pack_plus_a_continuation_from_durable_state(lab, tmp_path):
@@ -357,7 +358,8 @@ def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, t
         assert out["invocation"] == f"INV-{i + 1:04d}"
         tickets.append(wid)
         runs.append(out["launch"]["run"])
-    lab.until(lambda: all((sync / f"ready{i}").exists() for i in range(n)), what="every run is under way at once")
+    lab.until(lambda: all((sync / f"ready{i}").exists() for i in range(n)), "wait.condition",
+              what="every run is under way at once")
     assert_control_invariants(lab.project)
     (sync / "go").write_text("", encoding="utf-8")
     workspaces = set()
@@ -508,7 +510,7 @@ def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, 
             return False
         return True
 
-    record = lab.until(holding, what="the supervisor to hold a live harness")
+    record = lab.until(holding, "wait.condition", what="the supervisor to hold a live harness")
     # A handle where the OS has one (Windows; a pidfd on Linux 5.3+), so a reused pid is never taken for the process;
     # where it has none, ``Watch`` checks the pid alone.
     watches = [procs.Watch(pid) for pid in (record["supervisor_pid"], *record["harness_pids"])]
@@ -517,7 +519,7 @@ def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, 
             if staged == "heartbeat_stale":
                 patched.setattr(runlog, "STALE_AFTER_S", -1.0)  # every heartbeat is older than that
             elif staged == "heartbeat_not_a_file":
-                lab.until(heartbeat_made_a_directory, what="the heartbeat to become a directory")
+                lab.until(heartbeat_made_a_directory, "wait.condition", what="the heartbeat to become a directory")
             else:
                 patched.setattr(runlog, "observed_status", lambda d, *a, **k: (K.LOST, None))
             if staged == "status_and_identity_lost":
@@ -525,7 +527,7 @@ def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, 
             assert runlog.observed_status(directory)[0] == K.LOST  # the run reads lost, its processes alive
             assert all(w.alive() for w in watches)
             lab.cleanup()  # while the patches are live
-            lab.until(lambda: not any(w.alive() for w in watches), 30, "the run's processes to be gone")
+            lab.until(lambda: not any(w.alive() for w in watches), "wait.exit", "the run's processes to be gone")
     finally:  # a failure leaks nothing: only the processes recorded above are ended
         for w in watches:
             if w.alive():
@@ -558,7 +560,7 @@ def test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_age
                                {"do": "touch", "path": str(sync / "ready")},
                                {"do": "wait_file", "path": str(sync / "go"), "timeout": 120}])
         run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-        lab.until(lambda: (sync / "ready").exists(), what="the agent is running")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the agent is running")
         monkeypatch.setattr(W, "ROOT_OVERRIDE", conftest.CHILD_DATA_BASE / "aew" / W.DIRNAME)
         entries = {e["id"]: e for e in (json.loads(f.read_text(encoding="utf-8"))
                                         for f in W.root().glob("worker_run-*.json"))}
@@ -582,7 +584,8 @@ def test_a_real_run_that_ended_stays_its_active_invocations_run_and_wakes_the_le
     lab.script("default", [{"do": "exit", "code": 0}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
     # Read from its record: a wait would tell the Lead the end itself, and then no wake repeats it (review, m6)
-    lab.until(lambda: lab.record(run).get("status") == "ended_without_evidence", what="the run to end", timeout=120)
+    lab.until(lambda: lab.record(run).get("status") == "ended_without_evidence", what="the run to end", bound=
+              "wait.run_end")
     engine = Engine.discover(lab.root)
     assert run in [w.run for w in Q.live_runs(engine.store.current())]
 

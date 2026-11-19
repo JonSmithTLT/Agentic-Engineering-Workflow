@@ -310,7 +310,7 @@ def at15_disposable_harness(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
     kill_harness(lab, r1)
     assert lab.wait(r1)["status"] == "crashed"
     record = lab.record(r1)
-    lab.until(lambda: supervisor_gone(record), 30, "run 1's supervisor to exit")
+    lab.until(lambda: supervisor_gone(record), "wait.exit", "run 1's supervisor to exit")
     assert lab.project.rev() == rev
     assert lab.ok("work", "show", WID)["control"]["state"] == "RUNNING"          # not INTERRUPTED (M3-B1)
     old_token = lab.ok("invoke", "show", "INV-0001")["runs"][0]["token_id"]
@@ -519,7 +519,7 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
         {"do": "touch", "path": str(sync / "lead-ready")},
         {"do": "wait_file", "path": str(sync / "lead-go"), "timeout": 600},
         lead("checkpoint", "--next", "after the takeover")], acquire=True)                      # 18
-    lab.until((sync / "lead-ready").exists, 900, "the Lead session to finish its work")
+    lab.until((sync / "lead-ready").exists, "wait.session", "the Lead session to finish its work")
 
     # --- while the Lead's session is live: the relaunch left run 1 without authority ---------------------------
     assert lab.wait(r1)["status"] == "terminated" and lab.wait(r2)["status"] == "ended_with_evidence"

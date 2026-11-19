@@ -52,8 +52,10 @@ time.sleep(120)
     assert out["outcome"] == "failed" and out["reason"] == "timeout" and out["timed_out"]
     assert time.monotonic() - started < 30
     # `deliver` returns after the timeout kill of the whole tree, so no writer is live while the record is read
-    parent, child = (int(p) for p in until(lambda: (read_text_or_none(pids) or "").split(), what="the pids"))
-    until(lambda: not procs.pid_alive(parent) and not procs.pid_alive(child), 15, "the notifier's tree to be killed")
+    parent, child = (int(p) for p in until(lambda: (read_text_or_none(pids) or "").split(), "wait.chain",
+                                           what="the pids"))
+    until(lambda: not procs.pid_alive(parent) and not procs.pid_alive(child), "wait.kill",
+          "the notifier's tree to be killed")
 
 
 def test_notifier_output_is_bounded_and_counted(tmp_path):
@@ -148,7 +150,7 @@ def test_spool_lines_are_capped_validated_rate_bounded_and_unauthenticated(proje
     watcher = notify.Watcher(project.root, root)
     watcher.start()
     try:
-        until(lambda: len(received(out)) >= notify.RATE_PER_MINUTE, what="ten deliveries")
+        until(lambda: len(received(out)) >= notify.RATE_PER_MINUTE, "wait.chain", what="ten deliveries")
         watcher.pass_once()
         assert watcher.drain()
     finally:
@@ -278,7 +280,7 @@ def test_event_delivered_once_per_occurrence(project, tmp_path, monkeypatch, cas
     watcher.start()
     try:
         SEEDS[case](project, monkeypatch)
-        until(lambda: [e for e in received(out) if e["event"] == name], what=f"{name} to be delivered")
+        until(lambda: [e for e in received(out) if e["event"] == name], "wait.chain", what=f"{name} to be delivered")
         for _ in range(3):
             watcher.pass_once()
         assert watcher.drain()
@@ -312,7 +314,7 @@ def test_the_watcher_moves_no_revision(project, tmp_path, monkeypatch):
     watcher = notify.Watcher(project.root, project.root / ".aew")
     watcher.start()
     try:
-        until(lambda: len(received(out)) >= 3, what="the deliveries")
+        until(lambda: len(received(out)) >= 3, "wait.chain", what="the deliveries")
         for _ in range(3):
             watcher.pass_once()
         assert watcher.drain()
@@ -431,7 +433,7 @@ def test_a_failing_source_never_stops_the_others_and_shows_in_status(project, tm
     spooled(project, "launch_failed", "x")
     watcher.start()
     try:
-        until(lambda: {e["event"] for e in received(out)} >= {"generation_ended", "launch_failed"},
+        until(lambda: {e["event"] for e in received(out)} >= {"generation_ended", "launch_failed"}, "wait.chain",
               what="the other sources' events")
         watcher.pass_once()
         assert watcher.drain()
@@ -465,7 +467,7 @@ def test_spool_floods_never_displace_control_state_events(project, tmp_path, mon
     assert not [x for x in notify.deliveries(root) if x["event"] == "generation_ended"]  # never a non-final record
     watcher.start()
     try:
-        until(lambda: events_of(out, "generation_ended"), 60, "generation_ended")
+        until(lambda: events_of(out, "generation_ended"), "wait.condition", "generation_ended")
         assert watcher.drain(120)
     finally:
         watcher.close()
@@ -508,7 +510,7 @@ def test_queued_events_survive_an_endpoint_restart(project, tmp_path, monkeypatc
     again = notify.Watcher(project.root, root)
     again.start()
     try:
-        until(lambda: len(received(out)) >= 2, what="both events after the restart")
+        until(lambda: len(received(out)) >= 2, "wait.chain", what="both events after the restart")
         for _ in range(2):
             again.pass_once()
         assert again.drain()
@@ -532,7 +534,7 @@ def test_a_delivery_killed_by_close_is_not_a_failure(project, tmp_path):
     request(project, "raise")
     watcher.start()
     try:
-        until(started.exists, what="the slow notifier to start")
+        until(started.exists, "wait.chain", what="the slow notifier to start")
     finally:
         watcher.close()
     summary = notify.summary(root)
@@ -543,7 +545,7 @@ def test_a_delivery_killed_by_close_is_not_a_failure(project, tmp_path):
     again = notify.Watcher(project.root, root)
     again.start()
     try:
-        until(lambda: events_of(out, "raise_requested"), what="the event after the restart")
+        until(lambda: events_of(out, "raise_requested"), "wait.chain", what="the event after the restart")
         assert again.drain()
     finally:
         again.close()

@@ -254,7 +254,7 @@ def test_a_lead_reading_only_the_text_waits_through_a_long_run_without_stopping_
     [launched] = [s for s in started["result"]["steps"] if "launch" in s]  # the dispatch's own step says so too
     waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step  # wakes on, and no broker posts them here
     assert launched["next_action"] == waiting(runs)
-    lab.until(ready.exists, what=f"{runs[0]} to be working")
+    lab.until(ready.exists, "wait.condition", what=f"{runs[0]} to be working")
     e = Engine.discover(p.root)  # and what `status` and `resume` say of the running run
     [running] = e.harness_resume(e.store.current())
     assert running["action"] == f"{runs[0]} is running for {running['invocation']}: {waiting(runs)}"

@@ -121,21 +121,27 @@ DEF_TEXT = re.compile(rf"\bdef (?:{'|'.join(sorted(POLLERS))})\(")  # a cheap fi
 @functools.cache
 def poller_params() -> dict[str, tuple[frozenset[int], frozenset[str]]]:
     """Where each polling helper takes its predicate: ``{name: (positions, keywords)}``, read from the definitions under
-    tests/. A predicate is a parameter the body calls (``ready()``), and a method's ``self`` is not counted, as a call
-    does not pass it. A helper no test defines takes it first, as ``predicate``."""
+    tests/. A predicate is a parameter the body calls (``ready()``), or passes on where another poller takes its
+    predicate (``bounds.until(predicate, ...)``), and a method's ``self`` is not counted, as a call does not pass it. A
+    helper no test defines takes it first, as ``predicate``."""
     positions: dict[str, set[int]] = {name: set() for name in POLLERS}
     keywords: dict[str, set[str]] = {name: set() for name in POLLERS}
+    defs = []
     for path in sorted((ROOT / "tests").rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if not DEF_TEXT.search(source):
-            continue
-        for fn in ast.walk(ast.parse(source)):
-            if not (isinstance(fn, ast.FunctionDef) and fn.name in POLLERS):
-                continue
+        if DEF_TEXT.search(source):
+            defs += [fn for fn in ast.walk(ast.parse(source)) if isinstance(fn, ast.FunctionDef) and fn.name in POLLERS]
+    for _ in range(2):  # a forwarding helper reads the slot of the poller it forwards to, which the first pass found
+        for fn in defs:
             positional = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
             if positional[:1] in (["self"], ["cls"]):
                 positional = positional[1:]
             called = {c.func.id for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+            for c in ast.walk(fn):
+                if isinstance(c, ast.Call) and _called_name(c) in POLLERS:
+                    at, by = positions[_called_name(c)] or {0}, keywords[_called_name(c)]
+                    called |= {a.id for i, a in enumerate(c.args) if i in at and isinstance(a, ast.Name)}
+                    called |= {k.value.id for k in c.keywords if k.arg in by and isinstance(k.value, ast.Name)}
             positions[fn.name] |= {i for i, name in enumerate(positional) if name in called}
             given_by_name = (*positional, *(a.arg for a in fn.args.kwonlyargs))
             keywords[fn.name] |= {name for name in given_by_name if name in called}
@@ -415,7 +421,8 @@ def test_each_poller_takes_its_predicate_where_its_definition_calls_it():
     """Read from the definitions under tests/, so a parameter that moves moves the detectors with it. This pins the
     result: a poller added, or one whose predicate moves, has to update it."""
     assert poller_params() == {
-        "until": ({0}, {"predicate", "describe"}),  # notifier's calls its describer too: a lambda there is scanned
+        # bounds.until calls ready, before and describe; the lab's and notifier's forward predicate and describe to it
+        "until": ({0}, {"predicate", "describe", "ready", "before"}),
         "wait_for": ({0}, {"cond"}),
         "wait_until": ({0}, {"predicate"}),  # no test defines it: the default
         "_wait_for": ({0}, {"predicate"}),

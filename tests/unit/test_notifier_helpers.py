@@ -13,8 +13,9 @@ from notifier import thread_stack, until
 
 
 def test_a_describer_that_raises_never_hides_the_timeout():
-    with pytest.raises(AssertionError, match=r"timed out waiting for x; the describer failed: ZeroDivisionError"):
-        until(lambda: None, 0.1, "x", describe=lambda: str(1 / 0))
+    failed = r"timed out after 0.1s \(wait\.never\) waiting for x; the describer failed: ZeroDivisionError"
+    with pytest.raises(AssertionError, match=failed):
+        until(lambda: None, "wait.never", "x", describe=lambda: str(1 / 0))
 
 
 class _Recycled(threading.Thread):

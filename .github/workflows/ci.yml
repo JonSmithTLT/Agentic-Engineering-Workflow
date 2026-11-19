@@ -152,6 +152,9 @@ jobs:
   # a runner twice as slow). Until 2026-11-07 this was one job per runner running both lanes one after the other under
   # one deadline, which nothing sized: the fast lane grew until a slow runner left the serial lane no time.
   core:
+    permissions:
+      contents: read
+      actions: read  # fetch this job's evidence archive by upload ID
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.reuse_run == ''

@@ -9,6 +9,7 @@ store whose locked reads fail the test."""
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -18,8 +19,10 @@ from typing import Any
 import pytest
 
 from aew import errors
+from aew.harness import contract as K
 from aew.harness import runlog
-from aew.harness.supervisor import Supervisor
+from aew.harness.opencode.adapter import OpenCodeAdapter
+from aew.harness.supervisor import REQUEST_ORDER_WAIT_TICKS, Supervisor
 from aew.util import sha256_text
 
 INV, RUN, TOKEN = "INV-0001", "R-INV-0001-1", "tok-1"
@@ -57,6 +60,7 @@ def stand_in(tmp_path: Path, store: LockFreeOnly) -> Supervisor:
     sup.events = runlog.EventLog(tmp_path / "events.jsonl")
     sup.record = {"timeline": []}
     sup._handled, sup._deferred, sup._state_unreadable = set(), {}, False
+    sup._unread_reported, sup._request_order_waits = set(), {}
     sup._control_seen, sup.stop_reason, sup._watching = None, None, threading.Event()
     sup.deadline_s = None  # the deadline start() decides at custody: none for these runs
     sup.engine = SimpleNamespace(store=store, aew_root=tmp_path,
@@ -151,6 +155,64 @@ def test_two_requests_of_one_kind_issued_on_one_clock_tick_are_both_acted_on_in_
     assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
 
 
+def block_request(monkeypatch, name, blocked):
+    real = runlog._read_regular
+
+    def read(path):
+        if path.name == name and blocked():
+            raise PermissionError(13, "Permission denied")
+        return real(path)
+
+    monkeypatch.setattr(runlog, "IS_WINDOWS", True)
+    monkeypatch.setattr(runlog, "_read_regular", read)
+
+
+def test_an_unread_request_reports_its_error_codes_once_per_name(tmp_path, monkeypatch):
+    entry = recorded_request(tmp_path, "interrupt")
+    sup = stand_in(tmp_path, LockFreeOnly([state([entry])]))
+    block_request(monkeypatch, entry["file"], lambda: True)
+    assert sup._authorized_requests() == []
+    assert sup._authorized_requests() == []
+    assert [{key: value for key, value in e.items() if key != "at"} for e in events(tmp_path)] == [
+        {"event": "request_unread", "file": entry["file"], "errno": 13, "winerror": None},
+    ]
+
+
+def test_a_temporarily_unreadable_interrupt_still_precedes_the_send(tmp_path, monkeypatch):
+    interrupt = recorded_request(tmp_path, "interrupt")
+    send = recorded_request(tmp_path, "send", text="resume")
+    sup = stand_in(tmp_path, LockFreeOnly([state([interrupt, send])]))
+    blocked = True
+    block_request(monkeypatch, interrupt["file"], lambda: blocked)
+    assert sup._authorized_requests() == []
+    blocked = False
+    assert [r["kind"] for r in sup._authorized_requests()] == ["interrupt", "send"]
+    assert sup._authorized_requests() == []
+
+
+def test_a_permanently_unreadable_request_only_holds_later_requests_for_the_order_bound(tmp_path, monkeypatch):
+    interrupt = recorded_request(tmp_path, "interrupt")
+    send = recorded_request(tmp_path, "send", text="resume")
+    sup = stand_in(tmp_path, LockFreeOnly([state([interrupt, send])]))
+    block_request(monkeypatch, interrupt["file"], lambda: True)
+    for _ in range(REQUEST_ORDER_WAIT_TICKS):
+        assert sup._authorized_requests() == []
+    assert [r["kind"] for r in sup._authorized_requests()] == ["send"]
+    later = recorded_request(tmp_path, "send", text="later")
+    sup.engine.store.script = [state([interrupt, send, later])]
+    assert [r["text"] for r in sup._authorized_requests()] == ["later"]
+    bypasses = [e for e in events(tmp_path) if e["event"] == "request_order_bypassed"]
+    assert [(e["file"], e["ticks"]) for e in bypasses] == [(interrupt["file"], REQUEST_ORDER_WAIT_TICKS)]
+
+
+def test_an_unrecorded_unreadable_file_cannot_hold_a_lead_request(tmp_path, monkeypatch):
+    unrecorded = recorded_request(tmp_path, "interrupt")
+    send = recorded_request(tmp_path, "send", text="resume")
+    sup = stand_in(tmp_path, LockFreeOnly([state([send])]))
+    block_request(monkeypatch, unrecorded["file"], lambda: True)
+    assert [r["kind"] for r in sup._authorized_requests()] == ["send"]
+
+
 @pytest.mark.parametrize("failure", UNREADABLE, ids=type)
 def test_an_unreadable_state_never_ends_a_live_run_and_is_read_again_on_the_next_tick(tmp_path, monkeypatch,
                                                                                        failure):
@@ -184,6 +246,52 @@ def test_a_failed_authority_read_at_the_bridge_leaves_the_engine_as_the_gate(tmp
     sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
     assert sup.authority_problem() is None
     assert sup._authority() == (False, None)
+
+
+def test_a_run_stays_live_while_opencode_answers_a_steering_request(tmp_path, monkeypatch):
+    entry = recorded_request(tmp_path, "send", text="continue")
+    sup = stand_in(tmp_path, LockFreeOnly([state([entry])]))
+    (tmp_path / "run.json").write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    renewed = threading.Event()
+    aged = threading.Event()
+    real_beat = runlog.beat
+
+    def beat(directory):
+        real_beat(directory)
+        if aged.is_set():
+            renewed.set()
+
+    def send(text, delivery):
+        assert (text, delivery) == ("continue", "steer")
+        old = time.time() - runlog.STALE_AFTER_S - 1
+        os.utime(tmp_path / "heartbeat", (old, old))
+        aged.set()
+        assert renewed.wait(5), "the supervisor stopped beating while send was in flight"
+        assert runlog.observed_status(tmp_path)[0] == K.RUNNING
+
+    monkeypatch.setattr(runlog, "beat", beat)
+    sup.adapter = SimpleNamespace(STEERING_BOUND_S=OpenCodeAdapter.STEERING_BOUND_S, send=send,
+                                  inspect=lambda: {"alive": False})
+    ended = []
+    monkeypatch.setattr(sup, "_finish_exited", ended.append)
+    sup.watch()
+    assert ended == [{"alive": False}]
+
+
+def test_a_hung_steering_call_lets_the_heartbeat_go_stale_after_its_bound(tmp_path, monkeypatch):
+    entry = recorded_request(tmp_path, "send", text="continue")
+    sup = stand_in(tmp_path, LockFreeOnly([state([entry])]))
+    (tmp_path / "run.json").write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    monkeypatch.setattr(runlog, "HEARTBEAT_S", 0.25)
+    monkeypatch.setattr(runlog, "STALE_AFTER_S", 1.5)
+
+    def send(_text, _delivery):
+        time.sleep(4)  # past the one-second heartbeat bound and the freshness window
+        assert runlog.observed_status(tmp_path)[0] == K.LOST, runlog.heartbeat_age(tmp_path)
+
+    sup.adapter = SimpleNamespace(STEERING_BOUND_S=1.0, send=send, inspect=lambda: {"alive": False})
+    monkeypatch.setattr(sup, "_finish_exited", lambda status: None)
+    sup.watch()
 
 
 def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):

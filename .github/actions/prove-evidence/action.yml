@@ -6,9 +6,10 @@ runs:
     - name: Plant a scanner allow-comment
       shell: bash
       run: |
-        raw="$RUNNER_TEMP/evidence-scan-plant/autopsy"
+        raw="$RUNNER_TEMP/evidence-proof-source/autopsy"
         mkdir -p "$raw"
         printf 'token=%s%s # gitleaks:allow\n' ghp_ A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 > "$raw/failure.txt"
+        printf 'client_secret_sha256: %s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$raw/digest.txt"
     - name: Plant an unmarked pytest failure and retain its child stdout
       shell: bash
       env:
@@ -18,6 +19,18 @@ runs:
         --session-deadline 120 --test-timeout 60 "--hang-dir=${{ runner.temp }}/evidence-proof-outer"
         tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
         tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+    - name: Capture the real orphaned-wait test's failure evidence
+      shell: bash
+      env:
+        AEW_EVIDENCE_PLANT_ORPHANED_WAIT: "1"
+      run: |
+        status=0
+        python -m pytest -q -p no:cacheprovider -p no:xdist --session-deadline 120 --test-timeout 90 \
+          "--hang-dir=$RUNNER_TEMP/evidence-proof-source/real" \
+          tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery \
+          > "$RUNNER_TEMP/evidence-real.log" 2>&1 || status=$?
+        test "$status" = 1
+        grep -q 'Failed: planted failure after the orphaned wait completed' "$RUNNER_TEMP/evidence-real.log"
     - uses: ./.github/actions/publish-evidence
       with:
         source: ${{ runner.temp }}/evidence-proof-source
@@ -30,18 +43,52 @@ runs:
       shell: bash
       run: |
         python - <<'PY'
+        import json
         import os
+        import subprocess
         from pathlib import Path
+        from tempfile import TemporaryDirectory
         root = Path(os.environ["RUNNER_TEMP"]) / "evidence-proof-download"
-        [stdout] = list(root.rglob("harness/*/shell-2.stdout.txt"))
+        [stdout] = list((root / "autopsy").rglob("harness/*/shell-2.stdout.txt"))
         assert "planted shell diagnostic" in stdout.read_text(encoding="utf-8")
-        [supervisor] = list(root.rglob("harness/*/supervisor.log.txt"))
+        [supervisor] = list((root / "autopsy").rglob("harness/*/supervisor.log.txt"))
         assert "planted supervisor diagnostic" in supervisor.read_text(encoding="utf-8")
         [deadline] = list(root.rglob("session-deadline.txt"))
         assert "deadline (5s) passed" in deadline.read_text(encoding="utf-8")
+        real = root / "real"
+        for name in ("shell-2.stdout.txt", "supervisor.log.txt", "control.yaml.txt", "run.json.txt"):
+            assert list(real.rglob(name)), name
+        listing = (root / "inventory.txt").read_text(encoding="utf-8")
+        assert "masked autopsy/failure.txt:1 (github-pat)" in listing
+        assert "masked autopsy/digest.txt:1 (generic-api-key)" in listing
+        assert all(not line.startswith(("masked real/", "withheld real/")) for line in listing.splitlines())
+        assert "<redacted:" in (root / "autopsy/failure.txt").read_text(encoding="utf-8")
+        [provider] = list((root / "autopsy").rglob("provider.stderr.txt"))
+        assert provider.read_text(encoding="utf-8").strip() == "<redacted>"
         secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
         assert all(secret not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
+        scanner_plant = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        assert all(scanner_plant not in p.read_text(encoding="utf-8") for p in root.rglob("*.txt"))
+
+        # Keep the real record path and field name, and change only the credential shape of a second match.
+        [decision] = list(real.rglob("D-0001.md.txt"))
+        with TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as temporary:
+            scratch = Path(temporary)
+            candidate = scratch / "candidate"
+            probe = candidate / decision.relative_to(root)
+            probe.parent.mkdir(parents=True)
+            original = decision.read_text(encoding="utf-8").rstrip("\n")
+            planted = "A1b2C3d4" + "E5f6G7h8I9j0K1l2M3n4O5p6"
+            probe.write_text(f"{original}\ntoken_id: {planted}\n", encoding="utf-8")
+            report = scratch / "findings.json"
+            result = subprocess.run(
+                ["gitleaks", "dir", "--ignore-gitleaks-allow", "--config", "tools/ci/evidence-gitleaks.toml",
+                 "--exit-code", "23", "--report-format", "json", "--report-path", str(report), str(candidate)],
+                capture_output=True,
+            )
+            assert result.returncode == 23, "scanner missed a credential in the same decision field"
+            hits = json.loads(report.read_text(encoding="utf-8"))
+            assert [(hit["RuleID"], hit["StartLine"]) for hit in hits] == [
+                ("generic-api-key", len(original.splitlines()) + 1)
+            ], "only the planted credential should be detected"
         PY
-        python tools/ci/stage_evidence.py "$RUNNER_TEMP/evidence-scan-plant" "$RUNNER_TEMP/evidence-scan-check"
-        test ! -e "$RUNNER_TEMP/evidence-scan-check/autopsy/failure.txt"
-        grep -q 'github-pat' "$RUNNER_TEMP/evidence-scan-check/inventory.txt"

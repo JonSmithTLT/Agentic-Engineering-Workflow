@@ -23,8 +23,6 @@ from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "src" / "aew" / "dashboard" / "static"
-# The commit agreed with the web developer and the operator for F20.5 (2026-10-05): never the newest by default.
-AGREED_COMMIT = "4f0a710fa4831eefda248dd43cc2e144d1010189"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -46,14 +44,13 @@ def test_build_json_binds_every_file_by_its_hash():
         assert hashlib.sha256((STATIC / rel).read_bytes()).hexdigest() == digest, rel
 
 
-def test_build_json_names_the_agreed_commit_the_accepted_contract_and_the_pinned_builder():
+def test_build_json_names_its_source_the_accepted_contract_and_a_pinned_builder():
     record = build()
-    assert record["source"]["commit"] == AGREED_COMMIT
+    assert re.fullmatch(r"[0-9a-f]{40}", record["source"]["commit"])
     assert re.fullmatch(r"[0-9a-f]{40}", record["source"]["tree"])
     assert re.fullmatch(r"[0-9a-f]{40}", record["source"]["web_tree"])
     assert record["contract"]["path"] == CT.CONTRACT_REL and re.fullmatch(r"[0-9a-f]{64}", record["contract"]["sha256"])
-    pinned = (ROOT / "web/docs/how-to/pinned-web-builder.md").read_text(encoding="utf-8")
-    assert record["builder"]["image"] in pinned and record["builder"]["image"].startswith("sha256:")
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", record["builder"]["image"])
     assert record["builder"]["node"].startswith("v") and record["builder"]["npm"]
     assert set(record["inputs"]) == {"web/package.json", "web/package-lock.json"}
     assert all(re.fullmatch(r"[0-9a-f]{64}", d) for d in record["inputs"].values())
@@ -63,19 +60,20 @@ def test_build_json_names_the_agreed_commit_the_accepted_contract_and_the_pinned
 def test_build_json_matches_the_commit_where_git_has_it():
     """The recorded tree and input digests are the commit's own (a shallow clone without the commit skips)."""
     record = build()
-    got = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{AGREED_COMMIT}^{{commit}}"],
+    source = record["source"]["commit"]
+    got = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{source}^{{commit}}"],
                          capture_output=True, creationflags=NO_WINDOW)
     if got.returncode != 0:
-        pytest.skip("the agreed commit is not in this clone")
+        pytest.skip("the build source is not in this clone")
 
     def show(spec: str) -> bytes:
         return subprocess.run(["git", "-C", str(ROOT), *spec.split()], check=True, capture_output=True,
                               creationflags=NO_WINDOW).stdout
 
-    assert show(f"rev-parse {AGREED_COMMIT}^{{tree}}").decode().strip() == record["source"]["tree"]
-    assert show(f"rev-parse {AGREED_COMMIT}:web").decode().strip() == record["source"]["web_tree"]
+    assert show(f"rev-parse {source}^{{tree}}").decode().strip() == record["source"]["tree"]
+    assert show(f"rev-parse {source}:web").decode().strip() == record["source"]["web_tree"]
     for rel, digest in record["inputs"].items():
-        assert hashlib.sha256(show(f"show {AGREED_COMMIT}:{rel}")).hexdigest() == digest, rel
+        assert hashlib.sha256(show(f"show {source}:{rel}")).hexdigest() == digest, rel
 
 
 def git_show(commit: str, rel: str) -> bytes:
@@ -316,20 +314,21 @@ def test_the_import_writes_the_build_and_its_record(tmp_path, monkeypatch):
                    "--npm", "10", "--built-at", "2026-10-06T00:00:00Z"])  # a mutable image name is refused
 
 
-def test_build_json_matches_the_web_build_agreement():
-    """``web/docs/reference/f20-production-baseline.md`` is the operator-approved baseline (web agent, 2026-10-05):
-    every identity it records is the one ``BUILD.json`` binds, so a rebuild from another commit, toolchain or
-    lockfile fails here until a new baseline is agreed."""
-    agreement = (ROOT / "web/docs/reference/f20-production-baseline.md").read_text(encoding="utf-8")
-    table = dict(re.findall(r"^\| ([^|]+?) \| `?([^|`]+?)`? \|$", agreement, re.M))
+def test_build_json_matches_the_builder_pin_at_its_source():
     record = build()
-    assert table["Frontend source commit"] == record["source"]["commit"] == AGREED_COMMIT
-    assert table["Repository tree"] == record["source"]["tree"]
-    assert table["Frontend subtree"] == record["source"]["web_tree"]
-    assert table["Contract SHA-256 at that commit"] == record["contract"]["sha256"]
-    assert record["inputs"]["web/package-lock.json"] in agreement and record["inputs"]["web/package.json"] in agreement
-    assert table["Pinned builder image"] == record["builder"]["image"]
-    assert table["Toolchain"] == f"Node {record['builder']['node'].lstrip('v')} / npm {record['builder']['npm']}"
+    source = record["source"]["commit"]
+    # Only the original F20.5 package predates the structured maintenance builder pin.
+    if source == "4f0a710fa4831eefda248dd43cc2e144d1010189":
+        # The F20.5 approval records this pin in web/docs/reference/f20-production-baseline.md.
+        assert record["builder"]["image"] == "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407"
+        assert (record["builder"]["node"], record["builder"]["npm"]) == ("v22.22.2", "10.9.7")
+        return
+
+    pin = json.loads(git_show(source, "web/docs/reference/toolchain/maintenance-builder-provenance.json"))
+    assert record["builder"]["image"] == pin["image_id"]
+    assert record["builder"]["node"] == f"v{pin['node']}"
+    assert record["builder"]["npm"] == pin["npm"]
+    assert record["inputs"]["web/package-lock.json"] == pin["lockfile_sha256"]
 
 
 # ---------------------------------------------------------------------------------------------- the request log

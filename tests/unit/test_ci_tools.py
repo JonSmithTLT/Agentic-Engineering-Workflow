@@ -26,7 +26,10 @@ def workflow_doc(text):
     """Expose the lane action's command to the existing command and flag invariants."""
     doc = yaml.safe_load(text)
     if isinstance(doc, dict):
-        for job in doc.get("jobs", {}).values():
+        containers = [*doc.get("jobs", {}).values()]
+        if "runs" in doc:
+            containers.append(doc["runs"])
+        for job in containers:
             for step in job.get("steps", []):
                 if step.get("uses") == "./.github/actions/lane":
                     step["run"] = step["with"]["command"]

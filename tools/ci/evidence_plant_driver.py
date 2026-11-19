@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import signal
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lane_step import identities  # noqa: E402
+from lane_step import identities, proctree  # noqa: E402
 
 
 def main(root: Path, kind: str) -> None:
@@ -22,15 +20,8 @@ def main(root: Path, kind: str) -> None:
         if workers and controllers:
             time.sleep(2)
             _, identity = controllers[0]
-            if kind == "cancel":
-                if os.name == "nt":
-                    import proctree
-
-                    proctree.end(identity)
-                else:
-                    os.kill(identity[0], signal.SIGINT)
-            elif kind == "sigkill":
-                os.kill(identity[0], signal.SIGKILL)
+            if kind != "sigkill" or not proctree.end(identity):
+                raise SystemExit("plant misfired: the recorded signal target had already ended")
             return
         time.sleep(0.1)
     raise SystemExit("plant did not start before external signal deadline")

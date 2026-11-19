@@ -214,6 +214,8 @@ jobs:
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       - uses: ./.github/actions/prove-evidence
+        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
         timeout-minutes: 10
         if: needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed

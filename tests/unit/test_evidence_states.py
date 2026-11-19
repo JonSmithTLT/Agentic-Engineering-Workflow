@@ -58,9 +58,14 @@ def test_every_published_state_has_an_ablated_twin(tmp_path, label):
 def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_unconditional():
     import yaml
 
-    for path in (ROOT / ".github/workflows").glob("*.yml"):
+    sources = [*(ROOT / ".github/workflows").glob("*.yml"),
+               *(ROOT / ".github/actions").glob("*/action.yml")]
+    for path in sources:
         doc = yaml.safe_load(path.read_text())
-        for job in doc.get("jobs", {}).values():
+        containers = [*doc.get("jobs", {}).values()]
+        if "runs" in doc:
+            containers.append(doc["runs"])
+        for job in containers:
             for step in job.get("steps", []):
                 assert "-m pytest" not in step.get("run", ""), (path, step)
     lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]

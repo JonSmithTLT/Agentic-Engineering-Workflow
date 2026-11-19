@@ -1,5 +1,9 @@
 name: Prove test evidence publication
 description: Plant a child error under a hidden path and verify the downloaded artifact.
+inputs:
+  job-label:
+    description: Hosted job name
+    required: true
 runs:
   using: composite
   steps:
@@ -11,26 +15,31 @@ runs:
         printf 'token=%s%s # gitleaks:allow\n' ghp_ A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 > "$raw/failure.txt"
         printf 'client_secret_sha256: %s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$raw/digest.txt"
     - name: Plant an unmarked pytest failure and retain its child stdout
-      shell: bash
+      uses: ./.github/actions/lane
       env:
         AEW_EVIDENCE_PROOF_DIR: ${{ runner.temp }}/evidence-proof-source
-      run: >-
-        python -m pytest -q -p no:cacheprovider -p no:xdist
-        --session-deadline 120 --test-timeout 60 "--hang-dir=${{ runner.temp }}/evidence-proof-outer"
-        tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle
-        tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+      with:
+        job-label: ${{ inputs.job-label }}
+        source: ${{ runner.temp }}/evidence-proof-outer
+        artifact: evidence-publication-execution-1-${{ runner.os }}-attempt-${{ github.run_attempt }}
+        command: |
+          python -m pytest -q -p no:cacheprovider -p no:xdist --session-deadline 120 --test-timeout 60 "--hang-dir=${{ runner.temp }}/evidence-proof-outer" tests/integration/test_hang_autopsy.py::test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
     - name: Capture the real orphaned-wait test's failure evidence
-      shell: bash
+      uses: ./.github/actions/lane
       env:
         AEW_EVIDENCE_PLANT_ORPHANED_WAIT: "1"
-      run: |
-        status=0
-        python -m pytest -q -p no:cacheprovider -p no:xdist --session-deadline 120 --test-timeout 90 \
-          "--hang-dir=$RUNNER_TEMP/evidence-proof-source/real" \
-          tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery \
-          > "$RUNNER_TEMP/evidence-real.log" 2>&1 || status=$?
-        test "$status" = 1
-        grep -q 'Failed: planted failure after the orphaned wait completed' "$RUNNER_TEMP/evidence-real.log"
+      with:
+        job-label: ${{ inputs.job-label }}
+        source: ${{ runner.temp }}/evidence-proof-source/real
+        artifact: evidence-publication-execution-2-${{ runner.os }}-attempt-${{ github.run_attempt }}
+        command: |
+          status=0
+          python -m pytest -q -p no:cacheprovider -p no:xdist --session-deadline 120 --test-timeout 90 \
+            "--hang-dir=$RUNNER_TEMP/evidence-proof-source/real" \
+            tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery \
+            > "$RUNNER_TEMP/evidence-real.log" 2>&1 || status=$?
+          test "$status" = 1
+          grep -q 'Failed: planted failure after the orphaned wait completed' "$RUNNER_TEMP/evidence-real.log"
     - uses: ./.github/actions/publish-evidence
       with:
         source: ${{ runner.temp }}/evidence-proof-source

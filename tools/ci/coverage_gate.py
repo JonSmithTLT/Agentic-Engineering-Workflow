@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Coverage ratchet over CI's coverage data (register E2; testing-and-ci-strategy.md §3, "Coverage").
+"""Coverage ratchet over the Linux pytest runs' data.
 
-Combines the coverage data the Linux lanes upload, one file per job. Reports line and branch coverage of
-``src/aew`` in total and per package, and fails when the total line
-or branch coverage falls below the committed baseline (``tests/coverage-baseline.json``) by more than the tolerance.
+Combines one file per job and reports line and branch coverage of ``src/aew`` in total and per package.
+Fails when the total line or branch coverage falls below the committed baseline by more than the tolerance.
 Coverage may rise freely; raising the baseline is a deliberate commit (``--update``), never automatic.
 
     python tools/ci/coverage_gate.py DATA_DIR --baseline tests/coverage-baseline.json [--summary FILE] [--update]
@@ -79,7 +78,7 @@ def main() -> int:
             if total[kind] + TOLERANCE < baseline[kind]:
                 problems.append(f"{kind} coverage {total[kind]:.2f}% is below the baseline {baseline[kind]:.2f}%")
 
-    lines = ["## Coverage (Linux pytest workers, src/aew)", "",
+    lines = ["## Coverage (Linux pytest processes, src/aew)", "",
              "| Package | Line | Branch | Statements | Branches |", "|---|---|---|---|---|"]
     for name, n in numbers.items():
         lines.append(f"| {name} | {n['line']:.1f}% | {n['branch']:.1f}% | {n['statements']} | {n['branches']} |")

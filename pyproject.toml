@@ -22,8 +22,7 @@ dev = ["pytest>=8"]
 # Optional: parallel test execution for the non-serial lanes (docs/implementation/testing-and-ci-strategy.md).
 # Kept out of `dev` so offline installs from the SPT wheelhouse need nothing new.
 parallel = ["pytest-xdist>=3.6"]
-# Optional: coverage, including the `aew` CLI, supervisor and broker subprocesses the tests start (register E2;
-# docs/implementation/testing-and-ci-strategy.md, "Coverage"). CI measures the Linux lanes with it.
+# Optional: line and branch coverage in the Linux pytest controller and workers.
 coverage = ["coverage[toml]>=7.10.6", "pytest-cov>=7,<8"]
 # Static checks (docs/implementation/testing-and-ci-strategy.md, "Static checks"). Pinned: a new release can add rules
 # or change inference, and that should arrive as its own reviewed change, not as a red merge gate.
@@ -120,7 +119,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-# Line and branch coverage of src/aew in pytest workers. The job writes its combined data to COVERAGE_FILE.
+# Line and branch coverage of src/aew in pytest processes. The job writes its combined data to COVERAGE_FILE.
 source_pkgs = ["aew"]
 branch = true
 sigterm = true

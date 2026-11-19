@@ -22,8 +22,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import bounds
-
 from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.harness.base import HarnessAdapter
@@ -287,6 +285,8 @@ class HarnessLab:
 
     def until(self, predicate: Any, bound: str | float, what: str = "condition") -> Any:
         """``bounds.until``, failing at once when a driver ended a session this lab started."""
+        import bounds  # here: a run's supervisor loads this module as its adapter, without tests/helpers on its path
+
         return bounds.until(predicate, bound, what, every=0.1, before=self.check_sessions)
 
     def cleanup(self) -> None:

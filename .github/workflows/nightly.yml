@@ -552,7 +552,7 @@ jobs:
 
   report:
     needs: [shard-history, vertical-series, reference-plan, reference, reference-assurance, walk-extended, race-repeat,
-            crash-extended, matrix-extra, matrix-extra-serial, matrix-extra-assurance, flake-queue]
+            crash-extended, matrix-extra, matrix-extra-serial, matrix-extra-assurance, flake-queue, evidence]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a
     # cancellation here is never a newer push; pull-request runs never reach this job.

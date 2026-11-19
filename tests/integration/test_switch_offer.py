@@ -917,7 +917,6 @@ def _fake_session(monkeypatch) -> None:
             pass
 
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda command, **k: (0, "clean"))
 
 

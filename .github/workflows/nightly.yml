@@ -106,6 +106,9 @@ jobs:
           retention-days: 30
 
   reference:
+    permissions:
+      contents: read
+      actions: read  # fetch this job's evidence archive by upload ID
     # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome. The suite is split
     # into duration-balanced shards (tests/helpers/lanes.py, `--shard k/N`), as many as `reference-plan` sized;
     # `reference-assurance` below proves the shards together ran every collected test exactly once.

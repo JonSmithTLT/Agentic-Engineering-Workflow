@@ -10,6 +10,13 @@ inputs:
   portion:
     description: priority, full, or both
     default: both
+outputs:
+  artifact-id:
+    description: ID assigned to this upload
+    value: ${{ steps.upload.outputs.artifact-id }}
+  artifact-digest:
+    description: SHA-256 of the uploaded archive
+    value: ${{ steps.upload.outputs.artifact-digest }}
 runs:
   using: composite
   steps:

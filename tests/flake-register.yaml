@@ -1010,6 +1010,32 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: qualify-relay-refusal-reset
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: connection reset
+  cause: >-
+    The provider relay answers a refusal (403 outside the upstream path; 503 for a busy credential store) without
+    reading the request body, then closes. On Windows a close with unread input is a reset, which can discard the
+    queued answer before the client reads it (WinError 10054). The fake upstream is never connected on these paths.
+  owner: CI timing fixes
+  test: tests/integration/test_harness_qualify.py::test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials[priced]
+  planned_fix: >-
+    PR 473 (fix/relay-refusal-reset): the relay's refusal answer half-closes and drains the unread request before
+    closing (http_close.close_after_response), for every refusal the relay answers. The [refused] case is the same
+    class. Closure awaits PR 473's merge.
+  evidence:
+  - run: 43725900315
+    job: 132847727178
+    at: '2026-11-15T15:35:24Z'
+    note: reference serial 8/13 (windows-latest), nightly on main; the [refused] case.
+  - run: 44605225416
+    job: 135847272029
+    at: '2026-11-19T20:23:06Z'
+    note: integration 9/14 (windows-latest) on main; the [priced] case, at the busy-store 503.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

@@ -54,11 +54,21 @@ def index_of(files: dict[str, bytes]) -> dict[str, Any]:
 
 # ------------------------------------------------------------------------------------------ the CI check
 
-def test_counts_carries_the_totals_the_pages_leave_out():
-    """The report includes import edges and per-schema totals derived from the same records as the index."""
+def test_counts_carries_the_totals_the_pages_leave_out(monkeypatch):
+    """The report carries the index's totals and the writers family's count of parser registrations and handlers."""
     files = rendered()
     records = index_of(files)["records"]
     edges = sum(len(r["imports"]) for key, r in records.items() if key.startswith("modules:"))
+    writers = next(f for f in FAMILIES if f.__name__.endswith(".writers"))
+    parser_counts = writers.parser_counts
+    reported = []
+
+    def observe(cut, roles):
+        measured = parser_counts(cut, roles)
+        reported.append(copy.deepcopy(measured))
+        return measured
+
+    monkeypatch.setattr(writers, "parser_counts", observe)
     totals = reference.counts()
     assert edges and totals["import_edges"] == edges
     schemas = {key.removeprefix("schemas:"): r["fact"] for key, r in records.items() if key.startswith("schemas:")}
@@ -66,8 +76,7 @@ def test_counts_carries_the_totals_the_pages_leave_out():
         name: {"paths": len(fact.get("properties", {})), "required": len(fact.get("required", []))}
         for name, fact in schemas.items()
     }
-    assert totals["parser_cut"]["registrations"] > 0
-    assert totals["parser_cut"]["handlers_by_role"]["aew"] > 0
+    assert reported == [totals["parser_cut"]]
 
 
 def test_the_committed_reference_is_what_the_code_gives():

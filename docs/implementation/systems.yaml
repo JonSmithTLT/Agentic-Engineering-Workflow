@@ -1386,8 +1386,9 @@ systems:
   - docs/implementation/future-work.yaml (row HOLD-21, at c11a61ea) HOLD-21 members F25 and U4
 - id: SYS-12
   name: Discovery layer, D2 (output and text rules)
-  purpose: A CI layer that scans what AEW prints or tells agents for unparseable commands, secret asks, ids, unstructured
-    refusals, codes and environment statements, ratcheted by an allow-list that may only shrink.
+  purpose: A CI layer that scans what AEW prints or tells agents for unparseable commands, secret asks (asks for a credential
+    and credential variables given a literal, never a bare credential value), ids, unstructured refusals, codes and
+    environment statements, ratcheted by an allow-list that may only shrink.
   serves_claims:
     closing_works: []
     extra: []
@@ -1445,16 +1446,20 @@ systems:
     row: E169
     estimate: 1 PR (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
-    item 6 (stays in shadow); then, on 2026-11-19, O-SECRET enforced alone and the D2 machinery kept (the Lead), since
-    main push run 43779664783 showed 0 O-SECRET findings in 47,886 captured outputs; the other five rules stay in shadow'
+    item 6 (stays in shadow); then O-SECRET enforced alone and the D2 machinery kept, on the operator''s decisions: E140
+    (2026-11-04, "enforce those two") and 2026-11-19 (triage the discovery rules once, then switch them on). The nightly
+    reference run applies D2; its run 44567041398 found 0 O-SECRET findings in 47,192 captured outputs, at a commit older
+    than the flip''s base, and the flip''s own full-tier PR run is the proof at the base. The other five rules stay in
+    shadow'
   recommendation: freeze
-  who: Lead (E140's flip); operator for the other four rules' modes
+  who: operator (E140, 2026-11-04; 2026-11-19), every rule's mode; the Lead builds each flip
   reason: 'The operator''s order is on the record: "enforce those two" (docs/implementation/future-work.yaml (row E140,
     at c11a61ea)). E140 PR 2 has merged, so only the flip is left of E140. It has no product surface and no reference record
     (test tooling), so wired and as_built are empty. Some failures already hold in shadow: allow-list growth, a lowered
     mode without the operator-merge label, and a capture error.'
   evidence:
-  - 'tests/helpers/discovery/modes.py:16-25: all six rules shadow; :1-8 a mode changes only by the operator''s decision'
+  - 'tests/helpers/discovery/modes.py:18-25: O-SECRET enforce (:23), the other five shadow; :1-8 a mode changes only by the
+    operator''s decision'
   - 'tools/ci/discovery_ratchet.py:1-25: what fails in every mode (list growth, a lowered mode, capture errors) and what
     fails only in enforce'
   - '.github/workflows/ci.yml:531-557: the ratchet step on every run; .github/workflows/discovery.yml:3-7: the static-text
@@ -1465,7 +1470,8 @@ systems:
     merged as abfa0727 (stale, BOARD v2 §6); row E141; the Now list names E140
   - 'docs/implementation/future-work.yaml (row F47.6, at c11a61ea): F47.6 closed 2026-10-24, held in HOLD-02; :375 lists
     it as a HOLD-02 member'
-  - 'docs/implementation/vertical-uat.md:395-418: the rules and the modes table (O-CMD :415, O-SECRET :418, both shadow)'
+  - 'docs/implementation/vertical-uat.md:411-418: the rules (O-SECRET :417); :426-433 the modes table (O-CMD :429 shadow,
+    O-SECRET :432 enforce)'
   - 'git log 5625b8e1..c11a61ea: a16f8a60 is the merge of E140 PR 2; its first commit 814ba897 is "fix(D2): O-SECRET and
     O-CMD judge what a reader is really asked" and 92003836 "test(D2): remove the 32 keys no longer observed, with --remove"'
 - id: SYS-13

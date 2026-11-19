@@ -945,15 +945,22 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
         assert list(dict.fromkeys(lab.provider.seen)) == [hashlib.sha256(k.encode()).hexdigest()
                                                          for k in (expired, fresh)]
         assert record["containment"]["network"]["decisions"]["relay"].get("allowed", 0) >= 1
-    # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote, its server log (the
-    # harness's stderr) included: only the variable's name. OpenCode's own private state (its XDG directories, with
-    # its database) keeps what the provider said.
+        assert record["containment"]["network"]["decisions"]["relay"].get("upstream_status:401", 0) >= 1
+        # the relay recorded the refused request with the provider's status, and its message with the key redacted
+        refused = [e for e in map(json.loads, (runlog.run_dir(lab.aew_root, run) / runlog.RELAY_REQUESTS)
+                                  .read_text(encoding="utf-8").splitlines()) if e["status"] == 401]
+        assert refused and all(e["swap"] == "swapped" and e["login"] == "key" for e in refused), refused
+        assert all("Incorrect API key" in e["excerpt"] for e in refused), refused
+    # Neither key, nor part of one, is in anything AEW wrote, its server log (the harness's stderr) included: only the
+    # variable's name. Nor is the provider's message quoting part of one, except as the relay's record keeps it, with
+    # the key redacted. OpenCode's own private state (its XDG directories, with its database) keeps what it said.
     for directory in (runlog.run_dir(lab.aew_root, run), runlog.run_dir(lab.aew_root, "R-INV-0001-2")):
         for path in directory.rglob("*"):
             parts = path.relative_to(directory).parts
             if path.is_file() and not any(part.startswith("xdg-") for part in parts):
                 text = path.read_text(encoding="utf-8", errors="replace")
-                for secret in (expired, fresh, f"{expired[:3]}***{expired[-4:]}", "Incorrect API key"):
+                message = () if path.name == runlog.RELAY_REQUESTS else ("Incorrect API key",)
+                for secret in (expired, fresh, f"{expired[:3]}***{expired[-4:]}", *message):
                     assert secret not in text, (path, secret)
 
 

@@ -277,6 +277,54 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
         up.close()
 
 
+def test_an_api_key_session_after_a_chatgpt_login_session_sends_its_own_key_and_no_earlier_row_is_active(tmp_path):
+    """The operator's sequence, in one project: a session on the ChatGPT login (its relay's sentinel goes into the
+    Lead's own login store, as AEW's row), then a session fed an API key (`--provider-env OPENAI_API_KEY`), which has
+    no login of its own to seed. The fake TUI prefers an active stored login over the variable, as OpenCode does. The
+    second session's Lead has no active login row left from the first, so its request carries its own sentinel, which
+    its relay swaps for the key: the upstream sees the key, never a placeholder. Each session's relay recorded its
+    requests, by route, login kind, swap outcome and upstream status, and never a credential."""
+    from aew.harness import runlog
+
+    login_up, key_up = Upstream(path="/backend-api/codex"), Upstream(path="/v1")
+    try:
+        lab, tui = make_lab(tmp_path)
+        try:
+            home = synthetic_home(tmp_path, oauth={"openai": chatgpt("synthetic-access-first", time.time() + 3600)})
+            for name, text in (("mode", "providers"), ("variables.json", "{}"), ("look.json", "[]"),
+                               ("oauth.json", '["openai"]')):
+                (tui / name).write_text(text)
+            first = at_the_terminal(lab, home, refreshing_upstream=login_up.url)
+            assert first["code"] == 0, first["stderr"][-3000:]
+            [row] = json.loads((tui / "inside.json").read_text())["logins"]
+            assert row["access"].startswith("aew-relay-")  # the first session's own row, with its sentinel
+            assert login_up.seen == [("/backend-api/codex/probe", "Bearer synthetic-access-first")]
+
+            (tui / "variables.json").write_text('{"openai": "OPENAI_API_KEY"}')
+            second = at_the_terminal(lab, home, "--provider-env", "OPENAI_API_KEY", key_upstream=key_up.url)
+            assert second["code"] == 0, second["stderr"][-3000:]
+            assert "openai (oauth): fed by --provider-env instead" in second["stderr"]
+            inside = json.loads((tui / "inside.json").read_text())
+            assert inside["logins"] == []  # no active login row: the first session's is gone
+            assert inside["calls"]["openai"][0] == 200, inside["calls"]
+            assert key_up.seen == [("/v1/probe", f"Bearer {SECRET}")]  # the key, by its own sentinel
+            assert len(login_up.seen) == 1  # nothing more went the login's way
+
+            runs = lab.aew_root / runlog.RUNS_REL
+            records = [[json.loads(line) for line in (d / runlog.RELAY_REQUESTS).read_text().splitlines()]
+                       for d in sorted(runs.glob("lead-*"), key=lambda d: d.stat().st_mtime)]
+            assert [[(e["route"], e["login"], e["swap"], e["outcome"], e["status"]) for e in r] for r in records] == [
+                [("openai", "oauth", "swapped", "forwarded", 200)],
+                [("openai", "key", "swapped", "forwarded", 200)]]
+            blob = json.dumps(records)
+            assert SECRET not in blob and "synthetic-access-" not in blob and "aew-relay-" not in blob
+        finally:
+            lab.cleanup()
+    finally:
+        login_up.close()
+        key_up.close()
+
+
 # --------------------------------------------------------------------------------------------- outcomes 1 and 6
 
 def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_labelled_under_allow_weaker(tmp_path):

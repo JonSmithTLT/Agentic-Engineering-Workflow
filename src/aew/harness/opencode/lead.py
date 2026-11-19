@@ -751,8 +751,8 @@ class ContainedLead:
             reason=netns.PROVIDER_KEY_MISSING)
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
-        from aew.harness import containment, weaker_register
-        from aew.harness.containment import client_cert, egress, netns
+        from aew.harness import containment, runlog, weaker_register
+        from aew.harness.containment import client_cert, egress, netns, relay
 
         engine = self.engine
         self.stages.mark("seat")
@@ -805,11 +805,18 @@ class ContainedLead:
                     f"the contained Lead starts with no saved permissions, and its store's could not be cleared "
                     f"({type(exc).__name__}: {exc}); {login.clear_failure_step(store, exc)}",
                     reason="saved_permissions", path=str(store)) from None
+            try:  # and with no login row an earlier session wrote, whatever its own logins, or does not start
+                login.clear_aew_logins(store, state)
+            except (OSError, sqlite3.Error) as exc:
+                raise ContainmentUnavailable(
+                    f"the contained Lead starts with none of the login rows earlier sessions gave it, and its store's "
+                    f"could not be removed ({type(exc).__name__}: {exc}); {login.clear_failure_step(store, exc)}",
+                    reason="stale_logins", path=str(store)) from None
             if layout.private_network:
                 network = netns.RunNetwork.start_lead(
                     layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
                     refreshing={p: login.StoredLogin(p, self.base) for p in self.refreshing},
-                    keyless=list(self.certified))
+                    keyless=list(self.certified), record=relay.RequestLog(run_dir / runlog.RELAY_REQUESTS))
                 label["network"].update(network.describe())
                 self.stages.mark("network")
             from aew.capability import ops as capability

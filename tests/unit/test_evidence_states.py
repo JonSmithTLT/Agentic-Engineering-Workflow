@@ -13,6 +13,7 @@ from test_ci_tools import ROOT, _load
 @pytest.mark.parametrize("payload,expected", [
     (b"", "empty"),
     (b"armed 2026-01-01T00:00:00Z for 60s; not fired\n", "armed-placeholder"),
+    (b"armed now for 60s; not fired\nTimeout (0:01:00)!\n<no Python frame>\n", "finding"),
     (b'armed\nThread 123:\n  File "tests/unit/test_a.py", line 12 in test_wait\n', "finding"),
 ])
 def test_deadline_state_requires_frames(payload, expected):
@@ -71,3 +72,93 @@ def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_
             assert index > collect
     publisher = yaml.safe_load((ROOT / ".github/actions/publish-evidence/action.yml").read_text())
     assert all(step.get("if", "").startswith("always()") for step in publisher["runs"]["steps"])
+
+
+def test_dropping_an_ablation_expectation_fails_the_hosted_verifier(monkeypatch):
+    verify = _load("verify_evidence")
+    problems = ["evidence defect: hang-gw0.txt: false publication state"]
+    assert verify.ablation_problem("zero-byte", problems) is None
+    monkeypatch.delitem(verify.ABLATIONS, "zero-byte")
+    assert "has no expectation" in verify.ablation_problem("zero-byte", problems)
+
+
+def test_the_publication_budget_detects_an_unbounded_post_test_step(tmp_path):
+    import bounds
+    import yaml
+
+    source = ROOT / ".github/workflows/ci.yml"
+    doc = yaml.safe_load(source.read_text())
+    assert bounds.job_deadline_problems(source.parent) == []
+    doc["jobs"]["lanes"]["steps"][-1].pop("timeout-minutes")
+    (tmp_path / "ci.yml").write_text(yaml.safe_dump(doc))
+    assert any("no timeout-minutes" in problem for problem in bounds.job_deadline_problems(tmp_path))
+
+
+def test_priority_preparation_keeps_deadline_stacks_and_the_publisher_labels_every_file(tmp_path, monkeypatch):
+    import json
+
+    stage = _load("stage_evidence")
+    inputs = _load("evidence_inputs")
+    source = tmp_path / "source"
+    session = source / "autopsy/session-123-test"
+    session.mkdir(parents=True)
+    (source / "hang-gw0-123.txt").write_text("aew hang watchdog: tests/unit/test_a.py::test_wait started now; "
+                                            "limit 600s; not fired; monotonic 1\n")
+    (session / "worker-gw0-deadline-stacks.txt").write_bytes(b"")
+    (session / "stacks.gw0-1.txt").write_text('Thread 123:\n  File "tests/unit/test_a.py", line 2 in test_wait\n')
+    (session / "reason.gw0-1.txt").write_text("tests/unit/test_a.py::test_wait: deadline passed\n")
+    (session / "oversized.txt").write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    (source / "runner-resources-job.txt").write_text(json.dumps({"job_label": "integration 1/1 (ubuntu-latest)"}))
+    present, priority = inputs.prepare(source, tmp_path / "job-watchdog-input")
+    assert present and priority
+    assert (tmp_path / "job-watchdog-input/autopsy/session-123-test/stacks.gw0-1.txt").exists()
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    output = tmp_path / "published"
+    assert stage.stage(tmp_path / "job-watchdog-input", output) == "gitleaks clean"
+    inventory = (output / "inventory.txt").read_text()
+    assert "armed-placeholder hang-gw0-123.txt" in inventory
+    assert "empty autopsy/session-123-test/worker-gw0-deadline-stacks.txt" in inventory
+    assert "finding autopsy/session-123-test/stacks.gw0-1.txt" in inventory
+    assert "omitted autopsy/session-123-test/oversized.txt" in inventory
+    assert _load("check_assurance").evidence_problems(output) == []
+
+
+def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names(tmp_path):
+    import hashlib
+    import json
+
+    check = _load("check_evidence_run")
+    label = "integration 1/1 (ubuntu-latest)"
+    names = tmp_path / "plant-attempt-1-running"
+    names.mkdir()
+    (names / "job-label-sha256.txt").write_text(hashlib.sha256(label.encode()).hexdigest())
+    (names / "running-123.txt").write_text("tests/unit/test_a.py::test_wait\n")
+    (names / "inventory.txt").write_text("typed source names\nfinding job-label-sha256.txt (evidence_inputs)\n"
+                                        "finding running-123.txt (watchdog)\n")
+    scanned = tmp_path / "plant-attempt-1-watchdog"
+    scanned.mkdir()
+    (scanned / "inventory.txt").write_text("gitleaks scan unavailable\n")
+    jobs = [{"name": label, "conclusion": "failure", "steps": []}]
+    found = check.check_jobs(tmp_path, jobs)
+    assert any("scan unavailable" in defect for defect in found), json.dumps(found)
+
+
+def test_an_interrupted_protocol_keeps_its_truthful_header_and_source_name(tmp_path, monkeypatch):
+    class Plugins:
+        def get_plugin(self, name):
+            return None
+
+    config = SimpleNamespace(pluginmanager=Plugins(),
+                             getoption=lambda *args: str(tmp_path) if args[0] == "aew_hang_dir" else None)
+    monkeypatch.setattr(watchdog, "USE_ALARM", False)
+    monkeypatch.setattr(watchdog.faulthandler, "dump_traceback_later", lambda *args, **kwargs: None)
+    monkeypatch.setattr(watchdog.faulthandler, "cancel_dump_traceback_later", lambda: None)
+    guard = watchdog.HangWatchdog(config, 600)
+    guard.running = tmp_path / "running-123.txt"
+    protocol = guard.pytest_runtest_protocol(SimpleNamespace(nodeid="tests/unit/test_a.py::test_wait"), None)
+    next(protocol)
+    with pytest.raises(KeyboardInterrupt):
+        protocol.throw(KeyboardInterrupt())
+    guard.pytest_unconfigure(config)
+    assert "limit 600s; not fired" in guard.path.read_text()
+    assert guard.running.read_text() == "tests/unit/test_a.py::test_wait\n"

@@ -60,7 +60,9 @@ def _hang_dir(config: pytest.Config) -> Path:
 
 
 def thread_stacks() -> str:
-    if os.environ.get("AEW_EVIDENCE_PLANT") and os.environ.get("AEW_EVIDENCE_ABLATE") == "stacks":
+    from evidence_files import ablated
+
+    if ablated("stacks"):
         return "stack collection ablated\n"
     names = {t.ident: t.name for t in threading.enumerate()}
     parts = []

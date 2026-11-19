@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -10,27 +11,37 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check_assurance import evidence_problems  # noqa: E402
-from cost_record import JOB_NAME  # noqa: E402
 from flake_register import _gh_read, _pages  # noqa: E402
-from tier import FAST_LANES  # noqa: E402
 
 
 def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
     defects = []
     for job in jobs:
-        match = JOB_NAME.match(job["name"])
-        if not match or job.get("conclusion") in {"success", "skipped", None}:
+        if job.get("conclusion") in {"success", "skipped", None}:
             continue
-        started = any(step.get("started_at") and step["name"].startswith(("fast lane", "serial lane", "pytest --lane"))
-                      for step in job.get("steps", []))
+        found = []
+        for path in root.iterdir() if root.is_dir() else ():
+            labels = []
+            for record in path.glob("runner-resources-*.txt"):
+                try:
+                    data = json.loads(record.read_text())
+                    if isinstance(data, dict):
+                        labels.append(data.get("job_label"))
+                except (ValueError, OSError):
+                    continue
+            digest = path / "job-label-sha256.txt"
+            named = digest.is_file() and digest.read_text().strip() == hashlib.sha256(job["name"].encode()).hexdigest()
+            if job["name"] in labels or named:
+                found.append(path)
+        for path in list(found):
+            if path.name.endswith("-running"):
+                found.extend(sibling for sibling in root.glob(path.name.removesuffix("-running") + "*")
+                             if sibling not in found)
+        started = bool(found) or any(
+            step.get("started_at") and ("pytest" in step["name"] or "/lane" in step["name"])
+            for step in job.get("steps", []))
         if not started:
             continue
-        fields = match.groupdict()
-        platform = "Windows" if fields["os"].startswith("windows") else "Linux"
-        core = "core-" if fields["lane"] in FAST_LANES else ""
-        shard = (fields["shard"] or "1/1").split("/")[0]
-        prefix = f"evidence-lane-report-{platform}-{core}{fields['lane']}-{shard}-"
-        found = [path for path in root.glob(prefix + "*") if not path.name.endswith("-running")]
         if not found:
             defects.append(f"evidence defect: {job['name']}: no published evidence")
             continue
@@ -39,15 +50,25 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
             import shutil
 
             merged = Path(temporary)
-            for path in root.glob(prefix + "*"):
+            for path in found:
                 shutil.copytree(path, merged / path.name)
             reports = []
             for path in merged.rglob("*.json"):
                 if "autopsy" not in path.parts:
                     reports.append(json.loads(path.read_text()))
-            died = not reports or any(report.get("exitstatus") not in (0, 1) for report in reports)
+            command_exits = []
+            for path in merged.rglob("runner-resources-*-exit.txt"):
+                record = json.loads(path.read_text())
+                command_exits.append(record.get("command_exit"))
+                if record.get("ablation") is not None:
+                    defects.append(f"evidence defect: {job['name']}: ablation enabled in a real lane")
+            died = (any(report.get("exitstatus") not in (0, 1) for report in reports)
+                    or any(code not in (0, 1) for code in command_exits)
+                    or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
+            if died and kind is None and job.get("conclusion") != "cancelled":
+                defects.append(f"evidence defect: {job['name']}: death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
                 merged, kind=kind, require_stacks=died and kind is not None))
     return defects

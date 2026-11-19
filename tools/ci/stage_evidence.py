@@ -9,12 +9,14 @@ import re
 import stat
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
-from evidence_files import owner, state  # noqa: E402
+from bounds import EVIDENCE_SCAN_S  # noqa: E402
+from evidence_files import ablated, owner, state  # noqa: E402
 
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
@@ -80,7 +82,7 @@ def scan(candidate: Path, report: Path, staged: set[Path]) -> dict[Path, list[Hi
         ["gitleaks", "dir", "--no-banner", "--ignore-gitleaks-allow", "--report-format", "json",
          "--config", str(CONFIG), "--exit-code", str(FINDINGS_EXIT),
          "--report-path", str(report), str(candidate)],
-        cwd=report.parent, capture_output=True, timeout=60, check=False,
+        cwd=report.parent, capture_output=True, timeout=EVIDENCE_SCAN_S, check=False,
     )
     if result.returncode == 0:
         return {}
@@ -246,6 +248,8 @@ def stage(source: Path, destination: Path) -> str:
             for path in sorted(staged - withheld.keys()):
                 shown = "<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix()
                 classification = state(path, (candidate / path).read_bytes())
+                if path.name.startswith("hang-") and (ablated("header-only") or ablated("zero-byte")):
+                    classification = "finding"
                 writer = owner(path) or "UNKNOWN-WRITER"
                 inventory.extend(f"{classification} {shown} ({writer})\n".encode())
             for path, reason in omissions:
@@ -259,7 +263,7 @@ def stage(source: Path, destination: Path) -> str:
             publish = True
         except (OSError, ValueError, subprocess.TimeoutExpired):
             status = "gitleaks scan unavailable; evidence defect: scan unavailable"
-        header = f"{status}\n{kept} candidate files, {omitted} omitted\n"
+        header = f"{status}\n{kept} candidate files, {omitted} omitted\nfinding inventory.txt (publisher)\n"
         if publish:
             candidate.rename(destination)
         else:
@@ -270,7 +274,9 @@ def stage(source: Path, destination: Path) -> str:
 
 def main(argv: list[str]) -> None:
     source, destination = map(Path, argv)
+    started = time.monotonic()
     print(stage(source, destination))
+    print(f"evidence timing stage {time.monotonic() - started:.3f}s", file=sys.stderr)
     for line in (destination / "inventory.txt").read_text(encoding="utf-8").splitlines():
         if line.startswith(("masked ", "withheld ")):
             print(line, file=sys.stderr)

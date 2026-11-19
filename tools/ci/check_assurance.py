@@ -288,7 +288,9 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     defects.append(f"{relative}: timeout claimed without stacks")
                 if "fired after" in text and not FRAME.search(text):
                     defects.append(f"{relative}: fired claimed without stacks")
-            if ("every thread's stack" in text or "Timeout (" in text) and not FRAME.search(text):
+            stack_file = (path.name.startswith(("hang-", "stacks.")) or "-stacks" in path.name
+                          or "snapshots" in relative.parts)
+            if stack_file and ("every thread's stack" in text or "Timeout (" in text) and not FRAME.search(text):
                 defects.append(f"{relative}: stack header without stacks")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
@@ -304,15 +306,32 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 running.add(match[1])
         elif path.name.startswith("running-"):
             running.update(text.splitlines())
-    if require_stacks:
+    if require_stacks or kind in {"cancel", "sigkill", "deadline", "time-limit", "hang"}:
         if not running or "<unrecognized test>" in running:
             defects.append("missing running test name")
+    if require_stacks:
         for node in running:
             source = node.split("::", 1)[0].replace("\\", "/")
             function = node.rsplit("::", 1)[-1].split("[", 1)[0]
-            matched = any((node in text or function in text)
-                          and any(source in frame.group(0).replace("\\", "/")
-                                  for frame in FRAME.finditer(text)) for text in texts.values())
+            matched = False
+            for path, text in texts.items():
+                tags = [text]
+                tags.extend(reason.read_text(encoding="utf-8", errors="replace")
+                            for reason in path.parent.glob("reason*.txt"))
+                # Autopsy's reason tags its stack file. Snapshots and watchdogs tag themselves.
+                if path.name.startswith("worker-") and "-deadline-stacks" in path.name:
+                    worker = path.name.split("-deadline-stacks", 1)[0]
+                    pid_file = path.parent / f"{worker}-pid.txt"
+                    if pid_file.is_file():
+                        pid = pid_file.read_text().strip()
+                        tags.extend(header for hp, header in texts.items()
+                                    if hp.name == f"hang-{worker.removeprefix('worker-')}-{pid}.txt")
+                tagged = any(node in tag for tag in tags)
+                if not tagged and node.endswith(function):
+                    tagged = any(node + "[" in tag for tag in tags)
+                if tagged and any(source in frame.group(0).replace("\\", "/") for frame in FRAME.finditer(text)):
+                    matched = True
+                    break
             if not matched:
                 defects.append(f"{node}: no stack from the running test's module")
     return [f"evidence defect: {problem}" for problem in sorted(set(defects))]

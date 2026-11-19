@@ -19,6 +19,7 @@ import yaml
 from aew.knowledge import discovery
 
 ROOT = Path(__file__).resolve().parents[2]
+from bounds import publication_job_minutes  # noqa: E402
 
 
 def workflow_doc(text):
@@ -409,7 +410,7 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     jobs = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     reference, plan = jobs["reference"], jobs["reference-plan"]
     # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
-    assert reference["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["reference"] + DEADLINE_MARGINS_MIN
+    assert reference["timeout-minutes"] == publication_job_minutes(reference)
     assert reference["needs"] == "reference-plan"
     assert reference["strategy"]["matrix"] == "${{ fromJSON(needs.reference-plan.outputs.matrix) }}"
     assert plan["outputs"]["matrix"] == "${{ steps.plan.outputs.reference_matrix }}"
@@ -497,7 +498,7 @@ def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
     jobs = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     extra = jobs["matrix-extra"]
     # split the job further instead of raising the timeout; G3a's clearance is the one addition
-    assert extra["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["matrix-extra"] + DEADLINE_MARGINS_MIN
+    assert extra["timeout-minutes"] == publication_job_minutes(extra)
     plan = jobs["reference-plan"]
     assert extra["needs"] == "reference-plan"
     assert extra["strategy"]["matrix"] == "${{ fromJSON(needs.reference-plan.outputs.extra-matrix) }}"
@@ -519,7 +520,7 @@ def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
     # The serial lane: one job per OS, the same interpreter as that OS's shards, without xdist, its report uploaded
     # under a name the aggregate's pattern takes and no shard's name can be.
     lane = jobs["matrix-extra-serial"]
-    assert lane["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["matrix-extra-serial"] + DEADLINE_MARGINS_MIN
+    assert lane["timeout-minutes"] == publication_job_minutes(lane)
     interpreters = lane["strategy"]["matrix"]["include"]
     assert len(interpreters) == 2, "the serial lane runs exactly once per OS"
     assert {e["os"]: e["python"] for e in interpreters} == {"ubuntu-latest": "3.13", "windows-latest": "3.11"}
@@ -3261,7 +3262,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert base["runs-on"] == LINUX_IMAGE
     step, setup = strategy_fast_lane_minutes()
     # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
-    assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
+    assert base["timeout-minutes"] == publication_job_minutes(base)
     assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
@@ -3281,7 +3282,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["core"] + DEADLINE_MARGINS_MIN
+    assert core["timeout-minutes"] == publication_job_minutes(core)
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
@@ -3577,7 +3578,6 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
 
 def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     """The runner can end the pytest step before the job expires, with an unconditional evidence upload next."""
-    import bounds
 
     workflow = ROOT / ".github" / "workflows" / "flake-dispatch.yml"
     doc = workflow_doc(workflow.read_text(encoding="utf-8"))
@@ -3590,18 +3590,18 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     steps = job["steps"]
     pytest_step, upload = steps[-2:]
     action = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
-    evidence = action[-1]
+    evidence = next(step for step in action if step.get("with", {}).get("portion") == "full")
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
     assert [lane.repeats for lane in lanes] == [1, 2, 1]
     assert all(lane.step == pytest_step["name"] for lane in lanes)
     step_seconds = pytest_step["timeout-minutes"] * 60
-    assert f"+ {pytest_step['timeout-minutes']} * 60 > AEW_JOB_DEADLINE" in pytest_step["run"]
+    assert "+ 28 * 60 > AEW_JOB_DEADLINE" in pytest_step["run"]
     session_seconds = 0.0
     for lane in lanes:
         assert lane.deadline_s is not None
         session_seconds += lane.repeats * (lane.deadline_s + 2 * lane.margin_s)
-    assert session_seconds <= step_seconds
-    assert step_seconds + bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S < job["timeout-minutes"] * 60
+    assert session_seconds <= 28 * 60 < step_seconds
+    assert job["timeout-minutes"] == publication_job_minutes(job)
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == 14

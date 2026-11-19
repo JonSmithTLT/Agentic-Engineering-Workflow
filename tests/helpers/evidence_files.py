@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
 # The directory owner is recursive. New writers extend this table and its enumeration test.
 WRITERS = (
+    ("inventory.txt", "publisher"),
+    ("job-label-sha256.txt", "evidence_inputs"),
     ("hang-*.txt", "watchdog"),
     ("running-*.txt", "watchdog"),
     ("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder"),
@@ -36,5 +39,14 @@ def state(path: Path, data: bytes) -> str:
         return "empty"
     text = data.decode("utf-8", errors="replace")
     if path.name.startswith("hang-") or "-stacks" in path.name:
-        return "finding" if FRAME.search(text) else "armed-placeholder"
+        first, _, body = text.partition("\n")
+        if first.startswith("armed ") or (first.startswith("aew hang watchdog:") and " started " in first):
+            return "finding" if body.strip() else "armed-placeholder"
+        return "finding" if FRAME.search(text) or "Timeout (" in text else "armed-placeholder"
     return "finding"
+
+
+def ablated(rule: str) -> bool:
+    chosen = os.environ.get("AEW_EVIDENCE_ABLATE")
+    return bool(os.environ.get("AEW_EVIDENCE_PLANT")) and (
+        chosen == rule or (rule == "stacks" and chosen in {"header-only", "zero-byte"}))

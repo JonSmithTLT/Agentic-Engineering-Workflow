@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -28,14 +27,14 @@ def main() -> None:
     archive, digest = GITLEAKS[sys.platform]
     binary = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
     if not (target / binary).exists():
-        with urllib.request.urlopen("https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/" + archive,
-                                    timeout=20) as response:
-            data = response.read()
-        if hashlib.sha256(data).hexdigest() != digest:
-            raise ValueError("evidence scanner checksum mismatch")
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / archive
-            path.write_bytes(data)
+            subprocess.run(["curl", "--fail", "--silent", "--show-error", "--location", "--connect-timeout", "5",
+                            "--max-time", "20", "--output", str(path),
+                            "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/" + archive],
+                           check=True, timeout=25)
+            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise ValueError("evidence scanner checksum mismatch")
             if sys.platform == "win32":
                 with zipfile.ZipFile(path) as bundle:
                     (target / binary).write_bytes(bundle.read(binary))

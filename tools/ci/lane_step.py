@@ -7,6 +7,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -18,28 +19,16 @@ HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
 sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
-from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker  # noqa: E402
+from evidence_files import ablated  # noqa: E402
+from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
+from session_deadline import collect_leftovers as collect  # noqa: E402
+from session_deadline import recorded_processes as identities  # noqa: E402
 
-CUTOFF_CLEARANCE_S = 10
+CUTOFF_CLEARANCE_S = bounds.CUTOFF_CLEARANCE_S
 CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
 POLL_S = 0.25
 SPY_TIMEOUT_S = 3  # one bounded request per live worker; the cutoff reserves this per worker
 HEADER = re.compile(r"aew hang watchdog: (.+) started ([^;]+); limit ([0-9.]+)s; not fired; monotonic ([0-9.]+)")
-
-
-def ablated(rule: str) -> bool:
-    return bool(os.environ.get("AEW_EVIDENCE_PLANT")) and os.environ.get("AEW_EVIDENCE_ABLATE") == rule
-
-
-def identities(root: Path):
-    for path in root.glob("autopsy/session-*/*-pid.txt"):
-        try:
-            started = path.with_name(path.name.replace("-pid.txt", "-start.txt"))
-            identity = (int(path.read_text().strip()), int(started.read_text().strip()))
-            if proctree.same(identity):
-                yield path.parent, identity
-        except (OSError, ValueError, IndexError):
-            continue
 
 
 def note(directory: Path, name: str, text: str) -> None:
@@ -54,7 +43,8 @@ def note(directory: Path, name: str, text: str) -> None:
 
 def snapshot(root: Path, *, all_workers: bool = False) -> None:
     known = {identity[0]: identity for _, identity in identities(root)}
-    for path in root.glob("hang-*.txt"):
+    bases = {directory.parent.parent for directory in session_directories(root)}
+    for path in (path for base in bases for path in base.glob("hang-*.txt")):
         try:
             header = HEADER.match(path.read_text(encoding="utf-8"))
             if header is None:
@@ -69,7 +59,9 @@ def snapshot(root: Path, *, all_workers: bool = False) -> None:
             if ablated("stacks"):
                 continue
             out.parent.mkdir(parents=True, exist_ok=True)
-            result = subprocess.run(["py-spy", "dump", "--nonblocking", "--pid", str(pid)],
+            binary = shutil.which("py-spy") or "py-spy"
+            prefix = ["sudo", "-n"] if os.environ.get("AEW_PYSPY_SUDO") == "1" and sys.platform == "linux" else []
+            result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--pid", str(pid)],
                                     capture_output=True, text=True, timeout=SPY_TIMEOUT_S,
                                     **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
             if result.returncode:
@@ -80,18 +72,6 @@ def snapshot(root: Path, *, all_workers: bool = False) -> None:
                            encoding="utf-8")
         except (OSError, ValueError, subprocess.TimeoutExpired):
             continue
-
-
-def collect(root: Path) -> None:
-    # Marker identities are the authority. Never signal a process group or a reused pid.
-    recorded = list(identities(root))
-    table = proctree.table()
-    members = {identity for _, identity in recorded}
-    for _, identity in recorded:
-        members.update(proc.identity for proc in proctree.descendants(identity, table))
-    for identity in sorted(members, key=lambda item: item[1], reverse=True):
-        if identity[0] != os.getpid() and proctree.same(identity):
-            proctree.end(identity)
 
 
 def memory_used() -> int | None:
@@ -106,9 +86,13 @@ def memory_used() -> int | None:
 
 
 def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str]) -> None:
-    facts = {"pytest_exit": code, "step_signal": interrupted,
-             "runner_memory_peak_bytes": peak, "memory_scope": "MemTotal minus MemAvailable, whole runner"}
-    destination = root / "runner-resources-exit.txt"
+    scope = "MemTotal minus MemAvailable, whole runner" if sys.platform == "linux" else "unavailable on Windows"
+    facts = {"command_exit": code, "step_signal": interrupted,
+             "runner_memory_peak_bytes": peak, "memory_scope": scope,
+             "ablation": os.environ.get("AEW_EVIDENCE_ABLATE")}
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("AEW_LANE_STEP", "step"))
+    facts["job_label"] = os.environ.get("AEW_LANE_JOB_LABEL", "")
+    destination = root / f"runner-resources-{name}-exit.txt"
     destination.write_text(json.dumps(facts, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -180,7 +164,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--script", type=Path)
     args = parser.parse_args(argv)
     if args.collect:
+        started = time.monotonic()
+        args.root.mkdir(parents=True, exist_ok=True)
+        metadata = {"job_label": os.environ.get("AEW_LANE_JOB_LABEL", ""),
+                    "job_status_at_collect": os.environ.get("AEW_LANE_JOB_STATUS", "unknown")}
+        (args.root / "runner-resources-job.txt").write_text(json.dumps(metadata) + "\n", encoding="utf-8")
         collect(args.root)
+        print(f"evidence timing collect {time.monotonic() - started:.3f}s")
         return 0
     cutoff = float(os.environ["AEW_JOB_DEADLINE"]) + CUTOFF_GRACE_S
     if os.environ.get("AEW_EVIDENCE_PLANT") == "time-limit":

@@ -113,6 +113,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
+from evidence_files import ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
@@ -142,6 +143,8 @@ DEADLINE_GATE_ENV = "G3_TEST_DEADLINE_GATE"
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
+    if name == DEADLINE and ablated("kind"):
+        return
     import harness_diagnostics as hd  # redacts with AEW's own patterns; imported late: the sentinel loads it lazily
 
     hd.write_text(directory, name, text, append=append)
@@ -165,6 +168,45 @@ def _holders_text(directory: Path, extra: list[str]) -> str:
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
 
 
+def session_directories(root: Path):
+    """The lane root and the immediate per-session children used by looped lanes."""
+    yield from root.glob("autopsy/session-*")
+    yield from root.glob("*/autopsy/session-*")
+
+
+def recorded_processes(root: Path):
+    for directory in session_directories(root):
+        for path in directory.glob("*-pid.txt"):
+            try:
+                started = path.with_name(path.name.replace("-pid.txt", "-start.txt"))
+                identity = (int(path.read_text().strip()), int(started.read_text().strip()))
+                if proctree.same(identity):
+                    yield path.parent, identity
+            except (OSError, ValueError):
+                continue
+
+
+def collect_leftovers(root: Path) -> None:
+    """End the session's recorded identities and their members before publication begins."""
+    recorded = list(recorded_processes(root))
+    table = proctree.table()
+    members = {identity for _, identity in recorded}
+    for directory, identity in recorded:
+        job_file = marker(directory, "session-job")
+        if proctree.IS_WINDOWS and job_file.is_file():
+            with contextlib.suppress(OSError):
+                members.update(proc.identity for proc in proctree.Job.open(job_file.read_text().strip()).members())
+        members.update(proc.identity for proc in proctree.descendants(identity, table))
+    for identity in sorted(members, key=lambda item: item[1], reverse=True):
+        if identity[0] != os.getpid():
+            proctree.end(identity)
+    until = time.monotonic() + 10
+    while any(proctree.same(identity) for identity in members) and time.monotonic() < until:
+        time.sleep(0.05)
+    if any(proctree.same(identity) for identity in members):
+        raise RuntimeError("session members survived collection; publication is unsafe")
+
+
 class Stacks:
     """Every thread's stack at a given moment, written by ``faulthandler``'s C thread, so even with the GIL held. A
     process has one such timer, so arming this replaces whatever was armed (see ``watchdog``)."""
@@ -180,7 +222,7 @@ class Stacks:
         return self.at_mono - time.monotonic()
 
     def arm(self) -> None:
-        if os.environ.get("AEW_EVIDENCE_PLANT") and os.environ.get("AEW_EVIDENCE_ABLATE") == "stacks":
+        if ablated("stacks"):
             return
         with self.lock:
             left = self.left()
@@ -399,6 +441,7 @@ class Controller:
             self.job_note = proctree.outer_job()
             job_name = f"aew-session-{os.getpid()}-{secrets.token_hex(6)}"
             self.job = proctree.Job(job_name)
+            _write(self.dir, "session-job", job_name + "\n")
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
             if self.job_note == "subreaper set":  # before any child: the sentinel and every worker are recorded
@@ -444,6 +487,9 @@ class Controller:
         proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "sentinel", json.dumps(args)],
                                 **kwargs)
         self.sentinel_id = proctree.identity(proc.pid)
+        if self.sentinel_id is not None:
+            _write(self.dir, "sentinel-pid", f"{self.sentinel_id[0]}\n")
+            _write(self.dir, "sentinel-start", f"{self.sentinel_id[1]}\n")
         flight_recorder.spawned(["session_deadline.py", "sentinel"], proc.pid)
         return proc
 
@@ -823,7 +869,8 @@ class Sentinel:
         byte, with no temporary file that could vanish from an upload's listing."""
         with contextlib.suppress(OSError):
             text = self.after_finish_file.read_text(encoding="utf-8", errors="replace")
-            if 'File "' in text:
+            first, _, body = text.partition("\n")
+            if text and (not first.startswith("armed ") or body.strip()):
                 _write(self.dir, AFTER_FINISH_STACKS, text)
                 return True
         return False

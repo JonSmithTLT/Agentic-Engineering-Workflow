@@ -11,7 +11,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-from check_assurance import evidence_problems
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from check_assurance import evidence_problems  # noqa: E402
+
+ABLATIONS = {"stacks": "no stack", "kind": "kind marker", "running": "running test name",
+             "header-only": "publication state", "zero-byte": "publication state"}
+from flake_register import _gh_read  # noqa: E402
+
+
+def ablation_problem(rule: str, defects: list[str]) -> str | None:
+    expected = ABLATIONS.get(rule)
+    if expected is None or not any(expected in defect for defect in defects):
+        return f"{rule} ablation survived or has no expectation: {defects}"
+    return None
 
 
 def github_jobs() -> list[dict]:
@@ -24,7 +36,7 @@ def github_jobs() -> list[dict]:
 def checker_twins(root: Path) -> list[str]:
     """Every state rule is negated on a copy of the downloaded artifact, with a specific expected defect."""
     failures = []
-    for rule in ("inventory", "label", "writer", "false-timeout", "false-stack"):
+    for rule in ("inventory", "label", "writer", "false-timeout", "false-stack", "scan-unavailable"):
         with tempfile.TemporaryDirectory() as temporary:
             twin = Path(temporary) / "twin"
             shutil.copytree(root, twin)
@@ -44,6 +56,9 @@ def checker_twins(root: Path) -> list[str]:
                 target.write_text("was still running after 600s\n")
                 with inventory.open("a") as output:
                     output.write(f"armed-placeholder {target.name} (watchdog)\n")
+            elif rule == "scan-unavailable":
+                with inventory.open("a") as output:
+                    output.write("gitleaks scan unavailable\n")
             else:
                 target.write_text("every thread's stack:\n")
                 with inventory.open("a") as output:
@@ -52,6 +67,29 @@ def checker_twins(root: Path) -> list[str]:
             if not defects:
                 failures.append(f"{rule}: ablated twin survived")
             print(f"checker twin {rule}: {defects}")
+    return failures
+
+
+def death_twins(root: Path, kind: str) -> list[str]:
+    failures = []
+    for rule in ("stacks", "kind", "running"):
+        with tempfile.TemporaryDirectory() as temporary:
+            twin = Path(temporary) / "twin"
+            shutil.copytree(root, twin)
+            for path in list(twin.rglob("*.txt")):
+                if rule == "kind" and path.stem in {"session-deadline", "cutoff"}:
+                    path.unlink()
+                elif rule == "running" and path.name.startswith(("running-", "hang-")):
+                    path.unlink()
+                elif rule == "stacks":
+                    lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+                    path.write_text("".join(line for line in lines
+                                            if not re.search(r'File "|\([^\n]+\.py:\d+\)', line)), encoding="utf-8")
+            defects = evidence_problems(twin, kind=kind, require_stacks=True)
+            expected = {"stacks": "no stack", "kind": "kind marker", "running": "running test name"}[rule]
+            if not any(expected in defect for defect in defects):
+                failures.append(f"{rule}: death twin survived: {defects}")
+            print(f"death twin {rule}: {defects}")
     return failures
 
 
@@ -77,19 +115,41 @@ def main(root: Path) -> int:
                 shutil.copytree(path, merged / path.name)
             needs_stack = kind in {"deadline", "time-limit", "hang"}
             defects = evidence_problems(merged, kind=kind, require_stacks=needs_stack)
-            if ablate == "stacks":
-                if not any("no stack" in defect for defect in defects):
-                    failures.append(f"{job['name']}: stacks ablation survived: {defects}")
+            if ablate != "none":
+                problem = ablation_problem(ablate, defects)
+                if problem:
+                    failures.append(f"{job['name']}: {problem}")
             elif defects:
                 failures.extend(f"{job['name']}: {defect}" for defect in defects)
-            expected = "success" if kind == "normal" else "failure"
+            expected = "success" if kind == "normal" else "cancelled" if kind == "cancel" else "failure"
+            log = _gh_read(f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/jobs/{job['id']}/logs").decode(
+                "utf-8", errors="replace")
+            timing = re.findall(r"evidence timing ([a-z-]+) ([0-9.]+)s", log)
+            if kind == "normal":
+                required_times = {"prepare", "collect", "stage", "names-upload", "report-upload",
+                                  "watchdog-upload", "full-upload", "after-pytest"}
+                if not required_times <= {label for label, _ in timing}:
+                    failures.append(f"{job['name']}: first-push post-step timings are incomplete: {timing}")
+                print(f"{job['name']}: first-push timings {timing}")
+            if kind == "hang":
+                entered = re.findall(r"evidence-gil-enter ([0-9.]+)", log)
+                beats = re.findall(r"evidence-heartbeat (\d+) ([0-9.]+)", log)
+                if not entered or len(beats) < 3:
+                    failures.append(f"{job['name']}: plant misfired; heartbeat handshake missing")
+                elif any(float(at) > float(entered[-1]) + 1 for _, at in beats):
+                    failures.append(f"{job['name']}: heartbeat kept moving; GIL plant misfired")
+            expected_code = {"deadline": 70, "time-limit": 71, "sigkill": 137}.get(kind)
+            if expected_code and f"Process completed with exit code {expected_code}" not in log:
+                failures.append(f"{job['name']}: plant misfired; expected exit {expected_code}")
             if job["conclusion"] != expected or lane_step["conclusion"] != expected:
                 failures.append(f"{job['name']}: plant misfired: {job['conclusion']}, {lane_step['conclusion']}")
             if kind == "normal":
                 failures.extend(checker_twins(merged))
-            rows.append(f"| {platform} | {kind} | {ablate} | {job['conclusion']} | {defects} |")
-    if len(rows) != 15:
-        failures.append(f"expected 15 plants, observed {len(rows)}")
+            elif kind == "deadline" and ablate == "none":
+                failures.extend(death_twins(merged, kind))
+            rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
+    if len(rows) != 23:
+        failures.append(f"expected 23 plants, observed {len(rows)}")
     print("\n".join(rows + failures))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:

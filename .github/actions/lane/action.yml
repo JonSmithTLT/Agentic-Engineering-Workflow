@@ -13,6 +13,9 @@ inputs:
   working-directory:
     description: Checkout used by pytest
     default: .
+  job-label:
+    description: The hosted job name for matching its published evidence
+    required: true
   shell:
     description: Command interpreter
     default: bash
@@ -28,55 +31,91 @@ runs:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
+        AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
+        AEW_LANE_STEP: ${{ inputs.artifact }}
       run: |
         script="$RUNNER_TEMP/lane-command-${{ github.action }}.sh"
         printf '%s\n' "$COMMAND" > "$script"
-        if [ "$AEW_EVIDENCE_PLANT" = cancel ] || [ "$AEW_EVIDENCE_PLANT" = sigkill ]; then
+        if [ "$AEW_EVIDENCE_PLANT" = sigkill ]; then
           python "$GITHUB_WORKSPACE/tools/ci/evidence_plant_driver.py" "$SOURCE" "$AEW_EVIDENCE_PLANT" &
         fi
         cd "$WORKING_DIRECTORY"
-        python "$GITHUB_WORKSPACE/tools/ci/lane_step.py" --root "$SOURCE" --shell "$LANE_SHELL" --script "$script"
+        exec python "$GITHUB_WORKSPACE/tools/ci/lane_step.py" --root "$SOURCE" --shell "$LANE_SHELL" --script "$script"
     - name: Collect and end leftovers before uploads
+      id: collect
       if: always()
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
         AEW_LANE_JOB_STATUS: ${{ job.status }}
-      run: python tools/ci/lane_step.py --collect --root "$SOURCE"
+        AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
+      run: |
+        python tools/ci/evidence_timing.py mark "$RUNNER_TEMP/${{ inputs.artifact }}-post.clock"
+        python tools/ci/lane_step.py --collect --root "$SOURCE"
     - name: Prepare owned evidence inputs
-      if: always()
+      if: always() && steps.collect.outcome == 'success'
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
         ARTIFACT: ${{ inputs.artifact }}
       run: python tools/ci/evidence_inputs.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-watchdog-input"
+    - name: Time names-upload
+      if: always() && steps.collect.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py mark "$RUNNER_TEMP/$ARTIFACT-names-upload.clock"
     - name: Publish running source names
-      if: always()
+      if: always() && steps.collect.outcome == 'success'
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact }}-running
         path: ${{ runner.temp }}/${{ inputs.artifact }}-names
         if-no-files-found: ignore
         retention-days: 14
+    - name: Report names-upload time
+      if: always() && steps.collect.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py elapsed "$RUNNER_TEMP/$ARTIFACT-names-upload.clock" names-upload
     - name: Publish priority evidence
-      if: always()
+      if: always() && steps.collect.outcome == 'success'
       uses: ./.github/actions/publish-evidence
       with:
         source: ${{ inputs.source }}
         artifact: ${{ inputs.artifact }}
         portion: priority
+    - name: Time report-upload
+      if: always() && steps.collect.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py mark "$RUNNER_TEMP/$ARTIFACT-report-upload.clock"
     - name: Publish lane report
-      if: always()
+      if: always() && steps.collect.outcome == 'success'
       uses: actions/upload-artifact@v7
       with:
         name: lane-report-${{ inputs.artifact }}
         path: ${{ inputs.source }}/*.json
         if-no-files-found: ignore
         retention-days: 14
+    - name: Report report-upload time
+      if: always() && steps.collect.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py elapsed "$RUNNER_TEMP/$ARTIFACT-report-upload.clock" report-upload
     - name: Publish full evidence
-      if: always()
+      if: always() && steps.collect.outcome == 'success'
       uses: ./.github/actions/publish-evidence
       with:
         source: ${{ inputs.source }}
         artifact: ${{ inputs.artifact }}
         portion: full
+    - name: Report the publication interval
+      if: always() && steps.collect.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py elapsed "$RUNNER_TEMP/$ARTIFACT-post.clock" after-pytest

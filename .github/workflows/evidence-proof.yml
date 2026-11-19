@@ -35,8 +35,19 @@ jobs:
           - {os: windows-latest, kind: deadline, ablate: stacks, test_timeout: 120, deadline: 30}
           - {os: windows-latest, kind: hang, ablate: stacks, test_timeout: 8, deadline: 30}
           - {os: ubuntu-24.04, kind: sigkill, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: ubuntu-24.04, kind: deadline, ablate: kind, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: deadline, ablate: running, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: deadline, ablate: header-only, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: deadline, ablate: zero-byte, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: deadline, ablate: kind, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: deadline, ablate: running, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: deadline, ablate: header-only, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: deadline, ablate: zero-byte, test_timeout: 120, deadline: 30}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 17
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
+      cancel-in-progress: true
     steps:
       - name: The job's deadline
         shell: bash
@@ -49,26 +60,82 @@ jobs:
           python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
       - name: Real planted lane
         id: lane
-        timeout-minutes: 4
+        timeout-minutes: 17
         uses: ./.github/actions/lane
         env:
           AEW_EVIDENCE_PLANT: ${{ matrix.kind }}
           AEW_EVIDENCE_ABLATE: ${{ matrix.ablate }}
         with:
+          job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
             python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
             tests/evidence_plants --lane integration --test-timeout ${{ matrix.test_timeout }} --session-deadline ${{ matrix.deadline }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+  cancel-ready-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0' 'pytest>=8'
+      - name: Poll the target lane's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/cancel_evidence_plant.py ubuntu-24.04
+  cancel-trigger-linux:
+    needs: cancel-ready-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-ubuntu-24.04-cancel-none
+      cancel-in-progress: true
+    steps:
+      - run: echo 'Queued the planted concurrency cancellation.'
+  cancel-ready-windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0' 'pytest>=8'
+      - name: Poll the target lane's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/cancel_evidence_plant.py windows-latest
+  cancel-trigger-windows:
+    needs: cancel-ready-windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-windows-latest-cancel-none
+      cancel-in-progress: true
+    steps:
+      - run: echo 'Queued the planted concurrency cancellation.'
   verify:
     if: always()
-    needs: plant
+    needs: [plant, cancel-trigger-linux, cancel-trigger-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       actions: read
+      checks: read
     steps:
       - uses: actions/checkout@v7
         with:

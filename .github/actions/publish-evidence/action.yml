@@ -44,12 +44,24 @@ runs:
         mkdir -p "$dir-input"
         result=$(python tools/ci/stage_evidence.py "$dir-input" "$dir")
         printf 'Watchdog evidence: %s\n' "$result" >> "$GITHUB_STEP_SUMMARY"
+    - name: Time watchdog-upload
+      if: always() && inputs.portion != 'full' && steps.watchdog.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py mark "$RUNNER_TEMP/$ARTIFACT-watchdog-upload.clock"
     - uses: actions/upload-artifact@v7
       if: always() && inputs.portion != 'full' && steps.watchdog.outcome == 'success'
       with:
         name: ${{ inputs.artifact }}-watchdog
         path: ${{ runner.temp }}/${{ inputs.artifact }}-watchdog
         retention-days: 14
+    - name: Report watchdog-upload time
+      if: always() && inputs.portion != 'full' && steps.watchdog.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py elapsed "$RUNNER_TEMP/$ARTIFACT-watchdog-upload.clock" watchdog-upload
     - name: Stage and scan test evidence
       if: always() && inputs.portion != 'priority' && steps.inputs.outputs.present != 'false'
       id: stage
@@ -62,6 +74,12 @@ runs:
         result=$(python tools/ci/stage_evidence.py "$SOURCE" "$dir")
         echo "directory=$dir" >> "$GITHUB_OUTPUT"
         printf 'Test evidence: %s\n' "$result" >> "$GITHUB_STEP_SUMMARY"
+    - name: Time full-upload
+      if: always() && steps.stage.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py mark "$RUNNER_TEMP/$ARTIFACT-full-upload.clock"
     - uses: actions/upload-artifact@v7
       id: upload
       if: always() && steps.stage.outcome == 'success'
@@ -69,6 +87,12 @@ runs:
         name: ${{ inputs.artifact }}
         path: ${{ steps.stage.outputs.directory }}
         retention-days: 14
+    - name: Report full-upload time
+      if: always() && steps.stage.outcome == 'success'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_timing.py elapsed "$RUNNER_TEMP/$ARTIFACT-full-upload.clock" full-upload
     - name: Link the evidence bundle
       if: always() && steps.upload.outcome == 'success'
       shell: bash

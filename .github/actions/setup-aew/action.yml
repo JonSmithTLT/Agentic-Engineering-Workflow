@@ -106,3 +106,10 @@ runs:
       continue-on-error: true
       shell: bash
       run: python tools/ci/install_evidence.py
+    - name: Check stack attachment from a supervisor child
+      shell: bash
+      run: python tools/ci/probe_evidence.py start "$RUNNER_TEMP/aew-spy-probe"
+    - name: Check stack attachment from a later collect step
+      if: always()
+      shell: bash
+      run: python tools/ci/probe_evidence.py collect "$RUNNER_TEMP/aew-spy-probe"

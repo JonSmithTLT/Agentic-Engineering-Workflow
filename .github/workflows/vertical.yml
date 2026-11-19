@@ -36,11 +36,10 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 49
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 60
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2700 ))" >> "$GITHUB_ENV"
@@ -52,16 +51,18 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: pytest --lane vertical (the ledgers go to the runner's temp directory)
         id: pytest
-        timeout-minutes: 48
+        timeout-minutes: 56
         uses: ./.github/actions/lane
         env:
           AEW_VERTICAL_OUT: ${{ runner.temp }}/vertical
         with:
+          job-label: vertical (${{ matrix.os }})
           source: ${{ runner.temp }}/vertical/
           artifact: evidence-vertical-ledger-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/vertical/hangs" "--junitxml=${{ runner.temp }}/vertical/junit.xml"
       - name: The series of main's runs, for the scoreboard (the newest)
+        timeout-minutes: 1
         if: always()
         continue-on-error: true
         uses: actions/cache/restore@v6
@@ -75,6 +76,7 @@ jobs:
       # reports, and gates nothing. A JUnit report holds only the scenarios that ran, so "every scenario passes" also
       # reads how the pytest step ended.
       - name: The lane's report and the ledgers' one-screen summaries
+        timeout-minutes: 1
         if: always()
         shell: bash
         env:
@@ -84,6 +86,7 @@ jobs:
       # Only main writes, so a branch cannot change main's line. No hashFiles guard: it reads only under the workspace,
       # and this path is not, so it would always say empty and nothing would ever be saved.
       - name: This run's series, for main's next run
+        timeout-minutes: 1
         if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: actions/cache/save@v6
@@ -91,6 +94,7 @@ jobs:
           path: ${{ runner.temp }}/vertical/vertical-series.jsonl
           key: vertical-series-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
+        timeout-minutes: 1
         if: always()
         with:
           name: vertical-ledger-${{ runner.os }}

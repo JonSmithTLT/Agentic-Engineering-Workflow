@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import IO, Any
 
 import pytest
+from evidence_files import ablated
 
 HEADER = "aew hang watchdog: "
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
@@ -85,6 +86,7 @@ class HangWatchdog:
         self._fired = 0
         self._hangs = 0
         self.started = 0.0
+        self._keep_inflight = False
 
     def _dump_file(self) -> IO[str]:
         if self._file is None:
@@ -106,7 +108,8 @@ class HangWatchdog:
         again = " (its teardown hung too; ending the process)" if self._fired > 1 else ""
         f.write(f"\n{HEADER}fired after {time.monotonic() - self.started:.3f}s; alarm {self._fired}{again}\n")
         f.flush()
-        faulthandler.dump_traceback(file=f, all_threads=True)
+        if not ablated("stacks"):
+            faulthandler.dump_traceback(file=f, all_threads=True)
         f.flush()
         autopsy = self._autopsy()
         if autopsy is not None and self._fired == 1:  # G3 H1: the autopsy, while the hung frame is still on the stack
@@ -126,13 +129,16 @@ class HangWatchdog:
         return getattr(self.config.pluginmanager.get_plugin("aew-session-deadline"), "stacks", None)
 
     def _header(self, item: pytest.Item) -> str:
-        return (f"{HEADER}{item.nodeid} started {datetime.now(UTC).isoformat()}; "
+        if ablated("zero-byte"):
+            return ""
+        node = "<unrecognized test>" if ablated("running") else item.nodeid
+        return (f"{HEADER}{node} started {datetime.now(UTC).isoformat()}; "
                 f"limit {self.timeout:g}s; not fired; monotonic {self.started:.6f}\n")
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
         if self.running is not None:
-            node = item.nodeid.split("[", 1)[0]
+            node = "<unrecognized test>" if ablated("running") else item.nodeid.split("[", 1)[0]
             self.running.parent.mkdir(parents=True, exist_ok=True)
             pending = self.running.with_suffix(".tmp")
             with suppress(OSError):
@@ -140,6 +146,7 @@ class HangWatchdog:
                                    encoding="utf-8")
                 pending.replace(self.running)
         self._fired = 0
+        self._keep_inflight = False
         self.started = time.monotonic()
         f = self._reset(self._header(item))
         armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
@@ -151,13 +158,15 @@ class HangWatchdog:
             # One timer per process, shared with the session deadline's stacks: its earlier time stands, as it is
             # armed already, and it writes the same stacks. This one, armed for the test, ends with the test.
             deadline = self._deadline_stacks()
-            if deadline is None or deadline.left() > self.timeout:
+            if not ablated("stacks") and (deadline is None or deadline.left() > self.timeout):
                 faulthandler.dump_traceback_later(self.timeout, file=f)
             autopsy = self._autopsy()
             if autopsy is not None:  # G3 H1: a plain thread, just after the dump is due; cancelled below
                 autopsy.arm(self.timeout)
+        normal_end = False
         try:
-            yield
+            result = yield
+            normal_end = getattr(result, "excinfo", None) is None
         finally:
             if USE_ALARM:
                 signal.setitimer(signal.ITIMER_REAL, 0)
@@ -182,9 +191,13 @@ class HangWatchdog:
                 self._file = None
                 self.path.replace(self.path.with_name(f"{self.path.stem}-{self._hangs}.txt"))
                 self._hangs += 1
-            else:
+            elif normal_end:
                 self._discard()  # a test that finished leaves no dump
-            if self.running is not None:
+            else:
+                self._keep_inflight = True
+                f.close()
+                self._file = None
+            if self.running is not None and normal_end:
                 with suppress(OSError):
                     self.running.unlink(missing_ok=True)
 
@@ -198,7 +211,8 @@ class HangWatchdog:
         self.path.unlink(missing_ok=True)
 
     def pytest_unconfigure(self, config: pytest.Config) -> None:
-        self._discard()  # a hang's file was renamed, so only an interrupted test's can still be here
+        if not self._keep_inflight:
+            self._discard()
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_handlecrashitem(self, crashitem: str, report: pytest.TestReport, sched: Any) -> None:
@@ -210,7 +224,11 @@ class HangWatchdog:
                 continue
             if text.startswith(f"{HEADER}{crashitem} "):
                 state = "stacks recorded" if 'File "' in text else "not fired; no stacks taken"
-                report.longrepr = f"{report.longrepr}\n{text}\n(in flight when the worker died; {state}; {path})"
+                started = re.search(r"monotonic ([0-9.]+)", text)
+                elapsed = (f"{time.monotonic() - float(started[1]):.3f}s after it started"
+                           if started else "start unknown")
+                report.longrepr = (f"{report.longrepr}\n{text}\n"
+                                   f"(in flight when the worker died, {elapsed}; {state}; {path})")
                 return
 
 

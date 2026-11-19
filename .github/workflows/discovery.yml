@@ -35,10 +35,9 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # 15 minutes of test time, plus the session deadline's clearance (G3, tests/helpers/bounds.py)
-    timeout-minutes: 19
+    timeout-minutes: 26
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 900 ))" >> "$GITHUB_ENV"
@@ -49,9 +48,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: pytest --lane discovery (D2 over the static texts)
-        timeout-minutes: 18
+        timeout-minutes: 26
         uses: ./.github/actions/lane
         with:
+          job-label: discovery (${{ matrix.os }})
           source: ${{ runner.temp }}/discovery/hangs
           artifact: evidence-discovery-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |

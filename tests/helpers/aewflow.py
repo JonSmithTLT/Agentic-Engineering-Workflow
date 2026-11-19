@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from conftest import Project, make_git_repo, run_aew
+from conftest import Project, acquire_test_lead, copy_test_repository, make_git_repo, run_aew
 
 from aew.knowledge.manifest import DEFAULT_GATES
 from aew.util import dump_yaml, glob_any, load_yaml
@@ -88,7 +88,16 @@ def lead_project(tmp_path: Path, **kw: Any) -> Project:
 
 def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
                    checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None) -> Project:
-    repo = make_git_repo(tmp_path / "repo", SAMPLE_FILES)
+    def build(path: Path) -> Path:
+        return _sample_repository(path, guardrails=guardrails, checks=checks, gates=gates)
+
+    variant = dump_yaml([guardrails, checks, gates])
+    return acquire_test_lead(Project(copy_test_repository(tmp_path / "repo", ("sample", variant), build)))
+
+
+def _sample_repository(path: Path, *, guardrails: dict[str, Any] | None, checks: dict[str, Any] | None,
+                       gates: dict[str, Any] | None) -> Path:
+    repo = make_git_repo(path, SAMPLE_FILES)
     p = Project(repo)
     p.ok("init", "--project-id", "calc")
     policy = repo / ".aew/policy"
@@ -110,8 +119,7 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
     current.setdefault("post_integration", {})["custody_register_s"] = 3600
     (policy / "gates.yaml").write_text(dump_yaml(current), encoding="utf-8", newline="\n")
     p.pin_policy()
-    p.token =p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
-    return p
+    return repo
 
 
 def set_mutating_concurrency(p: Project, cap: int) -> None:

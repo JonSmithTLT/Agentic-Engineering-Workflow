@@ -11,9 +11,9 @@ from __future__ import annotations
 import http.client
 import json
 import logging
-import shutil
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -94,11 +94,10 @@ class World:
         return body
 
 
-@pytest.fixture(scope="module")
-def world(tmp_path_factory) -> World:
+@contextmanager
+def build_world(tmp: Path) -> Iterator[World]:
     """A project with an Epic, a Story, an integrated (archived) Ticket, a finished (archived) investigation, an open
     Ticket and a Ticket blocked behind it, a recorded audit, and a move of an archived unit (an annotation)."""
-    tmp = tmp_path_factory.mktemp("dashboard")
     p = sample_project(tmp)
     w = World(p, tmp)
     epic = create_unit(p, "epic", "Calculator", cls=1)
@@ -123,29 +122,25 @@ def world(tmp_path_factory) -> World:
     engine = Engine.discover(p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()
-    built = p.rev()
-    yield w
-    w.server.stop()
-    assert_control_invariants(p)
-    assert p.rev() == built, "a test committed to the module's world: give it `own_world`"
+    try:
+        yield w
+    finally:
+        w.server.stop()
+        assert_control_invariants(w.p)
+
+
+@pytest.fixture(scope="module")
+def world(tmp_path_factory) -> Iterator[World]:
+    with build_world(tmp_path_factory.mktemp("dashboard")) as w:
+        built = w.p.rev()
+        yield w
+        assert w.p.rev() == built, "a test committed to the module's world: give it `own_world`"
 
 
 @pytest.fixture
-def own_world(world: World, tmp_path: Path) -> Iterator[World]:
-    """A copy of the world, with its own server, for a test that commits to it. The module's world stays as built
-    whatever order the tests run in: under ``--dist worksteal`` a worker can run a stolen earlier test after one that
-    committed, and the scope and rollup tests then counted its unit (a Windows CI run, census row 2)."""
-    from conftest import Project
-
-    dst = tmp_path / "repo"
-    shutil.copytree(world.p.root, dst)
-    w = World(Project(dst, token=world.p.token), tmp_path)
-    w.ids = dict(world.ids)
-    w.server = DashboardServer(Engine.discover(dst), authenticator=OpenAccess(), validate_with=CONTRACT)
-    w.server.start()
-    yield w
-    w.server.stop()
-    assert_control_invariants(w.p)
+def own_world(tmp_path: Path) -> Iterator[World]:
+    with build_world(tmp_path) as w:
+        yield w
 
 
 def concrete(world: World, route: str) -> str:

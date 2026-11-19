@@ -34,6 +34,7 @@ def all_files_text(root: Path) -> str:
 # ------------------------------------------------------------------ init & candidates
 
 
+@pytest.mark.fresh_world
 def test_init_discovers_candidates_but_confers_no_authority(repo):
     p = Project(repo)
     out = p.ok("init")

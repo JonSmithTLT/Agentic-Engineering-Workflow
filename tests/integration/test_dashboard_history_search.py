@@ -8,8 +8,8 @@ exist: every ``/history/search`` request is answered exactly as before (by the `
 the shared substrate: a moved history, a busy, stale, foreign or unusable substrate, or the reached deadline is a
 coverage reason, and the CLI repairs what the dashboard only reports.
 
-The fixture history is built once per module (two archived investigations whose records share a term, and a
-verified Ticket cancelled after review), and every test works on its own copy of that project with its own server.
+The fixture builds fresh history per test (two archived investigations whose records share a term, and a
+verified Ticket cancelled after review). Each test serves its own project.
 While a dashboard search runs in this process, the substrate's three destructive sites are instrumented to fail the
 test (every CLI repair runs as its own process).
 
@@ -104,29 +104,27 @@ def investigation(p: Project, tmp: Path, *, title: str, body: str) -> tuple[str,
     return wid, rec
 
 
-@pytest.fixture(scope="module")
-def built(tmp_path_factory) -> dict[str, Any]:
-    tmp = tmp_path_factory.mktemp("dash-search")
-    p = sample_project(tmp)
+@pytest.fixture
+def built(tmp_path: Path) -> dict[str, Any]:
+    p = sample_project(tmp_path)
     switch_on(p)
-    wid, rec = investigation(p, tmp, title="Survey the kookaburra ledger sharedmarker", body=PROSE)
-    wid2, rec2 = investigation(p, tmp, title="Survey the numbat registry sharedmarker",
+    wid, rec = investigation(p, tmp_path, title="Survey the kookaburra ledger sharedmarker", body=PROSE)
+    wid2, rec2 = investigation(p, tmp_path, title="Survey the numbat registry sharedmarker",
                                body="Numbatnotes sharedmarker: the registry is append-only.\n")
-    ticket, _ = to_verified(p, tmp, title="Add subtract()")
+    ticket, _ = to_verified(p, tmp_path, title="Add subtract()")
     p.lead("work", "transition", ticket, "--to", "CANCELLED", "--reason", "superseded by the survey")
     shown = p.ok("history", "show", ticket)
     evidence = {e["kind"]: e["id"] for e in shown["record"]["unit"]["evidence"]}
-    for _ in range(20):  # the CLI builds the substrate, so each copy starts from a complete one
+    for _ in range(20):  # the CLI builds the substrate, so each test starts with complete coverage
         if not p.ok("history", "search", "sharedmarker")["coverage_incomplete"]:
             break
     return {"project": p, "investigation": wid, "record": rec, "investigation2": wid2, "record2": rec2,
             "ticket": ticket, "evidence": evidence}
 
 
-def copy_of(built: dict[str, Any], tmp_path: Path, name: str = "repo") -> Project:
-    dst = tmp_path / name
-    shutil.copytree(built["project"].root, dst)
-    return Project(dst, token=built["project"].token)
+@pytest.fixture
+def p(built: dict[str, Any]) -> Project:
+    return built["project"]
 
 
 class Gate:
@@ -286,8 +284,7 @@ def same_as_without_the_route(root: Path, monkeypatch) -> list[tuple[int, dict[s
     return here
 
 
-def test_switched_off_every_search_request_is_answered_as_without_the_route(built, tmp_path, monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_switched_off_every_search_request_is_answered_as_without_the_route(p, monkeypatch):
     switch_off(p)
     shutil.rmtree(substrate(p).parent)
     got = same_as_without_the_route(p.root, monkeypatch)
@@ -300,7 +297,7 @@ def test_switched_off_every_search_request_is_answered_as_without_the_route(buil
     assert not substrate(p).parent.exists()  # no dashboard request creates local/recall/
 
 
-def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(built, tmp_path, monkeypatch):
+def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(tmp_path, monkeypatch):
     from aew.engine.base import as_v1
     from aew.engine.store import deserialize_control, serialize_control
 
@@ -311,7 +308,8 @@ def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(built, tmp_
     got = same_as_without_the_route(v1.root, monkeypatch)
     assert any(status == 403 for status, _, _ in got)  # /history/{id} on a v1 project: MIGRATION_REQUIRED
     for switched_on in (False, True):  # an unreadable state reads the switch as off
-        p = copy_of(built, tmp_path, f"unreadable-{switched_on}")
+        p = sample_project(tmp_path / f"unreadable-{switched_on}")
+        switch_on(p)
         if not switched_on:
             switch_off(p)
         (p.root / ".aew/state/control.yaml").write_bytes(b"\x00\xff not yaml")
@@ -323,8 +321,7 @@ def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(built, tmp_
 # ---------------------------------------------------------------------------------------------- the switch
 
 
-def test_the_switch_is_read_from_the_snapshot_adopted_only(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_the_switch_is_read_from_the_snapshot_adopted_only(built, p):
     switch_off(p)
     policy = p.root / ".aew/policy/execution.yaml"
     with served(p.root) as s:
@@ -347,8 +344,7 @@ def test_the_switch_is_read_from_the_snapshot_adopted_only(built, tmp_path):
         assert (status, body["code"]) == (400, "INVALID_REQUEST")
 
 
-def test_on_but_unusable_is_a_403_with_its_reason(built, tmp_path, monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_on_but_unusable_is_a_403_with_its_reason(p, monkeypatch):
     with served(p.root) as s:
         monkeypatch.setattr(recall, "_FTS5", False)
         caps = s.ok("/capabilities")["data"]["history_search"]
@@ -389,8 +385,7 @@ def test_a_v1_project_with_the_switch_adopted_is_unavailable_for_migration(tmp_p
 # ---------------------------------------------------------------------------------------------- hits
 
 
-def test_each_kind_of_record_is_found_with_both_labels_the_fence_and_a_live_link(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_each_kind_of_record_is_found_with_both_labels_the_fence_and_a_live_link(built, p):
     cases = [("kookaburra", built["investigation"], "unit", "history"),
              ("Quokkafacts", built["record"], "evidence", "evidence"),
              ("subtract implemented", built["evidence"]["implementation_report"], "evidence", "evidence"),
@@ -418,8 +413,7 @@ def test_each_kind_of_record_is_found_with_both_labels_the_fence_and_a_live_link
         assert s.ok(q("Quokkafacts", since="2999-01-01T00:00:00.000Z"))["data"]["hits"] == []
 
 
-def test_head_answers_as_get_and_its_catch_up_only_appends(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_head_answers_as_get_and_its_catch_up_only_appends(p):
     wid = create_unit(p, "ticket", "Dropped later", cls=1)
     p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "dropped")  # one more entry to index
     before = capture(p)
@@ -443,9 +437,8 @@ def moved_search(p: Project, s: Served) -> dict[str, Any]:
     return body
 
 
-def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, tmp_path):
+def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, p):
     """Control committed, the tail not yet applied (R17's window): the snapshot's root is ahead of the tail file."""
-    p = copy_of(built, tmp_path)
     tail = p.root / ".aew" / M.TAIL_REL
     old = tail.read_bytes()
     p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})  # appends an entry
@@ -460,8 +453,7 @@ def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, tmp_path
         assert built["record"] in ids(s.ok(q("Quokkafacts")))
 
 
-def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(built, tmp_path, monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(p, monkeypatch):
     before = capture(p)
     read = History.tail_bytes
     landed: list[bool] = []
@@ -484,9 +476,8 @@ def rolled_tail() -> bytes:
                          prev={"seq": 1, "sha256": "b" * 64}, entries=[]).encode("utf-8")
 
 
-def test_a_rollover_between_the_snapshot_and_the_tail_read_is_a_moved_history(built, tmp_path, monkeypatch):
+def test_a_rollover_between_the_snapshot_and_the_tail_read_is_a_moved_history(p, monkeypatch):
     """The tail a seal leaves: it follows a sealed segment the snapshot's root does not know."""
-    p = copy_of(built, tmp_path)
     before = capture(p)
     rolled = rolled_tail()
     with served(p.root) as s:
@@ -495,8 +486,7 @@ def test_a_rollover_between_the_snapshot_and_the_tail_read_is_a_moved_history(bu
     assert capture(p) == before
 
 
-def test_a_foreign_watermark_is_reported_and_kept_until_the_cli_rebuilds(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_a_foreign_watermark_is_reported_and_kept_until_the_cli_rebuilds(built, p):
     with tamper(p) as conn:
         conn.execute("UPDATE meta SET value = ? WHERE key = 'h'", ("c" * 64,))
     before = capture(p)
@@ -520,8 +510,7 @@ def test_a_foreign_watermark_is_reported_and_kept_until_the_cli_rebuilds(built, 
     ("doc_id", "E-FORGED", {}),
     ("sha256", "0" * 64, {}),
 ])
-def test_a_forged_row_invents_nothing_is_reported_stale_and_is_not_reset(built, tmp_path, column, value, kw):
-    p = copy_of(built, tmp_path)
+def test_a_forged_row_invents_nothing_is_reported_stale_and_is_not_reset(built, p, column, value, kw):
     with tamper(p) as conn:
         rowid = conn.execute("SELECT rowid FROM docs WHERE doc_id = ?", (built["record"],)).fetchone()[0]
         conn.execute(f"UPDATE docs SET {column} = ? WHERE rowid = ?", (value, rowid))  # noqa: S608
@@ -537,8 +526,7 @@ def test_a_forged_row_invents_nothing_is_reported_stale_and_is_not_reset(built, 
         assert ids(s.ok(q("Quokkafacts"))) == [built["record"]]
 
 
-def test_an_injected_text_row_invents_nothing(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_an_injected_text_row_invents_nothing(built, p):
     with tamper(p) as conn:
         row = conn.execute("SELECT seq, doc_id, sha256, kind, source, at, text_sha256, truncated FROM docs "
                            "WHERE doc_id = ?", (built["investigation"],)).fetchone()
@@ -553,8 +541,7 @@ def test_an_injected_text_row_invents_nothing(built, tmp_path):
 
 
 @pytest.mark.parametrize("damage", ["version", "corrupt"])
-def test_a_corrupt_file_or_another_version_is_unusable_and_kept(built, tmp_path, damage):
-    p = copy_of(built, tmp_path)
+def test_a_corrupt_file_or_another_version_is_unusable_and_kept(p, damage):
     if damage == "version":
         with tamper(p) as conn:
             conn.execute("UPDATE meta SET value = '0' WHERE key = 'substrate_version'")
@@ -567,10 +554,9 @@ def test_a_corrupt_file_or_another_version_is_unusable_and_kept(built, tmp_path,
     assert capture(p) == before
 
 
-def test_damage_found_during_the_catch_up_is_unusable_and_the_file_is_kept(built, tmp_path, monkeypatch):
+def test_damage_found_during_the_catch_up_is_unusable_and_the_file_is_kept(p, monkeypatch):
     """n1: ``_open`` succeeds, then a batch insert fails as damage (not contention): the public catch-up's discard
     never runs, and the file keeps its identity, its rows and its ``meta``."""
-    p = copy_of(built, tmp_path)
     with tamper(p) as conn:  # one entry less indexed, the watermark still on the chain (the entry it now names)
         last = int(conn.execute("SELECT value FROM meta WHERE key = 'count'").fetchone()[0])
         entry = History(p.root / ".aew").entry(committed_root(p), last - 1)
@@ -597,9 +583,7 @@ def committed_root(p: Project) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------- budgets, deadline
 
 
-def test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_requests(built, tmp_path,
-                                                                                         monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_requests(p, monkeypatch):
     shutil.rmtree(substrate(p).parent)
     monkeypatch.setattr(P, "SEARCH_BUILD_DOCS", 2)  # the clock stands still: only this budget stops a catch-up
     with served(p.root) as s:
@@ -614,19 +598,17 @@ def test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_r
         assert len(body["data"]["hits"]) == 4
 
 
-def test_the_candidate_budget_stops_verification(built, tmp_path, monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_the_candidate_budget_stops_verification(p, monkeypatch):
     monkeypatch.setattr(P, "SEARCH_CANDIDATES", 2)
     with served(p.root) as s:
         body = s.ok(q("sharedmarker", limit=50))
     assert codes(body) == ["SEARCH_CANDIDATE_BUDGET"] and len(body["data"]["hits"]) == 2
 
 
-def test_a_slow_catch_up_stops_at_its_own_budget_within_the_deadline(built, tmp_path, monkeypatch):
+def test_a_slow_catch_up_stops_at_its_own_budget_within_the_deadline(p, monkeypatch):
     """The catch-up's seconds (``SEARCH_BUILD_S``) are judged by the search's clock too: each entry here takes half
     of them, so the second spends them and the third is never read, while the deadline is still ahead. What was read
     is kept, and the answer says the build budget, not the deadline, cut it short."""
-    p = copy_of(built, tmp_path)
     shutil.rmtree(substrate(p).parent)
     entries = committed_root(p)["count"]
     clock, slow, read = FakeClock(), recall.Substrate.documents, []
@@ -645,11 +627,10 @@ def test_a_slow_catch_up_stops_at_its_own_budget_within_the_deadline(built, tmp_
     assert codes(body) == ["SEARCH_BUILD_BUDGET"]
 
 
-def test_a_slow_catch_up_stops_at_the_deadline(built, tmp_path, monkeypatch):
+def test_a_slow_catch_up_stops_at_the_deadline(p, monkeypatch):
     """The catch-up checks the deadline between entries, so it never begins one after it: each entry here takes half
     the deadline on the search's clock, so the second ends at the deadline and the history's third is never read.
     What was read before the deadline is kept, and the answer says the deadline cut the search short."""
-    p = copy_of(built, tmp_path)
     shutil.rmtree(substrate(p).parent)
     entries = committed_root(p)["count"]
     clock, slow, read = FakeClock(), recall.Substrate.documents, []
@@ -670,11 +651,10 @@ def test_a_slow_catch_up_stops_at_the_deadline(built, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("moved", [False, True], ids=["caught_up", "moved"])
-def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monkeypatch, moved):
+def test_a_busy_file_is_waited_on_only_until_the_deadline(p, monkeypatch, moved):
     """A read waits for another process's commit for ``READ_WAIT_S`` or the time left, whichever is less: with a
     quarter of ``READ_WAIT_S`` left when the engine's search starts, every wait SQLite is given is that quarter. A
     moved history has no catch-up, so its one wait is judged by the clock ``search`` itself took (#294 review, n1)."""
-    p = copy_of(built, tmp_path)
     if moved:
         rolled = rolled_tail()
         monkeypatch.setattr(History, "tail_bytes", lambda self: rolled)
@@ -705,10 +685,9 @@ def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monke
     assert all(w == pytest.approx(left) for w in waits), waits
 
 
-def test_a_catch_up_called_alone_waits_on_a_busy_file_only_until_its_deadline(built, tmp_path, monkeypatch):
+def test_a_catch_up_called_alone_waits_on_a_busy_file_only_until_its_deadline(p, monkeypatch):
     """``catch_up`` takes the clock its deadline was read from, as ``search`` does (#294 review, n1): called on its own
     with a quarter of ``READ_WAIT_S`` left, the one wait SQLite is given is that quarter."""
-    p = copy_of(built, tmp_path)
     clock, left = FakeClock(), recall.READ_WAIT_S / 4
     wait, waits = recall.Substrate._wait, []
 
@@ -729,11 +708,10 @@ def test_a_catch_up_called_alone_waits_on_a_busy_file_only_until_its_deadline(bu
     assert out["reason"] == "busy" and waits == [pytest.approx(left)], (out, waits)
 
 
-def test_on_the_real_clock_the_deadline_is_a_reading_of_it_and_bounds_every_wait(built, tmp_path, monkeypatch):
+def test_on_the_real_clock_the_deadline_is_a_reading_of_it_and_bounds_every_wait(p, monkeypatch):
     """The production clock once, end to end (every other test here drives a ``FakeClock``): the deadline the engine
     is given is a ``time.monotonic`` reading taken during the request, and each wait SQLite is given for a busy file
     is at most the time left just before it was asked for. Nothing here bounds how long the machine takes."""
-    p = copy_of(built, tmp_path)
     search, wait, deadlines, waits = Engine.history_search_committed, recall.Substrate._wait, [], []
 
     def searched(self, *args, **kwargs):
@@ -763,10 +741,9 @@ def test_on_the_real_clock_the_deadline_is_a_reading_of_it_and_bounds_every_wait
     assert waits and all(w <= min(recall.READ_WAIT_S, max(0.0, left)) for w, left in waits), waits
 
 
-def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(built, tmp_path, monkeypatch):
+def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(p, monkeypatch):
     """n2: the progress handler fires on the query's connection; the result is SEARCH_TIME_BUDGET, never stale or
     unusable, the substrate is untouched, and the catch-up's connection never had a handler."""
-    p = copy_of(built, tmp_path)
     before = capture(p)
     clock = FakeClock()
     handlers: dict[str, list[Any]] = {"catch_up": [], "query": []}
@@ -801,18 +778,16 @@ def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(built, 
     assert capture(p) == before
 
 
-def test_the_ranked_query_runs_to_its_end_while_the_deadline_is_ahead(built, tmp_path, monkeypatch):
+def test_the_ranked_query_runs_to_its_end_while_the_deadline_is_ahead(built, p, monkeypatch):
     """The progress handler judges the deadline by the search's clock too: called at every step of the ranked query,
     with the deadline still ahead, it never interrupts it."""
-    p = copy_of(built, tmp_path)
     monkeypatch.setattr(recall, "PROGRESS_STEPS", 1)
     with served(p.root) as s:
         body = s.ok(q("Quokkafacts"))
     assert codes(body) == [] and ids(body) == [built["record"]]
 
 
-def test_the_hits_verified_before_the_deadline_are_kept(built, tmp_path, monkeypatch):
-    p = copy_of(built, tmp_path)
+def test_the_hits_verified_before_the_deadline_are_kept(p, monkeypatch):
     clock, candidate = FakeClock(), recall.Substrate._candidate
     verified: list[str] = []
 
@@ -839,16 +814,14 @@ def test_the_hits_verified_before_the_deadline_are_kept(built, tmp_path, monkeyp
     q("x", since="yesterday"), q("x", until="2026-02-30T00:00:00Z"), f"{SEARCH}?limit=5", q("x", bogus=1),
     q("x", limit=[5, 6]), q("x", since=["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"]), q("   "),
 ])
-def test_invalid_search_requests_are_400(built, tmp_path, path):
-    p = copy_of(built, tmp_path)
+def test_invalid_search_requests_are_400(p, path):
     with served(p.root) as s:
         status, body = s.json(path)
     assert (status, body["code"]) == (400, "INVALID_REQUEST"), (path, body)
     assert CONTRACT.violations(CT.ERROR_SCHEMA, body) == []
 
 
-def test_a_query_over_the_servers_bound_is_414_and_fts_syntax_is_matched_literally(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_a_query_over_the_servers_bound_is_414_and_fts_syntax_is_matched_literally(built, p):
     with served(p.root) as s:
         assert s.json(q(*["y" * 200] * 11))[0] == 414
         for terms in (["NEAR(quokkafacts zanzibar)"], ["quokka*"], ["text:quokkafacts"], ['"'], ["(", ")"]):
@@ -856,8 +829,7 @@ def test_a_query_over_the_servers_bound_is_414_and_fts_syntax_is_matched_literal
         assert ids(s.ok(q('"quokkafacts"'))) == [built["record"]]
 
 
-def test_snippets_arrive_inert_no_content_closes_the_fence_and_credentials_stay_out(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_snippets_arrive_inert_no_content_closes_the_fence_and_credentials_stay_out(p):
     with served(p.root) as s:
         _, _, raw = s.get(q("desrever"))  # the snippet's window holds the escapes and the fence attempt
         data = json.loads(raw)["data"]
@@ -881,8 +853,7 @@ def test_a_snippet_naming_the_derived_token_gets_a_counter():
     assert out["fence"]["open"] == f"<<raw-history {token}-2>>"
 
 
-def test_the_fence_is_derived_so_a_quiescent_replay_is_a_304(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_the_fence_is_derived_so_a_quiescent_replay_is_a_304(p):
     with served(p.root) as s:
         first_status, headers, first = s.get(q("Quokkafacts", "zanzibar"))
         second_status, again, second = s.get(q("Quokkafacts", "zanzibar"))
@@ -897,8 +868,7 @@ def test_the_fence_is_derived_so_a_quiescent_replay_is_a_304(built, tmp_path):
         assert s.get(q("zanzibar", "Quokkafacts"))[1]["etag"] != headers["etag"]
 
 
-def test_no_search_takes_the_control_lock_or_changes_control_state(built, tmp_path):
-    p = copy_of(built, tmp_path)
+def test_no_search_takes_the_control_lock_or_changes_control_state(built, p):
     control = p.root / ".aew/state/control.yaml"
     before = control.read_bytes()
     with served(p.root) as s, FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
@@ -907,9 +877,8 @@ def test_no_search_takes_the_control_lock_or_changes_control_state(built, tmp_pa
     assert control.read_bytes() == before
 
 
-def test_search_never_touches_knowledge(built, tmp_path):
+def test_search_never_touches_knowledge(p):
     """Raw history is not admitted Knowledge (the change note's §6): no hit has a Knowledge kind or links there."""
-    p = copy_of(built, tmp_path)
     with served(p.root) as s:
         data = s.ok(q("sharedmarker", limit=50))["data"]
     assert {h["kind"] for h in data["hits"]} <= set(recall.KINDS)
@@ -947,11 +916,10 @@ def test_the_acceptance_projects_search_variant_serves_the_search(tmp_path):
 
 
 @pytest.mark.parametrize("count", ["\u00b2", "9" * 20])
-def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the_cli(built, tmp_path, count):
+def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the_cli(built, p, count):
     """m1: a count that is not ASCII digits within BoundedCount ("²" passes ``str.isdigit`` and fails ``int``; 20
     digits overflow the contract's bound) is damage: the dashboard reports it unusable and keeps the file, with
     ``indexed_through`` never out of bounds; the CLI reports it and rebuilds, instead of crashing."""
-    p = copy_of(built, tmp_path)
     with tamper(p) as conn:
         conn.execute("UPDATE meta SET value = ? WHERE key = 'count'", (count,))
     before = capture(p)
@@ -971,12 +939,11 @@ def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the
         assert ids(s.ok(q("Quokkafacts"))) == [built["record"]]
 
 
-def test_an_unadopted_edit_after_the_snapshot_is_answered_from_the_snapshot(built, tmp_path, monkeypatch):
+def test_an_unadopted_edit_after_the_snapshot_is_answered_from_the_snapshot(built, p, monkeypatch):
     """m2: the engine takes the snapshot's switch and FTS5 answer rather than re-reading policy, so an unadopted edit
     that lands between the snapshot and the engine call cannot turn the snapshot's AVAILABLE into a 403."""
     from aew.engine.history_ops import HistoryCommands
 
-    p = copy_of(built, tmp_path)
     policy = p.root / ".aew/policy/execution.yaml"
     original = HistoryCommands.history_search_committed
     edited: list[bool] = []
@@ -1014,13 +981,12 @@ def many_evidence_hits(monkeypatch, built, copies: int = 50) -> None:
     monkeypatch.setattr(HistoryCommands, "history_search_committed", repeated)
 
 
-def test_many_evidence_links_are_memoized_and_stay_within_the_deadline(built, tmp_path, monkeypatch):
+def test_many_evidence_links_are_memoized_and_stay_within_the_deadline(built, p, monkeypatch):
     """m3: each archived unit's bundle is read once per request however many of its evidence hits there are (a cheap
     existence check, no evidence body read), so fifty links cost two bundle reads and every link is checked within
     the deadline."""
     from aew.engine.archive_ops import Archive
 
-    p = copy_of(built, tmp_path)
     many_evidence_hits(monkeypatch, built)
     clock, bundle, reads = FakeClock(), Archive.bundle, []
 
@@ -1039,12 +1005,11 @@ def test_many_evidence_links_are_memoized_and_stay_within_the_deadline(built, tm
     assert sorted(reads) == sorted({built["investigation"], built["investigation2"]})
 
 
-def test_evidence_links_after_the_deadline_are_null(built, tmp_path, monkeypatch):
+def test_evidence_links_after_the_deadline_are_null(built, p, monkeypatch):
     """The first unit's bundle read outlives the deadline: the link it was read for stands, and every link after it
     is null, the other unit's included, whose bundle is never read."""
     from aew.engine.archive_ops import Archive
 
-    p = copy_of(built, tmp_path)
     many_evidence_hits(monkeypatch, built)
     clock, bundle, reads = FakeClock(), Archive.bundle, []
 
@@ -1061,11 +1026,10 @@ def test_evidence_links_after_the_deadline_are_null(built, tmp_path, monkeypatch
     assert len(reads) == 1
 
 
-def test_a_cli_search_of_a_forged_count_held_open_elsewhere_reports_and_never_crashes(built, tmp_path):
+def test_a_cli_search_of_a_forged_count_held_open_elsewhere_reports_and_never_crashes(built, p):
     """m4 (re-review): another process holds the substrate open, so on Windows the CLI cannot delete it; the CLI's
     own watermark read is inside the guarded section, so the forged count is damage it reports (and resets in place),
     never a traceback. The CLI runs as its own process, as the operator runs it."""
-    p = copy_of(built, tmp_path)
     with tamper(p) as conn:
         conn.execute("UPDATE meta SET value = ? WHERE key = 'count'", ("\u00b2",))
     holder = sqlite3.connect(substrate(p))  # open, no transaction: Windows refuses the unlink
@@ -1083,11 +1047,10 @@ def test_a_cli_search_of_a_forged_count_held_open_elsewhere_reports_and_never_cr
     assert [h["id"] for h in p.ok("history", "search", "Quokkafacts")["hits"]] == [built["record"]]
 
 
-def test_a_tampered_sibling_record_nulls_the_link_and_no_link_leads_to_a_500(built, tmp_path):
+def test_a_tampered_sibling_record_nulls_the_link_and_no_link_leads_to_a_500(built, p):
     """m5 (re-review): ``/evidence/{id}`` of an archived unit verifies every evidence record the unit references, so
     a link is emitted only when the whole unit verifies; with a sibling tampered, the intact record is still found
     but not linked, and every link a search emits answers 200."""
-    p = copy_of(built, tmp_path)
     impl, review = built["evidence"]["implementation_report"], built["evidence"]["review"]
     files = list((p.root / ".aew/evidence" / built["ticket"]).glob(f"{review}*.md"))
     assert files

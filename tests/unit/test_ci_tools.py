@@ -241,6 +241,7 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     coverage = [s for s in uploads if s["with"]["name"].startswith("coverage-")]
     assert len(coverage) == 2 and all(s["if"].startswith("success() && ") for s in coverage)
     assert all(s["with"]["path"] == "${{ runner.temp }}/coverage/.coverage" for s in coverage)
+    assert all(s["with"].get("include-hidden-files") is True for s in coverage)
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert "subprocess" not in config["tool"]["coverage"]["run"].get("patch", [])
     lanes = wf["jobs"]["lanes"]["steps"]
@@ -401,6 +402,8 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     runners = [tuple(spec.split(":")) for spec in re.findall(r"--runner (\S+)", sizing)]
     assert runners == [(os_, python) for os_, python, _ in REFERENCE_RUNNERS]
     assert not any(name.startswith("matrix-extra") for name in jobs)
+    setup = next(s for s in reference["steps"] if s.get("uses") == "./.github/actions/setup-aew")
+    assert setup["with"]["python-version"] == "${{ matrix.python }}"
     sizings = [shard_plan.Sizing(shard_plan.PLATFORM_OF_OS[os_], "all", n, 0, 0.0, 0.0)
                for (os_, _), n in zip(runners, (3, 5), strict=True)]
     per_os: dict[str, list[tuple[int, int]]] = {}

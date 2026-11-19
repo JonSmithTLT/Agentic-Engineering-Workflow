@@ -258,6 +258,7 @@ def test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_
             return load(path)
 
         monkeypatch.setattr(T, "_load", held)
+
         def sent(answer):
             assert answer["exit"] == 0, answer
 

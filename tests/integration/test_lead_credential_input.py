@@ -216,7 +216,6 @@ def test_a_lead_session_started_at_the_prompt_holds_what_was_typed(monkeypatch):
     monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
     monkeypatch.setattr(operator, "ask_hidden", lambda prompt, **k: "synthetic-typed\n")
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda command, **k: (0, "clean"))
     lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={},
                             contained=lambda _dir, env: lead_broker.Harness(argv=["harness"], env=env, relay=False,

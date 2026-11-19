@@ -72,8 +72,16 @@ def read_text_input(value: str | None) -> str:
     return decode_text(raw, source=value)
 
 
+_UTC_STAMP = "%Y-%m-%dT%H:%M:%S"
+
+
 def utc_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime(f"{_UTC_STAMP}Z")
+
+
+def utc_now_precise() -> str:
+    """Return a UTC timestamp with six fractional digits for measured intervals."""
+    return datetime.now(UTC).strftime(f"{_UTC_STAMP}.%fZ")
 
 
 def sha256_bytes(data: bytes) -> str:

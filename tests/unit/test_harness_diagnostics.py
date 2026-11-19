@@ -20,6 +20,24 @@ HELPERS = Path(lanes.__file__).resolve().parent
 TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
 
 
+def test_defect_message_redacts_provider_keys_and_keeps_public_identifiers():
+    from aew.harness.defects import bounded_message
+
+    # An opaque mixed-case token exercises the broad long-token form without a provider prefix.
+    key = "Ab3" * 11
+    public = f"token_id: tk_{0x0123456789ABCDEF:016x} openapi_sha256: " + "ab012345" * 8
+    assert bounded_message(f"{key} {public}") == f"<redacted> {public}"
+
+
+def test_harness_text_redacts_provider_keys_before_staging(tmp_path):
+    keys = ["sk-" + "Ab3" * 10, "ghp_" + "Ab3" * 12, "sk-" + "lowercase"]
+    raw = tmp_path / "supervisor.log"
+    raw.write_text("\n".join(f"diagnostic {key}" for key in keys), encoding="utf-8")
+    out = D.copy_file(raw, tmp_path / "evidence")
+    assert out is not None
+    assert out.read_text(encoding="utf-8").splitlines() == ["diagnostic <redacted>"] * len(keys)
+
+
 class Lab:
     """What the diagnostics read from a HarnessLab: its project root and AEW root."""
 

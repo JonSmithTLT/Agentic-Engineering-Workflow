@@ -75,6 +75,9 @@
 | `terminated` | stopped by AEW: authority ended (cancelled, interrupted, superseded, revoked, generation changed), a Lead stop, or the profile deadline |
 | `lost` | derived: a supervisor took custody and its heartbeat is stale (killed, frozen, machine lost) |
 
+The run's `started_at` and `ended_at` are UTC timestamps with fractional seconds. Readers also accept whole-second
+timestamps from older run records.
+
 **No status moves AEW state.** The Lead ingests evidence as before (WC §8.2).
 
 ### Credential custody (operator requirement; `src/aew/harness/bridge.py`, `supervisor.py`)

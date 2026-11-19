@@ -110,8 +110,9 @@ def test_fails(tmp_path):
     (harness.parent / "run.json").write_text('{"status": "lost"}')
     (harness.parent / "events.jsonl").write_text('{"event": "exit"}')
     secret = "ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz"
-    subprocess.run([sys.executable, "-c", "import sys; print(sys.argv[1], file=sys.stderr)", secret],
-                   stderr=subprocess.DEVNULL, check=True)
+    with (harness / "provider.stderr").open("w") as output:
+        subprocess.run([sys.executable, "-c", "import sys; print(sys.argv[1], file=sys.stderr)", secret],
+                       stderr=output, check=True)
     (harness / "private.db").write_bytes(b"private database contents")
     assert False, "planted assertion failure"
 """
@@ -126,7 +127,9 @@ def test_fails(tmp_path):
     assert list((bundle / "harness").rglob("run.json.txt"))
     assert list((bundle / "harness").rglob("events.jsonl.txt"))
     assert "planted assertion failure" in texts(bundle, "failure.*.txt")
-    assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in texts(bundle, "*.txt")
+    [provider] = list(bundle.rglob("provider.stderr.txt"))
+    assert provider.read_text(encoding="utf-8").strip() == "<redacted>"
+    assert ("ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz") not in texts(bundle, "*.txt")
     assert not list(bundle.rglob("*.db*"))
 
 

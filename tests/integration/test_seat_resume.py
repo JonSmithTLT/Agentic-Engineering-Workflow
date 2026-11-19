@@ -102,7 +102,6 @@ def test_ineligible_seats_refuse_without_prompting(acquired, monkeypatch, failur
         assert engine.store.current()["lead"]["start"]["kind"] == "lead_acquire"
     if failure == "general_session":
         engine.lead_release(token=old["token"], expect_rev=project.rev())
-        monkeypatch.setattr(procs, "harden_current_process", lambda: None)
         monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
         lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="old", keep_seat=True,
                                 contained=lambda _dir, env: lead_broker.Harness(
@@ -230,7 +229,6 @@ def test_resumed_session_keeps_acknowledged_processes_at_exit(acquired, monkeypa
     left = 1 if sys.platform == "win32" else [(pid, "leftover-start")]
     seat.write_leftovers(engine.aew_root, old["generation"], left)
     monkeypatch.setattr(procs, "same_process", lambda seen_pid, start: (seen_pid, start) == (pid, "leftover-start"))
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
 
     def contained(_dir, env):
@@ -265,7 +263,6 @@ def test_resumed_session_refreshes_presentation_after_the_new_seats_switch_offer
     from aew.harness.opencode import projection
 
     project, engine, old, prompts = acquired
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
     observed = []
 
@@ -337,7 +334,6 @@ def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monk
     monkeypatch.setattr(lead, "no_provider_line", lambda *_: None)
     monkeypatch.setattr(lead, "_switch_offers", lambda _: SimpleNamespace(apply=offer))
     monkeypatch.setattr(lead, "session_services", lambda *_, **__: contextlib.nullcontext(lambda: None))
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", run_tree)
     result = lead.run(engine, acquire=True, session_label="new", keep_seat=False, provider_env=[], extra_args=[],
                       print_config=False)
@@ -350,7 +346,6 @@ def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monk
 @pytest.mark.parametrize(("keep_seat", "failed_start"), [(False, False), (True, False), (True, True)])
 def test_resumed_empty_seat_releases_or_stays_held_as_requested(acquired, monkeypatch, keep_seat, failed_start):
     _, engine, old, prompts = acquired
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
 
     def contained(directory, env):
@@ -375,7 +370,6 @@ def test_resumed_empty_seat_releases_or_stays_held_as_requested(acquired, monkey
 def test_next_flagless_session_resumes_the_seat_held_by_the_first(acquired, tmp_path, monkeypatch, active_work):
     project, engine, old, prompts = acquired
     engine.lead_release(token=old["token"], expect_rev=project.rev())
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
 
     def start_work(token):
@@ -406,7 +400,6 @@ def test_next_flagless_session_resumes_the_seat_held_by_the_first(acquired, tmp_
 
 def test_unknown_leftover_outcome_keeps_the_seat_and_names_the_way_back(acquired, monkeypatch):
     project, engine, _, _ = acquired
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "unowned"))
     result = lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="new", keep_seat=False,
                                      contained=synthetic_harness, opencode_kind=seat.VACANT_START)
@@ -453,7 +446,6 @@ def test_failed_start_preserves_an_active_invocation(acquired, tmp_path, monkeyp
     project, engine, old, prompts = acquired
     work = create_planned_ticket(project, tmp_path)
     assign(project, work)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
 
     def refused(*_):
         raise PermissionDenied("test start refused")
@@ -499,7 +491,6 @@ def test_opencode_selects_the_seat_or_existing_credential(acquired, monkeypatch,
     monkeypatch.setattr(lead, "_unrelayed", lambda _: None)
     monkeypatch.setattr(lead, "_switch_offers", lambda _: SimpleNamespace(apply=lambda _: None))
     monkeypatch.setattr(lead, "session_services", lambda *_, **__: contextlib.nullcontext(lambda: None))
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
 
     class Harness:

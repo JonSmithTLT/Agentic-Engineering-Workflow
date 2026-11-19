@@ -22,11 +22,15 @@ import sys
 import threading
 from collections.abc import Callable, Mapping
 
+import process_dumpable
+
 from aew.dashboard.server import SECURITY_HEADERS
 
 TIMEOUT_S = 60.0  # the World clients' own
 COMMAND_TIMEOUT_S = 10.0  # each command the diagnostics run
 BODY_SHOWN = 256  # how much of a foreign body the failure quotes
+NOT_DUMPABLE = ("This process is not dumpable (PR_SET_DUMPABLE 0), so ss names no owner for its own sockets: a row "
+                "without users:(...) whose ino: is among this process's socket inodes is this process's.")
 NO_OWNER = ("An answering listener with no LISTEN row on its port, or a row without users:(...), was held by no "
             "descriptor: the kernel keeps a listener for a thread blocked in accept() after its descriptor is closed, "
             "and frees the port once that accept returns, as the probe's upstream did after one answer (register E75).")
@@ -95,7 +99,10 @@ def describe(problem: str, *, port: int, local: int, request: str, status: int, 
             lines.append(f"{label}: {fact()}")
         except Exception as exc:  # noqa: BLE001 (a diagnostic that fails is reported, never raised over the mismatch)
             lines.append(f"{label}: could not be read ({type(exc).__name__}: {exc})")
-    lines.append(NO_OWNER if sys.platform == "linux" else SHARED)
+    if sys.platform == "linux":
+        lines.append(NOT_DUMPABLE if process_dumpable.dumpable() is False else NO_OWNER)
+    else:
+        lines.append(SHARED)
     return "\n".join(lines)
 
 

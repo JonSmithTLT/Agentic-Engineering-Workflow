@@ -296,27 +296,75 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         assert proof["if"] == condition
 
 
-def test_an_evidence_scan_error_publishes_only_the_listing(tmp_path, monkeypatch):
+def evidence_hit(path):
+    return {"File": str(path), "StartLine": 1, "EndLine": 1, "StartColumn": 1, "EndColumn": 16,
+            "Match": "private contents", "Secret": "private contents", "RuleID": "planted-rule"}
+
+
+def test_evidence_findings_reject_unattributed_paths(tmp_path):
+    stage = _load("stage_evidence")
+    report = tmp_path / "scan.json"
+    candidate = tmp_path / "contents"
+    known = Path("autopsy/failure.txt")
+    report.write_text(json.dumps([evidence_hit(candidate / known)]), encoding="utf-8")
+    assert set(stage.findings(report, candidate, {known})) == {known}
+    with pytest.raises(ValueError, match="unattributable"):
+        stage.findings(report, candidate, {Path("other.txt")})
+
+
+def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
 
-    stage_evidence = _load("stage_evidence")
+    stage = _load("stage_evidence")
     source = tmp_path / "raw"
     autopsy = source / "autopsy"
     autopsy.mkdir(parents=True)
-    (autopsy / "failure.txt").write_text("private contents", encoding="utf-8")
-    destination = tmp_path / "public"
+    (autopsy / "failure.txt").write_text("private contentsTAIL\nprivate contents\n", encoding="utf-8")
+    (autopsy / "other.txt").write_text("context private contents", encoding="utf-8")
+    # The scanner reports only the repeated literal. The opaque key needs the report's broad redactor.
+    opaque_key = "Xy7" * 11
+    (source / "junit.xml").write_text(f"<failure>private contents {opaque_key}</failure>", encoding="utf-8")
+    (source / "vertical-summary.txt").write_text(f"private contents {opaque_key}", encoding="utf-8")
+    (autopsy / "still-dirty.txt").write_text("other value", encoding="utf-8")
+    (autopsy / "copy-of-dirty.txt").write_text("copy of other value", encoding="utf-8")
+    calls = []
 
     def scan(argv, **kwargs):
-        assert "--ignore-gitleaks-allow" in argv
+        assert kwargs["capture_output"]
+        candidate = Path(argv[-1])
+        name = "failure.txt" if not calls else "still-dirty.txt"
+        calls.append(name)
+        hit = evidence_hit(candidate / "autopsy" / name)
+        if name == "still-dirty.txt":
+            hit.update(Match="other value", Secret="other value")
         report = Path(argv[argv.index("--report-path") + 1])
-        report.write_text('[{"RuleID": "planted-rule", "Secret": "private contents"}]', encoding="utf-8")
-        return SimpleNamespace(returncode=1)
+        report.write_text(json.dumps([hit]), encoding="utf-8")
+        return SimpleNamespace(returncode=stage.FINDINGS_EXIT, stderr="private contents")
 
-    monkeypatch.setattr(stage_evidence.subprocess, "run", scan)
-    assert "planted-rule" in stage_evidence.stage(source, destination)
-    [listing] = list(destination.iterdir())
-    assert listing.name == "inventory.txt"
-    assert "private contents" not in listing.read_text(encoding="utf-8")
+    monkeypatch.setattr(stage.subprocess, "run", scan)
+    destination = tmp_path / "public"
+    stage.main([str(source), str(destination)])
+    assert calls == ["failure.txt", "still-dirty.txt"]
+    assert not (destination / "autopsy/still-dirty.txt").exists()
+    assert not (destination / "autopsy/copy-of-dirty.txt").exists()
+    expected = {
+        "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
+        "autopsy/other.txt": "context <redacted:planted-rule>",
+        "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
+        "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
+    }
+    assert {path: (destination / path).read_text(encoding="utf-8") for path in expected} == expected
+    log = capsys.readouterr().err
+    assert log.splitlines() == [
+        "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:1 (planted-rule)",
+        "masked autopsy/failure.txt:2 (planted-rule)",
+        "masked autopsy/other.txt:1 (planted-rule)",
+        "withheld autopsy/still-dirty.txt:1 (planted-rule)",
+        "masked junit.xml:1 (planted-rule)",
+        "masked vertical-summary.txt:1 (planted-rule)",
+    ]
+    assert log in (destination / "inventory.txt").read_text(encoding="utf-8")
 
 
 def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
@@ -3568,3 +3616,111 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
         f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
     source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text
+
+
+def test_the_proof_wires_its_upload_id_and_records_a_bounded_visibility_wait(tmp_path, monkeypatch):
+    from hashlib import sha256
+    from types import SimpleNamespace
+    from zipfile import ZipFile
+
+    actions = ROOT / ".github/actions"
+    publish = yaml.safe_load((actions / "publish-evidence/action.yml").read_text(encoding="utf-8"))
+    proof = yaml.safe_load((actions / "prove-evidence/action.yml").read_text(encoding="utf-8"))
+    [upload] = [step for step in publish["runs"]["steps"] if step.get("id") == "upload"]
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert publish["outputs"]["artifact-id"]["value"] == "${{ steps.upload.outputs.artifact-id }}"
+    [publisher] = [step for step in proof["runs"]["steps"] if step.get("id") == "evidence"]
+    assert publisher["uses"] == "./.github/actions/publish-evidence"
+    [download] = [step for step in proof["runs"]["steps"] if step.get("run") == "python tools/ci/fetch_evidence.py"]
+    assert download["env"]["ARTIFACT_ID"] == "${{ steps.evidence.outputs.artifact-id }}"
+
+    assert download["env"]["ARTIFACT_DIGEST"] == "${{ steps.evidence.outputs.artifact-digest }}"
+    assert publish["outputs"]["artifact-digest"]["value"] == "${{ steps.upload.outputs.artifact-digest }}"
+    callers = []
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for name, job in workflow["jobs"].items():
+            if any(step.get("uses") == "./.github/actions/prove-evidence" for step in job.get("steps", [])):
+                callers.append((path.name, name))
+                assert job.get("permissions", {}).get("actions") == "read", (path.name, name)
+    assert callers
+
+    fetch_evidence = _load("fetch_evidence")
+    archive = tmp_path / "test.zip"
+    with ZipFile(archive, "w") as bundle:
+        bundle.writestr("report.txt", "synthetic evidence")
+    data = archive.read_bytes()
+    digest = sha256(data).hexdigest()
+    token = "synthetic-token"
+    responses = []
+    waits = []
+    elapsed = 0.0
+    summary = tmp_path / "summary.md"
+    url = "https://example.invalid/repos/org/repo/actions/artifacts/42/zip"
+
+    def request(argv, **kwargs):
+        nonlocal elapsed
+        assert argv[-1] == url
+        assert argv[argv.index("--connect-timeout") + 1] == "5"
+        assert argv[argv.index("--max-time") + 1] == "30"
+        assert all(token not in arg for arg in argv)
+        assert argv[argv.index("--header") + 1] == "@-"
+        assert kwargs["input"] == f"Authorization: Bearer {token}\n"
+        status, returncode, body, stderr = responses.pop(0)
+        Path(argv[argv.index("--output") + 1]).write_bytes(body)
+        elapsed += 0.125
+        return SimpleNamespace(returncode=returncode, stdout=status, stderr=stderr)
+
+    def pause(seconds):
+        nonlocal elapsed
+        waits.append(seconds)
+        elapsed += seconds
+
+    monkeypatch.setattr(fetch_evidence.subprocess, "run", request)
+    monkeypatch.setattr(fetch_evidence, "sleep", pause)
+    monkeypatch.setattr(fetch_evidence, "monotonic", lambda: elapsed)
+    missing = ("404", 0, b"", "")
+    ready = ("200", 0, data, "")
+
+    def fetch(expected_digest=digest):
+        fetch_evidence.fetch("42", "proof", expected_digest, url, token, tmp_path, summary)
+        assert not responses
+
+    def outcome(details):
+        assert summary.read_text().splitlines()[-1] == f"Evidence visibility for proof (ID 42): {details}"
+
+    responses[:] = [missing, ready]
+    fetch()
+    downloaded = tmp_path / "evidence-proof-download/report.txt"
+    assert downloaded.read_text() == "synthetic evidence"
+    downloaded.unlink()
+    outcome("attempts=2, elapsed=1.25s, outcome=visible")
+    assert waits == [1]
+
+    responses[:] = [missing] * 5
+    waits.clear()
+    with pytest.raises(SystemExit, match=r"proof \(ID 42\).*after 5 attempts in 5\.00s"):
+        fetch()
+    assert not responses
+    assert waits == [1, 1, 1, 1, 0.375]
+    outcome("attempts=5, elapsed=5.00s, outcome=timeout")
+
+    waits.clear()
+    responses[:] = [("403", 0, b"Resource not accessible by integration " + token.encode() + b"!" * 500 + b"tail", "")]
+    with pytest.raises(SystemExit, match="HTTP 403: .*Resource not accessible by integration") as forbidden:
+        fetch()
+    assert token not in str(forbidden.value) and "[redacted]" in str(forbidden.value)
+    assert "tail" not in str(forbidden.value)
+    assert not responses and not waits
+    outcome("attempts=1, elapsed=0.12s, outcome=error")
+
+    responses[:] = [("000", 28, b"", "  Operation timed out  ")]
+    with pytest.raises(SystemExit, match="curl exit 28: .*Operation timed out"):
+        fetch()
+    assert not responses and not waits
+    outcome("attempts=1, elapsed=0.12s, outcome=error")
+
+    responses[:] = [ready]
+    with pytest.raises(SystemExit, match=r"digest mismatch for proof \(ID 42\)"):
+        fetch("0" * 64)
+    assert not downloaded.exists()

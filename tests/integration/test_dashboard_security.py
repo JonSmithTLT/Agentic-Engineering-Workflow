@@ -466,6 +466,7 @@ def test_idle_keep_alive_connections_hold_no_more_than_the_connection_bound(live
     assert live.request("GET", "/api/v1/project")[0] == 200
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 @pytest.mark.parametrize("block", ["X-Big: " + "b" * (17 * 1024), "".join(f"X-H{i}: v\r\n" for i in range(70))])
 def test_an_oversized_header_block_is_refused_while_it_is_read(live, block):
     """The bounds hold on the wire: the refusal comes once the bound is passed, without waiting for a terminator
@@ -506,6 +507,7 @@ def _closed_within(s: socket.socket, seconds: float) -> bool:
         return True
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 @pytest.mark.parametrize("line", ["GET /api/v1/project HTTP/1.1", "GET /api/v1/project"])
 def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, monkeypatch, line):
     """Finding 1: one byte every 0.3 s never trips a per-read timeout, but the whole head must arrive within the
@@ -530,6 +532,7 @@ def test_a_slowly_trickled_request_head_is_cut_off_at_the_head_deadline(live, mo
         assert time.monotonic() - started < 4.0
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 @pytest.mark.parametrize("line", ["GET / HTTP/01.1", "GET\xa0/ HTTP/1.1", "GET /"])
 def test_every_request_stdlib_would_read_headers_for_is_bounded_while_it_is_read(live, line):
     """Finding 2: a request line stdlib tokenizes differently from bytes (a padded version, a non-breaking space)
@@ -737,6 +740,7 @@ def test_a_header_block_outside_strict_field_syntax_is_refused_and_ends_its_conn
     assert status == 400 and error_code(raw) == "INVALID_REQUEST", (form, status)
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_long_header_line_outside_the_field_grammar_is_refused_promptly(live):
     """The field-grammar check is linear in the line's length: a colon-less line of repeated token characters, as
     long as the header bound admits, is refused ``400`` at once, never after a long regex backtrack. The time bound
@@ -799,6 +803,7 @@ def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second
     assert status == 503 and error_code(raw) == "SERVER_BUSY" and headers.get("retry-after") == "1"
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):
     """R23 bounds the drain too: with its deadline out of reach, a refused client sending without end is still cut
     off once ``DRAIN_MAX_BYTES`` are read, never read for as long as it cares to send."""

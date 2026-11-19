@@ -102,6 +102,7 @@ time.sleep({HOLDER_LIVES_S})
 """
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_plain_git_fails_by_name_while_a_grandchild_holds_its_output_and_leaves_nothing_running(tmp_path):
     """A program git started keeps git's output open and doesn't end. The bound still fires and names the command with
     what it had said, the wait isn't for the holder, and the holder is gone. On Windows `subprocess.run`'s `timeout=`

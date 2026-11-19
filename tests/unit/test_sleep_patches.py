@@ -168,6 +168,7 @@ def test_the_detectors_report_the_line_a_multiline_call_starts_on():
     assert ast_patches(src) == text_patches(src) == {2}
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_patch_sleep_records_and_skips_its_own_threads_sleeps_and_other_threads_sleep_for_real(monkeypatch):
     shared = types.SimpleNamespace(time=time)  # a module whose `time` is the shared one, as every module's is
     sleeps = patch_sleep(monkeypatch, shared)

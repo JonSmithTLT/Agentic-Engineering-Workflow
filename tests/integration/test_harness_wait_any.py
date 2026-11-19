@@ -221,6 +221,7 @@ def _records_say_running(monkeypatch, *runs: str) -> None:
                         lambda d, *a, **k: ("running", None) if Path(d).name in runs else real(d, *a, **k))
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_an_invocation_already_ended_when_the_wait_starts_ends_it_at_once(lab, tmp_path, monkeypatch):
     """The initial control snapshot is examined too: a cancellation committed before the wait began ends it at once,
     even while the run's own record still says running (independent review of #79)."""

@@ -820,6 +820,7 @@ def test_every_fact_of_the_record_has_an_attester(tmp_path):
     assert campaign.attester("outcome.error") == campaign.EVALUATOR
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_chatty_agent_never_blocks_the_transport(tmp_path):
     chatty = LocalTransport(tmp_path / "armhost")
     chatty.boot = "import sys; sys.stderr.write('w' * (4 << 20)); sys.stderr.flush(); " + chatty.boot
@@ -828,6 +829,7 @@ def test_a_chatty_agent_never_blocks_the_transport(tmp_path):
     assert reply.ok and time.monotonic() - t0 < 30
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_receive_and_the_transport_stop_at_their_deadlines(tmp_path):
     data, _ = pack([Entry("tree/a", "file", data=b"x")])
     with pytest.raises(TransferError) as refused:

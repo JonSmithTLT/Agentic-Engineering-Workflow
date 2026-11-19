@@ -181,6 +181,7 @@ def test_the_batch_reader_serves_many_large_blobs_without_a_pipe_deadlock(tmp_pa
     assert record["limits"]["metadata_blob_bytes"]["skipped"] == 40
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_batch_reader_that_stops_answering_fails_fast_instead_of_hanging(tmp_path):
     """The watchdog: a batch process that never replies is stopped after the read timeout and the read fails."""
     import time

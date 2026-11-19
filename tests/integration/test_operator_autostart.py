@@ -527,6 +527,7 @@ def test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoin
             procs.kill_pid(pid)
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_hung_notifier_never_keeps_the_endpoint_up(project, tmp_path, monkeypatch):
     """The flush is bounded by the notifier's own timeout, and what is left stays outstanding. The notifier hangs until
     the test lets it go, so the delivery is in flight for the whole flush by construction: with a real 1 s timeout,

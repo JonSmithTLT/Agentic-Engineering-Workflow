@@ -36,6 +36,7 @@ def event(**over: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------- delivery
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_notifier_timeout_kills_the_process_tree(tmp_path):
     """Past `timeout_s` the notifier and everything it started are killed, and the delivery is a failure."""
     pids = tmp_path / "pids"

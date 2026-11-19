@@ -338,6 +338,7 @@ def test_a_scorer_is_live_in_the_register_of_weaker_contexts_while_it_runs(tmp_p
     assert "eval_scoring" in [e["kind"] for e in W.read().recent]
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_scoring_that_overruns_is_a_failed_score(tmp_path):
     secret = tmp_path / "private"
     make_oracle(secret, checks="import time\ndef checks(tree, run):\n    time.sleep(60)\n    yield 'x', True, ''\n")

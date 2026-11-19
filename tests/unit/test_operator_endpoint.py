@@ -532,6 +532,7 @@ def test_the_endpoint_accepts_only_its_operations(project, endpoint):
     assert ep.refused == 3
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_ping_to_an_endpoint_that_never_answers_ends_in_its_bound(tmp_path):
     """Review of E228's third PR, F6: the steering loop pings before each Run action, so a ping to an endpoint that is
     alive but silent (stopped in its terminal, or wedged) ends within its bound, as not found: the loop takes no

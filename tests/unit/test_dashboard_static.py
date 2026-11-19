@@ -333,6 +333,7 @@ def test_build_json_matches_the_builder_pin_at_its_source():
 
 # ---------------------------------------------------------------------------------------------- the request log
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_the_request_log_never_blocks_a_request_on_a_stalled_terminal():
     """``serve`` logs to its terminal; a terminal that stops reading (Ctrl-S, a suspended emulator) must stall
     only the log's writer: logging returns at once, lines beyond the queue are dropped, and closing never hangs."""

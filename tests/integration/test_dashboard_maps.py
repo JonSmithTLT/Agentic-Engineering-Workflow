@@ -651,6 +651,7 @@ def test_an_oversized_or_linked_artifact_is_refused_and_never_read_past_the_cap(
             assert "not_a_file" in client.data("/maps")["structural"]["reasons"][0]["message"]
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 @pytest.mark.skipif(not POSIX, reason="FIFOs are POSIX")
 def test_a_fifo_artifact_or_registry_is_never_opened_and_a_swap_race_does_not_block(lab, monkeypatch):
     p, _ = lab
@@ -703,6 +704,7 @@ def test_a_fifo_artifact_or_registry_is_never_opened_and_a_swap_race_does_not_bl
         registry.write_bytes(saved)
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_freshness_stale_on_paths_on_metadata_and_on_the_generator_and_unknown_when_git_hangs(lab, monkeypatch):
     p, _ = lab
     add_metadata(p)
@@ -853,6 +855,7 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             assert again["status"] == "CURRENT" and calls["read"] == 0
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_locked_index_on_a_warm_read_is_unknown_not_a_500(lab):
     """Review of #178, finding B: once a plain reader has synced and kept the history index, the archived lookup
     queries it without a sync; another process holding it ``BEGIN EXCLUSIVE`` then raises SQLite's own error after the
@@ -1262,6 +1265,7 @@ def test_a_difference_only_past_a_cap_is_beyond_cap_and_a_missing_operand_is_404
         client.error(f"/maps/diff?a={'0' * 64}&b={b}", 404, "NOT_FOUND")
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_the_diff_is_linear_on_planted_lists_of_a_million_items(lab, monkeypatch):
     """n3: each list is cut to its cap before anything is compared, and the comparison is by sets of canonical
     JSON: the instrumented ``canon`` runs once per kept item, never pairwise."""

@@ -134,6 +134,7 @@ def test_a_long_wait_for_the_server_says_so_once(capsys: pytest.CaptureFixture[s
     assert capsys.readouterr().err.count("waiting for the Lead's server") == 1
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_ctrl_c_before_the_announcement_ends_the_server_and_gives_no_traceback(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A server that never announces and survives the Ctrl+C: the shim's wait still sees it, on Windows too, whose plain

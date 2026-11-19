@@ -323,6 +323,7 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
         lab.cleanup()
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
     """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
     are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""
@@ -382,6 +383,7 @@ def wait_in_flight(lab: HarnessLab, broker: lead_broker.LeadBroker, run: str) ->
     return waiting
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_relayed_wait_never_holds_a_lead_write_and_returns_when_the_run_ends(lab, broker, tmp_path):
     """Condition 6: a relayed `harness wait` held open on a live run never delays a Lead-authenticated write through
     the same broker, and returns, as the host's would, once the run ends."""
@@ -404,6 +406,7 @@ def test_a_relayed_wait_never_holds_a_lead_write_and_returns_when_the_run_ends(l
     assert not broker._reads
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_relayed_wait_in_flight_never_holds_the_sessions_close(lab, tmp_path, monkeypatch):
     """Condition 6: when the session closes, a relayed wait in flight ends with it at once (its process is the
     session's), instead of holding the close for the drain's bound; one whose request arrived as the session closed
@@ -425,6 +428,7 @@ def test_a_relayed_wait_in_flight_never_holds_the_sessions_close(lab, tmp_path, 
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_relayed_read_whose_wait_fails_is_ended_never_left_running(lab, broker, tmp_path, monkeypatch):
     """Condition 6, and the review of #283 at b2dc3035, m1: whatever ends the broker's wait on a relayed read, the
     read's process ends with it and leaves the session's tracking, so nothing the session's close would miss keeps

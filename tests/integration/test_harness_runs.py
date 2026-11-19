@@ -161,6 +161,7 @@ def test_lead_stop_ends_the_run_but_not_the_invocation(lab, tmp_path, sync):
     assert_control_invariants(lab.project)
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path, sync):
     """Independent review (area 2, F6): a check runs in its own process tree, so the run's end must end it too, and a
     check its run's end cut short is not sealed as evidence after the run ended."""

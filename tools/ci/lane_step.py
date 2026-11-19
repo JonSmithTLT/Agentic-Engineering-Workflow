@@ -41,7 +41,8 @@ def note(directory: Path, name: str, text: str) -> None:
         pass
 
 
-def snapshot(root: Path, *, all_workers: bool = False) -> None:
+def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]] | None = None) -> None:
+    captured = seen if seen is not None else set()
     known = {identity[0]: identity for _, identity in identities(root)}
     bases = {directory.parent.parent for directory in session_directories(root)}
     for path in (path for base in bases for path in base.glob("hang-*.txt")):
@@ -53,11 +54,13 @@ def snapshot(root: Path, *, all_workers: bool = False) -> None:
             pid = int(path.stem.rsplit("-", 1)[1])
             elapsed = time.monotonic() - float(started)
             out = root / "snapshots" / f"{pid}.txt"
+            key = pid, started
             if (pid not in known or not proctree.same(known[pid])
-                    or (not all_workers and (elapsed < float(limit) or out.exists()))):
+                    or (not all_workers and (elapsed < float(limit) or key in captured))):
                 continue
             if ablated("stacks"):
                 continue
+            captured.add(key)
             out.parent.mkdir(parents=True, exist_ok=True)
             binary = shutil.which("py-spy") or "py-spy"
             prefix = ["sudo", "-n"] if os.environ.get("AEW_PYSPY_SUDO") == "1" and sys.platform == "linux" else []
@@ -111,6 +114,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     status = root / "runner-resources-step.txt"
     interrupted = []
     peak = memory_used()
+    snapshots_seen: set[tuple[int, str]] = set()
 
     def forward(signum, frame):
         interrupted.append(signal.Signals(signum).name)
@@ -123,7 +127,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             used = memory_used()
             if used is not None:
                 peak = max(used, peak or 0)
-            snapshot(root)
+            snapshot(root, seen=snapshots_seen)
             if interrupted or time.time() >= cutoff:
                 snapshot(root, all_workers=True)
                 for directory, _ in identities(root):

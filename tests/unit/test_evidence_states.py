@@ -173,3 +173,31 @@ def test_a_standalone_watchdog_cannot_overwrite_the_enclosing_workers_progress(t
     monkeypatch.setenv("AEW_RUNNING_TESTS_DIR", str(tmp_path))
     config = SimpleNamespace(getoption=lambda *args: str(tmp_path) if args[0] == "aew_hang_dir" else None)
     assert watchdog.HangWatchdog(config, 600).running is None
+
+
+def test_a_worker_gets_a_timeout_snapshot_for_each_new_test(tmp_path, monkeypatch):
+    lane = _load("lane_step")
+    session = tmp_path / "autopsy/session-123-test"
+    session.mkdir(parents=True)
+    monkeypatch.setattr(lane, "identities", lambda root: [(session, (123, 456))])
+    monkeypatch.setattr(lane, "session_directories", lambda root: [session])
+    monkeypatch.setattr(lane.proctree, "same", lambda identity: True)
+    monkeypatch.setattr(lane.time, "monotonic", lambda: 1000)
+    calls = []
+
+    def spy(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout='  File "tests/unit/test_a.py", line 2 in test_wait\n')
+
+    monkeypatch.setattr(lane.subprocess, "run", spy)
+    seen = set()
+    path = tmp_path / "hang-gw0-123.txt"
+    path.write_text("aew hang watchdog: tests/unit/test_a.py::test_first started now; "
+                    "limit 10s; not fired; monotonic 500\n")
+    lane.snapshot(tmp_path, seen=seen)
+    path.write_text("aew hang watchdog: tests/unit/test_a.py::test_second started now; "
+                    "limit 10s; not fired; monotonic 501\n")
+    lane.snapshot(tmp_path, seen=seen)
+    lane.snapshot(tmp_path, seen=seen)
+    assert len(calls) == 2
+    assert "test_second" in (tmp_path / "snapshots/123.txt").read_text()

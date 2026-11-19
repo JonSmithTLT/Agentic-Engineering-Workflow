@@ -1031,6 +1031,27 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: broker-close-relayed-receipt
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    A relayed read's receipt rechecks the broker's own closing inside the told-message record. On a slow runner the
+    receipt outlasted close's bound for a stalled send (RECEIPT_CLOSE_LOCK_S), close stopped the broker, and the
+    receipt for bytes already sent was refused as lost authority.
+  owner: CI timing fixes
+  test: tests/integration/test_message_result_receipts.py::test_broker_close_cannot_discard_a_successfully_sent_receipt[relayed]
+  planned_fix: >-
+    Judge the broker's closing once after the send succeeds; the owed receipt then rechecks only Lead authority. A
+    forced-order test proves it. Closure awaits the fix PR number.
+  evidence:
+  - run: 44591617412
+    job: 135799162847
+    at: '2026-11-19T19:04:33Z'
+    note: integration 8/14 (windows-latest) on fix/doctor-single-ping.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

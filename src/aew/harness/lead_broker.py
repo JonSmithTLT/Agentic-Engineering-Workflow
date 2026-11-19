@@ -439,8 +439,10 @@ class LeadBroker:
             def deliver_read(send: Callable[[Any], None]) -> None:
                 with self.server.serialized():
                     send(answer)
-                    for receipt in receipts:
-                        if self._receipt_current():
+                    # Judged once, while close still waits on this serialization: from here the receipt is owed
+                    # for bytes already sent, and close running out its bound for a stalled send never discards it.
+                    if receipts and self._receipt_current():
+                        for receipt in receipts:
                             receipt()
 
             return bridge.ResultDelivery(deliver_read)
@@ -460,6 +462,11 @@ class LeadBroker:
     def _receipt_current(self) -> bool:
         if self._stop.is_set() or self.server.closed:
             return False
+        return self._holds_generation()
+
+    def _holds_generation(self) -> bool:
+        """This broker's Lead authority alone, from the committed state: what a receipt already owed for sent bytes
+        rechecks, so only a lost seat or a newer generation (never this session's own close) refuses it."""
         try:
             state = self.engine.store.read_committed()
             require_held_lead(state, self._token)
@@ -472,7 +479,8 @@ class LeadBroker:
         This serialization is shared with the queue's final selection; no control session or durable shown write.
         Direct-test wrapper only: production lead.read calls the unlocked inner helper under its send lock."""
         with self.server.serialized():
-            self._read_receipt_unlocked(result, ns)
+            if self._receipt_current():  # as the live delivery judges it once its send succeeded
+                self._read_receipt_unlocked(result, ns)
 
     def _read_receipt_unlocked(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
         """Receipt inner path: caller holds broker serialization across the successful send and all receipts."""
@@ -489,12 +497,12 @@ class LeadBroker:
             state = self.engine.store.read_committed()
             invocations = {inv_id for inv_id, inv in state["invocations"].items()
                            if any(r["run"] in ns.run for r in inv.get("runs") or [])}
-        if not self._receipt_current():
+        if not self._holds_generation():
             return
         ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
                                               runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
         if ids:
-            told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
+            told_messages.record(self.engine.aew_root, self.generation, ids, current=self._holds_generation)
 
     def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
         with self._reads_lock:

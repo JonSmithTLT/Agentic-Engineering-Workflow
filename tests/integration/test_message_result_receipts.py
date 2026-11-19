@@ -220,6 +220,41 @@ def test_broker_close_cannot_discard_a_successfully_sent_receipt(w, monkeypatch,
     assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if route == "typed" else [mid])
 
 
+def test_a_relayed_receipt_under_way_is_kept_when_close_runs_out_its_bound_for_a_stalled_send(w, monkeypatch):
+    """Close's bound (``RECEIPT_CLOSE_LOCK_S``) is for a client stalled in its send. Once the bytes are sent the receipt
+    is owed, and close giving up its wait while that receipt holds the told-message lock must not discard it: only a
+    lost Lead authority does. The order is forced: the closer starts, and runs out its bound, while the receipt is
+    between the record's two authority checks."""
+    from aew.harness import lead_broker
+
+    mid = reply(w)
+    monkeypatch.setattr(lead_broker, "RECEIPT_CLOSE_LOCK_S", 0.05)
+    with broker(w) as b:
+        delivery = b.handle("lead.read", {"argv": ["status", "--json"], "cwd": str(w.root)})
+        errors = []
+
+        def close():
+            try:
+                b.close()
+            except BaseException as exc:  # report the closer's error in the test's own thread
+                errors.append(exc)
+
+        closer = threading.Thread(target=close)
+        load = T._load
+
+        def held(path):
+            if not closer.is_alive() and not b._stop.is_set():
+                closer.start()  # the delivery holds the serialization, so close can only run out its bound
+                assert b._stop.wait(10), "close never gave up its wait"
+            return load(path)
+
+        monkeypatch.setattr(T, "_load", held)
+        delivery.deliver(lambda answer: None if answer["exit"] == 0 else pytest.fail(str(answer)))
+        closer.join(60)
+        assert not closer.is_alive() and not errors
+        assert T.read(w.root / ".aew", b.generation) == {mid}
+
+
 def test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock(w):
     with broker(w) as b:
         errors = []

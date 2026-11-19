@@ -187,13 +187,15 @@ def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
         assert synthetic not in repr(network.describe())
         client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
                        f"Authorization: Bearer {token}\r\n{extra_header}Content-Length: 0\r\n\r\n".encode())
+        if other_export:  # another provider's placeholder is one this relay does not hold: refused, nothing connects
+            answer = read_all(client)
+            assert answer.startswith(b"HTTP/1.1 401") and b"X-AEW-Refusal: stale_placeholder" in answer
+            assert seam.calls == [] and other_key.encode() not in answer and inside[other].encode() not in answer
+            assert other in network.leaks(other_key)
+            return
         upstream = seam.upstream()
         head, _ = read_head(upstream)
         assert ("authorization", f"Bearer {synthetic}") in headers(head)
-        if other_export:
-            assert ("x-api-key", inside[other]) in headers(head)
-            assert other_key.encode() not in head
-            assert other in network.leaks(other_key)
         upstream.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         upstream.close()
         assert read_all(client).startswith(b"HTTP/1.1 401")

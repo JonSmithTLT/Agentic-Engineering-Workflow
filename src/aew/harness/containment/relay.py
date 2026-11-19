@@ -10,8 +10,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
    it starts: ``netns.provider_key_missing``). One that still carries a sentinel this relay does not hold (an earlier
-   session's, kept in a store) is refused 401, :data:`STALE_PLACEHOLDER`, before anything is connected: a sentinel
-   never leaves the relay. A credential that
+   session's, kept in a store, or another provider's) is refused 401, :data:`STALE_PLACEHOLDER`, before anything is
+   connected: a sentinel never leaves the relay. A credential that
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
    or 503 for a busy or locked store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
@@ -153,9 +153,9 @@ def _connect(host: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((host, port), timeout=timeout)  # every address the name has, in turn
 
 
-STALE_MESSAGE = ("AEW: this request carries a key placeholder from an earlier session, which this session's provider "
-                 "relay does not hold, so it was not sent to the provider. Restart the run (for the Lead, start "
-                 "`aew opencode` again): each start removes the placeholders earlier sessions left")
+STALE_MESSAGE = ("AEW: this request carries a key placeholder this provider relay does not hold (one from an earlier "
+                 "session, or another provider's), so it was not sent to the provider. Restart the run (for the Lead, "
+                 "start `aew opencode` again): each start removes the placeholders earlier sessions left")
 
 
 def _credential(value: str, credentials: Mapping[str, str]) -> tuple[str, bool]:

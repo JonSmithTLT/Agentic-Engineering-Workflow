@@ -429,7 +429,7 @@ In `shadow` a finding is reported and never fails a run. Every rule starts in `s
 | O-CMD | `shadow` |
 | O-CODE | `shadow` |
 | O-WORDS | `shadow` |
-| O-SECRET | `shadow` |
+| O-SECRET | `enforce` |
 | O-ENV | `shadow` |
 
 **The allow-list** is `tests/helpers/discovery/allowed.yaml`: every `(rule, site)` key observed when D2 was

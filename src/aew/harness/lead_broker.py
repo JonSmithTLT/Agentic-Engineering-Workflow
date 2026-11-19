@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import io
 import json
 import math
@@ -433,8 +434,10 @@ class LeadBroker:
             return bridge.ResultDelivery(deliver_tool)
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
             receipts: list[Callable[[], None]] = []
+            token = self._token  # taken while serving: close() clears its own copy when its teardown ends
             answer = run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
-                              on_result=self._read_receipt_unlocked, defer_receipt=receipts.append)
+                              on_result=lambda result, ns: self._read_receipt_unlocked(result, ns, token=token),
+                              defer_receipt=receipts.append)
 
             def deliver_read(send: Callable[[Any], None]) -> None:
                 with self.server.serialized():
@@ -464,12 +467,13 @@ class LeadBroker:
             return False
         return self._holds_generation()
 
-    def _holds_generation(self) -> bool:
+    def _holds_generation(self, token: str | None = None) -> bool:
         """This broker's Lead authority alone, from the committed state: what a receipt already owed for sent bytes
-        rechecks, so only a lost seat or a newer generation (never this session's own close) refuses it."""
+        rechecks, so only a lost seat or a newer generation (never this session's own close) refuses it. ``token``:
+        the credential taken when the read was served, as ``_authority_lost`` takes it, since close clears its own."""
         try:
             state = self.engine.store.read_committed()
-            require_held_lead(state, self._token)
+            require_held_lead(state, self._token if token is None else token)
             return state["lead"]["generation"] == self.generation
         except errors.AEWError:
             return False
@@ -482,7 +486,8 @@ class LeadBroker:
             if self._receipt_current():  # as the live delivery judges it once its send succeeded
                 self._read_receipt_unlocked(result, ns)
 
-    def _read_receipt_unlocked(self, result: dict[str, Any], ns: argparse.Namespace) -> None:
+    def _read_receipt_unlocked(self, result: dict[str, Any], ns: argparse.Namespace, *,
+                               token: str | None = None) -> None:
         """Receipt inner path: caller holds broker serialization across the successful send and all receipts."""
         from aew.harness import told_messages
 
@@ -497,12 +502,13 @@ class LeadBroker:
             state = self.engine.store.read_committed()
             invocations = {inv_id for inv_id, inv in state["invocations"].items()
                            if any(r["run"] in ns.run for r in inv.get("runs") or [])}
-        if not self._holds_generation():
+        held = functools.partial(self._holds_generation, token)
+        if not held():
             return
         ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
                                               runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
         if ids:
-            told_messages.record(self.engine.aew_root, self.generation, ids, current=self._holds_generation)
+            told_messages.record(self.engine.aew_root, self.generation, ids, current=held)
 
     def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
         with self._reads_lock:

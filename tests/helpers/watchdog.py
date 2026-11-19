@@ -80,7 +80,7 @@ class HangWatchdog:
         self.dir = hang_dir(config)
         worker = getattr(config, "workerinput", {}).get("workerid", "main")
         self.path = self.dir / f"hang-{worker}-{os.getpid()}.txt"
-        progress = config.getoption("running_tests_dir", None) or os.environ.get("AEW_RUNNING_TESTS_DIR")
+        progress = config.getoption("running_tests_dir", None)
         self.running = Path(progress) / f"running-{os.getpid()}.txt" if progress else None
         self._file: IO[str] | None = None
         self._fired = 0
@@ -235,4 +235,6 @@ class HangWatchdog:
 def configure(config: pytest.Config) -> None:
     timeout = float(config.getoption("aew_test_timeout") or 0.0)
     if timeout > 0:
+        if config.getoption("running_tests_dir", None) is None:
+            config.option.running_tests_dir = os.environ.get("AEW_RUNNING_TESTS_DIR")
         config.pluginmanager.register(HangWatchdog(config, timeout), "aew-hang-watchdog")

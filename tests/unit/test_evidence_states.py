@@ -162,3 +162,9 @@ def test_an_interrupted_protocol_keeps_its_truthful_header_and_source_name(tmp_p
     guard.pytest_unconfigure(config)
     assert "limit 600s; not fired" in guard.path.read_text()
     assert guard.running.read_text() == "tests/unit/test_a.py::test_wait\n"
+
+
+def test_a_standalone_watchdog_cannot_overwrite_the_enclosing_workers_progress(tmp_path, monkeypatch):
+    monkeypatch.setenv("AEW_RUNNING_TESTS_DIR", str(tmp_path))
+    config = SimpleNamespace(getoption=lambda *args: str(tmp_path) if args[0] == "aew_hang_dir" else None)
+    assert watchdog.HangWatchdog(config, 600).running is None

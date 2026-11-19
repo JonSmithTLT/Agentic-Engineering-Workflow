@@ -20,7 +20,7 @@ jobs:
       - uses: actions/download-artifact@v8
         continue-on-error: true
         with:
-          pattern: evidence-*
+          pattern: evidence-*-attempt-${{ github.run_attempt }}*
           path: evidence-artifacts
       - name: Report defects from published evidence
         if: always()

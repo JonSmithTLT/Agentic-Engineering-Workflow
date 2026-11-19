@@ -77,6 +77,11 @@ def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_
             assert index > collect
     publisher = yaml.safe_load((ROOT / ".github/actions/publish-evidence/action.yml").read_text())
     assert all(step.get("if", "").startswith("always()") for step in publisher["runs"]["steps"])
+    checker = yaml.safe_load((ROOT / ".github/workflows/evidence-check.yml").read_text())
+    download = next(step for step in checker["jobs"]["evidence"]["steps"]
+                    if step.get("uses", "").startswith("actions/download-artifact"))
+    assert download["with"]["pattern"] == "evidence-*-attempt-${{ github.run_attempt }}*"
+
 
 
 def test_dropping_an_ablation_expectation_fails_the_hosted_verifier(monkeypatch):

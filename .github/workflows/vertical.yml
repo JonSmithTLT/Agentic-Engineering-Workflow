@@ -37,7 +37,7 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 60
+    timeout-minutes: 68
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)

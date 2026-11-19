@@ -379,7 +379,8 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
         "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
     }
     assert {path: (destination / path).read_text(encoding="utf-8") for path in expected} == expected
-    log = capsys.readouterr().err
+    timing, _, log = capsys.readouterr().err.partition("\n")
+    assert re.fullmatch(r"evidence timing stage \d+\.\d{3}s", timing)
     assert log.splitlines() == [
         "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:1 (planted-rule)",
@@ -2061,7 +2062,7 @@ def test_only_main_saves_the_vertical_series_and_every_run_restores_it_where_it_
     (the job is red by design), and the workflow's permissions stay as they are: no commit from CI."""
     from vertical.scoreboard import MAIN_REF, SERIES
 
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    wf = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     assert wf["permissions"] == {"contents": "read"}
     steps = wf["jobs"]["vertical"]["steps"]
     restores = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore")]
@@ -2260,7 +2261,7 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     nightly_assure = next(s for s in nightly_steps if s.get("id") == "assure")
     assert "check_assurance.py reference-reports" in nightly_assure["run"]
     assert nightly_steps.index(nightly_assure) < nightly_steps.index(nightly_ratchet)
-    reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
+    reference = "\n".join(str(s.get("with", {}).get("command", "")) for s in nightly["jobs"]["reference"]["steps"])
     assert "--lane-report" in reference  # the capture writes beside it
 
 
@@ -3272,7 +3273,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
     # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
     # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
-    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["run"])
+    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["with"]["command"])
     assert base_flags == fast_flags and "-n" in base_flags, (base_flags, fast_flags)
     assert "--session-deadline 960" in lane["run"] and '"--hang-dir=${{ runner.temp }}/fastbase/hangs"' in lane["run"]
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"

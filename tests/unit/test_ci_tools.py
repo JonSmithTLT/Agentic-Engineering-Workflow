@@ -21,7 +21,6 @@ from aew.knowledge import discovery
 ROOT = Path(__file__).resolve().parents[2]
 
 
-
 def workflow_doc(text):
     """Expose the lane action's command to the existing command and flag invariants."""
     doc = yaml.safe_load(text)
@@ -33,6 +32,7 @@ def workflow_doc(text):
                     if "working-directory" in step["with"]:
                         step["working-directory"] = step["with"]["working-directory"]
     return doc
+
 
 def _load(name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / "ci" / f"{name}.py")

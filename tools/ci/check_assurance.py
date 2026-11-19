@@ -255,7 +255,6 @@ def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> s
     return "\n".join(lines) + "\n"
 
 
-
 def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bool = False) -> list[str]:
     """Check published states and warning-death stacks, also used by the hosted proof."""
     import re
@@ -317,6 +316,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
             if not matched:
                 defects.append(f"{node}: no stack from the running test's module")
     return [f"evidence defect: {problem}" for problem in sorted(set(defects))]
+
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

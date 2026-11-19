@@ -114,9 +114,9 @@ class Lane:
         return f"{self.workflow} {self.job} / {self.step}"
 
 
-
 def command_text(step: dict[str, Any]) -> str:
     return str(step.get("run") or step.get("with", {}).get("command") or "")
+
 
 def _commands(run: str) -> list[tuple[str, int]]:
     """The pytest command lines in a step's ``run`` (folded ``>-`` text or a shell script), each with how many times

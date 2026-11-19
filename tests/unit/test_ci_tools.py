@@ -3609,7 +3609,7 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == 14
     assert evidence["uses"] == "./.github/actions/publish-evidence"
-    assert evidence["if"] == "always()"
+    assert evidence["if"] == "always() && steps.collect.outcome == 'success'"
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

@@ -777,3 +777,28 @@ def test_the_request_log_appends_one_json_line_per_request(tmp_path):
     log({"status": None, "outcome": "refused"})
     lines = (tmp_path / "relay-requests.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(line)["outcome"] for line in lines] == ["forwarded", "refused"]
+
+
+def test_a_failed_answers_body_is_recorded_even_when_its_client_stops_reading_at_the_status():
+    """A client may close as soon as it has a 401's status line: the record still holds the body the upstream sent
+    after it, read for the record alone (bounded), and nothing more is sent on."""
+    message = b'{"error": {"message": "Incorrect API key provided", "code": "invalid_api_key"}}'
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, token):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
+                         + f"Content-Length: {len(message)}\r\n\r\n".encode())
+        head, _ = read_head(client)
+        assert head.startswith(b"HTTP/1.1 401 ")
+        client.close()  # the client has its status, and goes
+        time.sleep(0.2)
+        upstream.sendall(message)
+        time.sleep(0.2)
+        upstream.close()
+    [entry] = entries
+    assert (entry["status"], entry["outcome"]) == (401, "forwarded")
+    assert "Incorrect API key provided" in entry["excerpt"] and "invalid_api_key" in entry["excerpt"], entry
+    assert service.counts().get("upstream_status:401") == 1

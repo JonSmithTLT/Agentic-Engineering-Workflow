@@ -490,6 +490,8 @@ class ProviderRelay(Service):
                 if conn in ready and _gone(conn):
                     if not body.done:  # it went before the response's end: a cancelled turn
                         self._count("cancelled")
+                        if excerpt is not None:  # the record still gets the failure's body, whoever stopped reading
+                            excerpt.drain(upstream, body)
                     return
                 if pending or upstream in ready:
                     data = upstream.recv(CHUNK)
@@ -565,6 +567,9 @@ def _status_code(head: bytes) -> int | None:
 # Implementation bound: how much of a failed answer's raw body is read for its excerpt, with room for chunk framing
 # and a compressed body's header before the :data:`EXCERPT_BYTES` of text.
 EXCERPT_RAW_BYTES = 16 * 1024
+# Implementation bound: how long the record waits for a failed answer's body once its client has gone (a client may
+# close as soon as it has the status). A provider's error body comes with its head or right after it.
+EXCERPT_DRAIN_S = 2.0
 _ELLIPSIS_MASKED = re.compile(r"\S{2,}\.{3}\S{2,}")  # a provider's own masking of a key it was sent (abcd...wxyz)
 
 
@@ -585,6 +590,24 @@ class _Excerpt:
     def feed(self, data: bytes) -> None:
         if len(self.raw) < EXCERPT_RAW_BYTES:
             self.raw += data[:EXCERPT_RAW_BYTES - len(self.raw)]
+
+    def drain(self, upstream: socket.socket, body: _Body) -> None:
+        """Read the rest of the body from ``upstream`` for the record alone, its client gone: until its end, the
+        :data:`EXCERPT_RAW_BYTES` bound, or :data:`EXCERPT_DRAIN_S`, whichever comes first. Nothing is sent on."""
+        deadline = time.monotonic() + EXCERPT_DRAIN_S
+        try:
+            while not body.done and len(self.raw) < EXCERPT_RAW_BYTES:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return
+                upstream.settimeout(left)
+                data = upstream.recv(CHUNK)
+                if not data:
+                    return
+                body.feed(data)
+                self.feed(data)
+        except OSError:  # a timeout, or the upstream gone: the record keeps what it has
+            return
 
     def text(self, held: list[str]) -> str:
         import zlib

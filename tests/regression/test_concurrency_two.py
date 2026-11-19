@@ -9,6 +9,7 @@ so no model is called.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from aewflow import create_planned_ticket, integrate, review, sample_project, verify
@@ -76,6 +77,10 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
         p.lead("work", "transition", wid, "--to", "RUNNING")
     for run in runs:
         assert lab.wait(run)["status"] == "ended_with_evidence", lab.record(run)
+        record = lab.record(run)
+        # Pin microsecond precision even when scheduling makes this particular overlap span whole seconds.
+        for field in ("started_at", "ended_at"):
+            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z", record[field]), record[field]
     # Each run waited for the other's announcement before it wrote, so each having seen it proves both ran at once: a
     # wait that times out only reports `found: false` and the script goes on, so ending with evidence proves nothing.
     for run in runs:

@@ -19,7 +19,7 @@ from aew.util import dump_yaml, sha256_file
 
 def observed():
     return CV.build(subject={"work_id": "T-1", "scope": "integration"}, configured=[], checks=[],
-                    changed_files=CV.files([], source="candidate diff"),
+                    changed_files=CV.files([], source="candidate diff"), declaration_pin=None,
                     capabilities={"IV-1": {"recorded": True, "tools_recorded": True, "skills_recorded": True,
                                             "missing_tools": [], "missing_skills": []}}, result="pass")
 
@@ -99,6 +99,11 @@ def test_build_sites_are_exhaustive():
                  and isinstance(node.func.value, ast.Name) and node.func.value.id == "CV"]
         if calls:
             counts[path.relative_to(source).as_posix()] = len(calls)
+        for call in calls:  # each names its declaration pin, or passes the pinned inputs that carry it
+            assert any(k.arg in ("declaration_pin", None) for k in call.keywords), (path.name, call.lineno)
+            flags = {k.arg: k.value.value for k in call.keywords if isinstance(k.value, ast.Constant)}
+            if flags.get("checkless"):  # a prepare runs nothing, and its record keeps E120's observation limit
+                assert flags.get("complete") is False, (path.name, call.lineno)
     assert counts == {"engine/evidence_ops.py": 2, "engine/integration_ops.py": 2, "engine/validation_ops.py": 3}
     assert sum(counts.values()) == 7
 
@@ -110,7 +115,8 @@ def test_coverage_policy_names_configured_ids_or_builtin(check_id):
         "affected_tests": {"selector": {"command": ["selector"]}, "unit": "lanes"}}}
     raw = dump_yaml(policy).encode()
     if check_id == "unknown":
-        with pytest.raises(ValidationFailed, match="covered_by.*unknown checks"):
+        with pytest.raises(ValidationFailed, match=r"covered_by.*unknown checks \['unknown'\]; it accepts "
+                                                   r"\['guardrails', 'unit'\]"):
             check_policy_bytes("checks", raw, source="checks.yaml")
     else:
         assert check_policy_bytes("checks", raw, source="checks.yaml") == policy
@@ -230,3 +236,27 @@ def test_summary_uses_no_host_local_argv_or_cwd_and_single_checks_are_not_ticket
 def test_missing_changed_paths_have_a_reason_not_the_source_label():
     assert CV.files(None, source="candidate_diff_from:abc", reason="candidate_diff_not_recorded") == {
         "known": False, "reason": "candidate_diff_not_recorded"}
+
+
+def test_the_ci_tools_line_says_how_many_ran_tools_it_left_out():
+    value = observed()
+    names = [f"tool-{n:02}" for n in range(CV.SUMMARY_ITEMS + 2)]
+    value["ci_tools"] = {"known": True, "source": "declared:" + "f" * 64,
+                         "items": [{"name": name, "ran": True, "reasons": []} for name in names]}
+    line = next(li for li in CV.summarize(value, completed_by={name: ["unit"] for name in names})["lines"]
+                if li.startswith("Project CI tools"))
+    assert f"{names[CV.SUMMARY_ITEMS - 1]}: ran (check unit)" in line and names[-1] not in line, line
+    assert line.endswith("(2 more entries omitted; see coverage record)"), line
+
+
+@pytest.mark.parametrize("ran,reasons,valid", [(True, [], True), (False, ["not_configured"], True),
+                                               (True, ["not_configured"], False), (False, [], False)])
+def test_a_ci_tool_that_ran_has_no_reason_and_one_that_did_not_has_one(ran, reasons, valid):
+    value = observed()
+    value["ci_tools"] = {"known": True, "source": "declared:" + "f" * 64,
+                         "items": [{"name": "ruff", "ran": ran, "reasons": reasons}]}
+    if valid:
+        validate_property("evidence", "coverage", value, source="synthetic coverage")
+    else:
+        with pytest.raises(ValidationFailed):
+            validate_property("evidence", "coverage", value, source="synthetic coverage")

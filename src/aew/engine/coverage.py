@@ -130,12 +130,15 @@ def _ci_inventory(declared: list[dict[str, Any]], configured: list[dict[str, Any
 
 def build(*, subject: dict[str, Any], configured: list[dict[str, Any]], checks: list[dict[str, Any]],
           changed_files: dict[str, Any], capabilities: dict[str, Any], result: str,
-          declaration_pin: dict[str, Any] | None = None, checkless: bool = False,
+          declaration_pin: dict[str, Any] | None, checkless: bool = False,
           complete: bool = True, limits: list[str] | None = None) -> dict[str, Any]:
-    """Freeze only supplied observed facts. Incomplete execution is not proof that every absent check was unrun."""
+    """Freeze only supplied observed facts. Incomplete execution is not proof that every absent check was unrun.
+    ``declaration_pin`` has no default: a site that omitted it would record "no project source" for a project that
+    declared one, so each site says which pin it read, or ``None``."""
     ran = {(c.get("check_id"), c.get("definition_sha256")) for c in checks}
-    reason = ("execution_completion_not_recorded" if not complete else
-              "no_checks_in_this_subject" if checkless else "no_project_source")
+    # A subject that runs no checks (integration prepare) says so first; it is also incomplete, as E120 recorded it.
+    reason = ("no_checks_in_this_subject" if checkless else
+              "execution_completion_not_recorded" if not complete else "no_project_source")
     affected_tests = {"known": False, "reason": reason}
     ci_tools: dict[str, Any] = {"known": False, "reason": reason}
     completed_by: dict[str, list[str]] = {}
@@ -240,7 +243,7 @@ def summarize(value: dict[str, Any], *, completed_by: dict[str, list[str]] | Non
                 line += f", {unconfigured} not configured, {len(missed) - unconfigured} otherwise not run"
                 ran_tools = [f"{_text(name)}: ran (check {_text(', '.join(ids))})"
                              for name, ids in (completed_by or {}).items()]
-                inventories.append("; ".join([line, *ran_tools[:SUMMARY_ITEMS]]))
+                inventories.append("; ".join([line, *_listed(ran_tools)]))
             else:
                 unit = f", {_text(item['unit'])}" if item.get("unit") else ""
                 count = len(items) + item.get("omitted", 0)

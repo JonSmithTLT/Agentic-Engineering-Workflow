@@ -108,7 +108,8 @@ def validate_coverage(policy: dict[str, Any], *, source: str) -> None:
         seen.add(name)
         unknown = sorted(set(tool["covered_by"]) - known)
         if unknown:
-            raise ValidationFailed(f"{source}: coverage.ci_tools {name!r} covered_by names unknown checks {unknown}")
+            raise ValidationFailed(f"{source}: coverage.ci_tools {name!r} covered_by names unknown checks {unknown}; "
+                                   f"it accepts {sorted(known)}")
 
 
 # OpenCode v2.2.6 (also v2.0.18), packages/core/src/tool-output.ts: MAX_BYTES is 50 KiB, measured as UTF-8;

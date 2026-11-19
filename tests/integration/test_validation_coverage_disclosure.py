@@ -55,6 +55,42 @@ def test_verifier_coverage_is_engine_owned_bound_to_its_checks_and_preserved_in_
     assert_control_invariants(p)
 
 
+def test_a_verifiers_submission_reads_the_projects_declaration_and_its_check_and_its_own_checks_record_it(tmp_path):
+    """Both evidence sites (the verifier's check, and its verification submission) read the project's declaration:
+    neither records "no project source" for a project that declared one."""
+    p = sample_project(tmp_path)
+    digest = declare(p, ("pytest", ["unit"]), ("ruff", ["guardrails"]))
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    inv = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    role = Role(p, inv["invocation_token"], Path(integ(p, wid)["workspace"]))
+    checked = role.check("unit")
+    assert checked["coverage"]["ci_tools"]["source"] == f"declared:{digest}", checked["coverage"]["ci_tools"]
+    submitted = role.submit("verification", {"claim": "scripted verification", "verification": {
+        "scope": "integration", "claims": [{"type": "goal_backwards", "claim": "unit observed", "result": "pass",
+                                            "checks": [checked["evidence"]]}]}})
+    assert submitted["coverage"]["ci_tools"] == {"known": True, "source": f"declared:{digest}", "items": [
+        {"name": "pytest", "ran": True, "reasons": []},
+        {"name": "ruff", "ran": False, "reasons": ["not_run_in_this_validation"]}]}, submitted["coverage"]
+
+
+def test_doctor_reports_the_declaration_under_checks_configured_and_says_when_it_could_not_check_it(tmp_path,
+                                                                                                   monkeypatch):
+    p = sample_project(tmp_path)
+    declare(p, ("ruff", ["guardrails"]))
+    rows = engine(p).doctor_checks()
+    assert {"check": "checks-configured", "status": "PASS", "detail": "Project CI tools: declared"} in rows, rows
+
+    def unreadable(*_args, **_kwargs):
+        raise OSError("git ls-files failed")
+
+    monkeypatch.setattr(CV, "doctor_rows", unreadable)
+    rows = engine(p).doctor_checks()
+    assert {"check": "checks-configured", "status": "WARN",
+            "detail": "the project's CI declaration was not checked: OSError: git ls-files failed"} in rows, rows
+    assert any(r["check"] == "mutating-concurrency" for r in rows), rows  # its error drops no other row
+
+
 def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_change_acceptance(
         tmp_path, contained):
     p = sample_project(tmp_path)
@@ -173,6 +209,9 @@ def test_adopting_coverage_is_operational_and_prepare_runs_no_checks(tmp_path):
     assert coverage["checks"] == []
     for key in ("ci_tools", "affected_tests"):
         assert coverage[key] == {"known": False, "reason": "no_checks_in_this_subject"}
+    # E120's record of a prepare is kept: it observed no execution, and says so
+    assert coverage["observation_limits"] == ["execution_completion_not_recorded"], coverage
+    assert "Observation: not known (execution_completion_not_recorded)" in coverage["summary"]["lines"], coverage
 
 
 def test_check_run_distinguishes_could_not_start_from_ran_and_unconfigured(tmp_path, contained):

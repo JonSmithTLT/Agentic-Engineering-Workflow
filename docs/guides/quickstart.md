@@ -121,6 +121,21 @@ coverage:
       covered_by: []
 ```
 
+A project whose CI selects the tests a change affects can also declare `coverage.affected_tests`: the `selector`
+command that prints that selection, and the `unit` it selects (tests, lanes or similar). The selector's optional keys
+are `cwd`, `timeout_s`, `network` (`isolated` by default), `inputs` and `may_select_none`.
+
+```yaml
+coverage:
+  affected_tests:
+    unit: tests
+    selector:
+      command: [python, tools/select_tests.py]
+```
+
+AEW does not run the selector yet, so a validation reports affected tests as "not known (selection not run)" even
+with this declared.
+
 The operator reviews the draft, pastes it into the policy and runs the manifest adoption command from the preceding
 section in one sitting. The project is frozen between the edit and adoption because reads of the changed policy
 are refused. A contained Lead can draft the text. An uncontained Lead can also edit the file for the operator to adopt.

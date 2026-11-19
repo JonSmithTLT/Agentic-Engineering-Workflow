@@ -195,7 +195,10 @@
                           "properties": {"name": {"type": "string"}, "ran": {"type": "boolean"},
                                          "reasons": {"type": "array", "uniqueItems": true,
                                            "items": {"enum": ["not_configured", "not_run_in_this_validation",
-                                                              "could_not_start", "not_completed"]}}}
+                                                              "could_not_start", "not_completed"]}}},
+                          "if": {"properties": {"ran": {"const": true}}},
+                          "then": {"properties": {"reasons": {"maxItems": 0}}},
+                          "else": {"properties": {"reasons": {"minItems": 1}}}
                         }}}}
       ]
     },

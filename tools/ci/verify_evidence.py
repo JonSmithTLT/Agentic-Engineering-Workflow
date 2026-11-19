@@ -147,6 +147,12 @@ def main(root: Path) -> int:
                 failures.extend(checker_twins(merged))
             elif kind == "deadline" and ablate == "none":
                 failures.extend(death_twins(merged, kind))
+            elif kind == "cancel":
+                (merged / "cutoff.txt").write_text("step cutoff\n", encoding="utf-8")
+                twin = evidence_problems(merged, kind=kind)
+                if not any("cutoff marker claimed" in problem for problem in twin):
+                    failures.append(f"{job['name']}: planted false cutoff survived: {twin}")
+                print(f"{job['name']}: false cutoff twin: {twin}")
             rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
     if len(rows) != 23:
         failures.append(f"expected 23 plants, observed {len(rows)}")

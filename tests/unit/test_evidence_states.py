@@ -258,3 +258,31 @@ def test_a_red_custom_named_lane_cannot_lose_all_its_artifacts_silently(tmp_path
            "steps": [{"name": fast["name"], "started_at": "2026-01-01T00:00:00Z", "conclusion": "failure"}]}
     problems = _load("check_evidence_run").check_jobs(tmp_path, [job])
     assert any("no published evidence" in problem for problem in problems)
+
+
+def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker(tmp_path, monkeypatch):
+    import json
+    import signal
+
+    lane = _load("lane_step")
+    handlers = {}
+    signals = []
+    process = SimpleNamespace(poll=lambda: None, send_signal=signals.append,
+                              kill=lambda: None, wait=lambda **_kw: None)
+
+    def snapshot(_root, *, all_workers=False, **_kw):
+        if not all_workers:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}))
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", snapshot)
+    monkeypatch.setattr(lane, "collect", lambda _root: None)
+    monkeypatch.setattr(lane, "identities", lambda _root: [(tmp_path, (123, 456))])
+
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 143
+    assert signals == [signal.SIGTERM]
+    assert not lane.marker(tmp_path, "cutoff").exists()
+    record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
+    assert record["step_signal"] == ["SIGTERM"]

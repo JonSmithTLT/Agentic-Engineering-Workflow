@@ -4,6 +4,7 @@ import ctypes
 import os
 import re
 import signal
+import sys
 import threading
 import time
 
@@ -37,6 +38,7 @@ def test_death(kind, request):
     if kind == "normal":
         return
     if kind.startswith("hang"):
+        # execnet routes a worker's stdout to devnull. Its stderr reaches the lane log.
         request.config.pluginmanager.get_plugin("capturemanager").suspend_global_capture(in_=False)
         ready = threading.Event()
 
@@ -44,14 +46,14 @@ def test_death(kind, request):
             count = 0
             while True:
                 count += 1
-                print(f"evidence-heartbeat {count} {time.time():.6f}", flush=True)
+                print(f"evidence-heartbeat {count} {time.time():.6f}", file=sys.stderr, flush=True)
                 if count >= 3:
                     ready.set()
                 time.sleep(0.2)
 
         threading.Thread(target=heartbeat, daemon=True).start()
         assert ready.wait(5), "heartbeat did not start before GIL plant"
-        print(f"evidence-gil-enter {time.time():.6f}", flush=True)
+        print(f"evidence-gil-enter {time.time():.6f}", file=sys.stderr, flush=True)
         planted_block_hang()
     else:
         planted_block_deadline()

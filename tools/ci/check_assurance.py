@@ -294,6 +294,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                           or "snapshots" in relative.parts)
             if stack_file and ("every thread's stack" in text or "Timeout (" in text) and not FRAME.search(text):
                 defects.append(f"{relative}: stack header without stacks")
+    if kind == "cancel" and any(path.stem == "cutoff" for path in files):
+        defects.append("cancel: cutoff marker claimed during the planted cancellation")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
         expected = {"deadline": {"session-deadline"}, "time-limit": {"cutoff"},

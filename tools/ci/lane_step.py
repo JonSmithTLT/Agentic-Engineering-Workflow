@@ -128,10 +128,13 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             if used is not None:
                 peak = max(used, peak or 0)
             snapshot(root, seen=snapshots_seen)
-            if interrupted or time.time() >= cutoff:
+            cutoff_reached = time.time() >= cutoff
+            if interrupted or cutoff_reached:
                 snapshot(root, all_workers=True)
-                for directory, _ in identities(root):
-                    note(directory, "cutoff", f"step cutoff at {time.time():.6f}; signal {interrupted or 'none'}\n")
+                exit_code = 128 + signal.Signals[interrupted[0]] if interrupted else SUPERVISOR_CUTOFF_EXIT
+                if not interrupted:
+                    for directory, _ in identities(root):
+                        note(directory, "cutoff", f"step cutoff at {time.time():.6f}\n")
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
                                   else f"Lane command had exited with code {code}")
@@ -140,11 +143,11 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     f"  {proc.pid} {Path(proc.exe).name}" for proc in members]]) + "\n", encoding="utf-8")
                 collect(root)
                 if job is not None:
-                    job.terminate(SUPERVISOR_CUTOFF_EXIT)
+                    job.terminate(exit_code)
                 with contextlib.suppress(OSError):
                     child.kill()
                 child.wait(timeout=10)
-                return SUPERVISOR_CUTOFF_EXIT
+                return exit_code
             code = child.poll()
             if code is not None and (job is None or not job.pids()):
                 return 128 - code if code < 0 else code

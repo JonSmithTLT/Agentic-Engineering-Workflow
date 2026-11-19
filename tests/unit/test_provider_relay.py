@@ -90,7 +90,8 @@ def read_all(sock: socket.socket) -> bytes:
 @contextmanager
 def relayed(seam: Seam, *, upstream: str = UPSTREAM, proxy: Proxy | None = None,
             credentials: dict[str, str] | None = None, resolve: Callable[[], relay.Grant] | None = None,
-            record: Callable[[dict[str, Any]], None] | None = None) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
+            record: Callable[[dict[str, Any]], None] | None = None,
+            ) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
     """A relay serving one connection; yields it, the client end, and the sentinel that stands for ``SECRET``."""
     token = relay.sentinel()
     service = ProviderRelay(Upstream(upstream), credentials if credentials is not None else {token: SECRET},

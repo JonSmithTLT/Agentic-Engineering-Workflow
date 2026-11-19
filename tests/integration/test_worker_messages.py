@@ -124,7 +124,8 @@ def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(l
               what="the event stream reconnects while the shell tool is still open")
     send(lab)
     go.touch()
-    shell = steps_done(lab, run, 2)
+    # PowerShell's and the CLI's start belong to the watchdog's bound alone, as in the other startup waits here
+    shell = steps_done(lab, run, 2, watchdog_only=True)
     evidence = describe_shell(directory / "harness", shell)
     assert "WAIT_BINDING_LOST_ON_RECONNECT" in evidence, evidence
     assert "opencode.stream.dropped" in evidence, evidence

@@ -247,9 +247,14 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     wf = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     uploads = [s for j in wf["jobs"].values() for s in j.get("steps", [])
                if str(s.get("uses", "")).startswith("actions/upload-artifact")]
-    reports = [s for s in uploads if s["with"]["name"].startswith("lane-report-")]
-    assert len(reports) == 2 and all(s["if"] == "always()" for s in reports)
-    assert all(s["with"]["name"].endswith("-attempt-${{ github.run_attempt }}") for s in reports)
+    lane = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    [report_upload] = [s for s in lane if str(s.get("with", {}).get("name", "")).startswith("lane-report-")]
+    assert report_upload["if"] == "always()"
+    assert report_upload["with"]["name"] == "lane-report-${{ inputs.artifact }}"
+    callers = [s for name in ("core", "lanes") for s in wf["jobs"][name]["steps"]
+               if s.get("uses") == "./.github/actions/lane"]
+    assert len(callers) == 3
+    assert all(s["with"]["artifact"].endswith("-attempt-${{ github.run_attempt }}") for s in callers)
     coverage = [s for s in uploads if s["with"]["name"].startswith("coverage-")]
     assert len(coverage) == 2 and all(s["if"].startswith("success() && ") for s in coverage)
     gate = wf["jobs"]["assurance"]["steps"]
@@ -282,7 +287,11 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         publishers = [step for step in job_steps if step.get("uses") == publisher]
         for step in publishers:
             artifact = step["with"]["artifact"]
-            assert artifact.endswith("attempt-${{ github.run_attempt }}") and "${ " not in artifact, (label, artifact)
+            if label == "lane":
+                assert artifact == "${{ inputs.artifact }}"
+            else:
+                assert artifact.endswith("attempt-${{ github.run_attempt }}"), (label, artifact)
+                assert "${ " not in artifact, (label, artifact)
         if not tests:
             continue
         if "/" in label:
@@ -3199,6 +3208,7 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 # decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
 # every timeout with it, or the pin fails.
 PRE_G3A_TIMEOUT_MIN = {
+    "evidence-proof.yml": {"plant": 6},
     # fastbase: 15 before G3a; 16 since its lane runs under xdist, sized from strategy §8 (2 x 7.4 + 0.8 minutes;
     # operator, 2026-10-22, #232)
     "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
@@ -3532,7 +3542,9 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     import vertical.workers  # noqa: F401
 
     assert {"vertical.chat", "vertical.conversation", "vertical.implementer_gate"} <= set(bounds.BOUNDS)
-    problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
+    # Death plants deliberately use short bounds and import no bounded product-test helpers.
+    problems = [p for lane in _workflow_lanes()
+                for p in bounds.nesting_problems(lane, [] if lane.workflow == "evidence-proof.yml" else None)]
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 
 
@@ -3576,7 +3588,9 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
-    pytest_step, upload, evidence = steps[-3:]
+    pytest_step, upload = steps[-2:]
+    action = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    evidence = action[-1]
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
     assert [lane.repeats for lane in lanes] == [1, 2, 1]
     assert all(lane.step == pytest_step["name"] for lane in lanes)
@@ -3592,7 +3606,7 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == 14
     assert evidence["uses"] == "./.github/actions/publish-evidence"
-    assert evidence["if"] == "failure() || cancelled()"
+    assert evidence["if"] == "always()"
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

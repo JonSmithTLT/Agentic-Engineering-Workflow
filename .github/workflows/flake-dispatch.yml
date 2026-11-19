@@ -28,7 +28,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           shell: bash
           command: |
             evidence="$RUNNER_TEMP/flake-dispatch"

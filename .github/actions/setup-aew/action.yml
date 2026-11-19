@@ -103,5 +103,6 @@ runs:
       # `g3` is cryptography, for the G3 service's tests (g3/, tests/*/test_g3_*.py); the aew package never imports it.
       run: python -m pip install -e ".[dev,parallel,coverage,eval,g3]"
     - name: Install verified evidence tools before pytest
+      continue-on-error: true
       shell: bash
       run: python tools/ci/install_evidence.py

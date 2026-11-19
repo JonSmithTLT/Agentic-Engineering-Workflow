@@ -427,7 +427,8 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
-        _write(self.dir, "controller-pid", f"{os.getpid()}\nstart {proctree.start_time(os.getpid())}\n")
+        _write(self.dir, "controller-pid", f"{os.getpid()}\n")
+        _write(self.dir, "controller-start", f"{proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -608,7 +609,8 @@ class Worker:
 
     def start(self) -> None:
         worker = self.config.workerinput.get("workerid", "?")
-        _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\nstart {proctree.start_time(os.getpid())}\n")
+        _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
+        _write(self.dir, f"worker-{worker}-start", f"{proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 

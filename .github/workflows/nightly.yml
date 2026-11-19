@@ -137,9 +137,10 @@ jobs:
           path: ${{ runner.temp }}/reference-durations
       # `--durations-file=`, one word (ci.yml's lanes job: a separate word counts as a test path)
       - uses: ./.github/actions/lane
+        timeout-minutes: 63
         with:
           source: ${{ runner.temp }}/nightly-reports/
-          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30 --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/reference-durations/durations.json" --test-timeout 600 --session-deadline 3600 "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -262,9 +263,10 @@ jobs:
           echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest tests/regression/test_composition_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/lane
+        timeout-minutes: 63
         with:
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-step-4-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
   race-repeat:
@@ -292,12 +294,10 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: serial lane x10
         timeout-minutes: 63
-        timeout-minutes: 63
-        timeout-minutes: 63
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-race-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           shell: bash
           command: |
             for i in $(seq 1 10); do
@@ -313,7 +313,7 @@ jobs:
           AEW_RACE_WRITES: 200
         with:
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-race-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-4-attempt-${{ github.run_attempt }}
           shell: bash
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
@@ -347,7 +347,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           shell: bash
           command: |
             echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -392,7 +392,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/nightly-extra/
-          artifact: evidence-nightly-extra-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-extra-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider --durations=20 -m "not serial" --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600 "--durations-file=${{ runner.temp }}/extra-durations/durations.json" --session-deadline 3600 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -437,7 +437,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/nightly-extra/
-          artifact: evidence-nightly-extra-${{ runner.os }}-serial-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-extra-${{ runner.os }}-serial-step-4-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600 --session-deadline 3600 "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7

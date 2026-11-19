@@ -144,7 +144,7 @@ def stage(source: Path, destination: Path) -> str:
         left = JOB_CAP - INDEX_CAP
         kept = omitted = 0
         inventory = bytearray()
-        labels = {}
+        omissions = []
         staged: set[Path] = set()
 
         def files():
@@ -166,6 +166,7 @@ def stage(source: Path, destination: Path) -> str:
             try:
                 if any(is_link(p) for p in (file, *file.parents) if p.is_relative_to(source)) or not file.is_file():
                     omitted += 1
+                    omissions.append((relative, "link, non-file, or excluded private workdir file"))
                     continue
                 if "workdir" in relative.parts:
                     original = Path(file.name.removesuffix(".txt"))
@@ -187,9 +188,11 @@ def stage(source: Path, destination: Path) -> str:
                     data = content.encode("utf-8")
             except (OSError, UnicodeError):
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             if len(data) > min(left, 4 * 1024 * 1024) or b"\x00" in data:
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             parts = tuple(visible(part) for part in relative.parts)
             if "workdir" in relative.parts and ".aew" in relative.parts:
@@ -198,11 +201,11 @@ def stage(source: Path, destination: Path) -> str:
             out = candidate.joinpath(*parts)
             if out.exists():
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(data)
             staged.add(out.relative_to(candidate))
-            labels[out.relative_to(candidate)] = state(relative, data)
             left -= len(data)
             line = f"file-{kept:05d} ({len(data)} bytes)\n".encode()
             if len(inventory) + len(line) < INDEX_CAP - 512:
@@ -245,6 +248,11 @@ def stage(source: Path, destination: Path) -> str:
                 classification = state(path, (candidate / path).read_bytes())
                 writer = owner(path) or "UNKNOWN-WRITER"
                 inventory.extend(f"{classification} {shown} ({writer})\n".encode())
+            for path, reason in omissions:
+                shown = "/".join(visible(part) for part in path.parts)
+                if any(occurrences(shown.encode(), secrets)):
+                    shown = "<redacted-path>"
+                inventory.extend(f"omitted {shown} ({reason})\n".encode())
             masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
             status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
                       if initial else "gitleaks clean")

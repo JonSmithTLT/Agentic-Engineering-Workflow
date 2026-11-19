@@ -123,11 +123,11 @@ def run_windows_supervisor(root, progress, hangs):
     clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
     # The venv launcher can kill leaked descendants by itself. Use the base interpreter as CI does.
     clean_env["PYTHONPATH"] = os.pathsep.join(path for path in sys.path if path)
-    bootstrap = ("import runpy,sys,time; "
+    bootstrap = ("import runpy,sys,time,shlex; "
                  "supervise=runpy.run_path(sys.argv[1])['supervise']; "
                  "from pathlib import Path; "
                  "script=Path(sys.argv[2]).parent/'lane.sh'; "
-                 "script.write_text('python -m pytest '+ ' '.join(sys.argv[3:])); "
+                 "script.write_text(shlex.join([sys.executable,'-m','pytest',*sys.argv[3:]])); "
                  "raise SystemExit(supervise(Path(sys.argv[2]),'bash',script,time.time()+15))")
     return subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q", "-s",
                            "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",

@@ -200,7 +200,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/lane-reports/
-          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-7-attempt-${{ github.run_attempt }}
           command: |
             ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
@@ -209,7 +209,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/lane-reports/
-          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-8-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       - uses: ./.github/actions/prove-evidence
@@ -268,7 +268,7 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/lane-reports/
-          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
             ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -321,7 +321,7 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
         with:
           source: ${{ runner.temp }}/fastbase/hangs
-          artifact: evidence-fastbase-coverage-attempt-${{ github.run_attempt }}
+          artifact: evidence-fastbase-coverage-step-5-attempt-${{ github.run_attempt }}
           working-directory: ${{ runner.temp }}/base
           command: |
             python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
@@ -400,6 +400,35 @@ jobs:
         run: |
           python -m pip freeze --exclude-editable > "$RUNNER_TEMP/installed.txt"
           pip-audit --strict --desc --no-deps --disable-pip -r "$RUNNER_TEMP/installed.txt"
+
+  evidence:
+    name: evidence publication
+    needs: [core, lanes]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0'
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: evidence-lane-report-*
+          path: evidence-artifacts
+      - name: Report defects from published evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/check_evidence_run.py evidence-artifacts
 
   assurance:
     # The merge gate: mark this check as required on `main`.

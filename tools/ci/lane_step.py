@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import re
 import signal
@@ -33,8 +34,8 @@ def ablated(rule: str) -> bool:
 def identities(root: Path):
     for path in root.glob("autopsy/session-*/*-pid.txt"):
         try:
-            parts = path.read_text().split()
-            identity = (int(parts[0]), int(parts[2]))
+            started = path.with_name(path.name.replace("-pid.txt", "-start.txt"))
+            identity = (int(path.read_text().strip()), int(started.read_text().strip()))
             if proctree.same(identity):
                 yield path.parent, identity
         except (OSError, ValueError, IndexError):
@@ -93,6 +94,24 @@ def collect(root: Path) -> None:
             proctree.end(identity)
 
 
+def memory_used() -> int | None:
+    if sys.platform != "linux":
+        return None
+    try:
+        lines = Path("/proc/meminfo").read_text().splitlines()
+        fields = {line.split(":", 1)[0]: int(line.split()[1]) for line in lines}
+        return (fields["MemTotal"] - fields["MemAvailable"]) * 1024
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str]) -> None:
+    facts = {"pytest_exit": code, "step_signal": interrupted,
+             "runner_memory_peak_bytes": peak, "memory_scope": "MemTotal minus MemAvailable, whole runner"}
+    destination = root / "runner-resources-exit.txt"
+    destination.write_text(json.dumps(facts, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     root.mkdir(parents=True, exist_ok=True)
     kwargs = {"stdout": sys.stdout, "stderr": sys.stderr}
@@ -103,10 +122,11 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
         argv = [sys.executable, __file__, "_exec", name, shell, str(script)]
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
-        argv = [shell, str(script)]
+        argv = [shell, "-e", str(script)]
     child = subprocess.Popen(argv, **kwargs)
     status = root / "runner-resources-step.txt"
     interrupted = []
+    peak = memory_used()
 
     def forward(signum, frame):
         interrupted.append(signal.Signals(signum).name)
@@ -116,6 +136,9 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         while True:
+            used = memory_used()
+            if used is not None:
+                peak = max(used, peak or 0)
             snapshot(root)
             if interrupted or time.time() >= cutoff:
                 snapshot(root, all_workers=True)
@@ -138,6 +161,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 return 128 - code if code < 0 else code
             time.sleep(POLL_S)
     finally:
+        record_exit(root, child.poll(), peak, interrupted)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 
@@ -145,7 +169,10 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "_exec":
         proctree.Job.open(argv[1]).assign_self()
-        return subprocess.call([argv[2], argv[3]], stdout=sys.stdout, stderr=sys.stderr)
+        shell = argv[2]
+        if shell == "bash":
+            shell = str(Path(os.environ["ProgramFiles"]) / "Git" / "bin" / "bash.exe")
+        return subprocess.call([shell, "-e", argv[3]], stdout=sys.stdout, stderr=sys.stderr)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--collect", action="store_true")
     parser.add_argument("--root", type=Path, required=True)

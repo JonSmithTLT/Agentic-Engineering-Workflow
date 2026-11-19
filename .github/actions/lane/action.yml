@@ -43,12 +43,19 @@ runs:
         SOURCE: ${{ inputs.source }}
         AEW_LANE_JOB_STATUS: ${{ job.status }}
       run: python tools/ci/lane_step.py --collect --root "$SOURCE"
+    - name: Prepare owned evidence inputs
+      if: always()
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/evidence_inputs.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-watchdog-input"
     - name: Publish running source names
       if: always()
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact }}-running
-        path: ${{ inputs.source }}/running-*.txt
+        path: ${{ runner.temp }}/${{ inputs.artifact }}-names
         if-no-files-found: ignore
         retention-days: 14
     - name: Publish priority evidence

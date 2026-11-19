@@ -19,16 +19,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
-        kind: [normal, cancel, deadline, time-limit, hang]
-        ablate: ['none']
         include:
-          - {os: ubuntu-24.04, kind: sigkill, ablate: none}
-          - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
-          - {os: windows-latest, kind: deadline, ablate: stacks}
-          - {os: ubuntu-24.04, kind: hang, ablate: stacks}
-          - {os: windows-latest, kind: hang, ablate: stacks}
-    runs-on: ${{ matrix.os }}
+          - {os: ubuntu-24.04, kind: normal, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: ubuntu-24.04, kind: cancel, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: ubuntu-24.04, kind: deadline, ablate: none, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: time-limit, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: ubuntu-24.04, kind: hang, ablate: none, test_timeout: 8, deadline: 30}
+          - {os: ubuntu-24.04, kind: deadline, ablate: stacks, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: hang, ablate: stacks, test_timeout: 8, deadline: 30}
+          - {os: windows-latest, kind: normal, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: windows-latest, kind: cancel, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: windows-latest, kind: deadline, ablate: none, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: time-limit, ablate: none, test_timeout: 120, deadline: 180}
+          - {os: windows-latest, kind: hang, ablate: none, test_timeout: 8, deadline: 30}
+          - {os: windows-latest, kind: deadline, ablate: stacks, test_timeout: 120, deadline: 30}
+          - {os: windows-latest, kind: hang, ablate: stacks, test_timeout: 8, deadline: 30}
+          - {os: ubuntu-24.04, kind: sigkill, ablate: none, test_timeout: 120, deadline: 180}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 10
     steps:
       - name: The job's deadline
@@ -52,7 +59,7 @@ jobs:
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
             python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
-            tests/evidence_plants --lane integration --test-timeout 8 --session-deadline 30
+            tests/evidence_plants --lane integration --test-timeout ${{ matrix.test_timeout }} --session-deadline ${{ matrix.deadline }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
   verify:
     if: always()

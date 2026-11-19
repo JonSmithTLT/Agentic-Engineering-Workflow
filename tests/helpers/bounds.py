@@ -155,6 +155,9 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
 
     lanes = []
     for path in sorted(workflows.glob("*.yml")):
+        # Death plants deliberately violate ordinary test bounds. Their hosted verifier checks the death envelope.
+        if path.name == "evidence-proof.yml":
+            continue
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for job_name, job in (doc.get("jobs") or {}).items():
             steps = job.get("steps") or []

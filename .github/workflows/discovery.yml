@@ -53,6 +53,6 @@ jobs:
         uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/discovery/hangs
-          artifact: evidence-discovery-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-discovery-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600 --session-deadline 900 "--hang-dir=${{ runner.temp }}/discovery/hangs"

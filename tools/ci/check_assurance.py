@@ -331,8 +331,13 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 tagged = any(node in tag for tag in tags)
                 if not tagged and node.endswith(function):
                     tagged = any(node + "[" in tag for tag in tags)
-                if tagged and any(source in frame.group(0).replace("\\", "/") for frame in FRAME.finditer(text)):
-                    matched = True
+                for frame in FRAME.finditer(text) if tagged else ():
+                    file = frame.group("file") or frame.group("spy_file")
+                    called = frame.group("function") or frame.group("spy_function")
+                    if source in file.replace("\\", "/") and called == function:
+                        matched = True
+                        break
+                if matched:
                     break
             if not matched:
                 defects.append(f"{node}: no stack from the running test's module")

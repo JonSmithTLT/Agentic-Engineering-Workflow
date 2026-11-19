@@ -195,7 +195,7 @@ def test_output():
 @pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
 def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_path):
     progress, status = run_windows_cutoff(tmp_path, "    a, b = socket.socketpair()\n    a.recv(1)")
-    assert "Pytest was still running" in status
+    assert "Lane command was still running" in status
     [running] = progress.glob("running-*.txt")
     assert running.read_text(encoding="utf-8").splitlines() == ["tests/unit/test_w.py::test_plant"]
 
@@ -203,7 +203,7 @@ def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_
 @pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
 def test_windows_step_cutoff_waits_for_a_leaked_child_after_pytest_passes(tmp_path):
     progress, status = run_windows_cutoff(tmp_path, "    pass")
-    assert "Pytest had exited with code 0" in status
+    assert "Lane command had exited with code 0" in status
     assert not list(progress.glob("running-*.txt"))
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -13,9 +14,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check_assurance import evidence_problems  # noqa: E402
 from flake_register import _gh_read, _pages  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/helpers"))
+from bounds import workflow_lanes  # noqa: E402
+
 
 def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
     defects = []
+    workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
+    names = [lane.step for lane in workflow_lanes(workflows)]
+    names += ["Run ./.github/actions/lane", "Run ./.github/actions/prove-evidence"]
+    patterns = [re.compile("^" + ".+?".join(re.escape(part) for part in re.split(r"\$\{\{.*?\}\}", name)) + "$")
+                for name in names]
     for job in jobs:
         if job.get("conclusion") in {"success", "skipped", None}:
             continue
@@ -38,7 +47,8 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
                 found.extend(sibling for sibling in root.glob(path.name.removesuffix("-running") + "*")
                              if sibling not in found)
         started = bool(found) or any(
-            step.get("started_at") and ("pytest" in step["name"] or "/lane" in step["name"])
+            step.get("started_at") and step.get("conclusion") != "skipped"
+            and any(pattern.fullmatch(step["name"]) for pattern in patterns)
             for step in job.get("steps", []))
         if not started:
             continue

@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import IO, Any
 
 import pytest
-from evidence_files import ablated
+from evidence_files import FRAME, ablated
+from evidence_files import state as evidence_state
 
 HEADER = "aew hang watchdog: "
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
@@ -223,7 +224,8 @@ class HangWatchdog:
             except OSError:
                 continue
             if text.startswith(f"{HEADER}{crashitem} "):
-                state = "stacks recorded" if 'File "' in text else "not fired; no stacks taken"
+                state = ("stacks recorded" if FRAME.search(text)
+                         else f"{evidence_state(path, text.encode())}; no Python stack frames captured")
                 started = re.search(r"monotonic ([0-9.]+)", text)
                 elapsed = (f"{time.monotonic() - float(started[1]):.3f}s after it started"
                            if started else "start unknown")

@@ -24,7 +24,9 @@ WRITERS = (
     ("vertical-summary.txt", "vertical"),
     ("dispatch.txt", "flake-dispatch"),
 )
-FRAME = re.compile(r'(?m)^\s*(?:File "[^"\n]+", line \d+,? in \w+|[\w.<>]+ \([^\n]+\.py:\d+\))')
+FRAME = re.compile(
+    r'(?m)^\s*(?:File "(?P<file>[^"\n]+)", line \d+,? in (?P<function>[\w.<>]+)'
+    r'|(?P<spy_function>[\w.<>]+) \((?P<spy_file>[^\n]+\.py):\d+\))')
 
 
 def owner(path: Path) -> str | None:

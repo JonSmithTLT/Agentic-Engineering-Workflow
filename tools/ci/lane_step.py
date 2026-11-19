@@ -133,9 +133,10 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 for directory, _ in identities(root):
                     note(directory, "cutoff", f"step cutoff at {time.time():.6f}; signal {interrupted or 'none'}\n")
                 code = child.poll()
-                pytest_status = "Pytest was still running" if code is None else f"Pytest had exited with code {code}"
+                command_status = ("Lane command was still running" if code is None
+                                  else f"Lane command had exited with code {code}")
                 members = job.members(command_lines=False) if job is not None else []
-                status.write_text("\n".join([pytest_status, *[
+                status.write_text("\n".join([command_status, *[
                     f"  {proc.pid} {Path(proc.exe).name}" for proc in members]]) + "\n", encoding="utf-8")
                 collect(root)
                 if job is not None:

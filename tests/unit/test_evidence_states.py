@@ -224,3 +224,37 @@ def test_looped_sessions_use_the_same_writer_registry():
 
     assert owner(Path("rep-1/autopsy/session-123-test/controller-deadline-stacks.txt")) is not None
     assert owner(Path("real/autopsy/test_case/stacks.gw0-1.txt")) is not None
+
+
+def test_a_parameter_that_mentions_file_does_not_become_a_captured_stack(tmp_path):
+    config = SimpleNamespace(getoption=lambda *args: str(tmp_path) if args[0] == "aew_hang_dir" else None)
+    guard = watchdog.HangWatchdog(config, 600)
+    guard.started = watchdog.time.monotonic()
+    node = 'tests/unit/test_a.py::test_wait[File "pretend.py"]'
+    guard.path.write_text(guard._header(SimpleNamespace(nodeid=node)))
+    report = SimpleNamespace(longrepr="worker crashed")
+    guard.pytest_handlecrashitem(node, report, None)
+    assert "stacks recorded" not in report.longrepr
+    assert "armed-placeholder; no Python stack frames captured" in report.longrepr
+
+
+def test_a_fixture_only_stack_does_not_stand_in_for_the_running_tests_frame(tmp_path):
+    node = "tests/unit/test_a.py::test_wait"
+    path = tmp_path / "hang-gw0-123.txt"
+    path.write_text(f"aew hang watchdog: {node} started now; limit 10s; not fired\n"
+                    '  File "tests/unit/test_a.py", line 1 in setup_fixture\n')
+    (tmp_path / "inventory.txt").write_text("gitleaks clean\nfinding hang-gw0-123.txt (watchdog)\n")
+    assert any("no stack" in defect for defect in _load("check_assurance").evidence_problems(
+        tmp_path, require_stacks=True))
+
+
+def test_a_red_custom_named_lane_cannot_lose_all_its_artifacts_silently(tmp_path):
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    fast = next(step for step in workflow["jobs"]["core"]["steps"]
+                if step.get("uses") == "./.github/actions/lane" and "--lane fast" in step["with"]["command"])
+    job = {"name": "fast 1/1 (ubuntu-latest)", "conclusion": "failure",
+           "steps": [{"name": fast["name"], "started_at": "2026-01-01T00:00:00Z", "conclusion": "failure"}]}
+    problems = _load("check_evidence_run").check_jobs(tmp_path, [job])
+    assert any("no published evidence" in problem for problem in problems)

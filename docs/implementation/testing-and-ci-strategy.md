@@ -377,3 +377,21 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 - **A module-scoped fixture is built once per shard (and per xdist worker) that runs one of its tests.** The dashboard API, conditional-request and acceptance modules build their worlds in about 60 to 75 s on Windows (20 to 30 s on Linux), so the 6 Windows `reference` shards spent about 13 minutes rebuilding them. The cost is charged to whichever test runs first, which also skews `tests/durations.json` for those tests.
 - **A Rocky Linux 8 container job** (the SPT target) is a candidate for the nightly lane.
 - **Action majors.** The workflows pin `actions/checkout@v4`, `setup-python@v5` and `upload/download-artifact@v4`. GitHub runs these Node 20 actions on Node 24 with a deprecation warning. Bumping to the current majors (checkout v7, setup-python v7, upload-artifact v7, download-artifact v8) is a separate change that needs a check of their changelogs.
+
+### Evidence states at publication
+
+Every lane runs through the shared lane action. Collection and process cleanup precede publication. The publisher
+scans the priority files first, then publishes the lane report and the full scanned autopsy. A scanner outage is
+reported as an evidence defect and keeps the contents withheld.
+
+A watchdog file starts with the test name, its UTC start, the limit and `not fired`. A timeout appends its elapsed time
+and stacks. Normal completion removes the working file. Deadline timers write an armed header once and remove it
+when cancelled without a dump. The inventory classifies each published file as `finding`, `armed-placeholder` or
+`empty`. A placeholder names work interrupted before its timer wrote stacks. It supplies no stack or timeout claim.
+The writer registry in `tests/helpers/evidence_files.py` covers the evidence directory.
+
+The evidence proof executes real xdist lanes and verifies their downloaded artifacts against hosted job conclusions.
+Its expected failing plants are labelled in the run summary. The `verify` job checks that deliberately removed
+stacks and deliberately false file states are detected. Attachment permissions, tool installation, post-test timing
+and artifact availability are checked on the first hosted run. External deaths without a snapshot remain a stated
+limit until the snapshot ring is enabled.

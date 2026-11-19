@@ -116,6 +116,7 @@ import proctree  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
+SUPERVISOR_CUTOFF_EXIT = 71  # the Windows regression step's outer cutoff
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere
@@ -172,12 +173,15 @@ class Stacks:
         self.path = path
         self.at_mono = at_mono
         self.file: Any = None
+        self.armed_size = 0
         self.lock = threading.Lock()  # a deadline's thread drops it while the watchdog may be arming it after a test
 
     def left(self) -> float:
         return self.at_mono - time.monotonic()
 
     def arm(self) -> None:
+        if os.environ.get("AEW_EVIDENCE_PLANT") and os.environ.get("AEW_EVIDENCE_ABLATE") == "stacks":
+            return
         with self.lock:
             left = self.left()
             if left <= 0:
@@ -185,10 +189,14 @@ class Stacks:
             if self.file is None:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self.file = open(self.path, "w", encoding="utf-8")  # noqa: SIM115  (held until the timer can't fire)
+                stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                self.file.write(f"armed {stamp} for {left:.3f}s; not fired\n")
+                self.file.flush()
+                self.armed_size = self.path.stat().st_size
             faulthandler.dump_traceback_later(left, file=self.file)
 
     def drop(self) -> None:
-        """For good, so a test ending now can't put it back: the timer off, and an empty file removed."""
+        """For good, so a test ending now can't put it back: the timer off, and an unfired placeholder removed."""
         with self.lock:
             self.at_mono = 0.0  # always past, so `left` says it's over and `arm` does nothing
             faulthandler.cancel_dump_traceback_later()
@@ -196,7 +204,7 @@ class Stacks:
                 self.file.close()
                 self.file = None
                 with contextlib.suppress(OSError):
-                    if self.path.stat().st_size == 0:
+                    if self.path.stat().st_size == self.armed_size:
                         self.path.unlink()
 
 
@@ -419,6 +427,7 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
+        _write(self.dir, "controller-pid", f"{os.getpid()}\nstart {proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -599,7 +608,7 @@ class Worker:
 
     def start(self) -> None:
         worker = self.config.workerinput.get("workerid", "?")
-        _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
+        _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\nstart {proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -811,7 +820,8 @@ class Sentinel:
         """The after-finish timer's stacks into the session's folder, if it wrote any. Under its own name from the first
         byte, with no temporary file that could vanish from an upload's listing."""
         with contextlib.suppress(OSError):
-            if text := self.after_finish_file.read_text(encoding="utf-8", errors="replace"):
+            text = self.after_finish_file.read_text(encoding="utf-8", errors="replace")
+            if 'File "' in text:
                 _write(self.dir, AFTER_FINISH_STACKS, text)
                 return True
         return False

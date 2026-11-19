@@ -114,6 +114,10 @@ class Lane:
         return f"{self.workflow} {self.job} / {self.step}"
 
 
+
+def command_text(step: dict[str, Any]) -> str:
+    return str(step.get("run") or step.get("with", {}).get("command") or "")
+
 def _commands(run: str) -> list[tuple[str, int]]:
     """The pytest command lines in a step's ``run`` (folded ``>-`` text or a shell script), each with how many times
     a ``for ... in $(seq 1 N)`` loop around it repeats it."""
@@ -157,7 +161,7 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
             uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
             set_at = next((m for m in (JOB_DEADLINE_RE.search(str(s.get("run") or "")) for s in steps) if m), None)
             for step in steps:
-                for command, repeats in _commands(str(step.get("run") or "")):
+                for command, repeats in _commands(command_text(step)):
                     text = re.sub(r"\$\{\{[^}]*\}\}", "X", command)  # expressions are one word to the parser
                     try:
                         argv = shlex.split(text)
@@ -231,10 +235,10 @@ def job_deadline_problems(workflows: Path) -> list[str]:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, job in (doc.get("jobs") or {}).items():
             steps = job.get("steps") or []
-            pytest_at = [i for i, st in enumerate(steps) if _commands(str(st.get("run") or ""))]
+            pytest_at = [i for i, st in enumerate(steps) if _commands(command_text(st))]
             if not pytest_at:
                 continue
-            found = [(i, JOB_DEADLINE_RE.search(str(st.get("run") or ""))) for i, st in enumerate(steps)]
+            found = [(i, JOB_DEADLINE_RE.search(command_text(st))) for i, st in enumerate(steps)]
             setting = [(i, m) for i, m in found if m]
             label = f"{path.name} {name}"
             if not setting:
@@ -266,7 +270,7 @@ def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float
     for path in sorted(workflows.glob("*.yml")):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, job in (doc.get("jobs") or {}).items():
-            sets = any(JOB_DEADLINE_RE.search(str(st.get("run") or "")) for st in (job or {}).get("steps") or [])
+            sets = any(JOB_DEADLINE_RE.search(command_text(st)) for st in (job or {}).get("steps") or [])
             present[(path.name, name)] = sets
             if not sets:
                 continue

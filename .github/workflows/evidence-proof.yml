@@ -1,0 +1,80 @@
+name: evidence-proof
+on:
+  pull_request:
+    paths:
+      - '.github/**'
+      - 'tools/ci/**'
+      - 'tests/helpers/**'
+      - 'tests/conftest.py'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plant:
+    name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+        kind: [normal, cancel, deadline, time-limit, hang]
+        ablate: ['none']
+        include:
+          - {os: ubuntu-24.04, kind: sigkill, ablate: none}
+          - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
+          - {os: windows-latest, kind: deadline, ablate: stacks}
+          - {os: ubuntu-24.04, kind: hang, ablate: stacks}
+          - {os: windows-latest, kind: hang, ablate: stacks}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: The job's deadline
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 360 ))" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Real planted lane
+        id: lane
+        timeout-minutes: 4
+        uses: ./.github/actions/lane
+        env:
+          AEW_EVIDENCE_PLANT: ${{ matrix.kind }}
+          AEW_EVIDENCE_ABLATE: ${{ matrix.ablate }}
+        with:
+          source: ${{ runner.temp }}/lane-reports
+          artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
+          command: >-
+            python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+            tests/evidence_plants --lane integration --test-timeout 8 --session-deadline 30
+            --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+  verify:
+    if: always()
+    needs: plant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: plant-*-attempt-${{ github.run_attempt }}*
+          path: published
+      - name: Verify downloaded evidence and checker ablations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/verify_evidence.py published

@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+from evidence_files import owner, state  # noqa: E402
+
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
 FINDINGS_EXIT = 23
@@ -141,6 +144,7 @@ def stage(source: Path, destination: Path) -> str:
         left = JOB_CAP - INDEX_CAP
         kept = omitted = 0
         inventory = bytearray()
+        labels = {}
         staged: set[Path] = set()
 
         def files():
@@ -155,7 +159,8 @@ def stage(source: Path, destination: Path) -> str:
             relative = file.relative_to(source)
             diagnostic = (file.suffix == ".txt"
                           and ({"autopsy", "harness-runs"}.intersection(relative.parts[:-1])
-                               or file.name.startswith("hang-")))
+                               or file.name.startswith(("hang-", "runner-resources-"))
+                               or "snapshots" in relative.parts))
             if not diagnostic and file.name not in EXTRA_TEXT:
                 continue
             try:
@@ -197,6 +202,7 @@ def stage(source: Path, destination: Path) -> str:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(data)
             staged.add(out.relative_to(candidate))
+            labels[out.relative_to(candidate)] = state(relative, data)
             left -= len(data)
             line = f"file-{kept:05d} ({len(data)} bytes)\n".encode()
             if len(inventory) + len(line) < INDEX_CAP - 512:
@@ -233,14 +239,18 @@ def stage(source: Path, destination: Path) -> str:
                 raise ValueError("gitleaks findings exceed inventory cap")
             if sum((candidate / path).stat().st_size for path in staged - withheld.keys()) > JOB_CAP - INDEX_CAP:
                 raise ValueError("masked evidence exceeds job cap")
-            if initial:
-                inventory = bytearray(listing)
+            inventory = bytearray(listing)
+            for path in sorted(staged - withheld.keys()):
+                shown = "<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix()
+                classification = state(path, (candidate / path).read_bytes())
+                writer = owner(path) or "UNKNOWN-WRITER"
+                inventory.extend(f"{classification} {shown} ({writer})\n".encode())
             masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
             status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
                       if initial else "gitleaks clean")
             publish = True
         except (OSError, ValueError, subprocess.TimeoutExpired):
-            status = "gitleaks scan unavailable"
+            status = "gitleaks scan unavailable; evidence defect: scan unavailable"
         header = f"{status}\n{kept} candidate files, {omitted} omitted\n"
         if publish:
             candidate.rename(destination)

@@ -280,7 +280,7 @@ def test_index_reader_refuses_bad_archives_and_rows(data):
         list(flake.index_sightings(data, 123))
 
 
-def test_session_sightings_use_annotations_and_a_live_cancel_not_setup_or_a_quick_cancel():
+def test_session_sightings_require_timeout_evidence_and_exclude_concurrency_cancels():
     started = (NOW - timedelta(minutes=10)).isoformat()
     pytest_step = {"name": "Run python -m pytest", "started_at": started}
     setup = {"name": "Run ./.github/actions/setup-aew", "started_at": started}
@@ -288,24 +288,38 @@ def test_session_sightings_use_annotations_and_a_live_cancel_not_setup_or_a_quic
             {"id": 124, "conclusion": "cancelled", "updated_at": (NOW - timedelta(seconds=5)).isoformat()},
             {"id": 125, "conclusion": "success"}]
 
-    def job(ident, steps, *, active=False, platform="windows"):
+    def job(ident, steps, *, active=False, platform="windows", conclusion="cancelled"):
         return {"id": ident, "name": f"regression 2/3 ({platform}-latest)", "started_at": started, "steps": steps,
-                "status": "in_progress" if active else "completed", "conclusion": None if active else "cancelled"}
+                "status": "in_progress" if active else "completed", "conclusion": None if active else conclusion}
 
     def jobs(run):
         assert run["id"] != 125
         return ([job(1, [pytest_step]), job(2, []), job(3, [pytest_step], active=True), job(5, [setup]),
-                 job(6, [pytest_step], platform="ubuntu")]
+                 job(6, [pytest_step], platform="ubuntu"), job(7, [pytest_step]), job(8, [pytest_step]),
+                 job(9, [pytest_step], conclusion="timed_out"), job(10, [pytest_step])]
                 if run["id"] == 123 else [job(4, [pytest_step], active=True)])
 
     def annotations(ident):
-        assert ident in {1, 2}
-        return [{"message": "The job has exceeded the maximum execution time of 34m0s"}]
+        assert ident in {1, 2, 7, 8, 9, 10}
+        timeout = {"message": "The job has exceeded the maximum execution time of 34m0s"}
+        cancel = {"message": "Canceling since a higher priority waiting request exists"}
+        if ident == 7:
+            return [timeout, cancel]
+        if ident == 8:
+            return [{"message": "We stopped hearing from the runner"}]
+        if ident == 9:
+            return []
+        if ident == 10:
+            return [cancel, {"message": "We stopped hearing from the runner"}]
+        return [timeout]
 
-    doc = document(row("session", scope="session", lane="regression"), row("overlap", scope="session", lane="regress*"))
-    got = list(flake.session_sightings(doc, runs, jobs, annotations, NOW))
+    entry = row("session", scope="session", lane="regression")
+    entry["class"] = flake.JOB_TIME_LIMIT_CLASS
+    doc = document(entry, row("overlap", scope="session", lane="regress*"))
+    got = list(flake.session_sightings(doc, runs, jobs, annotations))
     assert [(ident, item["job"]) for ident, item in got] == [
-        (ident, job) for job in (1, 2, 3) for ident in ("session", "overlap")
+        ("session", 1), ("overlap", 1), ("session", 2), ("overlap", 2),
+        ("session", 7), ("overlap", 7), ("overlap", 8), ("session", 9), ("overlap", 9),
     ]
 
 
@@ -332,8 +346,8 @@ def test_check_suites_read_job_evidence_in_batches_across_attempts(monkeypatch):
     def gh(endpoint, flag, query, *ids):
         assert endpoint == "graphql" and flag == "-f"
         if "... on CheckRun {" in query:
-            assert ids == tuple(arg for job in (11, 31, 41, 42) for arg in ("-f", f"ids[]=check-{job}"))
-            return {"data": {"nodes": [check(11), check(31, active=True), check(41), check(42, setup=True)]}}
+            assert ids == tuple(arg for job in (11, 41, 42) for arg in ("-f", f"ids[]=check-{job}"))
+            return {"data": {"nodes": [check(11), check(41), check(42, setup=True)]}}
         assert "checkType: ALL" in query
         assert ids == tuple(arg for run in runs[:-1] for arg in ("-f", f"ids[]={run['node_id']}"))
         suites = [(conn(check(11)), conn()), (conn(), conn()), (conn(), conn(check(31, active=True))),
@@ -351,7 +365,7 @@ def test_check_suites_read_job_evidence_in_batches_across_attempts(monkeypatch):
     ])
     doc = document(row("session", scope="session", lane="regression"))
     assert [(item["run"], item["job"]) for _, item in flake.github_sightings(doc, "o/r", NOW)] == [
-        (1, 11), (3, 31), (4, 41),
+        (1, 11), (4, 41),
     ]
 
 

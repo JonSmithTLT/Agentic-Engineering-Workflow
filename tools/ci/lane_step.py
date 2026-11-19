@@ -1,0 +1,165 @@
+"""Run a lane with an independent cutoff and collect before publication."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+from uuid import uuid4
+
+HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
+sys.path.insert(0, str(HELPERS))
+import bounds  # noqa: E402
+import proctree  # noqa: E402
+from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker  # noqa: E402
+
+CUTOFF_CLEARANCE_S = 10
+CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
+POLL_S = 0.25
+SPY_TIMEOUT_S = 3  # one bounded request per live worker; the cutoff reserves this per worker
+HEADER = re.compile(r"aew hang watchdog: (.+) started ([^;]+); limit ([0-9.]+)s; not fired; monotonic ([0-9.]+)")
+
+
+def ablated(rule: str) -> bool:
+    return bool(os.environ.get("AEW_EVIDENCE_PLANT")) and os.environ.get("AEW_EVIDENCE_ABLATE") == rule
+
+
+def identities(root: Path):
+    for path in root.glob("autopsy/session-*/*-pid.txt"):
+        try:
+            parts = path.read_text().split()
+            identity = (int(parts[0]), int(parts[2]))
+            if proctree.same(identity):
+                yield path.parent, identity
+        except (OSError, ValueError, IndexError):
+            continue
+
+
+def note(directory: Path, name: str, text: str) -> None:
+    if ablated("kind"):
+        return
+    try:
+        with marker(directory, name).open("x", encoding="utf-8") as output:
+            output.write(text)
+    except FileExistsError:
+        pass
+
+
+def snapshot(root: Path, *, all_workers: bool = False) -> None:
+    known = {identity[0]: identity for _, identity in identities(root)}
+    for path in root.glob("hang-*.txt"):
+        try:
+            header = HEADER.match(path.read_text(encoding="utf-8"))
+            if header is None:
+                continue
+            node, _, limit, started = header.groups()
+            pid = int(path.stem.rsplit("-", 1)[1])
+            elapsed = time.monotonic() - float(started)
+            out = root / "snapshots" / f"{pid}.txt"
+            if (pid not in known or not proctree.same(known[pid])
+                    or (not all_workers and (elapsed < float(limit) or out.exists()))):
+                continue
+            if ablated("stacks"):
+                continue
+            out.parent.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(["py-spy", "dump", "--nonblocking", "--pid", str(pid)],
+                                    capture_output=True, text=True, timeout=SPY_TIMEOUT_S,
+                                    **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+            if result.returncode:
+                # A failed attach is evidence of the missing snapshot, never a stack claim.
+                out.write_text(f"snapshot unavailable for {node}: py-spy exit {result.returncode}\n", encoding="utf-8")
+                continue
+            out.write_text(f"snapshot {time.time():.6f} for {node}, running {elapsed:.3f}s\n" + result.stdout,
+                           encoding="utf-8")
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            continue
+
+
+def collect(root: Path) -> None:
+    # Marker identities are the authority. Never signal a process group or a reused pid.
+    recorded = list(identities(root))
+    table = proctree.table()
+    members = {identity for _, identity in recorded}
+    for _, identity in recorded:
+        members.update(proc.identity for proc in proctree.descendants(identity, table))
+    for identity in sorted(members, key=lambda item: item[1], reverse=True):
+        if identity[0] != os.getpid() and proctree.same(identity):
+            proctree.end(identity)
+
+
+def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
+    root.mkdir(parents=True, exist_ok=True)
+    kwargs = {"stdout": sys.stdout, "stderr": sys.stderr}
+    job = None
+    if os.name == "nt":
+        name = "aew-ci-lane-" + uuid4().hex
+        job = proctree.Job(name)
+        argv = [sys.executable, __file__, "_exec", name, shell, str(script)]
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    else:
+        argv = [shell, str(script)]
+    child = subprocess.Popen(argv, **kwargs)
+    status = root / "runner-resources-step.txt"
+    interrupted = []
+
+    def forward(signum, frame):
+        interrupted.append(signal.Signals(signum).name)
+        with contextlib.suppress(OSError):
+            child.send_signal(signum)
+
+    previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        while True:
+            snapshot(root)
+            if interrupted or time.time() >= cutoff:
+                snapshot(root, all_workers=True)
+                for directory, _ in identities(root):
+                    note(directory, "cutoff", f"step cutoff at {time.time():.6f}; signal {interrupted or 'none'}\n")
+                code = child.poll()
+                pytest_status = "Pytest was still running" if code is None else f"Pytest had exited with code {code}"
+                members = job.members(command_lines=False) if job is not None else []
+                status.write_text("\n".join([pytest_status, *[
+                    f"  {proc.pid} {Path(proc.exe).name}" for proc in members]]) + "\n", encoding="utf-8")
+                collect(root)
+                if job is not None:
+                    job.terminate(SUPERVISOR_CUTOFF_EXIT)
+                with contextlib.suppress(OSError):
+                    child.kill()
+                child.wait(timeout=10)
+                return SUPERVISOR_CUTOFF_EXIT
+            code = child.poll()
+            if code is not None and (job is None or not job.pids()):
+                return 128 - code if code < 0 else code
+            time.sleep(POLL_S)
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+def main(argv: list[str]) -> int:
+    if argv and argv[0] == "_exec":
+        proctree.Job.open(argv[1]).assign_self()
+        return subprocess.call([argv[2], argv[3]], stdout=sys.stdout, stderr=sys.stderr)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--collect", action="store_true")
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--shell", default="bash")
+    parser.add_argument("--script", type=Path)
+    args = parser.parse_args(argv)
+    if args.collect:
+        collect(args.root)
+        return 0
+    cutoff = float(os.environ["AEW_JOB_DEADLINE"]) + CUTOFF_GRACE_S
+    if os.environ.get("AEW_EVIDENCE_PLANT") == "time-limit":
+        cutoff = time.time() + 35  # the plant's outer killer, below its 4-minute step limit
+    return supervise(args.root, args.shell, args.script, cutoff)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

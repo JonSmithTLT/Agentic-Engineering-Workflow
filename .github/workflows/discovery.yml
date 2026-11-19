@@ -49,11 +49,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: pytest --lane discovery (D2 over the static texts)
-        run: >-
-          python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600
-          --session-deadline 900 "--hang-dir=${{ runner.temp }}/discovery/hangs"
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+        timeout-minutes: 18
+        uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/discovery/hangs
           artifact: evidence-discovery-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600 --session-deadline 900 "--hang-dir=${{ runner.temp }}/discovery/hangs"

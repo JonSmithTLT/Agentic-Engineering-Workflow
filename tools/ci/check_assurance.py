@@ -255,6 +255,69 @@ def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> s
     return "\n".join(lines) + "\n"
 
 
+
+def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bool = False) -> list[str]:
+    """Check published states and warning-death stacks, also used by the hosted proof."""
+    import re
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+    from evidence_files import FRAME, owner, state
+
+    defects = []
+    files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
+    inventories = {path: text for path, text in texts.items() if path.name == "inventory.txt"}
+    if not inventories:
+        defects.append("missing publication inventory")
+    for inventory, listing in inventories.items():
+        if "scan unavailable" in listing:
+            defects.append("scan unavailable")
+        for path, data in files.items():
+            if path == inventory or not path.is_relative_to(inventory.parent):
+                continue
+            relative = path.relative_to(inventory.parent)
+            if relative.name.startswith("running-"):
+                continue
+            if owner(relative) is None:
+                defects.append(f"{relative}: unlisted writer")
+            label = state(relative, data)
+            if f"{label} {relative.as_posix()} (" not in listing:
+                defects.append(f"{relative}: missing or false publication state ({label})")
+            text = texts[path]
+            if path.name.startswith("hang-"):
+                if "was still running after" in text and not FRAME.search(text):
+                    defects.append(f"{relative}: timeout claimed without stacks")
+                if "fired after" in text and not FRAME.search(text):
+                    defects.append(f"{relative}: fired claimed without stacks")
+            if ("every thread's stack" in text or "Timeout (" in text) and not FRAME.search(text):
+                defects.append(f"{relative}: stack header without stacks")
+    if kind and kind not in {"normal", "cancel", "oom"}:
+        names = {path.stem for path in files}
+        expected = {"deadline": {"session-deadline"}, "time-limit": {"cutoff"},
+                    "hang": {"session-deadline", "cutoff"}}.get(kind, set())
+        if expected and not names.intersection(expected):
+            defects.append(f"{kind}: missing kind marker")
+    running = set()
+    for path, text in texts.items():
+        if path.name.startswith("hang-"):
+            match = re.search(r"aew hang watchdog: (.+) started ", text)
+            if match:
+                running.add(match[1])
+        elif path.name.startswith("running-"):
+            running.update(text.splitlines())
+    if require_stacks:
+        if not running or "<unrecognized test>" in running:
+            defects.append("missing running test name")
+        for node in running:
+            source = node.split("::", 1)[0].replace("\\", "/")
+            function = node.rsplit("::", 1)[-1].split("[", 1)[0]
+            matched = any((node in text or function in text)
+                          and any(source in frame.group(0).replace("\\", "/")
+                                  for frame in FRAME.finditer(text)) for text in texts.values())
+            if not matched:
+                defects.append(f"{node}: no stack from the running test's module")
+    return [f"evidence defect: {problem}" for problem in sorted(set(defects))]
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("reports", type=Path, help="directory searched recursively for lane reports")

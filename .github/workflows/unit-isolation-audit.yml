@@ -65,15 +65,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: heavy directories, shard ${{ matrix.shard }}/${{ matrix.of }}, under the audit hook
+        timeout-minutes: 43
+        uses: ./.github/actions/lane
         env:
           PYTHONPATH: ${{ github.workspace }}/tools/ci
-        run: >-
-          python -m pytest tests/integration tests/regression tests/acceptance
-          -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal
-          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 2400 --max-worker-restart 0
-          "--hang-dir=${{ runner.temp }}/audit/hangs"
-          -p unit_isolation_audit --unit-isolation-dir=tests/unit
-          "--unit-isolation-report=${{ runner.temp }}/audit"
+        with:
+          source: ${{ runner.temp }}/audit/hangs
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest tests/integration tests/regression tests/acceptance -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 2400 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/audit/hangs" -p unit_isolation_audit --unit-isolation-dir=tests/unit "--unit-isolation-report=${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -81,12 +81,6 @@ jobs:
           path: |
             ${{ runner.temp }}/audit/*.json
           retention-days: 14
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
-          source: ${{ runner.temp }}/audit/hangs
-          artifact: evidence-unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-
   serial:
     name: audit serial (${{ matrix.os }})
     strategy:
@@ -111,14 +105,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: heavy directories' serial tests, without xdist, under the audit hook
+        timeout-minutes: 43
+        uses: ./.github/actions/lane
         env:
           PYTHONPATH: ${{ github.workspace }}/tools/ci
-        run: >-
-          python -m pytest tests/integration tests/regression tests/acceptance
-          -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600 --session-deadline 2400
-          "--hang-dir=${{ runner.temp }}/audit/hangs"
-          -p unit_isolation_audit --unit-isolation-dir=tests/unit
-          "--unit-isolation-report=${{ runner.temp }}/audit"
+        with:
+          source: ${{ runner.temp }}/audit/hangs
+          artifact: evidence-unit-isolation-audit-${{ runner.os }}-serial-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest tests/integration tests/regression tests/acceptance -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600 --session-deadline 2400 "--hang-dir=${{ runner.temp }}/audit/hangs" -p unit_isolation_audit --unit-isolation-dir=tests/unit "--unit-isolation-report=${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -126,12 +121,6 @@ jobs:
           path: |
             ${{ runner.temp }}/audit/*.json
           retention-days: 14
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
-          source: ${{ runner.temp }}/audit/hangs
-          artifact: evidence-unit-isolation-audit-${{ runner.os }}-serial-attempt-${{ github.run_attempt }}
-
   result:
     # Clean means: every job reported, and no report holds a violation.
     needs: [parallel, serial]

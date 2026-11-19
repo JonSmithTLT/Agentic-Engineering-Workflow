@@ -196,36 +196,22 @@ jobs:
       # as in the lanes job.
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         if: matrix.lane == 'fast'
-        run: >-
-          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
-          --shard ${{ matrix.shard }}/${{ matrix.of }}
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
-      - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
-        if: matrix.lane == 'serial'
-        run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
-          --shard ${{ matrix.shard }}/${{ matrix.of }}
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
-      # Named per run attempt: `download-artifact` keeps one artifact of a name, not always the newest, so a re-run's
-      # report must not share its earlier attempt's name (assurance keeps each shard's latest attempt).
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/lane-reports/*.json
-          retention-days: 14
-
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+        timeout-minutes: 23
+        uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          command: |
+            ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
+      - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
+        if: matrix.lane == 'serial'
+        timeout-minutes: 23
+        uses: ./.github/actions/lane
+        with:
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       - uses: ./.github/actions/prove-evidence
         if: needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
@@ -278,26 +264,13 @@ jobs:
       # an existing file given as a separate word counts as a test path, and the rootdir becomes its common ancestor
       # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
-        run: >-
-          ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider --durations=20
-          --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/lane-reports/*.json
-          retention-days: 14
-
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+        timeout-minutes: 33
+        uses: ./.github/actions/lane
         with:
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          command: |
+            ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: success() && runner.os == 'Linux'  # only from a passing job, as core's
         with:
@@ -341,13 +314,17 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"
           mkdir -p "$RUNNER_TEMP/fastbase"
       - name: fast lane at the base tip, under coverage
-        working-directory: ${{ runner.temp }}/base
+        timeout-minutes: 19
+        uses: ./.github/actions/lane
         env:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
-        run: >-
-          python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
-          --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
+        with:
+          source: ${{ runner.temp }}/fastbase/hangs
+          artifact: evidence-fastbase-coverage-attempt-${{ github.run_attempt }}
+          working-directory: ${{ runner.temp }}/base
+          command: |
+            python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -356,12 +333,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
-
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
-          source: ${{ runner.temp }}/fastbase/hangs
-          artifact: evidence-fastbase-coverage-attempt-${{ github.run_attempt }}
 
   web:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.

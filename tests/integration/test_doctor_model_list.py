@@ -200,6 +200,9 @@ def test_a_start_deadline_that_ends_before_the_server_starts_is_the_deadline_row
     assert row["status"] == "FAIL", row
     assert "was not read within 0s, a launch's own start deadline (AEW_RUN_START_S)" in row["detail"], row
     assert "did not start as a launch starts it" not in row["detail"], row
+    assert "(what ended it: no time was left to start the OpenCode server)" in row["detail"], row
+    assert "had not started by then, so raise AEW_RUN_START_S" in row["detail"], row
+    assert "the harness's model catalog" not in row["detail"], row  # no server: its catalog is not the cause
     assert "not waited for again" in row["detail"], row
     assert res.stderr.count("reading opencode's model list") == 1, res.stderr
     assert leftovers(lab) == [], leftovers(lab)

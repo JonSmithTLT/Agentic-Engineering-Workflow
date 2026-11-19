@@ -222,14 +222,19 @@ def _bound(pin: dict[str, Any]) -> float:
     return supervisor.starting_limit_s(pin["harness"])
 
 
-def _past_deadline(bound: float) -> _Unread:
-    """The read ran out of a launch's start deadline, wherever in the read it ran out."""
+def _past_deadline(bound: float, *, cause: str | None = None, started: bool = True) -> _Unread:
+    """The read ran out of a launch's start deadline, wherever in the read it ran out. ``cause``: what ended it, when
+    a failure was caught once the deadline had passed, so the row names it too. ``started``: whether the harness's
+    server had started; before it, the catalog's network is not what to check."""
     from aew.harness import supervisor
 
+    fix = ("check the network the execution policy allows for the harness's model catalog, or raise "
+           f"{supervisor.START_ENV}" if started else
+           f"the harness's server had not started by then, so raise {supervisor.START_ENV}")
     return _Unread(f"the model list was not read within {bound:.0f}s, a launch's own start deadline "
-                   f"({supervisor.START_ENV}), so a launch from here would be abandoned the same way; check "
-                   "the network the execution policy allows for the harness's model catalog, or raise "
-                   f"{supervisor.START_ENV}, then run `aew doctor --refresh`", red=True, waited=True)
+                   f"({supervisor.START_ENV}), so a launch from here would be abandoned the same way"
+                   + (f" (what ended it: {cause})" if cause else "")
+                   + f"; {fix}, then run `aew doctor --refresh`", red=True, waited=True)
 
 
 def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any) -> dict[str, Any]:
@@ -286,9 +291,10 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
         except (HarnessLaunchFailed, AEWError, OSError) as exc:
             # The deadline counts from before the containment, as a launch's start deadline does: one that ran out
             # before or while the server started ended the read as surely as one that runs out in the catalog wait.
-            if time.monotonic() >= until:
-                raise _past_deadline(bound) from None
             detail = exc.message if isinstance(exc, AEWError) else f"{type(exc).__name__}: {exc}"
+            if time.monotonic() >= until:
+                raise _past_deadline(bound, cause=detail,
+                                     started=getattr(adapter, "server", None) is not None) from None
             raise _Unread(f"the harness did not start as a launch starts it: {detail}; a launch from here fails "
                           "the same way (see `aew harness status` after one, or run `aew doctor --refresh` again)",
                           red=True, waited=True) from None

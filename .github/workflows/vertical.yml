@@ -104,3 +104,20 @@ jobs:
             ${{ runner.temp }}/vertical/*/vertical-ledger.json
           if-no-files-found: warn
           retention-days: 30
+      - name: Publish evidence from the vertical summary writer
+        if: always()
+        timeout-minutes: 8
+        uses: ./.github/actions/publish-evidence
+        with:
+          source: ${{ runner.temp }}/vertical/
+          artifact: evidence-vertical-summary-${{ runner.os }}-post-attempt-${{ github.run_attempt }}
+
+  evidence:
+    name: evidence publication
+    needs: [vertical]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/evidence-check.yml

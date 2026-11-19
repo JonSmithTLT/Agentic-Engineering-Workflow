@@ -12,10 +12,13 @@ WRITERS = (
     ("job-label-sha256.txt", "evidence_inputs"),
     ("hang-*.txt", "watchdog"),
     ("running-*.txt", "watchdog"),
+    ("running-*.tmp", "watchdog"),
     ("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder"),
     ("harness-runs/**", "harness_diagnostics"),
     ("snapshots/*.txt", "lane_step"),
     ("runner-resources-*.txt", "lane_step"),
+    ("*vertical*.json", "vertical"),
+    ("vertical-series.jsonl", "vertical"),
     ("*.json", "lanes"),
     ("junit.xml", "pytest"),
     ("vertical-summary.txt", "vertical"),
@@ -25,9 +28,8 @@ FRAME = re.compile(r'(?m)^\s*(?:File "[^"\n]+", line \d+,? in \w+|[\w.<>]+ \([^\
 
 
 def owner(path: Path) -> str | None:
-    name = path.as_posix()
     for pattern, writer in WRITERS:
-        if pattern.endswith("/**") and name.startswith(pattern[:-2]):
+        if pattern.endswith("/**") and pattern[:-3] in path.parts[:-1]:
             return writer
         if path.match(pattern):
             return writer

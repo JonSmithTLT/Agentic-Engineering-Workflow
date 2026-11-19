@@ -159,6 +159,11 @@ def stage(source: Path, destination: Path) -> str:
 
         for file in files():
             relative = file.relative_to(source)
+            if owner(relative) is None:
+                omitted += 1
+                anonymous = Path("file-" + hashlib.sha256(relative.as_posix().encode()).hexdigest()[:12])
+                omissions.append((anonymous, "unlisted writer"))
+                continue
             diagnostic = (file.suffix == ".txt"
                           and ({"autopsy", "harness-runs"}.intersection(relative.parts[:-1])
                                or file.name.startswith(("hang-", "runner-resources-"))

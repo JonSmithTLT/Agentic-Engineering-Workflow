@@ -152,3 +152,13 @@ jobs:
           test "$PARALLEL" = success
           test "$SERIAL" = success
           test "$(ls audit | wc -l)" = 22
+
+  evidence:
+    name: evidence publication
+    needs: [parallel, serial]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/evidence-check.yml

@@ -271,6 +271,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
     for inventory, listing in inventories.items():
         if "scan unavailable" in listing:
             defects.append("scan unavailable")
+        if "unlisted writer" in listing:
+            defects.append("unlisted writer in the evidence source")
         for path, data in files.items():
             if path == inventory or not path.is_relative_to(inventory.parent):
                 continue

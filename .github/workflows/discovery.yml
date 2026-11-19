@@ -56,3 +56,13 @@ jobs:
           artifact: evidence-discovery-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600 --session-deadline 900 "--hang-dir=${{ runner.temp }}/discovery/hangs"
+
+  evidence:
+    name: evidence publication
+    needs: [discovery]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/evidence-check.yml

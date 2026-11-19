@@ -201,3 +201,21 @@ def test_a_worker_gets_a_timeout_snapshot_for_each_new_test(tmp_path, monkeypatc
     lane.snapshot(tmp_path, seen=seen)
     assert len(calls) == 2
     assert "test_second" in (tmp_path / "snapshots/123.txt").read_text()
+
+
+def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, monkeypatch):
+    stage = _load("stage_evidence")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "new-writer.txt").write_text("unexpected evidence writer\n")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    published = tmp_path / "published"
+    stage.stage(source, published)
+    assert any("unlisted writer" in problem for problem in _load("check_assurance").evidence_problems(published))
+
+
+def test_looped_sessions_use_the_same_writer_registry():
+    from evidence_files import owner
+
+    assert owner(Path("rep-1/autopsy/session-123-test/controller-deadline-stacks.txt")) is not None
+    assert owner(Path("real/autopsy/test_case/stacks.gw0-1.txt")) is not None

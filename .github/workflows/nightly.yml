@@ -578,3 +578,13 @@ jobs:
           else
             gh issue create --label nightly-failure --title "Nightly extended assurance failed" --body "$body"
           fi
+
+  evidence:
+    name: evidence publication
+    needs: [reference, walk-extended, race-repeat, crash-extended, matrix-extra, matrix-extra-serial]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/evidence-check.yml

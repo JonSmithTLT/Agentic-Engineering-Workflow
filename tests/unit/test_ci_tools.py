@@ -3586,7 +3586,7 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     doc = workflow_doc(workflow.read_text(encoding="utf-8"))
     assert set(doc[True]) == {"workflow_dispatch"}
     assert doc["permissions"] == {"contents": "read"}
-    assert set(doc["jobs"]) == {"regression"}
+    assert set(doc["jobs"]) == {"regression", "evidence"}
     job = doc["jobs"]["regression"]
     assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"

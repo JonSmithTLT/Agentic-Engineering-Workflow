@@ -71,7 +71,8 @@ jobs:
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
             python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
-            tests/evidence_plants --lane integration --test-timeout ${{ matrix.test_timeout }} --session-deadline ${{ matrix.deadline }}
+            tests/integration/evidence_plants/deaths.py --lane integration
+            --test-timeout ${{ matrix.test_timeout }} --session-deadline ${{ matrix.deadline }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
   cancel-ready-linux:
     runs-on: ubuntu-24.04

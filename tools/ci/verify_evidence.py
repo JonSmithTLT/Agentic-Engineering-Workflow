@@ -11,12 +11,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+from evidence_problems import evidence_problems
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_assurance import evidence_problems  # noqa: E402
+from flake_register import _gh_read  # noqa: E402
 
 ABLATIONS = {"stacks": "no stack", "kind": "kind marker", "running": "running test name",
              "header-only": "publication state", "zero-byte": "publication state"}
-from flake_register import _gh_read  # noqa: E402
 
 
 def ablation_problem(rule: str, defects: list[str]) -> str | None:

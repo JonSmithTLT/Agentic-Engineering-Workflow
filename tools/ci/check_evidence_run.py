@@ -10,19 +10,22 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_assurance import evidence_problems  # noqa: E402
-from flake_register import _gh_read, _pages  # noqa: E402
+import yaml
+from evidence_problems import evidence_problems
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/helpers"))
-from bounds import workflow_lanes  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from flake_register import _gh_read, _pages  # noqa: E402
 
 
 def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
     defects = []
     workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
-    names = [lane.step for lane in workflow_lanes(workflows)]
-    names += ["Run ./.github/actions/lane", "Run ./.github/actions/prove-evidence"]
+    actions = {"./.github/actions/lane", "./.github/actions/prove-evidence"}
+    names = {f"Run {action}" for action in actions}
+    for workflow in workflows.glob("*.yml"):
+        for job in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"].values():
+            names.update(step["name"] for step in job.get("steps", [])
+                         if "name" in step and step.get("uses") in actions)
     patterns = [re.compile("^" + ".+?".join(re.escape(part) for part in re.split(r"\$\{\{.*?\}\}", name)) + "$")
                 for name in names]
     for job in jobs:

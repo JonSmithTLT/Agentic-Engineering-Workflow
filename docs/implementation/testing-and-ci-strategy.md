@@ -380,7 +380,8 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 
 ### Evidence states at publication
 
-Every lane runs through the shared lane action. Collection and process cleanup precede publication. The publisher
+Core, sharded, nightly, vertical and flake-dispatch test lanes use the shared lane action. Collection and process
+cleanup precede publication. The publisher
 scans the priority files first, then publishes the lane report and the full scanned autopsy. A scanner outage is
 reported as an evidence defect and keeps the contents withheld.
 

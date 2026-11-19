@@ -1,4 +1,4 @@
-"""Blocking tests for the hosted lane proof. Evidence is written only by lane helpers."""
+"""Blocking tests selected by explicit path in the hosted lane proof."""
 
 import ctypes
 import os

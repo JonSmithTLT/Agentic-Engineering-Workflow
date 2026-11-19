@@ -64,8 +64,6 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
-    if collection_path.name == "evidence_plants" and not os.environ.get("AEW_EVIDENCE_PLANT"):
-        return True
     return lanes.ignore_collect(collection_path, config)
 
 

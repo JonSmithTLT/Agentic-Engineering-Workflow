@@ -80,8 +80,6 @@ def lane_of(path: str, markers: Iterable[str]) -> str:
         return "acceptance"
     if "exploratory" in marks:
         return "adversarial"
-    if path.startswith("tests/evidence_plants/"):
-        return "integration"
     if path.startswith("tests/unit/") or path == "tests/test_spec_pin.py":
         return "fast"
     if path.startswith("tests/integration/"):

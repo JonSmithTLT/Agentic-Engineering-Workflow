@@ -302,10 +302,11 @@ jobs:
     if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
     runs-on: ubuntu-24.04
     # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 7.4 and 0.8 minutes), and
-    # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 28
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 20
     steps:
-      # The original test deadline is preserved. The bounds checker reserves collection and publication.
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"
@@ -322,20 +323,14 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"
           mkdir -p "$RUNNER_TEMP/fastbase"
       - name: fast lane at the base tip, under coverage
-        timeout-minutes: 27
-        uses: ./.github/actions/lane
+        working-directory: ${{ runner.temp }}/base
         env:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
-        with:
-          job-label: fastbase
-          source: ${{ runner.temp }}/fastbase/hangs
-          artifact: evidence-fastbase-coverage-step-5-attempt-${{ github.run_attempt }}
-          working-directory: ${{ runner.temp }}/base
-          command: |
-            python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
+        run: >-
+          python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+          --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
-        timeout-minutes: 1
         if: always()
         with:
           name: fastbase-coverage  # outside the `coverage-*` pattern the ratchet combines
@@ -343,6 +338,12 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+      - uses: ./.github/actions/publish-evidence
+        if: failure() || cancelled()
+        with:
+          source: ${{ runner.temp }}/fastbase/hangs
+          artifact: evidence-fastbase-coverage-attempt-${{ github.run_attempt }}
 
   web:
     # The dashboard (F20.1). Its `result` job decides: checks passed, or nothing it covers changed.
@@ -413,7 +414,7 @@ jobs:
 
   evidence:
     name: evidence publication
-    needs: [core, lanes, fastbase]
+    needs: [core, lanes]
     if: always()
     permissions:
       contents: read

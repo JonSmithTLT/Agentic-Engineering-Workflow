@@ -33,8 +33,6 @@ def workflow_doc(text):
             for step in job.get("steps", []):
                 if step.get("uses") == "./.github/actions/lane":
                     step["run"] = step["with"]["command"]
-                    if "working-directory" in step["with"]:
-                        step["working-directory"] = step["with"]["working-directory"]
     return doc
 
 
@@ -248,10 +246,10 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     kept attempt 1's report and attempt 2's coverage), so a re-run's report has a name of its own and lands in its own
     directory (no `merge-multiple`). Coverage keeps its name: only a passing job uploads it, and the ratchet runs only
     after the lane-report check passed, so no failed attempt's data can be the one kept."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     uploads = [s for j in wf["jobs"].values() for s in j.get("steps", [])
                if str(s.get("uses", "")).startswith("actions/upload-artifact")]
-    lane = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
     [report_upload] = [s for s in lane if str(s.get("with", {}).get("name", "")).startswith("lane-report-")]
     assert report_upload["if"] == "always() && steps.collect.outcome == 'success'"
     assert report_upload["with"]["name"] == "lane-report-${{ inputs.artifact }}"
@@ -298,10 +296,10 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
                 assert "${ " not in artifact, (label, artifact)
         if not tests:
             continue
-        if "/" in label:
-            assert all(step.get("uses") == "./.github/actions/lane" for step in tests), label
-        else:
+        if any(step.get("uses") != "./.github/actions/lane" for step in tests):
             assert len(publishers) == 1, label
+            if "/" in label:
+                assert publishers[0]["if"] == "failure() || cancelled()", label
         for step in tests:
             variables = {**inherited, **step.get("env", {})}
             assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys(), label
@@ -961,13 +959,13 @@ def test_the_nightly_reads_the_history_every_night_so_a_week_without_ci_does_not
     """GitHub removes a cache entry nobody has read for seven days (review of #235, F1: no CI run from 2026-10-13 to
     10-21). The nightly restores the merge gate's newest history and never saves one. Its reference shards' history is
     its own: the plan reads it, the aggregate reads and saves it (each at its family's save path: the test below)."""
-    nightly = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
+    nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     assert "schedule" in nightly[True]
     steps = [s for job in nightly["jobs"].values() for s in job.get("steps") or []]
     caches = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache")]
     gate = [s for s in caches if s["with"].get("restore-keys") == "shard-durations-"]
     assert [s["uses"] for s in gate] == ["actions/cache/restore@v6"]
-    ci = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     saved = next(s for s in ci["assurance"]["steps"] if s.get("uses") == "actions/cache/save@v6")
     assert saved["with"]["key"].startswith(gate[0]["with"]["restore-keys"])
     runs = "\n".join(str(s.get("run", "")) for s in steps)
@@ -984,7 +982,7 @@ def test_the_nightly_reads_the_history_every_night_so_a_week_without_ci_does_not
 
 
 def _cache_steps(workflow: Path) -> list[dict]:
-    jobs = workflow_doc(workflow.read_text(encoding="utf-8"))["jobs"]
+    jobs = yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]
     return [s for job in jobs.values() for s in job.get("steps") or []
             if str(s.get("uses", "")).startswith("actions/cache")]
 
@@ -999,7 +997,7 @@ def test_setup_caches_only_the_pinned_bubblewrap_and_bounds_a_cold_download():
     and nothing else restores it, so a cached package is always the one a cold job would download; the install
     refuses any other package; and a cold job's apt steps run under `timeout`, never retried, so a stalled mirror
     fails the job in minutes (2026-11-10: it stalled setup for 12 to 34 minutes)."""
-    action = workflow_doc((ROOT / ".github" / "actions" / "setup-aew" / "action.yml").read_text(encoding="utf-8"))
+    action = yaml.safe_load((ROOT / ".github" / "actions" / "setup-aew" / "action.yml").read_text(encoding="utf-8"))
     steps = action["runs"]["steps"]
     key_step = next(s for s in steps if s.get("id") == "bwrap")
     version = key_step["env"]["BUBBLEWRAP_VERSION"]
@@ -1263,7 +1261,7 @@ def test_every_cache_restore_reads_at_the_path_its_key_familys_save_wrote_or_it_
     restore's key or restore-keys prefix matches at least one save, and every save it matches wrote the same paths."""
     steps = []
     for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
-        for job_name, job in (workflow_doc(workflow.read_text(encoding="utf-8"))["jobs"] or {}).items():
+        for job_name, job in (yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"] or {}).items():
             for step in job.get("steps") or []:
                 uses = str(step.get("uses", ""))
                 if uses.startswith("actions/cache"):
@@ -1932,7 +1930,7 @@ def test_the_cli_refuses_a_reduced_tier_on_a_push(tmp_path):
 def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_tier():
     """Structure of .github/workflows/ci.yml: the tier job feeds the lanes and the gate, the gate recomputes it, and a
     reduced tier passes only with the lanes skipped."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     jobs = wf["jobs"]
     assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
     changes_run = next(s["run"] for s in jobs["changes"]["steps"] if "tools/ci/tier.py" in str(s.get("run", "")))
@@ -2031,7 +2029,7 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
 
     wf = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     job = wf["jobs"]["vertical"]
-    assert list(wf["jobs"]) == ["vertical"]
+    assert list(wf["jobs"]) == ["vertical", "evidence"]
     assert set(wf[True]) == {"workflow_dispatch"}  # PyYAML reads `on:` as True
     assert wf["concurrency"]["cancel-in-progress"] is False
     assert "if" not in job and "needs" not in job and "continue-on-error" not in job
@@ -2063,7 +2061,7 @@ def test_only_main_saves_the_vertical_series_and_every_run_restores_it_where_it_
     (the job is red by design), and the workflow's permissions stay as they are: no commit from CI."""
     from vertical.scoreboard import MAIN_REF, SERIES
 
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     assert wf["permissions"] == {"contents": "read"}
     steps = wf["jobs"]["vertical"]["steps"]
     restores = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore")]
@@ -2095,9 +2093,9 @@ def test_the_nightly_reads_the_vertical_series_on_each_os_so_a_quiet_week_does_n
     """The review of #324, F3: GitHub removes a cache entry nobody has read for seven days, and the lane runs only on
     main's pushes (none from 10-14 to 10-22). Read per OS, as the lane saves it; a restore is a read, and nothing saves.
     test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at holds its path."""
-    from_lane = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    from_lane = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     lane = from_lane["jobs"]["vertical"]
-    job = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"][
+    job = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"][
         "vertical-series"]
     assert job["strategy"]["matrix"]["os"] == [o["os"] for o in lane["strategy"]["matrix"]["include"]]
     assert job["runs-on"] == lane["runs-on"]
@@ -2152,7 +2150,7 @@ def test_every_push_run_on_main_has_a_concurrency_group_of_its_own_commit():
     """Every merge to `main` gets its own full push run, which no later merge's run replaces, and a pull request's
     pushes share one group, where the newer cancels the older (operator, 2026-10-25, ST-30; strategy §3). The group and
     the cancel rule are evaluated per event, as GitHub evaluates them (review of #277, F1)."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     group, cancel = wf["concurrency"]["group"], wf["concurrency"]["cancel-in-progress"]
     assert group.startswith("ci-") and set(wf[True]) == {"pull_request", "push", "merge_group", "workflow_dispatch"}
 
@@ -2229,13 +2227,13 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     """The discovery workflow runs the lane on every pull request and on main, both OSes; ci.yml's gate decides the
     runtime findings the lane jobs wrote beside their lane reports (against the base's allow-list on a pull request),
     and nightly decides them over the whole suite."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "discovery.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "discovery.yml").read_text(encoding="utf-8"))
     job = wf["jobs"]["discovery"]
     assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]
     assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
     run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
     assert "--lane discovery tests/discovery" in run["run"] and "continue-on-error" not in run
-    ci = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     gate = ci["jobs"]["assurance"]["steps"]
     ratchet = next(s for s in gate if "discovery_ratchet.py" in str(s.get("run", "")))
     assert ratchet["if"] == "always()" and "continue-on-error" not in ratchet
@@ -2253,7 +2251,7 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     # a mode lowered against the base needs the operator's label, as growth does
     assert 'GITHUB_SHA^1:tests/helpers/discovery/modes.py' in ratchet["run"] and "--base-modes" in ratchet["run"]
     assert 'if git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py"' not in ratchet["run"]  # a failed read fails
-    nightly = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
+    nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]
     nightly_ratchet = next(s for s in nightly_steps
                            if "discovery_ratchet.py reference-reports --event schedule" in str(s.get("run", "")))
@@ -2268,14 +2266,14 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
 
 def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green_night():
     workflows = ROOT / ".github/workflows"
-    ci = workflow_doc((workflows / "ci.yml").read_text(encoding="utf-8"))
+    ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))
     core = ci["jobs"]["core"]
     check = 'python tools/flake_register.py check --base "$env:FLAKE_BASE"'
     checks = [step for step in core["steps"] if step.get("run") == check]
     assert len(checks) == 1 and "if" not in checks[0] and not checks[0].get("continue-on-error")
     assert "github.event.pull_request.base.sha" in checks[0]["env"]["FLAKE_BASE"]
     assert {"fast", "serial"} <= set(tier.LANES["docs"])
-    nightly = workflow_doc((workflows / "nightly.yml").read_text(encoding="utf-8"))
+    nightly = yaml.safe_load((workflows / "nightly.yml").read_text(encoding="utf-8"))
     queue = nightly["jobs"]["flake-queue"]
     assert queue["if"] == "always() && github.event_name == 'schedule'"
     assert queue["permissions"] == {"contents": "read", "actions": "read", "checks": "read", "issues": "write"}
@@ -2285,7 +2283,7 @@ def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
     """A scheduled job that hits its timeout ends `cancelled`; the report must open the issue for it too (CI posture
     review 2026-10-05, finding 1: six of eight nightlies timed out silently)."""
-    nightly = workflow_doc((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
+    nightly = yaml.safe_load((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
     report = nightly["jobs"]["report"]
     condition = " ".join(str(report["if"]).split())
     assert set(report["needs"]) == set(nightly["jobs"]) - {"report"}  # every nightly job is reported on
@@ -2439,7 +2437,7 @@ def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert ci.count("--durations=20") == 3  # the fast and serial steps of core, and every lane shard
     assert '--run "$RUNNER_TEMP/run.json"' in ci
-    workflow = workflow_doc(ci)
+    workflow = yaml.safe_load(ci)
     steps = workflow["jobs"]["assurance"]["steps"]
     cost = next(s for s in steps if "cost_record.py" in s.get("run", ""))
     assert cost.get("continue-on-error") is True and cost.get("if") == "always()"
@@ -3253,7 +3251,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     """Plan v7 §5 (V5-1, V6-1): fastbase needs changes, runs on the mode-independent decision, has a timeout of at
     least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
     the ratchet's artifacts, with exactly the fast step's flags; core is unchanged."""
-    jobs = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     outputs = jobs["changes"]["outputs"]
     assert outputs["decision"] == "${{ steps.tier.outputs.decision }}"
     assert outputs["tier"] == "${{ steps.tier.outputs.tier }}"
@@ -3265,7 +3263,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert base["runs-on"] == LINUX_IMAGE
     step, setup = strategy_fast_lane_minutes()
     # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
-    assert base["timeout-minutes"] == publication_job_minutes(base)
+    assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
     assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
@@ -3305,7 +3303,7 @@ def test_every_linux_job_in_every_workflow_runs_on_the_pinned_image_never_ubuntu
 
     checked = []
     for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
-        for name, job in workflow_doc(path.read_text(encoding="utf-8"))["jobs"].items():
+        for name, job in yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"].items():
             where = f"{path.name}: {name}"
             if "runs-on" not in job:
                 assert "uses" in job, where  # a called workflow: its jobs are checked in its own file
@@ -3330,7 +3328,7 @@ def test_assurance_requires_the_runtime_checks_by_path_and_reports_them_in_shado
     """Plan v7 §4, §7: the premise step runs when a fast-lane module changed in a reduced tier; --jobs-for gets the
     fastbase result and both checks' outcomes; the shadow step evaluates both on a fast decision the run did not
     take, and can never fail the run."""
-    gate = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]["assurance"]
+    gate = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]["assurance"]
     steps = {s.get("id"): s for s in gate["steps"] if s.get("id")}
     assert '--changed-modules "$RUNNER_TEMP/changed-modules.txt"' in steps["assure"]["run"]
     assert '--modules-out "$RUNNER_TEMP/changed-modules.txt"' in steps["tier"]["run"]
@@ -3371,7 +3369,7 @@ def test_the_shadow_path_runs_fastbase_reports_the_premise_and_never_fails_the_r
 def test_the_audit_workflow_collects_only_the_heavy_directories_under_the_plugin():
     """Plan v7 §7 (V3-3, V4-3): dispatched by hand only; sharded jobs with -m "not serial" -n auto --dist worksteal and
     one serial job per OS with -p no:xdist, each over tests/integration tests/regression tests/acceptance only."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "unit-isolation-audit.yml").read_text(encoding="utf-8"))
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "unit-isolation-audit.yml").read_text(encoding="utf-8"))
     assert set(wf[True]) == {"workflow_dispatch"}  # never on a pull request, a push or a schedule
     jobs = wf["jobs"]
     collect = "python -m pytest tests/integration tests/regression tests/acceptance"
@@ -3546,9 +3544,7 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     import vertical.workers  # noqa: F401
 
     assert {"vertical.chat", "vertical.conversation", "vertical.implementer_gate"} <= set(bounds.BOUNDS)
-    # Death plants deliberately use short bounds and import no bounded product-test helpers.
-    problems = [p for lane in _workflow_lanes()
-                for p in bounds.nesting_problems(lane, [] if lane.workflow == "evidence-proof.yml" else None)]
+    problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 
 
@@ -3560,13 +3556,13 @@ def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():
         if where is None:
             problems.append(f"{lane.label}: no --hang-dir and no --lane-report (the default is the runner's temp)")
             continue
-        workflow = workflow_doc((ROOT / ".github" / "workflows" / lane.workflow).read_text(encoding="utf-8"))
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / lane.workflow).read_text(encoding="utf-8"))
         steps = workflow["jobs"][lane.job]["steps"]
-        covered = [
-            step for step in steps if step.get("uses") == "./.github/actions/lane"
-            and (where == re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/")
-                 or where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/") + "/"))
-        ]
+        sources = [re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/") for step in steps
+                   if step.get("uses") == "./.github/actions/lane" or
+                   (step.get("uses") == "./.github/actions/publish-evidence"
+                    and step.get("if") == "failure() || cancelled()")]
+        covered = any(where == source or where.startswith(source + "/") for source in sources)
         if not covered:
             problems.append(f"{lane.label}: no scanned upload covers {where}")
     assert problems == [], "\n".join(problems)
@@ -3636,7 +3632,7 @@ def test_no_job_loses_test_time_to_the_session_deadlines_clearance():
 def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
     """G3a: the cost record no longer restates a timeout ("the timeout is 30" went stale when the session deadline's
     clearance raised the lanes to 34). It reads each job's timeout from ci.yml, so the text and the workflow agree."""
-    wf = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z",
                 "2026-10-07T00:30:00Z"),
             job("serial 1/1 (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z", "2026-10-07T00:30:00Z")]

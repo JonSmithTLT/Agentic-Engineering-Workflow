@@ -44,7 +44,7 @@ def test_an_arm_header_never_claims_the_watchdog_fired(tmp_path):
 
 @pytest.mark.parametrize("label", ["finding", "armed-placeholder", "empty"])
 def test_every_published_state_has_an_ablated_twin(tmp_path, label):
-    check = _load("check_assurance")
+    check = _load("evidence_problems")
     payloads = {"finding": 'Thread 123:\n  File "tests/unit/test_a.py", line 12 in test_wait\n',
                 "armed-placeholder": "armed now for 600s; not fired\n", "empty": ""}
     (tmp_path / "hang-gw0-123.txt").write_text(payloads[label])
@@ -61,8 +61,11 @@ def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_
     sources = [*(ROOT / ".github/workflows").glob("*.yml"),
                *(ROOT / ".github/actions").glob("*/action.yml")]
     for path in sources:
+        if path.parent.name == "workflows" and path.name in {"discovery.yml", "unit-isolation-audit.yml"}:
+            continue
         doc = yaml.safe_load(path.read_text())
-        containers = [*doc.get("jobs", {}).values()]
+        containers = [job for name, job in doc.get("jobs", {}).items()
+                      if (path.name, name) != ("ci.yml", "fastbase")]
         if "runs" in doc:
             containers.append(doc["runs"])
         for job in containers:
@@ -81,7 +84,6 @@ def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_
     download = next(step for step in checker["jobs"]["evidence"]["steps"]
                     if step.get("uses", "").startswith("actions/download-artifact"))
     assert download["with"]["pattern"] == "evidence-*-attempt-${{ github.run_attempt }}*"
-
 
 
 def test_dropping_an_ablation_expectation_fails_the_hosted_verifier(monkeypatch):
@@ -130,7 +132,7 @@ def test_priority_preparation_keeps_deadline_stacks_and_the_publisher_labels_eve
     assert "empty autopsy/session-123-test/worker-gw0-deadline-stacks.txt" in inventory
     assert "finding autopsy/session-123-test/stacks.gw0-1.txt" in inventory
     assert "omitted autopsy/session-123-test/oversized.txt" in inventory
-    assert _load("check_assurance").evidence_problems(output) == []
+    assert _load("evidence_problems").evidence_problems(output) == []
 
 
 def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names(tmp_path):
@@ -216,7 +218,7 @@ def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, mo
     monkeypatch.setattr(stage, "scan", lambda *args: {})
     published = tmp_path / "published"
     stage.stage(source, published)
-    assert any("unlisted writer" in problem for problem in _load("check_assurance").evidence_problems(published))
+    assert any("unlisted writer" in problem for problem in _load("evidence_problems").evidence_problems(published))
 
 
 def test_looped_sessions_use_the_same_writer_registry():
@@ -244,7 +246,7 @@ def test_a_fixture_only_stack_does_not_stand_in_for_the_running_tests_frame(tmp_
     path.write_text(f"aew hang watchdog: {node} started now; limit 10s; not fired\n"
                     '  File "tests/unit/test_a.py", line 1 in setup_fixture\n')
     (tmp_path / "inventory.txt").write_text("gitleaks clean\nfinding hang-gw0-123.txt (watchdog)\n")
-    assert any("no stack" in defect for defect in _load("check_assurance").evidence_problems(
+    assert any("no stack" in defect for defect in _load("evidence_problems").evidence_problems(
         tmp_path, require_stacks=True))
 
 

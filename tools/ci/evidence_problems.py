@@ -24,11 +24,9 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
         if "unlisted writer" in listing:
             defects.append("unlisted writer in the evidence source")
         for path, data in files.items():
-            if path == inventory or not path.is_relative_to(inventory.parent):
+            if not path.is_relative_to(inventory.parent):
                 continue
             relative = path.relative_to(inventory.parent)
-            if relative.name.startswith("running-"):
-                continue
             if owner(relative) is None:
                 defects.append(f"{relative}: unlisted writer")
             label = state(relative, data)

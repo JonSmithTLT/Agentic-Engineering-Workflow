@@ -49,10 +49,10 @@ def test_every_published_state_has_an_ablated_twin(tmp_path, label):
                 "armed-placeholder": "armed now for 600s; not fired\n", "empty": ""}
     (tmp_path / "hang-gw0-123.txt").write_text(payloads[label])
     inventory = tmp_path / "inventory.txt"
-    inventory.write_text(f"gitleaks clean\n{label} hang-gw0-123.txt (watchdog)\n")
+    inventory.write_text(f"gitleaks clean\nfinding inventory.txt (publisher)\n{label} hang-gw0-123.txt (watchdog)\n")
     assert check.evidence_problems(tmp_path) == []
-    inventory.write_text("gitleaks clean\n")
-    assert any("publication state" in p for p in check.evidence_problems(tmp_path))
+    inventory.write_text("gitleaks clean\nfinding inventory.txt (publisher)\n")
+    assert any("hang-gw0-123.txt: missing or false publication state" in p for p in check.evidence_problems(tmp_path))
 
 
 def test_every_workflow_pytest_step_uses_the_lane_action_and_all_publication_is_unconditional():
@@ -145,8 +145,13 @@ def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names
     names.mkdir()
     (names / "job-label-sha256.txt").write_text(hashlib.sha256(label.encode()).hexdigest())
     (names / "running-123.txt").write_text("tests/unit/test_a.py::test_wait\n")
-    (names / "inventory.txt").write_text("typed source names\nfinding job-label-sha256.txt (evidence_inputs)\n"
-                                        "finding running-123.txt (watchdog)\n")
+    inventory = names / "inventory.txt"
+    listing = "typed source names\nfinding inventory.txt (publisher)\nfinding job-label-sha256.txt (evidence_inputs)\n"
+    inventory.write_text(listing + "finding running-123.txt (watchdog)\n")
+    check_states = _load("evidence_problems").evidence_problems
+    assert check_states(names) == []
+    inventory.write_text(listing)
+    assert any("running-123.txt: missing or false publication state" in defect for defect in check_states(names))
     scanned = tmp_path / "plant-attempt-1-watchdog"
     scanned.mkdir()
     (scanned / "inventory.txt").write_text("gitleaks scan unavailable\n")
@@ -245,7 +250,8 @@ def test_a_fixture_only_stack_does_not_stand_in_for_the_running_tests_frame(tmp_
     path = tmp_path / "hang-gw0-123.txt"
     path.write_text(f"aew hang watchdog: {node} started now; limit 10s; not fired\n"
                     '  File "tests/unit/test_a.py", line 1 in setup_fixture\n')
-    (tmp_path / "inventory.txt").write_text("gitleaks clean\nfinding hang-gw0-123.txt (watchdog)\n")
+    (tmp_path / "inventory.txt").write_text("gitleaks clean\nfinding inventory.txt (publisher)\n"
+                                          "finding hang-gw0-123.txt (watchdog)\n")
     assert any("no stack" in defect for defect in _load("evidence_problems").evidence_problems(
         tmp_path, require_stacks=True))
 

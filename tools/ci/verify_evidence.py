@@ -37,7 +37,7 @@ def github_jobs() -> list[dict]:
 def checker_twins(root: Path) -> list[str]:
     """Every state rule is negated on a copy of the downloaded artifact, with a specific expected defect."""
     failures = []
-    for rule in ("inventory", "label", "writer", "false-timeout", "false-stack", "scan-unavailable"):
+    for rule in ("inventory", "inventory-label", "label", "writer", "false-timeout", "false-stack", "scan-unavailable"):
         with tempfile.TemporaryDirectory() as temporary:
             twin = Path(temporary) / "twin"
             shutil.copytree(root, twin)
@@ -49,6 +49,9 @@ def checker_twins(root: Path) -> list[str]:
             if rule == "inventory":
                 for path in inventories:
                     path.unlink()
+            elif rule == "inventory-label":
+                listing = inventory.read_text(encoding="utf-8")
+                inventory.write_text(listing.replace("finding inventory.txt (publisher)\n", ""), encoding="utf-8")
             elif rule == "label":
                 target.write_text("armed now; not fired\n")
             elif rule == "writer":
@@ -65,7 +68,10 @@ def checker_twins(root: Path) -> list[str]:
                 with inventory.open("a") as output:
                     output.write(f"armed-placeholder {target.name} (watchdog)\n")
             defects = evidence_problems(twin)
-            if not defects:
+            if rule == "inventory-label":
+                if not any("inventory.txt: missing or false publication state" in defect for defect in defects):
+                    failures.append(f"{rule}: ablated twin survived: {defects}")
+            elif not defects:
                 failures.append(f"{rule}: ablated twin survived")
             print(f"checker twin {rule}: {defects}")
     return failures
@@ -73,7 +79,7 @@ def checker_twins(root: Path) -> list[str]:
 
 def death_twins(root: Path, kind: str) -> list[str]:
     failures = []
-    for rule in ("stacks", "kind", "running"):
+    for rule in ("stacks", "kind", "running", "running-label"):
         with tempfile.TemporaryDirectory() as temporary:
             twin = Path(temporary) / "twin"
             shutil.copytree(root, twin)
@@ -82,12 +88,17 @@ def death_twins(root: Path, kind: str) -> list[str]:
                     path.unlink()
                 elif rule == "running" and path.name.startswith(("running-", "hang-")):
                     path.unlink()
+                elif rule == "running-label" and path.name == "inventory.txt":
+                    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+                    path.write_text("".join(line for line in lines if not line.startswith("finding running-")),
+                                    encoding="utf-8")
                 elif rule == "stacks":
                     lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
                     path.write_text("".join(line for line in lines
                                             if not re.search(r'File "|\([^\n]+\.py:\d+\)', line)), encoding="utf-8")
             defects = evidence_problems(twin, kind=kind, require_stacks=True)
-            expected = {"stacks": "no stack", "kind": "kind marker", "running": "running test name"}[rule]
+            expected = {"stacks": "no stack", "kind": "kind marker", "running": "running test name",
+                        "running-label": ".txt: missing or false publication state"}[rule]
             if not any(expected in defect for defect in defects):
                 failures.append(f"{rule}: death twin survived: {defects}")
             print(f"death twin {rule}: {defects}")

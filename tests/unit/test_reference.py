@@ -54,13 +54,20 @@ def index_of(files: dict[str, bytes]) -> dict[str, Any]:
 
 # ------------------------------------------------------------------------------------------ the CI check
 
-def test_counts_carries_the_totals_the_pages_leave_out(monkeypatch):
-    """`modules.md` holds no total, so that two pull requests merge: the number of import edges is here."""
+def test_counts_carries_the_totals_the_pages_leave_out():
+    """The report includes import edges and per-schema totals derived from the same records as the index."""
     files = rendered()
-    monkeypatch.setattr(reference, "render_files", lambda root: files)
     records = index_of(files)["records"]
     edges = sum(len(r["imports"]) for key, r in records.items() if key.startswith("modules:"))
-    assert edges and reference.counts()["import_edges"] == edges
+    totals = reference.counts()
+    assert edges and totals["import_edges"] == edges
+    schemas = {key.removeprefix("schemas:"): r["fact"] for key, r in records.items() if key.startswith("schemas:")}
+    assert schemas and totals["schema_paths"] == {
+        name: {"paths": len(fact.get("properties", {})), "required": len(fact.get("required", []))}
+        for name, fact in schemas.items()
+    }
+    assert totals["parser_cut"]["registrations"] > 0
+    assert totals["parser_cut"]["handlers_by_role"]["aew"] > 0
 
 
 def test_the_committed_reference_is_what_the_code_gives():

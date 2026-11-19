@@ -231,8 +231,10 @@ def page(records: list[C.Record], placed: L.Placed) -> str:
             flags = [name for name, on in (("git-ignored", f["git_ignored"]), ("store", f["store"]),
                                            ("masked by containment", f["masked_by_containment"])) if on]
             named = f"; named by {_fns(f['named_by'])}" if f["named_by"] else ""
-            lines.append(f"- `{f['prefix']}` ({', '.join(flags) or 'kept in git'}){named}; written by "
-                         f"{_fns(f['writers'])}; read by {_fns(f['readers'])}")
+            readers = _fns(f["readers"])
+            lines.append(f"- `{f['prefix']}` ({', '.join(flags) or 'kept in git'}){named}; read by {readers}")
+            lines.append("  - Written by")
+            lines.extend([f"    - `{w['module']}:{w['symbol']}`" for w in f["writers"]] or ["    - None"])
         lines.append("")
     lines += ["## Reads this reading could not place", "",
               "Read sites whose path is not followed to a path under `.aew` or to a place outside it, listed so that "

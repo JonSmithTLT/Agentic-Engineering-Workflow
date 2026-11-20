@@ -387,7 +387,7 @@ def test_filter_scan_names_the_git_attribute_source(attribute_repo, tmp_path, mo
     found = git.untrusted_filters(repo, "HEAD")
     [driver] = found
     assert driver["driver"] == "synthetic"
-    assert driver["patterns"] == [f"*.sample ({name})"]
+    assert driver["patterns_by_file"] == {name: ["*.sample"]}
     message = git.untrusted_filters_message(found, "execution.yaml")
     assert f"*.sample ({name})" in message
     assert "remove the filter assignment from each attributes file listed above" in message
@@ -412,6 +412,42 @@ def test_attribute_sources_use_the_paths_reported_by_git(attribute_repo, tmp_pat
     ]
     monkeypatch.setenv("GIT_ATTR_NOSYSTEM", "1")
     assert git._attribute_files(repo) == [repo / os.fsdecode(global_file.stdout.rstrip(b"\r\n"))]  # noqa: SLF001
+
+
+def test_a_relative_git_attribute_var_resolves_from_the_repo_top(attribute_repo, monkeypatch):
+    repo = attribute_repo
+    relative = Path("attrs") / "global patterns"
+    path = repo / relative
+    path.parent.mkdir()
+    path.write_text("*.sample filter=synthetic\n", encoding="utf-8")
+    real_git = git.git
+
+    def relative_global(*args, **kwargs):
+        if args == ("var", "GIT_ATTR_GLOBAL"):
+            return subprocess.CompletedProcess(args, 0, os.fsencode(relative) + b"\n")
+        return real_git(*args, **kwargs)
+
+    monkeypatch.setattr(git, "git", relative_global)
+    found = git.untrusted_filters(repo, "HEAD")
+    assert [driver["patterns_by_file"] for driver in found] == [{str(path): ["*.sample"]}]
+
+
+def test_a_filter_refusal_names_each_file_and_caps_each_patterns_group(attribute_repo, tmp_path):
+    repo = attribute_repo
+    info = git.git_dir(repo) / "info" / "attributes"
+    global_file = tmp_path / "Global (test)/attributes"
+    global_file.parent.mkdir()
+    assert plain_git("config", "core.attributesFile", str(global_file), cwd=repo).returncode == 0
+    for location, name in ((info, "local"), (global_file, "global")):
+        location.write_text("".join(f"{name}{n}.dat filter=synthetic\n" for n in range(7)), encoding="utf-8")
+
+    found = git.untrusted_filters(repo, "HEAD")
+    message = git.untrusted_filters_message(found, "execution.yaml")
+    for location, name in ((info, "local"), (global_file, "global")):
+        expected = ", ".join(f"{name}{n}.dat" for n in range(5))
+        assert f"{expected} and 2 more ({location})" in message
+        assert f"{name}5.dat" not in message and f"{name}6.dat" not in message
+    assert [len(patterns) for patterns in found[0]["patterns_by_file"].values()] == [7, 7]
 
 
 def test_legacy_system_attributes_follow_the_git_installation(attribute_repo, tmp_path, monkeypatch):

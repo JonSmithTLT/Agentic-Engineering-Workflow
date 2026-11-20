@@ -220,6 +220,58 @@ def test_broker_close_cannot_discard_a_successfully_sent_receipt(w, monkeypatch,
     assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if route == "typed" else [mid])
 
 
+@pytest.mark.parametrize("seat", ["held", "taken_over"])
+def test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_not_a_lost_seat(w, monkeypatch, seat):
+    """Close's bound (``RECEIPT_CLOSE_LOCK_S``) is for a client stalled in its send. Once the bytes are sent the receipt
+    is owed: this session's close, even run to the end of its teardown (which clears the broker's credential), never
+    discards it, and only a lost seat does. The order is forced: between the record's two authority checks, close
+    starts, runs out its bound and finishes; with ``taken_over`` the operator also takes the seat."""
+    import aew.operator
+    from aew.errors import StaleAuthority
+    from aew.harness import lead_broker
+
+    mid = reply(w)
+    monkeypatch.setattr(lead_broker, "RECEIPT_CLOSE_LOCK_S", 0.05)
+    with broker(w) as b:
+        generation = b.generation
+        delivery = b.handle("lead.read", {"argv": ["status", "--json"], "cwd": str(w.root)})
+        errors = []
+
+        def close():
+            try:
+                b.close()
+            except BaseException as exc:  # report the closer's error in the test's own thread
+                errors.append(exc)
+
+        closer = threading.Thread(target=close)
+        load = T._load
+
+        def held(path):
+            if not closer.is_alive() and not b._stop.is_set():
+                closer.start()  # the delivery holds the serialization, so close can only run out its bound
+                assert b._stop.wait(10), "close never gave up its wait"
+                closer.join(30)  # and its whole teardown, the credential cleared, ends before the receipt goes on
+                assert not closer.is_alive() and b._token == ""
+                if seat == "taken_over":
+                    monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "test"})
+                    w.e.lead_takeover(expect_rev=w.rev(), reason="a lost seat", session_label="lead-b")
+            return load(path)
+
+        monkeypatch.setattr(T, "_load", held)
+
+        def sent(answer):
+            assert answer["exit"] == 0, answer
+
+        if seat == "held":
+            delivery.deliver(sent)
+        else:
+            with pytest.raises(StaleAuthority, match="lost authority"):
+                delivery.deliver(sent)
+        assert not errors
+    monkeypatch.undo()
+    assert T.read(w.root / ".aew", generation) == ({mid} if seat == "held" else set())
+
+
 def test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock(w):
     with broker(w) as b:
         errors = []

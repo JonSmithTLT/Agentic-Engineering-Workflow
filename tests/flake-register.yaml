@@ -1120,6 +1120,27 @@ entries:
     job: 135966696239
     at: '2026-11-20T00:09:55Z'
     note: integration 7/14 (windows-latest) on fix/windows-read-during-replace, after main was merged in.
+- id: broker-close-stalled-send-bound
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    The test gave close() 10s to end while a stalled send held the serialization. close gives up that lock after
+    RECEIPT_CLOSE_LOCK_S and stops the session, which is the bound claimed, but its teardown after that (the wake
+    thread's join, the server's close) ran past 10s on a loaded Windows runner.
+  owner: CI timing fixes
+  test: tests/integration/test_message_result_receipts.py::test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock
+  planned_fix: >-
+    The test waits, with no deadline but its own limit, for close to stop the session while the stalled send still
+    holds the lock: that is the bound, and the teardown's length is not claimed. Closure awaits the fix PR number.
+  evidence:
+  - run: 44642651066
+    job: 135977484549
+    at: '2026-11-20T00:23:33Z'
+    note: integration 7/14 (windows-latest) on #501.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

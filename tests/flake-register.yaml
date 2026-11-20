@@ -463,14 +463,24 @@ entries:
   platforms:
   - windows
   status: open
-  class: validation
-  cause: Cause unestablished.
-  owner: CI flake triage
+  class: wall clock
+  cause: >-
+    The hung run's 20s product deadline counts its real checks' execution; on a loaded Windows runner the checks and
+    the test's own steps used it up before the second validate, which then found the run expired, not running (DID
+    NOT RAISE ValidationRunning).
+  owner: CI timing fixes
   test: tests/integration/test_validation_checks.py::test_a_hung_run_is_ended_at_its_deadline_and_its_late_commit_is_refused
+  planned_fix: >-
+    The test makes the deadline's passing an event it sets (validation_ops._past follows it), so the second validate
+    always meets the run running, and the deadline then passes on the test's word. Closure awaits the fix PR number.
   evidence:
   - run: 42318565941
     job: 128238184866
     at: '2026-11-07T00:34:19Z'
+  - run: 44639468279
+    job: 135966696239
+    at: '2026-11-20T00:09:55Z'
+    note: integration 7/14 (windows-latest) on fix/windows-read-during-replace, after main was merged in.
 - id: validation-no-checks
   scope: test
   lane: integration
@@ -1090,6 +1100,26 @@ entries:
     job: 132890484979
     at: '2026-11-15T17:53:44Z'
     note: integration 6/14 (windows-latest) on fix/pre-uat-hardening.
+- id: shim-lead-run-startup
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    A 120s deadline on start-up and admission: the wait for the Lead's run to be running spans the Lead session's
+    start, its scripted planning steps and the run's launch, which a loaded Windows runner did not finish in 120s.
+  owner: CI timing fixes
+  test: tests/integration/test_lead_server_shim.py::test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following_it_works
+  planned_fix: >-
+    The wait has no deadline of its own: the test's own limit bounds it (#497; the wait-owner sweep names it the
+    "watchdog" bound). Closure awaits the fix PR number.
+  evidence:
+  - run: 44639468279
+    job: 135966696239
+    at: '2026-11-20T00:09:55Z'
+    note: integration 7/14 (windows-latest) on fix/windows-read-during-replace, after main was merged in.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

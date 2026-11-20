@@ -333,11 +333,15 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
     state of the current session's, and ``None`` (review of PR #199, F8)."""
     from pathlib import Path
 
+    from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
+
     path = Path(aew_root) / LOOP_REL
+
+    def read() -> bytes:
+        return path.read_bytes() if path.stat().st_size <= 64 * 1024 else b"null"
+
     try:
-        if not path.is_file() or path.stat().st_size > 64 * 1024:
-            return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(retry_lock_free(read, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path)))
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(data, dict) or data.get("schema") != LOOP_SCHEMA:

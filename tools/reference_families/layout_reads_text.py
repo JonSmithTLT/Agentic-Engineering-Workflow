@@ -15,7 +15,7 @@ from collections import Counter
 
 from reference_families import writers_text as T
 
-DIRECT_NAMES = frozenset({"read_yaml", "sha256_file"})
+DIRECT_NAMES = frozenset({"read_yaml", "read_replaced", "sha256_file"})
 OS_NAMES = frozenset({"stat", "lstat", "listdir", "scandir"})
 OS_PATH_NAMES = frozenset({"exists", "isfile", "isdir", "getsize", "getmtime", "islink"})
 SHUTIL_NAMES = frozenset({"copy", "copy2", "copyfile", "copytree"})

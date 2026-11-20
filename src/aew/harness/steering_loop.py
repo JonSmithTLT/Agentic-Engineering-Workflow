@@ -66,6 +66,7 @@ from aew import errors
 from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
+from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 from aew.harness import contract as K
 from aew.harness import event_spool, runlog
 from aew.util import replace_with_retry, sha256_bytes, utc_now
@@ -740,10 +741,11 @@ class SteeringLoop:
 
 def _read(path: Path) -> dict[str, Any] | None:
     """The loop's own last record, or None when there is none or it can't be read."""
+    def read() -> bytes:
+        return path.read_bytes() if path.stat().st_size <= 64 * 1024 else b"null"
+
     try:
-        if not path.is_file() or path.stat().st_size > 64 * 1024:
-            return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(retry_lock_free(read, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path)))
     except (OSError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None

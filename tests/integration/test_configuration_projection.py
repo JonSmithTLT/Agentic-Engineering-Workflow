@@ -26,6 +26,7 @@ from invariants import load_control
 
 from aew.engine import configuration as C
 from aew.engine import steering as S
+from aew.engine import store
 from aew.engine.api import Engine
 from aew.engine.base import POLICY_PINS
 from aew.engine.store import serialize_control
@@ -978,6 +979,7 @@ def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch,
     The read retries through the store's one owner and reports the true state, never DRIFTED or MANIFEST_DRIFTED."""
     if collision == "reported_missing" and sys.platform != "win32":
         pytest.skip("only Windows reports a present file missing mid-replace; POSIX rename is atomic")
+    monkeypatch.setattr(store, "IS_WINDOWS", True)  # the injected open errors model Windows
     e = configured(engine)
     target = aew(e) / rel
     data = target.read_bytes()

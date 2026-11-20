@@ -1041,6 +1041,68 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: run-record-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: The wait observed unconfirmed while the saved run record showed ended_with_evidence in the same second.
+  test: tests/integration/test_harness_runs.py::test_launching_a_dispatched_invocation_rotates_the_printed_credential
+  evidence:
+  - run: 43747598867
+    job: 132920297439
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: A Windows sharing refusal is the inferred cause. The reader preserves the five-second budget and
+      reports a persistent refusal separately from absence.
+    test: tests/unit/test_runlog_reads.py::test_an_unreadable_run_record_is_distinct_from_an_absent_one
+    proof: fault injection
+- id: broker-posting-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: A refused Windows liveness read could report that the broker was not posting.
+  test: tests/integration/test_lead_wake_status.py::test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn
+  evidence:
+  - run: 43135354992
+    job: 130909397879
+    at: '2026-11-12T01:33:50Z'
+  - run: 43747598867
+    job: 132920297391
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: A refused liveness read preserves the distinction between an unreadable record and an absent
+      broker.
+    test: tests/integration/test_lead_wake_status.py::test_a_held_liveness_record_does_not_make_a_live_broker_look_absent
+    proof: fault injection
+- id: map-identical-write-sharing
+  scope: test
+  lane: fast
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: Four of eight identical writers failed with PermissionError when reading the already published artifact.
+  test: tests/unit/test_map_store.py::test_concurrent_identical_writes_all_succeed_with_one_file
+  evidence:
+  - run: 43747598867
+    job: 132920297047
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: The existing artifact comparison retries sharing refusals through the store policy.
+    test: tests/unit/test_map_store.py::test_an_identical_map_write_succeeds_while_the_published_artifact_is_held
+    proof: fault injection
 - id: stream-drop-shell-startup
   scope: test
   lane: integration

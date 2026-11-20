@@ -7,6 +7,9 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
+from conftest import IS_WINDOWS
+
 from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog
@@ -250,6 +253,9 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
     broker.start()
     try:
         broker.start_wakes(_CountingPoster())
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not Q.some_broker_posts(root):
+            time.sleep(0.05)
         assert Q.some_broker_posts(root)
         path = root / X.REL_PATH
         path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
@@ -259,6 +265,66 @@ def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_
         assert Q.serving(root) is None and Q.some_broker_posts(root) is False
     finally:
         broker.close()
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_a_held_liveness_record_does_not_make_a_live_broker_look_absent(tmp_path, caplog):
+    from windows_sharing import blocked_read
+
+    path = _live_broker_record(tmp_path)
+    with blocked_read(path):
+        assert Q.some_broker_posts(tmp_path) is True
+    with blocked_read(path, replace_gap=True):
+        assert Q.some_broker_posts(tmp_path) is True
+    with blocked_read(path, release=False):
+        assert Q.some_broker_posts(tmp_path) is None
+    assert "broker_liveness_unreadable" in caplog.text
+
+
+def _live_broker_record(tmp_path):
+    import os
+
+    from aew.harness import broker_liveness, procs
+
+    generation = 7
+    Q.mark_serving(tmp_path, generation)
+    now = time.time()
+    broker_liveness.write(tmp_path, {
+        "schema": broker_liveness.SCHEMA, "pid": os.getpid(), "start_id": procs.start_id(os.getpid()),
+        "generation": generation, "beat_at": now, "watchdog_tick_at": now, "wedge_after_s": 30,
+    })
+    return broker_liveness.path(tmp_path)
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_unreadable_serving_mark_is_unknown_and_is_not_removed(tmp_path, caplog):
+    from windows_sharing import blocked_read
+
+    _live_broker_record(tmp_path)
+    marker = tmp_path / Q.SERVING_REL
+    with blocked_read(marker):
+        assert Q.some_broker_posts(tmp_path) is True
+    with blocked_read(marker, release=False):
+        assert Q.some_broker_posts(tmp_path) is None
+        assert Q.broker_posts(tmp_path, 7) is None
+        Q.clear_serving(tmp_path, 7)
+        assert marker.is_file()
+    assert "broker_serving_unreadable" in caplog.text
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_a_clean_broker_close_waits_out_a_held_liveness_record(tmp_path):
+    from windows_sharing import blocked_read
+
+    from aew.engine.store import READ_RETRIES
+    from aew.harness.broker_liveness import Beat, path, read
+
+    beat = Beat(tmp_path, generation=7, poll_s=1, wedge_after_s=30)
+    beat._write(None)
+    with blocked_read(path(tmp_path), release_after=READ_RETRIES):
+        beat.close()
+    closed = read(tmp_path)
+    assert isinstance(closed, dict) and closed["closed_at"] is not None
 
 
 def test_broker_posting_does_not_age_its_snapshot_during_the_process_identity_check(project, monkeypatch):

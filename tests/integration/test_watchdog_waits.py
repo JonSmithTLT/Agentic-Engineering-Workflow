@@ -82,6 +82,8 @@ WAITS: dict[str, tuple[str, str]] = {
                                                        "that thread runs, after the bridge is marked closed"),
     "aew.harness.broker_liveness:Beat.close": (EXCUSED, "after_outcome: joins the beat thread once closed_at is "
                                                         "written"),
+    "aew.engine.store:retry_lock_free": (EXCUSED, "after_outcome: Beat.close reads its liveness record after the "
+                                                 "bridge closes, with broker_liveness.READ_BUDGET_S"),
     "aew.util:replace_with_retry": (EXCUSED, "writes closed_at, once the bridge is closed: it sleeps only while "
                                              "Windows refuses the replace (a reader holds the record open for one "
                                              "read), up to its own 5 s, which the bound does not count"),

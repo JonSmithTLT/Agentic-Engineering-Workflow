@@ -247,10 +247,10 @@ def fields_block(command: str, values: dict[str, str | list[str]]) -> str:
 def _scalar(value: str) -> str:
     if value.isprintable():
         return "'" + value.replace("'", "''") + "'"  # a single-quoted YAML scalar doubles its own quote
-    return '"' + "".join(_ESCAPES.get(c) or (c if c.isprintable() else _escape(c)) for c in value) + '"'
+    from aew.harness.desktop_notifier import clean
 
+    return '"' + clean(value, escape="yaml") + '"'
 
-_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
@@ -258,11 +258,6 @@ _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `a
 HELD_SEAT = f"{_HELD_SEAT}`aew lead release {EXPECT_REV}` gives it up"
 # D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
 HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
-
-
-def _escape(c: str) -> str:
-    """YAML's double-quoted escape for one character (``\\uXXXX``, or ``\\UXXXXXXXX`` beyond the first plane)."""
-    return f"\\u{ord(c):04x}" if ord(c) < 0x10000 else f"\\U{ord(c):08x}"
 
 
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.

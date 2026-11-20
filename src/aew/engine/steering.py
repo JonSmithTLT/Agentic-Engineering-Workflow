@@ -243,8 +243,9 @@ def profiles_without_deadline(policy: dict[str, Any] | None) -> list[str]:
 
 
 ENDPOINT_DOWN = ("the operator endpoint is not running: start `aew operator serve --dev` in the operator's own "
-                 "terminal (on Windows, `aew opencode` starts one), and keep it up while Run is in force (each Run "
-                 "activation needs it live, and it delivers the notifications)")
+                 "terminal (on Windows, `aew opencode` starts one). Raising the Lead's steering mode needs the "
+                 "endpoint, and so does each Run activation. Keep it running while Run is in force so it can also "
+                 "deliver notifications")
 SEAT_VACANT = ("no Lead holds the seat: start the Lead session with `aew opencode --acquire`. A raise binds its "
                "generation, and the steering loop runs in that session")
 PINNED_EDIT = "Edit pinned settings or classify authority candidates"  # the quickstart's section for a pinned edit

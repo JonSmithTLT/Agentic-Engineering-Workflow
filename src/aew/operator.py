@@ -26,6 +26,7 @@ from aew.errors import OperatorAuthorizationRequired, PermissionDenied
 from aew.util import IS_WINDOWS
 
 DEFAULT_TIMEOUT_S = 300.0
+REQUESTER_LIMIT = 400
 
 # Where a credential this authorization releases will go; the CLI sets it from `--print-credential` (ADR-0009).
 TERMINAL_ONLY = "this terminal only"
@@ -41,25 +42,42 @@ def new_code() -> str:
     return _code()
 
 
-def challenge(code: str, text: str, *, requested_by: str | None = None, destination: str | None = None,
-              instruction: str | None = None, purpose: str | None = None) -> str:
-    """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
-    back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
-    (F20.3), naming the requester that process reported and where the code is to be typed. ``purpose`` is for a prompt
-    that releases no credential: it names what changes, in place of the credential's destination."""
+def render_requester(requested_by: str | None = None) -> str:
+    """Render the requester as one terminal line."""
+    from aew.harness.desktop_notifier import clean
     from aew.harness.procs import process_chain
 
     who = requested_by if requested_by is not None else (" <- ".join(process_chain()) or "unknown")
+    rendered = clean(who, escape="visible")
+    cut = " (cut)"
+    return rendered if len(rendered) <= REQUESTER_LIMIT else rendered[:REQUESTER_LIMIT - len(cut)] + cut
+
+
+def challenge(code: str, text: str | list[str], *, requested_by: str | None = None, destination: str | None = None,
+              instruction: str | None = None, purpose: str | None = None, requester_reported: bool = False) -> str:
+    """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
+    back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
+    (F20.3), naming the requester that process reported and where the code is to be typed. ``purpose`` is for a prompt
+    that releases no credential: it names what changes, in place of the credential's destination. Pass preview
+    lines separately when a field within a line can itself contain a newline."""
+    from aew.harness.desktop_notifier import clean
+
+    lines = text.split("\n") if isinstance(text, str) else text
+    body = "\n".join(clean(line, escape="visible") for line in lines)
+    who = render_requester(requested_by)
+    if requester_reported:
+        who += " (as reported by the requester; the code below is the authorization)"
+    label = "changes      " if purpose is not None else "credential to"
     where = destination if destination is not None else credential_destination.get()
+    target = clean(purpose if purpose is not None else where, escape="visible")
     typed = instruction or f"Type the confirmation code {code} and press Enter to authorize; anything else refuses."
-    target = f"  changes        : {purpose}\n" if purpose is not None else f"  credential to  : {where}\n"
     return (
         "\n==== AEW OPERATOR AUTHORIZATION REQUIRED ====\n"
-        f"{text}\n"
+        f"{body}\n"
         f"  requested by   : {who}\n"
-        f"{target}"
+        f"  {label}  : {target}\n"
         "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
-        f"{typed}\n"
+        f"{clean(typed, escape='visible')}\n"
         f"{RELAY_WARNING}\n"
     )
 

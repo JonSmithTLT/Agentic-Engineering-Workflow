@@ -653,6 +653,7 @@ class _Projector:
         containment = containment if isinstance(containment, dict) else {}
         notify = self.document.get("notify")
         notify = notify if isinstance(notify, dict) else {}
+        new_project = X.new_project_switches()
 
         def count(name: str) -> int:
             value = containment.get(name)
@@ -664,8 +665,10 @@ class _Projector:
             "containment": {"mode": self.fv(("containment", "mode"), _text, LATER),
                             "writable_count": count("writable"), "hide_count": count("hide"),
                             "trusted_git_drivers_count": count("trusted_git_drivers"), "effective": NOT_SUPPLIED},
+            # `default` is what an absent key reads; `new_project_default` is what `aew init` writes, or None
             "switches": [{"path": P.encode((block, key), self.document),
-                          "value": self.fv((block, key), _text, LATER), "default": allowed[0]}
+                          "value": self.fv((block, key), _text, LATER), "default": allowed[0],
+                          "new_project_default": new_project.get((block, key))}
                          for (block, key), allowed in X.STRING_SWITCHES.items()][:MAX_SWITCHES],
             "notify": {"configured": bool(notify.get("command")),
                        "timeout_s": self.fv(("notify", "timeout_s"), _text, LATER),

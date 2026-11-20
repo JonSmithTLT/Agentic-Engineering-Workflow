@@ -477,6 +477,9 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "bind its children. An Epic closes only once the history is audited through the current root: "
         f"`aew history audit {EXPECT_REV}` first.",
         "",
+        "Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice is the worker's and never "
+        "comes to you. A stale map refreshes at the next dispatch; to refresh now, `aew map generate`.",
+        "",
         "## Finished work",
         "",
         "When reporting validation or completion, quote AEW's recorded coverage and its limitations with the verdict; "

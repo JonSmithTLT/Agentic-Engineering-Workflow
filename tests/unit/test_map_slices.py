@@ -32,17 +32,69 @@ def sealed(files: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------------------------------- the switch
 
 
-def test_the_switch_is_off_unless_the_operator_sets_it():
+def test_a_new_project_holds_the_switch_on_and_an_absent_key_is_off():
+    """A new project's policy is the template, which holds :data:`X.NEW_PROJECT_PACK_SLICES`; a policy without the key
+    (a project initialized before that default) reads as off, so it changes no pack until the operator takes the switch
+    offer (ADR-0015)."""
     assert X.pack_slices(None) == X.pack_slices({}) == X.pack_slices({"maps": {}}) == "off"
     assert X.pack_slices({"maps": {"pack_slices": "structural"}}) == "structural"
-    on = X.parse(X.TEMPLATE.encode() + b"maps: {pack_slices: structural}\n", source="t")
-    assert X.pack_slices(on) == "structural" and X.pack_slices(X.parse(X.TEMPLATE.encode(), source="t")) == "off"
+    assert X.NEW_PROJECT_PACK_SLICES == X.PACK_SLICES_STRUCTURAL
+    assert X.pack_slices(X.parse(X.TEMPLATE.encode(), source="t")) == X.NEW_PROJECT_PACK_SLICES
+    before = X.TEMPLATE[:X.TEMPLATE.index("\nmaps:\n") + 1]  # the template as a project before the default had it
+    assert "pack_slices" not in before and X.pack_slices(X.parse(before.encode(), source="t")) == "off"
     assert X.pack_slices(X.parse(X.TEMPLATE.encode() + b'maps: {pack_slices: "off"}\n', source="t")) == "off"
     for bad, violation in ((b"maps: {pack_slices: everything}\n", "'everything' is not one of"),
                            (b'maps: {pack_slices: "off", extra: 1}\n', "'extra' was unexpected")):
         with pytest.raises(ValidationFailed) as refused:
             X.parse(X.TEMPLATE.encode() + bad, source="t")
         assert violation in str(refused.value.details), refused.value.details
+
+
+def test_the_lead_gets_the_slices_bytes_in_place_of_its_body_and_every_other_pack_as_it_is():
+    """:func:`slices.for_lead` replaces only the body; nothing else in the pack or the entry moves."""
+    rows = ["map 0123456789ab: CURRENT", "calc/  2 files"]
+    entry = {"name": slices.NAME, "path": "local/maps/x", "sha256": "a" * 64, "freshness": {"status": "CURRENT"}}
+    other = {"name": "guardrails", "path": "policy/guardrails.yaml", "sha256": "b" * 64}
+    pack = {"path": "local/packs/INV-1/pack.md", "sha256": "c" * 64, "sources": [other, {**entry, "slice": rows}]}
+    shown = slices.for_lead(pack)
+    assert shown == {**pack, "sources": [other, {**entry, "slice_bytes": len("\n".join(slices.frame(rows)).encode())}]}
+    assert pack["sources"][1]["slice"] == rows, "the pinned entry itself is never changed"
+    unavailable = {"path": "p", "sha256": "d" * 64, "sources": [other, {"name": slices.NAME, "unavailable": "none"}]}
+    for unchanged in (None, {}, {"path": "p", "sha256": "e" * 64, "sources": [other]}, unavailable):
+        assert slices.for_lead(unchanged) == unchanged
+
+
+# The engine's writes of a pack into control state, each listed once per store (`file: target`): the pin, which keeps
+# the slice body. A second store of the same text is a second entry, so it fails until it is listed.
+PACK_STORES = ["context_ops.py: inv['pack']"]
+
+
+def test_every_engine_result_that_returns_a_pack_returns_it_as_the_lead_sees_it():
+    """A result's ``pack`` stays in the Lead's context, so every engine result that carries one, first or replayed,
+    passes it through :func:`slices.for_lead`. What this reads from engine/*.py: each dict literal keyed ``pack`` and
+    each store ``x["pack"] = ...``, whose value must be ``slices.for_lead(...)`` or ``None`` (no pack yet), apart from
+    the control-state pin in ``PACK_STORES``. A record returned whole (a spread, ``redact(doc)``) can't be read this
+    way: the Lead read-views test in test_map_context.py checks those by behaviour."""
+    import ast
+
+    def as_the_lead_sees_it(value: ast.expr) -> bool:
+        return (isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr == "for_lead"
+                or isinstance(value, ast.Constant) and value.value is None)
+
+    engine = Path(slices.__file__).resolve().parents[1] / "engine"
+    unwrapped, stores = [], []
+    for path in sorted(engine.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values, strict=True):
+                    if isinstance(key, ast.Constant) and key.value == "pack" and not as_the_lead_sees_it(value):
+                        unwrapped.append(f"{path.name}:{node.lineno}")
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
+                            and target.slice.value == "pack" and not as_the_lead_sees_it(node.value)):
+                        stores.append(f"{path.name}: {ast.unparse(target)}")
+    assert unwrapped == [] and sorted(stores) == sorted(PACK_STORES)
 
 
 @pytest.mark.parametrize("body", [b"maps: {pack_slices: off}\n", b"maps:\n  pack_slices: off\n",
@@ -63,7 +115,7 @@ def test_only_a_role_whose_context_names_codebase_map_gets_the_slice(role):
 
     on = {"maps": {"pack_slices": "structural"}}
     role_def = roles.archetype(role)
-    assert slices.wanted(role_def, on) is True  # every worker's card names it (register E184)
+    assert slices.wanted(role_def, on) is True  # every worker's card names it (ADR-0015)
     assert slices.wanted(role_def, None) is False and slices.wanted(role_def, {"maps": {"pack_slices": "off"}}) is False
     assert slices.wanted(roles.archetype("lead"), on) is False  # the Lead has no pack
 

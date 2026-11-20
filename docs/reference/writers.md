@@ -133,6 +133,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
 - `local/harness/lead/xdg-data/opencode/opencode.db`
   - `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect)
+  - `aew.harness.opencode.login:clear_aew_logins` (direct: sqlite3.connect)
   - `aew.harness.opencode.login:clear_saved_permissions` (direct: sqlite3.connect)
 - `local/harness/lead/xdg-state/opencode`
   - `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
@@ -166,6 +167,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/R-{}-{}/prompt.md`
   - `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
+- `local/harness/runs/R-{}-{}/relay-requests.jsonl`
+  - `aew.harness.containment.relay:RequestLog.__call__` (direct: open)
 - `local/harness/runs/R-{}-{}/requests/{}`
   - `aew.harness.runlog:take_requests` (direct: Path.unlink)
 - `local/harness/runs/R-{}-{}/run.json`
@@ -298,6 +301,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/harness/runs/doctor-{}-{}/label.json`
   - `aew.harness.model_list:read` (direct: Path.write_text)
+- `local/harness/runs/doctor-{}-{}/relay-requests.jsonl`
+  - `aew.harness.containment.relay:RequestLog.__call__` (direct: open)
 - `local/harness/runs/doctor-{}-{}/scratch`
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/doctor-{}-{}/scratch/.cache`
@@ -342,6 +347,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
 - `local/harness/runs/lead-{}-{}/label.json`
   - `aew.harness.lead_broker:record_label` (direct: Path.write_text)
+- `local/harness/runs/lead-{}-{}/relay-requests.jsonl`
+  - `aew.harness.containment.relay:RequestLog.__call__` (direct: open)
 - `local/harness/runs/lead-{}-{}/scratch`
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/scratch/.cache`
@@ -397,6 +404,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.runlog:write_returned` (direct: atomic_write)
 - `local/harness/runs/{}/prompt.md`
   - `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
+- `local/harness/runs/{}/relay-requests.jsonl`
+  - `aew.harness.containment.relay:RequestLog.__call__` (direct: open)
 - `local/harness/runs/{}/requests`
   - `aew.harness.runlog:deliver_request` (direct: Path.mkdir)
 - `local/harness/runs/{}/requests/{}`
@@ -471,7 +480,11 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/maps`, named by `aew.maps.store:MAPS_REL`
   - `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir)
   - `aew.engine.lock:FileLock._open` (direct: Path.mkdir)
+  - `aew.maps.service:_remember_failure` (direct: Path.mkdir)
   - `aew.maps.store:_append_log` (direct: Path.mkdir)
+- `local/maps/refresh-failed.json`, named by `aew.maps.service:REFRESH_FAILED_REL`
+  - `aew.maps.service:_remember_failure` (direct: atomic_write)
+  - `aew.maps.service:forget_failure` (direct: Path.unlink)
 - `local/maps/registry-log.jsonl`, named by `aew.maps.store:LOG_REL`
   - `aew.maps.store:_append_log` (direct: open)
 - `local/maps/registry.json`, named by `aew.maps.store:REGISTRY_REL`

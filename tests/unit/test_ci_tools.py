@@ -2435,7 +2435,7 @@ def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest
     # continue-on-error does not cover the job timeout: the step's own timeout keeps a hang from cancelling the gate
     assert cost.get("timeout-minutes") and cost["timeout-minutes"] < workflow["jobs"]["assurance"]["timeout-minutes"]
     assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read",
-                                                             "pull-requests": "read"}
+                                                             "pull-requests": "read", "checks": "write"}
     assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)
 
 

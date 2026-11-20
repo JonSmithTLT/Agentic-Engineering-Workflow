@@ -208,8 +208,7 @@ def test_output():
     assert "1 passed" in proc.stdout
 
 
-@pytest.mark.skipif(not IS_WINDOWS, reason="Windows share modes control whether a reader blocks rename")
-def test_observing_a_windows_watchdog_file_does_not_pin_its_name(tmp_path):
+def test_observing_a_watchdog_file_does_not_pin_its_name(tmp_path):
     from evidence_files import open_observation
 
     path = tmp_path / "hang-gw0-123.txt"

@@ -285,3 +285,34 @@ def test_a_pack_quotes_only_the_adopted_guardrails(calc, tmp_path):
     calc.adopt_policy("the reviewed guardrails edit")
     regen = calc.ok("context", "pack", inv)
     assert "UNADOPTED-GUARDRAIL-EDIT-5K" in Path(regen["path"]).read_text(encoding="utf-8")
+
+
+def test_both_pack_builders_read_the_adopted_checks_once_and_record_the_same_sources_first(tmp_path, monkeypatch):
+    """A Ticket's pack and a read-only invocation's pack read `checks.yaml` once, so the checks a pack lists are the
+    bytes whose hash it records, and both open their sources with the same entries in the same order, apart from the
+    name of the unit's record."""
+    from aew.engine.base import Kernel
+
+    ticket = sample_project(tmp_path / "ticket")
+    to_review(ticket, tmp_path / "ticket")
+    observation = sample_project(tmp_path / "observation")
+    _for_record_verification(observation, tmp_path / "observation")
+    reads: list[str] = []
+    pinned = Kernel._pinned_bytes
+    monkeypatch.setattr(Kernel, "_pinned_bytes", lambda self, rel, pins: reads.append(rel) or pinned(self, rel, pins))
+    heads = {}
+    for p, role in ((ticket, "reviewer"), (observation, "verifier")):
+        engine = Engine(p.root, p.root / ".aew")
+        state = engine._k.store.current()
+        inv = next(i for i, v in sorted(state["invocations"].items()) if v["role"] == role)
+        reads.clear()
+        inputs, sources = engine._packs.pack_inputs(state, inv)
+        assert reads.count("policy/checks.yaml") == 1, reads
+        assert inputs.checks == engine._k.policy("checks")["checks"]
+        heads[inputs.scope or "ticket"] = [s["name"] for s in sources[:sources.index(
+            next(s for s in sources if s["name"] == "checks")) + 1]]
+    kinds = {k: ["<record>" if n in ("current_ticket", "current_work") else n.split(":")[0] for n in names]
+             for k, names in heads.items()}
+    assert kinds["ticket"] == kinds["observation"] == [
+        "archetype", "role_card", "skill", "<record>", "accepted_plan", "guardrails", "checks"], heads
+    assert "current_ticket" in heads["ticket"] and "current_work" in heads["observation"]

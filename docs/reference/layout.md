@@ -183,7 +183,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.archive_ops`: `Archive._prune_observation` (Path.exists), `Archive._retained` (Path.exists), `Archive._retired_observations` (Path.exists), `Archive.finalize` (sha256_file), `Archive.record` (Path.read_bytes), `_bytes` (Path.read_bytes), `_sealed_check` (sha256_file), `held_evidence` (Path.read_text), `held_evidence` (sha256_file)
 - `aew.engine.assurance_ops`: `Assurance._pinned` (sha256_file)
 - `aew.engine.base`: `Kernel._pinned_bytes` (Path.is_file), `Kernel._pinned_bytes` (Path.read_bytes), `Kernel.locate` (Path.exists), `Kernel.locate` (read_yaml), `Kernel.policy_pins` (Path.is_file), `Kernel.policy_pins` (sha256_file)
-- `aew.engine.context_ops`: `ContextPacks._m2_pack_extras` (Path.read_text), `ContextPacks._m2_pack_inputs` (Path.read_text), `ContextPacks._pack_inputs` (Path.read_text)
+- `aew.engine.context_ops`: `ContextPacks._m2_pack_extras` (Path.read_text), `ContextPacks._pack_base` (Path.read_text)
 - `aew.engine.coordination_ops`: `Coordination._sealed` (Path.read_bytes), `messaging_switch` (Path.is_file), `messaging_switch` (Path.read_bytes)
 - `aew.engine.coverage`: `load` (Path.read_text), `load` (sha256_file)
 - `aew.engine.dispatch`: `Dispatch._policy_digests` (sha256_file)

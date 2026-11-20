@@ -286,6 +286,10 @@ class Kernel:
         raw = self._pinned_bytes(rel, pins)
         if raw is None:
             raise FileNotFoundError(str(path))
+        return self._parse_policy(name, raw, path)
+
+    @staticmethod
+    def _parse_policy(name: str, raw: bytes, path: Path) -> dict[str, Any]:
         data = load_yaml(raw.decode("utf-8"), source=str(path))
         validate(name, data, source=str(path))
         return data
@@ -329,6 +333,12 @@ class Kernel:
         if raw is None:
             raise FileNotFoundError(str(self.aew_root / rel))
         return raw, None if pins is None else pins[rel]
+
+    def policy_with_bytes(self, name: str) -> tuple[dict[str, Any], bytes]:
+        """A policy file parsed, with its exact bytes, from one read held to the pins in force: for a caller that uses
+        the policy and records the hash of the same bytes, so the two can never come from different reads."""
+        raw = self.policy_bytes(name)
+        return self._parse_policy(name, raw, self.aew_root / self.manifest["policy"][name]), raw
 
     def pricing(self) -> Any:
         """The adopted price table (``usage_ops.Prices``), or ``None`` when the manifest names no ``policy.pricing``

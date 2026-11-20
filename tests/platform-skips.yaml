@@ -1058,6 +1058,12 @@ skipped:
       refusal run on every platform in tests/unit/test_provider_key_refusal.py, and Windows' side (no provider-key
       line) in test_doctor_judges_no_provider_key_off_the_relay_route.
   linux:
+    tests/unit/test_hang_watchdog.py::test_windows_supervisor_forwards_pytest_output: >-
+      The independent Windows regression cutoff uses a Windows job object. Covered on Windows.
+    tests/unit/test_hang_watchdog.py::test_windows_step_cutoff_waits_for_a_leaked_child_after_pytest_passes: >-
+      The independent Windows regression cutoff uses a Windows job object. Covered on Windows.
+    tests/unit/test_hang_watchdog.py::test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload: >-
+      The independent Windows regression cutoff uses a Windows job object. Covered on Windows.
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
     tests/unit/test_store_read_committed.py::test_an_absent_file_is_absent_only_after_the_retries_on_windows: >-

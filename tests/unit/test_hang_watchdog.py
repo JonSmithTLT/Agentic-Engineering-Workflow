@@ -13,9 +13,11 @@ import time
 from pathlib import Path
 
 import lanes
+import proctree
 import pytest
 import watchdog
 from conftest import IS_WINDOWS
+from session_deadline import SUPERVISOR_CUTOFF_EXIT
 
 HELPERS = Path(lanes.__file__).resolve().parent
 CONFTEST = f'''
@@ -88,14 +90,14 @@ def test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_o
                               *mode)
     out = proc.stdout + proc.stderr
     assert proc.returncode == 1 and "INTERNALERROR" not in out, out
-    assert "HungTest" in out and "test_w.py::test_hangs_forever was still running after 3s" in out, out
+    assert "HungTest" in out and "test_w.py::test_hangs_forever started" in out, out
     assert "in test_hangs_forever" in out, out  # the stack names the line the test is stuck on
     assert took < 120, took
     results = json.loads(report.read_text(encoding="utf-8"))["results"]
     assert results["tests/unit/test_w.py::test_hangs_forever"]["outcome"] == "failed"
     assert results["tests/unit/test_w.py::test_after"]["outcome"] == "passed"  # one hang costs only its own limit
     assert results["tests/unit/test_w.py::test_quick"]["outcome"] == "passed"
-    named = [d for d in dumps(hangs) if "test_hangs_forever was still running" in d]
+    named = [d for d in dumps(hangs) if "test_hangs_forever started" in d]
     assert len(named) == 1 and "in test_hangs_forever" in named[0], dumps(hangs)
 
 
@@ -104,8 +106,10 @@ def test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk(tmp_path):
     proc, _ = inner_pytest(project(tmp_path, SLOW), hangs, "--test-timeout", "2", "-p", "no:xdist")
     out = proc.stdout + proc.stderr
     assert proc.returncode == (0 if IS_WINDOWS else 1), out  # POSIX fails it in place; Windows records it only
-    named = [d for d in dumps(hangs) if "test_outlives_its_limit was still running after 2s" in d]
+    named = [d for d in dumps(hangs) if "test_outlives_its_limit started" in d]
     assert len(named) == 1 and "in test_outlives_its_limit" in named[0], dumps(hangs)
+    assert "a dump below records a fire" in named[0].splitlines()[0]
+    assert "not fired" not in named[0].splitlines()[0]
 
 
 def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
@@ -114,6 +118,123 @@ def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
         proc, _ = inner_pytest(root, tmp_path / "hangs", "-p", "no:xdist", *extra)
         assert proc.returncode == 0, proc.stdout + proc.stderr
     assert dumps(tmp_path / "hangs") == []
+
+
+def run_windows_supervisor(root, progress, hangs):
+    runner = HELPERS.parents[1] / "tools" / "ci" / "lane_step.py"
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
+    # The venv launcher can kill leaked descendants by itself. Use the base interpreter as CI does.
+    clean_env["PYTHONPATH"] = os.pathsep.join(path for path in sys.path if path)
+    bootstrap = ("import runpy,sys,time,shlex; "
+                 "supervise=runpy.run_path(sys.argv[1])['supervise']; "
+                 "from pathlib import Path; "
+                 "script=Path(sys.argv[2]).parent/'lane.sh'; "
+                 "script.write_text(shlex.join([sys.executable,'-m','pytest',*sys.argv[3:]])); "
+                 "raise SystemExit(supervise(Path(sys.argv[2]),'bash',script,time.time()+15))")
+    return subprocess.run([sys._base_executable, "-c", bootstrap, str(runner), str(progress), "-q", "-s",
+                           "-p", "no:cacheprovider", "-p", "no:xdist", "--test-timeout", "600",
+                           f"--hang-dir={hangs}", f"--running-tests-dir={progress}", "tests"],
+                          cwd=root, env=clean_env, capture_output=True, text=True, timeout=35,
+                          creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+def run_windows_cutoff(tmp_path, test_body):
+    identity_file = tmp_path / "child.txt"
+    child_code = (f"import os,sys,time; from pathlib import Path; sys.path.insert(0,{str(HELPERS)!r}); "
+                  f"import proctree; pid=os.getpid(); identity=Path({str(identity_file)!r}); "
+                  "pending=identity.with_suffix('.tmp'); pending.write_text(f'{pid} {proctree.start_time(pid)}'); "
+                  "pending.replace(identity); time.sleep(120)")
+    planted = f"""
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+import bounds
+import pytest
+
+@pytest.mark.parametrize('value', [1], ids=['private-parameter'])
+def test_plant(value):
+    subprocess.Popen([sys.executable, '-c', {child_code!r}], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=subprocess.CREATE_NO_WINDOW)
+    bounds.bounded_wait("test.planted_child_identity", Path({str(identity_file)!r}).is_file, seconds=5)
+{test_body}
+"""
+    root = project(tmp_path, planted)
+    progress = tmp_path / "progress"
+    try:
+        proc = run_windows_supervisor(root, progress, tmp_path / "hangs")
+        assert proc.returncode == SUPERVISOR_CUTOFF_EXIT, proc.stdout + proc.stderr
+        recorded_exit = json.loads((progress / "runner-resources-step-exit.txt").read_text(encoding="utf-8"))
+        assert recorded_exit["lane_exit"] == proc.returncode
+        pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
+        assert not proctree.same((pid, started)), f"the planted child {pid} survived the cutoff"
+        status = (progress / "runner-resources-step.txt").read_text(encoding="utf-8")
+        assert f"  {pid} python.exe" in status.lower(), status
+        assert "time.sleep(120)" not in status
+        return progress, status
+    finally:
+        if identity_file.is_file():
+            pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
+            proctree.end((pid, started))  # also reap the plant when a cutoff ablation leaves it alive
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_supervisor_forwards_pytest_output(tmp_path, monkeypatch):
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    bash_home = tmp_path / "bash-home"
+    bash_home.mkdir()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("HOME", str(bash_home))
+    monkeypatch.setenv("TMPDIR", str(bash_home))
+    root = project(tmp_path, """\
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+def test_output():
+    assert Path(tempfile.gettempdir()) == Path(os.environ['RUNNER_TEMP'])
+    print("planted pytest stdout")
+    print("planted pytest stderr", file=sys.stderr)
+""")
+    proc = run_windows_supervisor(root, tmp_path / "progress", tmp_path / "hangs")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "planted pytest stdout" in proc.stdout
+    assert "planted pytest stderr" in proc.stderr
+    assert "1 passed" in proc.stdout
+
+
+def test_observing_a_watchdog_file_does_not_pin_its_name(tmp_path):
+    from evidence_files import open_observation
+
+    path = tmp_path / "hang-gw0-123.txt"
+    path.write_text("current observation\n")
+    with open_observation(path) as reader:
+        kept = path.replace(tmp_path / "hang-gw0-123-0.txt")
+        path.write_text("later observation\n")
+        assert reader.readline() == "current observation\n"
+        kept.unlink()
+    assert not kept.exists()
+    assert path.read_text() == "later observation\n"
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_step_cutoff_leaves_only_the_running_source_test_for_upload(tmp_path):
+    progress, status = run_windows_cutoff(tmp_path, "    a, b = socket.socketpair()\n    a.recv(1)")
+    assert "Lane command was still running" in status
+    [running] = progress.glob("running-*.txt")
+    assert running.read_text(encoding="utf-8").splitlines() == ["tests/unit/test_w.py::test_plant"]
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
+def test_windows_step_cutoff_waits_for_a_leaked_child_after_pytest_passes(tmp_path):
+    progress, status = run_windows_cutoff(tmp_path, "    pass")
+    assert "Lane command had exited with code 0" in status
+    assert not list(progress.glob("running-*.txt"))
 
 
 @pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])

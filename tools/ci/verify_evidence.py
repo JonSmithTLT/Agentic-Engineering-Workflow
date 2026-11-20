@@ -1,0 +1,237 @@
+"""Verify downloaded lane artifacts against the hosted job's observed conclusion."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from check_evidence_run import check_jobs
+from evidence_files import FRAME, state
+from evidence_problems import evidence_problems
+
+# Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
+STATE_TWINS = {
+    "inventory": "inventory", "inventory-label": "label", "header-only": "label", "zero-byte": "label",
+    "writer-path": "writer-path", "writer-source": "writer-source", "false-timeout": "false-timeout",
+    "false-fired": "false-fired", "stack-heading": "false-stack", "timeout-heading": "false-stack",
+    "scan-unavailable": "scan-unavailable", "contradiction": "contradiction", "cap": "cap",
+    "collection": "collection", "tools": "tools",
+}
+DEATH_TWINS = {"stacks": "stacks", "kind": "kind", "running": "running", "running-label": "label"}
+JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ablation": "job-ablation"}
+OTHER_TWINS = {"cancel": "false-cutoff"}
+DEATH_EXITS = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}
+
+
+def rule_ids(defects: list[str]) -> set[str]:
+    return {match[1] for defect in defects if (match := re.search(r"evidence defect: \[([a-z-]+)\]", defect))}
+
+
+def expect_rule(case: str, expected: str, defects: list[str]) -> list[str]:
+    return [] if expected in rule_ids(defects) else [f"{case}: {expected} ablation survived: {defects}"]
+
+
+def github_jobs() -> list[dict]:
+    endpoint = (f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+                f"/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}/jobs?per_page=100")
+    result = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, timeout=30, check=True)
+    return json.loads(result.stdout)["jobs"]
+
+
+def label(inventory: Path, path: Path, writer: str, declared: str | None = None) -> None:
+    actual = state(path, path.read_bytes()) if declared is None else declared
+    with inventory.open("a", encoding="utf-8") as output:
+        output.write(f"{actual} {path.relative_to(inventory.parent).as_posix()} ({writer})\n")
+
+
+def checker_twins(root: Path) -> list[str]:
+    """Mutate downloaded artifacts and require the specific rule, even if another rule also fires."""
+    failures = []
+    for case, expected in STATE_TWINS.items():
+        with tempfile.TemporaryDirectory() as temporary:
+            twin = Path(temporary) / "twin"
+            shutil.copytree(root, twin)
+            inventories = list(twin.rglob("inventory.txt"))
+            if not inventories:
+                return ["download has no inventory for checker ablations"]
+            inventory = inventories[0]
+            if case == "inventory":
+                for path in inventories:
+                    path.unlink()
+            elif case == "inventory-label":
+                listing = inventory.read_text(encoding="utf-8")
+                inventory.write_text(listing.replace("finding inventory.txt (publisher)\n", ""), encoding="utf-8")
+            elif case in {"writer-source", "scan-unavailable", "cap"}:
+                with inventory.open("a", encoding="utf-8") as output:
+                    output.write({"writer-source": "omitted file-a (unlisted writer)\n",
+                                  "scan-unavailable": "gitleaks scan unavailable\n",
+                                  "cap": "evidence defect: job cap exceeded\n"}[case])
+            else:
+                filename, data, writer = {
+                    "header-only": ("hang-twin-123.txt", "armed now\n", "watchdog"),
+                    "zero-byte": ("hang-twin-123.txt", "", "watchdog"),
+                    "writer-path": ("unknown-writer.txt", "unregistered writer\n", "synthetic"),
+                    "false-timeout": ("hang-twin-123.txt", "was still running after 600s\n", "watchdog"),
+                    "false-fired": ("hang-twin-123.txt", "fired after 600s\n", "watchdog"),
+                    "stack-heading": ("hang-twin-123.txt", "every thread's stack:\n", "watchdog"),
+                    "timeout-heading": ("hang-twin-123.txt", "Timeout (0:00:01)!\n", "watchdog"),
+                    "contradiction": ("hang-twin-123.txt",
+                                      'armed now; not fired\n  File "test_a.py", line 2 in test_a\n', "watchdog"),
+                    "collection": ("collection-incomplete.txt", "evidence defect: collection incomplete\n",
+                                   "evidence_inputs"),
+                    "tools": ("tools-unavailable.txt", "evidence defect: py-spy unavailable\n", "evidence_inputs"),
+                }[case]
+                target = inventory.parent / filename
+                target.write_text(data, encoding="utf-8")
+                label(inventory, target, writer, "finding" if case in {"header-only", "zero-byte"} else None)
+            failures.extend(expect_rule(case, expected, evidence_problems(twin)))
+    return failures
+
+
+def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
+    failures = []
+    for case, expected in DEATH_TWINS.items():
+        with tempfile.TemporaryDirectory() as temporary:
+            twin = Path(temporary) / "twin"
+            shutil.copytree(root, twin)
+            for path in list(twin.rglob("*.txt")):
+                if case == "kind" and path.stem in {"session-deadline", "cutoff"}:
+                    path.unlink()
+                elif case == "running" and path.name.startswith(("running-", "hang-")):
+                    path.unlink()
+                elif case in {"running-label", "stacks"}:
+                    lines = path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+                    if case == "stacks":
+                        path.write_text("".join(line for line in lines if not FRAME.match(line)), encoding="utf-8")
+                    elif path.name == "inventory.txt":
+                        path.write_text("".join(line for line in lines if not line.startswith("finding running-")),
+                                        encoding="utf-8")
+            defects = evidence_problems(twin, kind=kind, require_stacks=True)
+            failures.extend(expect_rule(f"{kind}/{case}", expected, defects))
+            if job is not None and case == "kind":
+                failures.extend(expect_rule("missing-kind", JOB_TWINS["missing-kind"],
+                                            check_jobs(twin, [job], include_success=True)))
+    return failures
+
+
+def job_twins(root: Path, job: dict) -> list[str]:
+    with tempfile.TemporaryDirectory() as temporary:
+        twin = Path(temporary) / "twin"
+        twin.mkdir()
+        failures = expect_rule("no-evidence", JOB_TWINS["no-evidence"], check_jobs(twin, [job], include_success=True))
+        shutil.copytree(root, twin, dirs_exist_ok=True)
+        directory = next(twin.glob("*-running"))
+        marker = directory / "runner-resources-twin-exit.txt"
+        marker.write_text(json.dumps({"command_exit": 70, "ablation": "stacks"}), encoding="utf-8")
+        label(directory / "inventory.txt", marker, "lane_step")
+        return failures + expect_rule("live-ablation", JOB_TWINS["live-ablation"],
+                                      check_jobs(twin, [job], include_success=True))
+
+
+def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
+    """Verify runner observations from the downloaded bundle, alongside GitHub's job conclusion."""
+    failures = []
+    expected_exit = DEATH_EXITS.get(kind)
+    if expected_exit is not None:
+        records = [json.loads(path.read_text(encoding="utf-8"))
+                   for path in root.rglob("runner-resources-*-exit.txt")]
+        exits = {record.get("lane_exit") for record in records}
+        if exits != {expected_exit}:
+            failures.append(f"plant misfired: expected lane exit {expected_exit}, found {exits}")
+        if kind == "hang":
+            for record in records:
+                beat = record.get("heartbeat", {})
+                entered = beat.get("entered")
+                if entered is None or beat.get("beats_before", 0) < 3:
+                    failures.append("plant misfired: heartbeat handshake missing")
+                elif beat.get("observed_until", 0) <= entered + 1 or beat.get("latest_beat_after", 0) > entered + 1:
+                    failures.append("plant misfired: heartbeat did not stall through the observation window")
+    if kind == "normal" and platform == "Linux":
+        probes = [p.read_text(encoding="utf-8").strip() for p in root.rglob("runner-resources-attachment.txt")]
+        if len(probes) != 1 or probes[0] not in {"unelevated", "sudo -n"}:
+            failures.append(f"hosted attachment probe failed: {probes}")
+    return failures
+
+
+def main(root: Path) -> int:
+    jobs = github_jobs()
+    failures = []
+    rows = []
+    for job in jobs:
+        match = re.fullmatch(r"plant \(([^,]+), ([^,]+), ([^)]+)\)", job["name"])
+        if not match:
+            continue
+        runner, kind, ablate = match.groups()
+        platform = "Windows" if runner == "windows-latest" else "Linux"
+        prefix = f"plant-{platform}-{kind}-{ablate}-attempt-{os.environ['GITHUB_RUN_ATTEMPT']}"
+        paths = [path for path in root.iterdir() if path.name in {
+            prefix, prefix + "-running", prefix + "-watchdog", "lane-report-" + prefix,
+        }]
+        lane_step = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), None)
+        if not paths or not lane_step or not lane_step.get("started_at"):
+            failures.append(f"{job['name']}: plant did not start or artifacts missing")
+            continue
+        with tempfile.TemporaryDirectory() as temporary:
+            merged = Path(temporary)
+            for path in paths:
+                shutil.copytree(path, merged / path.name)
+            needs_stack = kind in {"deadline", "time-limit", "hang"}
+            defects = evidence_problems(merged, kind=kind, require_stacks=needs_stack)
+            if ablate == "stacks":
+                failures.extend(expect_rule(job["name"], "stacks", defects))
+                defects = [defect for defect in defects if "stacks" not in rule_ids([defect])]
+            failures.extend(f"{job['name']}: {defect}" for defect in defects)
+            gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS)
+            expected_rules = {"job-ablation", "stacks"} if ablate == "stacks" else set()
+            if kind == "sigkill":
+                expected_rules.add("job-kind")  # the unwarned death's classifier lands separately
+            if rule_ids(gate) != expected_rules:
+                failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
+            expected = "cancelled" if kind == "cancel" else "success"
+            verdict_step = lane_step
+            if kind in DEATH_EXITS:
+                verdict_step = next((step for step in job["steps"] if step["name"] == "Confirm planted death"), {})
+            verdict = verdict_step.get("conclusion")
+            failures.extend(f"{job['name']}: {problem}" for problem in observation_problems(merged, platform, kind))
+            if job["conclusion"] != expected or verdict != expected:
+                failures.append(f"{job['name']}: plant misfired: job {job['conclusion']}, verdict step {verdict}")
+            if kind == "normal":
+                failures.extend(checker_twins(merged))
+            elif needs_stack and ablate == "none":
+                failures.extend(death_twins(merged, kind, job))
+                if kind == "deadline":
+                    failures.extend(job_twins(merged, job))
+            elif kind == "cancel":
+                (merged / "cutoff.txt").write_text("step cutoff\n", encoding="utf-8")
+                twin = evidence_problems(merged, kind=kind)
+                failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], twin))
+            rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
+    expected_count = 15 if os.environ["GITHUB_EVENT_NAME"] == "schedule" else 13
+    if len(rows) != expected_count:
+        failures.append(f"expected {expected_count} plants, observed {len(rows)}")
+    print("\n".join(rows + failures))
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
+            output.write("| platform | plant | ablation | job conclusion | evidence defects |\n"
+                         "|---|---|---|---|---|\n" + "\n".join(rows + failures))
+    return int(bool(failures))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", type=Path)
+    parser.add_argument("--plant-death", choices=DEATH_EXITS)
+    args = parser.parse_args()
+    if args.plant_death:
+        problems = observation_problems(args.root, "Windows" if os.name == "nt" else "Linux", args.plant_death)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        raise SystemExit(int(bool(problems)))
+    raise SystemExit(main(args.root))

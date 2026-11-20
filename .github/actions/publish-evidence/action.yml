@@ -7,43 +7,70 @@ inputs:
   artifact:
     description: Attempt-specific artifact name
     required: true
-outputs:
-  artifact-id:
-    description: ID assigned to this upload
-    value: ${{ steps.upload.outputs.artifact-id }}
-  artifact-digest:
-    description: SHA-256 of the uploaded archive
-    value: ${{ steps.upload.outputs.artifact-digest }}
+  portion:
+    description: priority, full, or both
+    default: both
 runs:
   using: composite
   steps:
-    - name: Install the evidence scanner
+    - name: Find evidence and isolate watchdog dumps
+      id: inputs
+      if: always()
       shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        ARTIFACT: ${{ inputs.artifact }}
       run: |
-        go install github.com/zricethezav/gitleaks/v8@v8.28.0
-        go env GOPATH | tr -d '\r' | sed 's|$|/bin|' >> "$GITHUB_PATH"
-      continue-on-error: true
+        if [ ! -d "$RUNNER_TEMP/$ARTIFACT-watchdog-input" ]; then
+          python tools/ci/evidence_inputs.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-watchdog-input" >> "$GITHUB_OUTPUT"
+        else
+          echo present=true >> "$GITHUB_OUTPUT"
+          echo watchdog=true >> "$GITHUB_OUTPUT"
+        fi
+    - name: Report an empty evidence directory
+      if: always() && steps.inputs.outputs.present == 'false'
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+      run: printf 'Test evidence contains no files under %s\n' "$SOURCE" >> "$GITHUB_STEP_SUMMARY"
+    - name: Stage and scan watchdog evidence
+      id: watchdog
+      if: always() && inputs.portion != 'full' && steps.inputs.outputs.watchdog != 'false'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.artifact }}
+      run: |
+        dir="$RUNNER_TEMP/$ARTIFACT-watchdog"
+        mkdir -p "$dir-input"
+        result=$(python tools/ci/stage_evidence.py "$dir-input" "$dir")
+        printf 'Watchdog evidence: %s\n' "$result" >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v7
+      if: always() && inputs.portion != 'full' && steps.watchdog.outcome == 'success'
+      with:
+        name: ${{ inputs.artifact }}-watchdog
+        path: ${{ runner.temp }}/${{ inputs.artifact }}-watchdog
+        retention-days: 14
     - name: Stage and scan test evidence
+      if: always() && inputs.portion != 'priority' && steps.inputs.outputs.present != 'false'
       id: stage
       shell: bash
       env:
         SOURCE: ${{ inputs.source }}
         ARTIFACT: ${{ inputs.artifact }}
       run: |
-        bin="$(go env GOPATH)/bin"
-        if command -v cygpath >/dev/null; then bin="$(cygpath -u "$bin")"; fi
-        export PATH="$bin:$PATH"
         dir="$RUNNER_TEMP/$ARTIFACT"
         result=$(python tools/ci/stage_evidence.py "$SOURCE" "$dir")
         echo "directory=$dir" >> "$GITHUB_OUTPUT"
         printf 'Test evidence: %s\n' "$result" >> "$GITHUB_STEP_SUMMARY"
     - uses: actions/upload-artifact@v7
       id: upload
+      if: always() && steps.stage.outcome == 'success'
       with:
         name: ${{ inputs.artifact }}
         path: ${{ steps.stage.outputs.directory }}
         retention-days: 14
     - name: Link the evidence bundle
+      if: always() && steps.upload.outcome == 'success'
       shell: bash
       env:
         ARTIFACT: ${{ inputs.artifact }}

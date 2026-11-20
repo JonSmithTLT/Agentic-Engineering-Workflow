@@ -113,9 +113,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
+from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
+SUPERVISOR_CUTOFF_EXIT = 71  # the Windows regression step's outer cutoff
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere
@@ -164,6 +166,51 @@ def _holders_text(directory: Path, extra: list[str]) -> str:
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
 
 
+def session_directories(root: Path):
+    """The lane root and the immediate per-session children used by looped lanes."""
+    yield from root.glob("autopsy/session-*")
+    yield from root.glob("*/autopsy/session-*")
+
+
+def recorded_processes(root: Path):
+    for directory in session_directories(root):
+        for path in directory.glob("*-pid.txt"):
+            try:
+                started = path.with_name(path.name.replace("-pid.txt", "-start.txt"))
+                identity = (int(path.read_text().strip()), int(started.read_text().strip()))
+                if proctree.same(identity):
+                    yield path.parent, identity
+            except (OSError, ValueError):
+                continue
+
+
+def collect_leftovers(root: Path) -> None:
+    """End the session's recorded identities and their members before publication begins."""
+    recorded = list(recorded_processes(root))
+    if not recorded:
+        return
+    table = proctree.table()
+    members = {identity for _, identity in recorded}
+    for directory, identity in recorded:
+        job_file = marker(directory, "session-job")
+        if proctree.IS_WINDOWS and job_file.is_file():
+            with contextlib.suppress(OSError):
+                job = proctree.Job.open(job_file.read_text().strip())
+                members.update(proc.identity for proc in job.members(command_lines=False))
+        members.update(proc.identity for proc in proctree.descendants(identity, table))
+    members = {identity for identity in members if identity[0] != os.getpid()}
+    end_members([proctree.Proc(pid, 0, start) for pid, start in members])
+    until = time.monotonic() + bounds.COLLECT_BUDGET_S
+    while any(proctree.same(identity) for identity in members) and time.monotonic() < until:
+        time.sleep(0.05)
+    if any(proctree.same(identity) for identity in members):
+        raise RuntimeError("session members survived collection")
+
+
+def end_members(members: list[proctree.Proc]) -> list[int]:
+    return [proc.pid for proc in proctree.children_first(members) if proctree.end(proc.identity)]
+
+
 class Stacks:
     """Every thread's stack at a given moment, written by ``faulthandler``'s C thread, so even with the GIL held. A
     process has one such timer, so arming this replaces whatever was armed (see ``watchdog``)."""
@@ -172,12 +219,15 @@ class Stacks:
         self.path = path
         self.at_mono = at_mono
         self.file: Any = None
+        self.armed_size = 0
         self.lock = threading.Lock()  # a deadline's thread drops it while the watchdog may be arming it after a test
 
     def left(self) -> float:
         return self.at_mono - time.monotonic()
 
     def arm(self) -> None:
+        if stacks_ablated():
+            return
         with self.lock:
             left = self.left()
             if left <= 0:
@@ -185,10 +235,14 @@ class Stacks:
             if self.file is None:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self.file = open(self.path, "w", encoding="utf-8")  # noqa: SIM115  (held until the timer can't fire)
+                stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                self.file.write(f"armed {stamp} for {left:.3f}s; {ARMED_NOTE}\n")
+                self.file.flush()
+                self.armed_size = self.path.stat().st_size
             faulthandler.dump_traceback_later(left, file=self.file)
 
     def drop(self) -> None:
-        """For good, so a test ending now can't put it back: the timer off, and an empty file removed."""
+        """For good, so a test ending now can't put it back: the timer off, and an unfired placeholder removed."""
         with self.lock:
             self.at_mono = 0.0  # always past, so `left` says it's over and `arm` does nothing
             faulthandler.cancel_dump_traceback_later()
@@ -196,7 +250,7 @@ class Stacks:
                 self.file.close()
                 self.file = None
                 with contextlib.suppress(OSError):
-                    if self.path.stat().st_size == 0:
+                    if self.path.stat().st_size == self.armed_size:
                         self.path.unlink()
 
 
@@ -391,6 +445,7 @@ class Controller:
             self.job_note = proctree.outer_job()
             job_name = f"aew-session-{os.getpid()}-{secrets.token_hex(6)}"
             self.job = proctree.Job(job_name)
+            _write(self.dir, "session-job", job_name + "\n")
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
             if self.job_note == "subreaper set":  # before any child: the sentinel and every worker are recorded
@@ -419,6 +474,8 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
+        _write(self.dir, "controller-pid", f"{os.getpid()}\n")
+        _write(self.dir, "controller-start", f"{proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -434,6 +491,9 @@ class Controller:
         proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "sentinel", json.dumps(args)],
                                 **kwargs)
         self.sentinel_id = proctree.identity(proc.pid)
+        if self.sentinel_id is not None:
+            _write(self.dir, "sentinel-pid", f"{self.sentinel_id[0]}\n")
+            _write(self.dir, "sentinel-start", f"{self.sentinel_id[1]}\n")
         flight_recorder.spawned(["session_deadline.py", "sentinel"], proc.pid)
         return proc
 
@@ -600,6 +660,7 @@ class Worker:
     def start(self) -> None:
         worker = self.config.workerinput.get("workerid", "?")
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
+        _write(self.dir, f"worker-{worker}-start", f"{proctree.start_time(os.getpid())}\n")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -763,7 +824,7 @@ class Sentinel:
         _write(self.dir, f"sentinel-processes-{why}", proctree.describe(
             alive, title="the session's set (the last snapshot's members whose pid and start time still match):"))
         _write(self.dir, f"sentinel-file-holders-{why}", _holders_text(self.dir, []))
-        ended = [p.pid for p in proctree.children_first(alive) if proctree.end(p.identity)]
+        ended = end_members(alive)
         self.log(f"ended {len(ended)} of {len(alive)} matching members ({why}): {ended}")
 
     def left(self) -> list[proctree.Proc]:
@@ -811,7 +872,9 @@ class Sentinel:
         """The after-finish timer's stacks into the session's folder, if it wrote any. Under its own name from the first
         byte, with no temporary file that could vanish from an upload's listing."""
         with contextlib.suppress(OSError):
-            if text := self.after_finish_file.read_text(encoding="utf-8", errors="replace"):
+            text = self.after_finish_file.read_text(encoding="utf-8", errors="replace")
+            first, _, body = text.partition("\n")
+            if text and (not first.startswith("armed ") or body.strip()):
                 _write(self.dir, AFTER_FINISH_STACKS, text)
                 return True
         return False

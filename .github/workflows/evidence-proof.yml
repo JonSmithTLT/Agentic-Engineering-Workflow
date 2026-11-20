@@ -1,0 +1,166 @@
+name: evidence-proof
+on:
+  pull_request:
+    paths:
+      - '.github/actions/lane/**'
+      - '.github/actions/publish-evidence/**'
+      - '.github/workflows/evidence-*.yml'
+      - 'tests/helpers/watchdog.py'
+      - 'tests/helpers/session_deadline.py'
+      - 'tests/helpers/autopsy.py'
+      - 'tests/helpers/evidence_files.py'
+      - 'tools/ci/lane_step.py'
+      - 'tools/ci/*evidence*'
+      - 'tools/flake_register.py'
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+concurrency:
+  group: evidence-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  plant:
+    name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+        kind: ${{ fromJSON(github.event_name == 'schedule' && '["normal","deadline","time-limit","hang","cancel"]' || '["normal","deadline","time-limit","hang"]') }}
+        ablate: [none]
+        include:
+          - {os: ubuntu-24.04, kind: sigkill, ablate: none}
+          - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
+          - {os: ubuntu-24.04, kind: hang, ablate: stacks}
+          - {os: windows-latest, kind: deadline, ablate: stacks}
+          - {os: windows-latest, kind: hang, ablate: stacks}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    timeout-minutes: 17
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
+      cancel-in-progress: true
+    steps:
+      - name: The job's deadline
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 360 ))" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Real planted lane
+        id: lane
+        continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' }}
+        timeout-minutes: 17
+        uses: ./.github/actions/lane
+        env:
+          AEW_EVIDENCE_PLANT: ${{ matrix.kind }}
+          AEW_EVIDENCE_ABLATE: ${{ matrix.ablate }}
+          AEW_EVIDENCE_PROBE: ${{ matrix.os == 'ubuntu-24.04' && matrix.kind == 'normal' }}
+          AEW_LANE_CUTOFF_AFTER_S: ${{ matrix.kind == 'time-limit' && '35' || '' }}
+        with:
+          job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+          source: ${{ runner.temp }}/lane-reports
+          artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
+          command: >-
+            python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+            tests/integration/evidence_plants/deaths.py --lane integration
+            --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
+            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
+            --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+      - name: Confirm planted death
+        if: matrix.kind != 'normal' && matrix.kind != 'cancel'
+        shell: bash
+        env:
+          LANE_OUTCOME: ${{ steps.lane.outcome }}
+          PLANT_KIND: ${{ matrix.kind }}
+          SOURCE: ${{ runner.temp }}/lane-reports
+        run: |
+          if [ "$LANE_OUTCOME" != failure ]; then
+            echo "::error::Expected $PLANT_KIND to fail the lane, got $LANE_OUTCOME"
+            exit 1
+          fi
+          python tools/ci/verify_evidence.py "$SOURCE" --plant-death "$PLANT_KIND"
+  cancel-ready-linux:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0' 'pytest>=8'
+      - name: Poll the target lane's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/cancel_evidence_plant.py ubuntu-24.04
+  cancel-trigger-linux:
+    needs: cancel-ready-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-ubuntu-24.04-cancel-none
+      cancel-in-progress: true
+    steps:
+      - run: echo 'Queued the planted concurrency cancellation.'
+  cancel-ready-windows:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0' 'pytest>=8'
+      - name: Poll the target lane's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/cancel_evidence_plant.py windows-latest
+  cancel-trigger-windows:
+    needs: cancel-ready-windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    concurrency:
+      group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-windows-latest-cancel-none
+      cancel-in-progress: true
+    steps:
+      - run: echo 'Queued the planted concurrency cancellation.'
+  verify:
+    if: always()
+    needs: [plant, cancel-trigger-linux, cancel-trigger-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: '*plant-*-attempt-${{ github.run_attempt }}*'
+          path: published
+      - name: Verify downloaded evidence and checker ablations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/verify_evidence.py published

@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval
 from aew.engine.base import POLICY_PINS, V2
 from aew.engine.store import Transition
 from aew.errors import (
@@ -409,7 +410,11 @@ class Steering:
             default = s.get("default")
         now = effective(state)
         out: dict[str, Any] = {"configured": default is not None, "default": default, "effective": now["mode"],
-                               "source": now["source"], "record": now["record"]}
+                               "source": now["source"], "record": now["record"],
+                               "override_record": approval.override_value(state)}
+        if now["mode"] in ("walk", "run"):
+            out["lower_arguments"] = {"action": "lower", "expect_rev": state["revision"],
+                                      "prior_value": out["override_record"]}
         if now.get("ended"):
             out["ended_override"] = now["ended"]
         if default is not None and is_raise(default, now["mode"]):
@@ -537,13 +542,17 @@ class Steering:
 
     # ------------------------------------------------------------------ the Lead's own (A1 §1.2)
 
-    def lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "") -> dict[str, Any]:
+    def lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+              prior_value: str | None = None) -> dict[str, Any]:
         """The Lead lowers its effective mode for its own generation (a restriction, never authority)."""
         if mode not in ("crawl", "walk"):
             raise UsageError("a Lead lowers to crawl or walk")
         with self.k.lead_txn(token, expect_rev, "steering.lower") as ctx:
             state = ctx.state
             self._require_configured()
+            previous = approval.override_value(state)
+            approval.prior("steering.lower", "Lead steering", "override record", prior_value, previous,
+                           root=self.k.aew_root, state=ctx.state, record=previous if previous != "none" else None)
             now = effective(state)["mode"]
             if not is_raise(now, mode):
                 raise IllegalTransition(f"the effective mode is `{now or 'none'}`: `{mode}` is not lower",
@@ -557,8 +566,12 @@ class Steering:
                                     "rev": ctx.session.revision + 1, "by": "lead"}
             self._close_requests(ctx, lambda r: r["generation"] != generation, "the Lead generation ended")
             ctx.summary = f"steering mode lowered {now} -> {mode} by the Lead ({record})"
-        return {"ok": True, "record": record, "previous": now, "mode": mode,
-                "revision": ctx.session.committed_revision}
+        revision = ctx.session.committed_revision
+        out = {"ok": True, "record": record, "previous": now, "mode": mode, "override_record": record,
+               "revision": revision}
+        if mode == "walk":
+            out["lower_arguments"] = {"action": "lower", "expect_rev": revision, "prior_value": record}
+        return out
 
     def request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
                 action_ref: str | None = None) -> dict[str, Any]:

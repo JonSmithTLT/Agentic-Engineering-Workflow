@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from aew.errors import ApprovalSubjectChanged
+from aew.errors import ChangedSinceRead, IntegrityError
 from aew.util import sha256_text
 
 
@@ -12,13 +14,87 @@ def digest(value: Any) -> str:
     return sha256_text(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
+PRIOR_LOG_WINDOW = 64
+
+
+def prior_state(op: str, subject: str, expected: str, current: str, *, root: Path, state: dict[str, Any]) -> None:
+    prior(op, subject, "state", expected, current, root=root, state=state,
+          event=lambda row: row["kind"] == "work.state" and row["id"] == subject)
+
+
+def prior(op: str, subject: str, field: str, expected: str | None, current: str, *,
+          root: Path, state: dict[str, Any], event: Callable[[dict[str, Any]], bool] | None = None,
+          record: str | None = None) -> None:
+    if expected is None or expected == current:
+        return
+    source = ""
+    if record is None and event is not None:
+        from aew.engine.outbox import LogView
+
+        since = (state.get("outbox") or {}).get("since")
+        if since is not None:
+            log = LogView(root, since, retries=0)
+            through = state["revision"]
+            for revision in range(through, max(since - 1, through - PRIOR_LOG_WINDOW), -1):
+                try:
+                    rows = log.events(log.record(revision)) or ()
+                except IntegrityError:
+                    source = "The change record could not be read. "
+                    break
+                if any(event(row) for row in rows):
+                    record = f"control revision {revision}"
+                    break
+        if record is None and not source:
+            source = f"No matching change record in the last {PRIOR_LOG_WINDOW} commits. "
+    refuse_change(op, subject, field, expected, current, changed_by=record,
+                  next_step=source + "Read the current value before deciding whether to try again.")
+
+
+def parent_change(work_id: str) -> Callable[[dict[str, Any]], bool]:
+    return lambda row: row["kind"] == "work.binding" and row["id"] == work_id and row["field"] == "parent"
+
+
+def parent_value(unit: dict[str, Any]) -> str:
+    return unit.get("parent") or "none"
+
+
+def promotion_value(unit: dict[str, Any]) -> str:
+    return f"{unit['kind']}:{parent_value(unit)}"
+
+
+def run_value(invocation: dict[str, Any]) -> str:
+    runs = invocation.get("runs") or []
+    return runs[-1]["run"] if runs else "none"
+
+
+def override_value(state: dict[str, Any]) -> str:
+    return ((state.get("steering") or {}).get("override") or {}).get("record") or "none"
+
+
+def role_plan_digest(unit: dict[str, Any]) -> str:
+    plan = unit.get("role_plan") or {}
+    return digest({slot: plan.get(slot, []) for slot in ("execute", "review", "verify", "forbidden")})
+
+
+def bound_argv(argv: tuple[str, ...], revision: int, value: str) -> list[str]:
+    return [*argv, "--expect-rev", str(revision), "--prior-value", value]
+
+
+def refuse_change(op: str, subject: str, field: str, expected: Any, current: Any, *,
+                  changed_by: Any = None, next_step: str, **details: Any) -> None:
+    change = f" Changed by {changed_by}." if changed_by is not None else ""
+    raise ChangedSinceRead(
+        f"{op}: {subject}'s {field} changed since read (expected {expected}, current {current}).{change} {next_step}",
+        op=op, subject=subject, field=field, expected=expected, current=current,
+        changed_by=changed_by, next_step=next_step, **details,
+    )
+
+
 def compare(op: str, subject: str, expected: str | None, current: str | None, *,
             next_step: str = "Read the subject again and decide anew.", **details: Any) -> None:
+    """A digest mismatch may include uncommitted file edits, so it has no general change-record lookup."""
     if expected != current:
-        raise ApprovalSubjectChanged(
-            f"{op}: {subject} changed since approval (expected {expected}, current {current}). {next_step}",
-            op=op, subject=subject, expected=expected, current=current, next_step=next_step, **details,
-        )
+        refuse_change(op, subject, "approval subject", expected, current, next_step=next_step, **details)
 
 
 def execution_record_digest(record: dict[str, Any]) -> str:

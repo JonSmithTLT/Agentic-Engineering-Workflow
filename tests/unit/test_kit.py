@@ -9,11 +9,14 @@ import socket
 import subprocess
 import sys
 import tomllib
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from aew import util
 from aew.engine.conflicts import overlapping_scopes
 from aew.errors import UsageError
 from aew.harness import runlog
@@ -221,6 +224,36 @@ scope:
         "outside": {"paths": ["outside.py"], "withheld": 3},
     }
     assert all(path not in text for path in ("/private/absolute.py", "../parent.py", "synthetic-host"))
+
+
+def _receipt_overlap(tmp_path, first, second):
+    runs = [
+        {"run": f"R-INV-000{i}-1", "contract": {"role": "implementer", "work_unit": f"T-000{i}"},
+         "started_at": start, "ended_at": end}
+        for i, (start, end) in enumerate((first, second), 1)
+    ]
+    systems = receipt_module._system_facts(tmp_path, runs, [], [], None, {}, {}, [])
+    return systems["SYS-39"]["overlapping_mutating_runs"]
+
+
+def test_sys39_counts_runs_overlapping_inside_one_second(tmp_path, monkeypatch):
+    clock = iter(datetime(2026, 11, 11, 16, 20, 30, us, tzinfo=UTC) for us in (100, 300, 200, 400))
+    monkeypatch.setattr(util, "datetime", SimpleNamespace(now=lambda _: next(clock)))
+    first = (util.utc_now_precise(), util.utc_now_precise())
+    second = (util.utc_now_precise(), util.utc_now_precise())
+    assert _receipt_overlap(tmp_path, first, second) == [["R-INV-0001-1", "R-INV-0002-1"]]
+
+
+def test_sys39_does_not_count_back_to_back_runs(tmp_path):
+    first = ("2026-11-11T16:20:30.100000Z", "2026-11-11T16:20:30.200000Z")
+    second = ("2026-11-11T16:20:30.200000Z", "2026-11-11T16:20:30.300000Z")
+    assert _receipt_overlap(tmp_path, first, second) == []
+
+
+def test_sys39_reads_legacy_whole_second_run_records(tmp_path):
+    first = ("2026-11-11T16:20:29Z", "2026-11-11T16:20:31Z")
+    second = ("2026-11-11T16:20:30.100000Z", "2026-11-11T16:20:30.300000Z")
+    assert _receipt_overlap(tmp_path, first, second) == [["R-INV-0001-1", "R-INV-0002-1"]]
 
 
 def test_sys39_non_overlapping_mutating_runs_do_not_count(tmp_path):

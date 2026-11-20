@@ -600,8 +600,19 @@ entries:
   platforms:
   - windows
   status: open
-  class: session timing
-  cause: Two different symptoms. Cause unestablished.
+  class: request delivery and heartbeat observation
+  cause: >-
+    Run 42543075140 was held and still beating at timeout. The CLI acknowledged send, but the supervisor
+    never logged it.
+    A Windows sharing violation followed by successful unlink reproduces that silent loss;
+    the original capture has no request-read error to identify the trigger.
+    In run 42558074075, wait returned lost during a send that took about 10 seconds to post
+    (03:57:09Z to 03:57:19Z), and the run then ended without evidence. The synchronous adapter request paused
+    the heartbeat while waiting for the local server.
+  planned_fix: >-
+    Keep unread Windows requests queued and log the read error once per file. A recorded unread request holds
+    later requests for up to four scans before the watchdog logs an order bypass. Bound the heartbeat during
+    OpenCode steering calls so a hung call still reads lost. Closure awaits the fix PR number.
   owner: CI flake triage
   test: tests/integration/test_opencode_adapter.py::test_a_lead_interrupt_holds_the_session_until_send
   row: E3
@@ -910,11 +921,21 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: open
-  class: race
-  cause: The malformed status case passed on later attempts. Cause unestablished.
+  status: closed
+  class: test heartbeat age
+  cause: >-
+    Both logs show archived status lost instead of starting. The test wrote a single synthetic heartbeat,
+    which had aged past the normal 10-second threshold by the observation. The bundles captured ages of 20.9
+    and 33.2 seconds.
   owner: CI flake triage
   test: tests/integration/test_usage_ledger.py::test_a_malformed_run_record_never_blocks_a_cancel_or_archival[status-not-a-string]
+  closure:
+    pr: 412
+    cause: >-
+      Commit 35e60dac keeps the synthetic heartbeat fresh to the cancel and archive subprocesses.
+      Backdating the heartbeat by 15 seconds reproduces both hits when that fixture override is removed.
+    test: tests/integration/test_usage_ledger.py::test_a_malformed_run_record_never_blocks_a_cancel_or_archival[status-not-a-string]
+    proof: fault injection
   evidence:
   - run: 42735787796
     job: 129565065793
@@ -1010,6 +1031,65 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: stream-drop-shell-startup
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    A second, unintended 60s deadline: 35d6ecd6 dropped watchdog_only from the shell step's wait, so PowerShell's and
+    the CLI's start were bounded by steps_done's 60s as well as by the watchdog, the owner of startup and admission
+    time. On an overloaded Windows shard (sibling tests 8-10 times their usual time) the shell gave no answer within
+    60s; the evidence holds no supervisor or CLI stacks to show more.
+  owner: CI timing fixes
+  test: tests/integration/test_worker_messages.py::test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss
+  planned_fix: >-
+    Restore watchdog_only for the shell step, so the watchdog is the one bound on its startup. Closure awaits the fix
+    PR number.
+  evidence:
+  - run: 44591817415
+    job: 135800292632
+    at: '2026-11-19T19:26:12Z'
+    note: integration 13/14 (windows-latest) on fix/windows-read-during-replace.
+  - run: 44592759848
+    job: 135804620461
+    at: '2026-11-19T19:38:37Z'
+    note: integration 13/14 (windows-latest) on main.
+- id: orphaned-wait-windows
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: test failure
+  cause: >-
+    Cause unestablished. Its shell step's startup wait already has watchdog_only, so the second deadline of
+    stream-drop-shell-startup is not its cause.
+  owner: CI flake triage
+  test: tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery
+  evidence:
+  - run: 43142595377
+    job: 130933729588
+    at: '2026-11-12T03:34:08Z'
+    note: integration 5/13 (windows-latest) on feat/messaging-ms4-ms6.
+  - run: 43555974565
+    job: 132328870678
+    at: '2026-11-14T04:37:38Z'
+    note: integration 9/14 (windows-latest) on main.
+  - run: 43571096396
+    job: 132375525770
+    at: '2026-11-14T07:49:08Z'
+    note: integration 6/14 (windows-latest) on fix/relay-refusal-reset.
+  - run: 43669338480
+    job: 132675778921
+    at: '2026-11-15T03:05:04Z'
+    note: integration 6/14 (windows-latest) on fix/by-class-monotone.
+  - run: 43739211172
+    job: 132890484979
+    at: '2026-11-15T17:53:44Z'
+    note: integration 6/14 (windows-latest) on fix/pre-uat-hardening.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

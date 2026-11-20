@@ -41,7 +41,7 @@ from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
-from aew.engine.queue_ops import Queue
+from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -54,15 +54,7 @@ from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
-from aew.errors import (
-    AEWError,
-    ApprovalSubjectChanged,
-    IllegalTransition,
-    IntegrityError,
-    NotFound,
-    PermissionDenied,
-    UsageError,
-)
+from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, PermissionDenied, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -252,9 +244,9 @@ class ProjectAdmin:
                     expected = binding.get(rel)
                     actual = current.get(rel)
                     if rel not in binding or rel not in required:
-                        raise ApprovalSubjectChanged(
-                            f"manifest.adopt: the adoption set changed at {rel}",
-                            op="manifest.adopt", subject=rel, expected=expected, current=actual,
+                        approval.refuse_change(
+                            "manifest.adopt", rel, "adoption set", expected, actual,
+                            next_step="Read the changed files again and decide anew.",
                         )
                     if rel not in current:
                         approval.compare("manifest.adopt", rel, expected, actual)
@@ -983,9 +975,10 @@ class Engine:
         return self._harness.harness_interrupt(token=token, run=run)
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
-                       request_id: str | None = None) -> dict[str, Any]:
+                       request_id: str | None = None,
+                       prior_value: str | None = None) -> dict[str, Any]:
         return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace,
-                                            request_id=request_id)
+                                            request_id=request_id, prior_value=prior_value)
 
     def wakes_reach_lead(self) -> bool:
         return self._harness.wakes_reach_lead()
@@ -1058,11 +1051,15 @@ class Engine:
         return self._validation.breaker_reset(token=token, expect_rev=expect_rev, reason=reason,
                                               authorization=authorization, binding=binding)
 
-    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                        prior_value: str | None = None) -> dict[str, Any]:
+        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                                 prior_value=prior_value)
 
-    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                          prior_value: str | None = None) -> dict[str, Any]:
+        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                                   prior_value=prior_value)
 
     def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
                           reason: str) -> dict[str, Any]:
@@ -1314,8 +1311,10 @@ class Engine:
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
 
-    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "") -> dict[str, Any]:
-        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale)
+    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+                       prior_value: str | None = None) -> dict[str, Any]:
+        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale,
+                                    prior_value=prior_value)
 
     def steering_request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
                          action_ref: str | None = None) -> dict[str, Any]:
@@ -1647,15 +1646,18 @@ class Engine:
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
         return self._work.work_list(state_filter=state_filter)
 
-    def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str) -> dict[str,
+    def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str,
+                  prior_value: str | None = None) -> dict[str,
                   Any]:
         return self._hierarchy.work_move(token=token, expect_rev=expect_rev, work_id=work_id, parent=parent,
-                                         reason=reason)
+                                         reason=reason, prior_value=prior_value)
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None,
+                     prior_value: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
-                                            reason=reason, risk_class=risk_class, request_id=request_id)
+                                            reason=reason, risk_class=risk_class, request_id=request_id,
+                                            prior_value=prior_value)
 
     def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
                           rationale: str, binding: str | None = None) -> dict[str, Any]:
@@ -1687,20 +1689,39 @@ class Engine:
     def work_roles(self, work_id: str) -> dict[str, Any]:
         return self._gates.work_roles(work_id)
 
+    def prior_value(self, method: str, subject: str) -> str:
+        """Read the binding for a standalone terminal command from committed control state."""
+        state = self._k.store.current()
+        if method == "harness_launch":
+            return approval.run_value(state["invocations"].get(subject) or {})
+        if method in {"integrate_defer", "integrate_requeue"}:
+            return (entry_of(state, subject)[1] or {}).get("state", "none")
+        unit = self._units.view(state, subject)
+        return {
+            "work_transition": lambda: unit["state"],
+            "work_move": lambda: approval.parent_value(unit),
+            "work_promote": lambda: approval.promotion_value(unit),
+            "work_staff": lambda: approval.role_plan_digest(unit),
+        }[method]()
+
     def work_show(self, work_id: str) -> dict[str, Any]:
         return self._work.work_show(work_id)
 
     def work_staff(self, *, token: str, expect_rev: int, work_id: str, execute: list[str] | None = None,
                    review: list[str] | None = None, verify: list[str] | None = None, forbid: list[str] | None = None,
                    remove: list[str] | None = None, selected_by: str = "lead", pin: bool = False,
-                   reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
+                   reason: str | None = None, authorization: dict[str, str] | None = None,
+                   prior_value: str | None = None) -> dict[str, Any]:
         return self._roles.work_staff(token=token, expect_rev=expect_rev, work_id=work_id, execute=execute,
                                       review=review, verify=verify, forbid=forbid, remove=remove,
-                                      selected_by=selected_by, pin=pin, reason=reason, authorization=authorization)
+                                      selected_by=selected_by, pin=pin, reason=reason, authorization=authorization,
+                                      prior_value=prior_value)
 
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
-                        reason: str | None = None) -> dict[str, Any]:
-        return self._work.work_transition(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason)
+                        reason: str | None = None,
+                        prior_value: str | None = None) -> dict[str, Any]:
+        return self._work.work_transition(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason,
+                                          prior_value=prior_value)
 
     def work_tree(self, root: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_tree(root)

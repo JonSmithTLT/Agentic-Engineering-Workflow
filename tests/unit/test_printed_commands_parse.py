@@ -336,9 +336,19 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
     guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from aew.engine.harness_ops import send_route
+    from aew.errors import MessagingSnapshotMismatch
+    from aew.policy import execution as X
     from aew.surface import lead_text
 
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)])
+    # The fallback invocation placeholder is printed only after the f-string has been evaluated.
+    with pytest.raises(MessagingSnapshotMismatch) as mismatch:
+        send_route(X.MESSAGING_ENABLED, X.MESSAGING_DISABLED, "next-step")
+    [(relaunch, fenced)] = P.commands(str(mismatch.value))
+    [args] = P.parse(relaunch, fenced=fenced)
+    assert args.invocation == "INV-0012" and args.expect_rev == 17
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
+                         relaunch])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 

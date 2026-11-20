@@ -25,8 +25,9 @@ from aew import operator
 from aew.engine.api import Engine
 from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.store import Transition
-from aew.errors import ApprovalSubjectChanged, PermissionDenied
+from aew.errors import ChangedSinceRead, PermissionDenied
 from aew.knowledge.records import read_record
+from aew.surface.run import boundary_of
 from aew.util import load_yaml, safe_dump_yaml, sha256_bytes
 
 C_OPS = sorted(name for name, specs in CONTROL_OP_SPECS.items()
@@ -146,7 +147,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
             assert project.rev() == before_rev + 1
             return
         monkeypatch.setattr(operator, "authorize", change_generation)
-        with pytest.raises(ApprovalSubjectChanged) as failure:
+        with pytest.raises(ChangedSinceRead) as failure:
             engine.lead_takeover(expect_rev=project.rev(), reason="Replace the holder shown")
         assert failure.value.details["op"] == op
         assert int(failure.value.details["current"]) == int(failure.value.details["expected"]) + 1
@@ -273,8 +274,9 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
         assert result.get("ok", result.get("status") == "ACTIVE"), result
         assert project.rev() > rev
         return
-    with pytest.raises(ApprovalSubjectChanged) as failure:
+    with pytest.raises(ChangedSinceRead) as failure:
         getattr(engine, method)(token=project.token, expect_rev=rev, **args)
+    assert boundary_of(failure.value) == "refused"
     assert failure.value.details["op"] == op
     assert failure.value.details["expected"] != failure.value.details["current"]
     assert project.rev() == rev and control_bytes(project) == before
@@ -352,7 +354,7 @@ def test_manifest_adoption_distinguishes_missing_from_empty_policy(project):
     assert binding[rel] is None
     path.write_bytes(b"")
     rev = project.rev()
-    with pytest.raises(ApprovalSubjectChanged) as refused:
+    with pytest.raises(ChangedSinceRead) as refused:
         project.as_operator("manifest_adopt", reason="reviewed removal", binding=binding)
     assert refused.value.details["subject"] == rel
     assert refused.value.details["current"] == sha256_bytes(b"")

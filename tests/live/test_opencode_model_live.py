@@ -47,7 +47,6 @@ Each trial's record (outcomes, usage, telemetry, the project's control-state foo
 
 from __future__ import annotations
 
-import calendar
 import hashlib
 import importlib.util
 import json
@@ -55,6 +54,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -159,8 +159,8 @@ def changes(workspace: Path, base: str) -> dict[str, Any]:
     return {"paths": sorted(paths), "sha256": digest.hexdigest()}
 
 
-def epoch(stamp: str) -> int:
-    return calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ"))
+def epoch(stamp: str) -> float:
+    return datetime.fromisoformat(stamp).timestamp()
 
 
 def footprint(root: Path) -> dict[str, Any]:

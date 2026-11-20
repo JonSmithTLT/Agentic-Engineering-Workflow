@@ -372,10 +372,9 @@ class _Listener(ExclusiveServer):
                 request.settimeout(1.0)
                 request.sendall(self.busy)
             except OSError:
-                pass
+                request.close()
             else:
                 close_after_response(request, BUSY_DRAIN_S)
-            self.shutdown_request(request)
             return
         try:
             super().process_request(request, client_address)

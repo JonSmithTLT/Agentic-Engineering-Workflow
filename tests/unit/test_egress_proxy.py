@@ -59,6 +59,7 @@ def test_an_egress_405_survives_a_delayed_body_before_the_client_reads():
             server.sendall(data)
             answer_sent.set()
             assert body_sent.wait(TIMEOUT), "the client never supplied its delayed body"
+            assert server.recv(1, socket.MSG_PEEK) == b"x", "the body must be queued and unread before close"
 
     def handle():
         try:

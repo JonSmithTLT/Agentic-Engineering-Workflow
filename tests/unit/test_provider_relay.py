@@ -296,6 +296,7 @@ def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, re
             served.sendall(data)
             answer_sent.set()
             assert body_sent.wait(TIMEOUT), "the client never supplied the delayed body"
+            assert served.recv(1, socket.MSG_PEEK) == b"x", "the body must be queued and unread before close"
 
     def handle():
         try:

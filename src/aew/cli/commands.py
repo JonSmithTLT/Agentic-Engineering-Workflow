@@ -34,6 +34,19 @@ def _lead_token(args: argparse.Namespace) -> str:
     return getattr(args, "token", None) or lead_credential.required()
 
 
+def _approval_terminal(args: argparse.Namespace) -> bool:
+    from aew import process_kind
+    from aew.harness.operator_client import lead_session_problem
+
+    return (not getattr(args, "relayed", False) and sys.stderr.isatty()
+            and process_kind.kind() != process_kind.NON_WRITER and lead_session_problem() is None)
+
+
+def _add_prior(p: argparse.ArgumentParser, subject: str) -> None:
+    _add_lead(p)
+    p.add_argument("--prior-value", help=f"bind the shown {subject}")
+
+
 def operator_attribution(by: str, text: str) -> dict[str, str] | None:
     """When a command records its decision as the operator's, the operator's confirmation, typed back at their own
     terminal (``operator.authorize``); refused without one. Asked before the engine runs anything."""
@@ -316,6 +329,7 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
                         "typed back)")
     q.add_argument("--reason")
     _add_lead(q)
+    q.add_argument("--approval-digest", help="the authority candidate digest shown in the last result")
     q.set_defaults(handler=_authority_decide)
     q = asub.add_parser("reject")
     q.add_argument("candidate")
@@ -351,13 +365,14 @@ def _authority_decide(a: argparse.Namespace) -> Any:
     if action == "accept":
         summary += f" as {a.klass} authority"
     authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
-    binding = digest
+    binding = getattr(a, "approval_digest", None)
     if a.decided_by == "lead":
-        if sys.stderr.isatty():
+        if _approval_terminal(a):
             print(summary, file=sys.stderr, flush=True)
-        else:
-            # Redirected commands reserve stderr for the JSON refusal.
-            binding = None
+            if binding is None:
+                binding = digest
+    elif binding is None:
+        binding = digest
     args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
                             "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
                             "authorization": authorization}

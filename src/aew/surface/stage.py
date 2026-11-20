@@ -105,7 +105,7 @@ def _propose(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 
 def _transition(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return c.engine.work_transition(token=c.token(), expect_rev=rev, work_id=a["work_id"], to=a["to"],
-                                    reason=a.get("reason"))
+                                    reason=a.get("reason"), prior_value=a.get("prior_value"))
 
 
 def _invoke(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
@@ -227,7 +227,8 @@ def _plan_request_review(a: dict[str, Any], cards: list[str | None] | None = Non
     """``ticket_request_review`` (M4-E E5b): RUNNING -> REVIEW_PENDING, then a reviewer per card the effective gates
     require, each launched."""
     transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_review"])
-    return [{"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
+    return [{"primitive": "work.transition", "args": transition},
+            *_per_card(a, dispatch, launch, cards)]
 
 
 def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None = None,
@@ -237,7 +238,8 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
     effective gates require, each launched. From REVIEW_PASSED (``shape``, E133) the review is already accepted."""
     ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
     accept = [{"primitive": "review.ingest", "args": ingest}] if (shape or {}).get(1, True) else []
-    return [*accept, {"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
+    return [*accept, {"primitive": "work.transition", "args": transition},
+            *_per_card(a, dispatch, launch, cards)]
 
 
 def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
@@ -248,7 +250,8 @@ def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> li
     shape = shape or {}
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
     plan: list[dict[str, Any]] = [*([{"primitive": "verify.ingest", "args": ingest}] if shape.get(1, True) else []),
-                                  *([{"primitive": "work.transition", "args": transition}] if shape.get(2, True)
+                                  *([{"primitive": "work.transition",
+                                      "args": transition}] if shape.get(2, True)
                                     else []),
                                   {"primitive": "integrate.prepare", "args": prepare}]
     if shape.get(4):

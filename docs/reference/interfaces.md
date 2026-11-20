@@ -73,7 +73,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
 | `checks` | `checks.schema.json` | 14 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
-| `control` | `control.schema.json` | 528 | 288 |
+| `control` | `control.schema.json` | 529 | 288 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
 | `coordination-message` | `coordination-message.schema.json` | 18 | 17 |
 | `coordination-seal` | `coordination-seal.schema.json` | 19 | 16 |
@@ -95,11 +95,11 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `run-usage` | `run-usage.schema.json` | 44 | 27 |
 | `spool-event` | `spool-event.schema.json` | 6 | 0 |
 | `stage-intent` | `stage-intent.schema.json` | 104 | 69 |
-| `surface` | `surface.schema.json` | 128 | 86 |
+| `surface` | `surface.schema.json` | 134 | 86 |
 | `ticket-field-registry` | `ticket-field-registry.schema.json` | 49 | 27 |
-| `transition-events` | `transition-events.schema.json` | 26 | 3 |
-| `transition-segment` | `transition-segment.schema.json` | 51 | 12 |
-| `transition` | `transition.schema.json` | 41 | 4 |
+| `transition-events` | `transition-events.schema.json` | 27 | 3 |
+| `transition-segment` | `transition-segment.schema.json` | 52 | 12 |
+| `transition` | `transition.schema.json` | 42 | 4 |
 | `usage-live` | `usage-live.schema.json` | 64 | 46 |
 | `work-unit` | `work-unit.schema.json` | 31 | 7 |
 

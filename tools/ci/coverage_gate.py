@@ -93,8 +93,9 @@ def main() -> int:
             f.write(text)
     if args.update:
         args.baseline.write_text(json.dumps({"schema": SCHEMA, "line": total["line"], "branch": total["branch"],
-                                             "measured": "Linux lanes (fast, integration, acceptance, regression, "
-                                                         "adversarial); serial runs without coverage"},
+                                             "measured": "Linux pytest (fast, integration, acceptance, regression, "
+                                                         "adversarial). Serial runs and application subprocesses "
+                                                         "are not measured."},
                                             indent=2) + "\n", encoding="utf-8")
         print(f"baseline written: {args.baseline}")
         return 0

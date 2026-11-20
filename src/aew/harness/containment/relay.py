@@ -9,13 +9,19 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
-   it starts: ``netns.provider_key_missing``). One that still carries a sentinel this relay does not hold (an earlier
-   session's, kept in a store, or another provider's) is refused 401, :data:`STALE_PLACEHOLDER`, before anything is
-   connected: a sentinel never leaves the relay. A credential that
+   it starts: ``netns.provider_key_missing``). A credential that
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
    or 503 for a busy or locked store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
-3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``;
+3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``. A header the
+   login's grant sets (``login_headers``, such as ChatGPT's account id) is the grant's alone: the client's, which holds
+   a placeholder, is dropped whether or not the grant has a value for it.
+   **Placeholders:** a sentinel this relay did not issue, anywhere in the request line or the headers (a credential
+   header after the swap, any other header, the target), refuses the request 401 before anything is connected, so no
+   such placeholder goes upstream in them: :data:`OTHER_PLACEHOLDER` when this run issued it to another provider,
+   :data:`STALE_PLACEHOLDER` when no relay of the run did (an earlier session's, kept in a store), each with its own
+   remedy. This relay's own sentinel is swapped in a credential header only, and passes elsewhere as it came (it stands
+   for nothing outside the relay). The body is never read for one: a prompt may quote a placeholder;
 4. connects to its one fixed upstream, through the operator's HTTP proxy when the provider's environment names one,
    over TLS for ``https``;
 5. sends the request and its body (framed by ``Content-Length`` or chunked), then streams the response back as it
@@ -48,7 +54,7 @@ import socket
 import ssl
 import time
 import urllib.parse
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
@@ -66,6 +72,7 @@ BODY_TIMEOUT = 60.0     # a pause inside the request body; the response stream i
 TLS_MINIMUM = ssl.TLSVersion.TLSv1_2  # every upstream context's floor, a client certificate's included
 SENTINEL_PREFIX = "aew-relay-"
 STALE_PLACEHOLDER = "stale_placeholder"
+OTHER_PLACEHOLDER = "other_placeholder"
 # What became of a request's credential header: its sentinel swapped for the credential; none carried one; or one
 # carried a sentinel this relay does not hold, and the request was refused.
 SWAP_OUTCOMES = ("swapped", "none", "refused_unknown_placeholder")
@@ -153,22 +160,39 @@ def _connect(host: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((host, port), timeout=timeout)  # every address the name has, in turn
 
 
-STALE_MESSAGE = ("AEW: this request carries a key placeholder this provider relay does not hold (one from an earlier "
-                 "session, or another provider's), so it was not sent to the provider. Restart the run (for the Lead, "
-                 "start `aew opencode` again): each start removes the placeholders earlier sessions left")
+STALE_MESSAGE = ("AEW: this request carries a key placeholder no relay of this session issued, so it was not sent to "
+                 "the provider. An earlier session's login row holds one, and each start removes those: start the run "
+                 "again (for the Lead, `aew opencode`). If it comes back after a fresh start, a login saved inside the "
+                 "Lead's own OpenCode holds it: remove that login there (`opencode auth logout`), then start again")
+OTHER_MESSAGE = ("AEW: this request carries the placeholder this run gave another provider's key, which stands for "
+                 "nothing at this provider, so it was not sent. The harness sends that key to the wrong provider: "
+                 "check the provider settings the run was given (starting again does not change them)")
 
 
-def _credential(value: str, credentials: Mapping[str, str]) -> tuple[str, bool]:
+def _placeholders(value: str, own: Collection[str], foreign: Collection[str]) -> None:
+    """Refuse ``value`` when it holds a sentinel other than one of ``own`` (which pass as they came):
+    :data:`OTHER_PLACEHOLDER` for one of ``foreign`` (this run issued it to another provider), else
+    :data:`STALE_PLACEHOLDER`. The value is never echoed."""
+    rest = value
+    for token in own:
+        rest = rest.replace(token, "")
+    if SENTINEL_PREFIX not in rest:
+        return
+    if any(token in rest for token in foreign):
+        raise _Refused(401, OTHER_PLACEHOLDER, OTHER_MESSAGE)
+    raise _Refused(401, STALE_PLACEHOLDER, STALE_MESSAGE)
+
+
+def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[str] = ()) -> tuple[str, bool]:
     """A credential header's value with its sentinel, alone or after a scheme (``Bearer <sentinel>``), swapped, and
-    whether one was. A value that still holds :data:`SENTINEL_PREFIX` after the swap carries a sentinel this relay does
-    not hold: refused (:data:`STALE_PLACEHOLDER`), and its value is never echoed."""
+    whether one was. Any sentinel still in it after the swap is refused (:func:`_placeholders`): in a credential header
+    not even this relay's own passes, as it would go where the credential goes."""
     scheme, sep, token = value.partition(" ")
     if sep and token.strip() in credentials:
         return f"{scheme} {credentials[token.strip()]}", True
     if value.strip() in credentials:
         return credentials[value.strip()], True
-    if SENTINEL_PREFIX in value:
-        raise _Refused(401, STALE_PLACEHOLDER, STALE_MESSAGE)
+    _placeholders(value, (), foreign)
     return value, False
 
 
@@ -201,11 +225,17 @@ class ProviderRelay(Service):
                  head_timeout: float = HEAD_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT,
                  body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None,
                  client: ClientCert | None = None, record: Callable[[dict[str, Any]], None] | None = None,
-                 route: str | None = None, login: str = "none") -> None:
+                 route: str | None = None, login: str = "none", login_headers: Collection[str] = (),
+                 issued: Collection[str] = ()) -> None:
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
         self._credentials = dict(credentials)
         self._resolve = resolve
+        self.login_headers = frozenset(h.lower() for h in login_headers)
+        self.own = frozenset(credentials) | frozenset(issued)  # the sentinels this relay issued (a grant's included)
+        # The sentinels the run issued to its other relays and variables (netns sets it once they all exist): one of
+        # them here is another provider's placeholder, refused as such
+        self.foreign: frozenset[str] = frozenset()
         self._record, self.route, self.login = record, route, login
         self._retryable_pending = False
         self._connect, self._tls = connect, tls
@@ -270,8 +300,9 @@ class ProviderRelay(Service):
             held = [*credentials.values(), *extra.values()]
             try:
                 rewritten, swapped = self._rewrite(headers, credentials, extra)
+                _placeholders(target, credentials, self.foreign)
             except _Refused as refused:
-                if refused.reason == STALE_PLACEHOLDER:
+                if refused.reason in (STALE_PLACEHOLDER, OTHER_PLACEHOLDER):
                     entry["swap"] = "refused_unknown_placeholder"
                 raise
             entry["swap"] = "swapped" if swapped else "none"
@@ -364,11 +395,12 @@ class ProviderRelay(Service):
     def _rewrite(self, headers: list[tuple[str, str]], credentials: Mapping[str, str],
                  extra: Mapping[str, str]) -> tuple[list[tuple[str, str]], bool]:
         """Hop-by-hop headers (and any the client's ``Connection`` names) out; ``Host`` the upstream's; the
-        credential in for its sentinel, in a credential header only (a sentinel this relay does not hold is refused:
-        :func:`_credential`); the grant's headers in place of any of the same name; ``Connection: close``. Returns
-        the headers and whether a sentinel was swapped."""
+        credential in for its sentinel, in a credential header only; the grant's headers in place of any of the same
+        name, and the client's of a name in ``login_headers`` dropped; ``Connection: close``. A sentinel this relay did
+        not issue, in any header kept, is refused (:func:`_placeholders`). Returns the headers and whether a sentinel
+        was swapped."""
         named = {t.strip().lower() for k, v in headers if k.lower() == "connection" for t in v.split(",")}
-        replaced = {k.lower() for k in extra}
+        replaced = {k.lower() for k in extra} | self.login_headers
         out = [("Host", self.upstream.authority)]
         swapped = False
         for name, value in headers:
@@ -376,8 +408,10 @@ class ProviderRelay(Service):
             if low in HOP_BY_HOP or low in named or low == "host" or low in replaced:
                 continue
             if low in CREDENTIAL_HEADERS:
-                value, one = _credential(value, credentials)
+                value, one = _credential(value, credentials, self.foreign)
                 swapped = swapped or one
+            else:
+                _placeholders(value, credentials, self.foreign)
             out.append((name, value))
         out += list(extra.items())
         out.append(("Connection", "close"))
@@ -575,7 +609,8 @@ _ELLIPSIS_MASKED = re.compile(r"\S{2,}\.{3}\S{2,}")  # a provider's own masking 
 
 class _Excerpt:
     """The start of a failed answer's body, as text for the record: de-chunked, inflated when ``gzip`` or ``deflate``
-    (any other coding is named, not read), at most :data:`EXCERPT_BYTES`, and redacted (:meth:`text`)."""
+    (any other coding is named, not read), redacted over the whole of what was read (:data:`EXCERPT_RAW_BYTES`), and
+    only then cut to :data:`EXCERPT_BYTES` characters (:meth:`text`)."""
 
     def __init__(self, head: bytes) -> None:
         values = {}
@@ -618,16 +653,17 @@ class _Excerpt:
         if self.coding in ("gzip", "x-gzip", "deflate"):
             try:
                 inflate = zlib.decompressobj(zlib.MAX_WBITS | (16 if "gzip" in self.coding else 0))
-                data = inflate.decompress(data, EXCERPT_BYTES)
+                data = inflate.decompress(data, EXCERPT_RAW_BYTES)
             except zlib.error:
                 return f"(a {self.coding} body that could not be read)"
         elif self.coding != "identity":
             return f"(a {self.coding} body: not read)"
-        text = data[:EXCERPT_BYTES].decode("utf-8", "replace")
+        # Redacted whole, then cut: a value that crosses the cut is removed whole, never left less its tail
+        text = data[:EXCERPT_RAW_BYTES].decode("utf-8", "replace")
         for value in sorted((v for v in held if len(v) >= 4), key=len, reverse=True):
             text = text.replace(value, "<redacted>")
         text = re.sub(re.escape(SENTINEL_PREFIX) + r"\S*", "<redacted placeholder>", text)
-        return redact_text(_ELLIPSIS_MASKED.sub("<redacted>", text))
+        return redact_text(_ELLIPSIS_MASKED.sub("<redacted>", text))[:EXCERPT_BYTES]
 
 
 def _unchunk(raw: bytes) -> bytes:

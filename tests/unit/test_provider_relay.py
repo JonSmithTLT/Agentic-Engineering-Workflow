@@ -189,7 +189,7 @@ def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
                        f"Authorization: Bearer {token}\r\n{extra_header}Content-Length: 0\r\n\r\n".encode())
         if other_export:  # another provider's placeholder is one this relay does not hold: refused, nothing connects
             answer = read_all(client)
-            assert answer.startswith(b"HTTP/1.1 401") and b"X-AEW-Refusal: stale_placeholder" in answer
+            assert answer.startswith(b"HTTP/1.1 401") and b"X-AEW-Refusal: other_placeholder" in answer
             assert seam.calls == [] and other_key.encode() not in answer and inside[other].encode() not in answer
             assert other in network.leaks(other_key)
             return
@@ -689,20 +689,28 @@ def test_the_label_names_the_upstream_and_never_a_credential():
 
 # ------------------------------------------------------------------ an earlier session's placeholder, and the record
 
-@pytest.mark.parametrize("header", ["Authorization: Bearer {stale}", "X-Api-Key: {stale}"])
-def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(header):
-    """A credential header carrying a sentinel of another relay (an earlier session's, kept in a store) is refused 401
-    with its reason and what to do, before anything is connected: a sentinel never goes upstream, and the refusal
-    never echoes it. The request is recorded as refused, with its swap outcome."""
+@pytest.mark.parametrize("line, header", [
+    ("POST /v1/chat/completions", "Authorization: Bearer {stale}"),
+    ("POST /v1/chat/completions", "X-Api-Key: {stale}"),
+    ("POST /v1/chat/completions", "X-Request-Id: {stale}"),
+    ("POST /v1/chat/completions", "ChatGPT-Account-Id: {stale}"),
+    ("GET /v1/models?key={stale}", "Accept: */*"),
+], ids=["bearer", "api-key", "other-header", "account-header", "target"])
+def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(line, header):
+    """A sentinel no relay of the run issued (an earlier session's, kept in a store), in a credential header, in any
+    other header or in the request's target, is refused 401 with its reason and what to do, before anything is
+    connected: no such placeholder goes upstream in the request line or the headers, and the refusal never echoes it.
+    The request is recorded as refused, with its swap outcome."""
     stale = relay.sentinel()
     seam, entries = Seam(), []
     with relayed(seam, record=entries.append) as (service, client, token):
         assert stale != token
-        client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\n{header.format(stale=stale)}\r\n"
+        client.sendall(f"{line.format(stale=stale)} HTTP/1.1\r\n{header.format(stale=stale)}\r\n"
                        "Content-Length: 2\r\n\r\n{}".encode())
         answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 401 ") and b"X-AEW-Refusal: stale_placeholder" in answer
-    assert b"from an earlier session" in answer and b"start `aew opencode` again" in answer
+    assert b"no relay of this session issued" in answer and b"(for the Lead, `aew opencode`)" in answer
+    assert b"`opencode auth logout`" in answer  # the cause a restart does not cure: a login saved inside
     assert stale.encode() not in answer and relay.SENTINEL_PREFIX.encode() not in answer
     assert seam.calls == [] and service.counts() == {"stale_placeholder": 1}
     [entry] = entries
@@ -754,7 +762,107 @@ def test_a_forwarded_request_answered_401_is_recorded_with_its_status_and_never_
     assert "Incorrect API key provided" in entry["excerpt"] and "invalid_api_key" in entry["excerpt"]
     blob = json.dumps(entry)
     assert SECRET not in blob and f"{SECRET[:4]}...{SECRET[-4:]}" not in blob and token not in blob
-    assert len(entry["excerpt"]) <= relay.EXCERPT_BYTES + 64  # the bound, plus what redaction put in
+    assert len(entry["excerpt"]) <= relay.EXCERPT_BYTES
+
+
+def _jwt_shaped() -> str:
+    """A synthetic token in a JWT's shape, made here so the source holds no such literal."""
+    import base64
+
+    parts = (b'{"alg":"HS256"}', b'{"sub":"synthetic"}', b"synthetic-signature")
+    return ".".join(base64.urlsafe_b64encode(part).decode().rstrip("=") for part in parts)
+
+
+@pytest.mark.parametrize("secret", ["synthetic-generic-key-0123456789abcdefghijklmn", "0123456789abcdef" * 2,
+                                    _jwt_shaped()], ids=["generic", "hex32", "jwt-shaped"])
+@pytest.mark.parametrize("coding", ["identity", "gzip"])
+def test_a_credential_echoed_across_the_excerpts_bound_is_redacted_whole(coding, secret):
+    """An upstream's failed answer that echoes the credential it was sent across the excerpt's bound: the record holds
+    none of it, not even the part before the bound, whether the body is plain or gzip."""
+    start = relay.EXCERPT_BYTES - len(secret) + 1  # the echo ends one character past the bound
+    message = (b"x" * start) + secret.encode() + b" was refused"
+    body, fields = message, f"Content-Length: {len(message)}"
+    if coding == "gzip":
+        body = _gzip(message)
+        fields = f"Content-Encoding: gzip\r\nContent-Length: {len(body)}"
+    refused = f"HTTP/1.1 401 Unauthorized\r\n{fields}\r\n\r\n".encode() + body
+    token = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, credentials={token: secret}, record=entries.append) as (_, client, _):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(refused)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert entry["status"] == 401 and len(entry["excerpt"]) <= relay.EXCERPT_BYTES
+    assert secret[:-1] not in entry["excerpt"] and secret[: len(secret) // 2] not in entry["excerpt"], entry
+
+
+def test_a_placeholder_in_a_failed_answer_is_redacted_from_the_record():
+    """A failed answer that quotes a placeholder (the relay's own, or a stale one) leaves none in the record."""
+    stale = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (_, client, token):
+        message = f'{{"error": "unknown key {token} (also tried {stale})"}}'.encode()
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(f"HTTP/1.1 401 Unauthorized\r\nContent-Length: {len(message)}\r\n\r\n".encode() + message)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert "unknown key" in entry["excerpt"] and "<redacted placeholder>" in entry["excerpt"], entry
+    assert relay.SENTINEL_PREFIX not in json.dumps(entry), entry
+
+
+def test_another_providers_placeholder_is_refused_with_its_own_remedy():
+    """A sentinel the run issued to another provider stands for nothing here: refused, nothing connects, and the
+    remedy is the provider settings, not a restart, which would not change them."""
+    other = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, _):
+        service.foreign = frozenset({other})
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nX-Api-Key: {other}\r\nContent-Length: 0\r\n\r\n".encode())
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 401 ") and b"X-AEW-Refusal: other_placeholder" in answer
+    assert b"another provider's key" in answer and b"starting again does not change them" in answer
+    assert other.encode() not in answer and seam.calls == [] and service.counts() == {"other_placeholder": 1}
+    assert [(e["reason"], e["swap"]) for e in entries] == [("other_placeholder", "refused_unknown_placeholder")]
+
+
+def test_a_login_header_is_the_grants_alone_and_the_clients_placeholder_is_never_forwarded():
+    """A header the login's grant sets (ChatGPT's account id) is dropped from the client's request whether or not the
+    grant has a value: the placeholder the login row holds never goes upstream, and nothing is refused for it."""
+    token = relay.sentinel()
+    seam = Seam()
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+                            body_timeout=TIMEOUT, resolve=lambda: ({token: "synthetic-access"}, {}),
+                            login_headers=("chatgpt-account-id",), issued=(token,))
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "ChatGPT-Account-Id: aew-relay-placeholder\r\nContent-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        head, _ = read_head(upstream)
+        upstream.sendall(OK)
+        upstream.close()
+        assert read_all(client).startswith(b"HTTP/1.1 200")
+    finally:
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+        if seam.far is not None:
+            seam.far.close()
+    got = headers(head)
+    assert ("authorization", "Bearer synthetic-access") in got
+    assert not any(name == "chatgpt-account-id" for name, _ in got) and b"aew-relay-" not in head
 
 
 def test_a_forwarded_request_answered_200_is_recorded_with_its_status_and_no_excerpt():

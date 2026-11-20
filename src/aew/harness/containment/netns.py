@@ -500,7 +500,8 @@ class RunNetwork:
                 net.relay = relay.ProviderRelay(
                     target, {}, proxy=proxy, resolve=functools.partial(_grant, token, resolver.worker_grant),
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record,
-                    route=resolver.integration, login="oauth").start()
+                    route=resolver.integration, login="oauth", issued=(token,),
+                    login_headers=tuple(login.LOGIN_HEADERS.get(resolver.integration, {}))).start()
             elif relay_needed:
                 target = upstream(provider, policy)
                 if stored is not None and stored_key_candidate(provider, names, env, policy, on_relay_route=True):
@@ -523,6 +524,7 @@ class RunNetwork:
                     net.key_source = "stored OpenCode login" if net.stored_key_variable else "environment"
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
+            net.tell_foreign()
         except OSError as exc:
             net.close()
             raise ContainmentUnavailable(f"the run's network could not be set up: {exc}", reason="network") from None
@@ -582,10 +584,12 @@ class RunNetwork:
                         pass
                     served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
                                                  resolve=functools.partial(_grant, token, resolve), record=record,
-                                                 route=provider, login="oauth")
+                                                 route=provider, login="oauth", issued=(token,),
+                                                 login_headers=tuple(login.LOGIN_HEADERS.get(provider, {})))
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
                                             listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
+            net.tell_foreign()
         except OSError as exc:
             net.close()
             raise ContainmentUnavailable(f"the Lead's network could not be set up: {exc}", reason="network") from None
@@ -593,6 +597,14 @@ class RunNetwork:
             net.close()
             raise
         return net
+
+    def tell_foreign(self) -> None:
+        """Tell each relay the sentinels the run issued to its other relays and variables, so that one of them in a
+        request is refused as another provider's placeholder (``relay.OTHER_PLACEHOLDER``), not a stale one."""
+        relays = [service for _, service in self._services() if hasattr(service, "own")]
+        issued = {*self.sentinels.values(), *self.login_sentinels.values(), *(t for r in relays for t in r.own)}
+        for served in relays:
+            served.foreign = frozenset(issued - served.own)
 
     def lead_bases(self) -> dict[str, str]:
         """The Lead's provider ``baseURL`` for each relayed provider: its relay's loopback port inside, with the

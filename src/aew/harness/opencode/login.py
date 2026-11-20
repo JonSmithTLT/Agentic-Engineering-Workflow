@@ -168,9 +168,10 @@ def clear_aew_logins(db: Path, state: Path) -> int:
     return how many went. Each holds an earlier session's relay sentinel, which no relay of this session knows: left
     active, OpenCode would send it in place of the session's own credential. Run at every contained start, whatever
     the session's logins, before the session writes its own. A provider left with no active row, because AEW's row had
-    set its others inactive, gets its newest row active again, as OpenCode itself left it. No database, or no
-    ``credential`` table, means there is nothing to remove; a ``credential`` table of another shape is one AEW does
-    not know (:class:`StoreSchemaChanged`). The store must be the Lead's own (:func:`own_store`). A failure raises
+    set its others inactive, gets its newest row (by ``time_updated``) active again. AEW never recorded which of them
+    was active before, so with several rows of one provider the newest need not be the one OpenCode had. No database,
+    or no ``credential`` table, means there is nothing to remove; a ``credential`` table of another shape is one AEW
+    does not know (:class:`StoreSchemaChanged`). The store must be the Lead's own (:func:`own_store`). A failure raises
     (:class:`OSError`, :class:`sqlite3.Error`), for the caller to refuse the start."""
     own_store(db, state)
     if not db.is_file():

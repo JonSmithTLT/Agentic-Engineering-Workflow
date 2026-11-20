@@ -115,6 +115,30 @@ def test_each_checker_rule_names_a_hosted_ablation():
     assert rules == twins
 
 
+def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
+    import yaml
+
+    proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
+    assert proof[True] == {
+        "schedule": [{"cron": "41 3 * * *"}],
+        "workflow_dispatch": None,
+        "pull_request": {"paths": [
+            ".github/actions/lane/**",
+            ".github/workflows/evidence-*.yml",
+            "tests/helpers/watchdog.py",
+            "tests/helpers/session_deadline.py",
+            "tests/helpers/autopsy.py",
+            "tools/ci/lane_step.py",
+            "tools/ci/verify_evidence.py",
+            "tools/ci/check_evidence_run.py",
+            "tools/ci/evidence_problems.py",
+            "tools/ci/probe_evidence.py",
+            "tools/ci/stage_evidence.py",
+            "tools/flake_register.py",
+        ]},
+    }
+
+
 def test_the_publication_budget_detects_an_unbounded_post_test_step(tmp_path):
     import bounds
     import yaml

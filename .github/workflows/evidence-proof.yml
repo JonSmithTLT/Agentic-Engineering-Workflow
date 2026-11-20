@@ -2,12 +2,18 @@ name: evidence-proof
 on:
   pull_request:
     paths:
-      - '.github/**'
-      - 'tools/ci/**'
-      - 'tests/helpers/**'
-      - 'tests/conftest.py'
-  push:
-    branches: [main]
+      - '.github/actions/lane/**'
+      - '.github/workflows/evidence-*.yml'
+      - 'tests/helpers/watchdog.py'
+      - 'tests/helpers/session_deadline.py'
+      - 'tests/helpers/autopsy.py'
+      - 'tools/ci/lane_step.py'
+      - 'tools/ci/verify_evidence.py'
+      - 'tools/ci/check_evidence_run.py'
+      - 'tools/ci/evidence_problems.py'
+      - 'tools/ci/probe_evidence.py'
+      - 'tools/ci/stage_evidence.py'
+      - 'tools/flake_register.py'
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:

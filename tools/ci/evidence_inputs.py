@@ -22,7 +22,7 @@ def priority(path: Path) -> bool:
 
 
 def prepare(source: Path, target: Path, *, job: str = "", collection: str = "success",
-            copy_priority: bool = True, unavailable: tuple[str, ...] = ()) -> tuple[bool, bool]:
+            copy_priority: bool = True, unavailable: tuple[str, ...] = (), attachment: str = "") -> tuple[bool, bool]:
     target.mkdir(parents=True, exist_ok=True)
     names = target.with_name(target.name.removesuffix("-watchdog-input") + "-names")
     names.mkdir(parents=True, exist_ok=True)
@@ -39,6 +39,9 @@ def prepare(source: Path, target: Path, *, job: str = "", collection: str = "suc
         (names / "tools-unavailable.txt").write_text("".join(f"evidence defect: {tool} unavailable\n"
                                                              for tool in unavailable), encoding="utf-8")
         name_index.append("finding tools-unavailable.txt (evidence_inputs)\n")
+    if attachment in {"unelevated", "sudo -n", "unavailable"}:
+        (names / "runner-resources-attachment.txt").write_text(attachment + "\n", encoding="utf-8")
+        name_index.append("finding runner-resources-attachment.txt (lane_step)\n")
     has_source = source.is_dir() and not is_link(source)
     from watchdog import SOURCE_TEST
 
@@ -77,6 +80,7 @@ if __name__ == "__main__":
     started = time.monotonic()
     present, copied = prepare(Path(sys.argv[1]), Path(sys.argv[2]), job=os.environ.get("JOB_LABEL", ""),
                               collection=os.environ.get("COLLECTION_OUTCOME", "success"),
+                              attachment=os.environ.get("ATTACHMENT_PROBE", ""),
                               unavailable=tuple(label for key, label in (("SCANNER_AVAILABLE", "scan"),
                                                                           ("SPY_AVAILABLE", "py-spy"))
                                                 if os.environ.get("JOB_LABEL") and os.environ.get(key) != "true"),

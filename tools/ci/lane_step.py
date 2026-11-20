@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from threading import Thread
+from typing import BinaryIO
 from uuid import uuid4
 
 HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
@@ -29,6 +31,8 @@ CUTOFF_CLEARANCE_S = bounds.CUTOFF_CLEARANCE_S
 CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
 POLL_S = 0.25
 SPY_TIMEOUT_S = 3  # one bounded request per live worker; the cutoff reserves this per worker
+HEARTBEAT = re.compile(rb"evidence-heartbeat ([0-9]+) ([0-9.]+)")
+GIL_ENTER = re.compile(rb"evidence-gil-enter ([0-9.]+)")
 
 
 def note(directory: Path, name: str, text: str) -> None:
@@ -47,7 +51,7 @@ def attach(pid: int) -> tuple[str, str] | None:
     until = time.monotonic() + SPY_TIMEOUT_S
     for prefix in prefixes:
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-            result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--pid", str(pid)],
+            result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--full-filenames", "--pid", str(pid)],
                                     capture_output=True, text=True, timeout=max(0, until - time.monotonic()),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode == 0 and result.stdout.strip():
@@ -55,14 +59,14 @@ def attach(pid: int) -> tuple[str, str] | None:
     return None
 
 
-def probe() -> None:
+def probe() -> str:
     """One proof-only probe. The target is bounded even if the runner interrupts cleanup."""
     target = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"],
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
         time.sleep(0.25)  # let the probe target initialize Python before inspecting it
         result = attach(target.pid)
-        print(f"evidence attachment probe: {result[0] if result else 'unavailable'}; Python {sys.version.split()[0]}")
+        return result[0] if result else "unavailable"
     finally:
         target.kill()
         target.wait(timeout=SPY_TIMEOUT_S)
@@ -112,11 +116,30 @@ def memory_used() -> int | None:
         return None
 
 
-def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str]) -> None:
+def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
+    """Forward stderr while retaining only the hang plant's numeric handshake."""
+    with stream:
+        for line in stream:
+            if entered := GIL_ENTER.fullmatch(line.strip()):
+                observed["entered"] = float(entered[1])
+            elif beat := HEARTBEAT.fullmatch(line.strip()):
+                if "entered" not in observed:
+                    observed["beats_before"] = int(beat[1])
+                else:
+                    observed["latest_beat_after"] = float(beat[2])
+            with contextlib.suppress(OSError):
+                sys.stderr.buffer.write(line)
+                sys.stderr.buffer.flush()
+
+
+def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str], *,
+                lane_exit: int | None, heartbeat: dict | None) -> None:
     scope = "MemTotal minus MemAvailable, whole runner" if sys.platform == "linux" else "unavailable on Windows"
-    facts = {"command_exit": code, "step_signal": interrupted,
+    facts = {"command_exit": code, "lane_exit": lane_exit, "step_signal": interrupted,
              "runner_memory_peak_bytes": peak, "memory_scope": scope,
              "ablation": os.environ.get("AEW_EVIDENCE_ABLATE")}
+    if heartbeat is not None:
+        facts["heartbeat"] = {**heartbeat, "observed_until": time.time()}
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("AEW_LANE_STEP", "step"))
     facts["job_label"] = os.environ.get("AEW_LANE_JOB_LABEL", "")
     destination = root / f"runner-resources-{name}-exit.txt"
@@ -138,11 +161,21 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             kwargs["env"] = {**os.environ, "TMPDIR": scratch, "TEMP": scratch, "TMP": scratch}
     else:
         argv = [shell, "-e", str(script)]
+    watch_heartbeat = os.environ.get("AEW_EVIDENCE_PLANT") == "hang"
+    if watch_heartbeat:
+        kwargs["stderr"] = subprocess.PIPE
     child = subprocess.Popen(argv, **kwargs)
+    heartbeat: dict | None = None
+    relay = None
+    if watch_heartbeat and child.stderr is not None:
+        heartbeat = {}
+        relay = Thread(target=relay_heartbeat, args=(child.stderr, heartbeat), daemon=True)
+        relay.start()
     status = root / "runner-resources-step.txt"
     interrupted = []
     peak = memory_used()
     snapshots_seen: set[tuple[int, str]] = set()
+    lane_exit = None
 
     def forward(signum, frame):
         interrupted.append(signal.Signals(signum).name)
@@ -175,20 +208,24 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 with contextlib.suppress(OSError):
                     child.kill()
                 child.wait(timeout=10)
-                return exit_code
+                lane_exit = exit_code
+                return lane_exit
             code = child.poll()
             if code is not None and (job is None or not job.pids()):
-                return 128 - code if code < 0 else code
+                lane_exit = 128 - code if code < 0 else code
+                return lane_exit
             time.sleep(POLL_S)
     finally:
-        record_exit(root, child.poll(), peak, interrupted)
+        if relay is not None:
+            relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
+        record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 
 
 def main(argv: list[str]) -> int:
     if argv == ["--probe"]:
-        probe()
+        print(probe())
         return 0
     if argv and argv[0] == "_exec":
         proctree.Job.open(argv[1]).assign_self()

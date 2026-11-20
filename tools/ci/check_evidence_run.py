@@ -82,7 +82,7 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
             command_exits = []
             for path in merged.rglob("runner-resources-*-exit.txt"):
                 record = json.loads(path.read_text())
-                command_exits.append(record.get("command_exit"))
+                command_exits.append(record.get("lane_exit", record.get("command_exit")))
                 if record.get("ablation") not in (None, "none"):
                     report("job-ablation", "ablation enabled in a real lane")
             died = (any(report.get("exitstatus") not in (0, 1) for report in reports)

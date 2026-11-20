@@ -97,7 +97,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 for frame in FRAME.finditer(text) if tagged else ():
                     file = frame.group("file") or frame.group("spy_file")
                     called = frame.group("function") or frame.group("spy_function")
-                    if source in file.replace("\\", "/") and called == function:
+                    if ("/" + file.replace("\\", "/")).endswith("/" + source) and called == function:
                         matched = True
                         break
                 if matched:

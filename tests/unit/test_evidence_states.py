@@ -276,7 +276,43 @@ def test_a_worker_gets_a_timeout_snapshot_for_each_new_test(tmp_path, monkeypatc
     lane.snapshot(tmp_path, seen=seen)
     lane.snapshot(tmp_path, seen=seen)
     assert len(calls) == 2
+    assert all("--full-filenames" in call for call in calls)
     assert "test_second" in (tmp_path / "snapshots/123.txt").read_text()
+
+
+def test_the_hosted_verifier_uses_downloaded_lane_observations(tmp_path, capsys):
+    from io import BytesIO
+
+    lane = _load("lane_step")
+    verify = _load("verify_evidence")
+    heartbeat = {}
+    lane.relay_heartbeat(BytesIO(b"evidence-heartbeat 1 98.0\nevidence-heartbeat 2 99.0\n"
+                                  b"evidence-heartbeat 3 100.0\nevidence-gil-enter 100.1\n"), heartbeat)
+    assert "evidence-gil-enter 100.1" in capsys.readouterr().err
+    lane.record_exit(tmp_path, 70, None, [], lane_exit=70, heartbeat=heartbeat)
+    assert verify.observation_problems(tmp_path, "Windows", "hang") == []
+    lane.record_exit(tmp_path, -9, None, [], lane_exit=71, heartbeat=None)
+    assert verify.observation_problems(tmp_path, "Linux", "time-limit") == []
+    assert "expected lane exit 70" in verify.observation_problems(tmp_path, "Linux", "deadline")[0]
+    lane.relay_heartbeat(BytesIO(b"evidence-heartbeat 4 102.0\n"), heartbeat)
+    lane.record_exit(tmp_path, 70, None, [], lane_exit=70, heartbeat=heartbeat)
+    assert "heartbeat did not stall" in verify.observation_problems(tmp_path, "Windows", "hang")[0]
+
+
+def test_a_cutoff_snapshot_needs_the_full_tagged_test_path(tmp_path):
+    check = _load("evidence_problems")
+    node = "tests/integration/evidence_plants/deaths.py::test_death"
+    (tmp_path / "running-123.txt").write_text(node + "\n")
+    directory = tmp_path / "snapshots"
+    directory.mkdir()
+    snapshot = directory / "123.txt"
+    (tmp_path / "inventory.txt").write_text("finding inventory.txt (publisher)\nfinding running-123.txt (watchdog)\n"
+                                           "finding snapshots/123.txt (lane_step)\n")
+    snapshot.write_text(f"snapshot 0.0 for {node}[time-limit], running 35.0s\n    test_death (deaths.py:59)\n")
+    assert any("no stack" in defect for defect in check.evidence_problems(tmp_path, require_stacks=True))
+    snapshot.write_text(f"snapshot 0.0 for {node}[time-limit], running 35.0s\n"
+                        "    test_death (D:\\a\\repo\\tests\\integration\\evidence_plants\\deaths.py:59)\n")
+    assert check.evidence_problems(tmp_path, require_stacks=True) == []
 
 
 def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, monkeypatch):

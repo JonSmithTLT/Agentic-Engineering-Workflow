@@ -15,9 +15,6 @@ from check_evidence_run import check_jobs
 from evidence_files import FRAME, state
 from evidence_problems import evidence_problems
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from flake_register import _gh_read  # noqa: E402
-
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
 STATE_TWINS = {
     "inventory": "inventory", "inventory-label": "label", "header-only": "label", "zero-byte": "label",
@@ -134,6 +131,31 @@ def job_twins(root: Path, job: dict) -> list[str]:
         return failures + expect_rule("live-ablation", JOB_TWINS["live-ablation"], check_jobs(twin, [job]))
 
 
+def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
+    """Verify runner observations from the downloaded bundle, alongside GitHub's job conclusion."""
+    failures = []
+    expected_exit = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}.get(kind)
+    if expected_exit is not None:
+        records = [json.loads(path.read_text(encoding="utf-8"))
+                   for path in root.rglob("runner-resources-*-exit.txt")]
+        exits = {record.get("lane_exit") for record in records}
+        if exits != {expected_exit}:
+            failures.append(f"plant misfired: expected lane exit {expected_exit}, found {exits}")
+        if kind == "hang":
+            for record in records:
+                beat = record.get("heartbeat", {})
+                entered = beat.get("entered")
+                if entered is None or beat.get("beats_before", 0) < 3:
+                    failures.append("plant misfired: heartbeat handshake missing")
+                elif beat.get("observed_until", 0) <= entered + 1 or beat.get("latest_beat_after", 0) > entered + 1:
+                    failures.append("plant misfired: heartbeat did not stall through the observation window")
+    if kind == "normal" and platform == "Linux":
+        probes = [p.read_text(encoding="utf-8").strip() for p in root.rglob("runner-resources-attachment.txt")]
+        if len(probes) != 1 or probes[0] not in {"unelevated", "sudo -n"}:
+            failures.append(f"hosted attachment probe failed: {probes}")
+    return failures
+
+
 def main(root: Path) -> int:
     jobs = github_jobs()
     failures = []
@@ -169,24 +191,7 @@ def main(root: Path) -> int:
             if rule_ids(gate) != expected_rules:
                 failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
             expected = "success" if kind == "normal" else "cancelled" if kind == "cancel" else "failure"
-            log = _gh_read(f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/jobs/{job['id']}/logs").decode(
-                "utf-8", errors="replace")
-            timing = re.findall(r"evidence timing ([a-z-]+) ([0-9.]+)s", log)
-            if kind == "normal" and platform == "Linux":
-                probes = re.findall(r"evidence attachment probe: (.+)", log)
-                if len(probes) != 1 or "unavailable" in probes[0]:
-                    failures.append(f"{job['name']}: hosted attachment probe failed: {probes}")
-            print(f"{job['name']}: post-test timings {timing}")
-            if kind == "hang":
-                entered = re.findall(r"evidence-gil-enter ([0-9.]+)", log)
-                beats = re.findall(r"evidence-heartbeat (\d+) ([0-9.]+)", log)
-                if not entered or len(beats) < 3:
-                    failures.append(f"{job['name']}: plant misfired; heartbeat handshake missing")
-                elif any(float(at) > float(entered[-1]) + 1 for _, at in beats):
-                    failures.append(f"{job['name']}: heartbeat kept moving; GIL plant misfired")
-            expected_code = {"deadline": 70, "time-limit": 71, "sigkill": 137}.get(kind)
-            if expected_code and f"Process completed with exit code {expected_code}" not in log:
-                failures.append(f"{job['name']}: plant misfired; expected exit {expected_code}")
+            failures.extend(f"{job['name']}: {problem}" for problem in observation_problems(merged, platform, kind))
             if job["conclusion"] != expected or lane_step["conclusion"] != expected:
                 failures.append(f"{job['name']}: plant misfired: {job['conclusion']}, {lane_step['conclusion']}")
             if kind == "normal":

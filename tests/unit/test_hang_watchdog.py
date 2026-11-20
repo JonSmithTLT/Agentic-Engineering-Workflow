@@ -166,6 +166,8 @@ def test_plant(value):
     try:
         proc = run_windows_supervisor(root, progress, tmp_path / "hangs")
         assert proc.returncode == SUPERVISOR_CUTOFF_EXIT, proc.stdout + proc.stderr
+        recorded_exit = json.loads((progress / "runner-resources-step-exit.txt").read_text(encoding="utf-8"))
+        assert recorded_exit["lane_exit"] == proc.returncode
         pid, started = map(int, identity_file.read_text(encoding="utf-8").split())
         assert not proctree.same((pid, started)), f"the planted child {pid} survived the cutoff"
         status = (progress / "runner-resources-step.txt").read_text(encoding="utf-8")

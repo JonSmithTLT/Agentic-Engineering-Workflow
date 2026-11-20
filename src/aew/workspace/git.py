@@ -265,10 +265,37 @@ def identity_env(cwd: Path) -> dict[str, str]:
 ATTR_FILTER = re.compile(r"(?:^|\s)filter=([^\s]+)")
 
 
+def _attribute_files(cwd: Path) -> list[Path]:
+    global_var = git("var", "GIT_ATTR_GLOBAL", cwd=cwd, check=False)
+    if global_var.returncode == 0:
+        global_path = cwd / os.fsdecode(global_var.stdout.rstrip(b"\r\n"))
+    else:
+        configured = git("config", "--type=path", "--null", "--get", "core.attributesFile", cwd=cwd, check=False)
+        if configured.returncode == 0:
+            global_path = cwd / os.fsdecode(configured.stdout.removesuffix(b"\0"))
+        else:
+            home = Path(os.environ.get("HOME") or Path.home())
+            xdg = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
+            global_path = cwd / xdg / "git" / "attributes"
+    system = git("var", "GIT_ATTR_SYSTEM", cwd=cwd, check=False)
+    files = [global_path]
+    if system.returncode == 0:
+        files.append(Path(os.fsdecode(system.stdout.rstrip(b"\r\n"))))
+    elif (system.returncode == 129
+          and os.environ.get("GIT_ATTR_NOSYSTEM", "").lower() in {"", "0", "false", "no", "off"}):
+        # Git before 2.42 has no variable for the installation's system attributes path.
+        files.append(Path("/etc/gitattributes"))
+        exec_path = Path(out("--exec-path", cwd=cwd))
+        files.extend(prefix / "etc" / "gitattributes" for prefix in exec_path.parents[1:4])
+    return files
+
+
 def untrusted_filters(cwd: Path, commit: str) -> list[dict[str, Any]]:
-    """The filter drivers ``commit``'s committed ``.gitattributes`` (or the repository's ``info/attributes``) assign to
-    files, that configuration defines and the operator does not trust. AEW switches those off, so it would read and
-    commit those files differently from the project's own git: a dispatch on that base is refused."""
+    """Find configured, untrusted filters assigned by committed or external attributes.
+
+    AEW switches these filters off, so it refuses a dispatch that would read or commit files
+    differently from the project's own git.
+    """
     effective: dict[str, dict[str, str]] = {}
     for d in configured_drivers(cwd):  # in precedence order: the last definition of a key is the one git uses
         effective[d["config"]] = d
@@ -280,12 +307,13 @@ def untrusted_filters(cwd: Path, commit: str) -> list[dict[str, Any]]:
     if not needed:
         return []
     sources: list[tuple[str, str]] = []
+    # Count case variants on every platform, even when Git would only use lowercase.
     for path in out("ls-tree", "-r", "--name-only", "-z", commit, cwd=cwd).split("\0"):
-        if path == ".gitattributes" or path.endswith("/.gitattributes"):
+        if path.rsplit("/", 1)[-1].lower() == ".gitattributes":
             sources.append((path, out("cat-file", "-p", f"{commit}:{path}", cwd=cwd)))
     info = git_dir(cwd) / "info" / "attributes"
     common_info = common_dir(cwd) / "info" / "attributes"
-    for f in dict.fromkeys([info, common_info]):
+    for f in dict.fromkeys([info, common_info, *_attribute_files(cwd)]):
         if f.is_file():
             sources.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
     uses: dict[str, list[str]] = {}
@@ -306,12 +334,11 @@ def untrusted_filters_message(found: list[dict[str, Any]], policy_file: str, *, 
     """The refusal for ``untrusted_filters``: what is needed and why it is refused, then exactly how to proceed."""
     parts = []
     for f in found:
-        pats = [p.rsplit(" (", 1)[0] for p in f["patterns"]]
-        shown = ", ".join(pats[:5]) + (f" and {len(pats) - 5} more" if len(pats) > 5 else "")
+        shown = ", ".join(f["patterns"])
         origins = sorted({c["origin"] for c in f["commands"]})
         cmds = ", ".join(f"{c['config']} = `{c['value']}`" for c in f["commands"])
         where = f"defined in {origins[0]}" if len(origins) == 1 else "defined in " + ", ".join(origins)
-        parts.append(f"filter '{f['driver']}' (applied to {shown} by .gitattributes; {cmds}; {where})")
+        parts.append(f"filter '{f['driver']}' (assigned by {shown}; {cmds}; {where})")
     names = ", ".join(f["driver"] for f in found)
     return (
         f"Refused: this repository's files need git {'filters' if len(found) > 1 else 'filter'} {names} and AEW "
@@ -323,7 +350,7 @@ def untrusted_filters_message(found: list[dict[str, Any]], policy_file: str, *, 
         f"`trusted_git_drivers: [{names}]` under `containment:` in {policy_file}, then retry. "
         "2. If the command runs a script from this repository: move the script outside the repository and outside "
         "every containment.writable root, update the filter's git configuration to the new path, then trust it as "
-        "in 1; or remove the filter from .gitattributes."
+        "in 1; or remove the filter assignment from each attributes file listed above."
         + ("" if from_doctor else " `aew doctor` lists every configured git driver and whether AEW trusts it.")
     )
 

@@ -28,11 +28,9 @@ from aewflow import (  # noqa: E402
     to_commit_ready,
 )
 from conftest import git, run_aew  # noqa: E402
-from invariants import assert_control_invariants, load_control  # noqa: E402
+from invariants import assert_control_invariants, load_control, write_control_v1  # noqa: E402
 
-from aew.engine.base import as_v1  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
-from aew.engine.store import serialize_control  # noqa: E402
 from aew.util import parse_frontmatter, sha256_file  # noqa: E402
 
 
@@ -173,9 +171,7 @@ def test_a_v1_project_changes_no_work_until_it_is_migrated(tmp_path):
     """P2b kept a v1 project working without archival; P2d refuses its Lead mutations until `aew migrate`, which
     arrives in the same PR (plan §6), and archives from then on."""
     p = sample_project(tmp_path)
-    control = p.root / ".aew/state/control.yaml"
-    state = load_control(p.root)
-    control.write_bytes(serialize_control(as_v1(state)))
+    write_control_v1(p.root)
     refused = p.aew("work", "create", "ticket", "--title", "Investigate", "--class", "1", "--non-mutating",
                     "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "MIGRATION_REQUIRED"

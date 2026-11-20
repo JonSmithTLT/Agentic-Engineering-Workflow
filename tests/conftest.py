@@ -3,9 +3,10 @@ from __future__ import annotations
 import functools
 import json
 import os
+import shutil
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ def pytest_configure(config: pytest.Config) -> None:
     session_deadline.configure(config)
     git_isolation.configure(config)
     lanes.configure(config)
+    config.addinivalue_line("markers", "fresh_world: build the project from scratch for this test")
     watchdog.configure(config)
     autopsy.configure(config)
     discovery_capture.configure(config)
@@ -61,6 +63,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     autopsy.unconfigure()
+    _template_cache.clear()
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
@@ -423,17 +426,58 @@ def real_desktop_notifier(monkeypatch):
     monkeypatch.setattr(_desktop_notifier, "problem", REAL_DESKTOP_PROBLEM)
 
 
+_setup_factory: pytest.TempPathFactory | None = None
+_template_cache: dict[tuple[str, str], Path] = {}
+
+
+@pytest.fixture(autouse=True)
+def allow_setup_shortcuts(request, tmp_path_factory):
+    global _setup_factory
+    if (request.node.stash.get(lanes.LANE_KEY, None) in {"fast", "integration"}
+            and not request.node.get_closest_marker("fresh_world")):
+        _setup_factory = tmp_path_factory
+    yield
+    _setup_factory = None
+
+
+def copy_test_repository(dest: Path, variant: tuple[str, str], build: Callable[[Path], Path]) -> Path:
+    """Cache a finished repository before Lead acquisition or worktree creation.
+
+    Module- and session-scoped fixtures build fresh, before the per-test lane fixture runs.
+    """
+    if _setup_factory is None or os.environ.get("AEW_TEST_FRESH_WORLDS") == "1":
+        return build(dest)
+    if variant not in _template_cache:
+        _template_cache[variant] = build(_setup_factory.mktemp("project-template") / dest.name)
+    return shutil.copytree(_template_cache[variant], dest)
+
+
+def acquire_test_lead(p: Project, expect_rev: int = 0) -> Project:
+    p.token = p.ok("lead", "acquire", "--expect-rev", str(expect_rev), "--session-label", "lead-a")["token"]
+    return p
+
+
+def copy_released_world(root: Path, dest: Path) -> Project:
+    """Give each copy of a released module world its own Lead."""
+    p = Project(shutil.copytree(root, dest))
+    return acquire_test_lead(p, expect_rev=p.rev())
+
+
+def fixture_repository(dest: Path, *, initialized: bool) -> Path:
+    def build(path: Path) -> Path:
+        make_git_repo(path, {"README.md": "# fixture\n", "docs/adr/0001-use-aew.md": "# ADR 1\n"})
+        if initialized:
+            Project(path).ok("init")
+        return path
+
+    return copy_test_repository(dest, ("repo", str(initialized)), build)
+
+
 @pytest.fixture
-def repo(tmp_path) -> Path:
-    return make_git_repo(tmp_path / "repo", {
-        "README.md": "# fixture\n",
-        "docs/adr/0001-use-aew.md": "# ADR 1\n",
-    })
+def repo(tmp_path, request) -> Path:
+    return fixture_repository(tmp_path / "repo", initialized="project" in request.fixturenames)
 
 
 @pytest.fixture
 def project(repo) -> Project:
-    p = Project(repo)
-    p.ok("init")
-    p.token = p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
-    return p
+    return acquire_test_lead(Project(repo))

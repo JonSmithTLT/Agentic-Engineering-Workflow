@@ -48,6 +48,14 @@ def load_control(root: Path) -> dict[str, Any]:
     return deserialize_control(retry_lock_free(path.read_bytes), source=str(path))
 
 
+def write_control_v1(root: Path) -> None:
+    """Make the fixture's committed control state need migration."""
+    from aew.engine.base import as_v1
+    from aew.engine.store import serialize_control
+
+    (root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(root))))
+
+
 def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """Strip unrelated additive keys so each downgrade test still proves its own feature's rejection."""
     state = dict(state)

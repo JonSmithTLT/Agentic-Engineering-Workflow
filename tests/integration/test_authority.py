@@ -34,6 +34,7 @@ def all_files_text(root: Path) -> str:
 # ------------------------------------------------------------------ init & candidates
 
 
+@pytest.mark.fresh_world
 def test_init_discovers_candidates_but_confers_no_authority(repo):
     p = Project(repo)
     out = p.ok("init")
@@ -310,10 +311,8 @@ def _names_the_operator(text: str) -> None:
 def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project):
     """PR #103 review, F1: a Lead session refuses the operator's decisions, so the next actions and refusals the Lead
     reads say the operator runs them, at their own terminal, rather than sending the Lead into a refusal."""
-    from invariants import load_control
+    from invariants import write_control_v1
 
-    from aew.engine.base import as_v1
-    from aew.engine.store import serialize_control
     from aew.harness import lead_broker
 
     assert {frozenset(c.split()) for c in OPERATOR_DECISIONS} == set(lead_broker.OPERATOR_DECIDED)
@@ -328,8 +327,7 @@ def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project
     assert "aew manifest adopt" in res.error["message"]
     _names_the_operator(res.error["message"])
     project.adopt_policy("reviewed")
-    control = project.root / ".aew/state/control.yaml"
-    control.write_bytes(serialize_control(as_v1(load_control(project.root))))
+    write_control_v1(project.root)
     res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()),
                       env={"AEW_LEAD_TOKEN": project.token})
     assert res.error["code"] == "MIGRATION_REQUIRED" and "aew migrate" in res.error["message"]

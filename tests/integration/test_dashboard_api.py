@@ -11,9 +11,9 @@ from __future__ import annotations
 import http.client
 import json
 import logging
-import shutil
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -27,10 +27,12 @@ from aewflow import (  # noqa: E402
     create_planned_ticket,
     create_unit,
     integrate,
+    legacy_project,
     plan_unit,
     sample_project,
     to_commit_ready,
 )
+from conftest import copy_released_world  # noqa: E402
 from dashboard_client import request as dashboard_request  # noqa: E402
 from dashboard_contract import LATER_ROUTES, expected_pending, proposed_routes  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
@@ -95,7 +97,7 @@ class World:
 
 
 @pytest.fixture(scope="module")
-def world(tmp_path_factory) -> World:
+def released_world(tmp_path_factory) -> World:
     """A project with an Epic, a Story, an integrated (archived) Ticket, a finished (archived) investigation, an open
     Ticket and a Ticket blocked behind it, a recorded audit, and a move of an archived unit (an annotation)."""
     tmp = tmp_path_factory.mktemp("dashboard")
@@ -120,31 +122,37 @@ def world(tmp_path_factory) -> World:
     w.ids["map"] = p.ok("map", "generate", "--select", "--expect-map-rev",
                         p.ok("map", "show", "--json")["map_revision"], "--json",
                         env={"AEW_LEAD_TOKEN": p.token})["root"]
-    engine = Engine.discover(p.root)
+    p.lead("lead", "release")
+    p.token = ""
+    return w
+
+
+@contextmanager
+def serve_world(w: World) -> Iterator[World]:
+    engine = Engine.discover(w.p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()
-    built = p.rev()
-    yield w
-    w.server.stop()
-    assert_control_invariants(p)
-    assert p.rev() == built, "a test committed to the module's world: give it `own_world`"
+    try:
+        yield w
+    finally:
+        w.server.stop()
+
+
+@pytest.fixture(scope="module")
+def world(released_world: World) -> Iterator[World]:
+    with serve_world(released_world) as w:
+        built = w.p.rev()
+        yield w
+        assert w.p.rev() == built, "a test committed to the module's world: give it `own_world`"
+    assert_control_invariants(w.p)
 
 
 @pytest.fixture
-def own_world(world: World, tmp_path: Path) -> Iterator[World]:
-    """A copy of the world, with its own server, for a test that commits to it. The module's world stays as built
-    whatever order the tests run in: under ``--dist worksteal`` a worker can run a stolen earlier test after one that
-    committed, and the scope and rollup tests then counted its unit (a Windows CI run, census row 2)."""
-    from conftest import Project
-
-    dst = tmp_path / "repo"
-    shutil.copytree(world.p.root, dst)
-    w = World(Project(dst, token=world.p.token), tmp_path)
-    w.ids = dict(world.ids)
-    w.server = DashboardServer(Engine.discover(dst), authenticator=OpenAccess(), validate_with=CONTRACT)
-    w.server.start()
-    yield w
-    w.server.stop()
+def own_world(released_world: World, tmp_path: Path) -> Iterator[World]:
+    w = World(copy_released_world(released_world.p.root, tmp_path / "repo"), tmp_path)
+    w.ids = dict(released_world.ids)
+    with serve_world(w):
+        yield w
     assert_control_invariants(w.p)
 
 
@@ -543,21 +551,7 @@ def test_no_request_takes_the_control_lock(world):
 def test_a_v1_project_reports_history_and_integrity_unavailable(tmp_path):
     """A project whose control state is still schema v1: the routes that need the cold history are 403 with
     MIGRATION_REQUIRED, never an empty list."""
-    from conftest import Project, make_git_repo
-
-    from aew.engine.base import as_v1
-    from aew.engine.store import deserialize_control, serialize_control
-
-    p = Project(make_git_repo(tmp_path / "repo"))
-    p.ok("init", "--project-id", "legacy")
-    control = p.root / ".aew/state/control.yaml"
-    state = deserialize_control(control.read_bytes(), source=str(control))
-    control.write_bytes(serialize_control(as_v1(state)))
-    server = DashboardServer(Engine.discover(p.root), authenticator=OpenAccess(), validate_with=CONTRACT)
-    server.start()
-    try:
-        w = World(p, tmp_path)
-        w.server = server
+    with serve_world(World(legacy_project(tmp_path / "repo"), tmp_path)) as w:
         caps = w.ok("/capabilities", "CapabilitiesResponse")["data"]
         assert caps["history"]["state"] == "UNAVAILABLE"
         assert caps["history"]["reasons"][0]["code"] == "MIGRATION_REQUIRED"
@@ -566,5 +560,3 @@ def test_a_v1_project_reports_history_and_integrity_unavailable(tmp_path):
         w.error("/history/integrity", 403, "CAPABILITY_UNAVAILABLE")
         assert w.ok("/work", "WorkListResponse")["data"]["items"] == []
         assert w.ok("/overview", "OverviewResponse")["data"]["counts"]["work"] == {"open": 0, "done": 0, "cancelled": 0}
-    finally:
-        server.stop()

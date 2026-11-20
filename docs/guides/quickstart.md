@@ -82,6 +82,13 @@ A certificate-only provider skips key setup.
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
   head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
+- **Project maps are on for a new project.** Each worker's pack carries a bounded slice of that map, as navigation and
+  never authority, and a dispatch whose map is out of date for its work makes a new one first. To turn them off, set
+  `maps.pack_slices` to `"off"` (with the quotes) in `.aew/policy/execution.yaml`, then adopt it as in
+  [Edit pinned settings](#edit-pinned-settings-or-classify-authority-candidates): that needs the Lead credential, with
+  the Lead session ended first. A project initialized before maps were on keeps them off: `aew opencode` asks once at
+  its start, where Enter alone keeps them off, and `aew doctor` shows the answer. To be asked again instead, delete
+  that switch's row from `.aew/local/switch-offers.json`: the next `aew opencode` start asks, with no seat needed.
 - **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
   may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
   and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the
@@ -105,6 +112,43 @@ aew lead release --expect-rev <revision from aew status>
 The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
 plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
 explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
+
+### Declare project CI coverage
+
+Ask the Lead to read the project's CI configuration and draft a `coverage.ci_tools` list for
+`.aew/policy/checks.yaml`. List each tool once. Its `covered_by` list names configured check IDs or the built-in
+`guardrails` check. Use `covered_by: []` when no check covers it.
+
+```yaml
+coverage:
+  ci_tools:
+    - name: ruff
+      covered_by: [lint]
+    - name: pyright
+      covered_by: []
+```
+
+A project whose CI selects the tests a change affects can also declare `coverage.affected_tests`: the `selector`
+command that prints that selection, and the `unit` it selects (tests, lanes or similar). The selector's optional keys
+are `cwd`, `timeout_s`, `network` (`isolated` by default), `inputs` and `may_select_none`.
+
+```yaml
+coverage:
+  affected_tests:
+    unit: tests
+    selector:
+      command: [python, tools/select_tests.py]
+```
+
+AEW does not run the selector yet, so a validation reports affected tests as "not known (selection not run)" even
+with this declared.
+
+The operator reviews the draft, pastes it into the policy and runs the manifest adoption command from the preceding
+section in one sitting. The project is frozen between the edit and adoption because reads of the changed policy
+are refused. A contained Lead can draft the text. An uncontained Lead can also edit the file for the operator to adopt.
+
+Validation reports the CI tools from the adopted declaration. A tool marked as run means a covering check finished.
+Doctor reports undeclared lists and tools with no configured check under `checks-configured`.
 
 ### Giving AEW the Lead credential
 

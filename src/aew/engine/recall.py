@@ -48,14 +48,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aew.engine.archive_ops import evidence_source, redact
+from aew.engine.archive_ops import evidence_source, for_display, redact
 from aew.errors import AEWError, CapabilityUnavailable, IntegrityError, UsageError, ValidationFailed
 from aew.history import manifest as M
 from aew.history.store import History
 from aew.util import load_yaml, parse_frontmatter, sha256_bytes, sha256_text
 
 SUBSTRATE_REL = "local/recall/history-fts.sqlite"
-SUBSTRATE_VERSION = "1"
+# 2: a record is indexed as `history show` gives it (``for_display``), so a pinned map slice's body, the worker's
+# navigation, is no longer searchable; a substrate built at 1 may hold it, and is rebuilt.
+SUBSTRATE_VERSION = "2"
 OFF, EXPLICIT = "off", "explicit"
 BUILD_BUDGET_S, BUILD_BUDGET_DOCS = 2.0, 500  # what one search spends catching up (KST-44: bounded query cost)
 BATCH_DOCS = 50  # documents per build transaction: short write locks, and a watermark that advances often
@@ -298,7 +300,7 @@ def _evidence_refs(record: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _own(entry: dict[str, Any], record: dict[str, Any]) -> Document:
     """An entry's own record (credential bundles left out)."""
-    text, cut = _text({k: v for k, v in record.items() if k != "tokens"})
+    text, cut = _text(for_display({k: v for k, v in record.items() if k != "tokens"}))
     subject = entry.get("subject") or (entry["id"] if entry["kind"] == "unit" else None)
     # An entry without a source is read as a model's: a missing label never upgrades trust.
     return Document(entry["seq"], entry["id"], entry["sha256"], entry["kind"], entry.get("source") or "model",

@@ -183,6 +183,7 @@ export function OverviewPage() {
               <section className="panel">
                 <div className="panel-heading">
                   <h2>Recent activity</h2>
+                  <Link to={'/activity' + routeLocation.search}>View all activity</Link>
                 </div>
                 <div className="overview-scroll" role="region" aria-label="Recent activity items" tabIndex={0}>
                 {data.activity.map((a) => (

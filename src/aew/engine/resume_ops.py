@@ -450,12 +450,13 @@ class Resume:
                     f"`aew integrate reconcile {holder} {EXPECT_REV}` first")
         if entry["state"] == "AWAITING_DISPOSITION":
             return (f"its queue entry {qid} awaits the Lead ({(entry.get('disposition') or {}).get('reason')}): "
-                    f"`aew integrate requeue {wid} --reason <reason> {EXPECT_REV}` to try again once the cause is "
+                    f"`aew integrate requeue {wid} --reason <reason> {EXPECT_REV} "
+                    "--prior-value AWAITING_DISPOSITION` to try again once the cause is "
                     "settled, return it to RUNNING for "
                     "a new implementation attempt, or REPLAN_REQUIRED")
         if entry["state"] == "DEFERRED":
             return (f"its queue entry {qid} is deferred by the Lead: `aew integrate requeue {wid} --reason <reason> "
-                    f"{EXPECT_REV}` returns it to its "
+                    f"{EXPECT_REV} --prior-value DEFERRED` returns it to its "
                     "place")
         if lease and lease["entry"] != qid:
             holder = (entries.get(lease["entry"]) or {}).get("work")
@@ -490,7 +491,8 @@ class Resume:
     def _derived_knowledge(self) -> list[dict[str, Any]]:
         """The derived knowledge rows. With the execution policy's ``maps.pack_slices`` on (register F22.1 plan
         §5.4), the codebase_map row is the selected structural map with its freshness and qualification (T5-INV-10);
-        off (the default), the rows are exactly what they were before maps existed. Never raises for a map."""
+        off (a project initialized before maps were on by default, until it takes the switch offer), the rows are
+        exactly what they were before maps existed. Never raises for a map."""
         rows = [self._freshness(n, r) for n, r in sorted(self.k.manifest["knowledge"].items())]
         try:
             policy, _ = self.k.execution_policy()
@@ -694,6 +696,11 @@ class Resume:
         if work_id:
             unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
             subjects = {}
+            plan_accept_argv = {
+                plan["revision"]: approval.command("plan.accept", work_id, state["revision"], plan["sha256"],
+                                                   "--revision", str(plan["revision"]))
+                for plan in unit.get("plans", []) if plan.get("status") == "proposed"
+            }
             if work_id in state["work"]:
                 if integration := (unit.get("integration") or {}).get("candidate"):
                     subjects["integrate.publishing"] = {"candidate": integration, "digest": integration}
@@ -717,7 +724,19 @@ class Resume:
                     ("--reason", "<reason>") if op in {"work.cancel", "plan.reconfirm"} else ())
                 shown["argv"] = approval.command(op, work_id, state["revision"], shown["digest"], *options)
             inputs = self.inputs.input_status(state, work_id) if work_id in state["work"] else []
+            hierarchy_argv = {}
+            if unit["kind"] != "epic" and work_id in state["work"]:
+                hierarchy_argv = {
+                    "work.move": approval.bound_argv(
+                        ("work", "move", work_id, "--parent", "<parent>", "--reason", "<reason>"),
+                        state["revision"], approval.parent_value(unit)),
+                    "work.promote": approval.bound_argv(
+                        ("work", "promote", work_id, "--to", "<kind>", "--title", "<title>", "--reason", "<reason>"),
+                        state["revision"], approval.promotion_value(unit)),
+                }
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id),
+                    **({"plan_accept_argv": plan_accept_argv} if plan_accept_argv else {}),
+                    **({"hierarchy_argv": hierarchy_argv} if hierarchy_argv else {}),
                     **({"approval_subjects": subjects} if subjects else {}),
                     **({"inputs": inputs} if inputs else {}),
                     **({"coverage": CV.for_unit(self.k.aew_root, unit, full=True)}

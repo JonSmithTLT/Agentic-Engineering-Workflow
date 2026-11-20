@@ -449,8 +449,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
         f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
-        "- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew "
-        f"harness status> {EXPECT_REV}` (its credential rotates) or cancel it.",
+        "- **A lost harness run** is not an interruption: give `aew harness status` the invocation ID and use "
+        "its launch_argv to relaunch (rotating the credential), or cancel the invocation.",
         "",
         "## Non-mutating Tickets: investigation, research, planning",
         "",
@@ -476,6 +476,9 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         f"`aew work close <S> --reason <reason> {EXPECT_REV}`. A parent's mandatory gates and minimum descendant class "
         "bind its children. An Epic closes only once the history is audited through the current root: "
         f"`aew history audit {EXPECT_REV}` first.",
+        "",
+        "Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice is the worker's and never "
+        "comes to you. A stale map refreshes at the next dispatch; to refresh now, `aew map generate`.",
         "",
         "## Finished work",
         "",

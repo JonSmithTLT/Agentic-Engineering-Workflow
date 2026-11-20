@@ -92,7 +92,7 @@ When things go wrong:
 - **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, `aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>`. The open findings reach it through its pack.
 - **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`: `LOCAL_IMPLEMENTATION_DEFECT` → RUNNING, `PLAN_OR_DESIGN_DEFECT` → REPLAN_REQUIRED, `CONTRACT_VIOLATION` → REPLAN_REQUIRED, `ENVIRONMENT_OR_EVIDENCE_BLOCKED` → VERIFICATION_INCONCLUSIVE.
 - **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>`.
-- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>` (its credential rotates) or cancel it.
+- **A lost harness run** is not an interruption: give `aew harness status` the invocation ID and use its launch_argv to relaunch (rotating the credential), or cancel the invocation.
 
 ## Non-mutating Tickets: investigation, research, planning
 
@@ -103,6 +103,8 @@ Its gates in this project: Class 0: the executor's record (discovery, research o
 ## Stories and Epics
 
 A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>`, then ingest), then `aew work close <S> --reason <reason> --expect-rev <revision from aew status>`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev <revision from aew status>` first.
+
+Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice is the worker's and never comes to you. A stale map refreshes at the next dispatch; to refresh now, `aew map generate`.
 
 ## Finished work
 

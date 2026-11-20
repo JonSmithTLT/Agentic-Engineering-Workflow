@@ -947,9 +947,15 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
         assert list(dict.fromkeys(lab.provider.seen)) == [hashlib.sha256(k.encode()).hexdigest()
                                                          for k in (expired, fresh)]
         assert record["containment"]["network"]["decisions"]["relay"].get("allowed", 0) >= 1
-    # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote, its server log (the
-    # harness's stderr) included: only the variable's name. OpenCode's own private state (its XDG directories, with
-    # its database) keeps what the provider said.
+        assert record["containment"]["network"]["decisions"]["relay"].get("upstream_status:401", 0) >= 1
+        # the relay recorded the refused request with the provider's status and what the provider answered
+        refused = [e for e in map(json.loads, (runlog.run_dir(lab.aew_root, run) / runlog.RELAY_REQUESTS)
+                                  .read_text(encoding="utf-8").splitlines()) if e["status"] == 401]
+        assert refused and all(e["swap"] == "swapped" and e["login"] == "key" for e in refused), refused
+        assert all(e["excerpt"] == '{"error": {"message": "rejected"}}' for e in refused), refused
+    # Neither key, nor the harness's message quoting part of one, is in anything AEW wrote, its server log (the
+    # harness's stderr) and the relay's record included: only the variable's name. OpenCode's own private state (its
+    # XDG directories, with its database) keeps what it said.
     for directory in (runlog.run_dir(lab.aew_root, run), runlog.run_dir(lab.aew_root, "R-INV-0001-2")):
         for path in directory.rglob("*"):
             parts = path.relative_to(directory).parts

@@ -1,7 +1,7 @@
 import { RecordInspection } from './Investigation';
 import type { EntityKind } from '../client/investigation-model';
 import { accessRefused } from '../api/transport';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import {
   Link,
   useLocation,
@@ -35,12 +35,14 @@ type Envelope<T> = {
   data: T;
 };
 type List<T> = { items: T[]; next_cursor: string | null };
+type PageHistory = { scope: string; cursor: string; previous: string[] };
 export function listRoute(
   path: string,
   params: URLSearchParams,
   filters: readonly string[] = [],
+  pageSize = 100,
 ) {
-  const query = new URLSearchParams({ limit: '100' });
+  const query = new URLSearchParams({ limit: String(pageSize) });
   for (const key of [...filters, 'cursor']) {
     const value = params.get(key);
     if (value) query.set(key, value);
@@ -51,22 +53,25 @@ export function Pager({
   next,
   cursorKey = 'cursor',
   resetKey = '',
+  history,
   children,
 }: {
   next: string | null;
   cursorKey?: string;
   resetKey?: string;
+  history?: RefObject<PageHistory | null>;
   children?: ReactNode;
 }) {
   const [params, setParams] = useSearchParams();
-  const [history, setHistory] = useState<{ scope: string; values: string[] }>({
-    scope: resetKey,
-    values: [],
-  });
-  const previous = history.scope === resetKey ? history.values : [];
+  const localHistory = useRef<PageHistory | null>(null);
+  const pageHistory = history ?? localHistory;
   const current = params.get(cursorKey) ?? '';
+  function previousPages() {
+    const entry = pageHistory.current;
+    return entry?.scope === resetKey && entry.cursor === current ? entry.previous : [];
+  }
   function page(value: string, values: string[]) {
-    setHistory({ scope: resetKey, values });
+    pageHistory.current = { scope: resetKey, cursor: value, previous: values };
     setParams((old) => {
       const p = new URLSearchParams(old);
       if (value) p.set(cursorKey, value);
@@ -81,13 +86,16 @@ export function Pager({
       </button>
       <button
         disabled={!current}
-        onClick={() => page(previous.at(-1) ?? '', previous.slice(0, -1))}
+        onClick={() => {
+          const previous = previousPages();
+          page(previous.at(-1) ?? '', previous.slice(0, -1));
+        }}
       >
         Previous page
       </button>
       <button
         disabled={!next}
-        onClick={() => page(next!, [...previous, current])}
+        onClick={() => page(next!, [...previousPages(), current])}
       >
         Next page
       </button>
@@ -105,6 +113,10 @@ export function CollectionView<T>({
   filters = [],
   filterUI,
   valid = true,
+  pageSize = 100,
+  automaticRevalidation = true,
+  focusOnPageChange = false,
+  refreshFirstPage = false,
   children,
 }: {
   name: string;
@@ -116,6 +128,10 @@ export function CollectionView<T>({
   filters?: readonly string[];
   filterUI?: ReactNode;
   valid?: boolean;
+  pageSize?: number;
+  automaticRevalidation?: boolean;
+  focusOnPageChange?: boolean;
+  refreshFirstPage?: boolean;
   children: (
     items: T[],
     projection: Projection<Envelope<List<T>>>,
@@ -123,15 +139,29 @@ export function CollectionView<T>({
 }) {
   const [params] = useSearchParams();
   const available = useCapability(name).available;
-  const route = listRoute(path, params, filters);
+  const route = listRoute(path, params, filters, pageSize);
   const query = useProjection(
     route,
     schema,
     historical ? 'history' : 'list',
     available && valid,
+    true,
+    undefined,
+    automaticRevalidation,
+    refreshFirstPage && !params.has('cursor'),
   );
   const scope = new URLSearchParams(params);
   scope.delete('cursor');
+  const heading = useRef<HTMLHeadingElement>(null);
+  const pageHistory = useRef<PageHistory | null>(null);
+  const lastDisplayedRoute = useRef(route);
+  useEffect(() => {
+    if (focusOnPageChange && route !== lastDisplayedRoute.current && query.data && !query.isFetching) {
+      heading.current?.focus({ preventScroll: true });
+      heading.current?.scrollIntoView?.({ block: 'start' });
+      lastDisplayedRoute.current = route;
+    }
+  }, [focusOnPageChange, route, query.data, query.isFetching]);
   return (
     <>
       <div className="page-heading">
@@ -174,7 +204,7 @@ export function CollectionView<T>({
             )}
             <section className="panel collection-panel">
               <div className="panel-heading">
-                <h2>{title} records</h2>
+                <h2 ref={heading} tabIndex={focusOnPageChange ? -1 : undefined}>{title} records</h2>
                 <span>
                   {query.data.value.data.items.length} records on this page
                 </span>
@@ -186,7 +216,8 @@ export function CollectionView<T>({
               )}
               <Pager
                 next={query.data.value.data.next_cursor}
-                resetKey={scope.toString()}
+                resetKey={JSON.stringify([path, locationScope(), query.data.value.project_id, scope.toString()])}
+                history={pageHistory}
               >
                 <button
                   onClick={() => {

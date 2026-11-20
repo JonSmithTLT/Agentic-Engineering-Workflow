@@ -198,6 +198,11 @@
         "generation": {"type": "integer", "minimum": 0},
         "subject": {"type": "string", "minLength": 1},
         "state": {"type": ["string", "null"]},
+        "unit": {
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {"parent": {"type": "string"}, "queue_state": {"type": "string"}}
+        },
+        "cli_fallback": {"type": "object", "additionalProperties": {"$ref": "#/$defs/argv"}},
         "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
         "decisions_required": {"type": "array", "items": {"$ref": "#/$defs/decision"}},
         "blockers": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},

@@ -185,7 +185,7 @@ def _steering(c: Call) -> Any:
     action = c.a["action"]
     if action == "lower":
         out = c.engine.steering_lower(token=c.token(), expect_rev=c.a["expect_rev"], mode=c.a["mode"],
-                                      rationale=c.a.get("rationale") or "")
+                                      rationale=c.a.get("rationale") or "", prior_value=c.a.get("prior_value"))
         c.committed("steering", out, f"steering mode lowered to {out.get('mode')}", [str(out.get("record"))])
         return out
     kind = "raise" if action == "request_raise" else "confirmation"

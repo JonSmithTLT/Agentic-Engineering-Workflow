@@ -104,8 +104,9 @@ class Assurance:
         return out
 
     def guard_git_drivers(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Blocker | None:
-        """A base whose committed attributes assign a filter AEW will not run is refused for every role: a workspace
-        on it would be checked out, snapshotted and committed without the filter (M4-B review)."""
+        """Refuse dispatch for every role when an untrusted filter is assigned by committed .gitattributes
+        (matched regardless of case), info/attributes, the configured or default global attributes file,
+        or the system attributes file. AEW would check out, snapshot and commit without that filter."""
         workspace = state["work"][work_id].get("workspace") or {}
         commit = facts.get("base") or workspace.get("base_commit") or self.k.authoritative_commit()
         if not commit:

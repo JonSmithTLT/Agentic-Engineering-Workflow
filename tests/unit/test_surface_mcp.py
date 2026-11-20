@@ -433,7 +433,7 @@ def _entry_bytes(row: contract.Tool) -> int:
 
 # The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
 # catalog moves them here first.
-A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 923, "A1a-2": 387,
+A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 955, "A1a-2": 391,
             "A1b resume readOnlyHint": 1}
 
 
@@ -464,3 +464,18 @@ def test_a1_rows_measured():
     print(f"A1-0 spike: today {base} B; {deltas}; A1 composed {total} B "
           f"({total - base:+d} B against today), {tools} tools")
     assert deltas == A1_SPIKE
+
+
+def test_a_malformed_line_never_ends_the_lead_mcp_server():
+    import io
+
+    ping = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+    nested = b"[" * 5000 + b"]" * 5000 + b"\n"
+    bad_encoding = b'{"jsonrpc":"2.0","id":1,"method":"ping","data":"\xff"}\n'
+    stdout = io.BytesIO()
+
+    assert mcp.Server(Spy()).serve(io.BytesIO(nested + bad_encoding + ping), stdout) == 0
+    deep_error, encoding_error, reply = map(json.loads, stdout.getvalue().splitlines())
+    assert deep_error["id"] is None and deep_error["error"]["code"] == mcp.PARSE_ERROR
+    assert encoding_error["id"] is None and encoding_error["error"]["code"] == mcp.PARSE_ERROR
+    assert reply == {"jsonrpc": "2.0", "id": 1, "result": {}}

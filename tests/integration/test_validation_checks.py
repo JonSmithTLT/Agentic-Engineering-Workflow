@@ -586,6 +586,10 @@ def test_a_hung_run_is_ended_at_its_deadline_and_its_late_commit_is_refused(calc
     real = VO.Validation._execute
     killed: list[int] = []
     monkeypatch.setattr(VO.procs, "kill_pid", lambda pid: killed.append(pid))
+    # The run's deadline passes when the test says, not when a loaded runner's checks have used it up: the second
+    # validate must find the run still running, whatever the checks cost.
+    expired = threading.Event()
+    monkeypatch.setattr(VO, "_past", lambda stamp: bool(stamp) and expired.is_set())
 
     def hang(self, work_id, run):
         out = real(self, work_id, run)
@@ -601,10 +605,7 @@ def test_a_hung_run_is_ended_at_its_deadline_and_its_late_commit_is_refused(calc
     with pytest.raises(VO.ValidationRunning):
         validate(calc, wid)
     run = integ(calc, wid)["current_validation_run"]
-    import time
-
-    while not VO._past(run["deadline_at"]):  # wait out the deadline
-        time.sleep(0.5)
+    expired.set()  # the deadline passes
     run_id = run["id"]
     out = validate(calc, wid)
     assert out["abandoned"] == "VALIDATION_DEADLINE_EXPIRED" and killed, out
@@ -944,7 +945,7 @@ def test_checks_mode_with_no_checks_never_validates(calc, tmp_path, contained):
 
 
 def test_each_ancestors_minimum_class_rule_is_checked_on_its_own():
-    """Finding 3: a Story's floor 4 mapped to checks must not hide an Epic's floor 3 mapped to a verifier."""
+    """A deliberately inconsistent map keeps the lower verifier floor binding (review finding 3)."""
     from aew.policy import validation as V
 
     state = {"work": {"T-1": {"risk_class": 4, "parent": "S-1"},

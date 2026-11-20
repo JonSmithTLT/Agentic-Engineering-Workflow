@@ -38,7 +38,8 @@ def selected_sha(p: Project) -> str | None:
 
 
 def artifacts(p: Project) -> set[str]:
-    return {f.name for f in (aew_root(p) / store.MAPS_REL).rglob("*.json") if f.name != "registry.json"}
+    local = {"registry.json", Path(service.REFRESH_FAILED_REL).name}
+    return {f.name for f in (aew_root(p) / store.MAPS_REL).rglob("*.json") if f.name not in local}
 
 
 def log_lines(p: Project) -> list[str]:
@@ -62,7 +63,7 @@ def counted_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_a_lead_dispatch_at_a_stale_head_refreshes_and_selects_the_heads_map_once(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     first = select_map(p)
     head = advance_main(p, "moved.txt")
@@ -89,7 +90,7 @@ def test_a_base_that_is_not_the_head_is_made_once_across_processes_and_found_sto
     the reviewer's dispatch makes H1's map, and the verifier's finds it stored instead of making it again."""
     from aewflow import assign, create_planned_ticket, implement, review, verify
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     select_map(p)
     wid = create_planned_ticket(p, tmp_path)
@@ -186,7 +187,7 @@ def test_only_a_leads_transaction_refreshes_the_map(tmp_path, monkeypatch):
     it pins the guard for any non-Lead transaction that ever builds one."""
     from aew.engine.api import Engine
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     _, out = dispatch(p, create_investigation(p, tmp_path))
     inv = out["invocation"]
@@ -209,6 +210,23 @@ def test_only_a_leads_transaction_refreshes_the_map(tmp_path, monkeypatch):
         state["invocations"][inv].pop("pack", None)  # as a new invocation's first build (a rebuild keeps its map)
         engine._packs.build_pack(SimpleNamespace(actor=actor, state=state), inv)
     assert seen == [None, LEAD]
+
+
+def test_a_refresh_that_succeeded_pins_the_same_line_however_long_it_took(tmp_path, monkeypatch):
+    """ADR-0015, amended 2026-11-11 (second): the line is pinned in the pack and in control state, so it names no time,
+    and two equal dispatches pin equal packs (the stage-against-primitives test found a refresh's seconds in one)."""
+    p = sample_project(tmp_path)
+    select_map(p)
+    head = advance_main(p, "moved.txt")
+    got = service.refresh_at_dispatch(aew_root(p), p.root, head, actor=LEAD, select=False)  # made, not selected
+    assert "failed" not in got, got
+    entries = []
+    for seconds in (0.01, 7.5):  # the same refresh, as fast and as slow as it can be within REFRESH_S
+        monkeypatch.setattr(service, "refresh_at_dispatch", lambda *a, s=seconds, **k: {**got, "seconds": s})
+        entries.append(slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head))
+    (first, first_lines), (second, second_lines) = entries
+    assert first["refresh"] == second["refresh"] and first_lines == second_lines
+    assert not re.search(r"\d s\b", first["refresh"]), first["refresh"]
 
 
 def test_a_refresh_past_its_limit_is_one_pinned_line_and_never_fails_the_pack(tmp_path, monkeypatch):
@@ -248,6 +266,38 @@ def test_a_failed_refresh_of_an_absent_map_is_pinned_in_its_unavailable_reason(t
     entry, lines = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
     assert entry["unavailable"].startswith("none; refresh at dispatch: not refreshed (OSError")
     assert slices.lines(aew_root(p), p.root, entry, []) == lines
+
+
+def test_a_failed_refresh_is_tried_once_per_base_until_a_map_is_generated(tmp_path, monkeypatch):
+    """A refresh that failed for a base is not tried again at the next dispatch at that base: its line says so, with
+    the time the failure took, and no git runs. A new base tries again; so does the old base once a map is generated."""
+    p = sample_project(tmp_path)
+    select_map(p)
+    head = advance_main(p, "moved.txt")
+    tried: list[str] = []
+
+    def broken(_repo: Path, commit: str, **_kw: Any) -> Any:
+        tried.append(commit)
+        raise OSError("the commit's objects cannot be read")
+
+    monkeypatch.setattr(service, "build", broken)
+    first, lines = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
+    assert first["refresh"].startswith("refresh at dispatch: not refreshed (OSError, after ") and tried == [head]
+    again, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
+    took = re.search(r"after ([\d.]+) s", first["refresh"])
+    assert tried == [head] and f"after {took.group(1)} s of the" in again["refresh"]  # the recorded time, not tried
+    assert "at an earlier dispatch for this base, and not tried again for it" in again["refresh"]
+    assert slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)[0] == again  # equal dispatches, equal pins
+    assert slices.lines(aew_root(p), p.root, first, []) == lines
+
+    moved = advance_main(p, "moved-again.txt")
+    slices.pin(aew_root(p), p.root, moved, [], lead=LEAD, head=moved)
+    assert tried == [head, moved]  # a new base is tried
+    monkeypatch.undo()
+    select_map(p)  # `aew map generate` succeeded: the failure is forgotten
+    assert not (aew_root(p) / service.REFRESH_FAILED_REL).exists()
+    entry, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=moved)
+    assert entry.get("refresh", "").startswith((FOUND, REFRESHED)), entry  # the old base is tried again
 
 
 def test_a_selection_that_lands_during_a_refresh_wins_and_the_pack_pins_its_own_map(tmp_path, monkeypatch):
@@ -355,9 +405,21 @@ def test_a_busy_registry_lock_is_waited_on_only_for_the_time_left_and_the_pack_k
     old = select_map(p)
     head = advance_main(p, "moved.txt")
     monkeypatch.setattr(service, "REFRESH_S", 2.0)
-    start = time.monotonic()
+    # The bound is the refresh's, so the clock times the refresh alone: `pin` first looks up the selected map's
+    # freshness, outside REFRESH_S, and under load that lookup alone took seconds (4.0 s in all, twice, on a loaded
+    # Windows host, 2026-11-11; the refresh measured 2.01 s each time).
+    real_refresh, spent = service.refresh_at_dispatch, []
+
+    def refresh(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        start = time.monotonic()
+        try:
+            return real_refresh(*args, **kwargs)
+        finally:
+            spent.append(time.monotonic() - start)
+
+    monkeypatch.setattr(service, "refresh_at_dispatch", refresh)
     with FileLock(aew_root(p) / store.LOCK_REL):  # `aew map generate --select` holding it, in another process
         entry, _ = slices.pin(aew_root(p), p.root, head, [], lead=LEAD, head=head)
-    assert time.monotonic() - start < 2.0 + 1.0
+    assert len(spent) == 1 and spent[0] < 2.0 + 1.0
     assert entry["source_revision"] == head and entry["freshness"]["status"] == "CURRENT"
     assert "stored and not selected" in entry["refresh"] and selected_sha(p) == old["root"]

@@ -150,6 +150,9 @@ def _coverage(aew_root: Path, unit: dict[str, Any]) -> tuple[Any, list[str] | No
 
 
 def _slice_bytes(aew_root: Path, invocation: Any) -> int | None:
+    """The map section's bytes in the pack the worker was given (``pack.md``), as delivered: a context budget can cut
+    it. The pinned section's bytes, which the Lead's results carry, are ``slices.for_lead``'s; the two agree while the
+    section is rendered whole."""
     if not _id(invocation) or not invocation.startswith("INV-"):
         return None
     try:

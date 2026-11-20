@@ -8,17 +8,19 @@ credential here is a synthetic value. Every socket has a timeout and is closed i
 
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tcp_pair import tcp_pair
 
 from aew.errors import ValidationFailed
 from aew.harness.containment import netns, relay
@@ -262,6 +264,98 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     assert answer.endswith(b"the stored login has expired: refresh it, and the next request works")
     assert service.counts().get("credential_unavailable") == 1
     assert service.counts().get("credential:expired") == 1
+
+
+@pytest.mark.parametrize("status,reason", [
+    pytest.param(401, "credential_unavailable", id="expired-401"),
+    pytest.param(403, "outside_upstream_path", id="outside-path-403"),
+    pytest.param(503, "credential_unreadable", id="retryable-503"),
+])
+def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, reason):
+    """Force body bytes to arrive only after the refusal is sent, and read only after the relay closes.
+    Without the drain Windows resets this unread-data close; no sleep or probabilistic repetition is needed."""
+    seam = Seam(OSError("a refusal must connect nothing"))
+    answer_sent, body_sent, ended = threading.Event(), threading.Event(), threading.Event()
+    cause = "expired" if status == 401 else "unreadable"
+    message = f"planted {cause} credential"
+    target = "/v1/responses"
+    if status == 403:
+        target = "/outside/responses"
+        message = "the provider relay takes only unambiguous paths under the stored login's upstream path"
+
+    def resolve():
+        assert status != 403, "an outside-path request must be refused before resolving credentials"
+        raise relay.Unavailable(message, cause=cause, retryable=status == 503)
+
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve)
+    client, served = tcp_pair(TIMEOUT)
+    client.settimeout(TIMEOUT)
+
+    class SplitRequest:
+        def __getattr__(self, name):
+            return getattr(served, name)
+
+        def sendall(self, data):
+            served.sendall(data)
+            answer_sent.set()
+            assert body_sent.wait(TIMEOUT), "the client never supplied the delayed body"
+            assert served.recv(1, socket.MSG_PEEK) == b"x", "the body must be queued and unread before close"
+
+    def handle():
+        try:
+            service.handle(SplitRequest())
+        finally:
+            ended.set()
+
+    thread = threading.Thread(target=handle, daemon=True)
+    thread.start()
+    try:
+        body = b"x" * (64 * 1024)
+        client.sendall(f"POST {target} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {len(body)}\r\n\r\n".encode())
+        assert answer_sent.wait(TIMEOUT), "the relay did not send its pre-body refusal"
+        client.sendall(body)  # a distinct write, after the relay rejected the head
+        client.shutdown(socket.SHUT_WR)
+        body_sent.set()
+        assert ended.wait(TIMEOUT), "the relay did not end after draining the refused request"
+        answer = read_all(client)  # must be a complete HTTP answer, never WinError 10054
+        head, boundary, reply = answer.partition(b"\r\n\r\n")
+        assert head.startswith(f"HTTP/1.1 {status} ".encode()), answer
+        assert boundary and reply == message.encode()
+        response_headers = dict(headers(head))
+        assert response_headers["x-aew-refusal"] == reason
+        assert response_headers["content-length"] == str(len(reply))
+        assert response_headers["connection"] == "close"
+        assert seam.calls == [], "a pre-body refusal connected upstream"
+        assert service.counts().get(reason) == 1
+        if status != 403:
+            assert service.counts().get(f"credential:{cause}" + ("_retryable" if status == 503 else "")) == 1
+    finally:
+        body_sent.set()
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+    assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("status,cause,retryable", [(401, "expired", False), (503, "unreadable", True)],
+                         ids=["expired-401", "retryable-503"])
+def test_a_provider_sized_http_post_gets_its_complete_refusal(status, cause, retryable):
+    """8 MiB is inside the review's measured provider-body range; no tiny-body or AF_UNIX-only proxy proof."""
+    seam = Seam(OSError("a refusal must connect nothing"))
+
+    def resolve():
+        raise relay.Unavailable(f"planted {cause} credential", cause=cause, retryable=retryable)
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        with ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve, listener=listener) as service:
+            with closing(http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT)) as client:
+                client.request("POST", "/v1/responses", b"x" * (8 * 1024 * 1024))
+                answer = client.getresponse()
+                assert answer.status == status and answer.read() == f"planted {cause} credential".encode()
+            assert seam.calls == [] and service.counts().get("credential_unavailable" if status == 401
+                                                            else "credential_unreadable") == 1
 
 
 @pytest.mark.parametrize("target", [

@@ -21,11 +21,14 @@ import ast
 import re
 import socket
 import sys
+import threading
 from collections import Counter
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
+from tcp_pair import tcp_pair
 
 from aew.dashboard.server import _Listener
 from aew.exclusive_server import ExclusiveServer
@@ -163,6 +166,43 @@ def test_the_enumeration_finds_each_kind_of_site_and_each_unclassified_or_stale_
 class Quiet(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 (stdlib signature)
         pass
+
+
+def test_http_handler_shutdown_preserves_a_refusal_with_unread_input():
+    refusal = b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 7\r\n\r\nrefused"
+    body = b"unread body"
+    client, served = tcp_pair()
+    with client, served, ExclusiveServer(("127.0.0.1", 0), Quiet, bind_and_activate=False) as server:
+        drained = []
+
+        def recv(size):
+            chunk = served.recv(size)
+            drained.append(chunk)
+            return chunk
+
+        observed = Mock(wraps=served)
+        observed.recv.side_effect = recv
+        served.sendall(refusal)
+        client.sendall(body)
+        client.shutdown(socket.SHUT_WR)
+        assert served.recv(1, socket.MSG_PEEK) == body[:1]
+        server.shutdown_request(observed)
+        assert drained and drained[-1] == b"" and b"".join(drained) == body, "drain must read the body and EOF"
+        with client.makefile("rb") as response:
+            assert response.read() == refusal
+
+
+def test_a_failed_dashboard_busy_write_closes_without_a_drain():
+    request = Mock(spec=socket.socket)
+    request.fileno.return_value = 1
+    request.sendall.side_effect = TimeoutError("synthetic busy write timeout")
+    request.recv.side_effect = TimeoutError("synthetic peer is still sending")
+    with _Listener(("127.0.0.1", 0), Quiet, b"busy") as server:
+        server.connections = threading.BoundedSemaphore(0)
+        server.process_request(request, ("127.0.0.1", 0))
+    request.sendall.assert_called_once_with(b"busy")
+    request.recv.assert_not_called()
+    request.close.assert_called_once_with()
 
 
 def explicit_bind(port: int, *, reuse: bool) -> None:

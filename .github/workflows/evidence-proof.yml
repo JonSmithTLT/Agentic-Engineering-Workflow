@@ -52,6 +52,7 @@ jobs:
           python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
       - name: Real planted lane
         id: lane
+        continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' }}
         timeout-minutes: 17
         uses: ./.github/actions/lane
         env:
@@ -69,6 +70,19 @@ jobs:
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
             --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+      - name: Confirm planted death
+        if: matrix.kind != 'normal' && matrix.kind != 'cancel'
+        shell: bash
+        env:
+          LANE_OUTCOME: ${{ steps.lane.outcome }}
+          PLANT_KIND: ${{ matrix.kind }}
+          SOURCE: ${{ runner.temp }}/lane-reports
+        run: |
+          if [ "$LANE_OUTCOME" != failure ]; then
+            echo "::error::Expected $PLANT_KIND to fail the lane, got $LANE_OUTCOME"
+            exit 1
+          fi
+          python tools/ci/verify_evidence.py "$SOURCE" --plant-death "$PLANT_KIND"
   cancel-ready-linux:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04

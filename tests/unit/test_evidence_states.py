@@ -432,6 +432,14 @@ def test_a_red_custom_named_lane_cannot_lose_all_its_artifacts_silently(tmp_path
     assert any("no published evidence" in problem for problem in problems)
 
 
+def test_a_successful_death_plant_still_requires_published_evidence(tmp_path):
+    job = {"name": "plant (windows-latest, deadline, none)", "conclusion": "success",
+           "steps": [{"name": "Real planted lane", "started_at": "2026-01-01T00:00:00Z", "conclusion": "success"}]}
+    check = _load("check_evidence_run").check_jobs
+    assert check(tmp_path, [job]) == []
+    assert _load("verify_evidence").rule_ids(check(tmp_path, [job], include_success=True)) == {"job-evidence"}
+
+
 def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker(tmp_path, monkeypatch):
     import json
     import signal

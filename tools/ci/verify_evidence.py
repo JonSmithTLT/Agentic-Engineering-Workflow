@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -26,6 +27,7 @@ STATE_TWINS = {
 DEATH_TWINS = {"stacks": "stacks", "kind": "kind", "running": "running", "running-label": "label"}
 JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ablation": "job-ablation"}
 OTHER_TWINS = {"cancel": "false-cutoff"}
+DEATH_EXITS = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}
 
 
 def rule_ids(defects: list[str]) -> set[str]:
@@ -114,7 +116,8 @@ def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
             defects = evidence_problems(twin, kind=kind, require_stacks=True)
             failures.extend(expect_rule(f"{kind}/{case}", expected, defects))
             if job is not None and case == "kind":
-                failures.extend(expect_rule("missing-kind", JOB_TWINS["missing-kind"], check_jobs(twin, [job])))
+                failures.extend(expect_rule("missing-kind", JOB_TWINS["missing-kind"],
+                                            check_jobs(twin, [job], include_success=True)))
     return failures
 
 
@@ -122,19 +125,20 @@ def job_twins(root: Path, job: dict) -> list[str]:
     with tempfile.TemporaryDirectory() as temporary:
         twin = Path(temporary) / "twin"
         twin.mkdir()
-        failures = expect_rule("no-evidence", JOB_TWINS["no-evidence"], check_jobs(twin, [job]))
+        failures = expect_rule("no-evidence", JOB_TWINS["no-evidence"], check_jobs(twin, [job], include_success=True))
         shutil.copytree(root, twin, dirs_exist_ok=True)
         directory = next(twin.glob("*-running"))
         marker = directory / "runner-resources-twin-exit.txt"
         marker.write_text(json.dumps({"command_exit": 70, "ablation": "stacks"}), encoding="utf-8")
         label(directory / "inventory.txt", marker, "lane_step")
-        return failures + expect_rule("live-ablation", JOB_TWINS["live-ablation"], check_jobs(twin, [job]))
+        return failures + expect_rule("live-ablation", JOB_TWINS["live-ablation"],
+                                      check_jobs(twin, [job], include_success=True))
 
 
 def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
     """Verify runner observations from the downloaded bundle, alongside GitHub's job conclusion."""
     failures = []
-    expected_exit = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}.get(kind)
+    expected_exit = DEATH_EXITS.get(kind)
     if expected_exit is not None:
         records = [json.loads(path.read_text(encoding="utf-8"))
                    for path in root.rglob("runner-resources-*-exit.txt")]
@@ -184,16 +188,20 @@ def main(root: Path) -> int:
                 failures.extend(expect_rule(job["name"], "stacks", defects))
                 defects = [defect for defect in defects if "stacks" not in rule_ids([defect])]
             failures.extend(f"{job['name']}: {defect}" for defect in defects)
-            gate = check_jobs(root, [job])
+            gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS)
             expected_rules = {"job-ablation", "stacks"} if ablate == "stacks" else set()
             if kind == "sigkill":
                 expected_rules.add("job-kind")  # the unwarned death's classifier lands separately
             if rule_ids(gate) != expected_rules:
                 failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
-            expected = "success" if kind == "normal" else "cancelled" if kind == "cancel" else "failure"
+            expected = "cancelled" if kind == "cancel" else "success"
+            verdict_step = lane_step
+            if kind in DEATH_EXITS:
+                verdict_step = next((step for step in job["steps"] if step["name"] == "Confirm planted death"), {})
+            verdict = verdict_step.get("conclusion")
             failures.extend(f"{job['name']}: {problem}" for problem in observation_problems(merged, platform, kind))
-            if job["conclusion"] != expected or lane_step["conclusion"] != expected:
-                failures.append(f"{job['name']}: plant misfired: {job['conclusion']}, {lane_step['conclusion']}")
+            if job["conclusion"] != expected or verdict != expected:
+                failures.append(f"{job['name']}: plant misfired: job {job['conclusion']}, verdict step {verdict}")
             if kind == "normal":
                 failures.extend(checker_twins(merged))
             elif needs_stack and ablate == "none":
@@ -217,4 +225,13 @@ def main(root: Path) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(Path(sys.argv[1])))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", type=Path)
+    parser.add_argument("--plant-death", choices=DEATH_EXITS)
+    args = parser.parse_args()
+    if args.plant_death:
+        problems = observation_problems(args.root, "Windows" if os.name == "nt" else "Linux", args.plant_death)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        raise SystemExit(int(bool(problems)))
+    raise SystemExit(main(args.root))

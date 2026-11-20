@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flake_register import _gh_read, _pages  # noqa: E402
 
 
-def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
+def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -> list[str]:
     defects = []
 
     def report(rule: str, detail: str) -> None:
@@ -34,7 +34,8 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
     patterns = [re.compile("^" + ".+?".join(re.escape(part) for part in re.split(r"\$\{\{.*?\}\}", name)) + "$")
                 for name in names]
     for job in jobs:
-        if job.get("conclusion") in {"success", "skipped", None}:
+        conclusion = job.get("conclusion")
+        if conclusion in {"skipped", None} or (conclusion == "success" and not include_success):
             continue
         found = []
         for path in root.iterdir() if root.is_dir() else ():
@@ -90,7 +91,7 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
                     or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
-            if died and kind is None and job.get("conclusion") != "cancelled":
+            if died and kind is None and conclusion != "cancelled":
                 report("job-kind", "death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
                 merged, kind=kind, require_stacks=died and kind is not None))

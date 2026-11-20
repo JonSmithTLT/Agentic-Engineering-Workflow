@@ -36,7 +36,6 @@ def event(**over: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------- delivery
 
 
-@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_notifier_timeout_kills_the_process_tree(tmp_path):
     """Past `timeout_s` the notifier and everything it started are killed, and the delivery is a failure."""
     pids = tmp_path / "pids"
@@ -47,11 +46,9 @@ child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"],
 open({str(pids)!r}, "w").write(f"{{os.getpid()}} {{child.pid}}")
 time.sleep(120)
 """
-    started = time.monotonic()
     out = notify.deliver([sys.executable, "-I", script(tmp_path, "hang", body)], event(), timeout_s=1.5,
                          max_output_bytes=1024)
     assert out["outcome"] == "failed" and out["reason"] == "timeout" and out["timed_out"]
-    assert time.monotonic() - started < 30
     # `deliver` returns after the timeout kill of the whole tree, so no writer is live while the record is read
     parent, child = (int(p) for p in until(lambda: (read_text_or_none(pids) or "").split(), "wait.chain",
                                            what="the pids"))

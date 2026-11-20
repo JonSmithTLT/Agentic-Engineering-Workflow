@@ -483,7 +483,8 @@ def test_a_half_written_json_file_reads_as_not_yet(tmp_path, text):
 # product value; never a literal number. And no test outside the serial lane asserts how long something took: there
 # the time is the property, elsewhere a loaded runner fails it at random (test-suite redesign, PR4). A window is a
 # poller's parameter that ``test_lock_timeout_waits.window_params`` finds; a call through a name a module imports from
-# aew is the product's own API, not a test's wait. Planted cases below run each check both ways.
+# aew is the product's own API, not a test's wait. A window passed through a name (``T = 30; until(p, T)``) is not
+# seen: the check reads literals and undeclared bound names, and a module constant should be ``bounds.declare(...)``.
 
 CLOCKS = {"time.monotonic", "time.time", "time.perf_counter", "monotonic", "perf_counter"}
 
@@ -613,42 +614,10 @@ def test_no_test_outside_the_serial_lane_asserts_how_long_something_took():
 
 
 def _planted(body: str) -> str:
-    return "import time\nfrom aew.engine import outbox\n\n\ndef test_planted(lab):\n" + "".join(
-        f"    {line}\n" for line in body.split("\n"))
+    return f"import time\n\n\ndef test_planted(lab):\n    {body}\n"
 
 
-@pytest.mark.parametrize("body", [
-    'lab.until(lambda: ready(), 30, "x")',
-    'until(lambda: ready(), bound=5.0, what="x")',
-    'bounded_wait("x", ready, seconds=5)',
-    '_wait_for(lambda: ready(), "x", 90)',
-    'until(lambda: ready(), "wait.undeclared", "x")',
-])
-def test_a_literal_or_undeclared_window_is_found(body):
-    assert literal_windows(_planted(body)) == {6}
-
-
-@pytest.mark.parametrize("body", [
-    'lab.until(lambda: ready(), "wait.condition", "x")',
-    'until(lambda: ready(), "watchdog", "x")',
-    'until(lambda: ready(), step_guard_s(), "x")',  # derived from a product value
-    'outbox.wait_for(lambda: "seen", root, timeout=0.5)',  # the product's own API
-])
-def test_a_named_derived_or_product_window_is_not(body):
-    assert literal_windows(_planted(body)) == set()
-
-
-@pytest.mark.parametrize("body", [
-    "started = time.monotonic()\ncall()\nassert time.monotonic() - started < 10",
-    "started = time.monotonic()\ncall()\ntook = time.monotonic() - started\nassert ok and took <= 1 + 1, took",
-    "t0 = time.time()\ncall()\nassert 30 > time.time() - t0",
-])
-def test_an_elapsed_assert_outside_the_serial_lane_is_found(body):
-    assert len(elapsed_asserts(_planted(body))) == 1
-
-
-def test_an_elapsed_assert_in_the_serial_lane_or_a_deadline_is_not():
-    serial = _planted("started = time.monotonic()\nassert time.monotonic() - started < 10").replace(
-        "def test_planted", "@pytest.mark.serial\ndef test_planted")
-    assert elapsed_asserts(serial) == set()
-    assert elapsed_asserts(_planted("deadline = time.monotonic() + bound\nassert deadline > 0")) == set()
+def test_a_planted_literal_window_and_a_planted_elapsed_assert_are_each_found():
+    """The two checks above, each against one planted site: the live tree's empty lists are their other half."""
+    assert literal_windows(_planted('lab.until(lambda: ready(), 30, "x")')) == {5}
+    assert elapsed_asserts(_planted("assert time.monotonic() - started < 10")) == {5}

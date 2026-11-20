@@ -100,8 +100,8 @@ def seconds(bound: str | float) -> float | None:
     import sys
 
     if bound == WATCHDOG:
-        watchdog = sys.modules.get("watchdog")
-        left = watchdog.left() if watchdog is not None else None
+        left_of = getattr(sys.modules.get("watchdog"), "left", None)  # tests/helpers/watchdog.py, not a namesake
+        left = left_of() if callable(left_of) else None
         return None if left is None else left + WATCHDOG_EVIDENCE_S
     return BOUNDS[bound].seconds if isinstance(bound, str) else float(bound)
 

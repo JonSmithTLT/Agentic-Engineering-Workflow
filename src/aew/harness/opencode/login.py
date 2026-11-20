@@ -38,6 +38,8 @@ from aew.harness.containment import relay
 from aew.harness.opencode import capabilities
 
 DB = "opencode.db"
+# Where an AEW-kept OpenCode state directory (the Lead's, per project; a worker run's) holds its store
+STORE_REL = f"xdg-data/opencode/{DB}"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
 # Implementation bound: two SQLite busy waits total BUSY_TIMEOUT_S. Wall time also includes the pause and
 # SQLite/filesystem work (5.36 s measured with a busy store).
@@ -156,6 +158,44 @@ def clear_saved_permissions(db: Path, state: Path) -> int:
                 changed += con.execute(f"UPDATE {table} SET {SESSION_RULES_COLUMN} = NULL "  # noqa: S608
                                        f"WHERE {SESSION_RULES_COLUMN} IS NOT NULL").rowcount
             return changed
+    finally:
+        con.close()
+
+
+AEW_ROW_PREFIX = "cred_aew_"  # the ids of the login rows AEW writes in the contained Lead's store, one per provider
+
+
+def clear_aew_logins(db: Path, state: Path) -> int:
+    """Remove every login row AEW wrote in the contained Lead's own OpenCode store (``cred_aew_<provider>``), and
+    return how many went. Each holds an earlier session's relay sentinel, which no relay of this session knows: left
+    active, OpenCode would send it in place of the session's own credential. Run at every contained start, whatever
+    the session's logins, before the session writes its own. A provider left with no active row, because AEW's row had
+    set its others inactive, gets its newest row (by ``time_updated``) active again. AEW never recorded which of them
+    was active before, so with several rows of one provider the newest need not be the one OpenCode had. No database,
+    or no ``credential`` table, means there is nothing to remove; a ``credential`` table of another shape is one AEW
+    does not know (:class:`StoreSchemaChanged`). The store must be the Lead's own (:func:`own_store`). A failure raises
+    (:class:`OSError`, :class:`sqlite3.Error`), for the caller to refuse the start."""
+    own_store(db, state)
+    if not db.is_file():
+        return 0
+    con = sqlite3.connect(db, timeout=BUSY_TIMEOUT_S)
+    try:
+        with con:
+            tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if "credential" not in tables:
+                return 0
+            require_schema(con, "credential", CREDENTIAL_SCHEMA)
+            pattern = AEW_ROW_PREFIX.replace("_", r"\_") + "%"
+            providers = [row[0] for row in con.execute(
+                "SELECT DISTINCT integration_id FROM credential WHERE id LIKE ? ESCAPE '\\'", (pattern,))]
+            removed = con.execute("DELETE FROM credential WHERE id LIKE ? ESCAPE '\\'", (pattern,)).rowcount
+            for provider in providers:
+                if con.execute("SELECT 1 FROM credential WHERE integration_id = ? AND active = 1",
+                               (provider,)).fetchone() is None:
+                    con.execute("UPDATE credential SET active = 1 WHERE rowid = (SELECT rowid FROM credential "
+                                "WHERE integration_id = ? ORDER BY time_updated DESC, rowid DESC LIMIT 1)",
+                                (provider,))
+            return removed
     finally:
         con.close()
 

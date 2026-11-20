@@ -188,6 +188,27 @@ def test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the
     assert "not waited for again" in row["detail"], row
 
 
+def test_a_start_deadline_that_ends_before_the_server_starts_is_the_deadline_row_and_is_waited_for_once(lab):
+    """The deadline counts from before the containment, as a launch's does, so on a slow host it can end before the
+    server starts: that is the start deadline running out, not a harness that failed to start, and the read is
+    neither cached nor waited for again. A zero deadline ends it there every time."""
+    edit_policy(lab, lambda policy: policy["profiles"].update(
+        {"second": {**next(iter(policy["profiles"].values())), "model": "other-model"}}))
+    serve(lab, LISTED)
+    res = lab.aew("doctor", "--json", env={"AEW_RUN_START_S": "0"})
+    row = next(c for c in res.json["checks"] if c["check"] == model_list.CHECK)
+    assert row["status"] == "FAIL", row
+    assert "was not read within 0s, a launch's own start deadline (AEW_RUN_START_S)" in row["detail"], row
+    assert "did not start as a launch starts it" not in row["detail"], row
+    assert "(what ended it: no time was left to start the OpenCode server)" in row["detail"], row
+    assert "had not started by then, so raise AEW_RUN_START_S" in row["detail"], row
+    assert "the harness's model catalog" not in row["detail"], row  # no server: its catalog is not the cause
+    assert "not waited for again" in row["detail"], row
+    assert res.stderr.count("reading opencode's model list") == 1, res.stderr
+    assert leftovers(lab) == [], leftovers(lab)
+    assert not (lab.aew_root / model_list.CACHE_REL).exists()
+
+
 def test_a_profile_with_a_cached_list_gets_its_answer_after_another_profile_waited_for_nothing(lab):
     """Review of E137, F4: the wait it skips is not one a cached answer would have made."""
     serve(lab, LISTED)

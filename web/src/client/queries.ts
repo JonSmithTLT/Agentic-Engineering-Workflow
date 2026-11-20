@@ -90,6 +90,7 @@ export function useProjection<T>(
   displayed = true,
   reader = transport,
   automaticRevalidation = true,
+  refreshOnNavigation = false,
 ) {
   useReadSession();
   const localClient = useQueryClient();
@@ -101,7 +102,7 @@ export function useProjection<T>(
   const query = useQuery({
     queryKey: projectionKey(route, reader),
     meta: { automaticRevalidation },
-    staleTime: automaticRevalidation ? 0 : Infinity,
+    staleTime: automaticRevalidation || refreshOnNavigation ? 0 : Infinity,
     queryFn: ({ signal }) => reader.get(route, schema, signal),
     enabled: available && displayed,
     refetchInterval:

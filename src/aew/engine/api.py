@@ -514,8 +514,12 @@ class ProjectAdmin:
         for name, status, detail in containment.doctor_checks(policy_now, K.CONTAINMENT_NOTE):
             add(name, status, detail)
         add("git-drivers", *self._git_drivers_doctor())
+        from aew.engine.coverage import checks_at_pin, doctor_rows
+
+        checks_policy: dict[str, Any] | None = None
+        declaration_pin: dict[str, Any] | None = None
         try:
-            checks_policy = self.k.policy("checks")
+            checks_policy, declaration_pin = checks_at_pin(self.k)
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
             if unconfigured:
                 add("checks-configured", "WARN",
@@ -528,6 +532,14 @@ class ProjectAdmin:
                 "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
+        if checks_policy is not None:  # the project's CI declaration, in a guard of its own: its error is reported
+            try:
+                declaration = declaration_pin["declaration"] if declaration_pin else {}
+                for status, detail in doctor_rows(checks_policy, declaration, self.k.repo_root):
+                    add("checks-configured", status, detail)
+            except Exception as exc:  # noqa: BLE001 (report, never crash)
+                add("checks-configured", "WARN", "the project's CI declaration was not checked: "
+                    f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         from aew.engine import log_compact
         add("transition-log", *log_compact.window_status(self.k.aew_root, state["revision"]))  # ADR-0012 D6
         lead = state["lead"]

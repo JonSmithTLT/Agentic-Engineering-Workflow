@@ -557,6 +557,7 @@ None.
 - `aew.engine.configuration`
 - `aew.engine.context_ops`
 - `aew.engine.coordination_ops`
+- `aew.engine.coverage`
 - `aew.engine.custody_ops`
 - `aew.engine.dispatch`
 - `aew.engine.disposition_ops`
@@ -737,13 +738,17 @@ None.
 
 ### `aew.engine.coverage`
 
+- `aew.engine.base`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.runlog`
 - `aew.knowledge.evidence`
+- `aew.maps.rules`
+- `aew.maps.structural`
 - `aew.policy.checks`
 - `aew.util`
+- `aew.workspace.git`
 
 ### `aew.engine.custody_ops`
 

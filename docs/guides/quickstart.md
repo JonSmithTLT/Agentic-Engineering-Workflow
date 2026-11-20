@@ -106,6 +106,43 @@ The terminal holds the seat until `aew lead release`. Once the seat is vacant, s
 plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
 explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
 
+### Declare project CI coverage
+
+Ask the Lead to read the project's CI configuration and draft a `coverage.ci_tools` list for
+`.aew/policy/checks.yaml`. List each tool once. Its `covered_by` list names configured check IDs or the built-in
+`guardrails` check. Use `covered_by: []` when no check covers it.
+
+```yaml
+coverage:
+  ci_tools:
+    - name: ruff
+      covered_by: [lint]
+    - name: pyright
+      covered_by: []
+```
+
+A project whose CI selects the tests a change affects can also declare `coverage.affected_tests`: the `selector`
+command that prints that selection, and the `unit` it selects (tests, lanes or similar). The selector's optional keys
+are `cwd`, `timeout_s`, `network` (`isolated` by default), `inputs` and `may_select_none`.
+
+```yaml
+coverage:
+  affected_tests:
+    unit: tests
+    selector:
+      command: [python, tools/select_tests.py]
+```
+
+AEW does not run the selector yet, so a validation reports affected tests as "not known (selection not run)" even
+with this declared.
+
+The operator reviews the draft, pastes it into the policy and runs the manifest adoption command from the preceding
+section in one sitting. The project is frozen between the edit and adoption because reads of the changed policy
+are refused. A contained Lead can draft the text. An uncontained Lead can also edit the file for the operator to adopt.
+
+Validation reports the CI tools from the adopted declaration. A tool marked as run means a covering check finished.
+Doctor reports undeclared lists and tools with no configured check under `checks-configured`.
+
 ### Giving AEW the Lead credential
 
 A command that needs the Lead credential asks for it at a hidden prompt on your terminal, and uses it for that command

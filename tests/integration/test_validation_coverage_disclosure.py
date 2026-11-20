@@ -3,19 +3,33 @@
 from __future__ import annotations
 
 import copy
+import shutil
+import sys
 from pathlib import Path
 
 import pytest
 from aewflow import Role, sample_project, to_commit_ready
 from invariants import assert_control_invariants
-from test_validation_checks import SMOKE, control, engine, integ, policy, prepared, record_of, validate
+from test_validation_checks import SMOKE, control, engine, integ, policy, prepared, py, record_of, validate
 from test_validation_checks import contained as contained
 
 from aew.engine import coverage as CV
 from aew.engine import validation_ops as VO
 from aew.knowledge import evidence as E
+from aew.policy import checks as C
 from aew.surface import readable
-from aew.util import load_yaml, parse_frontmatter
+from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_file
+
+
+def declare(p, *tools, affected_tests=None):
+    path = p.root / ".aew/policy/checks.yaml"
+    data = load_yaml(path.read_text(encoding="utf-8"))
+    data["coverage"] = {"ci_tools": [{"name": name, "covered_by": covering} for name, covering in tools]}
+    if affected_tests is not None:
+        data["coverage"]["affected_tests"] = affected_tests
+    path.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    return sha256_file(path)
 
 
 def test_verifier_coverage_is_engine_owned_bound_to_its_checks_and_preserved_in_verifier_mode(tmp_path):
@@ -41,6 +55,42 @@ def test_verifier_coverage_is_engine_owned_bound_to_its_checks_and_preserved_in_
     assert_control_invariants(p)
 
 
+def test_a_verifiers_submission_reads_the_projects_declaration_and_its_check_and_its_own_checks_record_it(tmp_path):
+    """Both evidence sites (the verifier's check, and its verification submission) read the project's declaration:
+    neither records "no project source" for a project that declared one."""
+    p = sample_project(tmp_path)
+    digest = declare(p, ("pytest", ["unit"]), ("ruff", ["guardrails"]))
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    inv = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    role = Role(p, inv["invocation_token"], Path(integ(p, wid)["workspace"]))
+    checked = role.check("unit")
+    assert checked["coverage"]["ci_tools"]["source"] == f"declared:{digest}", checked["coverage"]["ci_tools"]
+    submitted = role.submit("verification", {"claim": "scripted verification", "verification": {
+        "scope": "integration", "claims": [{"type": "goal_backwards", "claim": "unit observed", "result": "pass",
+                                            "checks": [checked["evidence"]]}]}})
+    assert submitted["coverage"]["ci_tools"] == {"known": True, "source": f"declared:{digest}", "items": [
+        {"name": "pytest", "ran": True, "reasons": []},
+        {"name": "ruff", "ran": False, "reasons": ["not_run_in_this_validation"]}]}, submitted["coverage"]
+
+
+def test_doctor_reports_the_declaration_under_checks_configured_and_says_when_it_could_not_check_it(tmp_path,
+                                                                                                   monkeypatch):
+    p = sample_project(tmp_path)
+    declare(p, ("ruff", ["guardrails"]))
+    rows = engine(p).doctor_checks()
+    assert {"check": "checks-configured", "status": "PASS", "detail": "Project CI tools: declared"} in rows, rows
+
+    def unreadable(*_args, **_kwargs):
+        raise OSError("git ls-files failed")
+
+    monkeypatch.setattr(CV, "doctor_rows", unreadable)
+    rows = engine(p).doctor_checks()
+    assert {"check": "checks-configured", "status": "WARN",
+            "detail": "the project's CI declaration was not checked: OSError: git ls-files failed"} in rows, rows
+    assert any(r["check"] == "mutating-concurrency" for r in rows), rows  # its error drops no other row
+
+
 def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_change_acceptance(
         tmp_path, contained):
     p = sample_project(tmp_path)
@@ -52,6 +102,8 @@ def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_c
     assert [c["check_id"] for c in coverage["checks"]] == ["smoke", "guardrails"]
     assert all(c["cwd"] and c["definition_sha256"] for c in coverage["checks"])
     assert coverage["summary"]["verdict"] == "validated within its scope"
+    for key in ("ci_tools", "affected_tests"):
+        assert coverage[key] == {"known": False, "reason": "no_project_source"}
     run = integ(p, wid)[VO.CURRENT]
     assert record_of(p, run)["coverage"] == coverage
     assert validate(p, wid)["coverage"] == coverage  # cached/noop uses the same pin
@@ -118,12 +170,14 @@ def test_coverage_uses_the_pinned_inventory_when_unrelated_policy_changes_during
         tmp_path, contained, monkeypatch):
     p = sample_project(tmp_path)
     policy(p, checks=SMOKE)
+    digest = declare(p, ("pytest", ["smoke"]))
     wid = prepared(p, tmp_path)
     eng = engine(p)
     original = eng._validation._execute
 
     def execute(work_id, run):
         policy(p, checks={"added-after-pin": {"configured": True, "command": ["{python}", "-c", "pass"]}})
+        declare(p, ("replacement", ["added-after-pin"]))
         return original(work_id, run)
 
     monkeypatch.setattr(eng._validation, "_execute", execute)
@@ -133,6 +187,92 @@ def test_coverage_uses_the_pinned_inventory_when_unrelated_policy_changes_during
     pin = integ(p, wid)[VO.CURRENT]["coverage_inputs"]
     inputs = load_yaml((p.root / ".aew" / pin["path"]).read_text(encoding="utf-8"))
     assert "added-after-pin" not in {c["check_id"] for c in inputs["configured"]}
+    assert inputs["declaration_pin"]["sha256"] == digest
+    assert out["coverage"]["ci_tools"] == {"known": True, "source": f"declared:{digest}",
+                                           "items": [{"name": "pytest", "ran": True, "reasons": []}]}
+
+
+def test_adopting_coverage_is_operational_and_prepare_runs_no_checks(tmp_path):
+    p = sample_project(tmp_path)
+    policy(p, checks=SMOKE)
+    eng = engine(p)
+    prior = eng._k.policy_digests()
+    check = C.resolve(eng._k.policy("checks"), "smoke")
+    declare(p, ("pytest", ["smoke"]),
+            affected_tests={"selector": {"command": ["unused-selector"]}, "unit": "lanes"})
+    after = eng._k.policy_digests()
+    assert after["legality_digest"] == prior["legality_digest"]
+    assert after["operational_digest"] != prior["operational_digest"]
+    assert C.definition_digest(C.resolve(eng._k.policy("checks"), "smoke")) == C.definition_digest(check)
+    wid = prepared(p, tmp_path)
+    coverage = engine(p).status(wid)["coverage"]
+    assert coverage["checks"] == []
+    for key in ("ci_tools", "affected_tests"):
+        assert coverage[key] == {"known": False, "reason": "no_checks_in_this_subject"}
+    # E120's record of a prepare is kept: it observed no execution, and says so
+    assert coverage["observation_limits"] == ["execution_completion_not_recorded"], coverage
+    assert "Observation: not known (execution_completion_not_recorded)" in coverage["summary"]["lines"], coverage
+
+
+def test_check_run_distinguishes_could_not_start_from_ran_and_unconfigured(tmp_path, contained):
+    p = sample_project(tmp_path)
+    policy(p, checks={"missing": {"configured": True, "command": ["aew-fixture-absent-e243"]},
+                      "disabled": {"configured": False}})
+    digest = declare(p, ("ruff", ["missing"]), ("pytest", ["unit"]), ("pyright", ["disabled"]))
+    wid = prepared(p, tmp_path)
+    inv = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    eng = engine(p)
+    checked = eng.check_run(invocation_token=inv["invocation_token"], check_id="missing", label={})
+    value = checked["coverage"]
+    assert value["checks"][0]["outcome"] == "spawn_failed" and value["checks"][0]["exit_code"] is None
+    assert value["ci_tools"] == {"known": True, "source": f"declared:{digest}", "items": [
+        {"name": "ruff", "ran": False, "reasons": ["could_not_start"]},
+        {"name": "pytest", "ran": False, "reasons": ["not_run_in_this_validation"]},
+        {"name": "pyright", "ran": False, "reasons": ["not_configured"]}]}
+    assert "ci tools not run: 3" in value["summary"]["headline"]
+    assert any("1 not configured" in line for line in value["summary"]["lines"])
+    assert any("pyright: not run (not configured)" in line for line in value["summary"]["lines"])
+    evidence = next(e for e in E.scan(p.root / ".aew", wid)[0] if e["id"] == checked["evidence"])
+    assert evidence["check"]["outcome"] == "spawn_failed"
+    covered = eng.check_run(invocation_token=inv["invocation_token"], check_id="unit", label={})["coverage"]
+    assert covered["ci_tools"]["items"][1] == {"name": "pytest", "ran": True, "reasons": []}
+    assert any("per the project's declaration" in line and "pytest: ran (check unit)" in line
+               for line in covered["summary"]["lines"])
+
+
+def test_executor_timeout_is_a_known_tool_gap(tmp_path, contained):
+    p = sample_project(tmp_path)
+    policy(p, checks={"smoke": {"configured": True, "command": py("import time; time.sleep(10)"), "timeout_s": 1}})
+    declare(p, ("pytest", ["smoke"]))
+    wid = prepared(p, tmp_path)
+    value = validate(p, wid)["coverage"]
+    assert value["checks"][0]["outcome"] == "timeout" and value["checks"][0]["exit_code"] is None
+    assert value["ci_tools"]["items"] == [{"name": "pytest", "ran": False, "reasons": ["not_completed"]}]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                    reason="Linux bubblewrap containment")
+def test_plain_validated_requires_both_known_lists_and_all_items_run(tmp_path, monkeypatch):
+    from aew.capability import records
+
+    # The sandbox still measures delivery. Give this synthetic project no pinned tools to deliver.
+    monkeypatch.setattr(records, "shipped", dict)
+    p = sample_project(tmp_path)
+    policy(p, checks=SMOKE, post=["unit", "smoke", "guardrails"])
+    declare(p, ("pytest", ["unit"]), affected_tests={"selector": {"command": ["unused-selector"]}, "unit": "lanes"})
+    wid = prepared(p, tmp_path)
+    value = validate(p, wid)["coverage"]
+    assert value["run_capabilities"] and all(c["tools_recorded"] and not c["missing_tools"]
+                                             for c in value["run_capabilities"].values())
+    assert value["ci_tools"]["items"] == [{"name": "pytest", "ran": True, "reasons": []}]
+    assert value["affected_tests"] == {"known": False, "reason": "selection_not_run"}
+    assert value["summary"]["verdict"] == "validated within its scope"
+    # Supply only the PR 2 output shape. The rest of the observation comes from the contained executor.
+    value["affected_tests"] = {"known": True, "source": "selection:synthetic", "unit": "lanes", "items": [
+        {"name": "fast", "ran": True, "reasons": []}]}
+    assert CV.summarize(value)["verdict"] == "validated"
+    value["affected_tests"]["items"][0].update(ran=False, reasons=["not_run_in_this_validation"])
+    assert CV.summarize(value)["verdict"] == "validated within its scope"
 
 
 @pytest.mark.parametrize("kind", ["advisory", "unavailable", "abandoned"])
@@ -141,6 +281,8 @@ def test_every_terminal_record_keeps_coverage_without_manufacturing_a_validation
     checks = SMOKE if kind != "unavailable" else {
         "smoke": {"configured": True, "command": ["aew-fixture-no-such-executable-coverage"]}}
     policy(p, checks=checks)
+    if kind == "unavailable":
+        declare(p, ("pytest", ["smoke"]))
     wid = prepared(p, tmp_path)
     if kind == "abandoned":
         eng = engine(p)
@@ -153,7 +295,9 @@ def test_every_terminal_record_keeps_coverage_without_manufacturing_a_validation
     assert run["state"] == kind
     value = record_of(p, run)["coverage"]
     assert value["summary"]["verdict"] != "validated"
-    assert value["affected_tests"] == {"known": False, "reason": "no_project_source"}
+    reason = "no_project_source" if kind == "advisory" else "execution_completion_not_recorded"
+    for key in ("affected_tests", "ci_tools"):
+        assert value[key] == {"known": False, "reason": reason}
     if kind != "advisory":
         assert "execution_completion_not_recorded" in value["observation_limits"]
     assert_control_invariants(p)

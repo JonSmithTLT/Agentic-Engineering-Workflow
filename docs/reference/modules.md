@@ -15,6 +15,8 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
+- `aew.maps`
+- `aew.policy`
 - `aew.schemas`
 - `aew.stg02`
 
@@ -75,13 +77,13 @@ None.
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
-- `aew.harness.procs`
 - `aew.operator`
 - `aew.process_kind`
 
 ### `aew.operator`
 
 - `aew.errors`
+- `aew.harness.desktop_notifier`
 - `aew.harness.procs`
 - `aew.util`
 
@@ -106,7 +108,10 @@ None.
 - `aew.harness.contract`
 - `aew.harness.operator_client`
 - `aew.knowledge.manifest`
+- `aew.maps.service`
+- `aew.maps.slices`
 - `aew.operator`
+- `aew.policy.execution`
 - `aew.process_kind`
 - `aew.schemas`
 - `aew.util`
@@ -247,10 +252,12 @@ None.
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
+- `aew.harness.operator_client`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
 - `aew.policy.execution`
+- `aew.process_kind`
 - `aew.surface`
 - `aew.surface.client`
 - `aew.surface.context`
@@ -364,10 +371,8 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.contract`
 - `aew.harness.delivery`
-- `aew.harness.operator_client`
 - `aew.operator`
 - `aew.priority_levels`
-- `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -559,6 +564,7 @@ None.
 - `aew.engine.configuration`
 - `aew.engine.context_ops`
 - `aew.engine.coordination_ops`
+- `aew.engine.coverage`
 - `aew.engine.custody_ops`
 - `aew.engine.dispatch`
 - `aew.engine.disposition_ops`
@@ -609,6 +615,7 @@ None.
 
 ### `aew.engine.approval`
 
+- `aew.engine.outbox`
 - `aew.errors`
 - `aew.util`
 
@@ -624,6 +631,7 @@ None.
 - `aew.history.store`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.schemas`
 - `aew.util`
 - `aew.workspace.git`
@@ -738,13 +746,17 @@ None.
 
 ### `aew.engine.coverage`
 
+- `aew.engine.base`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.runlog`
 - `aew.knowledge.evidence`
+- `aew.maps.rules`
+- `aew.maps.structural`
 - `aew.policy.checks`
 - `aew.util`
+- `aew.workspace.git`
 
 ### `aew.engine.custody_ops`
 
@@ -809,6 +821,7 @@ None.
 - `aew.harness.weaker_register`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.policy.checks`
 - `aew.policy.guardrails`
 - `aew.schemas`
@@ -877,6 +890,7 @@ None.
 ### `aew.engine.harness_ops`
 
 - `aew.capability.ops`
+- `aew.engine.approval`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.dispatch`
@@ -928,6 +942,7 @@ None.
 - `aew.harness.contract`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.policy.validation`
 - `aew.schemas`
 - `aew.util`
@@ -1036,6 +1051,7 @@ None.
 - `aew.harness.contract`
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
+- `aew.maps.slices`
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
@@ -1043,6 +1059,7 @@ None.
 
 ### `aew.engine.outbox`
 
+- `aew.engine.approval`
 - `aew.errors`
 - `aew.history.manifest`
 - `aew.schemas`
@@ -1116,6 +1133,7 @@ None.
 - `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.maps.slices`
 - `aew.util`
 
 ### `aew.engine.resume_ops`
@@ -1148,6 +1166,7 @@ None.
 
 ### `aew.engine.role_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.gates`
 - `aew.engine.ports`
@@ -1188,6 +1207,7 @@ None.
 
 ### `aew.engine.steering`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.first_configuration`
 - `aew.engine.primitives`
@@ -1439,6 +1459,10 @@ None.
 - `aew.errors`
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
+- `aew.harness.defects`
+- `aew.harness.opencode.lead`
+- `aew.harness.opencode.login`
+- `aew.knowledge.manifest`
 
 ### `aew.harness.containment.shim`
 
@@ -1450,6 +1474,7 @@ None.
 
 ### `aew.harness.contract`
 
+- `aew.harness.desktop_notifier`
 - `aew.harness.wait_binding`
 
 ### `aew.harness.dashboard_autostart`
@@ -1624,6 +1649,7 @@ None.
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 - `aew.harness.containment.netns`
+- `aew.harness.containment.relay`
 - `aew.harness.containment.shim`
 - `aew.harness.dashboard_autostart`
 - `aew.harness.lead_broker`
@@ -1635,6 +1661,7 @@ None.
 - `aew.harness.opencode.projection`
 - `aew.harness.operator_autostart`
 - `aew.harness.registry`
+- `aew.harness.runlog`
 - `aew.harness.seat`
 - `aew.harness.weaker_register`
 - `aew.lead_credential`
@@ -1781,6 +1808,7 @@ None.
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.probe`
+- `aew.harness.containment.relay`
 - `aew.harness.contract`
 - `aew.harness.delivery`
 - `aew.harness.event_spool`
@@ -1915,7 +1943,6 @@ Imports from the groups:
 - `aew.harness.opencode.projection`
 - `aew.maps.service`
 - `aew.policy.checks`
-- `aew.policy.execution`
 - `aew.util`
 
 ### `aew.kit.__main__`
@@ -2042,6 +2069,7 @@ None.
 - `aew.maps.rules`
 - `aew.maps.store`
 - `aew.maps.structural`
+- `aew.util`
 
 ### `aew.maps.slices`
 
@@ -2314,6 +2342,7 @@ None.
 
 ### `aew.surface.projection`
 
+- `aew.engine.approval`
 - `aew.engine.guards`
 - `aew.engine.primitives`
 - `aew.engine.queue_ops`

@@ -190,6 +190,9 @@ skipped:
       allow_weaker (containment.mode). Covered on Linux; on Windows
       test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags runs the same refusal with establish
       stood in for.
+    tests/integration/test_validation_coverage_disclosure.py::test_plain_validated_requires_both_known_lists_and_all_items_run: >-
+      checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
+      mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.
     tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
       POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
       the refusal path runs and AT-1 substitutes the terminal channel in-process.
@@ -608,6 +611,10 @@ skipped:
     tests/integration/test_lead_contained_session.py::test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_relayed_terminal: >-
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_an_api_key_session_after_a_chatgpt_login_session_sends_its_own_key_and_no_earlier_row_is_active: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its store cleanup runs on
       every platform in tests/unit/test_lead_contained.py.
     tests/integration/test_lead_contained_session.py::test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_holds_only_sentinels: >-
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained

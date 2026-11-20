@@ -1,8 +1,10 @@
 """The structural map in context: the bounded pack slice and the resume row (register F22.1 plan §5.3, §5.4;
 design v0.5 §11; T5-INV-01, T5-INV-07, T5-INV-10).
 
-Both exist only behind the execution policy's ``maps.pack_slices: structural`` (off by default, so packs and the
-resume view are byte-identical to a project without maps), and only for roles whose context names ``codebase_map``.
+Both exist only behind the execution policy's ``maps.pack_slices: structural`` (a new project's value; off, as an
+absent key reads, packs and the resume view are byte-identical to a project without maps), and only for roles whose
+context names ``codebase_map``. A result that gives a pack to the Lead carries the slice's bytes, never its body
+(:func:`for_lead`).
 
 * **Never raising.** Everything here reads ``.aew/local/maps/`` through ``store.read_selected`` and catches whatever
   else goes wrong: a missing, corrupt or stale map, or a malformed registry, becomes one labelled line, never a refused
@@ -119,23 +121,10 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     entry, record = _selected(aew_root, repo_root, base_commit)
     note = None
     if lead is not None and base_commit and _wants_refresh(entry):
-        from aew.maps import service
-
-        got = service.refresh_at_dispatch(aew_root, repo_root, base_commit, actor=lead, select=base_commit == head)
-        if "failed" in got:
-            note = (f"refresh at dispatch: not refreshed ({got['failed']}, after {got['seconds']:g} s of the "
-                    f"{service.REFRESH_S:g} s allowed); the selected map is used as it is")
-            if record is None:
-                entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
-        else:
-            record = got["record"]
-            entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": record["source_tree"],
-                     "source_revision": record["source_revision"], "freshness": _current_at_source(record)}
-            how = "found stored" if got.get("reused") else "made"
-            note = (f"refresh at dispatch: this map was {how} for the work's base in {got['seconds']:g} s, "
-                    + ("and is now the selected map" if got["selected"] else
-                       "stored and not selected (the base is not the authoritative head, or another selection "
-                       "landed or held the registry meanwhile)"))
+        try:
+            entry, record, note = _refreshed(aew_root, repo_root, base_commit, entry, record, lead=lead, head=head)
+        except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
+            return _unknown(), _unavailable("unknown")
     if record is None:
         return entry, _unavailable(str(entry["unavailable"]))
     try:
@@ -143,6 +132,34 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
         return _unknown(), _unavailable("unknown")
     return {**entry, **({"refresh": note} if note else {}), "slice": rows}, frame(rows)
+
+
+def _refreshed(aew_root: Path, repo_root: Path, base: str, entry: dict[str, Any], record: dict[str, Any] | None, *,
+               lead: dict[str, Any], head: str | None) -> tuple[dict[str, Any], dict[str, Any] | None, str]:
+    """:func:`pin`'s refresh at dispatch: the entry and record the pack uses, and the line that says what happened."""
+    from aew.maps import service
+
+    got = service.refresh_at_dispatch(aew_root, repo_root, base, actor=lead, select=base == head)
+    if "failed" in got:
+        # A failure says its time, since that is what failed it. One read back from an earlier dispatch says so, and
+        # its time is the one recorded then, so equal dispatches still pin equal lines.
+        earlier = ", at an earlier dispatch for this base, and not tried again for it" if got.get("remembered") else ""
+        note = (f"refresh at dispatch: not refreshed ({got['failed']}, after {got['seconds']:g} s of the "
+                f"{service.REFRESH_S:g} s allowed{earlier}); the selected map is used as it is")
+        if record is None:
+            entry = {**entry, "unavailable": f"{entry['unavailable']}; {note}"}
+        return entry, record, note
+    made: dict[str, Any] = got["record"]
+    entry = {"name": NAME, "path": got["root"], "sha256": got["sha256"], "source_tree": made["source_tree"],
+             "source_revision": made["source_revision"], "freshness": _current_at_source(made)}
+    how = "found stored" if got.get("reused") else "made"
+    # no seconds here: the line is pinned in the pack and control state, so a refresh that succeeded pins the same
+    # bytes however long it took (two equal dispatches, one pack)
+    note = (f"refresh at dispatch: this map was {how} for the work's base, "
+            + ("and is now the selected map" if got["selected"] else
+               "stored and not selected (the base is not the authoritative head, or another selection "
+               "landed or held the registry meanwhile)"))
+    return entry, made, note
 
 
 def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +173,25 @@ def _current_at_source(record: dict[str, Any]) -> dict[str, Any]:
 def pinned(sources: list[dict[str, Any]] | None) -> dict[str, Any] | None:
     """The map entry a built pack recorded, if any (none when the switch was off)."""
     return next((s for s in sources or [] if s.get("name") == NAME), None)
+
+
+def for_lead(pack: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A pack as a result gives it to the Lead: the map's pinned entry keeps its path, hashes and freshness, and its
+    slice body becomes ``slice_bytes``, the UTF-8 bytes of the section the worker reads. A result stays in the Lead's
+    context for every later request, and the body is the worker's navigation, not the Lead's. The pin in control state
+    keeps the body: a regenerated pack is rendered from it (:func:`lines`). Any other pack, or none, is
+    returned as it is."""
+    sources = (pack or {}).get("sources")
+    if not isinstance(sources, list) or not any(isinstance(s, dict) and "slice" in s for s in sources):
+        return pack
+    out = []
+    for source in sources:
+        if isinstance(source, dict) and "slice" in source:
+            body = source["slice"] if isinstance(source["slice"], list) else []
+            source = {**{k: v for k, v in source.items() if k != "slice"},
+                      "slice_bytes": len("\n".join(frame([str(line) for line in body])).encode("utf-8"))}
+        out.append(source)
+    return {**pack, "sources": out}  # type: ignore[dict-item]
 
 
 def pinned_record(aew_root: Path, repo_root: Path, entry: dict[str, Any]) -> dict[str, Any] | None:

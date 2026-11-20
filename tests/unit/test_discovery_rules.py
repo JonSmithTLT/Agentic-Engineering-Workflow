@@ -1037,6 +1037,30 @@ def _with_findings(tmp_path, keys):
                                                    "errors": {}}))
 
 
+def test_a_planted_credential_ask_fails_the_ratchet_under_the_committed_modes_and_a_bare_value_is_no_finding(tmp_path):
+    """With the modes as committed and nothing patched, an ask for a credential, or a credential variable given a
+    literal, fails the run as the ratchet decides it in `assurance`: O-SECRET enforces. The rule judges asks and
+    assignments, not values: a bare key-shaped string is no finding."""
+    from pathlib import Path
+
+    var = next(n for n in rules.credential_names() if not n.startswith("-"))
+    fake = "SYNTHETIC0000NOTAREALVALUE0000"  # never a real value
+    planted = {"ask": f"Set {var} before you run aew status.", "literal": f"Run `{var}={fake} aew status` to continue."}
+    keys = []
+    for name, text in planted.items():
+        output = Output(site=f"cli:aew planted-{name}|result", text=text)
+        found = [f for f in rules.check(output) if f.rule == "O-SECRET"]
+        assert found, name
+        keys += [f"{f.rule} {f.site}" for f in found]
+    assert not [f for f in rules.check(Output(site="unit", text=f"Your key is sk-ant-api03-{fake}AA and it works."))
+                if f.rule == "O-SECRET"]
+    head = tmp_path / "allowed.yaml"
+    head.write_text((Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "allowed.yaml")
+                    .read_text(encoding="utf-8"), encoding="utf-8")
+    assert _ratchet().main([str(_with_findings(tmp_path, keys)), "--event", "push", "--tier", "fast",
+                            "--assurance", "success", "--allowlist", str(head)]) == 1
+
+
 def test_a_failure_past_the_shadow_keys_comes_first_with_its_detail_test_and_remedy(tmp_path, capsys, monkeypatch):
     """A run used to exit 1 with no FAIL line when 40 shadow keys sorted ahead of the failing one (D2 enforce
     measurement), and a FAIL line never said why, where from, or what to do."""

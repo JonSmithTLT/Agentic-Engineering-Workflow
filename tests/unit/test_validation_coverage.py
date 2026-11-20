@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
 from aew.engine import coverage as CV
-from aew.errors import IntegrityError
+from aew.engine.base import Kernel, check_policy_bytes
+from aew.errors import IntegrityError, ValidationFailed
 from aew.schemas import validate_property
 from aew.util import dump_yaml, sha256_file
 
 
 def observed():
     return CV.build(subject={"work_id": "T-1", "scope": "integration"}, configured=[], checks=[],
-                    changed_files=CV.files([], source="candidate diff"),
+                    changed_files=CV.files([], source="candidate diff"), declaration_pin=None,
                     capabilities={"IV-1": {"recorded": True, "tools_recorded": True, "skills_recorded": True,
                                             "missing_tools": [], "missing_skills": []}}, result="pass")
 
@@ -38,7 +41,8 @@ def test_known_gap_unknown_both_and_neither_have_one_verdict_rule(gap, unknown):
 def test_known_unrun_consumer_qualifies_a_pass():
     value = observed()
     value["affected_tests"] = {"known": True, "source": "synthetic selector",
-                               "items": [{"name": "tests/test_consumer.py", "ran": False}]}
+                               "items": [{"name": "tests/test_consumer.py", "ran": False,
+                                          "reasons": ["not_run_in_this_validation"]}]}
     value["ci_tools"] = {"known": True, "source": "synthetic CI source", "items": []}
     summary = CV.summarize(value)
     assert summary["verdict"] == "validated within its scope"
@@ -75,9 +79,81 @@ def test_only_an_actual_pass_has_positive_validation_wording(result):
 def test_incomplete_execution_does_not_label_unobserved_checks_as_unrun():
     value = CV.build(subject={}, configured=[{"check_id": "unit", "definition_sha256": "a" * 64}], checks=[],
                      changed_files=CV.files(None, source="unavailable"), capabilities={}, result="abandoned",
-                     complete=False)
+                     declaration_pin={"sha256": "f" * 64, "declaration": {"ci_tools": [
+                         {"name": "ruff", "covered_by": []}]}}, complete=False)
     assert value["configured_not_run"] == []
     assert "execution_completion_not_recorded" in value["observation_limits"]
+    for key in ("ci_tools", "affected_tests"):
+        assert value[key] == {"known": False, "reason": "execution_completion_not_recorded"}
+
+
+def test_build_sites_are_exhaustive():
+    source = Path(CV.__file__).resolve().parents[1]
+    counts = {}
+    for path in source.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "CV" not in text:
+            continue
+        calls = [node for node in ast.walk(ast.parse(text)) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute) and node.func.attr == "build"
+                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "CV"]
+        if calls:
+            counts[path.relative_to(source).as_posix()] = len(calls)
+        for call in calls:  # each names its declaration pin, or passes the pinned inputs that carry it
+            assert any(k.arg in ("declaration_pin", None) for k in call.keywords), (path.name, call.lineno)
+            flags = {k.arg: k.value.value for k in call.keywords if isinstance(k.value, ast.Constant)}
+            if flags.get("checkless"):  # a prepare runs nothing, and its record keeps E120's observation limit
+                assert flags.get("complete") is False, (path.name, call.lineno)
+    assert counts == {"engine/evidence_ops.py": 2, "engine/integration_ops.py": 2, "engine/validation_ops.py": 3}
+    assert sum(counts.values()) == 7
+
+
+@pytest.mark.parametrize("check_id", ["unit", "guardrails", "unknown"])
+def test_coverage_policy_names_configured_ids_or_builtin(check_id):
+    policy = {"schema": "aew/checks/v1", "checks": {"unit": {"configured": False}}, "coverage": {
+        "ci_tools": [{"name": "pytest", "covered_by": [check_id]}],
+        "affected_tests": {"selector": {"command": ["selector"]}, "unit": "lanes"}}}
+    raw = dump_yaml(policy).encode()
+    if check_id == "unknown":
+        with pytest.raises(ValidationFailed, match=r"covered_by.*unknown checks \['unknown'\]; it accepts "
+                                                   r"\['guardrails', 'unit'\]"):
+            check_policy_bytes("checks", raw, source="checks.yaml")
+    else:
+        assert check_policy_bytes("checks", raw, source="checks.yaml") == policy
+
+
+@pytest.mark.parametrize("ci_signal", ["none", "workflows", "map-role"])
+def test_doctor_checks_each_declaration_and_names_uncovered_tools(tmp_path, monkeypatch, ci_signal):
+    from types import SimpleNamespace
+
+    from aew.workspace import git
+
+    if ci_signal == "workflows":
+        (tmp_path / ".github/workflows").mkdir(parents=True)
+    stdout = b"config/.circleci/config.yml\0" if ci_signal == "map-role" else b"README.md\0"
+    monkeypatch.setattr(git, "git", lambda *args, **kwargs: SimpleNamespace(stdout=stdout))
+    policy = {"checks": {"lint": {"configured": False}}, "coverage": {"ci_tools": [
+        {"name": "ruff", "covered_by": ["lint"]}, {"name": "guardrails", "covered_by": ["guardrails"]}]}}
+    tools, selection, uncovered = CV.doctor_rows(policy, policy["coverage"], tmp_path)
+    assert tools == ("PASS", "Project CI tools: declared")
+    assert selection[0] == ("PASS" if ci_signal == "none" else "WARN")
+    assert "Affected tests" in selection[1] and "not known" in selection[1]
+    assert uncovered == ("WARN", "CI runs ruff; no configured check runs it")
+    missing_tools, missing_selection = CV.doctor_rows({"checks": {}}, {}, tmp_path)
+    assert missing_tools[0] == missing_selection[0] == selection[0]
+
+
+def test_legacy_unpinned_checks_policy_is_not_a_declaration_source(tmp_path, monkeypatch):
+    checks = "policy/checks.yaml"
+    raw = b"schema: aew/checks/v1\nchecks: {}\ncoverage: {ci_tools: []}\n"
+    kernel = Kernel(tmp_path, tmp_path)
+    monkeypatch.setattr(Kernel, "manifest", property(lambda self: {"policy": {"checks": checks}}))
+    monkeypatch.setattr(kernel, "_pins_in_force", lambda: None)
+    (tmp_path / "policy").mkdir()
+    (tmp_path / checks).write_bytes(raw)
+    policy, declaration = CV.checks_at_pin(kernel)
+    assert policy["coverage"] == {"ci_tools": []}
+    assert declaration is None
 
 
 def test_a_bounded_summary_keeps_unknowns_after_long_observed_lists_and_sanitizes_values():
@@ -160,3 +236,27 @@ def test_summary_uses_no_host_local_argv_or_cwd_and_single_checks_are_not_ticket
 def test_missing_changed_paths_have_a_reason_not_the_source_label():
     assert CV.files(None, source="candidate_diff_from:abc", reason="candidate_diff_not_recorded") == {
         "known": False, "reason": "candidate_diff_not_recorded"}
+
+
+def test_the_ci_tools_line_says_how_many_ran_tools_it_left_out():
+    value = observed()
+    names = [f"tool-{n:02}" for n in range(CV.SUMMARY_ITEMS + 2)]
+    value["ci_tools"] = {"known": True, "source": "declared:" + "f" * 64,
+                         "items": [{"name": name, "ran": True, "reasons": []} for name in names]}
+    line = next(li for li in CV.summarize(value, completed_by={name: ["unit"] for name in names})["lines"]
+                if li.startswith("Project CI tools"))
+    assert f"{names[CV.SUMMARY_ITEMS - 1]}: ran (check unit)" in line and names[-1] not in line, line
+    assert line.endswith("(2 more entries omitted; see coverage record)"), line
+
+
+@pytest.mark.parametrize("ran,reasons,valid", [(True, [], True), (False, ["not_configured"], True),
+                                               (True, ["not_configured"], False), (False, [], False)])
+def test_a_ci_tool_that_ran_has_no_reason_and_one_that_did_not_has_one(ran, reasons, valid):
+    value = observed()
+    value["ci_tools"] = {"known": True, "source": "declared:" + "f" * 64,
+                         "items": [{"name": "ruff", "ran": ran, "reasons": reasons}]}
+    if valid:
+        validate_property("evidence", "coverage", value, source="synthetic coverage")
+    else:
+        with pytest.raises(ValidationFailed):
+            validate_property("evidence", "coverage", value, source="synthetic coverage")

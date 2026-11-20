@@ -81,6 +81,9 @@ TOP_FIELDS = ("schema", "wip_limit", "unowned", "systems", "wip_allowance")
 ALLOWANCE_FIELDS = ("count", "operator", "date")
 GATE_SOURCE = "src/aew/knowledge/manifest.py:DEFAULT_GATES"
 SWITCH_SOURCE = "src/aew/policy/execution.py:STRING_SWITCHES"
+# What a new project holds, for a table switch `aew init`'s template sets (the board's rule of 2026-11-11):
+# on_by_default means what a new project gets, and the table's first value stays the absent-key default.
+NEW_PROJECT_SOURCE = "src/aew/policy/execution.py:TEMPLATE"
 WIRED_RECORDS = {"cli": "cli-commands", "dashboard": "dashboard-routes", "tool": "tools"}
 HAND_WIRED = ("lead_text", "pack")
 REQUIRED = ("id", "name", "purpose", "design", "register", "as_built", "touches", "depends_on", "state",
@@ -90,7 +93,7 @@ LISTS = ("design", "register", "as_built", "touches", "depends_on", "evidence", 
          "design_unpublished", "touches_new")
 TEXTS = ("id", "name", "purpose", "finish_line", "decision", "recommendation", "who", "reason")
 STATE_FIELDS = ("board_state", "built", "wired", "on_by_default", "used_in_default_flow")
-SWITCH_FIELDS = ("key", "default", "default_evidence", "owner", "turning_on_changes")
+SWITCH_FIELDS = ("key", "default", "default_evidence", "new_project_default", "owner", "turning_on_changes")
 SLICE_FIELDS = ("slice", "row", "estimate")
 CLAIM_FIELDS = ("closing_works", "extra")
 SIGNOFF_FIELDS = ("date", "words")
@@ -162,6 +165,7 @@ class Owners:
     now_order: dict[str, int] = field(default_factory=dict)  # row -> lowest open Now item number
     gate_defaults: dict[str, Any] = field(default_factory=dict)
     string_switches: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
+    new_project: dict[tuple[str, str], str] = field(default_factory=dict)  # table switches the init template sets
 
 
 def _tool(name: str) -> ModuleType:
@@ -234,7 +238,20 @@ def owners(root: Path = ROOT) -> Owners:
         raise SystemsError(f"{REGISTER} cannot be read: {exc}") from exc
     records = reference_records(root)
     gates, switches = code_tables(root)
-    return Owners(root, rows, open_rows, now_rows, records, now_order(root), gates, switches)
+    return Owners(root, rows, open_rows, now_rows, records, now_order(root), gates, switches,
+                  new_project_values(switches))
+
+
+def new_project_values(switches: dict[tuple[str, str], tuple[str, ...]]) -> dict[tuple[str, str], str]:
+    """Each table switch `aew init`'s execution template sets, with the value a new project holds, from its owner
+    (``new_project_switches``, which reads ``NEW_PROJECT_SOURCE``); a switch it leaves unset is absent here. Called
+    after ``code_tables``, which has checked the policy module is this checkout's."""
+    try:
+        execution = __import__("aew.policy.execution", fromlist=["new_project_switches"])
+        values = execution.new_project_switches()
+    except (ImportError, AttributeError, ValueError) as exc:
+        raise SystemsError(f"the execution template cannot be read: {exc}") from exc
+    return {pair: value for pair, value in values.items() if pair in switches}
 
 
 def now_order(root: Path) -> dict[str, int]:
@@ -645,11 +662,18 @@ def switch_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
         if switch.get("default_evidence") != source:
             out.append(Problem("default", e["id"], f"switch.default_evidence for {key} must be {source}, "
                                                  "not a line cite"))
+        new = own.new_project.get((block, name)) if source == SWITCH_SOURCE else None
+        if new is not None and switch.get("new_project_default") != new:
+            out.append(Problem("default", e["id"], f"switch.new_project_default for {key} must be {new!r} from "
+                                                 f"{NEW_PROJECT_SOURCE}"))
+        elif new is None and "new_project_default" in switch:
+            out.append(Problem("default", e["id"], f"switch.new_project_default: {NEW_PROJECT_SOURCE} does not set "
+                                                 f"{key}, so a new project holds the default; remove it"))
         if allowed and len(allowed) == 2 and {"off", "disabled"} & set(allowed):
-            on = value not in ("off", "disabled")
+            on = (value if new is None else new) not in ("off", "disabled")
             if e["state"]["on_by_default"] is not on:
                 out.append(Problem("on_by_default", e["id"], f"state.on_by_default for {key} must be {on} "
-                                                            f"from {source}"))
+                                                            f"from {source if new is None else NEW_PROJECT_SOURCE}"))
     return out
 
 
@@ -823,8 +847,11 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
                 if e.get("switch"):
                     source = declared_switch_source(e["switch"])
                     provenance = f"checked against {source}" if source else "not read from the code"
+                    new = e["switch"].get("new_project_default")
                     out.append(f"**Switch:** {_line(e['switch']['key'])} — default: "
-                               f"{_line(e['switch'].get('default', 'not stated'))} — {provenance}")
+                               f"{_line(e['switch'].get('default', 'not stated'))}"
+                               + (f" (a new project: {_line(new)})" if new is not None else "")
+                               + f" — {provenance}")
                 out.append("**Wired:** " + (", ".join(e["state"]["wired"]) or "none"))
             elif key == "questions":
                 out.append(f"**Decision:** {_line(e['decision'])}")

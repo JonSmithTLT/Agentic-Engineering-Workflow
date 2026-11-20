@@ -17,9 +17,8 @@ from aew.errors import UsageError
 from aew.harness import models
 from aew.harness.opencode.projection import LEAD_DENIED_PROVIDERS
 from aew.maps.service import first_map
-from aew.policy import execution
 from aew.policy.checks import PYTEST_CACHES
-from aew.util import dump_yaml, load_yaml, utc_now
+from aew.util import utc_now
 
 CHECK_COMMAND = "{python} -m pytest -q tests/unit"
 KIT_RECORD = "kit.json"
@@ -36,17 +35,6 @@ RECEIPT_READER = (
     "Copy alpha-receipt.json into a directory. From an AEW source checkout with tests/helpers on PYTHONPATH, "
     "run python -m vertical.report <directory>."
 )
-
-
-class KitConfiguration(first_configuration.FirstConfiguration):
-    """Pin structural pack slices in the same initialization as the model and check."""
-
-    def files(self) -> dict[str, str]:
-        configured = super().files()
-        policy = load_yaml(configured[execution.REL_PATH])
-        policy["maps"] = {"pack_slices": "structural"}
-        configured[execution.REL_PATH] = dump_yaml(policy)
-        return configured
 
 
 def _model(ref: str | None, flag: str, *, provider: str | None = None) -> str:
@@ -75,8 +63,9 @@ def prepare(dest: Path, model: str | None, lead_model: str | None, provider: str
     given = first_configuration.from_flags(check_command=CHECK_COMMAND, check_timeout=None, model=model,
                                            provider=provider)
     assert given is not None
-    configuration = KitConfiguration(given.argv, given.timeout_s, given.identity, given.provider, given.model,
-                                     given.provider_env, check_caches=PYTEST_CACHES)
+    # The execution policy's maps switch is the template's (a new project's default): the kit restates nothing.
+    configuration = first_configuration.FirstConfiguration(given.argv, given.timeout_s, given.identity, given.provider,
+                                                           given.model, given.provider_env, check_caches=PYTEST_CACHES)
     dest = dest.resolve()
     repo = dest / "repo"
     if repo.exists() or (dest / KIT_RECORD).exists():

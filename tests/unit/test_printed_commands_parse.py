@@ -34,6 +34,13 @@ from aew.engine.custody_ops import LEAD_KEPT_OUT, operator_terminal_refusal
 from aew.harness import contract as K
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 
+
+def test_a_fields_block_keeps_yaml_quotes_backslashes_and_controls_distinct():
+    raw = 'a"' + "\\" + "\x1b"
+    block = K.fields_block("aew invoke cancel INV-1", {"reason": raw})
+    assert block.splitlines()[2] == r'reason: "a\"\\\u001b"'
+
+
 # Files B3 is changing on fix/e112-weaker-contexts (the ITEMS 56 brief, "Don't overlap"): their failing sites wait for
 # a follow-up once that branch merges, rather than conflict with it. Each is pinned by (file, printed text), since B3's
 # edits move its line: a failing site in these files that is not pinned fails the check, and a pinned one that is gone
@@ -336,9 +343,19 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
     guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from aew.engine.harness_ops import send_route
+    from aew.errors import MessagingSnapshotMismatch
+    from aew.policy import execution as X
     from aew.surface import lead_text
 
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)])
+    # The fallback invocation placeholder is printed only after the f-string has been evaluated.
+    with pytest.raises(MessagingSnapshotMismatch) as mismatch:
+        send_route(X.MESSAGING_ENABLED, X.MESSAGING_DISABLED, "next-step")
+    [(relaunch, fenced)] = P.commands(str(mismatch.value))
+    [args] = P.parse(relaunch, fenced=fenced)
+    assert args.invocation == "INV-0012" and args.expect_rev == 17
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
+                         relaunch])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 

@@ -30,6 +30,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from aew.engine import approval
 from aew.engine import queue_ops as Q
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
@@ -124,6 +125,10 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     part["unit"] = {"kind": unit.get("kind"), "mutating": bool(unit.get("mutating")),
                     "integration": dict(unit.get("integration") or {}),
                     "validated_report": (entry.get("validated") or {}).get("report")}
+    if unit.get("parent") is not None:
+        part["unit"]["parent"] = unit["parent"]
+    if entry:
+        part["unit"]["queue_state"] = entry["state"]
     for b in unit.get("blocked_by") or []:
         kind = str(b.get("kind") or "blocked")
         part["blockers"].append(_blocker(kind.upper(), kind.replace("_", " "),
@@ -352,7 +357,12 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
     else:
         return [], []
     found = SA.stage_availability(engine, stage, {"work_id": wid})
-    action = _action(stage, {"expect_rev": rev, "work_id": wid}, kind=contract.STAGE,
+    args = {"expect_rev": rev, "work_id": wid}
+    if cli[:2] == ["work", "transition"]:
+        cli.extend(["--prior-value", st])
+    if stage in {"ticket_request_review", "ticket_request_verification"}:
+        args["prior_value"] = st
+    action = _action(stage, args, kind=contract.STAGE,
                      availability=found["availability"], reason_codes=found["reason_codes"], cli_fallback=cli)
     blockers = [_blocker(b["code"], b["message"], b.get("details")) for b in found["blockers"]]
     return [action], blockers
@@ -521,6 +531,20 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
              "state": part["state"], "actions": actions,
              "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
              "anomalies": [_anomaly(a) for a in part["anomalies"]], "hints": hints, "runs": runs}
+    if part["unit"]:
+        bindings = {key: part["unit"][key] for key in ("parent", "queue_state") if key in part["unit"]}
+        if bindings:
+            out["unit"] = bindings
+        fallback = {}
+        if queue_state := bindings.get("queue_state"):
+            if queue_state != "DEFERRED" and part["unit"]["integration"].get("status") != "publishing":
+                fallback["integrate.defer"] = approval.bound_argv(
+                    ("integrate", "defer", subject, "--reason", "<reason>"), part["revision"], queue_state)
+            if queue_state in {"DEFERRED", "AWAITING_DISPOSITION", "VALIDATED"}:
+                fallback["integrate.requeue"] = approval.bound_argv(
+                    ("integrate", "requeue", subject, "--reason", "<reason>"), part["revision"], queue_state)
+        if fallback:
+            out["cli_fallback"] = fallback
     coordination = engine.message_attention(work_id=None if subject == "project" else subject)
     if coordination is not None:
         out["coordination"] = coordination

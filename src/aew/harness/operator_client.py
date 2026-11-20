@@ -348,7 +348,7 @@ def _answer(conn: Any, read: Callable[[], str]) -> dict[str, Any]:
 
 def capability_prompt(shown: dict[str, Any], requester: str) -> str:
     return operator.challenge(
-        "", "CHANGE this host's capability register:\n" + "\n".join(shown["change"]), requested_by=requester,
+        "", ["CHANGE this host's capability register:", *shown["change"]], requested_by=requester,
         destination="the capability register (no credential is issued)",
         instruction=SHOWN_THERE) + "> "
 

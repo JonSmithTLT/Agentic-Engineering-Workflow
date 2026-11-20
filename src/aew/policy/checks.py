@@ -97,6 +97,21 @@ def cache_hint(paths: list[str]) -> str | None:
     return f"caches: [{', '.join(json.dumps(p) for p in PYTEST_CACHES if p in patterns)}]" if patterns else None
 
 
+def validate_coverage(policy: dict[str, Any], *, source: str) -> None:
+    """Resolve references after schema validation, including configured=false definitions."""
+    known = policy["checks"].keys() | BUILTIN
+    seen = set()
+    for tool in policy.get("coverage", {}).get("ci_tools", []):
+        name = tool["name"]
+        if name in seen:
+            raise ValidationFailed(f"{source}: duplicate coverage.ci_tools name {name!r}")
+        seen.add(name)
+        unknown = sorted(set(tool["covered_by"]) - known)
+        if unknown:
+            raise ValidationFailed(f"{source}: coverage.ci_tools {name!r} covered_by names unknown checks {unknown}; "
+                                   f"it accepts {sorted(known)}")
+
+
 # OpenCode v2.2.6 (also v2.0.18), packages/core/src/tool-output.ts: MAX_BYTES is 50 KiB, measured as UTF-8;
 # truncate keeps only whole lines up to it. Reserve half for the check response's other fields. Measure this excerpt
 # in its pretty-printed, ASCII-escaped JSON envelope (the CLI's largest encoding), not just its text characters.

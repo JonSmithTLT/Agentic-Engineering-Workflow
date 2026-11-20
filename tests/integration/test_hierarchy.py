@@ -213,7 +213,7 @@ def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
     refusal is taken with the values it names: it admits a move that lowers nothing or, for reclassify_first where a
     gate would be lost too, leads to a refusal for the rest alone whose options admit. Class 1, 2 and 4 Tickets are
     validated by checks here: only an ancestor makes a class 1 one's a verifier, 3 is the lowest class above it that a
-    verifier validates, and no class above 4 has one."""
+    verifier validates, and no class above 4 has one. The deliberately inconsistent map pins that search."""
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"]["validation"] = {"by_class": {"1": "checks", "2": "checks", "4": "checks"},
                                                "default": "verifier"}
@@ -371,7 +371,7 @@ def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path)
     or, for reclassify_first where a gate would be lost too, leads to a refusal for the gate alone whose option admits.
     Class 1 Tickets are validated by checks here, so only a parent makes a mutating one's a verifier."""
     gates = copy.deepcopy(DEFAULT_GATES)
-    gates["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}
+    gates["post_integration"]["validation"] = {"by_class": {"0": "checks", "1": "checks"}, "default": "verifier"}
     p = sample_project(tmp_path, gates=gates)
     floor, gate = ("--min-descendant-class", "2", "--rationale", "money moves"), ("--mandatory-gate", "review_security")
     epic = create_unit(p, "epic", "Initiative")

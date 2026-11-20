@@ -8,6 +8,7 @@ generated launch contract would. Nothing here reaches into engine internals.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -88,11 +89,21 @@ def lead_project(tmp_path: Path, **kw: Any) -> Project:
 
 def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
                    checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None) -> Project:
-    def build(path: Path) -> Path:
-        return _sample_repository(path, guardrails=guardrails, checks=checks, gates=gates)
-
+    build = partial(_sample_repository, guardrails=guardrails, checks=checks, gates=gates)
     variant = dump_yaml([guardrails, checks, gates])
     return acquire_test_lead(Project(copy_test_repository(tmp_path / "repo", ("sample", variant), build)))
+
+
+def legacy_project(root: Path, *, lead: bool = False) -> Project:
+    """An initialized project with its control state still on schema v1."""
+    from invariants import write_control_v1
+
+    p = Project(make_git_repo(root))
+    p.ok("init", "--project-id", "legacy")
+    if lead:
+        acquire_test_lead(p)
+    write_control_v1(root)
+    return p
 
 
 def _sample_repository(path: Path, *, guardrails: dict[str, Any] | None, checks: dict[str, Any] | None,

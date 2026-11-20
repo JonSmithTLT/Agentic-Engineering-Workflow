@@ -8,8 +8,8 @@ exist: every ``/history/search`` request is answered exactly as before (by the `
 the shared substrate: a moved history, a busy, stale, foreign or unusable substrate, or the reached deadline is a
 coverage reason, and the CLI repairs what the dashboard only reports.
 
-The fixture builds fresh history per test (two archived investigations whose records share a term, and a
-verified Ticket cancelled after review). Each test serves its own project.
+The fixture builds history once (two archived investigations whose records share a term, and a verified Ticket
+cancelled after review), releases the Lead, and gives each test a private copy and credential.
 While a dashboard search runs in this process, the substrate's three destructive sites are instrumented to fail the
 test (every CLI repair runs as its own process).
 
@@ -30,6 +30,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -43,12 +44,13 @@ from aewflow import (  # noqa: E402
     create_investigation,
     create_unit,
     dispatch,
+    legacy_project,
     plan_unit,
     sample_project,
     submit_record,
     to_verified,
 )
-from conftest import Project, make_git_repo  # noqa: E402
+from conftest import Project, copy_released_world  # noqa: E402
 from dashboard_client import request as dashboard_request  # noqa: E402
 
 from aew.dashboard import contract as CT  # noqa: E402
@@ -104,8 +106,10 @@ def investigation(p: Project, tmp: Path, *, title: str, body: str) -> tuple[str,
     return wid, rec
 
 
-@pytest.fixture
-def built(tmp_path: Path) -> dict[str, Any]:
+@pytest.fixture(scope="module")
+def built(tmp_path_factory) -> dict[str, Any]:
+    """Build a complete recall substrate and release the Lead before tests copy it."""
+    tmp_path = tmp_path_factory.mktemp("dash-search")
     p = sample_project(tmp_path)
     switch_on(p)
     wid, rec = investigation(p, tmp_path, title="Survey the kookaburra ledger sharedmarker", body=PROSE)
@@ -115,16 +119,17 @@ def built(tmp_path: Path) -> dict[str, Any]:
     p.lead("work", "transition", ticket, "--to", "CANCELLED", "--reason", "superseded by the survey")
     shown = p.ok("history", "show", ticket)
     evidence = {e["kind"]: e["id"] for e in shown["record"]["unit"]["evidence"]}
-    for _ in range(20):  # the CLI builds the substrate, so each test starts with complete coverage
+    p.lead("lead", "release")
+    for _ in range(20):  # index the released world's history before taking copies
         if not p.ok("history", "search", "sharedmarker")["coverage_incomplete"]:
             break
-    return {"project": p, "investigation": wid, "record": rec, "investigation2": wid2, "record2": rec2,
+    return {"root": p.root, "investigation": wid, "record": rec, "investigation2": wid2, "record2": rec2,
             "ticket": ticket, "evidence": evidence}
 
 
 @pytest.fixture
-def p(built: dict[str, Any]) -> Project:
-    return built["project"]
+def p(built: dict[str, Any], tmp_path: Path) -> Project:
+    return copy_released_world(built["root"], tmp_path / "repo")
 
 
 class Gate:
@@ -220,13 +225,8 @@ def capture(p: Project) -> tuple[Any, ...] | None:
     return identity, rows, meta
 
 
-@contextmanager
-def tamper(p: Project) -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(substrate(p), isolation_level=None)
-    try:
-        yield conn
-    finally:
-        conn.close()
+def tamper(p: Project) -> closing[sqlite3.Connection]:
+    return closing(sqlite3.connect(substrate(p), isolation_level=None))
 
 
 def codes(body: dict[str, Any]) -> list[str]:
@@ -238,20 +238,18 @@ def ids(body: dict[str, Any]) -> list[str]:
 
 
 @pytest.fixture(autouse=True)
-def never_destructive(monkeypatch) -> Iterator[list[str]]:
+def never_destructive(monkeypatch) -> Iterator[None]:
     """Every delete, reset or discard site of the substrate fails the test if this process reaches it: only the
     dashboard searches here (the CLI's searches are their own processes)."""
     called: list[str] = []
 
-    def refuse(name: str):
-        def site(self, *args: Any, **kwargs: Any) -> None:
-            called.append(name)
-            raise AssertionError(f"the dashboard reached Substrate.{name}")
-        return site
+    def refuse(name: str, *args: Any, **kwargs: Any) -> None:
+        called.append(name)
+        raise AssertionError(f"the dashboard reached Substrate.{name}")
 
     for name in ("_delete", "_reset", "_discard"):
-        monkeypatch.setattr(recall.Substrate, name, refuse(name))
-    yield called
+        monkeypatch.setattr(recall.Substrate, name, partial(refuse, name))
+    yield
     assert called == [], called
 
 
@@ -266,9 +264,7 @@ def answers(s: Served) -> list[tuple[int, dict[str, str], bytes]]:
     out = []
     for closed in (False, True):
         s.gate.closed = closed
-        for path in CORPUS:
-            for head in (False, True):
-                out.append(s.get(path, head=head))
+        out.extend(s.get(path, head=head) for path in CORPUS for head in (False, True))
     s.gate.closed = False
     return out
 
@@ -297,19 +293,13 @@ def test_switched_off_every_search_request_is_answered_as_without_the_route(p, m
     assert not substrate(p).parent.exists()  # no dashboard request creates local/recall/
 
 
-def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(tmp_path, monkeypatch):
-    from aew.engine.base import as_v1
-    from aew.engine.store import deserialize_control, serialize_control
-
-    v1 = Project(make_git_repo(tmp_path / "v1"))
-    v1.ok("init", "--project-id", "legacy")
-    control = v1.root / ".aew/state/control.yaml"
-    control.write_bytes(serialize_control(as_v1(deserialize_control(control.read_bytes(), source=str(control)))))
+def test_switched_off_on_a_v1_project_and_on_an_unreadable_state_too(built, tmp_path, monkeypatch):
+    v1 = legacy_project(tmp_path / "v1")
     got = same_as_without_the_route(v1.root, monkeypatch)
     assert any(status == 403 for status, _, _ in got)  # /history/{id} on a v1 project: MIGRATION_REQUIRED
     for switched_on in (False, True):  # an unreadable state reads the switch as off
-        p = sample_project(tmp_path / f"unreadable-{switched_on}")
-        switch_on(p)
+        p = copy_released_world(built["root"], tmp_path / f"unreadable-{switched_on}")
+        assert substrate(p).is_file()
         if not switched_on:
             switch_off(p)
         (p.root / ".aew/state/control.yaml").write_bytes(b"\x00\xff not yaml")
@@ -364,14 +354,7 @@ def test_on_but_unusable_is_a_403_with_its_reason(p, monkeypatch):
 def test_a_v1_project_with_the_switch_adopted_is_unavailable_for_migration(tmp_path):
     """A v1 project gains policy pins through `aew manifest adopt` (a v1 operation), so the switch can be on there;
     it has no cold history, so the search is UNAVAILABLE with MIGRATION_REQUIRED."""
-    from aew.engine.base import as_v1
-    from aew.engine.store import deserialize_control, serialize_control
-
-    p = Project(make_git_repo(tmp_path / "v1"))
-    p.ok("init", "--project-id", "legacy")
-    p.token = p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
-    control = p.root / ".aew/state/control.yaml"
-    control.write_bytes(serialize_control(as_v1(deserialize_control(control.read_bytes(), source=str(control)))))
+    p = legacy_project(tmp_path / "v1", lead=True)
     switch_on(p, adopt=True)
     assert recall.recall_search_enabled(p.root / ".aew")
     with served(p.root) as s:

@@ -1464,7 +1464,8 @@ systems:
     operator''s decision'
   - 'tools/ci/discovery_ratchet.py:1-25: what fails in every mode (list growth, a lowered mode, capture errors) and what
     fails only in enforce'
-  - '.github/workflows/ci.yml:531-557: the ratchet step on every run; .github/workflows/discovery.yml:3-7: the static-text
+  - '.github/workflows/ci.yml, the `assurance` job''s step "D2: no new violation of an enforced output rule, and the
+    allow-list only shrinks": the ratchet on every run; .github/workflows/discovery.yml:3-7: the static-text
     lane, collected by no required job'
   - 'tests/conftest.py:27,38,49: the capture plugin'
   - 'tests/helpers/discovery/allowed.yaml:199-227: 28 O-CMD keys; no O-SECRET section (was 55 and 4 at 5625b8e1)'

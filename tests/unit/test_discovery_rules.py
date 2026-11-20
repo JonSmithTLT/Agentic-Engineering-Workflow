@@ -1038,9 +1038,9 @@ def _with_findings(tmp_path, keys):
 
 
 def test_a_planted_credential_ask_fails_the_ratchet_under_the_committed_modes_and_a_bare_value_is_no_finding(tmp_path):
-    """O-SECRET is enforced (the operator: E140, 2026-11-04, and 2026-11-19), so an ask for a credential, or a
-    credential variable given a literal, fails the run as `assurance` decides it, with the modes as committed and
-    nothing patched. The rule judges asks and assignments, not values: a bare key-shaped string is no finding."""
+    """With the modes as committed and nothing patched, an ask for a credential, or a credential variable given a
+    literal, fails the run as the ratchet decides it in `assurance`: O-SECRET enforces. The rule judges asks and
+    assignments, not values: a bare key-shaped string is no finding."""
     from pathlib import Path
 
     var = next(n for n in rules.credential_names() if not n.startswith("-"))

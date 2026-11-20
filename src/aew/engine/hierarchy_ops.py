@@ -35,6 +35,7 @@ from aew.errors import (
 from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
+from aew.maps import slices
 from aew.policy import validation as V
 from aew.schemas import schema
 from aew.util import render_frontmatter, sha256_text, utc_now
@@ -360,7 +361,8 @@ class Hierarchy:
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
                 "role_card": chosen.id, "scope": "parent", "evaluated_snapshot": snapshot,
-                "observation": inv["observation"], "pack": inv.get("pack"), "dispatch": decision.to_dict(),
+                "observation": inv["observation"], "pack": slices.for_lead(inv.get("pack")),
+                "dispatch": decision.to_dict(),
                 "revision": ctx.session.committed_revision}
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
@@ -711,11 +713,16 @@ class Hierarchy:
                 reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=instead)
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None,
-                  reason: str) -> dict[str, Any]:
+                  reason: str, prior_value: str | None = None) -> dict[str, Any]:
         if not (reason and reason.strip()):
             raise UsageError("a hierarchy change needs a reason")
         with self.k.lead_txn(token, expect_rev, "work.move", reason=reason) as ctx:
-            old = self.units.view(ctx.state, work_id).get("parent")
+            unit = self.units.view(ctx.state, work_id)
+            parent_changed = approval.parent_change(work_id)
+            approval.prior("work.move", work_id, "parent", prior_value, approval.parent_value(unit),
+                           root=self.k.aew_root, state=ctx.state,
+                           event=parent_changed)
+            old = unit.get("parent")
             decision = self.k.new_decision(ctx, "hierarchy_change", f"{work_id} moved from {old} to {parent}",
                                          work_unit=work_id, reason=reason)
             invalidated = self._move(ctx, work_id, parent, f"{reason} ({decision})")
@@ -725,7 +732,8 @@ class Hierarchy:
                 "plans_needing_reconfirmation": invalidated, "revision": ctx.session.committed_revision}
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None,
+                     prior_value: str | None = None) -> dict[str, Any]:
         """Promote a Ticket to a Story (or a Ticket/Story to an Epic): identity and evidence are preserved."""
         missing_reason = not (reason and reason.strip())
         reason_required = "promotion needs the reason evidence showed the unit was too small (KC §9.4)"
@@ -740,6 +748,10 @@ class Hierarchy:
                 raise UsageError(reason_required)
             state = ctx.state
             unit = self.units.unit(state, work_id)
+            parent_changed = approval.parent_change(work_id)
+            approval.prior("work.promote", work_id, "kind and parent", prior_value, approval.promotion_value(unit),
+                           root=self.k.aew_root, state=ctx.state,
+                           event=parent_changed)
             if to not in PROMOTION.get(unit["kind"], set()):
                 raise UsageError(f"a {unit['kind']} cannot be promoted to a {to}")
             if unit["state"] in H.TERMINAL or unit["state"] == "VERIFICATION_FAILED":

@@ -266,6 +266,7 @@ EVENT_EFFECTS: dict[str, frozenset[str]] = {
     "lead.generation": CONTROL, "work.state": CONTROL, "invocation.status": CONTROL,
     "run.added": frozenset({"harness_process", "credential"}), "credential.revoked": frozenset({"credential"}),
     "history.appended": CONTROL, "unit.archived": CONTROL, "queue.entry": CONTROL, "queue.lease": CONTROL,
+    "work.binding": CONTROL,
     "decision.recorded": CONTROL, "handoff.recorded": CONTROL, "evidence.ingested": CONTROL, "audit.recorded": CONTROL,
     "coordination.seal_fallback": frozenset({"coordination_record"}),
 }

@@ -39,6 +39,7 @@ from aew.history.store import History, annotation_rel, bundle_rel
 from aew.history.store import prewrite as prewrite_record
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
+from aew.maps import slices
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git, worktrees
@@ -73,6 +74,23 @@ def redact(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [redact(v) for v in value]
     return value
+
+
+def for_display(record: Any) -> Any:
+    """A historical record as the Lead's read views give it (`aew history show`, the history search index):
+    :func:`redact`, and every pinned pack as :func:`slices.for_lead` gives it, an invocation's ``pack`` and an archived
+    unit's ``invocations[*].pack``. The map slice's body is the worker's navigation, not the Lead's."""
+    shown = redact(record)
+    if not isinstance(shown, dict):
+        return shown
+    if "pack" in shown:
+        shown["pack"] = slices.for_lead(shown["pack"])
+    invocations = shown.get("invocations")
+    if isinstance(invocations, dict):
+        shown["invocations"] = {inv_id: {**inv, "pack": slices.for_lead(inv["pack"])}
+                                if isinstance(inv, dict) and "pack" in inv else inv
+                                for inv_id, inv in invocations.items()}
+    return shown
 
 
 def pinned_records(entry: dict[str, Any], raw: bytes,

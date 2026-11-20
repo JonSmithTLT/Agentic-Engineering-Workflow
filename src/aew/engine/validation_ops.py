@@ -439,10 +439,12 @@ class Validation:
                    "state": "running", "infra_attempt": attempt}
             if diagnostic:
                 run["diagnostic"] = True
+            checks_policy, declaration_pin = CV.checks_at_pin(self.k)
             coverage_inputs = {"subject": {"work_id": work_id, "scope": "integration", "run": run_id,
                                             "candidate": integ["candidate"], "base": integ["base"],
                                             "snapshot": integ["candidate_snapshot"]},
-                               "configured": CV.inventory(self.k.policy("checks"), self.k.policy("guardrails")),
+                               "configured": CV.inventory(checks_policy, self.k.policy("guardrails")),
+                               "declaration_pin": declaration_pin,
                                "changed_files": CV.files(integ.get("changed_paths"),
                                                          source=f"candidate_diff_from:{integ['base']}",
                                                          reason="candidate_diff_not_recorded")}
@@ -545,6 +547,7 @@ class Validation:
                     "before": before, "after": after,
                     "mutated": before["relevant_inputs_fingerprint"] != after["relevant_inputs_fingerprint"],
                     "results": [{"check_id": r["check_id"], "file": r["file"],
+                                 "outcome": r["outcome"],
                                  "sha256": sha256_file(directory / r["file"])} for r in results]}
         faults.hit("validate.before_finished")
         atomic_write(directory / "finished.json", json.dumps(finished, indent=2, sort_keys=True))
@@ -583,6 +586,7 @@ class Validation:
         else:
             result, reason = ("pass" if out["exit_code"] == 0 else "fail"), None
         record = {"check_id": check_id, "definition_sha256": entry["definition_sha256"], "result": result,
+                  "outcome": out["outcome"],
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
                   "command": out["command"], "cwd": out.get("cwd"), "log": out["log"],
                   **({"network": out["network"]} if out.get("network") else {})}
@@ -604,7 +608,10 @@ class Validation:
             path = directory / item["file"]
             if sha256_file(path) != item["sha256"]:
                 return None
-            results.append(json.loads(path.read_text(encoding="utf-8")))
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if "outcome" in item and item["outcome"] != record.get("outcome"):
+                return None
+            results.append(record)
         if [r["check_id"] for r in results] != [c["check_id"] for c in run["checks"]]:
             return None
         return {"results": results, "mutated": finished["mutated"], "before": finished["before"]}
@@ -758,6 +765,7 @@ class Validation:
                 "coverage": coverage,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],
                 "check": {"check_id": r["check_id"], "exit_code": r["exit_code"], "duration_s": r["duration_s"],
+                          **({"outcome": r["outcome"]} if "outcome" in r else {}),
                           "mutated_inputs": staged["mutated"], "definition_sha256": r["definition_sha256"]},
                 "integration_validation": {"candidate": run["identity"]["candidate"],
                                            "check_set": run["identity"]["check_set"],
@@ -844,10 +852,12 @@ class Validation:
         path = self.k.aew_root / pin["path"]
         if sha256_file(path) != pin["sha256"]:
             return CV.build(subject={"run": run["id"], "scope": "integration"}, configured=[], checks=[],
+                            declaration_pin=None,
                             changed_files=CV.files(None, source="coverage_inputs",
                                                    reason="coverage_inputs_unavailable"), capabilities={},
                             result=result or "not validated", complete=False, limits=["coverage_inputs_unavailable"])
         inputs = load_yaml(path.read_text(encoding="utf-8"))
+        inputs.setdefault("declaration_pin", None)  # E120 pins predate the declaration.
         label = self._recorded_label(run["id"])
         from aew.engine.harness_ops import _missing_capabilities
 
@@ -856,6 +866,7 @@ class Validation:
         # (or not) from the sandbox's actual label, not from the project CI inventory.
         capabilities["skills_recorded"] = True
         checks = [{"check_id": r["check_id"], "definition_sha256": r["definition_sha256"],
+                   "outcome": r.get("outcome"), "exit_code": r.get("exit_code"),
                    "command": r["command"], "cwd": r.get("cwd"), "evaluated_snapshot": staged["before"],
                    "result": "inconclusive" if staged["mutated"] else r["result"],
                    "reason": "WORKSPACE_MUTATED" if staged["mutated"] else r.get("reason"), "run": run["id"]}

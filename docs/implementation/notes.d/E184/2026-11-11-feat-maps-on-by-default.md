@@ -1,0 +1,5 @@
+**The owed items, landed with the switch-on** (ADR-0015, amended 2026-11-11, second):
+- **The slice's reach:** a dispatch's result (first or replayed), `aew invoke show`, `aew history show` and history search give the Lead the map's entry with `slice_bytes`, never the body (`slices.for_lead`, and `archive_ops.for_display` for history); a test reads the engine's dict literals keyed `pack` and its stores of one, and the Lead read-views test checks the rest by behaviour. The map's entry in a result falls from 2,302 to 3,627 bytes to 558 on this repository at `f1ff2dd3`. The pin keeps the body in `control.yaml` until the unit is archived, bounded by `SLICE_MAX_BYTES` and measured at 2.1 to 3.4 KB here.
+- **A project already switched on:** no notice. It holds `structural`, which the offer never offers over, and its workers have had the slice on every card since 2026-11-07.
+- **The default:** `structural` for a new project; an existing one is offered it (`maps_pack_slices`), a legality setting, and keeps a no.
+- **The resume row:** 373 bytes of compact JSON with a CURRENT map, a tool result outside the Lead context pool.

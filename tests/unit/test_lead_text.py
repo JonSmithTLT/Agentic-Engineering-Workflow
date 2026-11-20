@@ -50,6 +50,8 @@ NOT_TOOLS = {
     "diff": "a git command", "log": "a git command", "show": "a git command",
     "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",
     "use_when": "a role card's field",
+    "codebase_map": "a pack source's name: the project map (ADR-0015)",
+    "slice_bytes": "a field of a pack's map source: the bytes of the slice the worker reads",
     "why": "a wait result's field: why it returned (E122)",
     "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",

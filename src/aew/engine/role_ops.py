@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import roles, skills
+from aew.engine import approval, transitions
 from aew.engine import gates as G
-from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
 from aew.harness.contract import EXPECT_REV
@@ -181,7 +181,7 @@ class Roles:
         execute: list[str] | None = None, review: list[str] | None = None, verify: list[str] | None = None,
         forbid: list[str] | None = None, remove: list[str] | None = None,
         selected_by: str = "lead", pin: bool = False, reason: str | None = None,
-        authorization: dict[str, str] | None = None,
+        authorization: dict[str, str] | None = None, prior_value: str | None = None,
     ) -> dict[str, Any]:
         if selected_by not in {"lead", "operator"}:
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
@@ -192,6 +192,10 @@ class Roles:
                 raise IllegalTransition(f"{work_id} cannot be staffed in state {unit['state']}")
             if unit["kind"] != "ticket" and execute:
                 raise IllegalTransition("Stories and Epics have no execute slot; staff their review/verify gates")
+            approval.prior("work.staff", work_id, "role plan digest", prior_value, approval.role_plan_digest(unit),
+                           root=self.k.aew_root, state=ctx.state,
+                           event=lambda e: e["kind"] == "work.binding"
+                               and e["id"] == work_id and e["field"] == "role_plan")
             catalog = self.role_catalog()
             plan = self._plan(unit)
             overrides: list[str] = []
@@ -256,8 +260,12 @@ class Roles:
                                     recorded_by_lead=True, **(authorization or {})))
             ctx.summary = f"{work_id} staffed"
             self.units.before_commit(ctx)
+        revision = ctx.session.committed_revision
+        assert revision is not None
+        digest = approval.role_plan_digest(unit)
         return {"ok": True, "work_id": work_id, "role_plan": unit["role_plan"], "decision": decision,
-                "revision": ctx.session.committed_revision}
+                "role_plan_digest": digest, "revision": revision,
+                "staff_argv": approval.bound_argv(("work", "staff", work_id), revision, digest)}
 
     def effective_role_plan(self, state: dict[str, Any], work_id: str,
                             gc: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -293,6 +301,7 @@ class Roles:
                 eff[slot].append({"card": roles.default_card(arch), "selected_by": "workflow",
                                   "reason": f"default {arch} card for a required gate"})
         return {"stored": stored, "effective": eff, "forbidden": stored.get("forbidden", []),
+                "role_plan_digest": approval.role_plan_digest(unit),
                 "specialty_requirements": requirements,
                 "note": "use_when is advisory; policy requirements cannot be removed"}
 

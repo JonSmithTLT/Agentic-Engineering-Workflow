@@ -204,8 +204,13 @@ def test_a_review_that_fails_stops_the_request_after_its_ingest(lab_project, tmp
     explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_request_verification",
                                                     "arguments": {"work_id": wid, "review_evidence": evidence}})
     assert explained["result"]["availability"] == "BLOCKED"
-    out = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence)
+    revision = p.rev()
+    stale = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence, prior_value="RUNNING")
+    assert stale["stopped"]["error"]["code"] == "CHANGED_SINCE_READ"
+    assert p.rev() == revision and stale["completed_steps"] == []
+    out = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence, prior_value="REVIEW_PENDING")
     assert not out["ok"] and out["stopped"]["at"] == "work.transition"
+    assert out["stopped"]["error"]["code"] == "ILLEGAL_TRANSITION"
     assert [s["primitive"] for s in out["completed_steps"]] == ["review.ingest"]
     assert unit(p, wid)["state"] == "REVIEW_FAILED" and intent(p, out)["status"] == SI.STOPPED
     assert_control_invariants(p)

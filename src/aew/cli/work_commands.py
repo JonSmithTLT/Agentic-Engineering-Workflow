@@ -12,6 +12,8 @@ from aew.cli import fields
 from aew.cli.commands import (
     _add_json,
     _add_lead,
+    _add_prior,
+    _approval_terminal,
     _engine,
     _lead_token,
     _read_text_arg,
@@ -196,9 +198,9 @@ def register(sub: argparse._SubParsersAction) -> None:
                         "(a code typed back), and a Lead session is refused it")
     q.add_argument("--pin", action="store_true", help="pin the selection (Lead may replace only with --reason)")
     q.add_argument("--reason")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_staff(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, execute=a.execute, review=a.review,
+    _add_prior(q, "stored role-plan digest")
+    q.set_defaults(handler=lambda a: _bound_prior(a, "work_staff",
+        work_id=a.work_id, execute=a.execute, review=a.review,
         verify=a.verify, forbid=a.forbid, remove=a.remove, selected_by=a.by, pin=a.pin, reason=a.reason,
         authorization=operator_attribution(a.by, f"RECORD as YOUR selection: {_staffing(a)}")))
 
@@ -206,9 +208,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("work_id")
     q.add_argument("--to", required=True)
     q.add_argument("--reason")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_transition(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
+    _add_prior(q, "from-state")
+    q.set_defaults(handler=lambda a: _bound_prior(a, "work_transition",
+        work_id=a.work_id, to=a.to, reason=a.reason))
 
     # ---- M2: non-mutating Tickets (ADR-0008) and the Story/Epic lifecycle (ADR-0007)
     q = wsub.add_parser("dispatch", help="READY -> ASSIGNED for a non-mutating Ticket: executor + observation (Lead)")
@@ -249,9 +251,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("work_id")
     q.add_argument("--parent", required=True, help="new parent id, or `none`")
     q.add_argument("--reason", required=True)
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_move(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id,
+    _add_prior(q, "parent ID or none")
+    q.set_defaults(handler=lambda a: _bound_prior(a, "work_move",
+        work_id=a.work_id,
         parent=None if a.parent.lower() == "none" else a.parent, reason=a.reason))
     q = wsub.add_parser("promote", help="promote a Ticket to a Story (or to an Epic), preserving identity (Lead)")
     q.add_argument("work_id")
@@ -259,10 +261,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--title", required=True)
     q.add_argument("--reason", required=True)
     q.add_argument("--class", dest="risk_class", type=int, choices=range(0, 5))
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).work_promote(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, title=a.title,
-        reason=a.reason, risk_class=a.risk_class))
+    _add_prior(q, "kind:parent (for example ticket:S-0001 or ticket:none)")
+    q.set_defaults(handler=_promote)
     q = wsub.add_parser("reclassify", help="raise a unit's risk class; recorded decision (Lead)")
     q.add_argument("work_id")
     q.add_argument("--class", dest="risk_class", type=int, required=True, choices=range(0, 5))
@@ -367,7 +367,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = psub.add_parser("accept")
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)
-    _add_lead(q)
+    _add_approval(q)
     q.set_defaults(handler=_plan_accept)
     q = psub.add_parser("adopt", help="propose a plan revision from an accepted Planner plan_proposal (Lead)")
     q.add_argument("work_id", help="the unit whose plan it becomes")
@@ -449,9 +449,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("invocation")
     q.add_argument("--replace", action="store_true",
                    help="relaunch even if the latest run may still be running (it loses its authority now)")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).harness_launch(
-        token=_lead_token(a), expect_rev=a.expect_rev, invocation=a.invocation, replace=a.replace))
+    _add_prior(q, "run ID or none")
+    q.set_defaults(handler=lambda a: _bound_prior(a, "harness_launch",
+        invocation=a.invocation, replace=a.replace))
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
@@ -575,23 +575,38 @@ def _add_approval(parser: argparse.ArgumentParser) -> None:
 
 
 def _approved(a: argparse.Namespace, op: str, method: str, **kwargs: Any) -> Any:
-    from aew import operator, process_kind
-    from aew.harness.operator_client import lead_session_problem
-
     engine = _engine(a)
     token = _lead_token(a)
     binding = a.approval_digest
-    operator_here = (not getattr(a, "relayed", False) and lead_session_problem() is None
-                     and process_kind.kind() != process_kind.NON_WRITER and operator.has_terminal())
-    if operator_here and (op != "waive" or (a.gate and not a.finding)):
+    if _approval_terminal(a) and (op != "waive" or (a.gate and not a.finding)):
         shown = engine.approval_subject(a.work_id, op, gate=getattr(a, "gate", None),
                                         evidence=getattr(a, "evidence", None), source=getattr(a, "source", None))
         if shown:
             if binding is None:
                 binding = shown["digest"]
-            operator.authorize(f"{op} {a.work_id}: {shown['subject']}\nShown SHA-256 {shown['digest']}")
+            print(f"{op} {a.work_id}: {shown['subject']}\nShown SHA-256 {shown['digest']}",
+                  file=sys.stderr, flush=True)
     return getattr(engine, method)(token=token, expect_rev=a.expect_rev, work_id=a.work_id,
                                    binding=binding, **kwargs)
+
+
+def _promote(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    prior = a.prior_value
+    if prior is None and _approval_terminal(a):
+        prior = engine.prior_value("work_promote", a.work_id)
+    return engine.work_promote(token=token, expect_rev=a.expect_rev, work_id=a.work_id, to=a.to,
+                               title=a.title, reason=a.reason, risk_class=a.risk_class, prior_value=prior)
+
+
+def _bound_prior(a: argparse.Namespace, method: str, **kwargs: Any) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    prior = a.prior_value
+    if prior is None and _approval_terminal(a):
+        prior = engine.prior_value(method, kwargs.get("work_id") or kwargs["invocation"])
+    return getattr(engine, method)(token=token, expect_rev=a.expect_rev, prior_value=prior, **kwargs)
 
 
 def _plan_accept(a: argparse.Namespace) -> Any:
@@ -599,10 +614,11 @@ def _plan_accept(a: argparse.Namespace) -> Any:
     token = _lead_token(a)
     unit = engine.status(a.work_id)["work_unit"]
     shown = next((plan for plan in unit.get("plans", []) if plan["revision"] == a.revision), None)
-    binding = None
-    if shown and not getattr(a, "relayed", False) and sys.stderr.isatty():
-        binding = shown["sha256"]
-        print(f"Accept plan {shown['path']} (SHA-256 {binding})", file=sys.stderr, flush=True)
+    binding = a.approval_digest
+    if shown and _approval_terminal(a):
+        if binding is None:
+            binding = shown["sha256"]
+        print(f"Accept plan {shown['path']} (SHA-256 {shown['sha256']})", file=sys.stderr, flush=True)
     return engine.plan_accept(token=token, expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision,
                               binding=binding)
 
@@ -679,9 +695,8 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
         q = isub.add_parser(name, help=text)
         q.add_argument("work_id")
         q.add_argument("--reason", required=True)
-        _add_lead(q)
-        q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
-            token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, reason=a.reason))
+        _add_prior(q, "queue-entry state")
+        q.set_defaults(handler=lambda a, m=method: _bound_prior(a, m, work_id=a.work_id, reason=a.reason))
     q = isub.add_parser("reorder", help="move a queue entry ahead of another, or to the front")
     q.add_argument("work_id")
     where = q.add_mutually_exclusive_group(required=True)

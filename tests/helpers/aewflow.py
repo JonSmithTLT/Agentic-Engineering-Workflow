@@ -15,6 +15,7 @@ from typing import Any
 from conftest import Project, acquire_test_lead, copy_test_repository, make_git_repo, run_aew
 
 from aew.knowledge.manifest import DEFAULT_GATES
+from aew.policy import execution as X
 from aew.util import dump_yaml, glob_any, load_yaml
 
 SAMPLE_FILES = {
@@ -88,9 +89,12 @@ def lead_project(tmp_path: Path, **kw: Any) -> Project:
 
 
 def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
-                   checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None) -> Project:
-    build = partial(_sample_repository, guardrails=guardrails, checks=checks, gates=gates)
-    variant = dump_yaml([guardrails, checks, gates])
+                   checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None,
+                   maps: str | None = None) -> Project:
+    """``maps``: the project's ``maps.pack_slices`` in place of a new project's (``X.NEW_PROJECT_PACK_SLICES``), for a
+    test whose subject needs the switch off, as a project initialized before maps were on by default reads it."""
+    build = partial(_sample_repository, guardrails=guardrails, checks=checks, gates=gates, maps=maps)
+    variant = dump_yaml([guardrails, checks, gates, maps])
     return acquire_test_lead(Project(copy_test_repository(tmp_path / "repo", ("sample", variant), build)))
 
 
@@ -107,11 +111,16 @@ def legacy_project(root: Path, *, lead: bool = False) -> Project:
 
 
 def _sample_repository(path: Path, *, guardrails: dict[str, Any] | None, checks: dict[str, Any] | None,
-                       gates: dict[str, Any] | None) -> Path:
+                       gates: dict[str, Any] | None, maps: str | None = None) -> Path:
     repo = make_git_repo(path, SAMPLE_FILES)
     p = Project(repo)
     p.ok("init", "--project-id", "calc")
     policy = repo / ".aew/policy"
+    if maps is not None:
+        execution = policy / "execution.yaml"
+        text, on = execution.read_text(encoding="utf-8"), f"\n  pack_slices: {X.NEW_PROJECT_PACK_SLICES}\n"
+        assert text.count(on) == 1, "the template's maps.pack_slices line moved"
+        execution.write_text(text.replace(on, f'\n  pack_slices: "{maps}"\n'), encoding="utf-8", newline="\n")
     (policy / "checks.yaml").write_text(dump_yaml(checks or {
         "schema": "aew/checks/v1",
         "checks": {"unit": {"configured": True, "command": unit_check_command(), "cwd": ".", "timeout_s": 300,

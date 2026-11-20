@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import process_kind, roles
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
@@ -21,6 +21,19 @@ if TYPE_CHECKING:
     from aew.engine.ports import ArchivePort, WorkUnitsPort
 
 AEW_EXCLUDE = ":(exclude).aew"
+
+
+class _PackBase(NamedTuple):
+    """What every pack reads first: the role card, the unit's record and accepted plan, and the adopted guardrails and
+    checks. Each policy file is read once, so the checks a pack lists are the bytes whose hash it records."""
+
+    card: dict[str, Any] | None
+    record: Any
+    plan: dict[str, Any] | None
+    plan_text: str
+    guard_raw: bytes
+    checks_raw: bytes
+    checks: dict[str, Any]
 
 
 class ContextPacks:
@@ -184,6 +197,37 @@ class ContextPacks:
             head = None
         return slices.pin(self.k.aew_root, self.k.repo_root, base, scope_paths, lead=lead, head=head)
 
+    def _pack_base(self, inv: dict[str, Any], unit: dict[str, Any]) -> _PackBase:
+        """The inputs both pack builders read first, with the policy files as adopted."""
+        card = inv.get("card") or None
+        record = read_record(self.k.aew_root / unit["record"], "work-unit")
+        plan = unit.get("plan")
+        plan_text = ""
+        if plan:
+            _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
+        guard_raw = self.k.policy_bytes("guardrails")
+        checks, checks_raw = self.k.policy_with_bytes("checks")
+        return _PackBase(card, record, plan, plan_text, guard_raw, checks_raw, checks["checks"])
+
+    def _base_sources(self, pb: _PackBase, role: str, unit: dict[str, Any], record_name: str) -> list[dict[str, Any]]:
+        """The sources every pack records first, in this order. ``record_name`` names the unit's record:
+        ``current_ticket`` for a Ticket's own work, ``current_work`` for a read-only invocation."""
+        card, plan = pb.card or {}, pb.plan
+        return [
+            {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
+            {"name": f"role_card:{card.get('id')}", "path": card.get("path"), "sha256": card.get("sha256"),
+             "version": card.get("version")},
+            # the card's `skills:` as shipped at dispatch, by name, version and hash (the 2026-11-03 ruling, §3);
+            # never its optional ones, so a listed skill adds nothing here (the 2026-11-04 ruling, §5)
+            *skill_pins((card.get("content") or {}).get("skills") or []),
+            {"name": record_name, "path": unit["record"], "sha256": unit["record_sha256"]},
+            {"name": "accepted_plan", "path": plan["path"] if plan else None,
+             "sha256": plan["sha256"] if plan else None},
+            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"],
+             "sha256": sha256_bytes(pb.guard_raw)},
+            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_bytes(pb.checks_raw)},
+        ]
+
     def pack_inputs(self, state: dict[str, Any], inv_id: str) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         """The pack's inputs and its sources, as regenerated: a structural map comes from what the built pack pinned."""
         return self._pack_inputs(state, inv_id, fresh_map=False)
@@ -198,13 +242,8 @@ class ContextPacks:
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]
         role_def = roles.archetype(role)
-        card = inv.get("card") or None
-        record = read_record(self.k.aew_root / unit["record"], "work-unit")
-        plan = unit.get("plan")
-        plan_text = ""
-        if plan:
-            _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_raw, checks_raw = self.k.policy_bytes("guardrails"), self.k.policy_bytes("checks")  # as adopted
+        pb = self._pack_base(inv, unit)
+        card, record, plan = pb.card, pb.record, pb.plan
         snapshot = inv["snapshot"]
         cutoff = inv.get("evidence_seq_cutoff", 0)
         evidence = [e for e in E.scan(self.k.aew_root, wid)[0] if e.get("seq", 0) <= cutoff]
@@ -237,8 +276,8 @@ class ContextPacks:
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope", "ticket"), specialty=inv.get("specialty"), workspace=inv["workspace"],
-            snapshot=snapshot, record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_raw.decode("utf-8"), checks=self.k.policy("checks")["checks"],
+            snapshot=snapshot, record_meta=record.meta, record_body=record.body, plan=plan, plan_text=pb.plan_text,
+            guardrails_text=pb.guard_raw.decode("utf-8"), checks=pb.checks,
             authority=self.k.manifest["authority"]["accepted"], diff=diff, diffstat=diffstat,
             check_results=[{"id": e["id"], "check_id": e["check"]["check_id"], "result": e["result"],
                             "exit_code": e["check"]["exit_code"], "log": (e.get("evidence") or [{}])[0].get("path")}
@@ -252,17 +291,7 @@ class ContextPacks:
                                                                                         "inputs"}},
         )
         sources = [
-            {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
-            {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
-             "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
-            # the card's `skills:` as shipped at dispatch, by name, version and hash (the 2026-11-03 ruling, §3);
-            # never its optional ones, so a listed skill adds nothing here (the 2026-11-04 ruling, §5)
-            *skill_pins(((card or {}).get("content") or {}).get("skills") or []),
-            {"name": "current_ticket", "path": unit["record"], "sha256": unit["record_sha256"]},
-            {"name": "accepted_plan", "path": plan["path"] if plan else None,
-             "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_bytes(guard_raw)},
-            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_bytes(checks_raw)},
+            *self._base_sources(pb, role, unit, "current_ticket"),
             {"name": "snapshot", "path": None, "sha256": None, "base": base, "tree": fp},
             *[{"name": f"evidence:{e['id']}", "path": e["_path"], "sha256": e["_sha256"]} for e in on_snapshot],
             *self._history_sources(history),
@@ -278,13 +307,8 @@ class ContextPacks:
         inv = state["invocations"][inv_id]
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]
-        card = inv.get("card") or None
-        record = read_record(self.k.aew_root / unit["record"], "work-unit")
-        plan = unit.get("plan")
-        plan_text = ""
-        if plan:
-            _, plan_text = parse_frontmatter((self.k.aew_root / plan["path"]).read_text(encoding="utf-8"))
-        guard_raw, checks_raw = self.k.policy_bytes("guardrails"), self.k.policy_bytes("checks")  # as adopted
+        pb = self._pack_base(inv, unit)
+        card, record, plan = pb.card, pb.record, pb.plan
         extras = self._m2_pack_extras(state, inv, unit)
         history = self._history_refs(state, inv)
         role_def = roles.archetype(role)
@@ -293,24 +317,14 @@ class ContextPacks:
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope"), specialty=inv.get("specialty"), workspace=inv["workspace"],
-            snapshot=inv["snapshot"], record_meta=record.meta, record_body=record.body, plan=plan, plan_text=plan_text,
-            guardrails_text=guard_raw.decode("utf-8"), checks=self.k.policy("checks")["checks"],
+            snapshot=inv["snapshot"], record_meta=record.meta, record_body=record.body, plan=plan,
+            plan_text=pb.plan_text, guardrails_text=pb.guard_raw.decode("utf-8"), checks=pb.checks,
             authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             card=(card or {}).get("content"), history=history,
             codebase_map=map_lines, **extras)
         sources = [
-            {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
-            {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
-             "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
-            # the card's `skills:` as shipped at dispatch, by name, version and hash (the 2026-11-03 ruling, §3);
-            # never its optional ones, so a listed skill adds nothing here (the 2026-11-04 ruling, §5)
-            *skill_pins(((card or {}).get("content") or {}).get("skills") or []),
-            {"name": "current_work", "path": unit["record"], "sha256": unit["record_sha256"]},
-            {"name": "accepted_plan", "path": plan["path"] if plan else None,
-             "sha256": plan["sha256"] if plan else None},
-            {"name": "guardrails", "path": self.k.manifest["policy"]["guardrails"], "sha256": sha256_bytes(guard_raw)},
-            {"name": "checks", "path": self.k.manifest["policy"]["checks"], "sha256": sha256_bytes(checks_raw)},
+            *self._base_sources(pb, role, unit, "current_work"),
             {"name": "observation", "path": None, "sha256": None,
              "commit": (inv.get("observation") or {}).get("commit"),
              "tree": inv["snapshot"]["relevant_inputs_fingerprint"]},

@@ -4520,7 +4520,9 @@
     "web/docs/design/plans/f46-1-settings-read.md",
     "web/docs/reviews/settings-skill-feedback.md",
     "web/docs/how-to/maintenance-offline-builder.md",
-    "web/docs/reference/toolchain/maintenance-builder-provenance.json"
+    "web/docs/reference/toolchain/maintenance-builder-provenance.json",
+    "web/docs/design/plans/activity-page.md",
+    "web/docs/reviews/activity-skill-feedback.md"
   ],
   "known_missing_links": [],
   "stable_contract_paths": [

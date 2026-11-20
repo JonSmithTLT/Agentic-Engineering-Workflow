@@ -7,6 +7,7 @@ import { Shell } from './components/Shell';
 import { queryClient, installVisibility } from './client/queries';
 import { DashboardProvider } from './client/dashboard';
 import { OverviewPage } from './pages/Overview';
+import { ActivityPage } from './pages/Activity';
 import { WorkPage, WorkDetailPage } from './pages/Work';
 import {
   RunsPage,
@@ -87,6 +88,7 @@ async function start() {
             >
               <Route index element={<OverviewPage />} />
               <Route path="overview" element={<OverviewPage />} />
+              <Route path="activity" element={<ActivityPage />} />
               <Route path="work" element={<WorkPage />} />
               <Route path="work/:id" element={<WorkDetailPage />} />
               <Route path="runs" element={<RunsPage />} />

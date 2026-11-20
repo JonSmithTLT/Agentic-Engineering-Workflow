@@ -176,6 +176,7 @@ def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_valida
 
 @pytest.mark.parametrize("argv", [
     ("authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "operator", "--expect-rev", "1"),
+    ("authority", "accept", "C-0001", "--class", "decisions", "--expect-rev", "1"),
     ("authority", "reject", "C-0001", "--expect-rev", "1"),
     ("manifest", "adopt", "--reason", "reviewed", "--expect-rev", "1"),
     ("migrate", "--expect-rev", "1"),
@@ -190,6 +191,14 @@ def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
     assert "credential" not in refusal
     with pytest.raises(errors.PermissionDenied):
         lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
+
+
+def test_a_bound_lead_attributed_authority_accept_is_refused():
+    argv = ["authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "lead",
+            "--approval-digest", "a" * 64, "--expect-rev", "1"]
+    assert lead_broker.refuses_locally(_ns(*argv)).startswith("`aew authority accept` is the operator's decision")
+    with pytest.raises(errors.PermissionDenied):
+        lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
 
 
 def operator_decided_commands() -> list[str]:

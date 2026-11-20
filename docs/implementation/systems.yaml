@@ -1458,6 +1458,8 @@ systems:
     (test tooling), so wired and as_built are empty. Some failures already hold in shadow: allow-list growth, a lowered
     mode without the operator-merge label, and a capture error.'
   evidence:
+  - 'state: O-SECRET enforces from 2026-11-19 and O-CMD follows with E140''s remaining slice; board_state stays built_off
+    until that flip, so the state moves once'
   - 'tests/helpers/discovery/modes.py:18-25: O-SECRET enforce (:23), the other five shadow; :1-8 a mode changes only by the
     operator''s decision'
   - 'tools/ci/discovery_ratchet.py:1-25: what fails in every mode (list growth, a lowered mode, capture errors) and what

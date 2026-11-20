@@ -170,13 +170,24 @@ class Quiet(BaseHTTPRequestHandler):
 
 def test_http_handler_shutdown_preserves_a_refusal_with_unread_input():
     refusal = b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 7\r\n\r\nrefused"
+    body = b"unread body"
     client, served = tcp_pair()
     with client, served, ExclusiveServer(("127.0.0.1", 0), Quiet, bind_and_activate=False) as server:
+        drained = []
+
+        def recv(size):
+            chunk = served.recv(size)
+            drained.append(chunk)
+            return chunk
+
+        observed = Mock(wraps=served)
+        observed.recv.side_effect = recv
         served.sendall(refusal)
-        client.sendall(b"unread body")
+        client.sendall(body)
         client.shutdown(socket.SHUT_WR)
-        assert served.recv(1, socket.MSG_PEEK) == b"u"
-        server.shutdown_request(served)
+        assert served.recv(1, socket.MSG_PEEK) == body[:1]
+        server.shutdown_request(observed)
+        assert drained and drained[-1] == b"" and b"".join(drained) == body, "drain must read the body and EOF"
         with client.makefile("rb") as response:
             assert response.read() == refusal
 

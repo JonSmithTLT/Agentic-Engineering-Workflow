@@ -241,7 +241,7 @@ def test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock(w):
             stopped_while_held = b.server._serial.locked()
         finally:
             b.server._serial.release()
-            closer.join(60)
+            closer.join()  # its teardown: no deadline but the test's own either
         assert stopped_while_held and not closer.is_alive() and not errors, \
             "closing waited without a bound for the stalled send"
 

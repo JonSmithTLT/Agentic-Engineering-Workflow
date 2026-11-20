@@ -522,7 +522,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `OBSERVATION_MUTATED` | A read-only invocation changed its observation workspace | `observation_mutated` | Lead |
 | `WORKSPACE_MUTATED` | An evaluated workspace no longer holds what it was dispatched to evaluate | `workspace_mutated` | Lead |
 | `ILLEGAL_TRANSITION` | Only a transition-table refusal, naming the state | `transition_refused` | Lead |
-| `APPROVAL_SUBJECT_CHANGED` | The approval subject changed since it was shown. Read it again and make a new decision. | `approval_subject_changed` | Lead |
+| `CHANGED_SINCE_READ` | The item or approval subject changed since it was read. Read it again and make a new decision. | `changed_since_read` | Lead |
 | `GATE_UNSATISFIED` | A gate the transition requires is not met | `gate_unmet` | Lead |
 | `DISPOSITION_REQUIRED` | A finding or claim that policy marks for disposition has none | `disposition_missing` | Lead |
 | `CARD_CHOICE_REQUIRED` | A stage cannot choose the card a required gate needs | `card_ambiguous`, `card_missing` | Lead |
@@ -540,6 +540,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `MIGRATION_REQUIRED` | The project's control state is v1 and must be migrated first | `migration_pending` | Lead |
 | `MESSAGING_DISABLED` | A coordination message while messaging is off | `messaging_off` | operator |
 | `WAIT_UNSUPPORTED` | The worker adapter or platform has no qualified foreground wait binding | `wait_binding_unavailable` | engine |
+| `WAIT_BINDING_LOST_ON_RECONNECT` | The event stream dropped since the last observed step boundary. Retry from a foreground shell call in a new step | `wait_binding_lost` | engine |
 | `WAIT_OUTSIDE_A_STEP` | No foreground shell call became available within the worker wait's grace | `wait_outside_step` | engine |
 | `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
 | `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |

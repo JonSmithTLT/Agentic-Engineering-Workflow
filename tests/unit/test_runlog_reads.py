@@ -131,6 +131,24 @@ def test_a_request_past_the_bound_is_dropped(directory, monkeypatch):
     assert not list(queue.iterdir())  # taken or dropped, never read again
 
 
+def test_a_windows_sharing_violation_leaves_the_unread_request_queued(directory, monkeypatch):
+    name, text = runlog.new_request("send", {"text": "resume the session"})
+    path = runlog.deliver_request(directory, name, text)
+
+    def sharing_violation(_path):
+        # Windows os.open reports EACCES without a winerror. Release the sharing conflict before unlink could run.
+        raise PermissionError(13, "Permission denied")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(runlog, "IS_WINDOWS", True)
+        fault.setattr(runlog, "_read_regular", sharing_violation)
+        assert runlog.take_requests(directory) == []
+        assert path.is_file(), "the supervisor deleted a request it never read"
+
+    assert runlog.take_requests(directory) == [(name, text)]
+    assert runlog.take_requests(directory) == []
+
+
 def test_requests_issued_on_one_clock_tick_each_keep_their_own_file_in_issue_order(directory, monkeypatch):
     """A clock that repeats a value (on Windows before Python 3.13 it ticks about every 15.6 ms) gives no two requests
     one name: the second would overwrite the first's file."""

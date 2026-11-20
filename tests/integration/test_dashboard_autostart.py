@@ -482,7 +482,6 @@ def test_a_refused_seat_or_credential_never_starts_or_opens_the_dashboard(projec
     opened, built = desktop
     monkeypatch.setenv("AEW_OPERATOR_AUTOSTART", "off")
     monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic-invalid-credential")
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     engine = Engine.discover(project.root)  # the real project fixture already has a held seat
     with lead.session_services(engine, provider_env=[]) as on_ready:
         with pytest.raises(errors.AEWError):
@@ -531,7 +530,6 @@ def test_the_real_broker_starts_the_dashboard_after_the_seat_and_before_the_tui(
     opened, built = desktop
     monkeypatch.setenv("AEW_OPERATOR_AUTOSTART", "off")
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     engine = Engine.discover(project.root)
     events = []
 

@@ -35,6 +35,7 @@ import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with e
 from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
 from host_env import host_env_guard  # noqa: E402,F401  (GUARDED: a module's layouts never read the host's home)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
+from process_dumpable import no_hardened_test_process  # noqa: E402,F401  (autouse: the process stays dumpable)
 from worker_coverage import pytest_sessionfinish  # noqa: E402,F401  (a worker saves coverage before teardown)
 
 

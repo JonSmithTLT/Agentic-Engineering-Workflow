@@ -93,6 +93,7 @@ from aew.harness.opencode.client import (
 )
 from aew.harness.usage_live import Meter
 from aew.harness.wait_binding import Binding, Calls, qualified
+from aew.util import utc_now
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
@@ -340,6 +341,8 @@ def catalog_routes(catalog: list[dict[str, Any]], table: U.SemanticsTable) -> di
 
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
+    # Use the local HTTP socket-operation timeout as the heartbeat bound. The whole call can take longer.
+    STEERING_BOUND_S = REQUEST_TIMEOUT_S
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
     # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
     PROVIDER_RELAY = True
@@ -606,7 +609,8 @@ class OpenCodeAdapter(HarnessAdapter):
         if self.meter is not None:
             self.meter.main_session = self.session
         self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(agent_env)})
-        self.events = EventStream(self.client, self._on_event, self.server.alive, on_drop=self._stream_dropped)
+        self.events = EventStream(self.client, self._on_event, self.server.alive, on_drop=self._stream_dropped,
+                                  on_reconnect=self._stream_reconnected)
         self.events.start()
         self._monitor = threading.Thread(target=self._watch, name="aew-opencode-monitor", daemon=True)
         self._monitor.start()
@@ -1049,9 +1053,24 @@ class OpenCodeAdapter(HarnessAdapter):
             action()
             return True
 
+    def wait_binding_at_deadline(self) -> tuple[Binding | None, str, str | None]:
+        with self._lock:
+            binding = self.wait_binding()
+            lost_at = self._wait_calls.lost_at
+            reason = ("stream_drop" if lost_at is not None else
+                      "no_step" if self._wait_calls.step is None else "no_open_calls")
+            return binding, reason, lost_at
+
     def _stream_dropped(self) -> None:
         with self._lock:
-            self._wait_calls.clear()
+            at = utc_now()
+            had_calls = bool(self._wait_calls.calls)
+            self._wait_calls.stream_dropped(at)
+            self.emit({"event": "opencode.stream.dropped", "at": at, "had_open_shell_calls": had_calls,
+                       "last_error": self.events.last_error if self.events is not None else None})
+
+    def _stream_reconnected(self) -> None:
+        self.emit({"event": "opencode.stream.reconnected"})
 
     def _on_event(self, frame: dict[str, Any]) -> None:
         kind = str(frame.get("type") or "")

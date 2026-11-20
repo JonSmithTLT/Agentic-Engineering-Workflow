@@ -235,6 +235,8 @@ sources:
   - prefix: CMG
     path: docs/implementation/adr/0017-coordination-messages.md
     role: adr
+    carried:
+      "Amendment of 2026-11-15: stream loss and worker waits (D8)": [CMG-30]
     no_requirements:
       "Context": framing (what F9-A1 asks for, why `harness send` is not it, the off state M4-H needs); the requirements are D1 to D13
       "Decision": a container heading; its decisions are the D1 to D13 sections

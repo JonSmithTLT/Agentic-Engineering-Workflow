@@ -348,6 +348,13 @@ left to the implementation, and what this slice adds beside them:
   and the stage-step equivalence test land with whichever creates it (the plan's coupling table). The oracle rules are
   52 to 58 (C1 to C7, `tests/helpers/invariants.py`; 51 is E3c's).
 
+## Amendment of 2026-11-15: stream loss and worker waits (D8)
+
+A stream drop invalidates pending wait bindings. Until the next observed step boundary, a new wait that cannot bind
+returns `WAIT_BINDING_LOST_ON_RECONNECT`. After a new step starts, an observed foreground shell call in that step can
+bind. A reconnect alone provides no evidence of a step or call's lifetime. Run events record each drop and reconnect
+and identify the first drop since the last observed boundary when refusing an unbound wait.
+
 ## Build status
 
 | Slice | What | Status |

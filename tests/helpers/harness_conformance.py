@@ -29,6 +29,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -500,7 +501,7 @@ def kill_harness(lab: HarnessLab, run: str) -> None:
 def harness_processes(record: dict[str, Any]) -> list[tuple[int, float | str]]:
     """Each harness process a run record names: its pid, and its start id (or, in a record without one, the run's
     start time, which a wall-clock step can misjudge on Linux; ADR-0009 amendment 2026-10-23)."""
-    started = calendar.timegm(time.strptime(record["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
+    started = datetime.fromisoformat(record["started_at"]).timestamp()
     pids = record["harness_pids"]
     return [(pid, procs.recorded(start, started))
             for pid, start in zip(pids, record.get("harness_start_ids") or [None] * len(pids), strict=True)]

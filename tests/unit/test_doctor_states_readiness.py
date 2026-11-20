@@ -109,7 +109,6 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
 
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
     monkeypatch.setattr(procs, "run_session_tree", tree)
-    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic")
     lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False,
                             env={ENV_SWITCHES: '["forged"]'},

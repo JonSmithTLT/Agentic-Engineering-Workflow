@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -32,7 +33,7 @@ def lab(tmp_path):
     assert not credential_hits(tmp_path)
 
 
-def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False):
+def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, **knobs):
     enable_messaging(lab)
     cls = "FakeWaitOpenCodeAdapter" if qualified else "UnsupportedWaitOpenCodeAdapter"
     if qualified and wait_barrier:
@@ -42,7 +43,7 @@ def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False):
     lab.script("R-INV-0001-1", {"steps": [
         {"do": "touch", "path": str(sync / "ready")},
         {"do": "wait_file", "path": str(sync / "go"), "timeout": 60}, *steps,
-        {"do": "wait_file", "path": str(sync / "end"), "timeout": 60}]})
+        {"do": "wait_file", "path": str(sync / "end"), "timeout": 60}], "server": knobs})
     work = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", work, "--launch")["launch"]["run"]
     lab.until(lambda: (sync / "ready").exists(), what="worker ready")
@@ -111,6 +112,34 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     orphan_wait(lab, tmp_path, "aew message wait --timeout 5")
 
 
+def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(lab, tmp_path):
+    # The lab mounts sync into the contained fake harness on Linux.
+    go = sync_dir(tmp_path) / "wait-after-reconnect"
+    run, sync = launch(lab, tmp_path, [
+        {"do": "shell", "command": "aew message wait --timeout 0", "start_after_file": str(go)}],
+        drop_events_every={"type": "session.tool.called", "count": 3})
+    directory = lab.aew_root / "local/harness/runs" / run
+    (sync / "go").touch()
+    lab.until(lambda: "opencode.stream.reconnected" in (read_text_or_none(directory / "events.jsonl") or ""),
+              what="the event stream reconnects while the shell tool is still open")
+    send(lab)
+    go.touch()
+    # PowerShell's and the CLI's start belong to the watchdog's bound alone, as in the other startup waits here
+    shell = steps_done(lab, run, 2, watchdog_only=True)
+    evidence = describe_shell(directory / "harness", shell)
+    assert "WAIT_BINDING_LOST_ON_RECONNECT" in evidence, evidence
+    assert "opencode.stream.dropped" in evidence, evidence
+    rows = [json.loads(line) for line in (directory / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    drop, = [row for row in rows if row["event"] == "opencode.stream.dropped"]
+    refusal, = [row for row in rows if row["event"] == "message_wait_binding_refused"]
+    assert drop["last_error"] == "OpenCodeUnavailable: event stream ended" and drop["had_open_shell_calls"], evidence
+    assert refusal["reason"] == "stream_drop" and refusal["binding_lost_at"] == drop["at"], evidence
+    thread = Engine.discover(lab.root).message_thread("INV-0001")
+    assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
+    (sync / "end").touch()
+    lab.wait(run)
+
+
 def test_a_shell_exiting_before_admission_fails_with_output_events_and_process_evidence(lab, tmp_path):
     bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     command = ("Write-Output 'planted early shell exit'; exit 7" if sys.platform == "win32"
@@ -153,6 +182,8 @@ def orphan_wait(lab, tmp_path, command):
     except AssertionError as exc:
         directory = lab.aew_root / "local/harness/runs" / run / "harness"
         raise AssertionError(f"{exc}\n{describe_shell(directory, shell)}") from exc
+    if os.environ.get("AEW_EVIDENCE_PLANT_ORPHANED_WAIT") == "1":
+        pytest.fail("planted failure after the orphaned wait completed")
 
 
 def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tmp_path):

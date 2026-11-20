@@ -41,11 +41,19 @@ class Calls:
         self.step: str | None = None
         self.calls: dict[str, int] = {}
         self.serial = 0
+        self.lost_at: str | None = None
 
     def clear(self) -> None:
         self.epoch += 1
         self.step = None
         self.calls.clear()
+        self.lost_at = None
+
+    def stream_dropped(self, at: str) -> None:
+        # Repeated drops with no newly observed step must keep the first loss available for diagnosis.
+        lost_at = self.lost_at or at
+        self.clear()
+        self.lost_at = lost_at
 
     def event(self, kind: str, data: dict[str, Any], tool: str | None) -> None:
         step = data.get("assistantMessageID")

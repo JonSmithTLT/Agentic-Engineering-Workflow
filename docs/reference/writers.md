@@ -355,7 +355,7 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.
 
-The parser cut: 118 registrations of a command handler; handlers by role (`aew`: 115, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
+The parser cut: 119 registrations of a command handler; handlers by role (`aew`: 116, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
@@ -411,6 +411,9 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.containment.shim:start_server` (direct: os.open): a relative path, `{}.tmp`, with no root this reading can name
 - `aew.harness.containment.shim:start_server` (direct: os.replace): `serve['url_file']`, from a value that is not a dict literal
 - `aew.harness.containment:establish` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.file_notifier:append` (direct: Path.mkdir): the attribute `a.path` is not a value this reading can follow
+- `aew.harness.file_notifier:append` (direct: Path.open): the attribute `a.path` is not a value this reading can follow
+- `aew.harness.file_notifier:append` (direct: os.replace): the attribute `a.path` is not a value this reading can follow
 - `aew.harness.model_list:read` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login` (direct: Path.mkdir): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:OpenCodeAdapter._seed_plan_login` (direct: Path.replace): `run_dir` of `HarnessAdapter.__init__` is not passed at a call

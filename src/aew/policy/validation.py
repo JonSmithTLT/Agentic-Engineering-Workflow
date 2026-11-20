@@ -79,8 +79,8 @@ def obligation(state: dict[str, Any], work_id: str, gates_policy: dict[str, Any]
         if policy.get("min_descendant_class") is not None:
             floors[parent] = int(policy["min_descendant_class"])
         parent = anc.get("parent")
-    # Each ancestor's explicit rule on its own: a mapping need not be monotonic, so one ancestor's higher floor that
-    # maps to checks never hides another's lower floor that maps to a verifier (PR #91 review, finding 3).
+    # Policy consistency reports non-monotone maps, but they can still be adopted. Judge each ancestor's floor on
+    # its own so a higher floor that maps to checks cannot hide a lower floor that maps to verifier (PR #91, F3).
     for anc_id, cls in sorted(floors.items()):
         if mode_for_class(post, cls) == VERIFIER:
             sources.append(f"{anc_id} minimum descendant class {cls}, whose validation is {VERIFIER}")
@@ -156,4 +156,14 @@ def policy_problems(gates_policy: dict[str, Any]) -> list[str]:
     if CHECKS in modes and not post.get("checks"):
         problems.append("gates.post_integration.validation selects checks, but post_integration.checks lists none: "
                         "checks-mode validation would prove nothing")
+    if isinstance(setting, dict):
+        first_verifier = None
+        for risk_class in range(5):
+            mode = mode_for_class(post, risk_class)
+            if mode == VERIFIER and first_verifier is None:
+                first_verifier = risk_class
+            elif mode == CHECKS and first_verifier is not None:
+                problems.append(f"post_integration.validation.by_class resolves class {risk_class} to `{CHECKS}` "
+                                f"after class {first_verifier} resolves to `{VERIFIER}`. "
+                                f"Map class {risk_class} to `{VERIFIER}` or class {first_verifier} to `{CHECKS}`.")
     return problems

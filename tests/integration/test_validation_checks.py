@@ -944,7 +944,7 @@ def test_checks_mode_with_no_checks_never_validates(calc, tmp_path, contained):
 
 
 def test_each_ancestors_minimum_class_rule_is_checked_on_its_own():
-    """Finding 3: a Story's floor 4 mapped to checks must not hide an Epic's floor 3 mapped to a verifier."""
+    """A deliberately inconsistent map keeps the lower verifier floor binding (review finding 3)."""
     from aew.policy import validation as V
 
     state = {"work": {"T-1": {"risk_class": 4, "parent": "S-1"},

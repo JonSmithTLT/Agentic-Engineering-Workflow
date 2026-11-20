@@ -113,7 +113,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ablated  # noqa: E402
+from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
@@ -143,8 +143,6 @@ DEADLINE_GATE_ENV = "G3_TEST_DEADLINE_GATE"
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
-    if name == DEADLINE and ablated("kind"):
-        return
     import harness_diagnostics as hd  # redacts with AEW's own patterns; imported late: the sentinel loads it lazily
 
     hd.write_text(directory, name, text, append=append)
@@ -189,22 +187,28 @@ def recorded_processes(root: Path):
 def collect_leftovers(root: Path) -> None:
     """End the session's recorded identities and their members before publication begins."""
     recorded = list(recorded_processes(root))
+    if not recorded:
+        return
     table = proctree.table()
     members = {identity for _, identity in recorded}
     for directory, identity in recorded:
         job_file = marker(directory, "session-job")
         if proctree.IS_WINDOWS and job_file.is_file():
             with contextlib.suppress(OSError):
-                members.update(proc.identity for proc in proctree.Job.open(job_file.read_text().strip()).members())
+                job = proctree.Job.open(job_file.read_text().strip())
+                members.update(proc.identity for proc in job.members(command_lines=False))
         members.update(proc.identity for proc in proctree.descendants(identity, table))
-    for identity in sorted(members, key=lambda item: item[1], reverse=True):
-        if identity[0] != os.getpid():
-            proctree.end(identity)
-    until = time.monotonic() + 10
+    members = {identity for identity in members if identity[0] != os.getpid()}
+    end_members([proctree.Proc(pid, 0, start) for pid, start in members])
+    until = time.monotonic() + bounds.COLLECT_BUDGET_S
     while any(proctree.same(identity) for identity in members) and time.monotonic() < until:
         time.sleep(0.05)
     if any(proctree.same(identity) for identity in members):
-        raise RuntimeError("session members survived collection; publication is unsafe")
+        raise RuntimeError("session members survived collection")
+
+
+def end_members(members: list[proctree.Proc]) -> list[int]:
+    return [proc.pid for proc in proctree.children_first(members) if proctree.end(proc.identity)]
 
 
 class Stacks:
@@ -222,7 +226,7 @@ class Stacks:
         return self.at_mono - time.monotonic()
 
     def arm(self) -> None:
-        if ablated("stacks"):
+        if stacks_ablated():
             return
         with self.lock:
             left = self.left()
@@ -232,7 +236,7 @@ class Stacks:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self.file = open(self.path, "w", encoding="utf-8")  # noqa: SIM115  (held until the timer can't fire)
                 stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-                self.file.write(f"armed {stamp} for {left:.3f}s; not fired\n")
+                self.file.write(f"armed {stamp} for {left:.3f}s; {ARMED_NOTE}\n")
                 self.file.flush()
                 self.armed_size = self.path.stat().st_size
             faulthandler.dump_traceback_later(left, file=self.file)
@@ -820,7 +824,7 @@ class Sentinel:
         _write(self.dir, f"sentinel-processes-{why}", proctree.describe(
             alive, title="the session's set (the last snapshot's members whose pid and start time still match):"))
         _write(self.dir, f"sentinel-file-holders-{why}", _holders_text(self.dir, []))
-        ended = [p.pid for p in proctree.children_first(alive) if proctree.end(p.identity)]
+        ended = end_members(alive)
         self.log(f"ended {len(ended)} of {len(alive)} matching members ({why}): {ended}")
 
     def left(self) -> list[proctree.Proc]:

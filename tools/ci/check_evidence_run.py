@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -19,13 +20,17 @@ from flake_register import _gh_read, _pages  # noqa: E402
 
 def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
     defects = []
+
+    def report(rule: str, detail: str) -> None:
+        defects.append(f"evidence defect: [{rule}] {job['name']}: {detail}")
+
     workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
-    actions = {"./.github/actions/lane", "./.github/actions/prove-evidence"}
-    names = {f"Run {action}" for action in actions}
+    action = "./.github/actions/lane"
+    names = {f"Run {action}"}
     for workflow in workflows.glob("*.yml"):
         for job in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"].values():
             names.update(step["name"] for step in job.get("steps", [])
-                         if "name" in step and step.get("uses") in actions)
+                         if "name" in step and step.get("uses") == action)
     patterns = [re.compile("^" + ".+?".join(re.escape(part) for part in re.split(r"\$\{\{.*?\}\}", name)) + "$")
                 for name in names]
     for job in jobs:
@@ -56,32 +61,37 @@ def check_jobs(root: Path, jobs: list[dict]) -> list[str]:
         if not started:
             continue
         if not found:
-            defects.append(f"evidence defect: {job['name']}: no published evidence")
+            report("job-evidence", "no published evidence")
             continue
         # Priority and full bundles are each checked; names in either can identify a running test.
         with tempfile.TemporaryDirectory() as temporary:
-            import shutil
-
             merged = Path(temporary)
             for path in found:
                 shutil.copytree(path, merged / path.name)
             reports = []
-            for path in merged.rglob("*.json"):
-                if "autopsy" not in path.parts:
-                    reports.append(json.loads(path.read_text()))
+            for bundle in found:
+                if bundle.name.endswith("-running"):
+                    lane_report = root / ("lane-report-" + bundle.name.removesuffix("-running"))
+                    for path in lane_report.glob("*.json"):
+                        try:
+                            data = json.loads(path.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            continue  # collection can leave an incomplete report; use the other observations
+                        if isinstance(data, dict) and "exitstatus" in data:
+                            reports.append(data)
             command_exits = []
             for path in merged.rglob("runner-resources-*-exit.txt"):
                 record = json.loads(path.read_text())
                 command_exits.append(record.get("command_exit"))
-                if record.get("ablation") is not None:
-                    defects.append(f"evidence defect: {job['name']}: ablation enabled in a real lane")
+                if record.get("ablation") not in (None, "none"):
+                    report("job-ablation", "ablation enabled in a real lane")
             died = (any(report.get("exitstatus") not in (0, 1) for report in reports)
                     or any(code not in (0, 1) for code in command_exits)
                     or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if died and kind is None and job.get("conclusion") != "cancelled":
-                defects.append(f"evidence defect: {job['name']}: death has no kind marker")
+                report("job-kind", "death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
                 merged, kind=kind, require_stacks=died and kind is not None))
     return defects
@@ -94,7 +104,7 @@ def main(root: Path) -> int:
     jobs = list(_pages(repo, f"actions/runs/{run}/attempts/{attempt}/jobs?per_page=100", "jobs"))
     problems = check_jobs(root, jobs)
     text = "\n".join(problems) or "Published evidence states match their recorded contents."
-    payload = {"name": "evidence", "head_sha": os.environ["GITHUB_SHA"], "status": "completed",
+    payload = {"name": "evidence", "head_sha": os.environ["EVIDENCE_HEAD"], "status": "completed",
                "conclusion": "failure" if problems else "success",
                "output": {"title": f"{len(problems)} evidence defects", "summary": text}}
     with tempfile.TemporaryDirectory() as temporary:

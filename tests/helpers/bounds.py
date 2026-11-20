@@ -41,11 +41,16 @@ SESSION_END_MARGINS = 5
 UPLOAD_CLEARANCE_S = 60.0
 
 # Publication reserves the scanner's existing 60s bound for initial and residual scans of two bundles, plus a
-# one-minute upload bound for names, priority files, lane JSON and full evidence. First-push timings refine this.
+# one-minute upload reserve for names, priority files, lane JSON and full evidence. The composite has one timeout.
 EVIDENCE_SCAN_S = 60
 PUBLICATION_BUDGET_S = 4 * EVIDENCE_SCAN_S + 4 * UPLOAD_CLEARANCE_S
 COLLECT_BUDGET_S = 10
 CUTOFF_CLEARANCE_S = 10
+
+
+def publication_lane_minutes(deadline: float) -> int:
+    grace = SESSION_END_MARGINS * DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S + COLLECT_BUDGET_S
+    return math.ceil((deadline + grace + PUBLICATION_BUDGET_S) / 60)
 
 
 def publication_job_minutes(job: dict[str, Any]) -> float:
@@ -55,8 +60,7 @@ def publication_job_minutes(job: dict[str, Any]) -> float:
     deadline = float(setting.group(1))
     last = max(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/lane")
     post = sum(float(step.get("timeout-minutes", 0)) for step in steps[last + 1:])
-    grace = SESSION_END_MARGINS * DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S + COLLECT_BUDGET_S
-    return math.ceil((deadline + grace + PUBLICATION_BUDGET_S) / 60) + post
+    return publication_lane_minutes(deadline) + post
 
 
 @dataclass(frozen=True)
@@ -272,6 +276,11 @@ def job_deadline_problems(workflows: Path) -> list[str]:
                 float(job.get("timeout-minutes") or 0) * 60 - JOB_MARGIN_S - 2 * DEADLINE_MARGIN_S)
             if consolidated:
                 last = max(index for index, step in enumerate(steps) if step.get("uses") == "./.github/actions/lane")
+                lane_minutes = publication_lane_minutes(want)
+                for step in steps:
+                    if (step.get("uses") == "./.github/actions/lane"
+                            and float(step.get("timeout-minutes", 0)) < lane_minutes):
+                        problems.append(f"{label}: lane step needs {lane_minutes} minutes including publication")
                 if any("timeout-minutes" not in step for step in steps[last + 1:]):
                     problems.append(f"{label}: post-pytest step has no timeout-minutes")
                 required = publication_job_minutes(job)

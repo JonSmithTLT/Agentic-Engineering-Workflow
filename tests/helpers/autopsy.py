@@ -60,9 +60,9 @@ def _hang_dir(config: pytest.Config) -> Path:
 
 
 def thread_stacks() -> str:
-    from evidence_files import ablated
+    from evidence_files import stacks_ablated
 
-    if ablated("stacks"):
+    if stacks_ablated():
         return "stack collection ablated\n"
     names = {t.ident: t.name for t in threading.enumerate()}
     parts = []

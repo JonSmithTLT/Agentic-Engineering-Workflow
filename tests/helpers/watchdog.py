@@ -40,10 +40,9 @@ from pathlib import Path
 from typing import IO, Any
 
 import pytest
-from evidence_files import FRAME, ablated
+from evidence_files import ARMED_NOTE, FRAME, WATCHDOG_HEADER, WATCHDOG_PREFIX, open_observation, stacks_ablated
 from evidence_files import state as evidence_state
 
-HEADER = "aew hang watchdog: "
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
 # Publish source identifiers only. Parametrization IDs and stacks go through the scanned evidence path.
 SOURCE_TEST = re.compile(r"tests/(?:[\w-]+/)*[\w-]+\.py(?:::[\w]+)+", re.ASCII)
@@ -107,9 +106,10 @@ class HangWatchdog:
         self._fired += 1
         f = self._dump_file()
         again = " (its teardown hung too; ending the process)" if self._fired > 1 else ""
-        f.write(f"\n{HEADER}fired after {time.monotonic() - self.started:.3f}s; alarm {self._fired}{again}\n")
-        f.flush()
-        if not ablated("stacks"):
+        if not stacks_ablated():
+            elapsed = time.monotonic() - self.started
+            f.write(f"\n{WATCHDOG_PREFIX}fired after {elapsed:.3f}s; alarm {self._fired}{again}\n")
+            f.flush()
             faulthandler.dump_traceback(file=f, all_threads=True)
         f.flush()
         autopsy = self._autopsy()
@@ -130,16 +130,13 @@ class HangWatchdog:
         return getattr(self.config.pluginmanager.get_plugin("aew-session-deadline"), "stacks", None)
 
     def _header(self, item: pytest.Item) -> str:
-        if ablated("zero-byte"):
-            return ""
-        node = "<unrecognized test>" if ablated("running") else item.nodeid
-        return (f"{HEADER}{node} started {datetime.now(UTC).isoformat()}; "
-                f"limit {self.timeout:g}s; not fired; monotonic {self.started:.6f}\n")
+        return (f"{WATCHDOG_PREFIX}{item.nodeid} started {datetime.now(UTC).isoformat()}; "
+                f"limit {self.timeout:g}s; {ARMED_NOTE}; monotonic {self.started:.6f}\n")
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
         if self.running is not None:
-            node = "<unrecognized test>" if ablated("running") else item.nodeid.split("[", 1)[0]
+            node = item.nodeid.split("[", 1)[0]
             self.running.parent.mkdir(parents=True, exist_ok=True)
             pending = self.running.with_suffix(".tmp")
             with suppress(OSError):
@@ -159,7 +156,7 @@ class HangWatchdog:
             # One timer per process, shared with the session deadline's stacks: its earlier time stands, as it is
             # armed already, and it writes the same stacks. This one, armed for the test, ends with the test.
             deadline = self._deadline_stacks()
-            if not ablated("stacks") and (deadline is None or deadline.left() > self.timeout):
+            if not stacks_ablated() and (deadline is None or deadline.left() > self.timeout):
                 faulthandler.dump_traceback_later(self.timeout, file=f)
             autopsy = self._autopsy()
             if autopsy is not None:  # G3 H1: a plain thread, just after the dump is due; cancelled below
@@ -184,7 +181,7 @@ class HangWatchdog:
                 if os.fstat(f.fileno()).st_size > armed_size:
                     self._fired = 1  # the C timer wrote stacks while Python was blocked
                     f.seek(0, 2)
-                    f.write(f"\n{HEADER}fired; observed after {time.monotonic() - self.started:.3f}s\n")
+                    f.write(f"\n{WATCHDOG_PREFIX}fired; observed after {time.monotonic() - self.started:.3f}s\n")
                     f.flush()
             if self._fired:  # keep this hang's stacks on disk: the next test starts a new file
                 assert self._file is not None
@@ -220,15 +217,15 @@ class HangWatchdog:
         """xdist's report for a worker that died mid-test: attach the watchdog's dump, when it names this test."""
         for path in sorted(self.dir.glob("hang-*.txt")):
             try:
-                text = path.read_text(encoding="utf-8", errors="replace")
+                with open_observation(path) as stream:
+                    text = stream.read()
             except OSError:
                 continue
-            if text.startswith(f"{HEADER}{crashitem} "):
+            header = WATCHDOG_HEADER.match(text)
+            if header is not None and header[1] == crashitem:
                 state = ("stacks recorded" if FRAME.search(text)
                          else f"{evidence_state(path, text.encode())}; no Python stack frames captured")
-                started = re.search(r"monotonic ([0-9.]+)", text)
-                elapsed = (f"{time.monotonic() - float(started[1]):.3f}s after it started"
-                           if started else "start unknown")
+                elapsed = f"{time.monotonic() - float(header[4]):.3f}s after it started, as of the crash report"
                 report.longrepr = (f"{report.longrepr}\n{text}\n"
                                    f"(in flight when the worker died, {elapsed}; {state}; {path})")
                 return

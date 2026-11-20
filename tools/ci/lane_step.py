@@ -19,7 +19,8 @@ HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
 sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ablated  # noqa: E402
+from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
+from evidence_files import open_observation, stacks_ablated  # noqa: E402
 from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
 from session_deadline import collect_leftovers as collect  # noqa: E402
 from session_deadline import recorded_processes as identities  # noqa: E402
@@ -28,17 +29,43 @@ CUTOFF_CLEARANCE_S = bounds.CUTOFF_CLEARANCE_S
 CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
 POLL_S = 0.25
 SPY_TIMEOUT_S = 3  # one bounded request per live worker; the cutoff reserves this per worker
-HEADER = re.compile(r"aew hang watchdog: (.+) started ([^;]+); limit ([0-9.]+)s; not fired; monotonic ([0-9.]+)")
 
 
 def note(directory: Path, name: str, text: str) -> None:
-    if ablated("kind"):
-        return
     try:
         with marker(directory, name).open("x", encoding="utf-8") as output:
             output.write(text)
     except FileExistsError:
         pass
+
+
+def attach(pid: int) -> tuple[str, str] | None:
+    binary = shutil.which("py-spy")
+    if binary is None:
+        return None
+    prefixes = [[], ["sudo", "-n"]] if sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true" else [[]]
+    until = time.monotonic() + SPY_TIMEOUT_S
+    for prefix in prefixes:
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--pid", str(pid)],
+                                    capture_output=True, text=True, timeout=max(0, until - time.monotonic()),
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode == 0 and result.stdout.strip():
+                return ("sudo -n" if prefix else "unelevated"), result.stdout
+    return None
+
+
+def probe() -> None:
+    """One proof-only probe. The target is bounded even if the runner interrupts cleanup."""
+    target = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"],
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        time.sleep(0.25)  # let the probe target initialize Python before inspecting it
+        result = attach(target.pid)
+        print(f"evidence attachment probe: {result[0] if result else 'unavailable'}; Python {sys.version.split()[0]}")
+    finally:
+        target.kill()
+        target.wait(timeout=SPY_TIMEOUT_S)
 
 
 def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]] | None = None) -> None:
@@ -47,7 +74,8 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
     bases = {directory.parent.parent for directory in session_directories(root)}
     for path in (path for base in bases for path in base.glob("hang-*.txt")):
         try:
-            header = HEADER.match(path.read_text(encoding="utf-8"))
+            with open_observation(path) as stream:
+                header = HEADER.match(stream.readline())
             if header is None:
                 continue
             node, _, limit, started = header.groups()
@@ -58,22 +86,18 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
             if (pid not in known or not proctree.same(known[pid])
                     or (not all_workers and (elapsed < float(limit) or key in captured))):
                 continue
-            if ablated("stacks"):
+            if stacks_ablated():
                 continue
             captured.add(key)
             out.parent.mkdir(parents=True, exist_ok=True)
-            binary = shutil.which("py-spy") or "py-spy"
-            prefix = ["sudo", "-n"] if os.environ.get("AEW_PYSPY_SUDO") == "1" and sys.platform == "linux" else []
-            result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--pid", str(pid)],
-                                    capture_output=True, text=True, timeout=SPY_TIMEOUT_S,
-                                    **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
-            if result.returncode:
-                # A failed attach is evidence of the missing snapshot, never a stack claim.
-                out.write_text(f"snapshot unavailable for {node}: py-spy exit {result.returncode}\n", encoding="utf-8")
-                continue
-            out.write_text(f"snapshot {time.time():.6f} for {node}, running {elapsed:.3f}s\n" + result.stdout,
-                           encoding="utf-8")
-        except (OSError, ValueError, subprocess.TimeoutExpired):
+            result = attach(pid)
+            if result is None:
+                out.write_text(f"evidence defect: py-spy unavailable for {node}\n", encoding="utf-8")
+            else:
+                method, dump = result
+                out.write_text(f"snapshot {time.time():.6f} for {node}, running {elapsed:.3f}s via {method}\n" + dump,
+                               encoding="utf-8")
+        except (OSError, ValueError):
             continue
 
 
@@ -108,6 +132,10 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
         job = proctree.Job(name)
         argv = [sys.executable, __file__, "_exec", name, shell, str(script)]
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            # Git Bash adds HOME. Keep pytest's scratch outside that inherited home on the Windows runner.
+            scratch = os.environ["RUNNER_TEMP"]
+            kwargs["env"] = {**os.environ, "TMPDIR": scratch, "TEMP": scratch, "TMP": scratch}
     else:
         argv = [shell, "-e", str(script)]
     child = subprocess.Popen(argv, **kwargs)
@@ -159,6 +187,9 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
 
 
 def main(argv: list[str]) -> int:
+    if argv == ["--probe"]:
+        probe()
+        return 0
     if argv and argv[0] == "_exec":
         proctree.Job.open(argv[1]).assign_self()
         shell = argv[2]
@@ -181,8 +212,9 @@ def main(argv: list[str]) -> int:
         print(f"evidence timing collect {time.monotonic() - started:.3f}s")
         return 0
     cutoff = float(os.environ["AEW_JOB_DEADLINE"]) + CUTOFF_GRACE_S
-    if os.environ.get("AEW_EVIDENCE_PLANT") == "time-limit":
-        cutoff = time.time() + 35  # the plant's outer killer, below its 4-minute step limit
+    early_cutoff = os.environ.get("AEW_LANE_CUTOFF_AFTER_S")
+    if early_cutoff:
+        cutoff = min(cutoff, time.time() + float(early_cutoff))
     return supervise(args.root, args.shell, args.script, cutoff)
 
 

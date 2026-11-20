@@ -152,9 +152,6 @@ jobs:
   # a runner twice as slow). Until 2026-11-07 this was one job per runner running both lanes one after the other under
   # one deadline, which nothing sized: the fast lane grew until a slow runner left the serial lane no time.
   core:
-    permissions:
-      contents: read
-      actions: read  # fetch this job's evidence archive by upload ID
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.reuse_run == ''
@@ -163,7 +160,7 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.core_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 42
+    timeout-minutes: 32
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -216,11 +213,6 @@ jobs:
           artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-8-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
-      - uses: ./.github/actions/prove-evidence
-        with:
-          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
-        timeout-minutes: 10
-        if: needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
       # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps. The serial
       # lane runs without coverage, as it always has.
@@ -412,16 +404,6 @@ jobs:
           python -m pip freeze --exclude-editable > "$RUNNER_TEMP/installed.txt"
           pip-audit --strict --desc --no-deps --disable-pip -r "$RUNNER_TEMP/installed.txt"
 
-  evidence:
-    name: evidence publication
-    needs: [core, lanes]
-    if: always()
-    permissions:
-      contents: read
-      actions: read
-      checks: write
-    uses: ./.github/workflows/evidence-check.yml
-
   assurance:
     # The merge gate: mark this check as required on `main`.
     needs: [changes, core, lanes, web, static, fastbase]
@@ -431,6 +413,7 @@ jobs:
     permissions:
       contents: read
       actions: read  # the run's jobs, for the cost record's queue and runner times; an earlier run's reports
+      checks: write  # report evidence defects on the PR head
       pull-requests: read  # the recompute reads the `full-ci` label live
     steps:
       - uses: actions/checkout@v7
@@ -441,6 +424,19 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install "PyYAML>=6.0" "coverage[toml]>=7.10" "pytest>=8"
+      - uses: actions/download-artifact@v8
+        if: always()
+        continue-on-error: true
+        with:
+          pattern: '*evidence-*-attempt-${{ github.run_attempt }}*'
+          path: evidence-artifacts
+      - name: Report evidence defects
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/ci/check_evidence_run.py evidence-artifacts
       - id: tier
         name: The tier, recomputed from the same merge commit with the label read live, is not narrower than the one the jobs ran under
         env:

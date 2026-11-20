@@ -108,6 +108,8 @@ def test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk(tmp_path):
     assert proc.returncode == (0 if IS_WINDOWS else 1), out  # POSIX fails it in place; Windows records it only
     named = [d for d in dumps(hangs) if "test_outlives_its_limit started" in d]
     assert len(named) == 1 and "in test_outlives_its_limit" in named[0], dumps(hangs)
+    assert "a dump below records a fire" in named[0].splitlines()[0]
+    assert "not fired" not in named[0].splitlines()[0]
 
 
 def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
@@ -177,11 +179,23 @@ def test_plant(value):
 
 
 @pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")
-def test_windows_supervisor_forwards_pytest_output(tmp_path):
+def test_windows_supervisor_forwards_pytest_output(tmp_path, monkeypatch):
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    bash_home = tmp_path / "bash-home"
+    bash_home.mkdir()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("HOME", str(bash_home))
+    monkeypatch.setenv("TMPDIR", str(bash_home))
     root = project(tmp_path, """\
+import os
 import sys
+import tempfile
+from pathlib import Path
 
 def test_output():
+    assert Path(tempfile.gettempdir()) == Path(os.environ['RUNNER_TEMP'])
     print("planted pytest stdout")
     print("planted pytest stderr", file=sys.stderr)
 """)
@@ -190,6 +204,21 @@ def test_output():
     assert "planted pytest stdout" in proc.stdout
     assert "planted pytest stderr" in proc.stderr
     assert "1 passed" in proc.stdout
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="Windows share modes control whether a reader blocks rename")
+def test_observing_a_windows_watchdog_file_does_not_pin_its_name(tmp_path):
+    from evidence_files import open_observation
+
+    path = tmp_path / "hang-gw0-123.txt"
+    path.write_text("current observation\n")
+    with open_observation(path) as reader:
+        kept = path.replace(tmp_path / "hang-gw0-123-0.txt")
+        path.write_text("later observation\n")
+        assert reader.readline() == "current observation\n"
+        kept.unlink()
+    assert not kept.exists()
+    assert path.read_text() == "later observation\n"
 
 
 @pytest.mark.skipif(not IS_WINDOWS, reason="the CI step's outer job object is a Windows API")

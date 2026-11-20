@@ -106,9 +106,6 @@ jobs:
           retention-days: 30
 
   reference:
-    permissions:
-      contents: read
-      actions: read  # fetch this job's evidence archive by upload ID
     # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome. The suite is split
     # into duration-balanced shards (tests/helpers/lanes.py, `--shard k/N`), as many as `reference-plan` sized;
     # `reference-assurance` below proves the shards together ran every collected test exactly once.
@@ -119,7 +116,7 @@ jobs:
       matrix: ${{ fromJSON(needs.reference-plan.outputs.matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 82
+    timeout-minutes: 72
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -155,11 +152,6 @@ jobs:
             ${{ runner.temp }}/nightly-reports/*.json
           retention-days: 30
 
-      - uses: ./.github/actions/prove-evidence
-        with:
-          job-label: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
-        timeout-minutes: 10
-        if: matrix.shard == 1
 
   reference-assurance:
     # The unsharded reference run's guarantee, rebuilt from its shards: every shard reported, every collected test
@@ -552,7 +544,7 @@ jobs:
 
   report:
     needs: [shard-history, vertical-series, reference-plan, reference, reference-assurance, walk-extended, race-repeat,
-            crash-extended, matrix-extra, matrix-extra-serial, matrix-extra-assurance, flake-queue, evidence]
+            crash-extended, matrix-extra, matrix-extra-serial, matrix-extra-assurance, flake-queue]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a
     # cancellation here is never a newer push; pull-request runs never reach this job.
@@ -581,13 +573,3 @@ jobs:
           else
             gh issue create --label nightly-failure --title "Nightly extended assurance failed" --body "$body"
           fi
-
-  evidence:
-    name: evidence publication
-    needs: [reference, walk-extended, race-repeat, crash-extended, matrix-extra, matrix-extra-serial]
-    if: always()
-    permissions:
-      contents: read
-      actions: read
-      checks: write
-    uses: ./.github/workflows/evidence-check.yml

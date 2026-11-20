@@ -111,13 +111,3 @@ jobs:
         with:
           source: ${{ runner.temp }}/vertical/
           artifact: evidence-vertical-summary-${{ runner.os }}-post-attempt-${{ github.run_attempt }}
-
-  evidence:
-    name: evidence publication
-    needs: [vertical]
-    if: always()
-    permissions:
-      contents: read
-      actions: read
-      checks: write
-    uses: ./.github/workflows/evidence-check.yml

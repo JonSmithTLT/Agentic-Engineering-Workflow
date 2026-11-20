@@ -16,7 +16,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
 from bounds import EVIDENCE_SCAN_S  # noqa: E402
-from evidence_files import ablated, owner, state  # noqa: E402
+from evidence_files import owner, state  # noqa: E402
 
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
@@ -246,15 +246,13 @@ def stage(source: Path, destination: Path) -> str:
             listing = "".join(f"{action} {path}:{line} ({rule})\n"
                               for path, rule, line, action in sorted(entries)).encode()
             if len(listing) > INDEX_CAP - 512:
-                raise ValueError("gitleaks findings exceed inventory cap")
+                raise OverflowError("gitleaks findings exceed inventory cap")
             if sum((candidate / path).stat().st_size for path in staged - withheld.keys()) > JOB_CAP - INDEX_CAP:
-                raise ValueError("masked evidence exceeds job cap")
+                raise OverflowError("masked evidence exceeds job cap")
             inventory = bytearray(listing)
             for path in sorted(staged - withheld.keys()):
                 shown = "<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix()
                 classification = state(path, (candidate / path).read_bytes())
-                if path.name.startswith("hang-") and (ablated("header-only") or ablated("zero-byte")):
-                    classification = "finding"
                 writer = owner(path) or "UNKNOWN-WRITER"
                 inventory.extend(f"{classification} {shown} ({writer})\n".encode())
             for path, reason in omissions:
@@ -266,6 +264,8 @@ def stage(source: Path, destination: Path) -> str:
             status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
                       if initial else "gitleaks clean")
             publish = True
+        except OverflowError:
+            status = "evidence defect: job cap exceeded"
         except (OSError, ValueError, subprocess.TimeoutExpired):
             status = "gitleaks scan unavailable; evidence defect: scan unavailable"
         header = f"{status}\n{kept} candidate files, {omitted} omitted\nfinding inventory.txt (publisher)\n"

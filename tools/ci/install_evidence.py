@@ -21,9 +21,7 @@ PYSPY = {
 }
 
 
-def main() -> None:
-    target = Path(os.environ["RUNNER_TEMP"]) / "evidence-tools"
-    target.mkdir(parents=True, exist_ok=True)
+def install_scanner(target: Path) -> None:
     archive, digest = GITLEAKS[sys.platform]
     binary = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
     if not (target / binary).exists():
@@ -45,13 +43,34 @@ def main() -> None:
                         raise ValueError("evidence scanner binary missing")
                     (target / binary).write_bytes(stream.read())
                 (target / binary).chmod(0o755)
+
+
+def install_spy(target: Path) -> None:
+    stamp = target / "py-spy-0.4.1"
+    if stamp.exists():
+        return
     with tempfile.TemporaryDirectory() as temporary:
         requirements = Path(temporary) / "requirements.txt"
         requirements.write_text("py-spy==0.4.1 --hash=sha256:" + PYSPY[sys.platform] + "\n", encoding="utf-8")
         subprocess.run([sys.executable, "-m", "pip", "install", "--require-hashes", "--only-binary=:all:",
                         "-r", str(requirements)], check=True, timeout=60)
+    stamp.touch()
+
+
+def main() -> None:
+    target = Path(os.environ["RUNNER_TEMP"]) / "evidence-tools"
+    target.mkdir(parents=True, exist_ok=True)
     with Path(os.environ["GITHUB_PATH"]).open("a", encoding="utf-8") as output:
         output.write(str(target) + "\n")
+    for key, label, install in (("scanner", "scan", install_scanner), ("spy", "py-spy", install_spy)):
+        try:
+            install(target)
+            available = True
+        except (OSError, ValueError, subprocess.SubprocessError, zipfile.BadZipFile, tarfile.TarError):
+            print(f"::warning::evidence defect: {label} unavailable")
+            available = False
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+            output.write(f"{key}={str(available).lower()}\n")
 
 
 if __name__ == "__main__":

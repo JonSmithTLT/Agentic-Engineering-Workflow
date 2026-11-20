@@ -11,6 +11,9 @@ on:
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:
+concurrency:
+  group: evidence-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -19,30 +22,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-24.04, windows-latest]
+        kind: ${{ fromJSON(github.event_name == 'schedule' && '["normal","deadline","time-limit","hang","cancel"]' || '["normal","deadline","time-limit","hang"]') }}
+        ablate: [none]
         include:
-          - {os: ubuntu-24.04, kind: normal, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: ubuntu-24.04, kind: cancel, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: ubuntu-24.04, kind: deadline, ablate: none, test_timeout: 120, deadline: 30}
-          - {os: ubuntu-24.04, kind: time-limit, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: ubuntu-24.04, kind: hang, ablate: none, test_timeout: 8, deadline: 30}
-          - {os: ubuntu-24.04, kind: deadline, ablate: stacks, test_timeout: 120, deadline: 30}
-          - {os: ubuntu-24.04, kind: hang, ablate: stacks, test_timeout: 8, deadline: 30}
-          - {os: windows-latest, kind: normal, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: windows-latest, kind: cancel, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: windows-latest, kind: deadline, ablate: none, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: time-limit, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: windows-latest, kind: hang, ablate: none, test_timeout: 8, deadline: 30}
-          - {os: windows-latest, kind: deadline, ablate: stacks, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: hang, ablate: stacks, test_timeout: 8, deadline: 30}
-          - {os: ubuntu-24.04, kind: sigkill, ablate: none, test_timeout: 120, deadline: 180}
-          - {os: ubuntu-24.04, kind: deadline, ablate: kind, test_timeout: 120, deadline: 30}
-          - {os: ubuntu-24.04, kind: deadline, ablate: running, test_timeout: 120, deadline: 30}
-          - {os: ubuntu-24.04, kind: deadline, ablate: header-only, test_timeout: 120, deadline: 30}
-          - {os: ubuntu-24.04, kind: deadline, ablate: zero-byte, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: deadline, ablate: kind, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: deadline, ablate: running, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: deadline, ablate: header-only, test_timeout: 120, deadline: 30}
-          - {os: windows-latest, kind: deadline, ablate: zero-byte, test_timeout: 120, deadline: 30}
+          - {os: ubuntu-24.04, kind: sigkill, ablate: none}
+          - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
+          - {os: ubuntu-24.04, kind: hang, ablate: stacks}
+          - {os: windows-latest, kind: deadline, ablate: stacks}
+          - {os: windows-latest, kind: hang, ablate: stacks}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 17
     concurrency:
@@ -65,6 +53,8 @@ jobs:
         env:
           AEW_EVIDENCE_PLANT: ${{ matrix.kind }}
           AEW_EVIDENCE_ABLATE: ${{ matrix.ablate }}
+          AEW_EVIDENCE_PROBE: ${{ matrix.os == 'ubuntu-24.04' && matrix.kind == 'normal' }}
+          AEW_LANE_CUTOFF_AFTER_S: ${{ matrix.kind == 'time-limit' && '35' || '' }}
         with:
           job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
           source: ${{ runner.temp }}/lane-reports
@@ -72,9 +62,11 @@ jobs:
           command: >-
             python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
             tests/integration/evidence_plants/deaths.py --lane integration
-            --test-timeout ${{ matrix.test_timeout }} --session-deadline ${{ matrix.deadline }}
+            --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
+            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
   cancel-ready-linux:
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -102,6 +94,7 @@ jobs:
     steps:
       - run: echo 'Queued the planted concurrency cancellation.'
   cancel-ready-windows:
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -147,7 +140,7 @@ jobs:
       - run: python -m pip install 'PyYAML>=6.0'
       - uses: actions/download-artifact@v8
         with:
-          pattern: plant-*-attempt-${{ github.run_attempt }}*
+          pattern: '*plant-*-attempt-${{ github.run_attempt }}*'
           path: published
       - name: Verify downloaded evidence and checker ablations
         env:

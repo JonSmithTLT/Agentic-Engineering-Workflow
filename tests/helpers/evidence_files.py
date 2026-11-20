@@ -1,4 +1,4 @@
-"""The writers and publication states of test evidence files."""
+"""Evidence file families and their states. JSON and autopsy families share owners."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ WRITERS = (
     ("hang-*.txt", "watchdog"),
     ("running-*.txt", "watchdog"),
     ("running-*.tmp", "watchdog"),
+    ("collection-incomplete.txt", "evidence_inputs"),
+    ("tools-unavailable.txt", "evidence_inputs"),
     ("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder"),
     ("harness-runs/**", "harness_diagnostics"),
     ("snapshots/*.txt", "lane_step"),
@@ -24,9 +26,39 @@ WRITERS = (
     ("vertical-summary.txt", "vertical"),
     ("dispatch.txt", "flake-dispatch"),
 )
+WATCHDOG_PREFIX = "aew hang watchdog: "
+ARMED_NOTE = "a dump below records a fire"
+WATCHDOG_HEADER = re.compile(
+    rf"{WATCHDOG_PREFIX}(.+) started ([^;]+); limit ([0-9.]+)s; {ARMED_NOTE}; monotonic ([0-9.]+)")
 FRAME = re.compile(
     r'(?m)^\s*(?:File "(?P<file>[^"\n]+)", line \d+,? in (?P<function>[\w.<>]+)'
     r'|(?P<spy_function>[\w.<>]+) \((?P<spy_file>[^\n]+\.py):\d+\))')
+
+
+def open_observation(path: Path):
+    """Read an in-flight file without preventing its owner from removing or renaming it."""
+    if os.name != "nt":
+        return path.open(encoding="utf-8", errors="replace")
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                       wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    generic_read, open_existing = 0x80000000, 3
+    share_read_write_delete = 1 | 2 | 4
+    handle = create(str(path), generic_read, share_read_write_delete, None, open_existing, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except OSError:
+        kernel.CloseHandle(ctypes.c_void_p(handle))
+        raise
+    return os.fdopen(fd, encoding="utf-8", errors="replace")
 
 
 def owner(path: Path) -> str | None:
@@ -36,6 +68,10 @@ def owner(path: Path) -> str | None:
         if path.match(pattern):
             return writer
     return None
+
+
+def stack_file(path: Path) -> bool:
+    return path.name.startswith(("hang-", "stacks.")) or "-stacks" in path.name or "snapshots" in path.parts
 
 
 def state(path: Path, data: bytes) -> str:
@@ -50,7 +86,5 @@ def state(path: Path, data: bytes) -> str:
     return "finding"
 
 
-def ablated(rule: str) -> bool:
-    chosen = os.environ.get("AEW_EVIDENCE_ABLATE")
-    return bool(os.environ.get("AEW_EVIDENCE_PLANT")) and (
-        chosen == rule or (rule == "stacks" and chosen in {"header-only", "zero-byte"}))
+def stacks_ablated() -> bool:
+    return bool(os.environ.get("AEW_EVIDENCE_PLANT")) and os.environ.get("AEW_EVIDENCE_ABLATE") == "stacks"

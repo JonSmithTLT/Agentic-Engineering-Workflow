@@ -2,65 +2,78 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
-from evidence_files import FRAME, owner, state  # noqa: E402
+from evidence_files import FRAME, WATCHDOG_HEADER, owner, stack_file, state  # noqa: E402
 
 
 def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bool = False) -> list[str]:
     """Check published states and warning-death stacks, also used by the hosted proof."""
     defects = []
+
+    def report(rule: str, detail: str) -> None:
+        defects.append(f"evidence defect: [{rule}] {detail}")
+
     files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
     texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
     inventories = {path: text for path, text in texts.items() if path.name == "inventory.txt"}
     if not inventories:
-        defects.append("missing publication inventory")
+        report("inventory", "missing publication inventory")
     for inventory, listing in inventories.items():
+        if "evidence defect: job cap exceeded" in listing:
+            report("cap", "job cap exceeded")
         if "scan unavailable" in listing:
-            defects.append("scan unavailable")
+            report("scan-unavailable", "scan unavailable")
         if "unlisted writer" in listing:
-            defects.append("unlisted writer in the evidence source")
+            report("writer-source", "unlisted writer in the evidence source")
         for path, data in files.items():
             if not path.is_relative_to(inventory.parent):
                 continue
             relative = path.relative_to(inventory.parent)
             if owner(relative) is None:
-                defects.append(f"{relative}: unlisted writer")
+                report("writer-path", f"{relative}: unlisted writer")
             label = state(relative, data)
             if f"{label} {relative.as_posix()} (" not in listing:
-                defects.append(f"{relative}: missing or false publication state ({label})")
+                report("label", f"{relative}: missing or false publication state ({label})")
             text = texts[path]
+            if path.name == "collection-incomplete.txt":
+                report("collection", "collection incomplete")
+            if ((path.name == "tools-unavailable.txt" and "unavailable" in text)
+                    or ("snapshots" in relative.parts and text.startswith("evidence defect: py-spy unavailable"))):
+                report("tools", text.strip())
+            first, _, dump = text.partition("\n")
+            header_denies_fire = first.rstrip("\r").endswith("; not fired") or "; not fired; monotonic " in first
+            if stack_file(relative) and header_denies_fire and (FRAME.search(dump) or dump.startswith("Timeout (")):
+                report("contradiction", f"{relative}: header denies a recorded fire")
             if path.name.startswith("hang-"):
                 if "was still running after" in text and not FRAME.search(text):
-                    defects.append(f"{relative}: timeout claimed without stacks")
+                    report("false-timeout", f"{relative}: timeout claimed without stacks")
                 if "fired after" in text and not FRAME.search(text):
-                    defects.append(f"{relative}: fired claimed without stacks")
-            stack_file = (path.name.startswith(("hang-", "stacks.")) or "-stacks" in path.name
-                          or "snapshots" in relative.parts)
-            if stack_file and ("every thread's stack" in text or "Timeout (" in text) and not FRAME.search(text):
-                defects.append(f"{relative}: stack header without stacks")
+                    report("false-fired", f"{relative}: fired claimed without stacks")
+            if (stack_file(relative) and ("every thread's stack" in text or "Timeout (" in text)
+                    and not FRAME.search(text)):
+                report("false-stack", f"{relative}: stack header without stacks")
     if kind == "cancel" and any(path.stem == "cutoff" for path in files):
-        defects.append("cancel: cutoff marker claimed during the planted cancellation")
+        report("false-cutoff", "cancel: cutoff marker claimed during the planted cancellation")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
         expected = {"deadline": {"session-deadline"}, "time-limit": {"cutoff"},
                     "hang": {"session-deadline", "cutoff"}}.get(kind, set())
         if expected and not names.intersection(expected):
-            defects.append(f"{kind}: missing kind marker")
+            report("kind", f"{kind}: missing kind marker")
     running = set()
     for path, text in texts.items():
         if path.name.startswith("hang-"):
-            match = re.search(r"aew hang watchdog: (.+) started ", text)
+            match = WATCHDOG_HEADER.match(text)
             if match:
                 running.add(match[1])
         elif path.name.startswith("running-"):
             running.update(text.splitlines())
     if require_stacks or kind in {"cancel", "sigkill", "deadline", "time-limit", "hang"}:
         if not running or "<unrecognized test>" in running:
-            defects.append("missing running test name")
+            report("running", "missing running test name")
     if require_stacks:
         for node in running:
             source = node.split("::", 1)[0].replace("\\", "/")
@@ -90,5 +103,5 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 if matched:
                     break
             if not matched:
-                defects.append(f"{node}: no stack from the running test's module")
-    return [f"evidence defect: {problem}" for problem in sorted(set(defects))]
+                report("stacks", f"{node}: no stack from the running test's module")
+    return sorted(set(defects))

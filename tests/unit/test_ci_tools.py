@@ -2436,6 +2436,8 @@ def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest
     assert cost.get("timeout-minutes") and cost["timeout-minutes"] < workflow["jobs"]["assurance"]["timeout-minutes"]
     assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read",
                                                              "pull-requests": "read", "checks": "write"}
+    evidence = next(s for s in steps if "check_evidence_run.py" in s.get("run", ""))
+    assert evidence["env"]["EVIDENCE_HEAD"] == "${{ github.event.pull_request.head.sha || github.sha }}"
     assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)
 
 

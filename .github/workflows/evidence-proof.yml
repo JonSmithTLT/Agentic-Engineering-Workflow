@@ -3,16 +3,14 @@ on:
   pull_request:
     paths:
       - '.github/actions/lane/**'
+      - '.github/actions/publish-evidence/**'
       - '.github/workflows/evidence-*.yml'
       - 'tests/helpers/watchdog.py'
       - 'tests/helpers/session_deadline.py'
       - 'tests/helpers/autopsy.py'
+      - 'tests/helpers/evidence_files.py'
       - 'tools/ci/lane_step.py'
-      - 'tools/ci/verify_evidence.py'
-      - 'tools/ci/check_evidence_run.py'
-      - 'tools/ci/evidence_problems.py'
-      - 'tools/ci/probe_evidence.py'
-      - 'tools/ci/stage_evidence.py'
+      - 'tools/ci/*evidence*'
       - 'tools/flake_register.py'
   schedule:
     - cron: '41 3 * * *'

@@ -124,19 +124,40 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
         "workflow_dispatch": None,
         "pull_request": {"paths": [
             ".github/actions/lane/**",
+            ".github/actions/publish-evidence/**",
             ".github/workflows/evidence-*.yml",
             "tests/helpers/watchdog.py",
             "tests/helpers/session_deadline.py",
             "tests/helpers/autopsy.py",
+            "tests/helpers/evidence_files.py",
             "tools/ci/lane_step.py",
-            "tools/ci/verify_evidence.py",
-            "tools/ci/check_evidence_run.py",
-            "tools/ci/evidence_problems.py",
-            "tools/ci/probe_evidence.py",
-            "tools/ci/stage_evidence.py",
+            "tools/ci/*evidence*",
             "tools/flake_register.py",
         ]},
     }
+
+
+def test_evidence_proof_cancels_superseded_runs_and_reserves_cancel_plants_for_nightly():
+    import yaml
+
+    proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
+    assert proof["concurrency"] == {
+        "group": "evidence-proof-${{ github.event.pull_request.number || github.ref }}",
+        "cancel-in-progress": True,
+    }
+    jobs = proof["jobs"]
+    matrix = jobs["plant"]["strategy"]["matrix"]
+    assert matrix["kind"] == (
+        "${{ fromJSON(github.event_name == 'schedule' && "
+        """'["normal","deadline","time-limit","hang","cancel"]' || """
+        """'["normal","deadline","time-limit","hang"]') }}"""
+    )
+    assert all(row["kind"] != "cancel" for row in matrix["include"])
+    for platform in ("linux", "windows"):
+        ready = f"cancel-ready-{platform}"
+        assert jobs[ready]["if"] == "github.event_name == 'schedule'"
+        trigger = jobs[f"cancel-trigger-{platform}"]
+        assert trigger["needs"] == ready and trigger.get("if", "success()") == "success()"
 
 
 def test_the_publication_budget_detects_an_unbounded_post_test_step(tmp_path):

@@ -19,10 +19,10 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-# Full catalogs with messaging off, including E327's optional resolve approval digest.
-OFF_LIST_SHA = {"normal": "34786d9f407b2e7bf3f05cab3e4ecbbf2d55438b905ca0e56dbdbf1588b838d0",
-                "recovery": "ac57b66069f8001c25b94984975c351e16eddaf02f7e8869eafa0b0eefc80567"}
-OFF_CLI_SHA = "c104c7de0b9b070d205ffb3fd03d78f4df1efc07127242b57bf9393843eb8c91"
+# Full catalogs with messaging off, including E328's optional bindings.
+OFF_LIST_SHA = {"normal": "d2009268a54e858619770acca38765ef9eb2dfd25044d4edef2fbf3bcc44d9d2",
+                "recovery": "08cf7d83a540476ed23ad2f105d040ea19981fdbffc67c5e9b7e7a388b1d771b"}
+OFF_CLI_SHA = "ccb3d02ab365ad45ffd7c16341fc0a052fdb5a64f14d52a5adf4d58a18edbe25"
 
 
 def digest(value):
@@ -196,7 +196,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
         "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
                     "Requests grant nothing.",
-        "resolve": "Resolve a shown decision.",
+        "resolve": "Continue or abandon a stage, dispose, or replace a gate.",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

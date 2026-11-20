@@ -658,8 +658,8 @@ def test_a_nested_capability_run_key_cannot_forge_a_line():
 def test_a_coverage_summary_and_each_unknown_survive_a_large_json_cut():
     from aew.engine import coverage as CV
 
-    coverage = CV.build(subject={}, configured=[], checks=[], changed_files=CV.files([], source="candidate diff"),
-                        capabilities={}, result="pass")
+    coverage = CV.build(subject={}, configured=[], checks=[], declaration_pin=None,
+                        changed_files=CV.files([], source="candidate diff"), capabilities={}, result="pass")
     text = render(wait(coverage=coverage, long="界" * readable.CUT_BYTES))
     head = opencode_cut(text)
     assert "validated within its scope" in head

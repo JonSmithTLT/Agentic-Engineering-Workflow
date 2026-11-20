@@ -170,6 +170,9 @@ def test_each_component_can_exhaust_the_pool(record, part):
 def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monkeypatch, host_independent_placement):
     label = record["baseline"]["containment"]
     original = render_pool(label, MESSAGING_ON)
+    # Start this synthetic shrink at exactly the reserved slack. The separate live-pool test checks the real cap.
+    estimates = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
+    record["approval"]["ceiling_bytes"] = original.total + estimates
     cap = approved_ceiling(record)
     name, meaning, _example = lead_text.guide.CLASS_TEXT["0"]
     monkeypatch.setitem(lead_text.guide.CLASS_TEXT, "0", (name, meaning, "x"))

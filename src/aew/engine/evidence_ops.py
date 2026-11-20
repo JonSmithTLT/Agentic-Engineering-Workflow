@@ -728,6 +728,8 @@ class Gates:
         state = self.k.store.current()
         gc = self.gate_context(state, work_id)
         out = self.roles.effective_role_plan(state, work_id, gc)
+        out["staff_argv"] = approval.bound_argv(("work", "staff", work_id), state["revision"],
+                                               out["role_plan_digest"])
         out["plan_gates"] = self.roles.plan_gates(self.units.unit(state, work_id))
         return out
 
@@ -1020,10 +1022,11 @@ class EvidenceCommands:
             if allowed_checks is not None and check_id not in allowed_checks:
                 card_id = (inv.get("card") or {}).get("id")
                 raise PermissionDenied(f"role card {card_id} does not permit check {check_id}")
-            cfg = C.resolve(self.k.policy("checks"), check_id)
+            checks_policy, declaration_pin = CV.checks_at_pin(self.k)
+            cfg = C.resolve(checks_policy, check_id)
             definition = C.definition_digest(cfg,
                                              guardrails=self.k.policy("guardrails") if cfg.get("builtin") else None)
-            coverage_inventory = CV.inventory(self.k.policy("checks"), self.k.policy("guardrails"))
+            coverage_inventory = CV.inventory(checks_policy, self.k.policy("guardrails"))
             meta = self.gates.record_meta(unit)
             scope_paths = (meta.get("scope") or {}).get("paths", [])
             acceptance_inputs = (meta.get("acceptance") or {}).get("inputs")
@@ -1042,7 +1045,7 @@ class EvidenceCommands:
                                         "changed")
             changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
             verdict = GR.evaluate(changed, self.k.policy("guardrails"), scope_paths, acceptance_inputs)
-            run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
+            run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
                    "cwd": str(workspace.resolve())}
         else:
@@ -1082,6 +1085,7 @@ class EvidenceCommands:
                 "result": result,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],
                 "check": {"check_id": check_id, "exit_code": run["exit_code"], "duration_s": run["duration_s"],
+                          "outcome": run["outcome"],
                           "mutated_inputs": mutated, "definition_sha256": definition,
                           **({"violations": verdict["violations"], "triggered_gates": verdict["triggered_gates"]}
                              if verdict else {})},
@@ -1097,7 +1101,8 @@ class EvidenceCommands:
             meta["coverage"] = CV.build(
                 subject={"work_id": work_id, "scope": "check", "verification_scope": inv.get("scope") or "ticket",
                          "snapshot": before},
-                configured=coverage_inventory, checks=[CV.observation(meta)], changed_files=coverage_files,
+                configured=coverage_inventory, declaration_pin=declaration_pin,
+                checks=[CV.observation(meta)], changed_files=coverage_files,
                 capabilities=CV.run_capabilities(self.k.aew_root, [meta["producer"]["run"]]
                                                  if meta["producer"].get("run") else []), result=result)
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
@@ -1239,7 +1244,9 @@ class EvidenceCommands:
         records = {e["id"]: e for e in scanned}
         expected_fp = ((inv.get("observation") or {}).get("fingerprint")
                        or inv["snapshot"]["relevant_inputs_fingerprint"])
-        definitions = C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails"))
+        checks_policy, declaration_pin = CV.checks_at_pin(self.k)
+        guardrails = self.k.policy("guardrails")
+        definitions = C.current_definitions(checks_policy, guardrails)
         for c in claims:
             for cid in c.get("checks", []):
                 ev = records.get(cid)
@@ -1272,7 +1279,7 @@ class EvidenceCommands:
             runs.append(own_run)
         coverage = CV.build(
             subject={"work_id": work_id, "scope": dispatched, "snapshot": inv["snapshot"]},
-            configured=CV.inventory(self.k.policy("checks"), self.k.policy("guardrails")),
+            configured=CV.inventory(checks_policy, guardrails), declaration_pin=declaration_pin,
             checks=[CV.observation(e, cited=e["id"] in cited) for e in observed],
             changed_files=self._coverage_files(workspace, base, dispatched),
             capabilities=CV.run_capabilities(self.k.aew_root, runs), result=overall,

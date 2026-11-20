@@ -14,7 +14,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 9020
-  guide_bytes: 16433
+  guide_bytes: 16412
   join_bytes: 2
   mcp_bytes: 11900
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -52,9 +52,10 @@ allocations:
     bytes: 3000
     kind: estimate
     source: "E231 budget rule section 1 and the E176 Lead memory brief. About 3 KB for the notes block and its guide text."
-# Current cap. Preserve the operator's exact words and date in approval history when it changes.
+# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B.
+# Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
-  ceiling_bytes: 42792
+  ceiling_bytes: 42771
   operator: "lets do it"
   date: '2026-11-11'
 # The approved drop after PR 3 still applies.

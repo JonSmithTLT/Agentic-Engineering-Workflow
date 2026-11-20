@@ -175,7 +175,13 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source. The execution policy's credentials provider default and profile credential override select the worker's pot. For a plan login, provider-key names its time left and model-list uses the same route and seed as launch."
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source. The
+      execution policy's credentials provider default and profile credential override select the worker's pot. For a
+      plan login, provider-key names its time left and model-list uses the same route and seed as launch.
+      `steering:run-ready` says whether a raise to Run would be accepted and could act (A1 §3.2): a Lead in the seat, the
+      notifier, a deadline_s on every profile routing can pick, and an operator endpoint that answers a ping, each with
+      its fix; a read, like every doctor check.
+      checks-configured reports missing project CI declarations and declared tools without a configured check."
   - name: init
     home: product
     users: [operator]
@@ -335,7 +341,8 @@ commands:
     primitive: steering
     lead_disposition: typed
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "optional --prior-value binds the value shown by the preceding read"
   - name: lead mcp
     home: internal
     users: [internal]
@@ -411,7 +418,8 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "optional --approval-digest binds the candidate shown to the operator"
   - name: authority reject
     home: operator-admin
     users: [operator]
@@ -426,7 +434,8 @@ commands:
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "today's configure and change-a-setting fallback"
+    note: "today's configure and change-a-setting fallback. Adopts the operational coverage declaration in
+      policy/checks.yaml and validates covered_by against the configured check IDs and built-in guardrails."
   - name: work create
     home: product
     users: [lead]
@@ -501,7 +510,7 @@ commands:
       primitive: work.staff
       lands: A2
       reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, with one execute card, so re-staffing an existing Ticket and a several-card execute plan have no typed home yet (`uncovered`, the A1-0 review's F2 and the re-review's N3)"
-      options: {work_id: uncovered, "--execute": uncovered, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
+      options: {"--prior-value": homes, work_id: uncovered, "--execute": uncovered, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
       uncovered:
         lands: A2
         uses:
@@ -511,7 +520,7 @@ commands:
           - "option --remove"
           - "option work_id"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work transition
     home: product
     users: [lead]
@@ -528,7 +537,7 @@ commands:
       primitive: work.transition
       lands: A2
       reason: "the stage steps, the rework (`ticket_rework`, blocked on the G3 budget question) and escalation and its return (A2) type some of its edges, and cancelling is `work cancel`'s; the replans, the regressions and the re-verification have no typed home yet (`uncovered`, the A1-0 review's F1), so it is decided in A2 at the earliest"
-      options: {work_id: homes, "--to": homes, "--reason": homes}
+      options: {"--prior-value": homes, work_id: homes, "--to": homes, "--reason": homes}
       uncovered:
         lands: A2
         uses:
@@ -556,7 +565,7 @@ commands:
           - "transition VERIFY_PENDING -> REPLAN_REQUIRED"
           - "transition VERIFY_PENDING -> RUNNING"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the stages run the transitions they own; a free transition (rework, a projection hint) has no typed home"
   - name: work dispatch
     home: product
@@ -630,7 +639,7 @@ commands:
       reason: "evidence acceptance is the Lead's judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work close
     home: product
     users: [lead]
@@ -647,7 +656,7 @@ commands:
       reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work cancel
     home: product
     users: [lead]
@@ -664,7 +673,7 @@ commands:
       reason: "cancelling a unit is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work move
     home: product
     users: [lead]
@@ -679,9 +688,9 @@ commands:
       primitive: work.move
       lands: A2
       reason: "decomposition; the engine keeps its own guards (no moving a committed Ticket)"
-      options: {work_id: homes, "--parent": homes, "--reason": homes}
+      options: {"--prior-value": homes, work_id: homes, "--parent": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work promote
     home: product
     users: [lead]
@@ -696,9 +705,9 @@ commands:
       primitive: work.promote
       lands: A2
       reason: "decomposition; the engine keeps its own guards"
-      options: {work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
+      options: {"--prior-value": homes, work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
     owner: pending (A1)
-    refusals: [OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work reclassify
     home: product
     users: [lead]
@@ -749,7 +758,7 @@ commands:
       reason: "acknowledging an input is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
     home: product
     users: [operator, lead]
@@ -864,9 +873,9 @@ commands:
       primitive: plan.accept
       lands: A1a-2
       reason: "asked of the operator and recorded by the Lead (decided_by: lead, quoting the chat answer); until then a recovery command"
-      options: {work_id: homes, "--revision": homes}
+      options: {"--approval-digest": homes, work_id: homes, "--revision": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted shell fallback after the operator approves the plan; its typed home will be a resolve
           choice (A2)"
   - name: plan adopt
@@ -910,7 +919,7 @@ commands:
       reason: "reconfirming a plan is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke create
     home: product
     users: [lead]
@@ -1023,13 +1032,13 @@ commands:
       primitive: harness.launch
       lands: A2
       reason: "relaunching a failed run is judgment"
-      options: {invocation: homes, "--replace": uncovered}
+      options: {"--prior-value": homes, invocation: homes, "--replace": uncovered}
       uncovered:
         lands: A2
         uses:
           - "option --replace"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "a stage launches its own harness with `dispatch.launch`"
   - name: harness status
     home: product
@@ -1143,7 +1152,7 @@ commands:
         uses:
           - "option --finding"
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: evidence ingest
     home: product
     users: [lead]
@@ -1200,7 +1209,7 @@ commands:
       reason: "classifying a verification failure is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [APPROVAL_SUBJECT_CHANGED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate prepare
     home: product
     users: [lead]
@@ -1298,9 +1307,9 @@ commands:
       primitive: integrate.defer
       lands: A2
       reason: "deferring a queue entry is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--prior-value": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate requeue
     home: recovery
     users: [lead]
@@ -1315,9 +1324,9 @@ commands:
       primitive: integrate.requeue
       lands: A2
       reason: "requeueing a queue entry is judgment"
-      options: {work_id: homes, "--reason": homes}
+      options: {"--prior-value": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate reorder
     home: product
     users: [lead]
@@ -1536,6 +1545,21 @@ commands:
     note: "register E104 (minimal): the default `notify.command` `aew init` writes, which the operator endpoint runs
       for each event; CAPABILITY_UNAVAILABLE (no_desktop_session) with no desktop session, and AEW_ERROR when the
       desktop's own notifier fails"
+  - name: notify file
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "appends one JSON line for the event on stdin to the operator's own file (rotated past the delivery
+      log's bound), or with --check only says whether the path can take one; opens no project and changes no project
+      or control state"
+    mutates_exempt: "operator-only because the file it writes is the operator's notification channel, which never
+      carries an agent's text (A-44), but it changes no project state"
+    probe: [notify, file, /aew-probe/notified.jsonl, --check]
+    refusals: [CAPABILITY_UNAVAILABLE, USAGE]
+    note: "the headless notifier for an endpoint with no desktop session (an ssh login on a Linux host):
+      `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
+      as its own engine, as the default; CAPABILITY_UNAVAILABLE (not_writable) when the path cannot take the event"
   - name: settings show
     home: operator-admin
     users: [operator]
@@ -1722,7 +1746,7 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "after a successful bound bridge send, records exactly its returned Lead messages delivered"
-    refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, STALE_AUTHORITY, USAGE, WAIT_OUTSIDE_A_STEP, WAIT_UNSUPPORTED]
+    refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, STALE_AUTHORITY, USAGE, WAIT_BINDING_LOST_ON_RECONNECT, WAIT_OUTSIDE_A_STEP, WAIT_UNSUPPORTED]
     conditional: "only inside a worker run with an enabled messaging launch snapshot; lifetime binding must be qualified"
 
 tools:

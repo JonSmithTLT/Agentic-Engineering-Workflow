@@ -405,8 +405,7 @@ class Integration:
         record["coverage"] = CV.build(
             subject={"work_id": work_id, "scope": "integration", "base": base}, configured=[], checks=[],
             changed_files=CV.files(None, source="candidate_diff", reason="candidate_not_prepared"),
-            capabilities={}, result="not validated",
-            complete=False)
+            capabilities={}, result="not validated", declaration_pin=None, checkless=True, complete=False)
         if admission is not None:  # a rebuild's own decision; a granted build's is on its custodian
             record["admission"] = admission
         candidate: str = merged.get("commit") or ""
@@ -442,7 +441,7 @@ class Integration:
                 subject={"work_id": work_id, "scope": "integration", "base": base, "candidate": candidate,
                          "snapshot": snap}, configured=[], checks=[],
                 changed_files=CV.files(changed, source=f"candidate_diff_from:{base}"), capabilities={},
-                result="not validated", complete=False)
+                result="not validated", declaration_pin=None, checkless=True, complete=False)
             self.queue.record_attempt(state, work_id, unit["integration"])
             ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
         return unit, conflict, refused
@@ -474,13 +473,20 @@ class Integration:
 
     # ------------------------------------------------------------------ the Lead's queue commands (M4-D4)
 
-    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                          prior_value: str | None = None) -> dict[str, Any]:
         """Set a queue entry aside: the Ticket stays COMMIT_READY and holds up nobody. A LEASED entry gives up its
         lease, and its open candidate, which nothing published, is retired."""
         if not (reason and reason.strip()):
             raise UsageError("deferring needs a reason")
         with self.k.lead_txn(token, expect_rev, "integrate.defer", reason=reason) as ctx:
             self.queue.sync(ctx.state)
+            qid, entry = Q.entry_of(ctx.state, work_id)
+            approval.prior("integrate.defer", qid or work_id, "queue entry state", prior_value,
+                           entry["state"] if entry else "none",
+                           root=self.k.aew_root, state=ctx.state,
+                           event=lambda e: e["kind"] == "queue.entry"
+                               and (e.get("work") == work_id or e["id"] == qid))
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
@@ -496,13 +502,20 @@ class Integration:
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
                 "revision": ctx.session.committed_revision}
 
-    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                          prior_value: str | None = None) -> dict[str, Any]:
         """Return a DEFERRED or AWAITING_DISPOSITION entry to the queue in its own place: the Lead's disposition when
         the cause is settled (a policy changed, a head that moved twice, an inconclusive result to retry)."""
         if not (reason and reason.strip()):
             raise UsageError("requeueing needs a reason")
         with self.k.lead_txn(token, expect_rev, "integrate.requeue", reason=reason) as ctx:
             self.queue.sync(ctx.state)
+            qid, entry = Q.entry_of(ctx.state, work_id)
+            approval.prior("integrate.requeue", qid or work_id, "queue entry state", prior_value,
+                           entry["state"] if entry else "none",
+                           root=self.k.aew_root, state=ctx.state,
+                           event=lambda e: e["kind"] == "queue.entry"
+                               and (e.get("work") == work_id or e["id"] == qid))
             moved = self.queue.requeue(ctx.state, work_id, reason=reason)
             ctx.summary = f"{work_id} queue entry {moved['entry']} requeued from {moved['from']}: {reason}"
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),

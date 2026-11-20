@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +33,7 @@ def lab(tmp_path):
     assert not credential_hits(tmp_path)
 
 
-def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False):
+def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, **knobs):
     enable_messaging(lab)
     cls = "FakeWaitOpenCodeAdapter" if qualified else "UnsupportedWaitOpenCodeAdapter"
     if qualified and wait_barrier:
@@ -40,7 +43,7 @@ def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False):
     lab.script("R-INV-0001-1", {"steps": [
         {"do": "touch", "path": str(sync / "ready")},
         {"do": "wait_file", "path": str(sync / "go"), "timeout": 60}, *steps,
-        {"do": "wait_file", "path": str(sync / "end"), "timeout": 60}]})
+        {"do": "wait_file", "path": str(sync / "end"), "timeout": 60}], "server": knobs})
     work = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", work, "--launch")["launch"]["run"]
     lab.until(lambda: (sync / "ready").exists(), what="worker ready")
@@ -53,8 +56,13 @@ def send(lab, body="Check the shutdown edge."):
                                       to="INV-0001", body=body)
 
 
-def steps_done(lab, run, i):
-    lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), what=f"worker step {i}")
+def steps_done(lab, run, i, *, watchdog_only=False):
+    if watchdog_only:
+        # Startup/admission is bounded by pytest's watchdog, not another deadline inside the orphan scenario.
+        while not any(row["i"] == i for row in lab.transcript(run)):
+            time.sleep(0.05)
+    else:
+        lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), what=f"worker step {i}")
     return lab.step(run, i)
 
 
@@ -101,12 +109,63 @@ def test_message_wait_delivers_exactly_the_returned_lead_message_once(lab, tmp_p
 
 
 def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp_path):
+    orphan_wait(lab, tmp_path, "aew message wait --timeout 5")
+
+
+def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(lab, tmp_path):
+    # The lab mounts sync into the contained fake harness on Linux.
+    go = sync_dir(tmp_path) / "wait-after-reconnect"
+    run, sync = launch(lab, tmp_path, [
+        {"do": "shell", "command": "aew message wait --timeout 0", "start_after_file": str(go)}],
+        drop_events_every={"type": "session.tool.called", "count": 3})
+    directory = lab.aew_root / "local/harness/runs" / run
+    (sync / "go").touch()
+    lab.until(lambda: "opencode.stream.reconnected" in (read_text_or_none(directory / "events.jsonl") or ""),
+              what="the event stream reconnects while the shell tool is still open")
+    send(lab)
+    go.touch()
+    # PowerShell's and the CLI's start belong to the watchdog's bound alone, as in the other startup waits here
+    shell = steps_done(lab, run, 2, watchdog_only=True)
+    evidence = describe_shell(directory / "harness", shell)
+    assert "WAIT_BINDING_LOST_ON_RECONNECT" in evidence, evidence
+    assert "opencode.stream.dropped" in evidence, evidence
+    rows = [json.loads(line) for line in (directory / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    drop, = [row for row in rows if row["event"] == "opencode.stream.dropped"]
+    refusal, = [row for row in rows if row["event"] == "message_wait_binding_refused"]
+    assert drop["last_error"] == "OpenCodeUnavailable: event stream ended" and drop["had_open_shell_calls"], evidence
+    assert refusal["reason"] == "stream_drop" and refusal["binding_lost_at"] == drop["at"], evidence
+    thread = Engine.discover(lab.root).message_thread("INV-0001")
+    assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
+    (sync / "end").touch()
+    lab.wait(run)
+
+
+def test_a_shell_exiting_before_admission_fails_with_output_events_and_process_evidence(lab, tmp_path):
+    bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
+    command = ("Write-Output 'planted early shell exit'; exit 7" if sys.platform == "win32"
+               else "echo 'planted early shell exit'; exit 7")
+    run, sync = launch(lab, tmp_path, [{"do": "shell", "command": command, "timeout_s": 1,
+                                      "timeout_after_file": str(bound)}], wait_barrier=True)
+    (sync / "go").touch()
+    shell = steps_done(lab, run, 2, watchdog_only=True)
+    with pytest.raises(AssertionError) as failure:
+        assert not shell.get("barrier_error"), describe_shell(bound.parent, shell)
+    text = str(failure.value)
+    assert shell["exit"] == 7 and not shell["timed_out"] and not bound.exists(), text
+    for expected in ("shell exited before wait binding", "planted early shell exit", "shell exit: 7",
+                     "run events", "shell_pid:", "aew child started:", "observed shell process tree"):
+        assert expected in text, text
+    (sync / "end").touch()
+    lab.wait(run)
+
+
+def orphan_wait(lab, tmp_path, command):
     bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     run, sync = launch(lab, tmp_path, [
-        {"do": "shell", "command": "aew message wait --timeout 5", "timeout_s": 1,
+        {"do": "shell", "command": command, "timeout_s": 1,
          "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
-    shell = steps_done(lab, run, 2)
+    shell = steps_done(lab, run, 2, watchdog_only=True)
     try:
         assert not shell.get("barrier_error"), shell
         assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
@@ -123,6 +182,8 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     except AssertionError as exc:
         directory = lab.aew_root / "local/harness/runs" / run / "harness"
         raise AssertionError(f"{exc}\n{describe_shell(directory, shell)}") from exc
+    if os.environ.get("AEW_EVIDENCE_PLANT_ORPHANED_WAIT") == "1":
+        pytest.fail("planted failure after the orphaned wait completed")
 
 
 def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tmp_path):

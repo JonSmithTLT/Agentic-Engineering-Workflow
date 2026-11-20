@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aew.engine.approval import promotion_value, role_plan_digest
 from aew.errors import IntegrityError, ValidationFailed
 from aew.history.manifest import canonical_json
 from aew.schemas import validate
@@ -59,7 +60,7 @@ SEGMENT_SCHEMA = "aew/transition-segment/v1"
 
 # Event kinds (ADR-0012 D2). Derived kinds come from the committed states; declared kinds only from the operation.
 DERIVED_KINDS = ("lead.generation", "work.state", "invocation.status", "run.added", "credential.revoked",
-                 "history.appended", "unit.archived", "queue.entry", "queue.lease")
+                 "history.appended", "unit.archived", "queue.entry", "queue.lease", "work.binding")
 # `coordination.seal_fallback` is declared by the store on the operation's behalf: the commit sealed a thread the
 # operation's path missed (F9-A plan D-16, R3; ADR-0017 D7).
 DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded",
@@ -85,6 +86,12 @@ def derive_events(before: dict[str, Any], working: dict[str, Any], committed: di
         now = new_work[wid].get("state")
         if was != now:
             events.append({"kind": "work.state", "id": wid, "unit": new_work[wid].get("kind"), "from": was, "to": now})
+        if wid in old_work:
+            old, new = old_work[wid], new_work[wid]
+            if promotion_value(old) != promotion_value(new):
+                events.append({"kind": "work.binding", "id": wid, "field": "parent"})
+            if old.get("role_plan") != new.get("role_plan") and role_plan_digest(old) != role_plan_digest(new):
+                events.append({"kind": "work.binding", "id": wid, "field": "role_plan"})
     old_inv, new_inv = before.get("invocations") or {}, working.get("invocations") or {}
     for iid in sorted(new_inv):
         inv, was = new_inv[iid], (old_inv.get(iid) or {})
@@ -121,7 +128,8 @@ def _queue_events(before: dict[str, Any], after: dict[str, Any]) -> list[dict[st
     for qid in sorted(set(old) | set(new)):
         was, now = (old.get(qid) or {}).get("state"), (new.get(qid) or {}).get("state")
         if was != now:
-            events.append({"kind": "queue.entry", "id": qid, "from": was, "to": now})
+            entry = new[qid] if qid in new else old[qid]
+            events.append({"kind": "queue.entry", "id": qid, "work": entry["work"], "from": was, "to": now})
     old_lease, new_lease = before.get("lease") or {}, after.get("lease") or {}
     if (old_lease.get("entry"), old_lease.get("custodian")) != (new_lease.get("entry"), new_lease.get("custodian")):
         events.append({"kind": "queue.lease", "entry": new_lease.get("entry"), "custodian": new_lease.get("custodian")})

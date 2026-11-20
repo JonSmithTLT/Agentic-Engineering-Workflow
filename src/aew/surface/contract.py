@@ -121,7 +121,7 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
 
 # The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
 STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
-STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
+STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale", "prior_value")),
                       "request_raise": (("mode", "rationale"), ("mode", "rationale")),
                       "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
 
@@ -252,6 +252,7 @@ TOOLS: dict[str, Tool] = _catalog(
                "action": {"enum": list(STEERING_ACTIONS)},
                "mode": {"enum": ["crawl", "walk", "run"]},
                "action_ref": {"type": "string", "minLength": 1},
+               "prior_value": {"type": "string"},
                "rationale": TEXT},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),
@@ -259,12 +260,13 @@ TOOLS: dict[str, Tool] = _catalog(
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Resolve a shown decision.",
+         "Continue or abandon a stage, dispose, or replace a gate.",
          _obj({"expect_rev": EXPECT_REV,
-               "subject": {"type": "string", "minLength": 1, "description": "Record or gate ID."},
+               "subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
                "follow_up": WORK_ID_PATTERN,
-               "approval_digest": {"type": "string", "description": "From arguments or approval_options"},
+               "approval_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                                   "description": "Shown SHA."},
                "replacement": {"type": "string"},  # not blank: checked by the adapter, as the rationale is
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
               ("expect_rev", "subject", "choice", "rationale")),
@@ -305,7 +307,8 @@ TOOLS: dict[str, Tool] = _catalog(
          produced_by=((), ((DISPATCH, 1),), ((STATE, 1), (IMPLEMENTER, 1)))),
     Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
+         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION,
+               "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
          expands_to=("work.transition", "invoke.create.mutating", "dispatch.launch"), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1),), ((DISPATCH, 2),))),
@@ -313,7 +316,7 @@ TOOLS: dict[str, Tool] = _catalog(
          "Accept the review report, if one is due, move the Ticket to VERIFY_PENDING and launch the verifiers policy "
          "requires.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "review_evidence": EVIDENCE_ID,
-               "execution": EXECUTION}, ("expect_rev", "work_id")),
+               "execution": EXECUTION, "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
          expands_to=("review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("accept_review_evidence",), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,

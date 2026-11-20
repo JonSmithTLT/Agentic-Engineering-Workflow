@@ -27,7 +27,6 @@ allowed:
   - cli:aew work dispose|result
   - cli:aew work transition|ILLEGAL_TRANSITION
   - static:docs/guides/lead-guide.md|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
-  - static:docs/guides/lead-guide.md|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
   - static:docs/guides/lead-guide.md|aew history audit --expect-rev <revision from aew status>
   - static:docs/guides/lead-guide.md|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
   - static:docs/guides/lead-guide.md|aew integrate prepare <T> --expect-rev <revision from aew status>
@@ -106,7 +105,6 @@ allowed:
   - static:docs/guides/quickstart.md|aew work transition T-0001 --to RUNNING --expect-rev N
   - static:docs/guides/quickstart.md|aew work transition T-0001 --to VERIFY_PENDING --expect-rev N
   - static:guide|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
-  - static:guide|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
   - static:guide|aew history audit --expect-rev <revision from aew status>
   - static:guide|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
   - static:guide|aew integrate prepare <T> --expect-rev <revision from aew status>
@@ -465,10 +463,6 @@ residuals:
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS
-  site: static:docs/guides/lead-guide.md|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
-  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
-  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
-- rule: O-IDS
   site: static:docs/guides/lead-guide.md|aew history audit --expect-rev <revision from aew status>
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
@@ -558,10 +552,6 @@ residuals:
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS
   site: static:guide|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
-  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
-  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
-- rule: O-IDS
-  site: static:guide|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS

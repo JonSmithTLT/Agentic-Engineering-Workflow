@@ -100,8 +100,8 @@ class IllegalTransition(AEWError):
     exit_code = 5
 
 
-class ApprovalSubjectChanged(IllegalTransition):
-    code = "APPROVAL_SUBJECT_CHANGED"
+class ChangedSinceRead(IllegalTransition):
+    code = "CHANGED_SINCE_READ"
 
 
 class GateUnsatisfied(IllegalTransition):
@@ -210,6 +210,10 @@ class WaitUnsupported(IllegalTransition):
 
 class WaitOutsideAStep(IllegalTransition):
     code = "WAIT_OUTSIDE_A_STEP"
+
+
+class WaitBindingLostOnReconnect(IllegalTransition):
+    code = "WAIT_BINDING_LOST_ON_RECONNECT"
 
 
 class TurnEndNeedsMessaging(IllegalTransition):

@@ -41,7 +41,7 @@ from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
-from aew.engine.queue_ops import Queue
+from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -54,7 +54,7 @@ from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
-from aew.errors import AEWError, ApprovalSubjectChanged, IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -83,6 +83,10 @@ if TYPE_CHECKING:
 
 AEW_GITIGNORE = "# Rebuildable/runtime data (KC §5.3) and spent redo records.\nlocal/\nstate/txn/\n"
 AUTHORITY_CLASSES = ("contracts", "decisions", "schemas", "source", "orientation")
+# `aew doctor` pings the operator endpoint for Run's readiness and waits at most this long: shorter than a Run
+# activation's own ping (`operator_client.PING_TIMEOUT_S`), because doctor runs many checks and a live endpoint
+# answers at once; a slower answer is reported as no answer, which the operator can re-check.
+DOCTOR_PING_S = 2.0
 
 
 def _slug(name: str) -> str:
@@ -239,9 +243,9 @@ class ProjectAdmin:
                     expected = binding.get(rel)
                     actual = current.get(rel)
                     if rel not in binding or rel not in required:
-                        raise ApprovalSubjectChanged(
-                            f"manifest.adopt: the adoption set changed at {rel}",
-                            op="manifest.adopt", subject=rel, expected=expected, current=actual,
+                        approval.refuse_change(
+                            "manifest.adopt", rel, "adoption set", expected, actual,
+                            next_step="Read the changed files again and decide anew.",
                         )
                     if rel not in current:
                         approval.compare("manifest.adopt", rel, expected, actual)
@@ -373,6 +377,54 @@ class ProjectAdmin:
                         f"process dumpable: {info.get('dumpable')}; same-uid residuals: "
                         + "; ".join(info.get("residuals") or []))
 
+    def run_problems(self, state: dict[str, Any], *, ping: bool = False) -> list[str]:
+        """``steering.run_problems`` for the adopted execution policy and the seat in ``state``; an unreadable policy is
+        the problem itself. The endpoint is judged by :meth:`endpoint_problem`, pinged only with ``ping``."""
+        seat_held = state["lead"]["status"] != "vacant"
+        endpoint = self.endpoint_problem(ping=ping)
+        try:
+            policy, _ = self.k.execution_policy()
+        except Exception as exc:  # noqa: BLE001  reported as Run's problem, and by policy:execution in doctor
+            unreadable = f"the execution policy cannot be read: {getattr(exc, 'code', type(exc).__name__)}: {exc}"
+            return [p for p in ([] if seat_held else [steering_mod.SEAT_VACANT]) + [unreadable, endpoint] if p]
+        return steering_mod.run_problems(policy, seat_held=seat_held, endpoint=endpoint)
+
+    def endpoint_problem(self, *, ping: bool) -> str | None:
+        """Why the operator endpoint cannot serve Run, or ``None``: its process is not running, or (``ping``) it does
+        not answer a ping within ``DOCTOR_PING_S``, the check each Run activation makes before each action. Without
+        ``ping``, the locator and its process only (``status``'s cheap read)."""
+        from aew.harness import operator_client
+
+        if not operator_client.status(self.k.aew_root).get("running"):
+            return steering_mod.ENDPOINT_DOWN
+        if ping:
+            try:
+                operator_client.ping(self.k.aew_root, timeout_s=DOCTOR_PING_S)
+            except AEWError as exc:
+                return steering_mod.endpoint_silent(exc.message)
+        return None
+
+    def _run_ready_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
+        """`steering:run-ready`: whether a raise to Run would be accepted and could act, and each fix. Nothing to report
+        where steering is not configured. The endpoint is pinged, as each Run activation pings it."""
+        try:
+            configured = self.steering.policy_default() is not None
+        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
+            configured = False
+        if not configured and "steering" not in state:
+            return "PASS", "steering is not configured: Run is not available until the policy names `steering.mode`"
+        problems = self.run_problems(state, ping=True)
+        if problems:
+            return "WARN", "Run is not ready: " + "; ".join(f"({i}) {p}" for i, p in enumerate(problems, 1))
+        try:
+            policy, _ = self.k.execution_policy()
+        except Exception:  # noqa: BLE001 (unreachable: an unreadable policy is a problem above)
+            policy = None
+        return "PASS", ("Run is ready: a Lead holds the seat, the notifier can deliver as judged in this terminal's "
+                        f"environment ({steering_mod.notifier_check(policy)}), every profile routing can pick has a "
+                        "deadline_s, and the operator endpoint answers a ping; the operator raises it with "
+                        "`aew lead mode raise run`")
+
     def doctor_checks(self) -> list[dict[str, str]]:
         checks: list[dict[str, str]] = []
 
@@ -462,8 +514,12 @@ class ProjectAdmin:
         for name, status, detail in containment.doctor_checks(policy_now, K.CONTAINMENT_NOTE):
             add(name, status, detail)
         add("git-drivers", *self._git_drivers_doctor())
+        from aew.engine.coverage import checks_at_pin, doctor_rows
+
+        checks_policy: dict[str, Any] | None = None
+        declaration_pin: dict[str, Any] | None = None
         try:
-            checks_policy = self.k.policy("checks")
+            checks_policy, declaration_pin = checks_at_pin(self.k)
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
             if unconfigured:
                 add("checks-configured", "WARN",
@@ -476,12 +532,21 @@ class ProjectAdmin:
                 "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
+        if checks_policy is not None:  # the project's CI declaration, in a guard of its own: its error is reported
+            try:
+                declaration = declaration_pin["declaration"] if declaration_pin else {}
+                for status, detail in doctor_rows(checks_policy, declaration, self.k.repo_root):
+                    add("checks-configured", status, detail)
+            except Exception as exc:  # noqa: BLE001 (report, never crash)
+                add("checks-configured", "WARN", "the project's CI declaration was not checked: "
+                    f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         from aew.engine import log_compact
         add("transition-log", *log_compact.window_status(self.k.aew_root, state["revision"]))  # ADR-0012 D6
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
         add("operator-endpoint", *self._endpoint_doctor(state))
+        add("steering:run-ready", *self._run_ready_doctor(state))
         try:  # absent where messaging was never enabled and no thread exists (F9-A: off means absent)
             coordination = self.coordination.doctor_check(state)
         except Exception as exc:  # report, never crash
@@ -934,9 +999,10 @@ class Engine:
         return self._harness.harness_interrupt(token=token, run=run)
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
-                       request_id: str | None = None) -> dict[str, Any]:
+                       request_id: str | None = None,
+                       prior_value: str | None = None) -> dict[str, Any]:
         return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace,
-                                            request_id=request_id)
+                                            request_id=request_id, prior_value=prior_value)
 
     def wakes_reach_lead(self) -> bool:
         return self._harness.wakes_reach_lead()
@@ -1009,11 +1075,15 @@ class Engine:
         return self._validation.breaker_reset(token=token, expect_rev=expect_rev, reason=reason,
                                               authorization=authorization, binding=binding)
 
-    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                        prior_value: str | None = None) -> dict[str, Any]:
+        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                                 prior_value=prior_value)
 
-    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
-        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
+    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                          prior_value: str | None = None) -> dict[str, Any]:
+        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+                                                   prior_value=prior_value)
 
     def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
                           reason: str) -> dict[str, Any]:
@@ -1251,7 +1321,9 @@ class Engine:
             if view["configured"] or "steering" in state:  # legacy/manual projects show nothing new (decision 3)
                 from aew.harness import operator_client
 
-                out["steering"] = view | {"operator_endpoint": operator_client.status(self._k.aew_root)}
+                endpoint = operator_client.status(self._k.aew_root)
+                out["steering"] = view | {"operator_endpoint": endpoint,
+                                          "run_problems": self._project.run_problems(state)}
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
@@ -1262,8 +1334,10 @@ class Engine:
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
 
-    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "") -> dict[str, Any]:
-        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale)
+    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+                       prior_value: str | None = None) -> dict[str, Any]:
+        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale,
+                                    prior_value=prior_value)
 
     def steering_request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
                          action_ref: str | None = None) -> dict[str, Any]:
@@ -1595,15 +1669,18 @@ class Engine:
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
         return self._work.work_list(state_filter=state_filter)
 
-    def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str) -> dict[str,
+    def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str,
+                  prior_value: str | None = None) -> dict[str,
                   Any]:
         return self._hierarchy.work_move(token=token, expect_rev=expect_rev, work_id=work_id, parent=parent,
-                                         reason=reason)
+                                         reason=reason, prior_value=prior_value)
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None,
+                     prior_value: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
-                                            reason=reason, risk_class=risk_class, request_id=request_id)
+                                            reason=reason, risk_class=risk_class, request_id=request_id,
+                                            prior_value=prior_value)
 
     def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
                           rationale: str, binding: str | None = None) -> dict[str, Any]:
@@ -1635,20 +1712,39 @@ class Engine:
     def work_roles(self, work_id: str) -> dict[str, Any]:
         return self._gates.work_roles(work_id)
 
+    def prior_value(self, method: str, subject: str) -> str:
+        """Read the binding for a standalone terminal command from committed control state."""
+        state = self._k.store.current()
+        if method == "harness_launch":
+            return approval.run_value(state["invocations"].get(subject) or {})
+        if method in {"integrate_defer", "integrate_requeue"}:
+            return (entry_of(state, subject)[1] or {}).get("state", "none")
+        unit = self._units.view(state, subject)
+        return {
+            "work_transition": lambda: unit["state"],
+            "work_move": lambda: approval.parent_value(unit),
+            "work_promote": lambda: approval.promotion_value(unit),
+            "work_staff": lambda: approval.role_plan_digest(unit),
+        }[method]()
+
     def work_show(self, work_id: str) -> dict[str, Any]:
         return self._work.work_show(work_id)
 
     def work_staff(self, *, token: str, expect_rev: int, work_id: str, execute: list[str] | None = None,
                    review: list[str] | None = None, verify: list[str] | None = None, forbid: list[str] | None = None,
                    remove: list[str] | None = None, selected_by: str = "lead", pin: bool = False,
-                   reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
+                   reason: str | None = None, authorization: dict[str, str] | None = None,
+                   prior_value: str | None = None) -> dict[str, Any]:
         return self._roles.work_staff(token=token, expect_rev=expect_rev, work_id=work_id, execute=execute,
                                       review=review, verify=verify, forbid=forbid, remove=remove,
-                                      selected_by=selected_by, pin=pin, reason=reason, authorization=authorization)
+                                      selected_by=selected_by, pin=pin, reason=reason, authorization=authorization,
+                                      prior_value=prior_value)
 
     def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
-                        reason: str | None = None) -> dict[str, Any]:
-        return self._work.work_transition(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason)
+                        reason: str | None = None,
+                        prior_value: str | None = None) -> dict[str, Any]:
+        return self._work.work_transition(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason,
+                                          prior_value=prior_value)
 
     def work_tree(self, root: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_tree(root)

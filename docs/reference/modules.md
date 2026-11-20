@@ -250,10 +250,12 @@ None.
 - `aew.harness.contract`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
+- `aew.harness.operator_client`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
 - `aew.policy.execution`
+- `aew.process_kind`
 - `aew.surface`
 - `aew.surface.client`
 - `aew.surface.context`
@@ -335,6 +337,7 @@ None.
 ### `aew.cli.notify_commands`
 
 - `aew.harness.desktop_notifier`
+- `aew.harness.file_notifier`
 
 ### `aew.cli.operator_commands`
 
@@ -366,10 +369,8 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.contract`
 - `aew.harness.delivery`
-- `aew.harness.operator_client`
 - `aew.operator`
 - `aew.priority_levels`
-- `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -561,6 +562,7 @@ None.
 - `aew.engine.configuration`
 - `aew.engine.context_ops`
 - `aew.engine.coordination_ops`
+- `aew.engine.coverage`
 - `aew.engine.custody_ops`
 - `aew.engine.dispatch`
 - `aew.engine.disposition_ops`
@@ -611,6 +613,7 @@ None.
 
 ### `aew.engine.approval`
 
+- `aew.engine.outbox`
 - `aew.errors`
 - `aew.util`
 
@@ -740,13 +743,17 @@ None.
 
 ### `aew.engine.coverage`
 
+- `aew.engine.base`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.runlog`
 - `aew.knowledge.evidence`
+- `aew.maps.rules`
+- `aew.maps.structural`
 - `aew.policy.checks`
 - `aew.util`
+- `aew.workspace.git`
 
 ### `aew.engine.custody_ops`
 
@@ -879,6 +886,7 @@ None.
 ### `aew.engine.harness_ops`
 
 - `aew.capability.ops`
+- `aew.engine.approval`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.dispatch`
@@ -1045,6 +1053,7 @@ None.
 
 ### `aew.engine.outbox`
 
+- `aew.engine.approval`
 - `aew.errors`
 - `aew.history.manifest`
 - `aew.schemas`
@@ -1150,6 +1159,7 @@ None.
 
 ### `aew.engine.role_ops`
 
+- `aew.engine.approval`
 - `aew.engine.base`
 - `aew.engine.gates`
 - `aew.engine.ports`
@@ -1190,13 +1200,17 @@ None.
 
 ### `aew.engine.steering`
 
+- `aew.engine.approval`
 - `aew.engine.base`
+- `aew.engine.first_configuration`
 - `aew.engine.primitives`
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.desktop_notifier`
+- `aew.harness.file_notifier`
 - `aew.knowledge.records`
+- `aew.policy.execution`
 - `aew.util`
 
 ### `aew.engine.store`
@@ -1475,12 +1489,20 @@ None.
 ### `aew.harness.desktop_notifier`
 
 - `aew.errors`
+- `aew.harness.file_notifier`
 - `aew.harness.procs`
 
 ### `aew.harness.event_spool`
 
 - `aew.errors`
 - `aew.schemas`
+- `aew.util`
+
+### `aew.harness.file_notifier`
+
+- `aew.errors`
+- `aew.harness.desktop_notifier`
+- `aew.harness.notify`
 - `aew.util`
 
 ### `aew.harness.g3_adapter`
@@ -1558,6 +1580,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.desktop_notifier`
 - `aew.harness.event_spool`
+- `aew.harness.file_notifier`
 - `aew.harness.lead_broker`
 - `aew.harness.procs`
 - `aew.harness.runlog`
@@ -1590,6 +1613,7 @@ None.
 - `aew.harness.wait_binding`
 - `aew.harness.weaker_register`
 - `aew.snapshot.fingerprint`
+- `aew.util`
 
 ### `aew.harness.opencode.capabilities`
 
@@ -2293,6 +2317,7 @@ None.
 
 ### `aew.surface.projection`
 
+- `aew.engine.approval`
 - `aew.engine.guards`
 - `aew.engine.primitives`
 - `aew.engine.queue_ops`

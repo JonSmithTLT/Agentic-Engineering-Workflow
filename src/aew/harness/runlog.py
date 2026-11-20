@@ -29,11 +29,12 @@ import stat
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, BinaryIO
 
 from aew.harness import contract as K
-from aew.util import atomic_write, utc_now
+from aew.util import IS_WINDOWS, atomic_write, utc_now
 
 RUNS_REL = "local/harness/runs"
 RECORD = "run.json"                        # the run record
@@ -327,8 +328,9 @@ def deliver_request(directory: Path, name: str, text: str) -> Path:
     return path
 
 
-def take_requests(directory: Path) -> list[tuple[str, str]]:
-    """Every queued request file as (name, text), removed from the queue. Nothing here is trusted."""
+def take_requests(directory: Path, *,
+                  on_unread: Callable[[str, PermissionError], None] | None = None) -> list[tuple[str, str]]:
+    """Take readable requests and discard invalid entries. Report unavailable Windows reads and leave them queued."""
     queue = directory / "requests"
     out = []
     try:  # a queue that is a link is not the run's queue: its target's files are never read or removed
@@ -340,6 +342,13 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
             # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
             # queue, so a request that could block it would stop the deadline and every later Lead request.
             out.append((path.name, _read_regular(path).decode("utf-8", errors="replace")))
+        except PermissionError as exc:
+            # Another Windows handle can allow deletion while blocking this read. The CRT reports EACCES,
+            # and unlink below could succeed even while that handle is open.
+            if IS_WINDOWS:
+                if on_unread is not None:
+                    on_unread(path.name, exc)
+                continue
         except OSError:
             pass
         try:

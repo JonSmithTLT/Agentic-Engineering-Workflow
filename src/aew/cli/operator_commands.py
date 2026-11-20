@@ -16,7 +16,7 @@ import json
 import sys
 from typing import Any
 
-from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token
+from aew.cli.commands import _add_json, _add_prior, _approval_terminal, _engine, _lead_token
 from aew.errors import OperatorAuthorizationRequired
 
 # The endpoint module (the one constructor of an OperatorPrincipal) is imported only by `aew operator serve`'s handler.
@@ -54,9 +54,18 @@ def register_lead_mode(lsub: argparse._SubParsersAction) -> None:
     q = msub.add_parser("lower", help="lower the mode for the current Lead generation (the Lead's own restriction)")
     q.add_argument("mode", choices=["crawl", "walk"])
     q.add_argument("--rationale", default="", help="recorded with the change")
-    _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).steering_lower(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                              mode=a.mode, rationale=a.rationale))
+    _add_prior(q, "override record ID or none")
+    q.set_defaults(handler=_lower)
+
+
+def _lower(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    prior = a.prior_value
+    if prior is None and _approval_terminal(a):
+        prior = engine.steering_view()["override_record"]
+    return engine.steering_lower(token=token, expect_rev=a.expect_rev, mode=a.mode,
+                                 rationale=a.rationale, prior_value=prior)
 
 
 def _serve(a: argparse.Namespace) -> None:

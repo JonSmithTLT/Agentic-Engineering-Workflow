@@ -1,29 +1,33 @@
 {
   "builder": {
-    "image": "sha256:ef83c04ea3f483d4a9c2a945f4669786018fa6ce31757c7f938c930cc2db8407",
+    "image": "sha256:f63a4e3d892d50147c364a9b57cb97af840e2c0212558da43d53794b38882c45",
     "node": "v22.22.2",
     "npm": "10.9.7",
     "procedure": "web/scripts/offline-gate.sh (npm run build), clean detached checkout"
   },
-  "built_at": "2026-10-06T02:24:21Z",
+  "built_at": "2026-11-15T02:22:33Z",
   "contract": {
     "path": "docs/design/dashboard-api-v1-provisional.yaml",
-    "sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691"
+    "sha256": "417fa77739a006d65605737794efa6b957c68b6cecd9f6a4d0fd1869272187fb"
   },
   "files": {
-    "assets/index-DWAoQmdF.css": "943bfd7e426f03b1b1ce65c0fbac788d0aa334855d49a58479810b6eed53adcd",
-    "assets/index-JdX3sJkV.js": "80d0ef8fd2a34ddfda2d9c503ce76c9670b8373eeebd7f20074b9fce1b58e221",
+    "assets/HistorySearch-LdCy-E47.js": "fad8efcf243bfaf09765c9c7aad48eb01f2d49b77db10fff188a8616ffceae09",
+    "assets/Maps-C4eFXMVy.js": "505afa62be56efeea720c2d51f1aeaaacf23f60248b97af2f3b8cccc74d36216",
+    "assets/additive-schema-BOgOWn3i.js": "9b7ad334540c34f922fb0b33fbe1b06a23da585f44b17806d5f7eaa3144f8cce",
+    "assets/index-BIQbbPrJ.css": "e4f94e548bb450ec64d46465284644d5cc7fedd0a5a9b3803c66f600602b4cf5",
+    "assets/index-DXWi_bFO.js": "0b1c90f4f340658700050774be05c42683c9688d8af49385b2cbf0629bc8390b",
+    "assets/maps-history-D8uENFyu.js": "32c6b74a927ad13aa38e51fc65ea8f829df7ddf69f6a0d0baac5b209979ada4f",
     "favicon.svg": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08",
-    "index.html": "93e488747a1550df7d04164083938407efd975e2e7e50de0a52161aced25511b"
+    "index.html": "20f664949a21259191dbbf3cef27aa5dee8a0e577dbd3c364c7546d1a3de98df"
   },
   "inputs": {
-    "web/package-lock.json": "3cab231b1ea36beabd4352426ca56d9a9c5bdbec14d78ac719b26cb7b369b0b2",
-    "web/package.json": "a131d0a64c01a4f36529668c6f97d00bff0087250a05ee20efbd16f649eb2382"
+    "web/package-lock.json": "7004847f33bf98f079da5a03812f6a137614f02b293df55e57f6918bcbcffcf9",
+    "web/package.json": "e5e0b7f501d9f3770d85acf8e726b3bb3cd153910cde0cbbed0ff70fdb7985b4"
   },
   "schema": "aew/dashboard-build/v1",
   "source": {
-    "commit": "4f0a710fa4831eefda248dd43cc2e144d1010189",
-    "tree": "5b75034f65c3aed78ae1eb086024defe284adaa5",
-    "web_tree": "348aa372634c88b261e972c363a3ffaf9078b55c"
+    "commit": "dacb2646442e9c3153eb2427ec3aeaed550ca92c",
+    "tree": "f65db0061d23de53cdcb7a4f4fc4ebf04f220617",
+    "web_tree": "29d09cc358b5fcda617b2c323c70009392263662"
   }
 }

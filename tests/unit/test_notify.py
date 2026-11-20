@@ -672,14 +672,15 @@ def _lines_for(root: Path, event_name: str) -> list[tuple[str, str | None]]:
 
 def _no_notifier(project) -> None:
     """A steering mode and no notifier at all: the policy as it was before the template shipped the desktop default."""
+    import yaml
+
     from aew.harness import desktop_notifier as D
 
     adopt(project)
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    text = path.read_text(encoding="utf-8")
-    default = "notify:\n  command: [" + ", ".join(D.COMMAND) + "]\n"
-    assert text.count(default) == 1, "the template's notifier lines moved"
-    path.write_bytes(text.replace(default, "").encode("utf-8"))
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert doc.pop("notify") == {"command": list(D.COMMAND)}, "the template's notifier moved"
+    path.write_bytes(yaml.safe_dump(doc, sort_keys=False).encode("utf-8"))
     project.adopt_policy()
 
 
@@ -720,6 +721,23 @@ def test_a_request_recorded_before_the_notifier_is_delivered_once_it_is(project,
     title, body = desktop_notifier.text(got)
     assert title == "AEW: raise requested to walk" and got["reason"] == "the test asks"
     assert "the test asks" not in title + body
+
+
+def test_a_delivery_the_file_notifier_cannot_make_is_the_notifier_unavailable_never_not_executable(project):
+    """AEW's headless notifier is run as the endpoint's own engine, so a path it cannot write is the notifier being
+    unavailable (a fix in its path), not a command that cannot be executed: the delivery's reason says which."""
+    adopt(project, command=["aew", "notify", "file", "relative.jsonl"])  # not absolute: it can take no event
+    root = project.root / ".aew"
+    request(project, "raise")
+    watcher = notify.Watcher(project.root, root)
+    watcher.start()
+    try:
+        _settle(watcher)
+    finally:
+        watcher.close()
+    assert _lines_for(root, "raise_requested") == [("failed", "unavailable")]
+    [entry] = [x for x in notify.deliveries(root) if x["event"] == "raise_requested"]
+    assert "is not absolute" in entry["detail"], entry
 
 
 def test_a_request_recorded_while_the_default_desktop_notifier_was_unavailable_is_delivered_once_it_is(

@@ -43,7 +43,7 @@ class QueueWalk(Walk):
         super().__init__(tmp_path, seed, monkeypatch)
         gates = self.root / ".aew/policy/gates.yaml"
         policy = load_yaml(gates.read_text(encoding="utf-8"))
-        policy["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}  # D5
+        policy["post_integration"]["validation"] = {"by_class": {"0": "checks", "1": "checks"}, "default": "verifier"}
         gates.write_text(dump_yaml({**policy, "mutating_concurrency": 3}), encoding="utf-8", newline="\n")
         self.p.pin_policy()
         self.gates_path = gates

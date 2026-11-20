@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew import process_kind
 from aew.engine import faults, recall
-from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
+from aew.engine.archive_ops import evidence_pins, evidence_source, for_display, held_evidence, pinned_records
 from aew.engine.authority import require_lead
 from aew.errors import (
     AEWError,
@@ -137,7 +137,7 @@ class HistoryCommands:
         doc = self.archive.record(entry)
         if held_as is None:
             out: dict[str, Any] = {"id": record_id, "kind": entry["kind"], "trust": self._trust(entry["source"]),
-                                   "entry": _public(entry), "record": redact(doc)}
+                                   "entry": _public(entry), "record": for_display(doc)}
             if entry["kind"] == "unit":
                 unit = self.archive.archived_unit(state, record_id) or {}
                 out["current_parent"] = unit.get("parent")
@@ -161,7 +161,7 @@ class HistoryCommands:
         return {"id": record_id, "kind": {"invocations": "invocation", "tokens": "credential",
                                           "evidence": "evidence"}[held_as],
                 "held_by": entry.get("subject") or entry["id"], "trust": self._trust(source),
-                "record": redact(record)}
+                "record": for_display(record)}
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:

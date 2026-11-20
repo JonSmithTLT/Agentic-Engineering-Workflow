@@ -180,7 +180,8 @@ commands:
       plan login, provider-key names its time left and model-list uses the same route and seed as launch.
       `steering:run-ready` says whether a raise to Run would be accepted and could act (A1 §3.2): a Lead in the seat, the
       notifier, a deadline_s on every profile routing can pick, and an operator endpoint that answers a ping, each with
-      its fix; a read, like every doctor check."
+      its fix; a read, like every doctor check.
+      checks-configured reports missing project CI declarations and declared tools without a configured check."
   - name: init
     home: product
     users: [operator]
@@ -433,7 +434,8 @@ commands:
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "today's configure and change-a-setting fallback"
+    note: "today's configure and change-a-setting fallback. Adopts the operational coverage declaration in
+      policy/checks.yaml and validates covered_by against the configured check IDs and built-in guardrails."
   - name: work create
     home: product
     users: [lead]

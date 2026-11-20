@@ -26,7 +26,6 @@ every engine call.
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -109,7 +108,6 @@ class Server:
     def serve(self, stdin: IO[bytes], stdout: IO[bytes]) -> int:
         """Read requests until stdin closes; a tool call is answered from a worker so that reading goes on. At end
         of input the calls in flight still get their answers."""
-        reader = io.TextIOWrapper(stdin, encoding="utf-8", newline="\n")
         written = threading.Lock()
 
         def write(replies: list[dict[str, Any]]) -> None:
@@ -126,10 +124,15 @@ class Server:
 
         with ThreadPoolExecutor(MAX_IN_FLIGHT, thread_name_prefix="aew-lead-mcp-call") as calls, \
                 ThreadPoolExecutor(MAX_WAITS, thread_name_prefix="aew-lead-mcp-wait") as waits:
-            for line in reader:
-                if not line.strip():
-                    continue
-                message = _parse(line)
+            for raw in stdin:
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    message = _NOT_JSON
+                else:
+                    if not line.strip():
+                        continue
+                    message = _parse(line)
                 if _calls_a_tool(message, waiting=True):
                     waits.submit(answer, message)
                 elif _calls_a_tool(message):
@@ -245,7 +248,7 @@ _NOT_JSON = object()
 def _parse(line: str) -> Any:
     try:
         return json.loads(line)
-    except ValueError:
+    except (ValueError, RecursionError):
         return _NOT_JSON
 
 

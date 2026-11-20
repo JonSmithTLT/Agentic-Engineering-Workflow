@@ -466,12 +466,13 @@ class RunNetwork:
     def start(cls, layout: Layout, *, provider: str | None, provider_env: Iterable[str],
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
               allow: egress.Allowlist | None = None, stored: login.WorkerKey | None = None,
-              plan: tuple[login.StoredLogin, login.Login] | None = None) -> RunNetwork:
+              plan: tuple[login.StoredLogin, login.Login] | None = None,
+              record: Callable[[dict[str, Any]], None] | None = None) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
         ``relay_needed``) and the egress proxy with ``allow``, the run's allowlist (``egress_policy``), when there is
         one. The caller builds that allowlist once and gives the same one to the run's self-test, so the self-test
         checks the proxy the run gets (register E143). Raises ``ContainmentUnavailable`` when the relay has no
-        upstream, or a socket cannot be made."""
+        upstream, or a socket cannot be made. ``record`` takes each relayed request's entry (``relay.RequestLog``)."""
         names = [str(n) for n in provider_env]
         secret = [n for n in names if n.upper() not in PROXY_NAMES]
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
@@ -498,7 +499,9 @@ class RunNetwork:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
                 net.relay = relay.ProviderRelay(
                     target, {}, proxy=proxy, resolve=functools.partial(_grant, token, resolver.worker_grant),
-                    listener=listen(os.path.join(layout.net_dir, RELAY))).start()
+                    listener=listen(os.path.join(layout.net_dir, RELAY)), record=record,
+                    route=resolver.integration, login="oauth", issued=(token,),
+                    login_headers=tuple(login.LOGIN_HEADERS.get(resolver.integration, {}))).start()
             elif relay_needed:
                 target = upstream(provider, policy)
                 if stored is not None and stored_key_candidate(provider, names, env, policy, on_relay_route=True):
@@ -511,15 +514,17 @@ class RunNetwork:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
                 tls, client = relay_tls(provider, policy)
                 relayed_names = worker_provider_names(provider, values)
+                keyed = {sentinels[n]: values[n] for n in relayed_names if values[n]}
                 net.relay = relay.ProviderRelay(
-                    target, {sentinels[n]: values[n] for n in relayed_names if values[n]},
-                    proxy=proxy, tls=tls, client=client,
-                    listener=listen(os.path.join(layout.net_dir, RELAY))).start()
+                    target, keyed, proxy=proxy, tls=tls, client=client,
+                    listener=listen(os.path.join(layout.net_dir, RELAY)), record=record, route=provider,
+                    login="key" if keyed else "none").start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
                 if net.key_relayed:
                     net.key_source = "stored OpenCode login" if net.stored_key_variable else "environment"
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
+            net.tell_foreign()
         except OSError as exc:
             net.close()
             raise ContainmentUnavailable(f"the run's network could not be set up: {exc}", reason="network") from None
@@ -532,7 +537,7 @@ class RunNetwork:
     def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
                    policy: Mapping[str, Any] | None, env: Mapping[str, str],
                    refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None,
-                   keyless: Iterable[str] = ()) -> RunNetwork:
+                   keyless: Iterable[str] = (), record: Callable[[dict[str, Any]], None] | None = None) -> RunNetwork:
         """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
         ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
         own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
@@ -543,7 +548,8 @@ class RunNetwork:
         2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
         the relays' own route to their upstreams, as a worker's are. ``keyless`` names providers of their own id whose
         relay presents a client certificate and carries no key (register E123): their upstream is the policy's
-        ``containment.network.upstreams``. Raises ``ContainmentUnavailable`` as :meth:`start` does."""
+        ``containment.network.upstreams``. ``record`` takes each relayed request's entry, as :meth:`start`'s does.
+        Raises ``ContainmentUnavailable`` as :meth:`start` does."""
         names = [str(n) for n in provider_env]
         net = cls(layout)
         net.lead, net.http_proxy = True, True
@@ -563,12 +569,13 @@ class RunNetwork:
                 tls, client = relay_tls(provider, policy)
                 listener = listen(os.path.join(layout.net_dir, _relay_sock(provider)))
                 if resolve is None and provider not in keys:  # a client certificate alone: nothing to swap in
-                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client)
+                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
+                                                 record=record, route=provider, login="none")
                 elif resolve is None:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
                     served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener,
-                                                 tls=tls, client=client)
+                                                 tls=tls, client=client, record=record, route=provider, login="key")
                 else:
                     net.login_sentinels[provider] = token
                     try:  # what the login holds now, for the leak check; one already expired has nothing to leak
@@ -576,10 +583,13 @@ class RunNetwork:
                     except relay.Unavailable:
                         pass
                     served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
-                                                 resolve=functools.partial(_grant, token, resolve))
+                                                 resolve=functools.partial(_grant, token, resolve), record=record,
+                                                 route=provider, login="oauth", issued=(token,),
+                                                 login_headers=tuple(login.LOGIN_HEADERS.get(provider, {})))
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
                                             listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
+            net.tell_foreign()
         except OSError as exc:
             net.close()
             raise ContainmentUnavailable(f"the Lead's network could not be set up: {exc}", reason="network") from None
@@ -587,6 +597,14 @@ class RunNetwork:
             net.close()
             raise
         return net
+
+    def tell_foreign(self) -> None:
+        """Tell each relay the sentinels the run issued to its other relays and variables, so that one of them in a
+        request is refused as another provider's placeholder (``relay.OTHER_PLACEHOLDER``), not a stale one."""
+        relays = [service for _, service in self._services() if hasattr(service, "own")]
+        issued = {*self.sentinels.values(), *self.login_sentinels.values(), *(t for r in relays for t in r.own)}
+        for served in relays:
+            served.foreign = frozenset(issued - served.own)
 
     def lead_bases(self) -> dict[str, str]:
         """The Lead's provider ``baseURL`` for each relayed provider: its relay's loopback port inside, with the

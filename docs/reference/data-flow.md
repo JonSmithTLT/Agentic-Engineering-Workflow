@@ -154,6 +154,7 @@ The `writers` fact of the `writers` records.
 - `aew.engine.usage_ops:write_pricing_snapshot`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.work_ops:WorkUnits.propose`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.broker_liveness:write`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.containment.relay:RequestLog.__call__`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.event_spool:Reader.retire`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.lead_broker:lead_run_dir`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.lead_broker:record_label`: no static call chain from any entry point's declaring function reaches this writer
@@ -162,6 +163,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer

@@ -91,9 +91,8 @@ def test_children_digest_tracks_ids_states_and_completion_records():
 
 
 def test_a_move_keeps_each_required_integration_verifier():
-    """``validation.obligation`` reads each ancestor's floor on its own (a class mapping need not be monotonic), so a
-    required integration verifier is an obligation of its own, compared apart from the effective class and the
-    gates."""
+    """Each ancestor's floor is judged on its own under a deliberately inconsistent map. A required verifier is
+    compared apart from the effective class and the gates."""
     gates_policy = {"post_integration": {"validation": {"by_class": {"2": "checks"}, "default": "verifier"}}}
     s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 1, "rationale": "r"}),
               E_2=unit("epic", "IN_PROGRESS", policy=None),

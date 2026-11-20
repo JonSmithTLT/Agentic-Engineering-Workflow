@@ -122,7 +122,7 @@
     "description": {"x-aew-class": "operational", "type": "string"},
     "maps": {
       "type": "object",
-      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices \"off\" (the default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps; structural adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. Turning it on is the operator's configuration decision.",
+      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices structural (what `aew init` writes for a new project) adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. \"off\" (also when absent, as in a project initialized before that default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps. Changing it is the operator's configuration decision: an existing project is offered structural at the operator's terminal (the switch offer).",
       "additionalProperties": false,
       "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}}
     },

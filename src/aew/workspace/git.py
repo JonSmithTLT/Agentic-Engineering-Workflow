@@ -316,7 +316,7 @@ def untrusted_filters(cwd: Path, commit: str) -> list[dict[str, Any]]:
     for f in dict.fromkeys([info, common_info, *_attribute_files(cwd)]):
         if f.is_file():
             sources.append((str(f), f.read_text(encoding="utf-8", errors="replace")))
-    uses: dict[str, list[str]] = {}
+    uses: dict[str, dict[str, list[str]]] = {}
     for where, text in sources:
         for line in text.splitlines():
             line = line.strip()
@@ -324,8 +324,8 @@ def untrusted_filters(cwd: Path, commit: str) -> list[dict[str, Any]]:
                 continue
             for name in ATTR_FILTER.findall(line):
                 if name in needed:
-                    uses.setdefault(name, []).append(f"{line.split()[0]} ({where})")
-    return [{"driver": name, "patterns": uses[name],
+                    uses.setdefault(name, {}).setdefault(where, []).append(line.split()[0])
+    return [{"driver": name, "patterns_by_file": uses[name],
              "commands": [{"config": d["config"], "value": d["value"], "origin": d["origin"]} for d in needed[name]]}
             for name in sorted(uses)]
 
@@ -334,11 +334,16 @@ def untrusted_filters_message(found: list[dict[str, Any]], policy_file: str, *, 
     """The refusal for ``untrusted_filters``: what is needed and why it is refused, then exactly how to proceed."""
     parts = []
     for f in found:
-        shown = ", ".join(f["patterns"])
+        groups = []
+        for path, patterns in f["patterns_by_file"].items():
+            shown = ", ".join(patterns[:5])
+            if len(patterns) > 5:
+                shown += f" and {len(patterns) - 5} more"
+            groups.append(f"{shown} ({path})")
         origins = sorted({c["origin"] for c in f["commands"]})
         cmds = ", ".join(f"{c['config']} = `{c['value']}`" for c in f["commands"])
         where = f"defined in {origins[0]}" if len(origins) == 1 else "defined in " + ", ".join(origins)
-        parts.append(f"filter '{f['driver']}' (assigned by {shown}; {cmds}; {where})")
+        parts.append(f"filter '{f['driver']}' (assigned by {'; '.join(groups)}; {cmds}; {where})")
     names = ", ".join(f["driver"] for f in found)
     return (
         f"Refused: this repository's files need git {'filters' if len(found) > 1 else 'filter'} {names} and AEW "

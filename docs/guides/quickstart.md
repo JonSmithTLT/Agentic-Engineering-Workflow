@@ -82,6 +82,13 @@ A certificate-only provider skips key setup.
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
   head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
+- **Project maps are on for a new project.** Each worker's pack carries a bounded slice of that map, as navigation and
+  never authority, and a dispatch whose map is out of date for its work makes a new one first. To turn them off, set
+  `maps.pack_slices` to `"off"` (with the quotes) in `.aew/policy/execution.yaml`, then adopt it as in
+  [Edit pinned settings](#edit-pinned-settings-or-classify-authority-candidates): that needs the Lead credential, with
+  the Lead session ended first. A project initialized before maps were on keeps them off: `aew opencode` asks once at
+  its start, where Enter alone keeps them off, and `aew doctor` shows the answer. To be asked again instead, delete
+  that switch's row from `.aew/local/switch-offers.json`: the next `aew opencode` start asks, with no seat needed.
 - **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
   may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
   and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the

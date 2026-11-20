@@ -65,6 +65,7 @@ from aew.errors import (
 )
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
+from aew.maps import slices
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
 from aew.schemas import validate_property
@@ -925,7 +926,8 @@ class EvidenceCommands:
         pack = ctx.state["invocations"][inv_id].get("pack") or {}
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": archetype,
                 "role_card": chosen.id, "scope": scope, "evaluated_snapshot": snapshot,
-                "pack": pack or None, "dispatch": decision.to_dict(), "revision": ctx.session.committed_revision}
+                "pack": slices.for_lead(pack or None), "dispatch": decision.to_dict(),
+                "revision": ctx.session.committed_revision}
 
     def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "invoke.cancel", reason=reason) as ctx:
@@ -943,7 +945,10 @@ class EvidenceCommands:
         inv = state["invocations"].get(invocation) or self.archive.archived_invocation(state, invocation)
         if inv is None:
             raise NotFound(f"no invocation {invocation}")
-        return {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
+        shown = {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
+        if "pack" in shown:  # the pinned slice body stays in control state, never in the Lead's context
+            shown["pack"] = slices.for_lead(shown["pack"])
+        return shown
 
     def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
         """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,

@@ -11,6 +11,7 @@ from typing import Any, NamedTuple
 from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
 from aew.harness.contract import EXPECT_REV, invocation_of_run
+from aew.maps import slices
 from aew.util import sha256_text
 
 INDEX = "control_requests"
@@ -131,7 +132,7 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
     if op == "work.redispatch":
         return identity | {"work_id": wid, "observation": deepcopy(inv["observation"])} | metadata
     result = {"role": inv["role"], "role_card": (inv.get("card") or {}).get("id"), "scope": inv["scope"],
-              "evaluated_snapshot": deepcopy(inv.get("snapshot")), "pack": deepcopy(inv.get("pack"))}
+              "evaluated_snapshot": deepcopy(inv.get("snapshot")), "pack": slices.for_lead(deepcopy(inv.get("pack")))}
     if inv["scope"] == "observation":
         result["subject"] = deepcopy(inv["subject"])
     if inv["scope"] in {"observation", "parent"}:

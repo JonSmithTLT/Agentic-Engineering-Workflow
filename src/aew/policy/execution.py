@@ -30,6 +30,12 @@ REL_PATH = "policy/execution.yaml"  # conventional location; project.yaml policy
 DEFAULT_HARNESS = "opencode"
 EFFORT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
 
+PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
+# What a new project's policy holds (ADR-0015, amended 2026-11-11): maps on. An absent key still
+# reads as off (``pack_slices``), so a project initialized before this default keeps its packs until the operator takes
+# the switch offer (``aew.switch_offer``), which reads its target from here.
+NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL
+
 TEMPLATE = """\
 # AEW execution policy (ADR-0010): which harness, provider, model and effort run each invocation.
 # It is resolved once at dispatch and pinned on the invocation, so editing this file never changes an
@@ -88,7 +94,11 @@ steering:
 # it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
 notify:
   command: [aew, notify, desktop]
-"""
+# Project maps (ADR-0015): each worker's pack carries a bounded, fenced slice of the repository's structural map, made
+# from its Git objects, as navigation and never authority, and the Lead's resume view shows the map's freshness. "off"
+# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps.
+maps:
+  pack_slices: """ + NEW_PROJECT_PACK_SLICES + "\n"
 
 
 def policy_path(aew_root: Path, manifest: dict[str, Any]) -> Path:
@@ -191,15 +201,13 @@ def _plan_login_problems(policy: dict[str, Any], *, adoption: bool) -> list[tupl
     return problems
 
 
-PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
-
-
 MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
 PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
 PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 
 
-# The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
+# The execution policy's string-valued switches, by path, with their values (the first is what an absent key reads;
+# what a new project holds is the template's, ``new_project_switches``). YAML 1.1 reads
 # an unquoted ``off`` (and ``no``, ``false``, ``on``, ``yes``, ``true``) as a boolean, which a schema enum refuses
 # without saying why; ``refuse_yaml_boolean`` names the cause and the quoted fix (the convention of PR #143's
 # ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.
@@ -210,6 +218,19 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
     ("lead", "push_wake"): (PUSH_WAKE_ON, PUSH_WAKE_OFF),  # steering PR 2; on by default from PR 3
 }
+
+
+def new_project_switches() -> dict[tuple[str, str], str]:
+    """Each string switch the template sets, with the value a new project holds. The table's first value is what an
+    absent key reads; a project initialized before the template set a switch holds that until the operator changes
+    it (the configuration view and the board show both)."""
+    template = load_yaml(TEMPLATE)
+    out = {}
+    for block, key in STRING_SWITCHES:
+        value = (template.get(block) or {}).get(key) if isinstance(template, dict) else None
+        if isinstance(value, str):
+            out[(block, key)] = value
+    return out
 
 
 def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
@@ -273,8 +294,9 @@ def presentation(policy: dict[str, Any] | None) -> str:
 
 
 def pack_slices(policy: dict[str, Any] | None) -> str:
-    """The project-map switch (``maps.pack_slices``, register F22.1 plan §5.1): ``off`` unless the operator set it.
-    Absent policy, absent key and an unreadable policy all mean ``off``, so a map can never change a pack by default."""
+    """The project-map switch (``maps.pack_slices``, register F22.1 plan §5.1). A new project's policy holds
+    :data:`NEW_PROJECT_PACK_SLICES`; an absent policy, an absent key and an unreadable policy all mean ``off``, so a
+    project initialized before that default changes no pack until the operator takes the switch offer."""
     return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
 
 

@@ -105,7 +105,7 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
     doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
     Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
     ``HarnessIncompatible`` for a provider key a launch would not get."""
-    from aew.harness.containment import client_cert, netns
+    from aew.harness.containment import client_cert, netns, relay
 
     # Check policy-known refusals before building the sandbox. A stored source needs the actual relay below.
     on_route = netns.relay_route(policy, adapter_cls.PROVIDER_RELAY)
@@ -171,7 +171,8 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         if layout is not None and layout.private_network:
             network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
                                               env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow,
-                                              stored=stored, plan=plan)
+                                              stored=stored, plan=plan,
+                                              record=relay.RequestLog(run_dir / runlog.RELAY_REQUESTS))
             label["network"].update(network.describe())
             if changed:
                 label["network"]["provider_key_note"] = "the stored OpenCode login changed after admission"

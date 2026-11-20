@@ -20,6 +20,6 @@ MODES: dict[str, str] = {
     "O-CMD": SHADOW,
     "O-CODE": SHADOW,
     "O-WORDS": SHADOW,
-    "O-SECRET": SHADOW,
+    "O-SECRET": ENFORCE,
     "O-ENV": SHADOW,
 }

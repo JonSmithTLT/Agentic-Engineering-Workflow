@@ -54,7 +54,7 @@ from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
-from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, UsageError
+from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, PermissionDenied, UsageError
 from aew.harness import contract as K
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
@@ -83,9 +83,10 @@ if TYPE_CHECKING:
 
 AEW_GITIGNORE = "# Rebuildable/runtime data (KC §5.3) and spent redo records.\nlocal/\nstate/txn/\n"
 AUTHORITY_CLASSES = ("contracts", "decisions", "schemas", "source", "orientation")
-# `aew doctor` pings the operator endpoint for Run's readiness and waits at most this long: shorter than a Run
-# activation's own ping (`operator_client.PING_TIMEOUT_S`), because doctor runs many checks and a live endpoint
-# answers at once; a slower answer is reported as no answer, which the operator can re-check.
+# Both doctor rows share the short ping introduced by #481. The endpoint answers from memory on its own thread
+# (review measurement on an idle Windows host: median 0.5 ms, max 8 ms). This is shorter than a Run activation's
+# `operator_client.PING_TIMEOUT_S` to keep doctor quick. A slower reply is reported as no answer.
+# Rerun doctor to recheck.
 DOCTOR_PING_S = 2.0
 
 
@@ -352,24 +353,27 @@ class ProjectAdmin:
             return "FAIL", git.untrusted_filters_message(needed, shown, from_doctor=True)
         return "PASS", listing
 
-    def _endpoint_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
-        """The operator endpoint and its label (M4-E plan v3 §2.1): it answers a ping or it does not, and every record
-        it makes is `guarantee: dev` with the same-uid residuals stated."""
+    def _probe_operator_endpoint(self) -> tuple[dict[str, Any] | None, str | None]:
+        """One bounded ping of a live process, shared by doctor's endpoint and Run checks."""
         from aew.harness import operator_client
 
+        if not operator_client.status(self.k.aew_root).get("running"):
+            return None, steering_mod.ENDPOINT_DOWN
         try:
-            configured = self.steering.policy_default() is not None
-        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
-            configured = False
-        try:
-            info = operator_client.ping(self.k.aew_root)
-        except AEWError:
-            info = None
+            return operator_client.ping(self.k.aew_root, timeout_s=DOCTOR_PING_S), None
+        except PermissionDenied as exc:
+            return None, exc.message
+        except AEWError as exc:
+            return None, steering_mod.endpoint_silent(exc.message)
+
+    def _endpoint_doctor(self, state: dict[str, Any], info: dict[str, Any] | None, problem: str | None,
+                         *, configured: bool) -> tuple[str, str]:
+        """Report endpoint health and the same-uid residuals of its dev guarantee (M4-E plan v3 §2.1)."""
         if info is None:
-            if not configured and "steering" not in state:
+            if problem == steering_mod.ENDPOINT_DOWN and not configured:
                 return "PASS", "not running (steering is not configured; the endpoint is needed only to raise it)"
-            return "WARN", ("not running: raising the Lead's steering mode, and unattended Run's notifications, need "
-                            "`aew operator serve --dev` in the operator's own terminal")
+            assert problem is not None
+            return "WARN", problem
         host = state["lead"].get("host_uid")
         same = host is None or host == info.get("uid")
         return "WARN", (f"running (pid {info['pid']}), guarantee {info['guarantee']}: not A1/F18 production authority "
@@ -377,11 +381,9 @@ class ProjectAdmin:
                         f"process dumpable: {info.get('dumpable')}; same-uid residuals: "
                         + "; ".join(info.get("residuals") or []))
 
-    def run_problems(self, state: dict[str, Any], *, ping: bool = False) -> list[str]:
-        """``steering.run_problems`` for the adopted execution policy and the seat in ``state``; an unreadable policy is
-        the problem itself. The endpoint is judged by :meth:`endpoint_problem`, pinged only with ``ping``."""
+    def run_problems(self, state: dict[str, Any], *, endpoint: str | None) -> list[str]:
+        """Run readiness for the adopted policy, current seat, and caller's endpoint observation."""
         seat_held = state["lead"]["status"] != "vacant"
-        endpoint = self.endpoint_problem(ping=ping)
         try:
             policy, _ = self.k.execution_policy()
         except Exception as exc:  # noqa: BLE001  reported as Run's problem, and by policy:execution in doctor
@@ -389,31 +391,11 @@ class ProjectAdmin:
             return [p for p in ([] if seat_held else [steering_mod.SEAT_VACANT]) + [unreadable, endpoint] if p]
         return steering_mod.run_problems(policy, seat_held=seat_held, endpoint=endpoint)
 
-    def endpoint_problem(self, *, ping: bool) -> str | None:
-        """Why the operator endpoint cannot serve Run, or ``None``: its process is not running, or (``ping``) it does
-        not answer a ping within ``DOCTOR_PING_S``, the check each Run activation makes before each action. Without
-        ``ping``, the locator and its process only (``status``'s cheap read)."""
-        from aew.harness import operator_client
-
-        if not operator_client.status(self.k.aew_root).get("running"):
-            return steering_mod.ENDPOINT_DOWN
-        if ping:
-            try:
-                operator_client.ping(self.k.aew_root, timeout_s=DOCTOR_PING_S)
-            except AEWError as exc:
-                return steering_mod.endpoint_silent(exc.message)
-        return None
-
-    def _run_ready_doctor(self, state: dict[str, Any]) -> tuple[str, str]:
-        """`steering:run-ready`: whether a raise to Run would be accepted and could act, and each fix. Nothing to report
-        where steering is not configured. The endpoint is pinged, as each Run activation pings it."""
-        try:
-            configured = self.steering.policy_default() is not None
-        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
-            configured = False
-        if not configured and "steering" not in state:
+    def _run_ready_doctor(self, state: dict[str, Any], endpoint: str | None, *, configured: bool) -> tuple[str, str]:
+        """Whether a raise to Run would be accepted and could act, using doctor's shared endpoint probe."""
+        if not configured:
             return "PASS", "steering is not configured: Run is not available until the policy names `steering.mode`"
-        problems = self.run_problems(state, ping=True)
+        problems = self.run_problems(state, endpoint=endpoint)
         if problems:
             return "WARN", "Run is not ready: " + "; ".join(f"({i}) {p}" for i, p in enumerate(problems, 1))
         try:
@@ -514,8 +496,12 @@ class ProjectAdmin:
         for name, status, detail in containment.doctor_checks(policy_now, K.CONTAINMENT_NOTE):
             add(name, status, detail)
         add("git-drivers", *self._git_drivers_doctor())
+        from aew.engine.coverage import checks_at_pin, doctor_rows
+
+        checks_policy: dict[str, Any] | None = None
+        declaration_pin: dict[str, Any] | None = None
         try:
-            checks_policy = self.k.policy("checks")
+            checks_policy, declaration_pin = checks_at_pin(self.k)
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
             if unconfigured:
                 add("checks-configured", "WARN",
@@ -528,13 +514,27 @@ class ProjectAdmin:
                 "integration stays serialized (gates.yaml mutating_concurrency)")
         except Exception:  # noqa: S110 (the policy checks above already reported an unreadable policy)
             pass
+        if checks_policy is not None:  # the project's CI declaration, in a guard of its own: its error is reported
+            try:
+                declaration = declaration_pin["declaration"] if declaration_pin else {}
+                for status, detail in doctor_rows(checks_policy, declaration, self.k.repo_root):
+                    add("checks-configured", status, detail)
+            except Exception as exc:  # noqa: BLE001 (report, never crash)
+                add("checks-configured", "WARN", "the project's CI declaration was not checked: "
+                    f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         from aew.engine import log_compact
         add("transition-log", *log_compact.window_status(self.k.aew_root, state["revision"]))  # ADR-0012 D6
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
-        add("operator-endpoint", *self._endpoint_doctor(state))
-        add("steering:run-ready", *self._run_ready_doctor(state))
+        try:
+            configured = self.steering.policy_default() is not None
+        except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
+            configured = False
+        configured = configured or "steering" in state
+        endpoint_info, endpoint_problem = self._probe_operator_endpoint()
+        add("operator-endpoint", *self._endpoint_doctor(state, endpoint_info, endpoint_problem, configured=configured))
+        add("steering:run-ready", *self._run_ready_doctor(state, endpoint_problem, configured=configured))
         try:  # absent where messaging was never enabled and no thread exists (F9-A: off means absent)
             coordination = self.coordination.doctor_check(state)
         except Exception as exc:  # report, never crash
@@ -1310,8 +1310,9 @@ class Engine:
                 from aew.harness import operator_client
 
                 endpoint = operator_client.status(self._k.aew_root)
+                problem = None if endpoint.get("running") else steering_mod.ENDPOINT_DOWN
                 out["steering"] = view | {"operator_endpoint": endpoint,
-                                          "run_problems": self._project.run_problems(state)}
+                                          "run_problems": self._project.run_problems(state, endpoint=problem)}
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier

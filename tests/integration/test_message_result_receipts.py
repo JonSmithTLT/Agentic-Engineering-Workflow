@@ -286,12 +286,16 @@ def test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock(w):
         closer = threading.Thread(target=close)
         closer.start()
         try:
-            closer.join(10)
-            finished_while_busy = not closer.is_alive()
+            # The bound: close gives up the stalled send's lock and stops the session while that send still holds it.
+            # Waited for with no deadline but the test's own: close's teardown after it is not what is claimed.
+            while not b._stop.wait(0.1):
+                pass
+            stopped_while_held = b.server._serial.locked()
         finally:
             b.server._serial.release()
-            closer.join(60)
-        assert finished_while_busy and not errors, "closing waited without a bound for the stalled send"
+            closer.join()  # its teardown: no deadline but the test's own either
+        assert stopped_while_held and not closer.is_alive() and not errors, \
+            "closing waited without a bound for the stalled send"
 
 
 def test_own_shell_lead_tool_consumes_but_plain_operator_status_does_not(w):

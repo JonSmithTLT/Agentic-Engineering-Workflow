@@ -647,6 +647,74 @@ def test_every_contained_start_clears_the_leads_saved_permissions_before_its_ses
     assert _count(db, "SELECT COUNT(*) FROM session_v2 WHERE permission IS NOT NULL") == 0
 
 
+def _stale_lead_store(db: Path) -> None:
+    """The Lead's own store as a ChatGPT-login session left it: AEW's row active with that session's sentinel, and the
+    Lead's own earlier openai row set inactive by it; an anthropic row of the Lead's own, untouched."""
+    store(db.parent, [("openai", "api", 0, {"type": "key", "key": "sk-lead-own-openai"}, 5),
+                      ("openai", "chatgpt-browser", 1, chatgpt("aew-relay-" + "e" * 32, time.time() + 300 * 86400), 9),
+                      ("anthropic", "api", 1, {"type": "key", "key": "sk-ant-lead-own"}, 3)], path=db)
+    con = sqlite3.connect(db)
+    con.execute("UPDATE credential SET id = 'cred_aew_openai' WHERE id = 'cred_1'")
+    con.commit()
+    con.close()
+
+
+def _rows(db: Path) -> dict[str, tuple[str, int]]:
+    con = sqlite3.connect(db)
+    try:
+        return {r[0]: (r[1], r[2]) for r in con.execute("SELECT id, integration_id, active FROM credential")}
+    finally:
+        con.close()
+
+
+def test_every_contained_start_removes_the_login_rows_earlier_sessions_left_whatever_its_own_logins(
+        tmp_path, monkeypatch, at_a_terminal):
+    """A session with no refreshing login of its own (an API key, here none at all) still starts with no AEW login row:
+    an earlier ChatGPT-login session's row, active with that session's sentinel, would otherwise be what OpenCode
+    sends, and no relay of this session holds it. The provider's own row it had set inactive is active again; the
+    other providers' rows are as they were."""
+    session, db = _start_until_the_projection(tmp_path, monkeypatch)
+    db.parent.mkdir(parents=True)
+    _stale_lead_store(db)
+    with pytest.raises(RuntimeError, match="stops at the projection"):
+        session(None, {})
+    assert _rows(db) == {"cred_0": ("openai", 1), "cred_2": ("anthropic", 1)}
+
+
+def test_removing_aews_login_rows_keeps_every_other_row_and_reactivates_only_a_provider_left_with_none(tmp_path):
+    """Only ``cred_aew_*`` rows go (an id that merely looks alike, ``credXaewXother``, stays); a provider that still
+    has an active row keeps its rows as they are; no store, or no credential table, is nothing to remove."""
+    db = tmp_path / "xdg-data" / "opencode" / login.DB
+    db.parent.mkdir(parents=True)
+    assert login.clear_aew_logins(db, tmp_path) == 0  # no database
+    _stale_lead_store(db)
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO credential VALUES ('credXaewXother', 'google', 'l', '{}', NULL, 'api', 1, 1, 1)")
+    con.execute("INSERT INTO credential VALUES ('cred_aew_anthropic', 'anthropic', 'l', '{}', NULL, 'm', 0, 1, 1)")
+    con.commit()
+    con.close()
+    assert login.clear_aew_logins(db, tmp_path) == 2
+    assert _rows(db) == {"cred_0": ("openai", 1), "cred_2": ("anthropic", 1), "credXaewXother": ("google", 1)}
+    assert login.clear_aew_logins(db, tmp_path) == 0  # a second start: nothing left to remove
+    other = tmp_path / "other" / login.DB
+    other.parent.mkdir()
+    sqlite3.connect(other).close()
+    assert login.clear_aew_logins(other, tmp_path) == 0  # no credential table
+
+
+def test_a_contained_start_whose_stale_login_rows_cannot_be_removed_is_refused(tmp_path, monkeypatch, at_a_terminal):
+    """A credential table AEW does not know cannot be cleaned, so the start is refused with its reason and the step,
+    rather than run with a row it could not remove."""
+    session, db = _start_until_the_projection(tmp_path, monkeypatch)
+    _lead_store(db.parents[2], "CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT "
+                "NULL, value text NOT NULL, active integer, time_created integer NOT NULL, time_updated integer NOT "
+                "NULL)", [("cred_aew_openai", "openai", "AEW relay", "{}", 1, 1, 1)])
+    with pytest.raises(errors.ContainmentUnavailable, match="login rows earlier sessions gave it") as refused:
+        session(None, {})
+    assert refused.value.details == {"reason": "stale_logins", "path": str(db)}
+    assert f"move {db} aside" in refused.value.message
+
+
 def test_a_contained_start_whose_store_cannot_be_cleared_is_refused_with_the_step_that_fits(tmp_path, monkeypatch,
                                                                                             at_a_terminal):
     """E118: a clear that fails refuses the start, naming the store and the step that fits: a store that is not a

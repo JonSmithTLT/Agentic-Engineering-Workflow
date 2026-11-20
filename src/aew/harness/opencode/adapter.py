@@ -550,7 +550,7 @@ class OpenCodeAdapter(HarnessAdapter):
             finally:
                 offline_tree.close()
 
-        db = self.state_dir / "xdg-data" / "opencode" / login.DB
+        db = self.state_dir / login.STORE_REL
         try:
             version = capabilities.cli_version(offline("--version"))
             if version not in capabilities.TESTED_VERSIONS or version not in capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS:

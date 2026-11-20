@@ -100,6 +100,8 @@ def test_prepare_pins_the_model_check_and_slices_and_owns_seed_identity(tmp_path
     engine = prepare(tmp_path, MODEL, LEAD_MODEL)
     policy, _ = engine.execution_policy()
     assert pack_slices(policy) == "structural"
+    text = (tmp_path / "repo" / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8")
+    assert "# Project maps (ADR-0015)" in text  # the template's own file, comments kept
     [profile] = policy["profiles"].values()
     assert profile["model"] == MODEL
     assert engine.policy("gates")["mutating_concurrency"] == 2

@@ -35,6 +35,7 @@ from aew.errors import (
 from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
+from aew.maps import slices
 from aew.policy import validation as V
 from aew.schemas import schema
 from aew.util import render_frontmatter, sha256_text, utc_now
@@ -360,7 +361,8 @@ class Hierarchy:
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
                 "role_card": chosen.id, "scope": "parent", "evaluated_snapshot": snapshot,
-                "observation": inv["observation"], "pack": inv.get("pack"), "dispatch": decision.to_dict(),
+                "observation": inv["observation"], "pack": slices.for_lead(inv.get("pack")),
+                "dispatch": decision.to_dict(),
                 "revision": ctx.session.committed_revision}
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,

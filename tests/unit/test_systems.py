@@ -648,6 +648,41 @@ def test_off_on_pairs_check_the_boolean_in_both_directions(own, values, on):
     assert problem.check == "on_by_default"
 
 
+def test_a_switch_the_init_template_sets_is_on_by_default_as_a_new_project_holds_it(own):
+    """The board's rule of 2026-11-11: on_by_default means what a new project gets. A table
+    switch `aew init`'s template sets derives it from the template, and the board states that value beside the
+    absent-key default; a switch the template leaves unset derives it from the table, and states no other value."""
+    data = board()
+    e = data["systems"][0]
+    e["switch"] = checked_switch(new_project_default="structural")
+    e["state"]["on_by_default"] = True
+    templated = replace(own, new_project={("maps", "pack_slices"): "structural"})
+    assert systems.switch_problems(data, templated) == []
+    e["state"]["on_by_default"] = False
+    [problem] = systems.switch_problems(data, templated)
+    assert problem.check == "on_by_default" and systems.NEW_PROJECT_SOURCE in problem.text
+    e["state"]["on_by_default"] = True
+    e["switch"]["new_project_default"] = "off"
+    [problem] = systems.switch_problems(data, templated)
+    assert problem.check == "default" and "'structural'" in problem.text and systems.NEW_PROJECT_SOURCE in problem.text
+    e["switch"].pop("new_project_default")
+    assert [p.check for p in systems.switch_problems(data, templated)] == ["default"]
+    # unset by the template: the table's first value decides, and a stated new-project value is refused
+    e["switch"] = checked_switch()
+    e["state"]["on_by_default"] = False
+    assert systems.switch_problems(data, own) == []
+    e["switch"]["new_project_default"] = "structural"
+    assert "does not set" in systems.switch_problems(data, own)[0].text
+    assert "default: off (a new project: structural)" in systems.render_markdown(data, {})
+
+
+def test_the_real_template_sets_only_the_maps_switch_among_the_table_switches():
+    """Which table switches a new project holds otherwise than an absent key, read from the real template: the rule
+    above flips on_by_default only for these (project maps, 2026-11-11)."""
+    real = owners_at_head()
+    assert real.new_project == {("maps", "pack_slices"): "structural"}
+
+
 def test_non_binary_switch_is_checked_without_inventing_an_on_state(own):
     data = board()
     data["systems"][0]["switch"] = checked_switch(default="compact")

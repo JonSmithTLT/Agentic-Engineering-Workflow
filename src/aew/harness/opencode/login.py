@@ -38,6 +38,8 @@ from aew.harness.containment import relay
 from aew.harness.opencode import capabilities
 
 DB = "opencode.db"
+# Where an AEW-kept OpenCode state directory (the Lead's, per project; a worker run's) holds its store
+STORE_REL = f"xdg-data/opencode/{DB}"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
 # Implementation bound: two SQLite busy waits total BUSY_TIMEOUT_S. Wall time also includes the pause and
 # SQLite/filesystem work (5.36 s measured with a busy store).

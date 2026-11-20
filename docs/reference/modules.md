@@ -1436,6 +1436,9 @@ None.
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 - `aew.harness.defects`
+- `aew.harness.opencode.lead`
+- `aew.harness.opencode.login`
+- `aew.knowledge.manifest`
 
 ### `aew.harness.containment.shim`
 

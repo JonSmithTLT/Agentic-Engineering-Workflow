@@ -797,7 +797,7 @@ class ContainedLead:
             sys.stderr.write(f"aew opencode: {line}.\n")
         network: netns.RunNetwork | None = None
         try:
-            store = state / "xdg-data" / "opencode" / login.DB
+            store = state / login.STORE_REL
             try:  # every contained session starts with no saved permission, or does not start (E118)
                 login.clear_saved_permissions(store, state)
             except (OSError, sqlite3.Error) as exc:
@@ -915,7 +915,7 @@ class ContainedLead:
         in the sandbox with no route out (``session list``), so its schema is always its own."""
         from aew.harness import containment
 
-        db = state / "xdg-data" / "opencode" / login.DB
+        db = state / login.STORE_REL
         login.own_store(db, state)
         if not db.is_file():
             subprocess.run(containment.bwrap_argv(layout, [*binary_command(), "session", "list"], cwd=project,

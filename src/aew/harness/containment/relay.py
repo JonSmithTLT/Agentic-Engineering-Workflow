@@ -160,10 +160,22 @@ def _connect(host: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((host, port), timeout=timeout)  # every address the name has, in turn
 
 
-STALE_MESSAGE = ("AEW: this request carries a key placeholder no relay of this session issued, so it was not sent to "
-                 "the provider. An earlier session's login row holds one, and each start removes those: start the run "
-                 "again (for the Lead, `aew opencode`). If it comes back after a fresh start, a login saved inside the "
-                 "Lead's own OpenCode holds it: remove that login there (`opencode auth logout`), then start again")
+def stale_message() -> str:
+    """The refusal of a placeholder no relay of the session issued, with the step for each place it can come from: an
+    earlier session's AEW login row (a start removes those), or a login saved inside the Lead, in the Lead's own store,
+    which no start removes. Its step acts on the Lead's store alone, never on the operator's own OpenCode login."""
+    from aew.harness.opencode.lead import LEAD_DIR
+    from aew.harness.opencode.login import STORE_REL
+    from aew.knowledge.manifest import AEW_DIR
+
+    return ("AEW: this request carries a key placeholder no relay of this session issued, so it was not sent to the "
+            "provider. An earlier session's login row holds one, and each start removes those: start the run again "
+            "(for the Lead, `aew opencode`). If it comes back after a fresh start, a login saved inside the Lead holds "
+            f"it, in the Lead's own store, which a start keeps: with the Lead stopped, move {AEW_DIR}/{LEAD_DIR}/"
+            f"{STORE_REL} aside (OpenCode makes a new one, without the Lead's earlier sessions), then start it again. "
+            "Your own OpenCode login is not involved")
+
+
 OTHER_MESSAGE = ("AEW: this request carries the placeholder this run gave another provider's key, which stands for "
                  "nothing at this provider, so it was not sent. The harness sends that key to the wrong provider: "
                  "check the provider settings the run was given (starting again does not change them)")
@@ -180,7 +192,7 @@ def _placeholders(value: str, own: Collection[str], foreign: Collection[str]) ->
         return
     if any(token in rest for token in foreign):
         raise _Refused(401, OTHER_PLACEHOLDER, OTHER_MESSAGE)
-    raise _Refused(401, STALE_PLACEHOLDER, STALE_MESSAGE)
+    raise _Refused(401, STALE_PLACEHOLDER, stale_message())
 
 
 def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[str] = ()) -> tuple[str, bool]:

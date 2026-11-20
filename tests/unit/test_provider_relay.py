@@ -710,7 +710,9 @@ def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(
         answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 401 ") and b"X-AEW-Refusal: stale_placeholder" in answer
     assert b"no relay of this session issued" in answer and b"(for the Lead, `aew opencode`)" in answer
-    assert b"`opencode auth logout`" in answer  # the cause a restart does not cure: a login saved inside
+    # the cause a start does not cure, a login saved inside the Lead: its step is the Lead's own store, and never a
+    # command that would act on the operator's own OpenCode login
+    assert b".aew/local/harness/lead/xdg-data/opencode/opencode.db aside" in answer and b"opencode auth" not in answer
     assert stale.encode() not in answer and relay.SENTINEL_PREFIX.encode() not in answer
     assert seam.calls == [] and service.counts() == {"stale_placeholder": 1}
     [entry] = entries
@@ -863,6 +865,23 @@ def test_a_login_header_is_the_grants_alone_and_the_clients_placeholder_is_never
     got = headers(head)
     assert ("authorization", "Bearer synthetic-access") in got
     assert not any(name == "chatgpt-account-id" for name, _ in got) and b"aew-relay-" not in head
+
+
+def test_a_failed_answers_excerpt_is_cut_to_its_bound():
+    """A failed answer longer than the bound is recorded up to :data:`relay.EXCERPT_BYTES` characters, exactly."""
+    message = ("refused: " + "the provider explains at length " * 40).encode()
+    assert len(message) > relay.EXCERPT_BYTES
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (_, client, token):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(f"HTTP/1.1 400 Bad Request\r\nContent-Length: {len(message)}\r\n\r\n".encode() + message)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert entry["excerpt"] == message.decode()[:relay.EXCERPT_BYTES]
 
 
 def test_a_forwarded_request_answered_200_is_recorded_with_its_status_and_no_excerpt():

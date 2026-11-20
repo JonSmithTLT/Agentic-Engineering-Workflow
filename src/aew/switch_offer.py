@@ -5,7 +5,8 @@ projects only. The offer is how an existing project gets it, by the operator's d
 (:data:`OFFERS`) is one switch. The rules:
 
 1. **It asks only at the operator's own terminal, in `aew opencode`'s start.** A Lead session and an agent's own `aew`
-   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer.
+   have no path to it. Off a terminal nothing is asked, and `aew doctor` names the offer. (2026-11-12: the skip also
+   prints one line naming the pending offers.)
 2. **It decides by the key, and never over the operator's value.** A value AEW never shipped, a table the project
    already names or a file already there is never offered, and no line anywhere mentions it.
 3. **It adopts only its own change.** Anything else drifted means it doesn't ask, and lists what. The adoption takes
@@ -267,6 +268,28 @@ def _mutating_effective(value: Any) -> int:
     return mutating_cap({} if value is ABSENT else {"mutating_concurrency": value})
 
 
+def _maps_effective(value: Any) -> str:
+    from aew.policy import execution as X
+
+    return X.pack_slices({} if value is ABSENT else {"maps": {"pack_slices": value}})
+
+
+def _maps_to() -> str:
+    from aew.policy import execution as X
+
+    return X.NEW_PROJECT_PACK_SLICES
+
+
+def _maps_text(opening: Opening) -> str:
+    from aew.maps import service, slices
+
+    return (f"AEW's default for project maps has moved from {opening.held} to {opening.to}: each worker's pack "
+            "carries a bounded slice of the repository's structural map, made from its Git objects, as navigation and "
+            f"never authority (at most {slices.SLICE_MAX_BYTES // 1024} KiB a pack), and the Lead's resume view shows "
+            "the map's freshness. A dispatch whose map is stale against its work makes it first, within "
+            f"{service.REFRESH_S:g} s, and never fails over a map. This project holds {opening.held}.")
+
+
 OFFERS: tuple[SwitchOffer, ...] = (
     key_offer("mutating_concurrency", label="mutating concurrency", file=_policy_rel("gates"), policy_key="gates",
               key_path=("mutating_concurrency",), old_values=(1,),
@@ -283,6 +306,12 @@ OFFERS: tuple[SwitchOffer, ...] = (
                 done=lambda o: (f"the price table is now in force at .aew/{_table_rel()}, adopted as your decision. To "
                                 f"change it, edit that file; {THEN_ADOPT}."),
                 by_hand=_table_by_hand),
+    # A project initialized before maps were on by default holds `"off"` or no key at all.
+    key_offer("maps_pack_slices", label="project maps", file=_policy_rel("execution"), policy_key="execution",
+              key_path=("maps", "pack_slices"), old_values=("off",), to_value=_maps_to, effective=_maps_effective,
+              legality=True, schema="execution", text=_maps_text,
+              done=lambda o: (f"project maps are now {o.to}, adopted as your decision. To change it, edit "
+                              f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
 )
 
 
@@ -378,7 +407,8 @@ def doctor_rows(engine: Any) -> list[tuple[str, str, str]]:
     for s in standings(engine):
         if s.declined_at is not None:
             detail = (f"Declined switch: {s.offer.label} keeps {s.opening.held} (declined {s.declined_at}). To take "
-                      f"it: {s.offer.by_hand(s.opening)}.")
+                      f"it: {s.offer.by_hand(s.opening)}. Or to be asked again at the next `aew opencode` start, "
+                      f"with no seat needed: delete its row (switch {s.offer.switch}) from .aew/{REMEMBERED}.")
         elif s.blocked:
             detail = _blocked_line(s)
         elif s.hand:
@@ -448,6 +478,8 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
     decision = Decision(engine, out)
     try:
         if not may_ask():
+            if _askable_but_for_the_terminal():
+                _say_pending(engine, out)
             return decision
     except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
         _say(out, f"the switch offers could not be read ({type(exc).__name__}: {exc}); see `aew doctor`.")
@@ -466,6 +498,32 @@ def at_lead_start(engine: Any, out: Any = None) -> Decision:
         except Exception as exc:  # noqa: BLE001 (rule 5: nothing about the offer can stop the start)
             _say(out, f"the offer for {offer.label} could not be read ({type(exc).__name__}: {exc}); see `aew doctor`.")
     return decision
+
+
+def _askable_but_for_the_terminal() -> bool:
+    """`may_ask`'s other checks pass (the operator's own start: not a Lead session, a writer), but no terminal does."""
+    from aew.harness.operator_client import lead_session_problem
+
+    return lead_session_problem() is None and process_kind.kind() != process_kind.NON_WRITER and not terminal()
+
+
+def _say_pending(engine: Any, out: Any) -> None:
+    """One line naming every offer this start skipped for want of a terminal (rule 1's addition of 2026-11-12), so a
+    start with no terminal never waits on an offer and never leaves it unsaid. Nothing when none is pending. Only an
+    offer a terminal would ask is named there: one blocked by drift, or one the operator makes by hand, prints its own
+    line, as it does at a terminal."""
+    pending = []
+    for s in standings(engine):
+        if s.declined_at is not None:
+            continue
+        if s.blocked:
+            _say(out, _blocked_line(s))
+        elif s.hand:
+            _say(out, _hand_line(s))
+        else:
+            pending.append(s.offer.label)
+    if pending:
+        _say(out, f"switch offer pending ({', '.join(pending)}); answer it at your own terminal, or see `aew doctor`.")
 
 
 def _ask_one(engine: Any, standing: Standing, decision: Decision, out: Any) -> None:

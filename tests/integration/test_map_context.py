@@ -37,8 +37,12 @@ MAPS = Path(".aew") / store.MAPS_REL
 
 
 def switch_on(p: Project) -> None:
+    """The operator turns the slices on, in a project built with ``sample_project(..., maps="off")``: before this the
+    project is as one initialized before maps were on by default (ADR-0015)."""
     policy = p.root / ".aew" / "policy" / "execution.yaml"
-    policy.write_text(policy.read_text(encoding="utf-8") + "maps: {pack_slices: structural}\n", encoding="utf-8",
+    text = policy.read_text(encoding="utf-8")
+    assert text.count('\n  pack_slices: "off"\n') == 1, "switch_on turns on a project built with maps off"
+    policy.write_text(text.replace('\n  pack_slices: "off"\n', "\n  pack_slices: structural\n"), encoding="utf-8",
                       newline="\n")
     p.adopt_policy("turn the structural map slices on")  # the operator's configuration decision (SMQ-01)
 
@@ -97,7 +101,7 @@ def test_with_the_switch_off_every_pack_and_the_resume_view_are_byte_identical_m
     """Plan §5.4 and SMQ-01: the Q7/M4-H treatment is unchanged by default. Packs built before a map existed
     regenerate to the same bytes once one is selected, a pack built with a map selected is the pack without it, and
     the resume view's derived knowledge does not move."""
-    p = without_map(sample_project(tmp_path))
+    p = without_map(sample_project(tmp_path, maps="off"))
     to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
     _, investigator = dispatch(p, create_investigation(p, tmp_path, title="Survey"))
     dispatch(p, create_investigation(p, tmp_path, title="Research", card="researcher"))
@@ -134,7 +138,7 @@ def test_every_worker_archetype_names_the_codebase_map():
 
 
 def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     first = select_map(p)
     _, out = dispatch(p, create_investigation(p, tmp_path))
@@ -165,8 +169,67 @@ def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(
     assert not (p.root / ".aew" / store.artifact_rel(first["root"])).exists()  # regeneration only reads
 
 
+def test_the_leads_results_carry_the_slices_bytes_and_never_its_body(tmp_path):
+    """ADR-0015 (amended 2026-11-11, second): a dispatch's result, `aew invoke show` and `aew history` stay in the
+    Lead's context, so the map's entry there names the pinned map and the section's bytes, never the body, which is
+    the worker's. Control state keeps the body: a regenerated pack is rendered from it."""
+    p = sample_project(tmp_path)  # maps on: a new project's default
+    wid = create_investigation(p, tmp_path)
+    role, out = dispatch(p, wid)
+    to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
+    packed = {k: i for k, i in invocations(p).items() if i.get("pack")}
+    assert {i["role"] for i in packed.values()} >= {"implementer", "reviewer", "verifier", "investigator"}
+
+    def lead_sees(result: dict[str, Any]) -> dict[str, Any]:
+        entry = slices.pinned((result.get("pack") or {}).get("sources"))
+        assert entry is not None and "slice" not in entry, entry
+        return entry
+
+    assert lead_sees(out)["slice_bytes"] > 0  # `aew work dispatch`
+    for inv, record in packed.items():
+        pinned = slices.pinned(record["pack"]["sources"])
+        assert pinned is not None and pinned["slice"], record["role"]  # the pin keeps the body
+        shown = lead_sees(p.ok("invoke", "show", inv))
+        section = "\n".join(slices.frame(pinned["slice"]))
+        assert section in pack_text(p, inv) and shown["slice_bytes"] == len(section.encode("utf-8")), record["role"]
+        # the brief's default-project pack: a bounded section, with its omission counts
+        assert any(line.startswith("limits and omissions:") for line in pinned["slice"]), record["role"]
+        assert len("\n".join(pinned["slice"]).encode("utf-8")) <= slices.SLICE_MAX_BYTES, record["role"]
+        assert {k: v for k, v in shown.items() if k != "slice_bytes"} == {
+            k: v for k, v in pinned.items() if k != "slice"}, "only the body is replaced"
+        assert regenerate(p, inv)["matches_recorded"], record["role"]
+    # By behaviour, not by reading the source: the body's own lines reach none of the Lead's read views. Only
+    # `aew context show`, whose purpose is to print a pack, prints it.
+    body = {line for i in packed.values() for line in slices.pinned(i["pack"]["sources"])["slice"]
+            if line.startswith("limits and omissions:")}
+    assert body
+    units = sorted({i["work_unit"] for i in packed.values()})
+    assert len(units) >= 2, units
+    views = [("status",), ("resume",), ("resume", "--json"), *[("work", "show", w) for w in units],
+             *[("context", "pack", i) for i in packed]]
+
+    def never_the_body(commands: list[tuple[str, ...]]) -> None:
+        for command in commands:
+            shown = p.aew(*command)
+            assert shown.returncode == 0, (command, shown.stderr)
+            assert not any(line in shown.stdout or json.dumps(line)[1:-1] in shown.stdout for line in body), command
+
+    never_the_body(views)
+    # Archived, the investigation's record and its invocation are the Lead's through `aew history`: shown and searched.
+    p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
+    p.lead("work", "accept", wid)
+    assert lead_sees(p.ok("history", "show", out["invocation"])["record"])["slice_bytes"] > 0
+    policy = p.root / ".aew/policy/execution.yaml"  # raw-history search is the operator's to switch on
+    policy.write_text(policy.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n",
+                      encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    never_the_body([("history", "show", out["invocation"]), ("history", "show", wid),
+                    ("history", "search", "omissions")])
+    assert p.ok("history", "search", "omissions")["hits"] == []  # a word only the slice's limits line holds
+
+
 def test_the_resume_row_carries_the_maps_freshness_and_its_qualification_only_with_the_switch_on(tmp_path):
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     off = {r["name"]: r for r in derived(p)}["codebase_map"]
     select_map(p)
     assert {r["name"]: r for r in derived(p)}["codebase_map"] == off
@@ -239,7 +302,7 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
     be rebuilt, and the slice the pack pinned keeps the regenerated pack, and so a launch contract, identical."""
     from aew.engine.api import Engine
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     side = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a commit no ref holds", cwd=p.root)
     p.ok("map", "generate", "--commit", side, "--select", "--expect-map-rev", map_rev(p), "--json",
@@ -263,7 +326,7 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
 
 
 def test_architecture_selection_records_an_existing_discovery_record_and_refuses_anything_else(tmp_path):
-    p = without_map(sample_project(tmp_path))  # "no structural map yet" below
+    p = without_map(sample_project(tmp_path, maps="off"))  # "no structural map yet" below: no dispatch makes one
     discovery = complete_investigation(p, create_investigation(p, tmp_path, title="Architecture survey"))
     research = complete_investigation(p, create_investigation(p, tmp_path, title="Library", card="researcher"),
                                       kind="research_record")
@@ -336,11 +399,13 @@ def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(t
 
 def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
     p = without_map(sample_project(tmp_path))
-    role, _ = dispatch(p, create_investigation(p, tmp_path))
+    role, _ = dispatch(p, create_investigation(p, tmp_path))  # with maps on, this dispatch makes and selects a map
     record = submit_record(role, "discovery_record")["evidence"]
+    registry = p.root / MAPS / "registry.json"
+    before = registry.read_bytes() if registry.exists() else None
     res = p.aew("map", "select-architecture", record, "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
-    assert not (p.root / MAPS / "registry.json").exists()
+    assert (registry.read_bytes() if registry.exists() else None) == before
 
 
 # ------------------------------------------------------------------------------------------- the no-authority walk
@@ -379,7 +444,7 @@ def test_no_map_state_changes_dispatch_gates_transitions_or_resume(tmp_path):
     resume works, with the map reported for what it is. A stale, absent or missing map is refreshed at the Lead's
     dispatch first (the base is the head, so it is selected and the resume row reads CURRENT); a corrupt one or a
     malformed registry is left as it is."""
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     outcomes = {}
     for n, condition in enumerate(CONDITIONS):
@@ -406,7 +471,7 @@ def test_a_policy_the_engine_cannot_read_turns_no_map_on(tmp_path, monkeypatch):
     from aew.engine.base import Kernel
     from aew.errors import ValidationFailed
 
-    p = sample_project(tmp_path)
+    p = sample_project(tmp_path, maps="off")
     switch_on(p)
     select_map(p)
     engine = Engine.discover(p.root)

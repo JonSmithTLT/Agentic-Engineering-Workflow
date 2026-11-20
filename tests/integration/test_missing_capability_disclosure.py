@@ -47,7 +47,7 @@ def test_status_timeout_trigger_and_wait_any_keep_each_runs_recorded_capability_
                          {"do": "wait_file", "path": str(release), "timeout": 300}])
         wid = create_planned_ticket(lab.project, tmp_path, scope=own_scope(i), extra=("--card", "fixture_engineer"))
         assert lab.lead("work", "assign", wid, "--launch")["launch"]["run"] == run
-        lab.until(started.exists, what="the real fake worker to start")
+        lab.until(started.exists, "wait.condition", what="the real fake worker to start")
         releases.append(release)
         runs.append(run)
     engine = Engine.discover(lab.root)

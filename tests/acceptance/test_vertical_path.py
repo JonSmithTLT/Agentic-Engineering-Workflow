@@ -676,7 +676,7 @@ def lead_gone(session: Any) -> bool:
         return True
     pid = int(session.pidfile.read_text(encoding="utf-8"))
     try:
-        until(lambda: not procs.pid_alive(pid), 60, "the Lead's TUI to end")
+        until(lambda: not procs.pid_alive(pid), "wait.condition", "the Lead's TUI to end")
     except AssertionError:
         return False
     return True

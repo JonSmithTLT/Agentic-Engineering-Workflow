@@ -288,15 +288,11 @@ class HarnessLab:
         for why in (reason() for reason in self.ended_by_driver):
             assert not why, why
 
-    def until(self, predicate: Any, timeout: float = 60, what: str = "condition") -> Any:
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            self.check_sessions()
-            value = predicate()
-            if value:
-                return value
-            time.sleep(0.1)
-        raise AssertionError(f"timed out after {timeout}s waiting for {what}")
+    def until(self, predicate: Any, bound: str | float, what: str = "condition") -> Any:
+        """``bounds.until``, failing at once when a driver ended a session this lab started."""
+        import bounds  # here: a run's supervisor loads this module as its adapter, without tests/helpers on its path
+
+        return bounds.until(predicate, bound, what, every=0.1, before=self.check_sessions)
 
     def cleanup(self) -> None:
         """End every run this lab started, whatever the test patched or the runs' status says. A live run is stopped

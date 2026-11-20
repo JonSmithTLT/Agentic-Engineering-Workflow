@@ -62,7 +62,7 @@ def test_a_verifiers_check_results_are_never_offered_as_its_report_and_guidance_
                      "checks": ["{evidence:check-guardrails}"]}]}}},
             {"do": "wait_file", "path": str(sync / "release"), "ready": str(sync / "ready")}])
         launched = lab.lead("harness", "launch", inv)
-        lab.until(lambda: (sync / "ready").exists(), what="the verifier to submit")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to submit")
         engine = Engine.discover(p.root)
         running = projection.project(engine, CTX, wid)
         assert running["decisions_required"] == []  # the run has not ended: nothing to accept yet

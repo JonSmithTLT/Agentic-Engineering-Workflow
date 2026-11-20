@@ -54,7 +54,7 @@ def held(lab, tmp_path, *names: str) -> dict[str, Path]:
         lab.lead("work", "assign", wid, "--launch")
         lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     for i in range(len(names)):
-        lab.until(lambda i=i: (tmp_path / "sync" / f"started-{i}").exists(), what=f"run {i} started")
+        lab.until(lambda i=i: (tmp_path / "sync" / f"started-{i}").exists(), "wait.condition", what=f"run {i} started")
     return release
 
 
@@ -177,10 +177,11 @@ def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeyp
     waiter = threading.Thread(target=wait, daemon=True)
     waiter.start()
     try:
-        lab.until(lambda: waiting(lambda: reads), what="the waiter's initial read")
+        lab.until(lambda: waiting(lambda: reads), "wait.condition", what="the waiter's initial read")
         create_planned_ticket(lab.project, tmp_path, title="A commit")  # several commits, all after that read
         last = engine.store.read_committed()["revision"]
-        lab.until(lambda: waiting(lambda: reads[-1] >= last), what="the waiter to parse the last commit")
+        lab.until(lambda: waiting(lambda: reads[-1] >= last), "wait.condition",
+                  what="the waiter to parse the last commit")
     finally:
         over.set()
         outbox.bump_wake(lab.aew_root)
@@ -220,6 +221,7 @@ def _records_say_running(monkeypatch, *runs: str) -> None:
                         lambda d, *a, **k: ("running", None) if Path(d).name in runs else real(d, *a, **k))
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_an_invocation_already_ended_when_the_wait_starts_ends_it_at_once(lab, tmp_path, monkeypatch):
     """The initial control snapshot is examined too: a cancellation committed before the wait began ends it at once,
     even while the run's own record still says running (independent review of #79)."""

@@ -395,6 +395,7 @@ def test_the_batch_readers_close_waits_only_for_the_time_left(tmp_path, monkeypa
     assert waits[0] <= 5.0 and waits[1] == gitmod.BATCH_CLOSE_TIMEOUT_S
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_busy_registry_lock_is_waited_on_only_for_the_time_left_and_the_pack_keeps_its_map(tmp_path, monkeypatch):
     """MIN-1: the selection's wait for the registry lock (``FileLock``'s 60 s) was outside ``REFRESH_S``. Held past
     the time left, the map is stored and pinned, not selected, and the dispatch goes on."""

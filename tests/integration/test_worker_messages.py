@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -46,7 +45,7 @@ def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, **knobs)
         {"do": "wait_file", "path": str(sync / "end"), "timeout": 60}], "server": knobs})
     work = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", work, "--launch")["launch"]["run"]
-    lab.until(lambda: (sync / "ready").exists(), what="worker ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="worker ready")
     return run, sync
 
 
@@ -56,13 +55,10 @@ def send(lab, body="Check the shutdown edge."):
                                       to="INV-0001", body=body)
 
 
-def steps_done(lab, run, i, *, watchdog_only=False):
-    if watchdog_only:
-        # Startup/admission is bounded by pytest's watchdog, not another deadline inside the orphan scenario.
-        while not any(row["i"] == i for row in lab.transcript(run)):
-            time.sleep(0.05)
-    else:
-        lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), what=f"worker step {i}")
+def steps_done(lab, run, i, bound):
+    """Step ``i`` of ``run``, once its transcript has it. A step whose wait covers start-up or admission (a shell's or
+    the CLI's start) names ``"watchdog"``: the test's own limit is its only bound, never a tighter one (#497)."""
+    lab.until(lambda: any(row["i"] == i for row in lab.transcript(run)), bound, what=f"worker step {i}")
     return lab.step(run, i)
 
 
@@ -75,8 +71,8 @@ def test_worker_reads_and_replies_use_only_their_run_bridge_and_move_no_revision
     engine = Engine.discover(lab.root)
     revision = engine.store.read()["revision"]
     (sync / "go").touch()
-    read = steps_done(lab, run, 2)
-    reply = steps_done(lab, run, 3)
+    read = steps_done(lab, run, 2, "wait.condition")
+    reply = steps_done(lab, run, 3, "wait.condition")
     assert read["exit"] == reply["exit"] == 0, (read, reply)
     view = json.loads(read["stdout"])
     assert view["thread"] == "INV-0001" and view["messages"][0]["id"] == first["message"]["id"]
@@ -95,11 +91,11 @@ def test_message_wait_delivers_exactly_the_returned_lead_message_once(lab, tmp_p
         {"do": "aew", "args": ["message", "wait", "--after", MID, "--timeout", "0"]}])
     send(lab)
     (sync / "go").touch()
-    received = steps_done(lab, run, 2)
+    received = steps_done(lab, run, 2, "wait.condition")
     assert received["exit"] == 0, received
     result = json.loads(received["stdout"])
     assert result["outcome"] == "messages" and [m["id"] for m in result["messages"]] == [MID]
-    second = steps_done(lab, run, 3)
+    second = steps_done(lab, run, 3, "wait.condition")
     assert second["exit"] == 0 and json.loads(second["stdout"])["messages"] == [], second
     thread = Engine.discover(lab.root).message_thread("INV-0001")
     delivered = [f for f in thread["messages"][0]["facts"] if f["kind"] == "DELIVERED"]
@@ -121,11 +117,12 @@ def test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss(l
     directory = lab.aew_root / "local/harness/runs" / run
     (sync / "go").touch()
     lab.until(lambda: "opencode.stream.reconnected" in (read_text_or_none(directory / "events.jsonl") or ""),
+              "wait.condition",
               what="the event stream reconnects while the shell tool is still open")
     send(lab)
     go.touch()
     # PowerShell's and the CLI's start belong to the watchdog's bound alone, as in the other startup waits here
-    shell = steps_done(lab, run, 2, watchdog_only=True)
+    shell = steps_done(lab, run, 2, "watchdog")
     evidence = describe_shell(directory / "harness", shell)
     assert "WAIT_BINDING_LOST_ON_RECONNECT" in evidence, evidence
     assert "opencode.stream.dropped" in evidence, evidence
@@ -147,7 +144,7 @@ def test_a_shell_exiting_before_admission_fails_with_output_events_and_process_e
     run, sync = launch(lab, tmp_path, [{"do": "shell", "command": command, "timeout_s": 1,
                                       "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
-    shell = steps_done(lab, run, 2, watchdog_only=True)
+    shell = steps_done(lab, run, 2, "watchdog")
     with pytest.raises(AssertionError) as failure:
         assert not shell.get("barrier_error"), describe_shell(bound.parent, shell)
     text = str(failure.value)
@@ -165,14 +162,14 @@ def orphan_wait(lab, tmp_path, command):
         {"do": "shell", "command": command, "timeout_s": 1,
          "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
-    shell = steps_done(lab, run, 2, watchdog_only=True)
+    shell = steps_done(lab, run, 2, "watchdog")
     try:
         assert not shell.get("barrier_error"), shell
         assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
         assert shell["timed_out"]
         send(lab)
         output = Path(shell["stdout_file"])
-        lab.until(lambda: "ended_early" in (read_text_or_none(output) or ""),
+        lab.until(lambda: "ended_early" in (read_text_or_none(output) or ""), "wait.condition",
                   what="orphaned wait exits early after its shell call ends")
         thread = Engine.discover(lab.root).message_thread("INV-0001")
         assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
@@ -192,7 +189,7 @@ def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tm
                        qualified=False)
     send(lab)
     (sync / "go").touch()
-    result = steps_done(lab, run, 2)
+    result = steps_done(lab, run, 2, "wait.condition")
     assert result["exit"] != 0 and json.loads(result["stderr"])["error"]["code"] == "WAIT_UNSUPPORTED", result
     thread = Engine.discover(lab.root).message_thread("INV-0001")
     assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
@@ -211,8 +208,8 @@ def test_final_worker_reply_survives_submit_seal_and_a_post_submit_continuation(
          "stdin": "Final reply before the implementation report."}, *IMPLEMENT])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
-    steps_done(lab, run, 5)  # real worker submit, not an inserted report or sealed owner fact
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
+    steps_done(lab, run, 5, "wait.condition")  # real worker submit, not an inserted report or sealed owner fact
     e = Engine.discover(lab.root)
     inv = e.store.read()["invocations"]["INV-0001"]
     mid = "MSG-INV-0001-2"
@@ -255,7 +252,7 @@ def test_adopting_messaging_off_refuses_every_enabled_snapshot_worker_operation(
                      reason="disable messaging after the launch snapshot", authorization=OPERATOR)
     (sync / "go").touch()
     for i in (2, 3, 4):
-        result = steps_done(lab, run, i)
+        result = steps_done(lab, run, i, "wait.condition")
         assert result["exit"] != 0
         assert json.loads(result["stderr"])["error"]["code"] == "MESSAGING_SNAPSHOT_MISMATCH"
     assert e.message_thread("INV-0001") == before

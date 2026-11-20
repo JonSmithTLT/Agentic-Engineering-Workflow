@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import bounds
 import pytest
 from aewflow import (
     NOT_THE_DEFAULT_CAP,
@@ -318,7 +319,7 @@ def test_custodian_routes_but_never_accepts_verifier_reports(tmp_path, monkeypat
         custodian = lease(p)["custodian"]
         assert control(p)["invocations"][verifier]["custodian"] == custodian
         e = engine(p)
-        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to report")
         assert e.custody_step(custodian, custody[custodian]) == (CO.WAITING, None)  # its run is live
         (sync / "release").touch()
         lab.wait(run)
@@ -547,7 +548,7 @@ def test_custody_credential_never_reaches_a_model_or_harness_process(tmp_path, m
         assert out["ok"], out["stopped"]
         [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
         credential = custody[lease(p)["custodian"]]
-        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to report")
         (sync / "release").touch()
         lab.wait(run)
         assert credential not in (sync / "verifier-env.json").read_text(encoding="utf-8")
@@ -629,11 +630,8 @@ def test_unregistered_custodian_marks_reconcile(tmp_path, contained, custody):
 # ---------------------------------------------------------------------------------------------- S3 and T3
 
 
-def _wait_for(predicate, what: str, timeout: float = 90.0) -> None:
-    deadline = time.monotonic() + timeout
-    while not predicate():
-        assert time.monotonic() < deadline, f"timed out waiting for {what}"
-        time.sleep(0.2)
+def _wait_for(predicate, what: str, bound: str) -> None:
+    bounds.until(predicate, bound, what, every=0.2)
 
 
 def test_broker_spawned_custody_worker_registers(tmp_path, monkeypatch):
@@ -649,13 +647,14 @@ def test_broker_spawned_custody_worker_registers(tmp_path, monkeypatch):
     e = Engine.discover(p.root)
     e.integrate_prepare(token=p.token, expect_rev=int(e.store.read()["revision"]), work_id=wid)
     custodian = lease(p)["custodian"]
-    _wait_for(lambda: "worker" in control(p)["invocations"][custodian], "the custody worker to register")
+    _wait_for(lambda: "worker" in control(p)["invocations"][custodian], "the custody worker to register",
+              "wait.custody")
     worker = control(p)["invocations"][custodian]["worker"]
     assert procs.pid_alive(worker["host_pid"])
     assert control(p)["last_transition"]["actor"]["kind"] == "custodian"
     e.integrate_defer(token=p.token, expect_rev=int(e.store.read()["revision"]), work_id=wid,
                       reason="end the custody")
-    _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit")
+    _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit", "wait.custody")
     assert_control_invariants(p)
 
 
@@ -812,7 +811,7 @@ def test_a_verifiers_clean_report_is_a_publish_decision_that_takes_the_ticket_to
         assert out["ok"], out["stopped"]
         custodian = lease(p)["custodian"]
         [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
-        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to report")
         (sync / "release").touch()
         lab.wait(run)
         if routed:
@@ -954,7 +953,7 @@ def test_verifier_publish_registration_between_acceptance_and_publish(tmp_path, 
         assert out["ok"], out["stopped"]
         [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
         custodian = lease(p)["custodian"]
-        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to report")
         (sync / "release").touch()
         lab.wait(run)
         found, routed = engine(p).custody_step(custodian, custody[custodian])
@@ -1626,7 +1625,7 @@ def test_a_spawned_custody_worker_validates_end_to_end(tmp_path):
             os.environ[CO.WORKER_SWITCH] = switch
     custodian = control(p)["queue"]["lease"]["custodian"]
     _wait_for(lambda: entry(p, wid)["state"] in ("VALIDATED", "AWAITING_DISPOSITION"), "the custodian's routing",
-              timeout=300)
+              "wait.validation")
     state = control(p)
     worker = state["invocations"][custodian]["worker"]
     assert state["last_transition"]["actor"]["kind"] == "custodian"
@@ -1635,5 +1634,5 @@ def test_a_spawned_custody_worker_validates_end_to_end(tmp_path):
     else:
         assert entry(p, wid)["state"] == "AWAITING_DISPOSITION"
         assert "VALIDATION_CONTAINMENT_UNAVAILABLE" in json.dumps(entry(p, wid)["disposition"])
-    _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit", timeout=120)
+    _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit", "wait.run_end")
     assert_control_invariants(p)

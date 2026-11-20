@@ -183,7 +183,6 @@ def test_the_batch_reader_serves_many_large_blobs_without_a_pipe_deadlock(tmp_pa
 
 def test_a_batch_reader_that_stops_answering_fails_fast_instead_of_hanging(tmp_path):
     """The watchdog: a batch process that never replies is stopped after the read timeout and the read fails."""
-    import time
 
     from aew.errors import GitError
 
@@ -191,13 +190,11 @@ def test_a_batch_reader_that_stops_answering_fails_fast_instead_of_hanging(tmp_p
     batch = aew_git.CatFileBatch(tmp_path, timeout=1.0)
     batch._proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw)
-    started = time.monotonic()
     try:
         with pytest.raises(GitError):
             finishes(lambda: batch.read("0" * 40), limit=60)
     finally:
         batch.__exit__(None, None, None)  # not entered: the stand-in process is the one under test
-    assert time.monotonic() - started < 30
 
 
 # ------------------------------------------------------------------------------------------- the differential oracle

@@ -18,6 +18,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import bounds
+
 from aew.engine import steering
 from aew.engine.api import Engine
 from aew.engine.steering import OperatorPrincipal
@@ -119,24 +121,11 @@ def dead_pid() -> int:
     return proc.pid
 
 
-def until(predicate: Any, timeout: float = 30.0, what: str = "the condition", *,
+def until(predicate: Any, bound: str | float, what: str = "the condition", *,
           describe: Callable[[], str] | None = None) -> Any:
-    """``predicate``'s first truthy result within ``timeout`` seconds, or AssertionError. On a timeout, ``describe``
-    (when given) says what the chain being waited on was doing at that moment, so a rare failure names the link that
-    broke; a describer that raises is reported in the message, never in place of the timeout."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        result = predicate()
-        if result:
-            return result
-        time.sleep(0.05)
-    message = f"timed out waiting for {what}"
-    if describe is not None:
-        try:
-            message += f"; at the timeout:\n{describe()}"
-        except Exception as exc:  # the timeout is the failure: a broken describer must not hide it  # noqa: BLE001
-            message += f"; the describer failed: {type(exc).__name__}: {exc}"
-    raise AssertionError(message)
+    """``bounds.until``: on a timeout, ``describe`` says what the chain being waited on was doing at that moment, so a
+    rare failure names the link that broke."""
+    return bounds.until(predicate, bound, what, describe=describe)
 
 
 def thread_stack(thread: threading.Thread) -> str:

@@ -188,7 +188,7 @@ def test_a_superseded_lead_session_loses_its_bridge(lab, sync, monkeypatch):
         {"do": "dump_env", "path": str(sync / "env")}, {"do": "touch", "path": str(sync / "ready")},
         {"do": "wait_file", "path": str(sync / "go"), "timeout": 120},
         {"do": "lead", "args": ["checkpoint", "--next", "after takeover"]}])
-    lab.until((sync / "ready").exists, what="Lead session ready")
+    lab.until((sync / "ready").exists, "wait.condition", what="Lead session ready")
     takeover(lab, monkeypatch)
     (sync / "go").touch()
     out, err = proc.communicate(timeout=120)
@@ -231,10 +231,10 @@ def test_both_bridges_hold_the_same_custody_properties(lab, tmp_path, sync, monk
         watchdog.write_text("hold", encoding="utf-8")  # let the old agent act after revocation (the bridge refuses)
         out = lab.lead("work", "assign", wid, "--launch",
                        env={"AEW_PAUSE": f"harness.watchdog.tick={watchdog}"})
-        lab.until((sync / "ready").exists, what="holder ready")
+        lab.until((sync / "ready").exists, "wait.condition", what="holder ready")
         lab.lead("invoke", "cancel", out["invocation"], "--reason", "revoked mid-run")
         (sync / "go").touch()
-        lab.until((sync / "done").exists, what="attempt after revocation")
+        lab.until((sync / "done").exists, "wait.condition", what="attempt after revocation")
         result = {i: lab.step("R-INV-0001-1", i) for i in range(10)}
         watchdog.unlink()
         lab.wait("R-INV-0001-1")
@@ -243,7 +243,7 @@ def test_both_bridges_hold_the_same_custody_properties(lab, tmp_path, sync, monk
         args = {"argv": ["checkpoint", "--next", "x", "--expect-rev", "1"], "cwd": str(lab.root), "stdin": ""}
         steps = parity_steps(sync, kind, {"do": "lead", "args": ["checkpoint", "--next", "parity"]}, "lead.cli", args)
         proc, transcript = start_session(lab, "parity", steps)
-        lab.until((sync / "ready").exists, what="holder ready")
+        lab.until((sync / "ready").exists, "wait.condition", what="holder ready")
         takeover(lab, monkeypatch)
         (sync / "go").touch()
         proc.communicate(timeout=120)
@@ -329,10 +329,10 @@ def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
         {"do": "touch", "path": str(sync / "tried")},
         {"do": "wait_file", "path": str(sync / "go2"), "timeout": 120},
         {"do": "lead", "args": ["checkpoint", "--next", "after the cancel"]}])
-    lab.until((sync / "ready").exists, what="Lead session ready")
+    lab.until((sync / "ready").exists, "wait.condition", what="Lead session ready")
     Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token, expect_rev=lab.project.rev())
     (sync / "go").touch()
-    lab.until((sync / "tried").exists, what="a request during the offer")
+    lab.until((sync / "tried").exists, "wait.condition", what="a request during the offer")
     time.sleep(3 * lead_broker.POLL_S)  # the session's watchdog has seen the pending handoff
     Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token, expect_rev=lab.project.rev())
     (sync / "go2").touch()

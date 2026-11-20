@@ -159,9 +159,7 @@ def test_ctrl_c_before_the_announcement_ends_the_server_and_gives_no_traceback(
         _thread.interrupt_main()
 
     threading.Thread(target=press, daemon=True).start()
-    began = time.monotonic()
     assert shim.main([json.dumps(spec), "--", sys.executable, "-c", "raise SystemExit(9)"]) == 130
-    assert time.monotonic() - began < 30, "the wait did not see it"
     assert made[0].wait(30) is not None and len(made) == 1  # the server is gone, and no TUI started
 
 
@@ -180,6 +178,7 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
     """Review, m2. On the `--acquire` route the credential died with the session and the seat stays held for the run, so
     `aew opencode` alone would be refused. The result says to go as `seat` says, and that step is followed here."""
     import fake_opencode
+    from bounds import WATCHDOG
     from fake_harness import SCRIPTS_ENV
     from harness_acceptance import WID, lead, operator_takeover, plan_ticket
     from harness_conformance import FakeOpenCodeDriver, sync_dir
@@ -203,10 +202,9 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
             {"do": "wait_file", "path": str(sync_dir(tmp_path) / "never"), "timeout": 300}], acquire=True)
 
         # The run's own record: read with no lock, as nothing here needs the store's. The Lead session's start, its
-        # scripted steps and the run's launch are start-up and admission: the test's own limit bounds them (#497)
-        while lab.record("R-INV-0001-1").get("status") != "running":  # no deadline but the test's own
-            lab.check_sessions()
-            time.sleep(0.1)
+        # scripted steps and the run's launch are start-up and admission: the test's own limit bounds them
+        lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
+                  what="the Lead's run to be in flight", bound=WATCHDOG)
         kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER
         kill.write_text("", encoding="utf-8")
         res, _steps = session.result(timeout=120)

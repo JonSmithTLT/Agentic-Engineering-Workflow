@@ -22,9 +22,8 @@ dev = ["pytest>=8"]
 # Optional: parallel test execution for the non-serial lanes (docs/implementation/testing-and-ci-strategy.md).
 # Kept out of `dev` so offline installs from the SPT wheelhouse need nothing new.
 parallel = ["pytest-xdist>=3.6"]
-# Optional: coverage, including the `aew` CLI, supervisor and broker subprocesses the tests start (register E2;
-# docs/implementation/testing-and-ci-strategy.md, "Coverage"). CI measures the Linux lanes with it.
-coverage = ["coverage[toml]>=7.10"]
+# Optional: line and branch coverage in the Linux pytest controller and workers.
+coverage = ["coverage[toml]>=7.10.6", "pytest-cov>=7,<8"]
 # Static checks (docs/implementation/testing-and-ci-strategy.md, "Static checks"). Pinned: a new release can add rules
 # or change inference, and that should arrive as its own reviewed change, not as a red merge gate.
 lint = ["ruff==0.16.10", "pyright==1.1.414", "pip-audit==2.10.1"]
@@ -120,15 +119,10 @@ markers = [
 ]
 
 [tool.coverage.run]
-# Line and branch coverage of the product (src/aew), in this process and in every Python subprocess it starts
-# (`aew` CLIs, harness supervisors, the Lead broker, xdist workers). Data files go where COVERAGE_FILE points, outside
-# the checkout (the isolation guard fails a run that writes into it).
+# Line and branch coverage of src/aew in pytest processes. The job writes its combined data to COVERAGE_FILE.
 source_pkgs = ["aew"]
 branch = true
-parallel = true
-patch = ["subprocess"]
 sigterm = true
-# Helper Python processes that never import aew (fake agents and servers) record nothing: not a problem.
 disable_warnings = ["module-not-imported", "no-data-collected"]
 
 [tool.coverage.report]

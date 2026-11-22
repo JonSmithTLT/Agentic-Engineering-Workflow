@@ -1310,6 +1310,57 @@ entries:
       Same commit and runner image on attempt 2. The test passed in 6.977s. A separate Linux probe
       counted 82 Git launches in the helper. Injecting 0.75s per launch reached the deadline
       on the 79th invocation. The failed Windows run has no per-command timings.
+- id: wait-any-fixture-git-add
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: fixture setup
+  cause: >-
+    make_git_repo failed while staging the sample project's files. Git returned 128.
+    The traceback did not show Git's captured stderr, so the reason for the exit is unknown.
+  owner: CI timing fixes
+  test: tests/integration/test_harness_wait_any.py::test_several_runs_need_any_and_each_run_once
+  planned_fix: >-
+    Retain bounded, redacted Git stderr on fixture setup failure. Exercise the reporting path
+    with a deliberately failing git add, then use the Windows diagnostic to identify the cause.
+  evidence:
+  - run: 45058640805
+    job: 137322083108
+    at: '2026-11-22T19:57:15Z'
+    note: Windows integration 4/15 at 61847d98. The lab fixture failed before the wait-any test body.
+  - run: 45058640805
+    job: 137349143093
+    at: '2026-11-22T21:05:31Z'
+    kind: diagnostic
+    note: Attempt 2 on the same head and shard reported 214 passed and 15 skipped.
+- id: relayed-status-receipt-drain
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    The relayed status --json call returned exit 0. The server still reported an in-flight
+    request at the ten-second drain deadline. The cause of the delay is unknown.
+  owner: CI timing fixes
+  test: tests/integration/test_message_result_receipts.py::test_relayed_complete_bodies_write_only_local_receipts_and_never_durable_shown[argv1-False]
+  planned_fix: >-
+    Capture the in-flight handler's stack and receipt phase at the drain deadline on Windows.
+    Exercise the diagnostic with a controlled pending receipt after a successful response and
+    preserve the test's assertions about receipt delivery and durable state.
+  evidence:
+  - run: 45058640805
+    job: 137322083108
+    at: '2026-11-22T19:57:15Z'
+    note: Windows integration 4/15 at 61847d98. BridgeServer.drain(10) returned false before broker close.
+  - run: 45058640805
+    job: 137349143093
+    at: '2026-11-22T21:05:31Z'
+    kind: diagnostic
+    note: Attempt 2 on the same head and shard reported 214 passed and 15 skipped.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

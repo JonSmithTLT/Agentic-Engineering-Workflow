@@ -190,12 +190,14 @@ def make_lab(tmp_path: Path, *, upstreams: dict[str, str] | None = None, mode: s
 
 
 def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, str] | None = None,
-                    timeout: float = 120, refreshing_upstream: str | None = None) -> dict[str, Any]:
+                    timeout: float = 120, refreshing_upstream: str | None = None,
+                    key_upstream: str | None = None) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
     result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
     (``discovery.rules.split_refusal``), and whether the terminal got its settings back. A synthetic refreshing
-    upstream replaces the built-in URL in the test subprocess only."""
+    upstream replaces the built-in URL in the test subprocess only, and so does ``key_upstream`` for openai's API-key
+    route (which a policy upstream would also take from its stored login)."""
     import pty
     import termios
 
@@ -209,17 +211,21 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         import fcntl, os, sys, termios
         os.setsid()
         fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-        refreshing_upstream = sys.argv.pop(1)
-        if not refreshing_upstream:
+        refreshing_upstream, key_upstream = sys.argv.pop(1), sys.argv.pop(1)
+        if not refreshing_upstream and not key_upstream:
             os.execv(sys.executable, [sys.executable, "-m", "aew", *sys.argv[1:]])
 
         import runpy
         from aew.harness.containment import netns
 
-        netns.REFRESHING_UPSTREAMS["openai"] = refreshing_upstream
+        if refreshing_upstream:
+            netns.REFRESHING_UPSTREAMS["openai"] = refreshing_upstream
+        if key_upstream:
+            netns.UPSTREAMS["openai"] = key_upstream
         runpy.run_module("aew", run_name="__main__", alter_sys=True)
     """)
-    command = [sys.executable, "-c", wrapper, refreshing_upstream or "", "-C", str(lab.root), "opencode", *args]
+    command = [sys.executable, "-c", wrapper, refreshing_upstream or "", key_upstream or "", "-C", str(lab.root),
+               "opencode", *args]
     proc = subprocess.Popen(command, stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     shown = bytearray()
     try:

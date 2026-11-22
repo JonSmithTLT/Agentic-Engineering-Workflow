@@ -6,159 +6,571 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `.gitignore`
 
-- `.gitignore` (kept in git); written by `aew.engine.store`: `ControlStore.create`; read by none
+- `.gitignore` (kept in git); read by none
+  - Written by
+    - `aew.engine.store:ControlStore.create`
 
 ## `coordination`
 
-- `coordination` (kept in git); named by `aew.coordination.layout`: `COORDINATION_DIR`; written by `aew.engine.coordination_ops`: `Coordination._append_seen`, `Coordination._ensure_marker`, `_append_line`, `_truncate`; read by `aew.engine.coordination_ops`: `Coordination._append_seen`, `Coordination._ensure_marker`, `Coordination._seen_log`, `Coordination.doctor_check`, `Coordination.integrity_problems`, `Coordination.reads_on`
+- `coordination` (kept in git); named by `aew.coordination.layout`: `COORDINATION_DIR`; read by `aew.engine.coordination_ops`: `Coordination._append_seen`, `Coordination._ensure_marker`, `Coordination._seen_log`, `Coordination.doctor_check`, `Coordination.integrity_problems`, `Coordination.reads_on`
+  - Written by
+    - `aew.engine.coordination_ops:Coordination._append_seen`
+    - `aew.engine.coordination_ops:Coordination._ensure_marker`
+    - `aew.engine.coordination_ops:_append_line`
+    - `aew.engine.coordination_ops:_truncate`
 
 ## `decisions`
 
-- `decisions` (kept in git); written by `aew.engine.base`: `Kernel.new_decision`; read by `aew.dashboard.projections`: `Projector.knowledge`, `Projector.knowledge_list`; `aew.engine.coordination_ops`: `Coordination._ref_decision`; `aew.knowledge.records`: `read_record`
+- `decisions` (kept in git); read by `aew.dashboard.projections`: `Projector.knowledge`, `Projector.knowledge_list`; `aew.engine.coordination_ops`: `Coordination._ref_decision`; `aew.knowledge.records`: `read_record`
+  - Written by
+    - `aew.engine.base:Kernel.new_decision`
 
 ## `evidence`
 
-- `evidence` (kept in git); written by none; read by `aew.engine.coordination_ops`: `Coordination._ref_evidence`, `Coordination._ref_finding`; `aew.knowledge.evidence`: `_scan`, `next_seq`
-- `evidence/project` (kept in git); written by none; read by `aew.knowledge.evidence`: `_scan`, `read`
-- `evidence/{}` (kept in git); written by `aew.engine.evidence_ops`: `EvidenceCommands.check_run`, `EvidenceCommands.submit`; `aew.engine.validation_ops`: `Validation._bind_evidence`; read by `aew.dashboard.projections`: `Projector._evidence_exists`, `Projector._evidence_unit`, `Projector.locate_evidence`; `aew.engine.archive_ops`: `_bytes`; `aew.engine.coordination_ops`: `Coordination._ref_evidence`; `aew.knowledge.evidence`: `_scan`, `next_seq`, `read`
-- `evidence/{}/logs` (kept in git); written by `aew.engine.evidence_ops`: `EvidenceCommands.check_run`; `aew.engine.validation_ops`: `Validation._bind_evidence`; read by `aew.engine.evidence_ops`: `EvidenceCommands.check_run`; `aew.engine.validation_ops`: `Validation._bind_evidence`
+- `evidence` (kept in git); read by `aew.engine.coordination_ops`: `Coordination._ref_evidence`, `Coordination._ref_finding`; `aew.knowledge.evidence`: `_scan`, `next_seq`
+  - Written by
+    - None
+- `evidence/project` (kept in git); read by `aew.knowledge.evidence`: `_scan`, `read`
+  - Written by
+    - None
+- `evidence/{}` (kept in git); read by `aew.dashboard.projections`: `Projector._evidence_exists`, `Projector._evidence_unit`, `Projector.locate_evidence`; `aew.engine.archive_ops`: `_bytes`; `aew.engine.coordination_ops`: `Coordination._ref_evidence`; `aew.knowledge.evidence`: `_scan`, `next_seq`, `read`
+  - Written by
+    - `aew.engine.evidence_ops:EvidenceCommands.check_run`
+    - `aew.engine.evidence_ops:EvidenceCommands.submit`
+    - `aew.engine.validation_ops:Validation._bind_evidence`
+- `evidence/{}/logs` (kept in git); read by `aew.engine.evidence_ops`: `EvidenceCommands.check_run`; `aew.engine.validation_ops`: `Validation._bind_evidence`
+  - Written by
+    - `aew.engine.evidence_ops:EvidenceCommands.check_run`
+    - `aew.engine.validation_ops:Validation._bind_evidence`
 
 ## `history`
 
-- `history` (kept in git); named by `aew.history.manifest`: `HISTORY_DIR`; written by `aew.history.store`: `History.append`, `prewrite`; read by `aew.history.store`: `History._read`, `History.race`
-- `history/audits` (kept in git); written by `aew.history.store`: `History.write_record`; read by none
-- `history/lead` (kept in git); written by `aew.history.store`: `History.write_record`, `prewrite`; read by `aew.history.store`: `prewrite`
+- `history` (kept in git); named by `aew.history.manifest`: `HISTORY_DIR`; read by `aew.history.store`: `History._read`, `History.race`
+  - Written by
+    - `aew.history.store:History.append`
+    - `aew.history.store:prewrite`
+- `history/audits` (kept in git); read by none
+  - Written by
+    - `aew.history.store:History.write_record`
+- `history/lead` (kept in git); read by `aew.history.store`: `prewrite`
+  - Written by
+    - `aew.history.store:History.write_record`
+    - `aew.history.store:prewrite`
 
 ## `knowledge`
 
-- `knowledge` (kept in git); written by `aew.engine.store`: `ControlStore.create`, `store_dirs`; read by `aew.engine.store`: `store_dirs`
+- `knowledge` (kept in git); read by `aew.engine.store`: `store_dirs`
+  - Written by
+    - `aew.engine.store:ControlStore.create`
+    - `aew.engine.store:store_dirs`
 
 ## `local`
 
-- `local` (git-ignored, masked by containment); written by `aew.dashboard.service`: `Service._write_endpoint`; `aew.engine.custody_ops`: `spawn_worker`; `aew.engine.disposition_ops`: `signal_source`; `aew.engine.history_ops`: `HistoryCommands.history_reindex`; `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; `aew.engine.outbox`: `bump_wake`; `aew.engine.queue_ops`: `Queue._checkout_sync_lock`; `aew.engine.recall`: `Substrate._connect`; `aew.harness.broker_liveness`: `write`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `append`; `aew.harness.model_list`: `_listing`; `aew.harness.notify`: `DeliveryLog.record`, `Watcher._write_state`; `aew.harness.operator_autostart`: `ensure`; `aew.harness.operator_client`: `sessions_lock`; `aew.harness.operator_endpoint`: `OperatorEndpoint._claim`; `aew.harness.seat`: `write_leftovers`; `aew.harness.steering_loop`: `_write`; `aew.harness.tool_calls`: `append`; `aew.harness.wake_queue`: `WakeQueue._save`, `clear_serving`, `mark_serving`; `aew.history.index`: `HistoryIndex._db`, `HistoryIndex._rebuild`, `HistoryIndex.sync`; `aew.maps.store`: `_append_log`; `aew.switch_offer`: `_remember_no`; read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `read`, `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
-- `local/anomalies` (git-ignored, masked by containment); named by `aew.engine.disposition_ops`: `SPOOL_REL`; written by `aew.engine.disposition_ops`: `_unlink`, `signal_source`; read by `aew.engine.disposition_ops`: `Dispositions._signalled_entry`, `Dispositions.finalize`, `signal_source`
-- `local/custody` (git-ignored, masked by containment); named by `aew.engine.custody_ops`: `LOG_DIR`; written by `aew.engine.custody_ops`: `spawn_worker`; read by none
-- `local/dashboard` (git-ignored, masked by containment); named by `aew.dashboard.service`: `DIR_REL`; written by `aew.dashboard.service`: `Service._remove_endpoint`, `Service._write_endpoint`; `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; read by `aew.dashboard.service`: `Service._remove_endpoint`, `locate`; `aew.engine.lock`: `FileLock._is_path`
-- `local/doctor` (git-ignored, masked by containment); written by `aew.harness.model_list`: `_listing`; read by `aew.harness.model_list`: `_load`
-- `local/events` (git-ignored, masked by containment); named by `aew.harness.event_spool`: `SPOOL_REL`; written by `aew.harness.event_spool`: `Reader.retire`, `_open_append`, `append`; read by `aew.harness.event_spool`: `Reader.retire`, `Reader.unread`, `Reader.writers`, `_open_append`, `_open_read`, `append`
-- `local/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by `aew.harness.containment.layout`: `for_run`; `aew.kit.receipt`: `write_receipt`
-- `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; written by `aew.harness.containment.layout`: `for_run`; `aew.harness.opencode.lead`: `serve_spec`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
-- `local/harness/lead/server` (git-ignored, masked by containment); written by `aew.harness.opencode.lead`: `serve_spec`; read by `aew.harness.opencode.lead_wake`: `url_of`
-- `local/harness/lead/xdg-data` (git-ignored, masked by containment); written by none; read by `aew.harness.opencode.login`: `own_store`
-- `local/harness/lead/xdg-data/opencode` (git-ignored, masked by containment); written by `aew.harness.opencode.lead`: `ContainedLead._seed_logins`; `aew.harness.opencode.login`: `clear_saved_permissions`; read by `aew.harness.opencode.lead`: `ContainedLead._seed_logins`; `aew.harness.opencode.login`: `clear_saved_permissions`, `own_store`
-- `local/harness/lead/xdg-state` (git-ignored, masked by containment); written by `aew.harness.opencode.lead`: `ContainedLead._seed_models`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
-- `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); written by `aew.harness.opencode.lead`: `ContainedLead._seed_models`; read by none
-- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; written by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness._spawn_run`; `aew.harness.check_changes`: `run_once`; `aew.harness.lead_broker`: `lead_run_dir`; `aew.harness.model_list`: `read`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.kit.receipt`: `write_receipt`
-- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.engine.harness_ops`: `Harness._spawn_run`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; `aew.harness.runlog`: `_open_append`, `beat`, `write_record`; `aew.harness.supervisor`: `Supervisor.start`; read by `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `beat`, `heartbeat_age`, `take_requests`
-- `local/harness/runs/R-{}-{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/R-{}-{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; `aew.harness.supervisor`: `Supervisor._deliver_skills`; `aew.skills`: `deliver`; read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
-- `local/harness/runs/R-{}-{}/harness/skills` (git-ignored, masked by containment); written by `aew.harness.supervisor`: `Supervisor._deliver_skills`; `aew.skills`: `_remove`, `deliver`; read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
-- `local/harness/runs/R-{}-{}/harness/skills/{}` (git-ignored, masked by containment); written by `aew.skills`: `_remove`, `deliver`; read by `aew.skills`: `_remove`, `deliver`, `root_problems`
-- `local/harness/runs/R-{}-{}/requests` (git-ignored, masked by containment); written by `aew.harness.runlog`: `take_requests`; read by `aew.harness.runlog`: `_open_regular`, `take_requests`
-- `local/harness/runs/R-{}-{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/R-{}-{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/R-{}-{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/R-{}-{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/check-{}-{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.harness.containment.layout`: `for_run`
-- `local/harness/runs/check-{}-{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/check-{}-{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; read by none
-- `local/harness/runs/check-{}-{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/check-{}-{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/check-{}-{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/check-{}-{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/doctor-check-{}-{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; read by `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`
-- `local/harness/runs/doctor-check-{}-{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/doctor-check-{}-{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; read by none
-- `local/harness/runs/doctor-check-{}-{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/doctor-check-{}-{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/doctor-check-{}-{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.harness.containment`: `establish`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; `aew.harness.containment.probe`: `_self_test`, `new_sentinel`; `aew.harness.model_list`: `read`; read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
-- `local/harness/runs/doctor-{}-{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/doctor-{}-{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; read by none
-- `local/harness/runs/doctor-{}-{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/doctor-{}-{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/doctor-{}-{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/doctor-{}-{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); written by none; read by `aew.harness.containment.layout`: `_git_metadata`; `aew.workspace.git`: `git`
-- `local/harness/runs/lead-{}-{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; `aew.harness.lead_broker`: `lead_run_dir`, `record_label`; read by `aew.harness.containment.layout`: `for_run`
-- `local/harness/runs/lead-{}-{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/lead-{}-{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; `aew.harness.opencode.lead`: `serve_spec`; read by none
-- `local/harness/runs/lead-{}-{}/harness/xdg-runtime` (git-ignored, masked by containment); written by `aew.harness.opencode.lead`: `serve_spec`; read by `aew.harness.opencode.lead_wake`: `url_of`
-- `local/harness/runs/lead-{}-{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/lead-{}-{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/lead-{}-{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/lead-{}-{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.engine.harness_ops`: `Harness._spawn_run`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; `aew.harness.runlog`: `_open_append`, `beat`, `deliver_request`, `forget_end_returned`, `write_end_returned`, `write_record`, `write_returned`; `aew.harness.supervisor`: `Supervisor.start`; read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
-- `local/harness/runs/{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/harness/runs/{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; `aew.harness.supervisor`: `Supervisor._deliver_skills`; `aew.skills`: `deliver`; read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
-- `local/harness/runs/{}/harness/skills` (git-ignored, masked by containment); written by `aew.harness.supervisor`: `Supervisor._deliver_skills`; `aew.skills`: `_remove`, `deliver`; read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
-- `local/harness/runs/{}/harness/skills/{}` (git-ignored, masked by containment); written by `aew.skills`: `_remove`, `deliver`; read by `aew.skills`: `_remove`, `deliver`, `root_problems`
-- `local/harness/runs/{}/requests` (git-ignored, masked by containment); written by `aew.harness.runlog`: `deliver_request`, `take_requests`; read by `aew.harness.runlog`: `_open_regular`, `take_requests`
-- `local/harness/runs/{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/harness/runs/{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/harness/runs/{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/harness/runs/{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/lead` (git-ignored, masked by containment); written by `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; `aew.harness.broker_liveness`: `write`; `aew.harness.seat`: `write_leftovers`; `aew.harness.told_messages`: `record`; `aew.harness.tool_calls`: `_rotate`, `append`; read by `aew.engine.lock`: `FileLock._is_path`; `aew.harness.broker_liveness`: `read`; `aew.harness.told_messages`: `_load`; `aew.harness.tool_calls`: `_rotate`, `append`, `read`
-- `local/maps` (git-ignored, masked by containment); named by `aew.maps.store`: `MAPS_REL`; written by `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; `aew.maps.store`: `_append_log`, `select`, `write_artifact`; read by `aew.dashboard.reader`: `MapsReader._registry_read`, `MapsReader.roots`; `aew.engine.lock`: `FileLock._is_path`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`, `read_registry`
-- `local/maps/structural` (git-ignored, masked by containment); named by `aew.maps.store`: `STRUCTURAL_REL`; written by `aew.maps.store`: `write_artifact`; read by `aew.dashboard.reader`: `MapsReader.roots`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_artifact`, `read_bounded`, `write_artifact`
-- `local/notify` (git-ignored, masked by containment); named by `aew.harness.notify`: `NOTIFY_REL`; written by `aew.harness.notify`: `DeliveryLog.record`, `Watcher._write_state`; read by `aew.harness.notify`: `DeliveryLog.record`, `_lines`, `_saved_state`, `summary`
-- `local/operator` (git-ignored, masked by containment); written by `aew.engine.lock`: `FileLock._join_queue`, `FileLock._open`; `aew.harness.operator_autostart`: `ensure`; `aew.harness.operator_client`: `name_session`, `no_session_left`, `sessions_lock`, `withdraw_locator`; `aew.harness.operator_endpoint`: `OperatorEndpoint._claim`, `OperatorEndpoint._release`, `OperatorEndpoint._write_locator`; read by `aew.engine.lock`: `FileLock._is_path`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
-- `local/operator/sessions` (git-ignored, masked by containment); named by `aew.harness.operator_client`: `SESSIONS_REL`; written by `aew.harness.operator_client`: `name_session`, `unname_session`; read by `aew.harness.operator_client`: `session_holders_live`, `unname_session`
-- `local/packs` (git-ignored, masked by containment); written by none; read by none
-- `local/packs/{}` (git-ignored, masked by containment); written by `aew.engine.context_ops`: `ContextPacks.build_pack`, `ContextPacks.context_pack`; read by `aew.engine.context_ops`: `ContextPacks.context_show`
-- `local/recall` (git-ignored, masked by containment); written by `aew.engine.recall`: `Substrate._connect`, `Substrate._delete`; read by `aew.engine.recall`: `Substrate._open`
-- `local/steering` (git-ignored, masked by containment); written by `aew.harness.steering_loop`: `_write`; read by `aew.engine.steering`: `loop_state`; `aew.harness.steering_loop`: `_read`
-- `local/validation` (git-ignored, masked by containment); named by `aew.engine.validation_ops`: `STAGING`; written by `aew.engine.validation_ops`: `Validation._execute`; read by `aew.harness.containment.layout`: `for_run`
-- `local/validation/{}` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; `aew.engine.validation_ops`: `Validation._execute`, `Validation._one_check`; `aew.harness.containment.layout`: `for_run`, `retire_private_git`; read by `aew.engine.validation_ops`: `Validation._execute`, `Validation._recorded_label`, `Validation._staged`; `aew.harness.containment.layout`: `for_run`
-- `local/validation/{}/git` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `private_git`, `retire_private_git`; read by none
-- `local/validation/{}/harness` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_self_test`; read by none
-- `local/validation/{}/scratch` (git-ignored, masked by containment); written by `aew.harness.containment.layout`: `for_run`; read by none
-- `local/validation/{}/tools` (git-ignored, masked by containment); written by `aew.capability.bind`: `place`; read by none
-- `local/validation/{}/tools/first` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
-- `local/validation/{}/tools/own_name` (git-ignored, masked by containment); written by `aew.capability.bind`: `_write_entry`, `place`; read by none
+- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
+  - Written by
+    - `aew.dashboard.service:Service._write_endpoint`
+    - `aew.engine.custody_ops:spawn_worker`
+    - `aew.engine.disposition_ops:signal_source`
+    - `aew.engine.history_ops:HistoryCommands.history_reindex`
+    - `aew.engine.lock:FileLock._join_queue`
+    - `aew.engine.lock:FileLock._open`
+    - `aew.engine.outbox:bump_wake`
+    - `aew.engine.queue_ops:Queue._checkout_sync_lock`
+    - `aew.engine.recall:Substrate._connect`
+    - `aew.harness.broker_liveness:write`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.event_spool:append`
+    - `aew.harness.model_list:_listing`
+    - `aew.harness.notify:DeliveryLog.record`
+    - `aew.harness.notify:Watcher._write_state`
+    - `aew.harness.operator_autostart:ensure`
+    - `aew.harness.operator_client:sessions_lock`
+    - `aew.harness.operator_endpoint:OperatorEndpoint._claim`
+    - `aew.harness.seat:write_leftovers`
+    - `aew.harness.steering_loop:_write`
+    - `aew.harness.tool_calls:append`
+    - `aew.harness.wake_queue:WakeQueue._save`
+    - `aew.harness.wake_queue:clear_serving`
+    - `aew.harness.wake_queue:mark_serving`
+    - `aew.history.index:HistoryIndex._db`
+    - `aew.history.index:HistoryIndex._rebuild`
+    - `aew.history.index:HistoryIndex.sync`
+    - `aew.maps.service:_remember_failure`
+    - `aew.maps.store:_append_log`
+    - `aew.switch_offer:_remember_no`
+- `local/anomalies` (git-ignored, masked by containment); named by `aew.engine.disposition_ops`: `SPOOL_REL`; read by `aew.engine.disposition_ops`: `Dispositions._signalled_entry`, `Dispositions.finalize`, `signal_source`
+  - Written by
+    - `aew.engine.disposition_ops:_unlink`
+    - `aew.engine.disposition_ops:signal_source`
+- `local/custody` (git-ignored, masked by containment); named by `aew.engine.custody_ops`: `LOG_DIR`; read by none
+  - Written by
+    - `aew.engine.custody_ops:spawn_worker`
+- `local/dashboard` (git-ignored, masked by containment); named by `aew.dashboard.service`: `DIR_REL`; read by `aew.dashboard.service`: `Service._remove_endpoint`, `locate`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`
+  - Written by
+    - `aew.dashboard.service:Service._remove_endpoint`
+    - `aew.dashboard.service:Service._write_endpoint`
+    - `aew.engine.lock:FileLock._join_queue`
+    - `aew.engine.lock:FileLock._open`
+- `local/doctor` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.model_list`: `_load`
+  - Written by
+    - `aew.harness.model_list:_listing`
+- `local/events` (git-ignored, masked by containment); named by `aew.harness.event_spool`: `SPOOL_REL`; read by `aew.harness.event_spool`: `Reader.retire`, `Reader.unread`, `Reader.writers`, `_open_append`, `_open_read`, `append`
+  - Written by
+    - `aew.harness.event_spool:Reader.retire`
+    - `aew.harness.event_spool:_open_append`
+    - `aew.harness.event_spool:append`
+- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.kit.receipt`: `write_receipt`
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/lead/server` (git-ignored, masked by containment); read by `aew.harness.opencode.lead_wake`: `url_of`
+  - Written by
+    - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/lead/xdg-data` (git-ignored, masked by containment); read by `aew.harness.opencode.login`: `own_store`
+  - Written by
+    - None
+- `local/harness/lead/xdg-data/opencode` (git-ignored, masked by containment); read by `aew.harness.opencode.lead`: `ContainedLead._seed_logins`; `aew.harness.opencode.login`: `clear_aew_logins`, `clear_saved_permissions`, `own_store`
+  - Written by
+    - `aew.harness.opencode.lead:ContainedLead._seed_logins`
+    - `aew.harness.opencode.login:clear_aew_logins`
+    - `aew.harness.opencode.login:clear_saved_permissions`
+- `local/harness/lead/xdg-state` (git-ignored, masked by containment); read by `aew.harness.opencode.lead`: `ContainedLead._inside`
+  - Written by
+    - `aew.harness.opencode.lead:ContainedLead._seed_models`
+- `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.opencode.lead:ContainedLead._seed_models`
+- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.kit.receipt`: `write_receipt`
+  - Written by
+    - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
+    - `aew.engine.harness_ops:Harness._spawn_run`
+    - `aew.harness.check_changes:run_once`
+    - `aew.harness.lead_broker:lead_run_dir`
+    - `aew.harness.model_list:read`
+- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_age`, `take_requests`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.engine.harness_ops:Harness._spawn_run`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+    - `aew.harness.containment.relay:RequestLog.__call__`
+    - `aew.harness.runlog:_open_append`
+    - `aew.harness.runlog:beat`
+    - `aew.harness.runlog:write_record`
+    - `aew.harness.supervisor:Supervisor.start`
+- `local/harness/runs/R-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/R-{}-{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+    - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:deliver`
+- `local/harness/runs/R-{}-{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/runs/R-{}-{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/runs/R-{}-{}/requests` (git-ignored, masked by containment); read by `aew.harness.runlog`: `_open_regular`, `take_requests`
+  - Written by
+    - `aew.harness.runlog:take_requests`
+- `local/harness/runs/R-{}-{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/R-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/R-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/R-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/check-{}-{}` (git-ignored, masked by containment); read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/check-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/check-{}-{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+- `local/harness/runs/check-{}-{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/check-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/check-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/check-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-check-{}-{}` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.harness.check_changes:run_once`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/doctor-check-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/doctor-check-{}-{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+- `local/harness/runs/doctor-check-{}-{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/doctor-check-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-check-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-check-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.harness.containment:establish`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+    - `aew.harness.containment.probe:_self_test`
+    - `aew.harness.containment.probe:new_sentinel`
+    - `aew.harness.containment.relay:RequestLog.__call__`
+    - `aew.harness.model_list:read`
+- `local/harness/runs/doctor-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/doctor-{}-{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+- `local/harness/runs/doctor-{}-{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/doctor-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`; `aew.workspace.git`: `git`
+  - Written by
+    - None
+- `local/harness/runs/lead-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+    - `aew.harness.containment.relay:RequestLog.__call__`
+    - `aew.harness.lead_broker:lead_run_dir`
+    - `aew.harness.lead_broker:record_label`
+- `local/harness/runs/lead-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/lead-{}-{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+    - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/runs/lead-{}-{}/harness/xdg-runtime` (git-ignored, masked by containment); read by `aew.harness.opencode.lead_wake`: `url_of`
+  - Written by
+    - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/runs/lead-{}-{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/lead-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/lead-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/lead-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.engine.harness_ops:Harness._spawn_run`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+    - `aew.harness.containment.relay:RequestLog.__call__`
+    - `aew.harness.runlog:_open_append`
+    - `aew.harness.runlog:beat`
+    - `aew.harness.runlog:deliver_request`
+    - `aew.harness.runlog:forget_end_returned`
+    - `aew.harness.runlog:write_end_returned`
+    - `aew.harness.runlog:write_record`
+    - `aew.harness.runlog:write_returned`
+    - `aew.harness.supervisor:Supervisor.start`
+- `local/harness/runs/{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+    - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:deliver`
+- `local/harness/runs/{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/runs/{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/runs/{}/requests` (git-ignored, masked by containment); read by `aew.harness.runlog`: `_open_regular`, `take_requests`
+  - Written by
+    - `aew.harness.runlog:deliver_request`
+    - `aew.harness.runlog:take_requests`
+- `local/harness/runs/{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/lead` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.harness.broker_liveness`: `read.read_bytes`; `aew.harness.told_messages`: `_load`; `aew.harness.tool_calls`: `_rotate`, `append`
+  - Written by
+    - `aew.engine.lock:FileLock._join_queue`
+    - `aew.engine.lock:FileLock._open`
+    - `aew.harness.broker_liveness:write`
+    - `aew.harness.seat:write_leftovers`
+    - `aew.harness.told_messages:record`
+    - `aew.harness.tool_calls:_rotate`
+    - `aew.harness.tool_calls:append`
+- `local/maps` (git-ignored, masked by containment); named by `aew.maps.store`: `MAPS_REL`; read by `aew.dashboard.reader`: `MapsReader._registry_read`, `MapsReader.roots`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.maps.service`: `_failed_before`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`
+  - Written by
+    - `aew.engine.lock:FileLock._join_queue`
+    - `aew.engine.lock:FileLock._open`
+    - `aew.maps.service:_remember_failure`
+    - `aew.maps.service:forget_failure`
+    - `aew.maps.store:_append_log`
+    - `aew.maps.store:select`
+    - `aew.maps.store:write_artifact`
+- `local/maps/structural` (git-ignored, masked by containment); named by `aew.maps.store`: `STRUCTURAL_REL`; read by `aew.dashboard.reader`: `MapsReader.roots`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`
+  - Written by
+    - `aew.maps.store:write_artifact`
+- `local/notify` (git-ignored, masked by containment); named by `aew.harness.notify`: `NOTIFY_REL`; read by `aew.engine.store`: `replace_pending`; `aew.harness.notify`: `DeliveryLog.record`, `_lines`, `_read_state.read`
+  - Written by
+    - `aew.harness.notify:DeliveryLog.record`
+    - `aew.harness.notify:Watcher._write_state`
+- `local/operator` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
+  - Written by
+    - `aew.engine.lock:FileLock._join_queue`
+    - `aew.engine.lock:FileLock._open`
+    - `aew.harness.operator_autostart:ensure`
+    - `aew.harness.operator_client:name_session`
+    - `aew.harness.operator_client:no_session_left`
+    - `aew.harness.operator_client:sessions_lock`
+    - `aew.harness.operator_client:withdraw_locator`
+    - `aew.harness.operator_endpoint:OperatorEndpoint._claim`
+    - `aew.harness.operator_endpoint:OperatorEndpoint._release`
+    - `aew.harness.operator_endpoint:OperatorEndpoint._write_locator`
+- `local/operator/sessions` (git-ignored, masked by containment); named by `aew.harness.operator_client`: `SESSIONS_REL`; read by `aew.harness.operator_client`: `session_holders_live`, `unname_session`
+  - Written by
+    - `aew.harness.operator_client:name_session`
+    - `aew.harness.operator_client:unname_session`
+- `local/packs` (git-ignored, masked by containment); read by none
+  - Written by
+    - None
+- `local/packs/{}` (git-ignored, masked by containment); read by `aew.engine.context_ops`: `ContextPacks.context_show`
+  - Written by
+    - `aew.engine.context_ops:ContextPacks.build_pack`
+    - `aew.engine.context_ops:ContextPacks.context_pack`
+- `local/recall` (git-ignored, masked by containment); read by `aew.engine.recall`: `Substrate._open`
+  - Written by
+    - `aew.engine.recall:Substrate._connect`
+    - `aew.engine.recall:Substrate._delete`
+- `local/steering` (git-ignored, masked by containment); read by `aew.engine.steering`: `loop_state.read`; `aew.engine.store`: `replace_pending`; `aew.harness.steering_loop`: `_read.read`
+  - Written by
+    - `aew.harness.steering_loop:_write`
+- `local/validation` (git-ignored, masked by containment); named by `aew.engine.validation_ops`: `STAGING`; read by `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.engine.validation_ops:Validation._execute`
+- `local/validation/{}` (git-ignored, masked by containment); read by `aew.engine.validation_ops`: `Validation._execute`, `Validation._recorded_label`, `Validation._staged`; `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.engine.validation_ops:Validation._execute`
+    - `aew.engine.validation_ops:Validation._one_check`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/validation/{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/validation/{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+- `local/validation/{}/scratch` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+- `local/validation/{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/validation/{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/validation/{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
 
 ## `policy`
 
-- `policy` (kept in git); written by `aew.engine.store`: `ControlStore.create`, `store_dirs`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `store_dirs`; `aew.policy.execution`: `load`; `aew.surface.projection`: `control_key`
+- `policy` (kept in git); read by `aew.dashboard.reader`: `_identity`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `store_dirs`; `aew.policy.execution`: `load`; `aew.surface.projection`: `control_key`
+  - Written by
+    - `aew.engine.store:ControlStore.create`
+    - `aew.engine.store:store_dirs`
 
 ## `pricing`
 
-- `pricing` (kept in git); named by `aew.engine.usage_ops`: `SNAPSHOT_DIR`; written by `aew.engine.usage_ops`: `write_pricing_snapshot`; read by `aew.engine.usage_ops`: `_snapshot_files`, `read_pricing_snapshot`, `write_pricing_snapshot`
+- `pricing` (kept in git); named by `aew.engine.usage_ops`: `SNAPSHOT_DIR`; read by `aew.engine.usage_ops`: `_snapshot_files`, `read_pricing_snapshot`, `write_pricing_snapshot`
+  - Written by
+    - `aew.engine.usage_ops:write_pricing_snapshot`
 
 ## `project.yaml`
 
-- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; written by `aew.engine.api`: `ProjectAdmin._rewrite_manifest`; `aew.engine.store`: `ControlStore.create`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin._manifest_subject`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
+- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin._manifest_subject`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
+  - Written by
+    - `aew.engine.api:ProjectAdmin._rewrite_manifest`
+    - `aew.engine.store:ControlStore.create`
 
 ## `records`
 
-- `records` (kept in git); written by none; read by none
-- `records/dispositions` (kept in git); named by `aew.engine.disposition_ops`: `RECORDS_DIR`; written by `aew.engine.disposition_ops`: `Dispositions._write`; read by `aew.engine.disposition_ops`: `Dispositions._load`, `Dispositions.read`
-- `records/stage-intents` (kept in git); named by `aew.engine.stage_intents`: `RECORDS_DIR`; written by `aew.engine.stage_intents`: `StageIntents._end`; read by `aew.engine.stage_intents`: `StageIntents._load`, `StageIntents.read`
-- `records/steering` (kept in git); named by `aew.engine.steering`: `RECORDS_DIR`; written by `aew.engine.steering`: `Steering._append`; read by `aew.engine.steering`: `Steering._append`
+- `records` (kept in git); read by none
+  - Written by
+    - None
+- `records/dispositions` (kept in git); named by `aew.engine.disposition_ops`: `RECORDS_DIR`; read by `aew.engine.disposition_ops`: `Dispositions._load`, `Dispositions.read`
+  - Written by
+    - `aew.engine.disposition_ops:Dispositions._write`
+- `records/stage-intents` (kept in git); named by `aew.engine.stage_intents`: `RECORDS_DIR`; read by `aew.engine.stage_intents`: `StageIntents._load`, `StageIntents.read`
+  - Written by
+    - `aew.engine.stage_intents:StageIntents._end`
+- `records/steering` (kept in git); named by `aew.engine.steering`: `RECORDS_DIR`; read by `aew.engine.steering`: `Steering._append`
+  - Written by
+    - `aew.engine.steering:Steering._append`
 
 ## `roles`
 
-- `roles` (kept in git); written by `aew.engine.store`: `ControlStore.create`, `store_dirs`; read by `aew.engine.store`: `store_dirs`
+- `roles` (kept in git); read by `aew.engine.store`: `store_dirs`
+  - Written by
+    - `aew.engine.store:ControlStore.create`
+    - `aew.engine.store:store_dirs`
 
 ## `state`
 
-- `state` (store); named by `aew.engine.store`: `STORE_REL`; written by `aew.engine.store`: `ControlStore._commit_unprofiled`, `ControlStore._post_commit`, `ControlStore._remove_temp_files`, `ControlStore.create`, `store_dirs`; read by `aew.engine.api`: `Engine.initialize`; `aew.engine.base`: `Kernel._authority_files_identity`; `aew.engine.log_compact`: `scan`; `aew.engine.store`: `ControlStore._load`, `ControlStore._migrate_modes`, `ControlStore._post_commit`, `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.control_identity`, `ControlStore.create`, `ControlStore.exists`, `ControlStore.mode_problems`, `store_dirs`; `aew.harness.supervisor`: `Supervisor._control_changed`
-- `state/handoffs` (store); written by `aew.engine.lead_ops`: `Lead.write_handoff`; read by none
-- `state/log` (store); named by `aew.engine.outbox`: `LOG_DIR`; `aew.engine.store`: `LOG_DIR`; written by `aew.engine.log_compact`: `_unlink`, `seal_steps`; `aew.engine.store`: `ControlStore._post_commit`, `ControlStore._remove_temp_files`, `store_dirs`; read by `aew.engine.log_compact`: `scan`, `seal_steps`; `aew.engine.outbox`: `load_segment`, `read_optional`; `aew.engine.store`: `ControlStore._post_commit`, `ControlStore._remove_temp_files`, `store_dirs`
-- `state/txn` (git-ignored, store); named by `aew.engine.store`: `TXN_DIR`; written by `aew.engine.store`: `ControlStore._commit_unprofiled`, `ControlStore._mark_applied`, `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `store_dirs`; read by `aew.engine.store`: `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.applied`, `store_dirs`
+- `state` (store); named by `aew.engine.store`: `STORE_REL`; read by `aew.engine.api`: `Engine.initialize`; `aew.engine.base`: `Kernel._authority_files_identity`; `aew.engine.log_compact`: `scan`; `aew.engine.store`: `ControlStore._migrate_modes`, `ControlStore._post_commit`, `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.control_identity`, `ControlStore.create`, `ControlStore.exists`, `ControlStore.mode_problems`, `store_dirs`; `aew.harness.supervisor`: `Supervisor._control_changed`
+  - Written by
+    - `aew.engine.store:ControlStore._commit_unprofiled`
+    - `aew.engine.store:ControlStore._post_commit`
+    - `aew.engine.store:ControlStore._remove_temp_files`
+    - `aew.engine.store:ControlStore.create`
+    - `aew.engine.store:store_dirs`
+- `state/handoffs` (store); read by none
+  - Written by
+    - `aew.engine.lead_ops:Lead.write_handoff`
+- `state/log` (store); named by `aew.engine.outbox`: `LOG_DIR`; `aew.engine.store`: `LOG_DIR`; read by `aew.engine.log_compact`: `scan`, `seal_steps`; `aew.engine.outbox`: `load_segment`, `read_optional`; `aew.engine.store`: `ControlStore._post_commit`, `ControlStore._remove_temp_files`, `store_dirs`
+  - Written by
+    - `aew.engine.log_compact:_unlink`
+    - `aew.engine.log_compact:seal_steps`
+    - `aew.engine.store:ControlStore._post_commit`
+    - `aew.engine.store:ControlStore._remove_temp_files`
+    - `aew.engine.store:store_dirs`
+- `state/txn` (git-ignored, store); named by `aew.engine.store`: `TXN_DIR`; read by `aew.engine.store`: `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.applied`, `store_dirs`
+  - Written by
+    - `aew.engine.store:ControlStore._commit_unprofiled`
+    - `aew.engine.store:ControlStore._mark_applied`
+    - `aew.engine.store:ControlStore._recover_unprofiled`
+    - `aew.engine.store:ControlStore._remove_temp_files`
+    - `aew.engine.store:store_dirs`
 
 ## `work`
 
-- `work` (kept in git); written by `aew.history.store`: `prewrite`; read by `aew.engine.coordination_ops`: `Coordination._ensure_marker`, `Coordination.doctor_check`
-- `work/{}` (kept in git); written by `aew.engine.coordination_ops`: `Coordination._write`; `aew.engine.hierarchy_ops`: `Hierarchy.work_close`; `aew.engine.integration_ops`: `Integration._finish_publish`; `aew.engine.nonmutating_ops`: `NonMutating.work_accept`; `aew.engine.work_ops`: `WorkUnits.propose`; `aew.history.store`: `History.write_record`, `prewrite`; read by `aew.history.store`: `prewrite`
-- `work/{}-{}` (kept in git); written by `aew.engine.hierarchy_ops`: `Hierarchy._create_promoted`; `aew.engine.work_ops`: `WorkCommands.work_create`; read by none
-- `work/{}/annotations` (kept in git); written by `aew.history.store`: `History.write_record`; read by none
-- `work/{}/coordination` (kept in git); written by `aew.engine.coordination_ops`: `Coordination._write`, `_append_line`, `_truncate`; `aew.history.store`: `prewrite`; read by `aew.engine.coordination_ops`: `Coordination.evidence_inputs`, `Coordination.seal_ending`, `Coordination.unit_threads`, `read_thread`, `scan_thread`; `aew.history.store`: `prewrite`
-- `work/{}/dispositions` (kept in git); written by `aew.engine.disposition_ops`: `Dispositions._write`; read by none
-- `work/{}/gate-corrections` (kept in git); written by `aew.engine.gate_ops`: `GateRepair._write`; read by none
-- `work/{}/stage-intents` (kept in git); written by `aew.engine.stage_intents`: `StageIntents._end`; read by none
-- `work/{}/validation-runs` (kept in git); written by `aew.engine.validation_ops`: `Validation._pin`, `Validation._write_record`; read by none
+- `work` (kept in git); read by `aew.engine.coordination_ops`: `Coordination._ensure_marker`, `Coordination.doctor_check`
+  - Written by
+    - `aew.history.store:prewrite`
+- `work/{}` (kept in git); read by `aew.history.store`: `prewrite`
+  - Written by
+    - `aew.engine.coordination_ops:Coordination._write`
+    - `aew.engine.hierarchy_ops:Hierarchy.work_close`
+    - `aew.engine.integration_ops:Integration._finish_publish`
+    - `aew.engine.nonmutating_ops:NonMutating.work_accept`
+    - `aew.engine.work_ops:WorkUnits.propose`
+    - `aew.history.store:History.write_record`
+    - `aew.history.store:prewrite`
+- `work/{}-{}` (kept in git); read by none
+  - Written by
+    - `aew.engine.hierarchy_ops:Hierarchy._create_promoted`
+    - `aew.engine.work_ops:WorkCommands.work_create`
+- `work/{}/annotations` (kept in git); read by none
+  - Written by
+    - `aew.history.store:History.write_record`
+- `work/{}/coordination` (kept in git); read by `aew.engine.coordination_ops`: `Coordination.evidence_inputs`, `Coordination.seal_ending`, `Coordination.unit_threads`, `read_thread`, `scan_thread`; `aew.history.store`: `prewrite`
+  - Written by
+    - `aew.engine.coordination_ops:Coordination._write`
+    - `aew.engine.coordination_ops:_append_line`
+    - `aew.engine.coordination_ops:_truncate`
+    - `aew.history.store:prewrite`
+- `work/{}/dispositions` (kept in git); read by none
+  - Written by
+    - `aew.engine.disposition_ops:Dispositions._write`
+- `work/{}/gate-corrections` (kept in git); read by none
+  - Written by
+    - `aew.engine.gate_ops:GateRepair._write`
+- `work/{}/stage-intents` (kept in git); read by none
+  - Written by
+    - `aew.engine.stage_intents:StageIntents._end`
+- `work/{}/validation-runs` (kept in git); read by none
+  - Written by
+    - `aew.engine.validation_ops:Validation._pin`
+    - `aew.engine.validation_ops:Validation._write_record`
 
 ## Reads this reading could not place
 
@@ -169,7 +581,6 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.capability.ops`: `_acquire` (Path.exists), `_add_downloads` (Path.exists), `_apply_add` (Path.exists), `_bundle_files` (Path.is_dir), `_bundle_files` (Path.is_file), `_bundle_files` (Path.iterdir), `_check_here` (Path.exists), `_match_bundle` (Path.stat), `_match_bundle` (open), `absent` (Path.exists), `fetch` (Path.exists)
 - `aew.capability.payload`: `discard` (Path.is_dir), `discard` (Path.iterdir), `install` (Path.exists), `member` (Path.is_dir), `member` (Path.open), `verify` (open)
 - `aew.capability.status`: `aew_copy` (Path.exists), `file_sha256` (open), `find_host_copy` (os.path.exists), `harness_identity` (Path.stat)
-- `aew.capability.store`: `read` (Path.read_bytes)
 - `aew.cli.capability_commands`: `_add` (open)
 - `aew.cli.commands`: `_engine` (Path.is_dir)
 - `aew.cli.dashboard_commands`: `_serve` (Path.is_file)
@@ -177,13 +588,13 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.dashboard.contract`: `Contract.__init__` (Path.read_bytes), `digest` (Path.read_bytes)
 - `aew.dashboard.frontend`: `_contained` (Path.is_file), `build_record` (Path.read_text), `packaged_root` (Path.is_file)
 - `aew.dashboard.projections`: `Projector._stored` (Path.stat), `Projector._verified_archived_ids` (sha256_file), `Projector.map_diff` (Path.stat), `Projector.map_inputs` (Path.stat)
-- `aew.dashboard.reader`: `StateReader._read_gates` (Path.read_bytes), `_identity` (Path.stat)
+- `aew.dashboard.reader`: `_identity` (Path.stat)
 - `aew.dashboard.server`: `DashboardServer._static` (Path.read_bytes)
 - `aew.engine.api`: `Engine._control_identity` (os.stat), `Engine.stage_open` (Path.open), `ProjectAdmin._read_policy_pins` (Path.is_file), `ProjectAdmin._read_policy_pins` (Path.read_bytes)
 - `aew.engine.archive_ops`: `Archive._prune_observation` (Path.exists), `Archive._retained` (Path.exists), `Archive._retired_observations` (Path.exists), `Archive.finalize` (sha256_file), `Archive.record` (Path.read_bytes), `_bytes` (Path.read_bytes), `_sealed_check` (sha256_file), `held_evidence` (Path.read_text), `held_evidence` (sha256_file)
 - `aew.engine.assurance_ops`: `Assurance._pinned` (sha256_file)
 - `aew.engine.base`: `Kernel._pinned_bytes` (Path.is_file), `Kernel._pinned_bytes` (Path.read_bytes), `Kernel.locate` (Path.exists), `Kernel.locate` (read_yaml), `Kernel.policy_pins` (Path.is_file), `Kernel.policy_pins` (sha256_file)
-- `aew.engine.context_ops`: `ContextPacks._m2_pack_extras` (Path.read_text), `ContextPacks._m2_pack_inputs` (Path.read_text), `ContextPacks._pack_inputs` (Path.read_text)
+- `aew.engine.context_ops`: `ContextPacks._m2_pack_extras` (Path.read_text), `ContextPacks._pack_base` (Path.read_text)
 - `aew.engine.coordination_ops`: `Coordination._sealed` (Path.read_bytes), `messaging_switch` (Path.is_file), `messaging_switch` (Path.read_bytes)
 - `aew.engine.coverage`: `load` (Path.read_text), `load` (sha256_file)
 - `aew.engine.dispatch`: `Dispatch._policy_digests` (sha256_file)
@@ -202,7 +613,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)
-- `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir)
+- `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir), `replace_pending` (Path.glob), `replace_pending` (Path.is_file)
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
 - `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
 - `aew.engine.validation_ops`: `Validation._coverage_record` (Path.read_text), `Validation._coverage_record` (sha256_file)
@@ -223,11 +634,10 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.opencode.lead`: `ContainedLead._seed_models` (Path.is_file), `ContainedLead._seed_models` (Path.read_text), `ContainedLead._seed_models` (Path.stat), `operator_mcp_servers` (Path.is_file), `operator_mcp_servers` (Path.read_text), `operator_preferences` (Path.is_file), `operator_preferences` (Path.read_text)
 - `aew.harness.opencode.lead_wake`: `url_of` (Path.read_text)
 - `aew.harness.opencode.login`: `StoredLogin._deciding_row` (Path.stat), `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
-- `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (Path.read_text), `session_holders_live` (Path.read_text)
+- `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (read_replaced), `session_holders_live` (read_replaced)
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
-- `aew.harness.runlog`: `_open_regular` (os.lstat), `_open_regular` (os.open), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)
-- `aew.harness.seat`: `read_leftovers` (Path.read_text)
-- `aew.harness.tool_calls`: `read` (Path.exists), `read` (Path.read_text)
+- `aew.harness.runlog`: `_open_append` (os.lstat), `_open_regular` (os.lstat), `_open_regular` (os.open), `_read_text.known` (Path.exists), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)
+- `aew.harness.seat`: `read_leftovers` (read_replaced)
 - `aew.harness.weaker_register`: `_ensure_created` (Path.exists), `_entries` (Path.glob), `_entries` (Path.read_bytes), `read` (Path.exists)
 - `aew.history.store`: `History._check` (Path.read_bytes), `History.unreferenced` (Path.is_file)
 - `aew.kit`: `prepare` (Path.exists), `prepare` (Path.read_bytes)
@@ -263,4 +673,4 @@ A method named like a read primitive is counted as a read of its receiver, whate
 - an `open` whose mode is not a literal this reading can read (the writers family lists it as an unresolved write)
 - a directory walk, `os.walk`, and the reads by a primitive this reading does not name (`os.fstat`, `os.access`, `os.readlink`, `os.path.lexists`, `os.path.realpath`); the tree has live ones under `.aew` (the store's mode check walks `state`; `control_key` walks `policy`)
 
-The primitives it reads: `Path.exists`, `Path.glob`, `Path.is_dir`, `Path.is_file`, `Path.is_symlink`, `Path.iterdir`, `Path.lstat`, `Path.open`, `Path.read_bytes`, `Path.read_text`, `Path.rglob`, `Path.stat`, `open`, `os.listdir`, `os.lstat`, `os.open`, `os.path.exists`, `os.path.getmtime`, `os.path.getsize`, `os.path.isdir`, `os.path.isfile`, `os.path.islink`, `os.scandir`, `os.stat`, `read_yaml`, `sha256_file`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`, `shutil.copytree`.
+The primitives it reads: `Path.exists`, `Path.glob`, `Path.is_dir`, `Path.is_file`, `Path.is_symlink`, `Path.iterdir`, `Path.lstat`, `Path.open`, `Path.read_bytes`, `Path.read_text`, `Path.rglob`, `Path.stat`, `open`, `os.listdir`, `os.lstat`, `os.open`, `os.path.exists`, `os.path.getmtime`, `os.path.getsize`, `os.path.isdir`, `os.path.isfile`, `os.path.islink`, `os.scandir`, `os.stat`, `read_replaced`, `read_yaml`, `sha256_file`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`, `shutil.copytree`.

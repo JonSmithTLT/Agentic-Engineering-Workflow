@@ -202,7 +202,7 @@ jobs:
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-7-attempt-${{ github.run_attempt }}
           command: |
-            ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
+            python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: matrix.lane == 'serial'
         timeout-minutes: 31
@@ -221,7 +221,7 @@ jobs:
         if: success() && runner.os == 'Linux' && matrix.lane == 'fast'
         with:
           name: coverage-core-fast-${{ matrix.shard }}-${{ runner.os }}
-          path: ${{ runner.temp }}/coverage/
+          path: ${{ runner.temp }}/coverage/.coverage
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
@@ -270,13 +270,13 @@ jobs:
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
-            ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+            python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         timeout-minutes: 1
         if: success() && runner.os == 'Linux'  # only from a passing job, as core's
         with:
           name: coverage-${{ matrix.lane }}-${{ matrix.shard }}-${{ runner.os }}
-          path: ${{ runner.temp }}/coverage/
+          path: ${{ runner.temp }}/coverage/.coverage
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
@@ -320,7 +320,8 @@ jobs:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
         run: >-
-          python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+          python -m pytest --cov --cov-report= "--cov-config=${{ github.workspace }}/pyproject.toml"
+          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
           --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()

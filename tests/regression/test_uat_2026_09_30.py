@@ -34,6 +34,8 @@ from conftest import run_aew
 from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
 
+from aew.util import dump_yaml, load_yaml
+
 IMPLEMENT = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit"},
              {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
 REVIEW = {"claim": "independent review", "producer": {"model": "fake-model"},
@@ -268,3 +270,22 @@ def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab
     assert res.returncode == 0 and res.json["timed_out"] and "headline" not in res.json, res.stdout
     lab.ok("harness", "stop", "R-INV-0001-3", "--reason", "test over", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert_control_invariants(lab.project)
+
+
+def test_a_non_monotone_by_class_map_is_adopted_and_reported(tmp_path):
+    p = sample_project(tmp_path)
+    path = p.root / ".aew/policy/gates.yaml"
+    gates = load_yaml(path.read_text(encoding="utf-8"))
+    gates["post_integration"]["validation"] = {"by_class": {"2": "verifier", "3": "checks"}}
+    path.write_text(dump_yaml(gates), encoding="utf-8")
+    assert p.adopt_policy("record the operator's validation settings")["ok"]
+
+    result = p.aew("doctor", "--json")
+    assert result.returncode != 0
+    [row] = [item for item in result.json["checks"] if item["check"] == "policy:consistency"]
+    problem = (
+        "policy/gates.yaml post_integration.validation.by_class resolves class 3 to `checks` "
+        "after class 0 resolves to `verifier`. Map class 3 to `verifier` or class 0 to `checks`."
+    )
+    assert row["status"] == "FAIL" and problem in row["detail"]
+    assert f"fix the policy: {problem}" in p.ok("resume", "--json")["next_actions"]

@@ -488,3 +488,20 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
     assert [p["primitive"] for p in plan[n - 1:]] == ["invoke.create.mutating", "dispatch.launch"] * 2
     si = {"tool": name, "plan": plan}
     assert stage.STAGES[name](dict(call), stage.recorded_cards(si)) == plan
+
+
+def test_stage_plans_do_not_bind_their_own_transition_state():
+    from itertools import product
+
+    from aew.surface import availability as sa
+    from aew.surface import stage
+
+    args = {"work_id": "T-0001", "prior_value": "REVIEW_PENDING", "review_evidence": "EV-0001",
+            "verification_evidence": "EV-0002"}
+    names = set(sa.APPLIES) | set(sa.STARTS_AT) | {"ticket_start", "ticket_request_review"}
+    for name in sorted(names):
+        steps = tuple(sa.APPLIES.get(name, ()))
+        for options in product((False, True), repeat=len(steps)):
+            shape = {"shape": dict(zip(steps, options, strict=True))} if steps else {}
+            plan = stage.STAGES[name](args, **shape)
+            assert all("prior_value" not in (step.get("args") or {}) for step in plan), (name, shape)

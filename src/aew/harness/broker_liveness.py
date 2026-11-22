@@ -56,6 +56,9 @@ def wedge_threshold_s(lock_timeout: float, poll_s: float) -> float:
     return float(lock_timeout) + 2.0 * float(poll_s)
 
 
+READ_BUDGET_S = 5.0  # sharing refusals during the final ownership read
+
+
 class Beat:
     """The broker's beat thread. :meth:`tick` is the watchdog's: it records a completed iteration (memory only).
     ``clock`` (the stamps) and ``idle`` (the event the thread waits on between beats, set to stop it) are the broker's
@@ -92,9 +95,10 @@ class Beat:
             if self._closed:
                 return
             self._closed = True
-            current = read(self.aew_root)
-            if current is None or (current["pid"], current.get("start_id"), current["process_started"]) == (
-                    self.pid, self.start_id, self.process_started):
+            current = read(self.aew_root, budget_s=READ_BUDGET_S)
+            if current is None or (isinstance(current, dict)
+                                   and (current["pid"], current.get("start_id"), current.get("process_started"))
+                                   == (self.pid, self.start_id, self.process_started)):
                 self._write_locked(self._clock())
         if self._thread.is_alive() and threading.current_thread() is not self._thread:
             self._thread.join(max(1.0, 2 * self.poll_s))
@@ -153,15 +157,37 @@ def _refuse_constant(token: str) -> Any:
     raise ValueError(f"not a JSON number: {token}")
 
 
-def read(aew_root: Path) -> dict[str, Any] | None:
+@dataclass(frozen=True)
+class Unreadable:
+    """A liveness observation whose read did not complete."""
+
+
+def read(aew_root: Path, *, budget_s: float | None = None) -> dict[str, Any] | Unreadable | None:
     """The record, or ``None`` when there is none or it is not one the broker wrote (a link, a directory, an oversize
     or malformed file): untrusted local data, checked field by field."""
+    from aew.engine.store import MISSING_MID_REPLACE, retry_lock_free
+    from aew.harness.wake_queue import serving
+
     target = path(aew_root)
-    try:
+
+    def read_bytes() -> str | None:
         info = os.lstat(target)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:
             return None
-        data = json.loads(target.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
+        return target.read_text(encoding="utf-8")
+
+    def marked() -> bool:
+        try:
+            return serving(aew_root) is not None
+        except PermissionError:
+            return False
+
+    try:
+        raw = retry_lock_free(read_bytes, budget_s=budget_s, also=MISSING_MID_REPLACE, missing_when=marked)
+        data = json.loads(raw, parse_constant=_refuse_constant) if raw is not None else None
+    except PermissionError as exc:
+        log.warning("broker_liveness_unreadable: errno=%s winerror=%s", exc.errno, getattr(exc, "winerror", None))
+        return Unreadable()
     except (OSError, ValueError, RecursionError):
         return None
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
@@ -186,14 +212,14 @@ class Verdict:
     detail: str
 
 
-def judge(record: dict[str, Any] | None, *, generation: int, poll_s: float,
+def judge(record: dict[str, Any] | Unreadable | None, *, generation: int, poll_s: float,
           now: float | None = None) -> Verdict | None:
     """The verdict on ``record`` for the current Lead ``generation``, or ``None`` (no record, another generation's, or
     a live broker that beats and whose watchdog completes its iterations)."""
     from aew.harness.operator_client import same_process
 
     now = time.time() if now is None else now  # one observation time, before the process identity check can delay us
-    if record is None or record["generation"] != generation:
+    if not isinstance(record, dict) or record["generation"] != generation:
         return None
     process = f"{record['pid']}@{record.get('process_started')}"
     if record.get("closed_at") is not None:

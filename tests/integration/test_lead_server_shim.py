@@ -202,9 +202,11 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
             *plan_ticket(tmp_path), lead("work", "assign", WID, "--launch"),
             {"do": "wait_file", "path": str(sync_dir(tmp_path) / "never"), "timeout": 300}], acquire=True)
 
-        # The run's own record: read with no lock, as nothing here needs the store's
-        lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
-                  what="the Lead's run to be in flight", timeout=120)
+        # The run's own record: read with no lock, as nothing here needs the store's. The Lead session's start, its
+        # scripted steps and the run's launch are start-up and admission: the test's own limit bounds them (#497)
+        while lab.record("R-INV-0001-1").get("status") != "running":  # no deadline but the test's own
+            lab.check_sessions()
+            time.sleep(0.1)
         kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER
         kill.write_text("", encoding="utf-8")
         res, _steps = session.result(timeout=120)

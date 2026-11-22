@@ -8,17 +8,19 @@ credential here is a synthetic value. Every socket has a timeout and is closed i
 
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tcp_pair import tcp_pair
 
 from aew.errors import ValidationFailed
 from aew.harness.containment import netns, relay
@@ -89,13 +91,14 @@ def read_all(sock: socket.socket) -> bytes:
 
 @contextmanager
 def relayed(seam: Seam, *, upstream: str = UPSTREAM, proxy: Proxy | None = None,
-            credentials: dict[str, str] | None = None,
-            resolve: Callable[[], relay.Grant] | None = None) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
+            credentials: dict[str, str] | None = None, resolve: Callable[[], relay.Grant] | None = None,
+            record: Callable[[dict[str, Any]], None] | None = None,
+            ) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
     """A relay serving one connection; yields it, the client end, and the sentinel that stands for ``SECRET``."""
     token = relay.sentinel()
     service = ProviderRelay(Upstream(upstream), credentials if credentials is not None else {token: SECRET},
                             proxy=proxy, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
-                            body_timeout=TIMEOUT, resolve=resolve)
+                            body_timeout=TIMEOUT, resolve=resolve, record=record, route="openai", login="key")
     client, served = socket.socketpair()
     client.settimeout(TIMEOUT)
     thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
@@ -186,13 +189,15 @@ def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
         assert synthetic not in repr(network.describe())
         client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
                        f"Authorization: Bearer {token}\r\n{extra_header}Content-Length: 0\r\n\r\n".encode())
+        if other_export:  # another provider's placeholder is one this relay does not hold: refused, nothing connects
+            answer = read_all(client)
+            assert answer.startswith(b"HTTP/1.1 401") and b"X-AEW-Refusal: other_placeholder" in answer
+            assert seam.calls == [] and other_key.encode() not in answer and inside[other].encode() not in answer
+            assert other in network.leaks(other_key)
+            return
         upstream = seam.upstream()
         head, _ = read_head(upstream)
         assert ("authorization", f"Bearer {synthetic}") in headers(head)
-        if other_export:
-            assert ("x-api-key", inside[other]) in headers(head)
-            assert other_key.encode() not in head
-            assert other in network.leaks(other_key)
         upstream.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         upstream.close()
         assert read_all(client).startswith(b"HTTP/1.1 401")
@@ -259,6 +264,98 @@ def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_
     assert answer.endswith(b"the stored login has expired: refresh it, and the next request works")
     assert service.counts().get("credential_unavailable") == 1
     assert service.counts().get("credential:expired") == 1
+
+
+@pytest.mark.parametrize("status,reason", [
+    pytest.param(401, "credential_unavailable", id="expired-401"),
+    pytest.param(403, "outside_upstream_path", id="outside-path-403"),
+    pytest.param(503, "credential_unreadable", id="retryable-503"),
+])
+def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, reason):
+    """Force body bytes to arrive only after the refusal is sent, and read only after the relay closes.
+    Without the drain Windows resets this unread-data close; no sleep or probabilistic repetition is needed."""
+    seam = Seam(OSError("a refusal must connect nothing"))
+    answer_sent, body_sent, ended = threading.Event(), threading.Event(), threading.Event()
+    cause = "expired" if status == 401 else "unreadable"
+    message = f"planted {cause} credential"
+    target = "/v1/responses"
+    if status == 403:
+        target = "/outside/responses"
+        message = "the provider relay takes only unambiguous paths under the stored login's upstream path"
+
+    def resolve():
+        assert status != 403, "an outside-path request must be refused before resolving credentials"
+        raise relay.Unavailable(message, cause=cause, retryable=status == 503)
+
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve)
+    client, served = tcp_pair(TIMEOUT)
+    client.settimeout(TIMEOUT)
+
+    class SplitRequest:
+        def __getattr__(self, name):
+            return getattr(served, name)
+
+        def sendall(self, data):
+            served.sendall(data)
+            answer_sent.set()
+            assert body_sent.wait(TIMEOUT), "the client never supplied the delayed body"
+            assert served.recv(1, socket.MSG_PEEK) == b"x", "the body must be queued and unread before close"
+
+    def handle():
+        try:
+            service.handle(SplitRequest())
+        finally:
+            ended.set()
+
+    thread = threading.Thread(target=handle, daemon=True)
+    thread.start()
+    try:
+        body = b"x" * (64 * 1024)
+        client.sendall(f"POST {target} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {len(body)}\r\n\r\n".encode())
+        assert answer_sent.wait(TIMEOUT), "the relay did not send its pre-body refusal"
+        client.sendall(body)  # a distinct write, after the relay rejected the head
+        client.shutdown(socket.SHUT_WR)
+        body_sent.set()
+        assert ended.wait(TIMEOUT), "the relay did not end after draining the refused request"
+        answer = read_all(client)  # must be a complete HTTP answer, never WinError 10054
+        head, boundary, reply = answer.partition(b"\r\n\r\n")
+        assert head.startswith(f"HTTP/1.1 {status} ".encode()), answer
+        assert boundary and reply == message.encode()
+        response_headers = dict(headers(head))
+        assert response_headers["x-aew-refusal"] == reason
+        assert response_headers["content-length"] == str(len(reply))
+        assert response_headers["connection"] == "close"
+        assert seam.calls == [], "a pre-body refusal connected upstream"
+        assert service.counts().get(reason) == 1
+        if status != 403:
+            assert service.counts().get(f"credential:{cause}" + ("_retryable" if status == 503 else "")) == 1
+    finally:
+        body_sent.set()
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+    assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("status,cause,retryable", [(401, "expired", False), (503, "unreadable", True)],
+                         ids=["expired-401", "retryable-503"])
+def test_a_provider_sized_http_post_gets_its_complete_refusal(status, cause, retryable):
+    """8 MiB is inside the review's measured provider-body range; no tiny-body or AF_UNIX-only proxy proof."""
+    seam = Seam(OSError("a refusal must connect nothing"))
+
+    def resolve():
+        raise relay.Unavailable(f"planted {cause} credential", cause=cause, retryable=retryable)
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        with ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, resolve=resolve, listener=listener) as service:
+            with closing(http.client.HTTPConnection(*listener.getsockname(), timeout=TIMEOUT)) as client:
+                client.request("POST", "/v1/responses", b"x" * (8 * 1024 * 1024))
+                answer = client.getresponse()
+                assert answer.status == status and answer.read() == f"planted {cause} credential".encode()
+            assert seam.calls == [] and service.counts().get("credential_unavailable" if status == 401
+                                                            else "credential_unreadable") == 1
 
 
 @pytest.mark.parametrize("target", [
@@ -613,7 +710,8 @@ def test_a_429_reaches_the_harness_as_the_upstream_sent_it_with_its_retry_after(
     head, _, body = answer.partition(b"\r\n\r\n")
     assert head.split(b"\r\n")[0] == b"HTTP/1.1 429 Too Many Requests"
     assert ("retry-after", "7") in headers(head) and body == b"{\"error\":\"rate_limit_hit\"}\n"
-    assert len(seam.calls) == 1 and service.counts() == {"allowed": 1}  # one request upstream: no retry
+    # one request upstream: no retry; and it is counted by its status too, never as "allowed" alone
+    assert len(seam.calls) == 1 and service.counts() == {"allowed": 1, "upstream_status:429": 1}
 
 
 def test_an_unreachable_upstream_is_a_502_that_names_the_fixed_upstream():
@@ -681,3 +779,249 @@ def test_the_label_names_the_upstream_and_never_a_credential():
     assert described == {"provider_relay": "configured", "provider_upstream": UPSTREAM,
                          "provider_upstream_proxy": "proxy.example:3128"}
     assert relay.describe(None) == {"provider_relay": "none"}
+
+
+# ------------------------------------------------------------------ an earlier session's placeholder, and the record
+
+@pytest.mark.parametrize("line, header", [
+    ("POST /v1/chat/completions", "Authorization: Bearer {stale}"),
+    ("POST /v1/chat/completions", "X-Api-Key: {stale}"),
+    ("POST /v1/chat/completions", "X-Request-Id: {stale}"),
+    ("POST /v1/chat/completions", "ChatGPT-Account-Id: {stale}"),
+    ("GET /v1/models?key={stale}", "Accept: */*"),
+], ids=["bearer", "api-key", "other-header", "account-header", "target"])
+def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(line, header):
+    """A sentinel no relay of the run issued (an earlier session's, kept in a store), in a credential header, in any
+    other header or in the request's target, is refused 401 with its reason and what to do, before anything is
+    connected: no such placeholder goes upstream in the request line or the headers, and the refusal never echoes it.
+    The request is recorded as refused, with its swap outcome."""
+    stale = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, token):
+        assert stale != token
+        client.sendall(f"{line.format(stale=stale)} HTTP/1.1\r\n{header.format(stale=stale)}\r\n"
+                       "Content-Length: 2\r\n\r\n{}".encode())
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 401 ") and b"X-AEW-Refusal: stale_placeholder" in answer
+    assert b"no relay of this session issued" in answer and b"(for the Lead, `aew opencode`)" in answer
+    # the cause a start does not cure, a login saved inside the Lead: its step is the Lead's own store, and never a
+    # command that would act on the operator's own OpenCode login
+    assert b".aew/local/harness/lead/xdg-data/opencode/opencode.db aside" in answer and b"opencode auth" not in answer
+    assert stale.encode() not in answer and relay.SENTINEL_PREFIX.encode() not in answer
+    assert seam.calls == [] and service.counts() == {"stale_placeholder": 1}
+    [entry] = entries
+    assert entry["swap"] == "refused_unknown_placeholder" and entry["outcome"] == "refused"
+    assert (entry["reason"], entry["answered"], entry["status"]) == ("stale_placeholder", 401, None)
+    assert stale not in json.dumps(entry) and token not in json.dumps(entry)
+
+
+def _gzip(data: bytes) -> bytes:
+    import gzip
+
+    return gzip.compress(data)
+
+
+def _chunked(data: bytes) -> bytes:
+    return b"".join(b"%x\r\n%s\r\n" % (len(data[i:i + 7]), data[i:i + 7]) for i in range(0, len(data), 7)) + \
+        b"0\r\n\r\n"
+
+
+@pytest.mark.parametrize("framing", ["length", "chunked", "gzip"])
+def test_a_forwarded_request_answered_401_is_recorded_with_its_status_and_never_a_credential(framing):
+    """A request the relay forwarded and the upstream refused is recorded as forwarded with the upstream's 401 (and
+    counted by it: never as "allowed" alone), with an excerpt of the answer whose echo of the credential, whole or
+    masked by the provider, is redacted. Whatever the body's framing or coding, the excerpt is text."""
+    message = (f'{{"error": {{"message": "Incorrect API key provided: {SECRET}; shown as {SECRET[:4]}...'
+               f'{SECRET[-4:]}", "code": "invalid_api_key"}}}}').encode()
+    body, fields = message, f"Content-Length: {len(message)}"
+    if framing == "chunked":
+        body, fields = _chunked(message), "Transfer-Encoding: chunked"
+    elif framing == "gzip":
+        body = _gzip(message)
+        fields = f"Content-Encoding: gzip\r\nContent-Length: {len(body)}"
+    refused = f"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n{fields}\r\n\r\n".encode() + body
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, token):
+        client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(refused)
+        upstream.close()
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 401 ")  # relayed as the upstream sent it
+    assert service.counts() == {"allowed": 1, "upstream_status:401": 1}
+    [entry] = entries
+    assert {k: entry[k] for k in ("route", "destination", "login", "swap", "outcome", "reason", "status")} == {
+        "route": "openai", "destination": "provider.example:80", "login": "key", "swap": "swapped",
+        "outcome": "forwarded", "reason": None, "status": 401}
+    assert "Incorrect API key provided" in entry["excerpt"] and "invalid_api_key" in entry["excerpt"]
+    blob = json.dumps(entry)
+    assert SECRET not in blob and f"{SECRET[:4]}...{SECRET[-4:]}" not in blob and token not in blob
+    assert len(entry["excerpt"]) <= relay.EXCERPT_BYTES
+
+
+def _jwt_shaped() -> str:
+    """A synthetic token in a JWT's shape, made here so the source holds no such literal."""
+    import base64
+
+    parts = (b'{"alg":"HS256"}', b'{"sub":"synthetic"}', b"synthetic-signature")
+    return ".".join(base64.urlsafe_b64encode(part).decode().rstrip("=") for part in parts)
+
+
+@pytest.mark.parametrize("secret", ["synthetic-generic-key-0123456789abcdefghijklmn", "0123456789abcdef" * 2,
+                                    _jwt_shaped()], ids=["generic", "hex32", "jwt-shaped"])
+@pytest.mark.parametrize("coding", ["identity", "gzip"])
+def test_a_credential_echoed_across_the_excerpts_bound_is_redacted_whole(coding, secret):
+    """An upstream's failed answer that echoes the credential it was sent across the excerpt's bound: the record holds
+    none of it, not even the part before the bound, whether the body is plain or gzip."""
+    start = relay.EXCERPT_BYTES - len(secret) + 1  # the echo ends one character past the bound
+    message = (b"x" * start) + secret.encode() + b" was refused"
+    body, fields = message, f"Content-Length: {len(message)}"
+    if coding == "gzip":
+        body = _gzip(message)
+        fields = f"Content-Encoding: gzip\r\nContent-Length: {len(body)}"
+    refused = f"HTTP/1.1 401 Unauthorized\r\n{fields}\r\n\r\n".encode() + body
+    token = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, credentials={token: secret}, record=entries.append) as (_, client, _):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(refused)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert entry["status"] == 401 and len(entry["excerpt"]) <= relay.EXCERPT_BYTES
+    assert secret[:-1] not in entry["excerpt"] and secret[: len(secret) // 2] not in entry["excerpt"], entry
+
+
+def test_a_placeholder_in_a_failed_answer_is_redacted_from_the_record():
+    """A failed answer that quotes a placeholder (the relay's own, or a stale one) leaves none in the record."""
+    stale = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (_, client, token):
+        message = f'{{"error": "unknown key {token} (also tried {stale})"}}'.encode()
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(f"HTTP/1.1 401 Unauthorized\r\nContent-Length: {len(message)}\r\n\r\n".encode() + message)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert "unknown key" in entry["excerpt"] and "<redacted placeholder>" in entry["excerpt"], entry
+    assert relay.SENTINEL_PREFIX not in json.dumps(entry), entry
+
+
+def test_another_providers_placeholder_is_refused_with_its_own_remedy():
+    """A sentinel the run issued to another provider stands for nothing here: refused, nothing connects, and the
+    remedy is the provider settings, not a restart, which would not change them."""
+    other = relay.sentinel()
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, _):
+        service.foreign = frozenset({other})
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nX-Api-Key: {other}\r\nContent-Length: 0\r\n\r\n".encode())
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 401 ") and b"X-AEW-Refusal: other_placeholder" in answer
+    assert b"another provider's key" in answer and b"starting again does not change them" in answer
+    assert other.encode() not in answer and seam.calls == [] and service.counts() == {"other_placeholder": 1}
+    assert [(e["reason"], e["swap"]) for e in entries] == [("other_placeholder", "refused_unknown_placeholder")]
+
+
+def test_a_login_header_is_the_grants_alone_and_the_clients_placeholder_is_never_forwarded():
+    """A header the login's grant sets (ChatGPT's account id) is dropped from the client's request whether or not the
+    grant has a value: the placeholder the login row holds never goes upstream, and nothing is refused for it."""
+    token = relay.sentinel()
+    seam = Seam()
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+                            body_timeout=TIMEOUT, resolve=lambda: ({token: "synthetic-access"}, {}),
+                            login_headers=("chatgpt-account-id",), issued=(token,))
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "ChatGPT-Account-Id: aew-relay-placeholder\r\nContent-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        head, _ = read_head(upstream)
+        upstream.sendall(OK)
+        upstream.close()
+        assert read_all(client).startswith(b"HTTP/1.1 200")
+    finally:
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+        if seam.far is not None:
+            seam.far.close()
+    got = headers(head)
+    assert ("authorization", "Bearer synthetic-access") in got
+    assert not any(name == "chatgpt-account-id" for name, _ in got) and b"aew-relay-" not in head
+
+
+def test_a_failed_answers_excerpt_is_cut_to_its_bound():
+    """A failed answer longer than the bound is recorded up to :data:`relay.EXCERPT_BYTES` characters, exactly."""
+    message = ("refused: " + "the provider explains at length " * 40).encode()
+    assert len(message) > relay.EXCERPT_BYTES
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (_, client, token):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(f"HTTP/1.1 400 Bad Request\r\nContent-Length: {len(message)}\r\n\r\n".encode() + message)
+        upstream.close()
+        read_all(client)
+    [entry] = entries
+    assert entry["excerpt"] == message.decode()[:relay.EXCERPT_BYTES]
+
+
+def test_a_forwarded_request_answered_200_is_recorded_with_its_status_and_no_excerpt():
+    seam, entries = Seam(), []
+    exchange(seam, b"GET /v1/models HTTP/1.1\r\n\r\n", record=entries.append)
+    [entry] = entries
+    assert (entry["outcome"], entry["status"], entry["swap"], entry["answered"]) == ("forwarded", 200, "none", 200)
+    assert "excerpt" not in entry and entry["at"].endswith("Z")
+
+
+def test_a_record_that_fails_is_counted_and_never_fails_the_request():
+    def broken(entry: dict[str, Any]) -> None:
+        raise OSError("synthetic: the record's disk is full")
+
+    _, answer, service = exchange(Seam(), b"GET /v1/models HTTP/1.1\r\n\r\n", record=broken)
+    assert answer.startswith(b"HTTP/1.1 200 ") and service.counts() == {"allowed": 1, "record_failed": 1}
+
+
+def test_the_request_log_appends_one_json_line_per_request(tmp_path):
+    log = relay.RequestLog(tmp_path / "relay-requests.jsonl")
+    log({"status": 401, "outcome": "forwarded"})
+    log({"status": None, "outcome": "refused"})
+    lines = (tmp_path / "relay-requests.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["outcome"] for line in lines] == ["forwarded", "refused"]
+
+
+def test_a_failed_answers_body_is_recorded_even_when_its_client_stops_reading_at_the_status():
+    """A client may close as soon as it has a 401's status line: the record still holds the body the upstream sent
+    after it, read for the record alone (bounded), and nothing more is sent on."""
+    message = b'{"error": {"message": "Incorrect API key provided", "code": "invalid_api_key"}}'
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append) as (service, client, token):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
+                         + f"Content-Length: {len(message)}\r\n\r\n".encode())
+        head, _ = read_head(client)
+        assert head.startswith(b"HTTP/1.1 401 ")
+        client.close()  # the client has its status, and goes
+        time.sleep(0.2)
+        upstream.sendall(message)
+        time.sleep(0.2)
+        upstream.close()
+    [entry] = entries
+    assert (entry["status"], entry["outcome"]) == (401, "forwarded")
+    assert "Incorrect API key provided" in entry["excerpt"] and "invalid_api_key" in entry["excerpt"], entry
+    assert service.counts().get("upstream_status:401") == 1

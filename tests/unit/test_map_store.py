@@ -8,7 +8,9 @@ import json
 import threading
 
 import pytest
+from conftest import IS_WINDOWS
 from map_trees import SAMPLE, tree_of
+from sleep_patch import patch_sleep
 
 from aew.errors import MapArtifactCorrupt, MapRegistryInvalid, NotFound, StaleRevision, UsageError
 from aew.maps import rules, store, structural
@@ -53,6 +55,28 @@ def test_concurrent_identical_writes_all_succeed_with_one_file(tmp_path):
         t.join()
     assert not errors and len(set(shas)) == 1
     assert [p.name for p in (tmp_path / store.STRUCTURAL_REL).iterdir()] == [f"{shas[0]}.json"]
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_identical_map_write_succeeds_while_the_published_artifact_is_held(tmp_path):
+    from windows_sharing import blocked_read
+
+    rec = record()
+    expected = store.write_artifact(tmp_path, rec)
+    with blocked_read(tmp_path / expected[1]):
+        assert store.write_artifact(tmp_path, rec) == expected
+
+
+def test_absent_map_reads_do_not_retry_under_windows_policy(tmp_path, monkeypatch):
+    from aew.engine import store as control
+
+    monkeypatch.setattr(control, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    sleeps = patch_sleep(monkeypatch, control)
+    assert store.read_registry(tmp_path) is None
+    with pytest.raises(NotFound):
+        store.read_artifact(tmp_path, "0" * 64)
+    assert sleeps == []
 
 
 def test_different_bytes_under_an_existing_name_are_corruption_never_nondeterminism(tmp_path):

@@ -135,8 +135,13 @@ def _rotate(aew_root: Path, target: Path, log_rel: str) -> None:
 
 def read(aew_root: Path) -> list[dict[str, Any]]:
     """Every line kept, oldest first (the rotated files, then the current one)."""
+    from aew.engine.store import retry_lock_free
+
     out: list[dict[str, Any]] = []
     for p in [*(rotated(aew_root, n) for n in range(KEEP, 0, -1)), path(aew_root)]:
-        if p.exists():
-            out.extend(json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip())
+        try:
+            text = retry_lock_free(p.read_bytes).decode("utf-8")
+        except FileNotFoundError:
+            continue
+        out.extend(json.loads(x) for x in text.splitlines() if x.strip())
     return out

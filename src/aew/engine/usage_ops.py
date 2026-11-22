@@ -30,7 +30,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from aew.errors import IntegrityError, ValidationFailed
+from aew.errors import IllegalTransition, IntegrityError, ValidationFailed
 from aew.harness import contract as K
 from aew.harness import runlog
 from aew.harness import usage as U
@@ -361,7 +361,7 @@ def derive(record: Mapping[str, Any], prices: Prices | None) -> tuple[dict[str, 
 
 
 # The run statuses a copy may record (the run-usage schema's ``status``): the harness's own, and ``lost``.
-RUN_STATUSES = frozenset({*K.TERMINAL, K.STARTING, K.RUNNING, K.UNCONFIRMED, K.LOST})
+RUN_STATUSES = frozenset({*K.TERMINAL, K.STARTING, K.RUNNING, K.UNCONFIRMED, K.UNREADABLE, K.LOST})
 
 
 def _valid_record(candidate: Any) -> dict[str, Any] | None:
@@ -396,7 +396,18 @@ def copy_run_usage(state: dict[str, Any], inv_id: str, aew_root: Path, *, pricin
     pending = [r for r in inv.get("runs") or [] if "usage" not in r]
     if not pending:
         return []
-    observed = [(entry, *runlog.observed_status(runlog.run_dir(aew_root, entry["run"]))) for entry in pending]
+    observed = []
+    for entry in pending:
+        run = entry["run"]
+        try:
+            status, record = runlog.observed_status(runlog.run_dir(aew_root, run), require_readable=final)
+        except PermissionError as exc:
+            raise IllegalTransition(f"usage for {run} cannot be read yet; retry archival",
+                                    reason="run_usage_unreadable", run=run) from exc
+        if final and status == K.UNREADABLE:
+            raise IllegalTransition(f"usage for {run} cannot be read yet; retry archival",
+                                    reason="run_usage_unreadable", run=run)
+        observed.append((entry, status, record))
     if not final:
         observed = [o for o in observed if o[1] in K.TERMINAL]
     if not observed:

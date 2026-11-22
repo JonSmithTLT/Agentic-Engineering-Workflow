@@ -482,14 +482,24 @@ entries:
   platforms:
   - windows
   status: open
-  class: validation
-  cause: Cause unestablished.
-  owner: CI flake triage
+  class: wall clock
+  cause: >-
+    The hung run's 20s product deadline counts its real checks' execution; on a loaded Windows runner the checks and
+    the test's own steps used it up before the second validate, which then found the run expired, not running (DID
+    NOT RAISE ValidationRunning).
+  owner: CI timing fixes
   test: tests/integration/test_validation_checks.py::test_a_hung_run_is_ended_at_its_deadline_and_its_late_commit_is_refused
+  planned_fix: >-
+    The test makes the deadline's passing an event it sets (validation_ops._past follows it), so the second validate
+    always meets the run running, and the deadline then passes on the test's word. Closure awaits the fix PR number.
   evidence:
   - run: 42318565941
     job: 128238184866
     at: '2026-11-07T00:34:19Z'
+  - run: 44639468279
+    job: 135966696239
+    at: '2026-11-20T00:09:55Z'
+    note: integration 7/14 (windows-latest) on fix/windows-read-during-replace, after main was merged in.
 - id: validation-no-checks
   scope: test
   lane: integration
@@ -1050,6 +1060,275 @@ entries:
   - run: 40049588105
     job: 120739368133
     at: '2026-10-24T01:28:18Z'
+- id: run-record-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: The wait observed unconfirmed while the saved run record showed ended_with_evidence in the same second.
+  test: tests/integration/test_harness_runs.py::test_launching_a_dispatched_invocation_rotates_the_printed_credential
+  evidence:
+  - run: 43747598867
+    job: 132920297439
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: A Windows sharing refusal is the inferred cause. The reader preserves the five-second budget and
+      reports a persistent refusal separately from absence.
+    test: tests/unit/test_runlog_reads.py::test_an_unreadable_run_record_is_distinct_from_an_absent_one
+    proof: fault injection
+- id: broker-posting-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: A refused Windows liveness read could report that the broker was not posting.
+  test: tests/integration/test_lead_wake_status.py::test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn
+  evidence:
+  - run: 43135354992
+    job: 130909397879
+    at: '2026-11-12T01:33:50Z'
+  - run: 43747598867
+    job: 132920297391
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: A refused liveness read preserves the distinction between an unreadable record and an absent
+      broker.
+    test: tests/integration/test_lead_wake_status.py::test_a_held_liveness_record_does_not_make_a_live_broker_look_absent
+    proof: fault injection
+- id: map-identical-write-sharing
+  scope: test
+  lane: fast
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  owner: CI timing fixes
+  cause: Four of eight identical writers failed with PermissionError when reading the already published artifact.
+  test: tests/unit/test_map_store.py::test_concurrent_identical_writes_all_succeed_with_one_file
+  evidence:
+  - run: 43747598867
+    job: 132920297047
+    at: '2026-11-15T18:35:17Z'
+  closure:
+    pr: 495
+    cause: The existing artifact comparison retries sharing refusals through the store policy.
+    test: tests/unit/test_map_store.py::test_an_identical_map_write_succeeds_while_the_published_artifact_is_held
+    proof: fault injection
+- id: stream-drop-shell-startup
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    A second, unintended 60s deadline: 35d6ecd6 dropped watchdog_only from the shell step's wait, so PowerShell's and
+    the CLI's start were bounded by steps_done's 60s as well as by the watchdog, the owner of startup and admission
+    time. On an overloaded Windows shard (sibling tests 8-10 times their usual time) the shell gave no answer within
+    60s; the evidence holds no supervisor or CLI stacks to show more.
+  owner: CI timing fixes
+  test: tests/integration/test_worker_messages.py::test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss
+  planned_fix: >-
+    Restore watchdog_only for the shell step, so the watchdog is the one bound on its startup. Closure awaits the fix
+    PR number.
+  evidence:
+  - run: 44591817415
+    job: 135800292632
+    at: '2026-11-19T19:26:12Z'
+    note: integration 13/14 (windows-latest) on fix/windows-read-during-replace.
+  - run: 44592759848
+    job: 135804620461
+    at: '2026-11-19T19:38:37Z'
+    note: integration 13/14 (windows-latest) on main.
+- id: orphaned-wait-windows
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: test failure
+  cause: >-
+    Cause unestablished. Its shell step's startup wait already has watchdog_only, so the second deadline of
+    stream-drop-shell-startup is not its cause.
+  owner: CI flake triage
+  test: tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery
+  evidence:
+  - run: 43142595377
+    job: 130933729588
+    at: '2026-11-12T03:34:08Z'
+    note: integration 5/13 (windows-latest) on feat/messaging-ms4-ms6.
+  - run: 43555974565
+    job: 132328870678
+    at: '2026-11-14T04:37:38Z'
+    note: integration 9/14 (windows-latest) on main.
+  - run: 43571096396
+    job: 132375525770
+    at: '2026-11-14T07:49:08Z'
+    note: integration 6/14 (windows-latest) on fix/relay-refusal-reset.
+  - run: 43669338480
+    job: 132675778921
+    at: '2026-11-15T03:05:04Z'
+    note: integration 6/14 (windows-latest) on fix/by-class-monotone.
+  - run: 43739211172
+    job: 132890484979
+    at: '2026-11-15T17:53:44Z'
+    note: integration 6/14 (windows-latest) on fix/pre-uat-hardening.
+- id: shim-lead-run-startup
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    A 120s deadline on start-up and admission: the wait for the Lead's run to be running spans the Lead session's
+    start, its scripted planning steps and the run's launch, which a loaded Windows runner did not finish in 120s.
+  owner: CI timing fixes
+  test: tests/integration/test_lead_server_shim.py::test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following_it_works
+  planned_fix: >-
+    The wait has no deadline of its own: the test's own limit bounds it (#497; the wait-owner sweep names it the
+    "watchdog" bound). Closure awaits the fix PR number.
+  evidence:
+  - run: 44639468279
+    job: 135966696239
+    at: '2026-11-20T00:09:55Z'
+    note: integration 7/14 (windows-latest) on fix/windows-read-during-replace, after main was merged in.
+- id: broker-close-relayed-receipt
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: wall clock
+  cause: >-
+    A relayed read's receipt rechecks the broker's own closing inside the told-message record. On a slow runner the
+    receipt outlasted close's bound for a stalled send (RECEIPT_CLOSE_LOCK_S), close stopped the broker, and the
+    receipt for bytes already sent was refused as lost authority.
+  owner: CI timing fixes
+  test: tests/integration/test_message_result_receipts.py::test_broker_close_cannot_discard_a_successfully_sent_receipt[relayed]
+  closure:
+    pr: 500
+    cause: Judge closing once after a successful send and recheck Lead authority using the credential held at serve time.
+    test: tests/integration/test_message_result_receipts.py::test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_not_a_lost_seat
+    proof: fixed order
+  evidence:
+  - run: 44591617412
+    job: 135799162847
+    at: '2026-11-19T19:04:33Z'
+    note: integration 8/14 (windows-latest) on fix/doctor-single-ping.
+- id: broker-close-stalled-send-bound
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    The test gave close() 10s to end while a stalled send held the serialization. close gives up that lock after
+    RECEIPT_CLOSE_LOCK_S and stops the session, which is the bound claimed, but its teardown after that (the wake
+    thread's join, the server's close) ran past 10s on a loaded Windows runner.
+  owner: CI timing fixes
+  test: tests/integration/test_message_result_receipts.py::test_broker_close_has_a_bound_when_a_client_stalls_with_the_send_lock
+  planned_fix: >-
+    The test waits, with no deadline but its own limit, for close to stop the session while the stalled send still
+    holds the lock: that is the bound, and the teardown's length is not claimed. Closure awaits the fix PR number.
+  evidence:
+  - run: 44642651066
+    job: 135977484549
+    at: '2026-11-20T00:23:33Z'
+    note: integration 7/14 (windows-latest) on #501.
+- id: model-list-deadline-before-server
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    The doctor model-list read's start deadline counts from before the containment, as a launch's does. On a slow
+    runner the 4s deadline ran out before the OpenCode server started, and that read was reported as a harness that
+    failed to start instead of as the start deadline. The sibling
+    test_a_read_that_outlasts_the_launchs_start_deadline_is_a_fail_with_its_fix_and_leaves_nothing has the same 4s
+    exposure, so a sighting of it belongs here too.
+  owner: CI timing fixes
+  test: tests/integration/test_doctor_model_list.py::test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the_catalog_wait
+  planned_fix: >-
+    A start that fails once the deadline has passed is the start deadline row, wherever in the read it ran out; a zero
+    deadline proves it deterministically. Closure awaits the fix PR number.
+  evidence:
+  - run: 43746378961
+    job: 132912728970
+    at: '2026-11-15T19:05:04Z'
+    note: integration 7/14 (windows-latest) on fix/by-class-monotone.
+- id: qualify-relay-refusal-reset
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: connection reset
+  cause: >-
+    The provider relay answers a refusal (403 outside the upstream path; 503 for a busy credential store) without
+    reading the request body, then closes. On Windows a close with unread input is a reset, which can discard the
+    queued answer before the client reads it (WinError 10054). The fake upstream is never connected on these paths.
+  owner: CI timing fixes
+  test: tests/integration/test_harness_qualify.py::test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials[priced]
+  evidence:
+  - run: 43725900315
+    job: 132847727178
+    at: '2026-11-15T15:35:24Z'
+    note: reference serial 8/13 (windows-latest), nightly on main; the [refused] case.
+  - run: 44605225416
+    job: 135847272029
+    at: '2026-11-19T20:23:06Z'
+    note: integration 9/14 (windows-latest) on main; the [priced] case, at the busy-store 503.
+  closure:
+    pr: 473
+    cause: Half-close writes and drain the unread request to a deadline before closing the relay socket.
+    test: tests/unit/test_provider_relay.py::test_a_refusal_survives_a_delayed_body_without_a_connection_reset
+    proof: fixed order
+- id: messaging-off-snapshot-timeout
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: autopsy evidence
+  cause: >-
+    The stdout reader for messaging_off_snapshot.py was still waiting at the 60-second deadline.
+    subprocess.run performed timeout cleanup before the autopsy collected the process tree. The bundle
+    contains no stack from the helper. The reason stdout stayed open is unknown.
+  owner: CI timing fixes
+  test: tests/integration/test_messaging_off_outputs.py::test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin[disabled]
+  planned_fix: >-
+    Use childdiag to record the helper's stack during the snapshot. At timeout, before cleanup, record the
+    helper's PID and exit state and its descendants. Bound collection so a stuck collector cannot prevent
+    cleanup. Add Windows evidence tests for a blocked helper and for an exited helper whose descendant holds
+    stdout open. In each case assert that the retained, redacted bundle identifies which process is responsible.
+    Preserve the 60-second deadline and the golden-output assertions.
+  evidence:
+  - run: 45047876857
+    job: 137286503001
+    at: '2026-11-22T17:20:22Z'
+    note: >-
+      Main ec5aae96, Windows integration 10/15. The whole test took 91.123s. Artifact 14764373465
+      contains the parent traceback and an empty post-cleanup process list.
+  - run: 45047876857
+    job: 137297975485
+    at: '2026-11-22T18:12:08Z'
+    kind: diagnostic
+    note: >-
+      Same commit and runner image on attempt 2. The test passed in 6.977s. A separate Linux probe
+      counted 82 Git launches in the helper. Injecting 0.75s per launch reached the deadline
+      on the 79th invocation. The failed Windows run has no per-command timings.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

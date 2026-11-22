@@ -121,6 +121,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.containment.probe:_self_test`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:_self_test`: Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:new_sentinel`: Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.containment.relay:RequestLog.__call__`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.containment.shim:start_server`: open of a path this reading cannot place: `serve['log']`, from a value that is not a dict literal
 - `aew.harness.containment.shim:start_server`: os.open of a path this reading cannot place: a relative path, `{}.tmp`, with no root this reading can name
 - `aew.harness.containment.shim:start_server`: os.replace of a path this reading cannot place: `serve['url_file']`, from a value that is not a dict literal
@@ -148,12 +149,14 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:StoredLogin._deciding_row`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.runlog:_open_append`: os.open of a path this reading cannot place: `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:write_live`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call

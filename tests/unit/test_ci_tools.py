@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -259,6 +260,13 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     assert all(s["with"]["artifact"].endswith("-attempt-${{ github.run_attempt }}") for s in callers)
     coverage = [s for s in uploads if s["with"]["name"].startswith("coverage-")]
     assert len(coverage) == 2 and all(s["if"].startswith("success() && ") for s in coverage)
+    assert all(s["with"]["path"] == "${{ runner.temp }}/coverage/.coverage" for s in coverage)
+    assert all(s["with"].get("include-hidden-files") is True for s in coverage)
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "subprocess" not in config["tool"]["coverage"]["run"].get("patch", [])
+    parallel_commands = [step["with"]["command"] for step in callers if "-n auto" in step["with"]["command"]]
+    assert len(parallel_commands) == 2
+    assert all("--cov --cov-report=" in command for command in parallel_commands)
     gate = wf["jobs"]["assurance"]["steps"]
     download = next(s for s in gate if s.get("with", {}).get("pattern") == "lane-report-*")
     assert "merge-multiple" not in download["with"]
@@ -409,7 +417,10 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     sizing = next(s for s in plan["steps"] if s.get("id") == "plan")["run"]
     assert "tools/ci/shard_plan.py --reference" in sizing
     runners = [tuple(spec.split(":")) for spec in re.findall(r"--runner (\S+)", sizing)]
-    assert {os_ for os_, _ in runners} == {"ubuntu-latest", "windows-latest"}
+    assert runners == [(os_, python) for os_, python, _ in REFERENCE_RUNNERS]
+    assert not any(name.startswith("matrix-extra") for name in jobs)
+    setup = next(s for s in reference["steps"] if s.get("uses") == "./.github/actions/setup-aew")
+    assert setup["with"]["python-version"] == "${{ matrix.python }}"
     sizings = [shard_plan.Sizing(shard_plan.PLATFORM_OF_OS[os_], "all", n, 0, 0.0, 0.0)
                for (os_, _), n in zip(runners, (3, 5), strict=True)]
     per_os: dict[str, list[tuple[int, int]]] = {}
@@ -423,6 +434,7 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
         assert sorted(k for k, _ in shards) == list(range(1, counts.pop() + 1)), f"{os_name}: a shard is missing"
     steps = "\n".join(str(step.get("run", "")) for step in reference["steps"])
     assert "--shard ${{ matrix.shard }}/${{ matrix.of }}" in steps and "-p no:xdist" in steps
+    assert "--lane " not in steps and '-m "not serial"' not in steps
     # one table for the whole run: the plan's, which every shard downloads (`--durations-file=` as one word)
     assert '"--durations-file=${{ runner.temp }}/reference-durations/durations.json"' in steps
     assert '--durations-out "$RUNNER_TEMP/reference-durations/durations.json"' in sizing
@@ -453,86 +465,6 @@ def test_the_reference_target_is_the_rule_less_a_nights_measured_variance():
     assert (shard_plan.REFERENCE_RULE_S, shard_plan.REFERENCE_NIGHT_VARIANCE) == (2700.0, 1.09)
     assert shard_plan.REFERENCE_TARGET_S == pytest.approx(2700.0 / 1.09)  # 41.3 minutes
     assert shard_plan.REFERENCE_TARGET_S * shard_plan.REFERENCE_NIGHT_VARIANCE <= shard_plan.REFERENCE_RULE_S
-
-
-SERIAL_ID = ALL[2]  # stands for a `serial`-marked test in the nightly's extra-interpreter run
-
-
-def sharded_extra_run(shards: int = 2) -> list[dict]:
-    """The nightly extra-interpreter run: ``-m "not serial"`` in ``shards`` shards, then the serial lane once."""
-    runs = []
-    for platform in ("linux", "win32"):
-        skip = "skipped" if platform == "win32" else "passed"
-        rest = [n for n in ALL if n != SERIAL_ID]
-        for k in range(1, shards + 1):
-            mine = {n: ("passed" if n != SKIP_ID else skip) for i, n in enumerate(rest) if i % shards == k - 1}
-            runs.append(report(platform, None, mine, shard=f"{k}/{shards}"))
-        runs.append(report(platform, "serial", {SERIAL_ID: "passed"}))
-    return runs
-
-
-def test_a_sharded_extra_run_with_its_serial_lane_passes():
-    assert problems(sharded_extra_run()) == []
-
-
-def test_an_extra_run_whose_serial_lane_did_not_report_fails():
-    """The serial tests are deselected from every shard: without the serial lane's report they never ran."""
-    runs = [r for r in sharded_extra_run() if not (r["platform"] == "win32" and r["lane"] == "serial")]
-    assert f"win32: never ran: {SERIAL_ID}" in problems(runs)
-
-
-def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
-    """Structure of nightly.yml's `matrix-extra`: per OS, shards 1..N of one N over everything but the serial tests,
-    under xdist and its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance); the serial lane once
-    per OS without xdist, in `matrix-extra-serial`, a job of its own, so no shard's sharded step can use its time
-    (2026-11-10); every report uploaded; and an aggregate that waits for both jobs, which `report` waits for,
-    requiring both platforms."""
-    jobs = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
-    extra = jobs["matrix-extra"]
-    # split the job further instead of raising the timeout; G3a's clearance is the one addition
-    assert extra["timeout-minutes"] == publication_job_minutes(extra)
-    plan = jobs["reference-plan"]
-    assert extra["needs"] == "reference-plan"
-    assert extra["strategy"]["matrix"] == "${{ fromJSON(needs.reference-plan.outputs.extra-matrix) }}"
-    assert plan["outputs"]["extra-matrix"] == "${{ steps.plan.outputs.extra_matrix }}"
-    sizing = next(s for s in plan["steps"] if s.get("id") == "plan")["run"]
-    assert "--extra-history extra-history/history.json" in sizing
-    assert '--extra-durations-out "$RUNNER_TEMP/extra-durations/durations.json"' in sizing
-    assert any(s.get("with", {}).get("name") == "extra-durations" for s in plan["steps"])
-    download = next(s for s in extra["steps"] if "download-artifact" in s.get("uses", ""))
-    assert download["with"]["name"] == "extra-durations"
-    runs = [step for step in extra["steps"] if "run" in step and "pytest" in step["run"]]
-    assert len(runs) == 1 and "--lane serial" not in runs[0]["run"], "a shard runs only its sharded step"
-    sharded = runs[0]["run"]
-    assert "--shard ${{ matrix.shard }}/${{ matrix.of }}" in sharded and '-m "not serial"' in sharded
-    assert '"--durations-file=${{ runner.temp }}/extra-durations/durations.json"' in sharded
-    assert "-n auto" in sharded and "matrix.shard" in sharded.split("--lane-report")[1]
-    uploads = [step for step in extra["steps"] if "upload-artifact" in step.get("uses", "")]
-    assert len(uploads) == 1 and "matrix.shard" in uploads[0]["with"]["name"] and uploads[0]["if"] == "always()"
-    # The serial lane: one job per OS, the same interpreter as that OS's shards, without xdist, its report uploaded
-    # under a name the aggregate's pattern takes and no shard's name can be.
-    lane = jobs["matrix-extra-serial"]
-    assert lane["timeout-minutes"] == publication_job_minutes(lane)
-    interpreters = lane["strategy"]["matrix"]["include"]
-    assert len(interpreters) == 2, "the serial lane runs exactly once per OS"
-    assert {e["os"]: e["python"] for e in interpreters} == {"ubuntu-latest": "3.13", "windows-latest": "3.11"}
-    serial = [step for step in lane["steps"] if "run" in step and "pytest" in step["run"]]
-    assert len(serial) == 1 and "if" not in serial[0]
-    assert "--lane serial" in serial[0]["run"] and "-p no:xdist" in serial[0]["run"]
-    assert "--lane-report" in serial[0]["run"] and "--shard" not in serial[0]["run"]
-    [upload] = [step for step in lane["steps"] if "upload-artifact" in step.get("uses", "")]
-    assert upload["with"]["name"] == "nightly-extra-${{ runner.os }}-serial" and upload["if"] == "always()"
-    aggregate = jobs["matrix-extra-assurance"]
-    assert aggregate["needs"] == ["matrix-extra", "matrix-extra-serial"] and aggregate["if"] == "always()"
-    pattern = next(s["with"]["pattern"] for s in aggregate["steps"] if "download-artifact" in s.get("uses", ""))
-    assert pattern == "nightly-extra-*" and not pattern.startswith("nightly-reference")
-    checks = "\n".join(str(step.get("run", "")) for step in aggregate["steps"])
-    assert "check_assurance.py extra-reports" in checks and "--require linux,win32" in checks
-    assert "update_durations.py extra-reports --history extra-history/history.json" in checks
-    assert "--passed-only" in checks
-    assert 'test "${{ needs.matrix-extra.result }}" = success' in checks
-    assert 'test "${{ needs.matrix-extra-serial.result }}" = success' in checks
-    assert {"matrix-extra", "matrix-extra-serial", "matrix-extra-assurance"} <= set(jobs["report"]["needs"])
 
 
 def test_a_pinned_skip_for_a_vanished_test_is_stale():
@@ -960,16 +892,15 @@ def test_the_nightly_reads_the_history_every_night_so_a_week_without_ci_does_not
     saved = next(s for s in ci["assurance"]["steps"] if s.get("uses") == "actions/cache/save@v6")
     assert saved["with"]["key"].startswith(gate[0]["with"]["restore-keys"])
     runs = "\n".join(str(s.get("run", "")) for s in steps)
-    for family, plan_flag in (("reference-durations-", "--history"), ("extra-durations-", "--extra-history")):
-        own = [s for s in caches if s["with"]["key"].startswith(family)]
-        assert [s["uses"] for s in own] == ["actions/cache/restore@v6", "actions/cache/restore@v6",
-                                             "actions/cache/save@v6"]  # the plan's read; the aggregate's read and save
-        assert {s["with"].get("restore-keys") for s in own[:2]} == {family}
-        assert own[2]["with"]["key"] == family + "${{ github.run_id }}-${{ github.run_attempt }}"
-        path = own[0]["with"]["path"]
-        assert f"{plan_flag} {path}" in runs
-        assert f"update_durations.py {'reference' if family.startswith('reference') else 'extra'}-reports " \
-               f"--history {path}" in runs
+    family = "reference-durations-"
+    own = [s for s in caches if s["with"]["key"].startswith(family)]
+    assert [s["uses"] for s in own] == ["actions/cache/restore@v6", "actions/cache/restore@v6",
+                                       "actions/cache/save@v6"]
+    assert {s["with"].get("restore-keys") for s in own[:2]} == {family}
+    assert own[2]["with"]["key"] == family + "${{ github.run_id }}-${{ github.run_attempt }}"
+    path = own[0]["with"]["path"]
+    assert f"--history {path}" in runs
+    assert f"update_durations.py reference-reports --history {path}" in runs
 
 
 def _cache_steps(workflow: Path) -> list[dict]:
@@ -1024,15 +955,14 @@ def test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at():
                 saved.setdefault(_cache_family(step), set()).add(step["with"]["path"])
     nightly = _cache_steps(workflows / "nightly.yml")
     assert {_cache_family(s) for s in nightly} == {
-        "shard-durations-", "reference-durations-", "extra-durations-", "vertical-series-",
+        "shard-durations-", "reference-durations-", "vertical-series-",
     }
     for step in nightly:
         family = _cache_family(step)
         assert saved.get(family) == {step["with"]["path"]}, (family, step["with"]["path"], saved.get(family))
 
 
-REFERENCE_RUNNERS = [("ubuntu-latest", "3.11", "linux"), ("windows-latest", "3.13", "win32")]
-EXTRA_RUNNERS = [("ubuntu-latest", "3.13", "linux"), ("windows-latest", "3.11", "win32")]
+REFERENCE_RUNNERS = [("ubuntu-latest", "3.13", "linux"), ("windows-latest", "3.11", "win32")]
 
 
 def reference_history(durations: dict[str, float], outside_s: float = 45.0) -> dict:
@@ -1055,57 +985,6 @@ def test_the_reference_lane_gets_the_fewest_shards_whose_slowest_estimate_is_at_
     one_long = {**tests, "tests/integration/test_y.py::long": 2500.0}
     lane = shard_plan.reference_plan(reference_history(one_long), {}, REFERENCE_RUNNERS, 2400.0)[0][0]
     assert "alone is estimated" in lane.warning  # no count fits: a warning, never a gate
-
-
-def test_extra_interpreter_history_grows_shards_past_the_floor():
-    tests = {f"tests/integration/test_x.py::t{i}": 600.0 for i in range(99)}
-    serial = "tests/integration/test_serial.py::t"
-    history = reference_history({**tests, serial: 9000.0}, outside_s=45.0)
-    history["lanes"]["win32"][serial] = "serial"
-    history["workers"] = {"win32": 4}
-    sizings, table, source, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
-    linux, windows = sizings
-    assert linux.shards == 4 and any("linux extra: using the 4-shard floor" in w for w in warnings)
-    assert "median of 1" in source and "shard floors for linux" in source
-    assert windows.shards == 10 and windows.slowest_s <= shard_plan.EXTRA_TARGET_S
-    assert table["platforms"]["win32"][serial] == 9000.0
-    # The serial weight still affects the partition. Re-estimate one fewer shard with the table the jobs receive.
-    durations = table["platforms"]["win32"]
-    assert shard_plan.slowest_shard_s(sorted(durations), durations, windows.shards - 1, 4, 45.0,
-                                     excluded=frozenset({serial})) > shard_plan.EXTRA_TARGET_S
-
-
-def test_extra_interpreter_plan_keeps_both_floors_with_small_usable_histories():
-    history = reference_history({ALL[0]: 10.0, ALL[1]: 20.0})
-    history["workers"] = {"linux": 4, "win32": 4}
-    sizings, _, _, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
-    assert not warnings
-    assert [(s.platform, s.shards) for s in sizings] == [("linux", 4), ("win32", 8)]
-
-
-def test_extra_interpreter_estimates_use_the_returned_shared_table():
-    history = reference_history({ALL[0]: 10.0, ALL[1]: 700.0, ALL[2]: 9000.0}, outside_s=45.0)
-    del history["platforms"]["linux"][ALL[1]]
-    history["workers"] = {"linux": 4, "win32": 4}
-    for collected in history["lanes"].values():
-        collected[ALL[2]] = "serial"
-    sizings, table, _, warnings = shard_plan.extra_plan(history, {}, EXTRA_RUNNERS)
-    assert not warnings
-    assert ALL[1] not in table["platforms"]["linux"]
-    for sizing in sizings:
-        platform = sizing.platform
-        assert sizing.slowest_s == shard_plan.slowest_shard_s(
-            sorted(history["lanes"][platform]), shard_plan._lanes_module().durations_for(platform, table),
-            sizing.shards, history["workers"][platform], 45.0, excluded=frozenset({ALL[2]}))
-
-
-@pytest.mark.parametrize("history", [None, update_durations.seed_history({})])
-def test_extra_interpreter_plan_keeps_both_floors_with_no_history(history):
-    seed = committed(platforms={"linux": {ALL[0]: 100.0}, "win32": {ALL[0]: 300.0}})
-    sizings, table, _, warnings = shard_plan.extra_plan(history, seed, EXTRA_RUNNERS)
-    assert [(s.platform, s.shards) for s in sizings] == [("linux", 4), ("win32", 8)]
-    assert table["platforms"] == seed["platforms"]
-    assert len(warnings) == 2
 
 
 def test_with_no_reference_history_the_runners_share_what_the_concurrent_jobs_leave_by_their_minutes():
@@ -1132,19 +1011,13 @@ def test_the_nightlys_first_night_requests_no_more_than_the_accounts_concurrent_
     seed = tmp_path / "seed.json"
     seed.write_text((ROOT / "tests" / "durations.json").read_text(encoding="utf-8"), encoding="utf-8")
     out, table = tmp_path / "out.txt", tmp_path / "run" / "durations.json"
-    extra_table = tmp_path / "extra" / "durations.json"
     assert shard_plan.main(["--reference", "--history", str(tmp_path / "none.json"), "--seed", str(seed),
-                            "--durations-out", str(table), "--runner", "ubuntu-latest:3.11", "--runner",
-                            "windows-latest:3.13", "--github-output", str(out), "--extra-history",
-                            str(tmp_path / "no-extra.json"), "--extra-durations-out", str(extra_table)]) == 0
+                            "--durations-out", str(table), "--runner", "ubuntu-latest:3.13", "--runner",
+                            "windows-latest:3.11", "--github-output", str(out)]) == 0
     outputs = {key: json.loads(value) for key, value in
                (line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())}
-    extra = outputs["extra_matrix"]["include"]
-    assert [(e["os"], e["python"], e["shard"], e["of"]) for e in extra] == [
-        (os_, python, k, shard_plan.EXTRA_FLOORS[platform])
-        for os_, python, platform in EXTRA_RUNNERS for k in range(1, shard_plan.EXTRA_FLOORS[platform] + 1)]
-    assert json.loads(extra_table.read_text(encoding="utf-8"))["shards"]["win32"] == {"all": 8}
-    shards = sum(len(value["include"]) for value in outputs.values())
+    assert set(outputs) == {"reference_matrix"}
+    shards = len(outputs["reference_matrix"]["include"])
     beside = shard_plan.starting_jobs(ROOT / ".github" / "workflows" / "nightly.yml", besides="reference-plan")
     assert shards + beside <= shard_plan.CONCURRENT_JOBS and beside > 0
 
@@ -3209,24 +3082,23 @@ PRE_G3A_TIMEOUT_MIN = {
     "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
     "vertical.yml": {"vertical": 45},
     "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
-    # matrix-extra-serial: matrix-extra's serial lane, moved to a job of its own (2026-11-10) with the job's own budget
-    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60,
-                    "matrix-extra-serial": 60},
+    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60},
     "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
     "flake-dispatch.yml": {"regression": 30},
 }
 
 
 # ... and its shard of the lane and the table the shards balance on (core's fast step; fastbase runs the whole lane)
-PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations", "--shard", "--durations-file")
+PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations", "--shard", "--durations-file",
+                 "--cov-config")
 
 
 def pytest_flags(run: str) -> list[str]:
-    """A step's pytest flags after the command (the fast step's `${{ ... }}` command expression is dropped), without
-    the ones each job sets for itself (its deadline, lane report, hang directory and durations)."""
+    """The Linux pytest flags, excluding the paths and limits set per job."""
     import shlex
 
-    after = run.split("}}", 1)[-1] if run.lstrip().startswith("${{") else run.split(" pytest", 1)[1]
+    after = run.split(" pytest", 1)[1].replace(
+        "${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }}", "--cov --cov-report=")
     # an expression is one word (core's `--shard ${{ matrix.shard }}/${{ matrix.of }}`, dropped with its flag)
     words = shlex.split(re.sub(r"\$\{\{[^}]*\}\}", "EXPR", after))
     out, skip = [], False
@@ -3241,9 +3113,9 @@ def pytest_flags(run: str) -> list[str]:
 
 
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
-    """Plan v7 §5 (V5-1, V6-1): fastbase needs changes, runs on the mode-independent decision, has a timeout of at
+    """Fastbase runs on the mode-independent decision and has a timeout of at
     least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
-    the ratchet's artifacts, with exactly the fast step's flags; core is unchanged."""
+    the ratchet's artifacts, with the Linux fast step's test selection and coverage settings."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     outputs = jobs["changes"]["outputs"]
     assert outputs["decision"] == "${{ steps.tier.outputs.decision }}"
@@ -3261,7 +3133,8 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
-    assert lane["run"].startswith("python -m coverage run -m pytest ")
+    assert lane["run"].startswith("python -m pytest --cov --cov-report= ")
+    assert '"--cov-config=${{ github.workspace }}/pyproject.toml"' in lane["run"]
     fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
     # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
     # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).

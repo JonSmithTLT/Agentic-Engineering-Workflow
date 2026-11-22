@@ -185,10 +185,10 @@ KNOWN_READERS = {
     ("history", "aew.history.store", "History._read"),
     ("policy", "aew.policy.execution", "load"),
     ("state/log", "aew.engine.outbox", "load_segment"),
-    ("local/steering", "aew.engine.steering", "loop_state"),
+    ("local/steering", "aew.engine.steering", "loop_state.read"),
     ("records/dispositions", "aew.engine.disposition_ops", "Dispositions.read"),
     ("pricing", "aew.engine.usage_ops", "read_pricing_snapshot"),
-    ("local/lead", "aew.harness.broker_liveness", "read"),
+    ("local/lead", "aew.harness.broker_liveness", "read.read_bytes"),
     ("local/dashboard", "aew.dashboard.service", "locate"),
 }
 KNOWN_WRITERS = {

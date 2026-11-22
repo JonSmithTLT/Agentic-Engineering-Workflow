@@ -532,9 +532,12 @@ def test_map_diff_compares_section_by_section_and_stores_nothing(project):
 def test_an_invocation_credential_is_refused_map_generate(tmp_path):
     p = sample_project(tmp_path)
     shutil.rmtree(p.root / ".aew" / store.MAPS_REL)  # before the first selection (ADR-0015 D1; register E184)
-    role, _ = dispatch(p, create_investigation(p, tmp_path))
+    role, _ = dispatch(p, create_investigation(p, tmp_path))  # with maps on, this dispatch makes and selects a map
+    maps = p.root / ".aew" / store.MAPS_REL
+    before = {f.relative_to(maps): f.read_bytes() for f in maps.rglob("*") if f.is_file()} if maps.exists() else None
     res = p.aew("map", "generate", "--select", "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
-    assert not (p.root / ".aew" / store.MAPS_REL).exists()
+    after = {f.relative_to(maps): f.read_bytes() for f in maps.rglob("*") if f.is_file()} if maps.exists() else None
+    assert after == before, "a refused generate writes nothing"
     res = p.aew("map", "generate")
     assert res.returncode == 2 and "Lead credential required" in res.error["message"]

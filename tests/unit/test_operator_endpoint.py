@@ -155,6 +155,23 @@ def test_mode_commands_refuse_while_steering_is_not_configured(project):
     assert "steering" not in engine.store.read()
 
 
+def test_doctor_warns_about_a_hung_endpoint_even_without_steering(project, monkeypatch):
+    without_steering(project)
+    engine = _adopt(project)
+    monkeypatch.setattr(operator_client, "status", lambda aew_root: {"running": True})
+    failure = "the operator endpoint did not answer the ping"
+
+    def silent(aew_root, *, timeout_s):
+        raise errors.NotFound(failure)
+
+    monkeypatch.setattr(operator_client, "ping", silent)
+    rows = {row["check"]: row for row in engine.doctor_checks()}
+    assert rows["operator-endpoint"]["status"] == "WARN"
+    assert rows["operator-endpoint"]["detail"] == S.endpoint_silent(failure)
+    assert rows["steering:run-ready"]["status"] == "PASS"
+    assert "steering is not configured" in rows["steering:run-ready"]["detail"]
+
+
 # ---------------------------------------------------------------------------------------------- the mode
 
 

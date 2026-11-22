@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -32,6 +34,7 @@ from aew.errors import (
 from aew.maps import freshness as F
 from aew.maps import gitobjects, rules, store, structural
 from aew.maps.canonical import seal
+from aew.util import atomic_write, utc_now
 
 ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "generator", "artifact_sha256")
 
@@ -102,6 +105,7 @@ def generate(engine: Any, *, token: str, commit: str | None = None, select: bool
     # handoff or takeover committed during generation refuses the write and the selection (ADR-0015 D4).
     _lead_actor(engine, token, committed=True)
     sha, root = store.write_artifact(engine.aew_root, record)
+    forget_failure(engine.aew_root)  # a dispatch at the failed base tries again
     result: dict[str, Any] = {"ok": True, "root": sha, "path": f"{engine.aew_root.name}/{root}",
                               "source_revision": record["source_revision"], "source_tree": record["source_tree"],
                               "generator": record["generator"], "limits": record["limits"], "selected": False}
@@ -181,6 +185,35 @@ def _select_step(engine: Any) -> str:
 # control lock while it builds the pack, so a repository past it keeps its STALE map with the line that says why,
 # instead of holding every other writer for longer.
 REFRESH_S = 10.0
+# The last refresh at dispatch that failed: its base, the generator it ran, why and how long it took. A later dispatch
+# at the same base, by the same generator, reads it here and does not try again, so a repository the bound can't cover
+# (or a failure that recurs the same way) costs one dispatch REFRESH_S, not every one. A refresh that succeeds, at
+# dispatch or by `aew map generate`, removes it; a new base never matches it. Local, like the rest of local/maps/.
+REFRESH_FAILED_REL = f"{store.MAPS_REL}/refresh-failed.json"
+
+
+def _failed_before(aew_root: Path, base: str, generator: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        doc = json.loads((aew_root / REFRESH_FAILED_REL).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (isinstance(doc, dict) and doc.get("base") == base and doc.get("generator") == generator
+            and isinstance(doc.get("failed"), str) and isinstance(doc.get("seconds"), int | float)):
+        return doc
+    return None
+
+
+def _remember_failure(aew_root: Path, base: str, generator: dict[str, Any], failed: str, seconds: float) -> None:
+    path = aew_root / REFRESH_FAILED_REL
+    with contextlib.suppress(OSError):  # a record that can't be written only means the next dispatch tries again
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(path, json.dumps({"base": base, "generator": generator, "failed": failed, "seconds": seconds,
+                                       "at": utc_now()}, sort_keys=True) + "\n")
+
+
+def forget_failure(aew_root: Path) -> None:
+    with contextlib.suppress(OSError):
+        (aew_root / REFRESH_FAILED_REL).unlink(missing_ok=True)
 
 
 def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: dict[str, Any], select: bool,
@@ -193,7 +226,9 @@ def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: di
     stored for ``base`` by this generator is used as it is (``store.find_structural``): a base that is not the head is
     never selected, so the next dispatch at it, in any process, finds its map there instead of making it again.
 
-    Returns ``{"record", "sha256", "root", "selected", "seconds"}``, or ``{"failed": <reason>, "seconds"}``. Never
+    Returns ``{"record", "sha256", "root", "selected", "seconds"}``, or ``{"failed": <reason>, "seconds"}``, with
+    ``"remembered": True`` when an earlier dispatch's failure at this base by this generator was read instead of trying
+    again (``REFRESH_FAILED_REL``). Never
     raises: a map never refuses or breaks the dispatch it would have helped (T5-INV-01). ``limit`` bounds the whole
     call: the scan, the generation's git processes and the wait for the registry lock. Two dispatches cannot race
     here (the control lock serialises them, and the second finds the first's map); an ``aew map generate --select``
@@ -202,10 +237,15 @@ def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: di
     limit = REFRESH_S if limit is None else limit
     start = time.monotonic()
     deadline = start + limit
+    generator = None
     try:
+        generator = identity()
+        before = _failed_before(aew_root, base, generator)
+        if before is not None:
+            return {"failed": before["failed"], "seconds": before["seconds"], "remembered": True}
         registry = store.read_registry(aew_root) if select else None
         expect = store.revision_of(registry)
-        found = store.find_structural(aew_root, source_revision=base, generator=identity(), deadline=deadline)
+        found = store.find_structural(aew_root, source_revision=base, generator=generator, deadline=deadline)
         if found is not None:
             sha, record = found
             root = store.artifact_rel(sha)
@@ -222,6 +262,7 @@ def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: di
                 selected = True
             except (StaleRevision, LockTimeout):  # another selection landed, or holds the lock past the time left:
                 pass  # it stands, and this pack pins the map it has, which is correct for its base
+        forget_failure(aew_root)
         return {"record": record, "sha256": sha, "root": root, "selected": selected, "reused": found is not None,
                 "seconds": round(time.monotonic() - start, 2)}
     except Exception as exc:  # the pack keeps the map it had, with the line that says why
@@ -229,7 +270,10 @@ def refresh_at_dispatch(aew_root: Path, repo_root: Path, base: str, *, actor: di
         # a blob read the deadline's watchdog stopped fails as a broken pipe, not as a timeout: the clock says which
         over = details.get("reason") == "timeout" or time.monotonic() - start >= limit
         reason = "timeout" if over else str(getattr(exc, "code", type(exc).__name__))
-        return {"failed": reason, "seconds": round(time.monotonic() - start, 2)}
+        seconds = round(time.monotonic() - start, 2)
+        if generator is not None:
+            _remember_failure(aew_root, base, generator, reason, seconds)
+        return {"failed": reason, "seconds": seconds}
 
 
 DISCOVERY = "discovery_record"

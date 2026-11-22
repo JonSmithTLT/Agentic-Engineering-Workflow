@@ -85,6 +85,10 @@ def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
     data = load_yaml(raw.decode("utf-8"), source=source)
     if name in ("guardrails", "checks", "gates"):
         validate(name, data, source=source)
+    if name == "checks":
+        from aew.policy.checks import validate_coverage
+
+        validate_coverage(data, source=source)
     if name == "pricing":
         from aew.engine.usage_ops import Prices
 
@@ -282,6 +286,10 @@ class Kernel:
         raw = self._pinned_bytes(rel, pins)
         if raw is None:
             raise FileNotFoundError(str(path))
+        return self._parse_policy(name, raw, path)
+
+    @staticmethod
+    def _parse_policy(name: str, raw: bytes, path: Path) -> dict[str, Any]:
         data = load_yaml(raw.decode("utf-8"), source=str(path))
         validate(name, data, source=str(path))
         return data
@@ -315,11 +323,22 @@ class Kernel:
     def policy_bytes(self, name: str) -> bytes:
         """A policy file's exact bytes as adopted (checked against the pins in force, read once), for callers that
         quote or hash the file rather than parse it: a context pack's guardrails text and its recorded hashes."""
+        return self.policy_bytes_with_pin(name)[0]
+
+    def policy_bytes_with_pin(self, name: str) -> tuple[bytes, str | None]:
+        """Return the verified bytes and their adoption digest, absent for a legacy project without policy pins."""
         rel = self.manifest["policy"][name]
-        raw = self._pinned_bytes(rel, self._pins_in_force())
+        pins = self._pins_in_force()
+        raw = self._pinned_bytes(rel, pins)
         if raw is None:
             raise FileNotFoundError(str(self.aew_root / rel))
-        return raw
+        return raw, None if pins is None else pins[rel]
+
+    def policy_with_bytes(self, name: str) -> tuple[dict[str, Any], bytes]:
+        """A policy file parsed, with its exact bytes, from one read held to the pins in force: for a caller that uses
+        the policy and records the hash of the same bytes, so the two can never come from different reads."""
+        raw = self.policy_bytes(name)
+        return self._parse_policy(name, raw, self.aew_root / self.manifest["policy"][name]), raw
 
     def pricing(self) -> Any:
         """The adopted price table (``usage_ops.Prices``), or ``None`` when the manifest names no ``policy.pricing``

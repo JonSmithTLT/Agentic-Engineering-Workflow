@@ -91,6 +91,18 @@ def test_a_syntax_error_is_still_invalid_yaml_and_not_a_depth_refusal():
     assert "invalid YAML" in refused.value.message and "reason" not in refused.value.details
 
 
+def test_scanner_lookahead_keeps_the_first_excess_line_or_the_backends_own_refusal():
+    # Model libyaml's scanner limit without changing the process-wide C setting.
+    class LimitedLoader(yaml.SafeLoader):
+        def get_event(self):
+            raise yaml.scanner.ScannerError(problem="exceeded maximum nesting depth")
+
+    text = "name: unit\nlevels: [\n [[1]]\n]\n"
+    assert util.yaml_too_deep(text, loader=LimitedLoader, limit=2) == 3
+    with pytest.raises(yaml.scanner.ScannerError, match="exceeded maximum nesting depth"):
+        util.yaml_too_deep(text, loader=LimitedLoader, limit=8)
+
+
 def test_a_cli_fields_value_nested_past_the_bound_is_a_usage_error_not_a_recursion_error():
     with pytest.raises(UsageError, match="nests deeper than 64 levels"):
         fields._load(flow(5_000))

@@ -44,6 +44,17 @@ from aew.capability import payload as P
 URLOPEN = urllib.request.urlopen  # the real one: `make_register` replaces it with one that fails the test
 
 
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_the_capability_register_read_recovers_from_a_held_handle(tmp_path):
+    from windows_sharing import blocked_read
+
+    original = store.empty()
+    path = tmp_path / store.REGISTER
+    path.write_text(json.dumps(original), encoding="utf-8")
+    with blocked_read(path):
+        assert store.read(tmp_path) == original
+
+
 @pytest.fixture
 def reg(tmp_path, monkeypatch):
     return make_register(tmp_path, monkeypatch)

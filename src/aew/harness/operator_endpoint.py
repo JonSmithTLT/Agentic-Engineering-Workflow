@@ -381,7 +381,7 @@ class OperatorEndpoint:
 
     def _mode_raise(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
         mode = str(args.get("mode") or "")
-        requester = str(args.get("requester") or "unknown")[:400]
+        requester = str(args.get("requester") or "unknown")
         if not self._authorizing.acquire(blocking=False):
             raise self._busy()
         try:
@@ -399,7 +399,7 @@ class OperatorEndpoint:
                 f"  for Lead generation : {bound['generation']} (ends with that generation)\n"
                 f"  legality digest     : {bound['legality_digest']}\n"
                 f"  guarantee           : {GUARANTEE} (not production authority until F18.6)",
-                requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
+                requested_by=requester, requester_reported=True,
                 destination="a steering mode record (no credential is issued)",
                 instruction=f"Type the confirmation code {code} into the terminal that ran `aew lead mode raise` "
                             "(not here); anything else there refuses."))
@@ -489,7 +489,7 @@ class OperatorEndpoint:
 
         kind = str(args.get("change") or "")
         change_args: dict[str, Any] = args["args"] if isinstance(args.get("args"), dict) else {}
-        requester = str(args.get("requester") or "unknown")[:400]
+        requester = str(args.get("requester") or "unknown")
         command = f"aew capability {kind.replace('_', '-')}"
         if not self._authorizing.acquire(blocking=False):
             raise self._busy()
@@ -498,10 +498,10 @@ class OperatorEndpoint:
             code = self._new_code()
             self._show_challenge(operator.challenge(
                 code,
-                "CHANGE this host's capability register, which every project and every contained run on this host "
-                "reads:\n" + "\n".join(change.lines) + f"\n  change digest       : {change.digest}\n"
-                f"  guarantee           : {GUARANTEE} (not production authority until F18.6)",
-                requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
+                ["CHANGE this host's capability register, which every project and every contained run on this host "
+                 "reads:", *change.lines, f"  change digest       : {change.digest}",
+                 f"  guarantee           : {GUARANTEE} (not production authority until F18.6)"],
+                requested_by=requester, requester_reported=True,
                 destination="the capability register (no credential is issued)",
                 instruction=f"Type the confirmation code {code} into the terminal that ran `{command}` (not here); "
                             "anything else there refuses."))

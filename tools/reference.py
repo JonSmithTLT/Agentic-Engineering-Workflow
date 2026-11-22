@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""The generated as-built reference, ``docs/reference/`` (STG-12 S12-2; register F44 and F22 are its later owners).
+"""The generated as-built reference in ``docs/reference/``.
 
     python tools/reference.py render    # write docs/reference/ from the code
     python tools/reference.py check     # exit 1 if the committed pages under docs/reference/ are not what render
                                         # would write
-    python tools/reference.py counts    # print the measured counts of the index
+    python tools/reference.py counts    # print index counts and totals kept out of the pages
     python tools/reference.py importers aew.engine.store    # print the modules that import a module
     python tools/reference.py resolve   # in a merge: render the pages from the merged code and stage them
 
@@ -12,10 +12,8 @@ One generator. ``render`` writes the machine index (``index.json``, keyed by rec
 ``gaps.md``; ``check`` regenerates them in memory and fails on any difference in the committed files, naming the first
 one and the command that settles it. CI runs ``check`` as a fast-lane test (``tests/unit/test_reference.py``), so a pull
 request that changes enumerated code re-renders in the same change; the second of two changes to merge re-renders after
-the first. The pages hold no tree-wide totals and no inverses, so two changes to different things merge; a collision
-on one thing is settled by ``resolve``, never by hand. The index is not committed (operator, 2026-11-05): git ignores
-it, ``render`` writes it for local use and ``counts`` prints its counts, which CI does for every pull request. The pages
-are drawn from the index rendered in memory, so they carry what it measures.
+the first. The pages keep independently changing entries on separate lines. A collision is settled by
+``resolve``. Git ignores the index. ``render`` writes it for local use and ``counts`` prints the totals for CI.
 
 The output is deterministic and the same on Windows and Linux: sorted, POSIX paths, LF, no timestamp, no absolute path.
 It states what the code is and never what it should be, and holds no requirement. No model is in the generator.
@@ -34,7 +32,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "reference"
@@ -108,28 +106,35 @@ def _one_tree(common: Any, root: Path) -> None:
 def render_files(root: Path = ROOT) -> dict[str, bytes]:
     """Every file ``docs/reference/`` holds, by name under it: the bytes ``render`` writes. Raises ReferenceError when
     an owner is unreadable or the output breaks a rule (the index's invariants, the privacy and format rules)."""
-    return _render(root)[0]
+    return _render(root).files
 
 
 def figures(root: Path = ROOT) -> dict[str, int]:
     """The largest figure of each measured cap over the whole render (every family that runs the evaluator): what the
     writers page prints and the tests hold each cap to twice of."""
-    return _render(root)[1]
+    return _render(root).figures
 
 
-def _render(root: Path) -> tuple[dict[str, bytes], dict[str, int]]:
+class Rendered(NamedTuple):
+    files: dict[str, bytes]
+    figures: dict[str, int]
+    counts: dict[str, Any]
+
+
+def _render(root: Path) -> Rendered:
     common, pages, families = _families()
     _one_tree(common, root)
     from reference_families import writers_flow  # imported by _families(), so no path is needed
 
     ctx = common.Context(root)
-    records, page_text, late = [], {}, {}
+    records, page_text, late, family_counts = [], {}, {}, {}
     with writers_flow.measuring() as measured:  # one block over every family: the caps are held to the whole render
         for family in families:
             built = family.build(ctx)
             records += built.records
             page_text.update(built.pages)
             late.update(built.late)
+            family_counts.update(built.counts)
         for name, make in late.items():
             page_text[name] = make()
     figures_of_render = dict(measured)
@@ -145,7 +150,8 @@ def _render(root: Path) -> tuple[dict[str, bytes], dict[str, int]]:
     if problems:
         raise common.ReferenceError("the generated reference breaks its own rules:\n  "
                                     + "\n  ".join(common.shown(problems)))
-    return {name: text.encode("utf-8") for name, text in texts.items()}, figures_of_render
+    counts = {**index["counts"], "import_edges": sum(len(record.imports or ()) for record in records), **family_counts}
+    return Rendered({name: text.encode("utf-8") for name, text in texts.items()}, figures_of_render, counts)
 
 
 def _on_disk(out: Path) -> dict[str, bytes]:
@@ -220,10 +226,8 @@ def render(root: Path = ROOT, out: Path = OUT, files: dict[str, bytes] | None = 
 
 
 def counts(root: Path = ROOT) -> dict[str, Any]:
-    """The measured counts of a render: what CI prints for each pull request (the index that carries them is not
-    committed), with the totals the pages leave out so that they merge: the import edges."""
-    index = json.loads(render_files(root)[INDEX])
-    return {**index["counts"], "import_edges": sum(len(r.get("imports") or ()) for r in index["records"].values())}
+    """The index counts and the totals kept out of the committed pages."""
+    return _render(root).counts
 
 
 def importers(module: str, root: Path = ROOT) -> list[str] | None:

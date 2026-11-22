@@ -52,6 +52,7 @@ def _racing_reads(monkeypatch: pytest.MonkeyPatch, failures: int | None) -> tupl
         return real(self)
 
     monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(S, "IS_WINDOWS", True)
     return reads, patch_sleep(monkeypatch, S)
 
 

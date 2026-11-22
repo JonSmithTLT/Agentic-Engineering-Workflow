@@ -26,6 +26,7 @@ from invariants import load_control
 
 from aew.engine import configuration as C
 from aew.engine import steering as S
+from aew.engine import store
 from aew.engine.api import Engine
 from aew.engine.base import POLICY_PINS
 from aew.engine.store import serialize_control
@@ -669,7 +670,11 @@ def test_field_metadata(engine):
     for (block, key), allowed in X.STRING_SWITCHES.items():
         switch = switches[f"/{block}/{key}"]
         assert switch["value"]["allowed"] == list(allowed) and switch["default"] == allowed[0]
+        assert switch["new_project_default"] == X.new_project_switches().get((block, key))
         assert switch["value"]["class"] == props[block]["properties"][key]["x-aew-class"]
+    # maps: off when absent, on for a new project (ADR-0015), so the view says both, never one for the other
+    maps = switches["/maps/pack_slices"]
+    assert maps["default"] == "off" and maps["new_project_default"] == X.NEW_PROJECT_PACK_SLICES == "structural"
     model = by_name(out)["standard"]["fields"]["model"]
     assert model["path"] == "/profiles/standard/model" and "allowed" not in model
     assert model["class"] == root["$defs"]["profile"]["properties"]["model"]["x-aew-class"]
@@ -1003,6 +1008,7 @@ def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch,
     monkeypatch.setattr(Path, "is_file", is_file)
     thread = threading.Thread(target=writer, daemon=True)
     thread.start()
+    monkeypatch.setattr(store, "IS_WINDOWS", True)  # the injected open errors model Windows
     out = fresh.configuration("execution")
     thread.join(30)
     assert collided.is_set() and replaced.is_set() and not thread.is_alive()

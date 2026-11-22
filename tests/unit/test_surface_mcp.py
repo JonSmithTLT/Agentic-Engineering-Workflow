@@ -466,16 +466,59 @@ def test_a1_rows_measured():
     assert deltas == A1_SPIKE
 
 
-def test_a_malformed_line_never_ends_the_lead_mcp_server():
+def test_a_malformed_line_never_ends_the_lead_mcp_server(monkeypatch):
     import io
+    from types import SimpleNamespace
 
     ping = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
     nested = b"[" * 5000 + b"]" * 5000 + b"\n"
     bad_encoding = b'{"jsonrpc":"2.0","id":1,"method":"ping","data":"\xff"}\n'
     stdout = io.BytesIO()
 
+    # The JSON decoder owns its recursion limit. Observe its actual first call:
+    # only a successfully decoded line can reach JSON-RPC batch validation.
+    decoded = []
+
+    def observe_decode(line):
+        try:
+            result = json.loads(line)
+        except RecursionError:
+            decoded.append(False)
+            raise
+        decoded.append(True)
+        return result
+
+    monkeypatch.setattr(mcp, "json", SimpleNamespace(loads=observe_decode, dumps=json.dumps))
     assert mcp.Server(Spy()).serve(io.BytesIO(nested + bad_encoding + ping), stdout) == 0
     deep_error, encoding_error, reply = map(json.loads, stdout.getvalue().splitlines())
-    assert deep_error["id"] is None and deep_error["error"]["code"] == mcp.PARSE_ERROR
+    if decoded[0]:
+        assert isinstance(deep_error, list)
+        member, = deep_error
+        assert member["id"] is None and member["error"]["code"] == mcp.INVALID_REQUEST
+    else:
+        assert deep_error["id"] is None and deep_error["error"]["code"] == mcp.PARSE_ERROR
     assert encoding_error["id"] is None and encoding_error["error"]["code"] == mcp.PARSE_ERROR
     assert reply == {"jsonrpc": "2.0", "id": 1, "result": {}}
+
+
+def test_decoder_errors_and_invalid_requests_keep_distinct_replies_and_allow_the_next_ping(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    def decode_with_one_recursion_error(line):
+        if line == "null\n":
+            raise RecursionError("decoder recursion limit")
+        return json.loads(line)
+
+    monkeypatch.setattr(mcp, "json", SimpleNamespace(loads=decode_with_one_recursion_error, dumps=json.dumps))
+    stdout = io.BytesIO()
+    # An injected decoder failure, an actual syntax error, a bad byte, a valid batch
+    # with an invalid member, and a valid request all use the same server session.
+    lines = b'null\n{\n\xff\n[1]\n{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+    assert mcp.Server(Spy()).serve(io.BytesIO(lines), stdout) == 0
+    recursion, syntax, encoding, batch, ping = map(json.loads, stdout.getvalue().splitlines())
+    for error in (recursion, syntax, encoding):
+        assert error["id"] is None and error["error"]["code"] == mcp.PARSE_ERROR
+    member, = batch
+    assert member["id"] is None and member["error"]["code"] == mcp.INVALID_REQUEST
+    assert ping == {"jsonrpc": "2.0", "id": 1, "result": {}}

@@ -447,7 +447,8 @@ entries:
   lane: integration
   platforms:
   - linux
-  status: open
+  - windows
+  status: closed
   class: product budget
   cause: One side exhausted its search budget.
   owner: CI flake triage
@@ -457,6 +458,15 @@ entries:
   - run: 42379241068
     job: 128423250898
     at: '2026-11-07T14:05:51Z'
+  - run: 44980257218
+    job: 137079143311
+    at: '2026-11-22T03:46:22Z'
+    note: At output 15 only one implementation reported incomplete coverage with reason budget.
+  closure:
+    pr: 509
+    cause: Exercise an exhausted elapsed-time budget on both copies, then use document counts to decide subsequent progress.
+    test: tests/integration/test_history_search.py::test_the_clis_search_output_is_byte_identical_to_before_s2
+    proof: fault injection
 - id: validation-hung-run
   scope: test
   lane: integration

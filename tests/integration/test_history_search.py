@@ -700,6 +700,10 @@ def _cli_outputs(p: Project, engine: Engine, module: Any, monkeypatch) -> list[s
     with monkeypatch.context() as m:
         m.setattr(history_ops, "recall", module)
         m.setattr(secrets, "token_hex", lambda n=8: f"{next(tokens):0{2 * n}x}")
+        # Exercise elapsed-time exhaustion once, then let document counts decide both copies' progress.
+        m.setattr(module, "BUILD_BUDGET_S", 0)
+        assert "budget" in run("Quokkafacts")["coverage"]["reasons"]
+        m.setattr(module, "BUILD_BUDGET_S", None)
         m.setattr(module, "BUILD_BUDGET_DOCS", 1)
         for _ in range(30):  # a budgeted build from nothing, call by call
             if not run("Quokkafacts")["coverage_incomplete"]:

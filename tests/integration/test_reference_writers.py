@@ -415,7 +415,8 @@ def reference_tool():
 def whole_render() -> tuple[dict[str, bytes], dict[str, int]]:
     """Every file the generator writes, and the largest figure of each measured cap over every family that runs the
     evaluator (review of #267, C-1): what the writers page prints and what the caps are held to."""
-    return reference_tool()._render(ROOT)
+    result = reference_tool()._render(ROOT)
+    return result.files, result.figures
 
 
 def comparable(files: dict[str, bytes]) -> dict[str, bytes]:
@@ -443,7 +444,7 @@ def test_halving_the_depth_cap_changes_nothing_in_the_whole_render(monkeypatch):
     """The same measure as the figures below: every family that runs the evaluator, not the writers family alone."""
     base = comparable(whole_render()[0])
     monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
-    halved = comparable(reference_tool()._render(ROOT)[0])
+    halved = comparable(reference_tool().render_files(ROOT))
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
 
 
@@ -454,7 +455,7 @@ def test_doubling_every_cap_changes_nothing_in_the_whole_render_but_the_caps_own
     files = whole_render()[0]
     for module, name in CAPS:
         monkeypatch.setattr(module, name, getattr(module, name) * 2)
-    doubled = reference_tool()._render(ROOT)[0]
+    doubled = reference_tool().render_files(ROOT)
     assert comparable(doubled) == comparable(files)
     assert doubled["writers.md"] != files["writers.md"], "the caps' own section prints the doubled values"
 

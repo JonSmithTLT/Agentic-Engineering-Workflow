@@ -58,6 +58,7 @@
         "crashed",
         "terminated",
         "unconfirmed",
+        "unreadable",
         "lost"
       ]
     },

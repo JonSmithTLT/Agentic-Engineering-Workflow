@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine.lock import DEFAULT_TIMEOUT_S, FileLock
+from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 from aew.errors import (
     IntegrityError,
     MapArtifactCorrupt,
@@ -80,7 +81,7 @@ def write_artifact(aew_root: Path, record: dict[str, Any]) -> tuple[str, str]:
     try:
         create_exclusive(path, data)
     except IntegrityError:  # the name exists: it must hold exactly these bytes
-        if path.read_bytes() != data:
+        if retry_lock_free(path.read_bytes) != data:
             raise MapArtifactCorrupt(
                 f"{rel} exists and does not hold the bytes that hash to its name: the stored artifact is corrupt "
                 f"(delete it and generate again)", root=sha, reason="hash_mismatch") from None
@@ -98,7 +99,7 @@ def read_artifact(aew_root: Path, sha: str) -> dict[str, Any]:
     _check_sha(sha)
     rel = artifact_rel(sha)
     try:
-        raw = (aew_root / rel).read_bytes()
+        raw = retry_lock_free((aew_root / rel).read_bytes)
     except FileNotFoundError:
         raise NotFound(f"no structural map {sha} in {MAPS_REL}", root=sha) from None
     return parse_artifact(sha, raw)
@@ -182,7 +183,7 @@ def read_artifact_bounded(aew_root: Path, sha: str, *, cap: int = MAP_FILE_MAX,
     _check_sha(sha)
     rel = artifact_rel(sha)
     try:
-        raw, identity = read_bounded(aew_root / rel, cap, st)
+        raw, identity = retry_lock_free(lambda: read_bounded(aew_root / rel, cap, st))
     except FileNotFoundError:
         raise NotFound(f"no structural map {sha} in {MAPS_REL}", root=sha) from None
     except NotARegularFile as exc:
@@ -292,7 +293,7 @@ def find_structural(aew_root: Path, *, source_revision: str, generator: dict[str
 
     def match(name: str) -> dict[str, Any] | None:
         try:
-            raw, _ = read_bounded(aew_root / STRUCTURAL_REL / name, MAP_FILE_MAX)
+            raw, _ = retry_lock_free(lambda: read_bounded(aew_root / STRUCTURAL_REL / name, MAP_FILE_MAX))
             if not all(w in raw for w in want):
                 return None
             record = parse_artifact(name[:-5], raw)
@@ -315,7 +316,7 @@ def read_registry(aew_root: Path) -> dict[str, Any] | None:
     """The registry, or None when there is none; ``MAP_REGISTRY_INVALID`` when it is malformed."""
     path = aew_root / REGISTRY_REL
     try:
-        raw = path.read_bytes()
+        raw = retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path))
     except FileNotFoundError:
         return None
     try:

@@ -482,6 +482,10 @@ class StageIntents:
             if observed not in LIVE_RUN:
                 step_n = last["n"] if last else "?"
                 inv = K.invocation_of_run(run) or "<invocation from aew harness status>"
+                if observed == K.UNREADABLE:
+                    return {"status": K.UNREADABLE, "run": run, "observed": observed,
+                            "message": f"step {step_n}'s run {run} could not be read just now; "
+                                       f"check again with `aew harness status {inv}`"}
                 relaunch = f"`aew harness launch {inv} {K.EXPECT_REV}`"
                 cancel_command = f"aew invoke cancel {inv} {K.EXPECT_REV}"
                 if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
@@ -701,6 +705,9 @@ def _refuse_unless_continuable(si: dict[str, Any], check: dict[str, Any]) -> Non
             raise IllegalTransition(f"{si['id']} cannot be continued: {checks[name]['message']}. Abandon it "
                                     "(committed steps stand) and decide anew from the projection",
                                     reason=reason[name], intent=si["id"], check=checks[name]["status"])
+    launch = checks["launch"]
+    if launch["status"] == K.UNREADABLE:
+        raise IllegalTransition(launch["message"], reason="run_unreadable", intent=si["id"])
 
 
 def _covered_step(si: dict[str, Any], binding: StepBinding, record: dict[str, Any], outputs: dict[str, list[str]],

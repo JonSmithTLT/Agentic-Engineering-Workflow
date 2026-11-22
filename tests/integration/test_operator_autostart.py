@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 from conftest import IS_WINDOWS, clean_env
-from notifier import adopt, hidden, raise_to, received, recorder, script, until
+from notifier import adopt, hidden, liveness_record, raise_to, received, recorder, script, until
 
 from aew import errors
 from aew.engine.api import Engine
 from aew.engine.lock import FileLock
-from aew.harness import broker_liveness, notify, operator_client, operator_endpoint, procs
+from aew.harness import notify, operator_client, operator_endpoint, procs
 from aew.harness import operator_autostart as A
 
 SRC = Path(__file__).resolve().parents[2] / "src"
@@ -453,7 +453,7 @@ def test_a_session_ending_in_run_is_told_to_the_operator(project, tmp_path, back
     child.stdin.write((project.token + "\n").encode("utf-8"))
     child.stdin.flush()
     until(ready.exists, HANG_GUARD_S, "the broker to start")
-    record = until(lambda: broker_liveness.read(root), what="the broker's liveness record")
+    record = until(lambda: liveness_record(root), what="the broker's liveness record")
     _holder(root, record["pid"])
     ep = operator_endpoint.OperatorEndpoint(Engine.discover(project.root), console=lambda s: None, dev=True,
                                             background=background)
@@ -504,7 +504,7 @@ def test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoin
         found = operator_client.wait_for_locator(root, timeout=HANG_GUARD_S)
         assert found
         pid = found["pid"]
-        record = until(lambda: broker_liveness.read(root), what="the broker's liveness record")
+        record = until(lambda: liveness_record(root), what="the broker's liveness record")
         until(lambda: notify.summary(root) is not None, HANG_GUARD_S, "the watcher's first pass")
         if ending == "crash":
             procs.kill_pid(record["pid"])

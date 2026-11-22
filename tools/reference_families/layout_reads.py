@@ -32,6 +32,7 @@ READ_CALLS: dict[str, tuple[str, int]] = {
     "os.path.getmtime": ("os.path.getmtime", 0), "os.path.islink": ("os.path.islink", 0),
     "shutil.copy": ("shutil.copy", 0), "shutil.copy2": ("shutil.copy2", 0), "shutil.copyfile": ("shutil.copyfile", 0),
     "shutil.copytree": ("shutil.copytree", 0),
+    "aew.engine.store.read_replaced": ("read_replaced", 0),
     f"{UTIL}.read_yaml": ("read_yaml", 0), f"{UTIL}.sha256_file": ("sha256_file", 0),
 }
 # Path methods that read their receiver, by name (a method has no import source): the limit is the family's, listed.

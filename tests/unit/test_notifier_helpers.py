@@ -9,12 +9,21 @@ from __future__ import annotations
 import threading
 
 import pytest
-from notifier import thread_stack, until
+from notifier import liveness_record, thread_stack, until
+
+from aew.harness import broker_liveness
 
 
 def test_a_describer_that_raises_never_hides_the_timeout():
     with pytest.raises(AssertionError, match=r"timed out waiting for x; the describer failed: ZeroDivisionError"):
         until(lambda: None, 0.1, "x", describe=lambda: str(1 / 0))
+
+
+def test_wait_for_close_retries_an_unreadable_beat_and_returns_the_closed_observation(monkeypatch, tmp_path):
+    closed = {"closed_at": 1.0}
+    reads = iter((broker_liveness.Unreadable(), None, {"closed_at": None}, closed))
+    monkeypatch.setattr(broker_liveness, "read", lambda root: next(reads))
+    assert until(lambda: liveness_record(tmp_path, closed=True), what="the closed beat") is closed
 
 
 class _Recycled(threading.Thread):

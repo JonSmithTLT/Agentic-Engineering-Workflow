@@ -55,6 +55,139 @@ def test_a_heartbeat_or_record_that_is_a_directory_is_none(directory):
     assert runlog.observed_status(directory)[0] == K.UNCONFIRMED
 
 
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_a_run_record_temporarily_missing_during_replace_reports_its_terminal_status(directory):
+    from windows_sharing import blocked_read
+
+    record(directory, status=K.ENDED_WITH_EVIDENCE)
+    path = directory / runlog.RECORD
+    with blocked_read(path, replace_gap=True):
+        assert runlog.observed_status(directory)[0] == K.ENDED_WITH_EVIDENCE
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_unreadable_run_record_is_distinct_from_an_absent_one(directory, caplog):
+    from windows_sharing import blocked_read
+
+    record(directory)
+    runlog.beat(directory)
+    with blocked_read(directory / runlog.RECORD, release=False):
+        status, _ = runlog.observed_status(directory)
+    assert status == K.UNREADABLE and runlog.possibly_live(status, None)
+    assert "PermissionError errno=13 winerror=None" in caplog.text
+    [event] = [json.loads(line) for line in (directory / "events.jsonl").read_text().splitlines()]
+    assert event["event"] == "run_file_unreadable" and event["file"] == runlog.RECORD
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_an_unreadable_request_stays_queued_after_retries(directory):
+    from windows_sharing import blocked_read
+
+    name, text = runlog.new_request("send", {"text": "continue"})
+    path = runlog.deliver_request(directory, name, text)
+    unread = []
+    with blocked_read(path, release=False):
+        assert runlog.take_requests(directory, on_unread=lambda name, exc: unread.append((name, exc.errno))) == []
+        assert path.is_file()
+    assert unread == [(name, 13)]
+    with blocked_read(path):
+        assert runlog.take_requests(directory) == [(name, text)]
+
+
+def test_an_unreadable_windows_record_needs_a_fresh_heartbeat_to_keep_custody(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aew.engine import store
+    from aew.engine.custody_ops import RUN_LOST, Custody
+
+    run = "R-INV-0001-1"
+    directory = runlog.run_dir(tmp_path, run)
+    directory.mkdir(parents=True)
+    monkeypatch.setattr(runlog, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(runlog, "READ_BUDGET_S", 0)
+
+    def denied(_):
+        raise PermissionError(13, "held")
+
+    monkeypatch.setattr(runlog, "_read_regular", denied)
+    custody = Custody.__new__(Custody)
+    custody.k = SimpleNamespace(aew_root=tmp_path)
+    child = ("INV-0001", {"runs": [{"run": run}]})
+    runlog.beat(directory)
+    assert runlog.observed_status(directory) == (K.UNREADABLE, None)
+    assert custody._ended({}, child) is None
+    os.utime(directory / "heartbeat", (0, 0))
+    assert runlog.observed_status(directory) == (K.LOST, None)
+    assert custody._ended({}, child) == RUN_LOST
+    (directory / "heartbeat").unlink()
+    assert runlog.observed_status(directory) == (K.LOST, None)
+    assert custody._ended({}, child) == RUN_LOST
+
+
+def test_a_genuinely_absent_run_record_does_not_spend_the_windows_retry_budget(directory, monkeypatch):
+    from sleep_patch import patch_sleep
+
+    from aew.engine import store
+
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    attempts = []
+
+    def missing(path):
+        attempts.append(path)
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(runlog, "_read_regular", missing)
+    sleeps = patch_sleep(monkeypatch, store)
+    assert runlog.observed_status(directory) == (K.UNCONFIRMED, None)
+    assert attempts == [directory / runlog.RECORD] and sleeps == []
+
+
+def test_a_heartbeat_before_first_publication_does_not_log_an_unreadable_record(directory, monkeypatch):
+    from sleep_patch import patch_sleep
+
+    from aew.engine import store
+
+    monkeypatch.setattr(store, "IS_WINDOWS", True)
+    monkeypatch.setattr(store, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    monkeypatch.setattr(runlog, "IS_WINDOWS", True)
+    patch_sleep(monkeypatch, store)
+    runlog.beat(directory)
+    assert runlog.observed_status(directory) == (K.UNCONFIRMED, None)
+    assert not (directory / "events.jsonl").exists()
+
+
+@pytest.mark.skipif(not IS_WINDOWS, reason="requires Windows handle sharing")
+def test_run_files_keep_the_five_second_windows_sharing_budget(directory):
+    from windows_sharing import blocked_read
+
+    from aew.engine.store import READ_RETRIES
+
+    assert runlog.READ_BUDGET_S == 5.0
+    record(directory, status=K.ENDED_WITH_EVIDENCE)
+    with blocked_read(directory / runlog.RECORD, release_after=READ_RETRIES + 1):
+        assert runlog.observed_status(directory)[0] == K.ENDED_WITH_EVIDENCE
+
+
+def test_a_refused_watermark_read_does_not_reset_or_overwrite_it(directory, monkeypatch):
+    from aew.engine import store
+
+    runlog.write_returned(directory, 7)
+    monkeypatch.setattr(store, "IS_WINDOWS", False)
+
+    def denied(_):
+        raise PermissionError(13, "held")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(runlog, "_read_regular", denied)
+        with pytest.raises(PermissionError):
+            runlog.read_returned(directory)
+        with pytest.raises(PermissionError):
+            runlog.write_returned(directory, 4)
+    assert runlog.read_returned(directory) == 7
+
+
 def test_a_record_past_its_bound_is_not_read(directory, monkeypatch):
     record(directory)
     assert runlog.read_record(directory) is not None

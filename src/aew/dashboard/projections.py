@@ -362,8 +362,9 @@ class Projector:
         for inv_id, inv in sorted(self.state["invocations"].items()):
             for run in inv.get("runs") or []:
                 observed, _ = self._observe(run["run"])
-                if observed == K.LOST:
-                    reasons.append(reason("RUN_LOST", f"run {run['run']} of {inv_id}"))
+                if observed in (K.LOST, K.UNREADABLE):
+                    code = "RUN_LOST" if observed == K.LOST else "RUN_UNREADABLE"
+                    reasons.append(reason(code, f"run {run['run']} of {inv_id}"))
                     status = status if status == "UNHEALTHY" else "DEGRADED"
         return {"status": status, "reasons": _bounded(reasons), "observed_at": SNAPSHOT_TIME}
 
@@ -528,8 +529,8 @@ class Projector:
         for inv_id, inv in sorted(self.state["invocations"].items()):
             for run in inv.get("runs") or []:
                 observed, _ = self._observe(run["run"])
-                if observed in (K.LOST, K.CRASHED):
-                    code = "RUN_LOST" if observed == K.LOST else "RUN_CRASHED"
+                if observed in (K.LOST, K.CRASHED, K.UNREADABLE):
+                    code = {K.LOST: "RUN_LOST", K.CRASHED: "RUN_CRASHED", K.UNREADABLE: "RUN_UNREADABLE"}[observed]
                     items.append({"id": f"AT-{run['run']}", "kind": "anomaly", "severity": "medium",
                                   "subject": entity(inv_id, "invocation"), "title": f"run {run['run']} {observed}",
                                   "summary": rich(f"{inv['role']} run for {inv['work_unit']} is {observed}"),

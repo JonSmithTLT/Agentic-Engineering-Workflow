@@ -78,8 +78,10 @@ def _path(root: Path, generation: int) -> Path:
 
 
 def read_leftovers(root: Path, generation: int) -> Leftovers:
+    from aew.engine.store import read_replaced
+
     try:
-        record = json.loads(_path(root, generation).read_text(encoding="utf-8"))
+        record = json.loads(read_replaced(_path(root, generation)))
     except (OSError, ValueError):
         return None
     if not isinstance(record, dict) or type(record.get("generation")) is not int or record["generation"] != generation:

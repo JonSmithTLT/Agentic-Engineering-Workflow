@@ -12,11 +12,12 @@ instead fails at random. The class has two forms, a lambda passed to a polling h
   for text that does not parse yet (a writer that writes in place can be read half-written);
 - consumes the call of an aew function whose return annotation admits None at its top level, by a subscript,
   ``read(root)["field"]``, an attribute, ``read(root).get("field")``, or ``in``, ``"field" in read(root)``:
-  ``broker_liveness.read`` returns None for any OSError, so the consumption raises TypeError or AttributeError at that
-  moment (#237's run 40035060397, attempt 2, ``test_broker_liveness_is_local_and_beats_every_poll``). The runlog readers
+  A missing beat returns None, so consuming it raises TypeError or AttributeError at that moment
+  (#237's run 40035060397, attempt 2, ``test_broker_liveness_is_local_and_beats_every_poll``). The runlog readers
   (``runlog.read_live``) retry a PermissionError on Windows for up to 5 s first, and return None only for an absent or
   invalid file, which is still a reason not to subscript them. Guard the read instead:
-  ``(read(root) or last)["field"]``.
+  ``(read(root) or last)["field"]``. For broker beats, poll through ``notifier.liveness_record``, which also handles
+  the truthy ``Unreadable`` result that a fallback for None cannot handle.
 
 The invariant: no polled lambda contains a raw read, and none consumes a read that can return None. A polling call
 passes its predicate where the poller's definition calls it, by position or by keyword: ``bounded_wait`` takes it
@@ -29,6 +30,7 @@ detectors written separately enumerate the invariant over every test file, and m
   names of the functions in src/aew whose return annotation, as written, ends in ``| None``.
 
 What both miss (pinned below), each a defect the reviewer reads for, and neither detector claims it:
+- a truthy unavailable result guarded only with ``or``, such as ``broker_liveness.Unreadable``;
 - a poller not in ``POLLERS``, which nothing finds: ``Mailbox.receive(timeout, gone=...)``
   (tests/helpers/vertical/chat.py) calls ``gone`` in a sleeping loop and is not listed; no caller of it reads a file;
 - a predicate that is a named function (``until(ready)``) or a lambda bound to a name (``pred = lambda: ...``): a raw
@@ -338,8 +340,8 @@ PLANTED_WRONG = [
     'until(lambda: [k for k in notify.summary(root)])',
 ]
 PLANTED_RIGHT = [
-    'until(lambda: (broker_liveness.read(root) or first)["beat_at"] > t)',
-    'until(lambda: (broker_liveness.read(root) or {}).get("closed_at"))',
+    'until(lambda: (notify.summary(root) or last)["dropped"] > n)',
+    'until(lambda: (notify.summary(root) or {}).get("dropped"))',
     'until(lambda: runlog.observed_status(d)[0] == "done")',
     'record = broker_liveness.read(root)["beat_at"]',  # not polled: a deterministic read fails loudly, not at random
     'until(lambda: (read_text_or_none(p) or "").strip(), 10, "x")',  # through the helpers
@@ -347,10 +349,11 @@ PLANTED_RIGHT = [
     'text = p.read_text(encoding="utf-8")\ndata = p.read_bytes()',  # raw, but outside any poll
     'with open(p) as f:\n    text = f.read()\nuntil(lambda: ready(text))',
     'bounded_wait("test.x", lambda: (read_text_or_none(p) or "").strip(), seconds=5)',
-    'until(lambda: "beat_at" in (broker_liveness.read(root) or {}))',
-    'until(lambda: (broker_liveness.read(root) or first).get("beat_at"))',
+    'until(lambda: "dropped" in (notify.summary(root) or {}))',
+    'until(lambda: (notify.summary(root) or last).get("dropped"))',
 ]
 BOTH_MISS = [
+    'until(lambda: (broker_liveness.read(root) or {}).get("closed_at"))',
     "chat.receive(5, gone=lambda: p.read_text())",  # a poller not in POLLERS
     "def ready():\n    return broker_liveness.read(root)['beat_at'] > t\nuntil(ready)",
     'until(lambda: self.store.read()["revision"] > 3)',

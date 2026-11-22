@@ -66,7 +66,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `local`
 
-- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `read`, `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
+- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
   - Written by
     - `aew.dashboard.service:Service._write_endpoint`
     - `aew.engine.custody_ops:spawn_worker`
@@ -105,13 +105,13 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/custody` (git-ignored, masked by containment); named by `aew.engine.custody_ops`: `LOG_DIR`; read by none
   - Written by
     - `aew.engine.custody_ops:spawn_worker`
-- `local/dashboard` (git-ignored, masked by containment); named by `aew.dashboard.service`: `DIR_REL`; read by `aew.dashboard.service`: `Service._remove_endpoint`, `locate`; `aew.engine.lock`: `FileLock._is_path`
+- `local/dashboard` (git-ignored, masked by containment); named by `aew.dashboard.service`: `DIR_REL`; read by `aew.dashboard.service`: `Service._remove_endpoint`, `locate`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`
   - Written by
     - `aew.dashboard.service:Service._remove_endpoint`
     - `aew.dashboard.service:Service._write_endpoint`
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
-- `local/doctor` (git-ignored, masked by containment); read by `aew.harness.model_list`: `_load`
+- `local/doctor` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.model_list`: `_load`
   - Written by
     - `aew.harness.model_list:_listing`
 - `local/events` (git-ignored, masked by containment); named by `aew.harness.event_spool`: `SPOOL_REL`; read by `aew.harness.event_spool`: `Reader.retire`, `Reader.unread`, `Reader.writers`, `_open_append`, `_open_read`, `append`
@@ -143,14 +143,14 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.opencode.lead:ContainedLead._seed_models`
-- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.kit.receipt`: `write_receipt`
+- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
     - `aew.engine.harness_ops:Harness._spawn_run`
     - `aew.harness.check_changes:run_once`
     - `aew.harness.lead_broker:lead_run_dir`
     - `aew.harness.model_list:read`
-- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `beat`, `heartbeat_age`, `take_requests`
+- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_age`, `take_requests`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -322,7 +322,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
+- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -374,7 +374,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/lead` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.harness.broker_liveness`: `read`; `aew.harness.told_messages`: `_load`; `aew.harness.tool_calls`: `_rotate`, `append`, `read`
+- `local/lead` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.harness.broker_liveness`: `read.read_bytes`; `aew.harness.told_messages`: `_load`; `aew.harness.tool_calls`: `_rotate`, `append`
   - Written by
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
@@ -383,7 +383,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.told_messages:record`
     - `aew.harness.tool_calls:_rotate`
     - `aew.harness.tool_calls:append`
-- `local/maps` (git-ignored, masked by containment); named by `aew.maps.store`: `MAPS_REL`; read by `aew.dashboard.reader`: `MapsReader._registry_read`, `MapsReader.roots`; `aew.engine.lock`: `FileLock._is_path`; `aew.maps.service`: `_failed_before`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`, `read_registry`
+- `local/maps` (git-ignored, masked by containment); named by `aew.maps.store`: `MAPS_REL`; read by `aew.dashboard.reader`: `MapsReader._registry_read`, `MapsReader.roots`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.maps.service`: `_failed_before`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`
   - Written by
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
@@ -392,14 +392,14 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.maps.store:_append_log`
     - `aew.maps.store:select`
     - `aew.maps.store:write_artifact`
-- `local/maps/structural` (git-ignored, masked by containment); named by `aew.maps.store`: `STRUCTURAL_REL`; read by `aew.dashboard.reader`: `MapsReader.roots`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_artifact`, `read_bounded`, `write_artifact`
+- `local/maps/structural` (git-ignored, masked by containment); named by `aew.maps.store`: `STRUCTURAL_REL`; read by `aew.dashboard.reader`: `MapsReader.roots`; `aew.maps.store`: `find_structural`, `lstat_regular`, `read_bounded`
   - Written by
     - `aew.maps.store:write_artifact`
-- `local/notify` (git-ignored, masked by containment); named by `aew.harness.notify`: `NOTIFY_REL`; read by `aew.harness.notify`: `DeliveryLog.record`, `_lines`, `_saved_state`, `summary`
+- `local/notify` (git-ignored, masked by containment); named by `aew.harness.notify`: `NOTIFY_REL`; read by `aew.engine.store`: `replace_pending`; `aew.harness.notify`: `DeliveryLog.record`, `_lines`, `_read_state.read`
   - Written by
     - `aew.harness.notify:DeliveryLog.record`
     - `aew.harness.notify:Watcher._write_state`
-- `local/operator` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
+- `local/operator` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
   - Written by
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
@@ -426,7 +426,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.engine.recall:Substrate._connect`
     - `aew.engine.recall:Substrate._delete`
-- `local/steering` (git-ignored, masked by containment); read by `aew.engine.steering`: `loop_state`; `aew.harness.steering_loop`: `_read`
+- `local/steering` (git-ignored, masked by containment); read by `aew.engine.steering`: `loop_state.read`; `aew.engine.store`: `replace_pending`; `aew.harness.steering_loop`: `_read.read`
   - Written by
     - `aew.harness.steering_loop:_write`
 - `local/validation` (git-ignored, masked by containment); named by `aew.engine.validation_ops`: `STAGING`; read by `aew.harness.containment.layout`: `for_run`
@@ -506,7 +506,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `state`
 
-- `state` (store); named by `aew.engine.store`: `STORE_REL`; read by `aew.engine.api`: `Engine.initialize`; `aew.engine.base`: `Kernel._authority_files_identity`; `aew.engine.log_compact`: `scan`; `aew.engine.store`: `ControlStore._load`, `ControlStore._migrate_modes`, `ControlStore._post_commit`, `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.control_identity`, `ControlStore.create`, `ControlStore.exists`, `ControlStore.mode_problems`, `store_dirs`; `aew.harness.supervisor`: `Supervisor._control_changed`
+- `state` (store); named by `aew.engine.store`: `STORE_REL`; read by `aew.engine.api`: `Engine.initialize`; `aew.engine.base`: `Kernel._authority_files_identity`; `aew.engine.log_compact`: `scan`; `aew.engine.store`: `ControlStore._migrate_modes`, `ControlStore._post_commit`, `ControlStore._recover_unprofiled`, `ControlStore._remove_temp_files`, `ControlStore.control_identity`, `ControlStore.create`, `ControlStore.exists`, `ControlStore.mode_problems`, `store_dirs`; `aew.harness.supervisor`: `Supervisor._control_changed`
   - Written by
     - `aew.engine.store:ControlStore._commit_unprofiled`
     - `aew.engine.store:ControlStore._post_commit`
@@ -581,7 +581,6 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.capability.ops`: `_acquire` (Path.exists), `_add_downloads` (Path.exists), `_apply_add` (Path.exists), `_bundle_files` (Path.is_dir), `_bundle_files` (Path.is_file), `_bundle_files` (Path.iterdir), `_check_here` (Path.exists), `_match_bundle` (Path.stat), `_match_bundle` (open), `absent` (Path.exists), `fetch` (Path.exists)
 - `aew.capability.payload`: `discard` (Path.is_dir), `discard` (Path.iterdir), `install` (Path.exists), `member` (Path.is_dir), `member` (Path.open), `verify` (open)
 - `aew.capability.status`: `aew_copy` (Path.exists), `file_sha256` (open), `find_host_copy` (os.path.exists), `harness_identity` (Path.stat)
-- `aew.capability.store`: `read` (Path.read_bytes)
 - `aew.cli.capability_commands`: `_add` (open)
 - `aew.cli.commands`: `_engine` (Path.is_dir)
 - `aew.cli.dashboard_commands`: `_serve` (Path.is_file)
@@ -589,7 +588,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.dashboard.contract`: `Contract.__init__` (Path.read_bytes), `digest` (Path.read_bytes)
 - `aew.dashboard.frontend`: `_contained` (Path.is_file), `build_record` (Path.read_text), `packaged_root` (Path.is_file)
 - `aew.dashboard.projections`: `Projector._stored` (Path.stat), `Projector._verified_archived_ids` (sha256_file), `Projector.map_diff` (Path.stat), `Projector.map_inputs` (Path.stat)
-- `aew.dashboard.reader`: `StateReader._read_gates` (Path.read_bytes), `_identity` (Path.stat)
+- `aew.dashboard.reader`: `_identity` (Path.stat)
 - `aew.dashboard.server`: `DashboardServer._static` (Path.read_bytes)
 - `aew.engine.api`: `Engine._control_identity` (os.stat), `Engine.stage_open` (Path.open), `ProjectAdmin._read_policy_pins` (Path.is_file), `ProjectAdmin._read_policy_pins` (Path.read_bytes)
 - `aew.engine.archive_ops`: `Archive._prune_observation` (Path.exists), `Archive._retained` (Path.exists), `Archive._retired_observations` (Path.exists), `Archive.finalize` (sha256_file), `Archive.record` (Path.read_bytes), `_bytes` (Path.read_bytes), `_sealed_check` (sha256_file), `held_evidence` (Path.read_text), `held_evidence` (sha256_file)
@@ -614,7 +613,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)
-- `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir)
+- `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir), `replace_pending` (Path.glob), `replace_pending` (Path.is_file)
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
 - `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
 - `aew.engine.validation_ops`: `Validation._coverage_record` (Path.read_text), `Validation._coverage_record` (sha256_file)
@@ -635,11 +634,10 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.opencode.lead`: `ContainedLead._seed_models` (Path.is_file), `ContainedLead._seed_models` (Path.read_text), `ContainedLead._seed_models` (Path.stat), `operator_mcp_servers` (Path.is_file), `operator_mcp_servers` (Path.read_text), `operator_preferences` (Path.is_file), `operator_preferences` (Path.read_text)
 - `aew.harness.opencode.lead_wake`: `url_of` (Path.read_text)
 - `aew.harness.opencode.login`: `StoredLogin._deciding_row` (Path.stat), `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
-- `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (Path.read_text), `session_holders_live` (Path.read_text)
+- `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (read_replaced), `session_holders_live` (read_replaced)
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
-- `aew.harness.runlog`: `_open_regular` (os.lstat), `_open_regular` (os.open), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)
-- `aew.harness.seat`: `read_leftovers` (Path.read_text)
-- `aew.harness.tool_calls`: `read` (Path.exists), `read` (Path.read_text)
+- `aew.harness.runlog`: `_open_append` (os.lstat), `_open_regular` (os.lstat), `_open_regular` (os.open), `_read_text.known` (Path.exists), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)
+- `aew.harness.seat`: `read_leftovers` (read_replaced)
 - `aew.harness.weaker_register`: `_ensure_created` (Path.exists), `_entries` (Path.glob), `_entries` (Path.read_bytes), `read` (Path.exists)
 - `aew.history.store`: `History._check` (Path.read_bytes), `History.unreferenced` (Path.is_file)
 - `aew.kit`: `prepare` (Path.exists), `prepare` (Path.read_bytes)
@@ -675,4 +673,4 @@ A method named like a read primitive is counted as a read of its receiver, whate
 - an `open` whose mode is not a literal this reading can read (the writers family lists it as an unresolved write)
 - a directory walk, `os.walk`, and the reads by a primitive this reading does not name (`os.fstat`, `os.access`, `os.readlink`, `os.path.lexists`, `os.path.realpath`); the tree has live ones under `.aew` (the store's mode check walks `state`; `control_key` walks `policy`)
 
-The primitives it reads: `Path.exists`, `Path.glob`, `Path.is_dir`, `Path.is_file`, `Path.is_symlink`, `Path.iterdir`, `Path.lstat`, `Path.open`, `Path.read_bytes`, `Path.read_text`, `Path.rglob`, `Path.stat`, `open`, `os.listdir`, `os.lstat`, `os.open`, `os.path.exists`, `os.path.getmtime`, `os.path.getsize`, `os.path.isdir`, `os.path.isfile`, `os.path.islink`, `os.scandir`, `os.stat`, `read_yaml`, `sha256_file`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`, `shutil.copytree`.
+The primitives it reads: `Path.exists`, `Path.glob`, `Path.is_dir`, `Path.is_file`, `Path.is_symlink`, `Path.iterdir`, `Path.lstat`, `Path.open`, `Path.read_bytes`, `Path.read_text`, `Path.rglob`, `Path.stat`, `open`, `os.listdir`, `os.lstat`, `os.open`, `os.path.exists`, `os.path.getmtime`, `os.path.getsize`, `os.path.isdir`, `os.path.isfile`, `os.path.islink`, `os.scandir`, `os.stat`, `read_replaced`, `read_yaml`, `sha256_file`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`, `shutil.copytree`.

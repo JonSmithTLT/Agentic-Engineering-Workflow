@@ -114,19 +114,46 @@ _T = TypeVar("_T")
 MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
 
 
-def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = ()) -> _T:
+def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = (),
+                    budget_s: float | None = None, missing_when: Callable[[], bool] | None = None) -> _T:
     """``read()``, retried briefly on ``PermissionError`` (and on ``also``): on Windows a lock-free reader's open can
     collide with a writer's atomic replace for a moment (a sharing violation), as the writer's own
     ``replace_with_retry`` does on its side. The one owner of that retry, for every lock-free read of a file that may
-    be replaced. The last attempt's error is raised."""
-    for attempt in range(READ_RETRIES):
+    be replaced. The last attempt's error is raised. A longer budget applies to sharing refusals only.
+    A missing-name retry can require evidence that publication is in progress."""
+    if not IS_WINDOWS:
+        return read()
+    deadline = time.monotonic() + budget_s if budget_s is not None else None
+    attempt = 0
+    while True:
         try:
             return read()
-        except (PermissionError, *also):
-            if attempt == READ_RETRIES - 1:
+        except (PermissionError, *also) as exc:
+            if isinstance(exc, FileNotFoundError) and missing_when is not None and not missing_when():
                 raise
-            time.sleep(0.01 * (attempt + 1))
-    raise AssertionError("unreachable")
+            pause = 0.01 * min(attempt + 1, READ_RETRIES - 1)
+            if deadline is not None and isinstance(exc, PermissionError):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                pause = min(pause, remaining)
+            elif attempt >= READ_RETRIES - 1:
+                raise
+            time.sleep(pause)
+            attempt += 1
+
+
+def replace_pending(path: Path) -> bool:
+    """Evidence of publication: the name is now visible, or its temporary sibling is visible."""
+    try:
+        return path.is_file() or any(path.parent.glob(f".{path.name}.*.tmp"))
+    except OSError:
+        return False
+
+
+def read_replaced(path: Path) -> bytes:
+    """Read an atomic publication, retrying a missing name only while publication is in flight."""
+    return retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path))
 
 
 def read_lock_free(path: Path) -> bytes | None:
@@ -478,7 +505,7 @@ class ControlStore:
 
         On Windows the writer's atomic replace and a reader's open can collide for a moment (a sharing violation,
         ``PermissionError``); the reader retries briefly, as the writer does on its side (``replace_with_retry``)."""
-        return retry_lock_free(lambda: copy.deepcopy(self._load()))
+        return copy.deepcopy(self._load(lock_free=True))
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.
@@ -619,12 +646,13 @@ class ControlStore:
 
     # ------------------------------------------------------------------ recovery
 
-    def _load(self) -> dict[str, Any]:
+    def _load(self, *, lock_free: bool = False) -> dict[str, Any]:
         """The committed state: this process's last parse when the file holds the very bytes it parsed, else a verified
         parse. The result is shared with the cache and must not be changed (a session changes its own copy)."""
         with profile.phase("parse"):
             try:
-                raw = self.control_path.read_bytes()
+                read = self.control_path.read_bytes
+                raw = retry_lock_free(read, also=MISSING_MID_REPLACE) if lock_free else read()
             except FileNotFoundError:
                 raise ProjectNotFound(f"no control state at {self.control_path}") from None
             digest = sha256_bytes(raw)

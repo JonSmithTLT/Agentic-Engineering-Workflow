@@ -18,6 +18,7 @@ from aew.dashboard import contract as CT
 from aew.dashboard import projections as P
 from aew.dashboard import reasons as R
 from aew.dashboard.server import CONDITIONAL_ROUTES, QUERY_PARAMETERS, ROUTES, error_body, match_route, pending_routes
+from aew.harness import contract as K
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = CT.Contract(ROOT / CT.CONTRACT_REL)
@@ -31,6 +32,14 @@ def test_the_contract_is_the_accepted_one():
     assert CONTRACT.sha256 == approval["sha256"], (
         "the contract changed: re-conform the server and the record together (its C0 review renews)")
     assert CT.in_series(CONTRACT.version), f"this server speaks 0.1.x from {CT.BASE_VERSION}, not {CONTRACT.version}"
+
+
+def test_run_usage_status_enum_covers_the_engine_and_unreadable_is_accepted_on_the_wire():
+    expected = {*K.TERMINAL, K.STARTING, K.RUNNING, K.UNCONFIRMED, K.UNREADABLE, K.LOST}
+    usage = json.loads((ROOT / "src/aew/schemas/run-usage.schema.json").read_text(encoding="utf-8"))
+    assert set(usage["properties"]["status"]["enum"]) == expected
+    assert not CONTRACT.violations("HarnessStatus", K.UNREADABLE)
+    assert R.reason("RUN_UNREADABLE")["message"]
 
 
 def test_every_served_routes_envelope_carries_its_schemas_version():

@@ -30,6 +30,7 @@ from notifier import (
     broker_chain,
     dead_pid,
     hidden,
+    liveness_record,
     raise_to,
     received,
     recorder,
@@ -123,7 +124,7 @@ def test_notifies_with_no_broker_running(project, tmp_path, monkeypatch, serve, 
             child.stdin.write((project.token + "\n").encode("utf-8"))
             child.stdin.close()
             until(ready.exists, 60, "the broker to start")
-            record = until(lambda: broker_liveness.read(root), what="the broker's liveness record")
+            record = until(lambda: liveness_record(root), what="the broker's liveness record")
             # The broker's own process (a venv's launcher on Windows starts the interpreter as its child).
             assert record["generation"] == generation and procs.pid_alive(record["pid"])
             pids.add(record["pid"])
@@ -272,15 +273,15 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, monkeypatch):
     broker.start()
     try:
         generation = broker.generation
-        first = until(lambda: broker_liveness.read(root), what="the first beat")
+        first = until(lambda: liveness_record(root), what="the first beat")
         assert (first["pid"], first["generation"]) == (os.getpid(), generation)
         assert first["wedge_after_s"] == pytest.approx(engine.store.lock_timeout + 2 * poll)
-        until(lambda: (broker_liveness.read(root) or first)["beat_at"] > first["beat_at"], 5, "a second beat")
+        until(lambda: (liveness_record(root) or first)["beat_at"] > first["beat_at"], 5, "a second beat")
         assert broker_liveness.judge(broker_liveness.read(root), generation=generation, poll_s=poll) is None
         takeover(project, monkeypatch)
         # The watchdog's next iteration may first wait out the control lock: the wait is the broker's own bound for one
         # iteration (wedge_after_s, which judge holds to), never a literal at or below it (f41b001e)
-        closed = until(lambda: (broker_liveness.read(root) or {}).get("closed_at") and broker_liveness.read(root),
+        closed = until(lambda: liveness_record(root, closed=True),
                        watchdog_wait_s(first, poll), "the superseded broker's closed_at",
                        describe=broker_chain(broker, root))
         assert broker.superseded
@@ -315,7 +316,7 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
     try:
         generation = broker.generation
         first = broker_liveness.read(root)  # Beat.start writes it before its thread starts: a whole record
-        assert first is not None and (first["pid"], first["generation"]) == (os.getpid(), generation)
+        assert isinstance(first, dict) and (first["pid"], first["generation"]) == (os.getpid(), generation)
         assert first["beat_at"] == first["watchdog_tick_at"] == clock()
         assert first["wedge_after_s"] == pytest.approx(engine.store.lock_timeout + 2 * poll)
         clock.advance(poll)
@@ -329,7 +330,7 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
         if case == "clean_close_is_not_a_crash":
             broker.close()
             closed = broker_liveness.read(root)
-            assert closed is not None and closed["closed_at"] == clock()
+            assert isinstance(closed, dict) and closed["closed_at"] == clock()
             assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
             gone = dict(closed, pid=dead_pid())  # even once its process is gone: a clean end, never a crash
             assert broker_liveness.judge(gone, generation=generation, poll_s=poll, now=clock()).reason == "closed"
@@ -339,7 +340,7 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
             stepped.watchdog()  # the iteration that reads the takeover ends the watchdog
             closed = broker_liveness.read(root)
             assert broker.superseded and not broker._watch.is_alive()
-            assert closed is not None and closed["closed_at"] == clock()
+            assert isinstance(closed, dict) and closed["closed_at"] == clock()
             assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
             assert broker_liveness.judge(closed, generation=generation + 1, poll_s=poll) is None  # not the current
         elif case == "slow_read_is_not_stale":
@@ -435,7 +436,7 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
             stepped.watchdog()  # the first iteration after the takeover, or after the hold
         closed = broker_liveness.read(root)
         assert broker.superseded and not broker._watch.is_alive()
-        assert closed is not None and closed["closed_at"] == clock()
+        assert isinstance(closed, dict) and closed["closed_at"] == clock()
         assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
     finally:
         broker.close()
@@ -478,7 +479,7 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
         stepped.watchdog()
         closed = broker_liveness.read(root)
         assert broker.superseded and not broker._watch.is_alive()
-        assert closed is not None and closed["closed_at"] == clock()
+        assert isinstance(closed, dict) and closed["closed_at"] == clock()
         assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
     finally:
         held.close()  # ends the hold; since #284 neither the watchdog's check nor the loop's reads the index

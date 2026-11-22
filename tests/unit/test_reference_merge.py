@@ -1,10 +1,8 @@
-"""The generated reference pages merge: two pull requests that change different modules touch different lines, and a
-collision on one module is settled by ``tools/reference.py resolve``, never by hand. Those pages conflicted on 47 of 61
-merges of main into a branch in one week (2026-11-01 to 2026-11-08), 43 of them on ``modules.md``, each costing a push
-and a CI run."""
+"""Independent changes to generated reference pages can merge. The resolver settles remaining page collisions."""
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import difflib
 import importlib.util
@@ -22,7 +20,12 @@ spec = importlib.util.spec_from_file_location("reference_under_merge_test", ROOT
 reference = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reference)
 common, _pages, _families = reference._families()
-from reference_families import modules as M  # noqa: E402  (importable once _families() has set the path)
+from reference_families import interfaces as I  # noqa: E402  (importable once _families() has set the path)
+from reference_families import layout as L  # noqa: E402
+from reference_families import layout_reads  # noqa: E402
+from reference_families import modules as M  # noqa: E402
+from reference_families import writers as W  # noqa: E402
+from reference_families import writers_flow as F  # noqa: E402
 
 PAGE = "modules.md"
 MODS = M.scan(common.Context(ROOT))
@@ -58,11 +61,11 @@ class Repo:
         tree = self.git("write-tree").stdout.strip()
         return self.git("commit-tree", tree, *(["-p", parent] if parent else []), "-m", "c").stdout.strip()
 
-    def merged_page(self, ours: str, theirs: str) -> tuple[bool, str]:
+    def merged_page(self, ours: str, theirs: str, page: str = PAGE) -> tuple[bool, str]:
         out = self.git("merge-tree", "--write-tree", ours, theirs, check=False)
         assert out.returncode in (0, 1), out.stderr
         tree = out.stdout.partition("\n")[0]
-        return out.returncode == 0, self.git("show", f"{tree}:{PAGE}").stdout
+        return out.returncode == 0, self.git("show", f"{tree}:{page}").stdout
 
 
 def with_import(mods: list, name: str, *added: str, dropped: tuple[str, ...] = ()) -> list:
@@ -136,6 +139,67 @@ def test_the_module_page_holds_no_total_and_no_inverse_and_names_the_command_tha
     assert "import edges" not in page and "Imported by" not in page and "(54)" not in page
     head = page.split("\n## ", 1)[0]
     assert "`python tools/reference.py importers <module>`" in head and "`python tools/reference.py counts`" in head
+
+
+def assert_pages_merge(tmp_path: Path, name: str, base: str, ours: str, theirs: str, expected: str) -> None:
+    repo = Repo(tmp_path / "repo")
+    parent = repo.commit({name: base})
+    left = repo.commit({name: ours}, parent)
+    right = repo.commit({name: theirs}, parent)
+    clean, merged = repo.merged_page(left, right, name)
+    assert clean, merged
+    assert merged == expected
+
+
+def schema_page(*paths: str) -> str:
+    fact = {"name": "sample", "file": "sample.schema.json", "properties": dict.fromkeys(paths, "string"),
+            "required": [p for p in paths if p == "left"]}
+    record = common.Record(I.interfaces_schemas.FAMILY, "sample", "aew.schemas", "SCHEMAS", "enumerated", {}, fact)
+    return I.page([record])
+
+
+def test_two_prs_changing_the_same_schema_merge_without_path_totals_on_the_page(tmp_path):
+    base = schema_page("base")
+    both = schema_page("base", "left", "right")
+    assert_pages_merge(tmp_path, "interfaces.md", base, schema_page("base", "left"), schema_page("base", "right"), both)
+    assert both == base and "sample.schema.json" in both
+
+
+def command_page(*names: str) -> str:
+    return I.page([common.Record(I.interfaces_cli.FAMILY, name, "aew.cli.main", "build_parser", "declared", {},
+                                 {"command": name}) for name in sorted(names)])
+
+
+def test_two_new_commands_at_different_positions_in_the_list_merge(tmp_path):
+    names = ("doctor", "lead show", "notify desktop", "status")
+    messages, notify = ("message read", "message reply", "message wait"), "notify file"
+    both = command_page(*names, *messages, notify)
+    assert_pages_merge(tmp_path, "interfaces.md", command_page(*names), command_page(*names, *messages),
+                       command_page(*names, notify), both)
+    assert all(f"- `{command}`" in both.splitlines() for command in (*messages, notify))
+
+
+def writer_pages(*writers: str) -> dict[str, str]:
+    source = "\n".join(f'def {writer}(aew_root):\n    (aew_root / "state" / "sample").write_text("")\n'
+                       for writer in writers)
+    program = F.Program.of({"aew.sample": (ast.parse(source), False)})
+    top = ("state",)
+    analysis = W.analyse(program, frozenset(top))
+    path_writers = {path: [(w.module, w.symbol) for w in entries] for path, entries in analysis.writers.items()}
+    placed = layout_reads.place([], frozenset(top))
+    layout_records = L.records_of(L.Inputs(top, path_writers, {}, {}, "", "state", frozenset()))
+    return {"layout.md": L.page(layout_records, placed), "writers.md": W.page(analysis, W.records_of(analysis), top)}
+
+
+@pytest.mark.parametrize("name", ["layout.md", "writers.md"])
+def test_two_writers_added_at_different_positions_for_one_path_merge(tmp_path, name):
+    writers = ("aaa", "mmm", "zzz")
+    left, right = "bbb", "yyy"
+    base = writer_pages(*writers)[name]
+    both = writer_pages(*writers, left, right)[name]
+    assert_pages_merge(tmp_path, name, base, writer_pages(*writers, left)[name],
+                       writer_pages(*writers, right)[name], both)
+    assert all(f"`aew.sample:{writer}`" in both for writer in writers + (left, right))
 
 
 # Each of these lines collided in that week's merges: a tree-wide number on a page moves on nearly every pull request.

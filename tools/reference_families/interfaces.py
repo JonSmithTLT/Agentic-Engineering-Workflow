@@ -103,9 +103,20 @@ def tool_records() -> list[C.Record]:
 
 
 def build(ctx: C.Context) -> C.Built:
-    records = [*interfaces_dashboard.build(ctx), *tool_records(), *interfaces_schemas.build(ctx),
+    schemas = interfaces_schemas.build(ctx)
+    records = [*interfaces_dashboard.build(ctx), *tool_records(), *schemas,
                *interfaces_sqlite.build(ctx), *interfaces_cli.build(ctx)]
-    return C.Built(records=records, pages={"interfaces.md": page(records)})
+    return C.Built(records=records, pages={"interfaces.md": page(records)},
+                   counts={"schema_paths": schema_counts(schemas)})
+
+
+def schema_counts(schemas: list[C.Record]) -> dict[str, dict[str, int]]:
+    """Count the flattened paths and required paths in each schema record."""
+    totals = {}
+    for record in schemas:
+        fact = record.fact or {}
+        totals[record.key] = {"paths": len(fact.get("properties", {})), "required": len(fact.get("required", []))}
+    return totals
 
 
 def page(records: list[C.Record]) -> str:
@@ -179,12 +190,12 @@ def page(records: list[C.Record]) -> str:
     lines += ["", "## Schemas", "",
               "Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an "
               "`additionalProperties` schema. The paths and their types are in each schema's record (in the machine "
-              "index that `render` writes); a path with no type is a key the schema requires and gives no type.", "",
-              "| Schema | File | Paths | Required |", "|---|---|---|---|"]
+              "index that `render` writes). A path with no type is a key the schema requires and gives no type. "
+              "Use `python tools/reference.py counts` for each schema's path and required path totals.", "",
+              "| Schema | File |", "|---|---|"]
     for r in by.get(interfaces_schemas.FAMILY, []):
         f = r.fact or {}
-        lines.append(f"| `{f['name']}` | `{f['file']}` | {len(f.get('properties', {}))} | "
-                     f"{len(f.get('required', []))} |")
+        lines.append(f"| `{f['name']}` | `{f['file']}` |")
     lines += ["", "## SQLite tables", "",
               "Created from the DDL the product holds, executed in memory and read back. `transient` is a table the "
               "product builds in memory to match text, never a store. DDL built at run time is not found.", "",
@@ -196,6 +207,6 @@ def page(records: list[C.Record]) -> str:
     commands = by.get(interfaces_cli.FAMILY, [])
     lines += ["", "## CLI commands", "",
               f"Each command is linked to its entry in the `commands` section of "
-              f"`{interfaces_cli.SURFACE_MAP}`, which owns what each is for. Nothing of the entry is copied here.", "",
-              words((r.fact or {})["command"] for r in commands)]
+              f"`{interfaces_cli.SURFACE_MAP}`, which owns what each is for.", ""]
+    lines.extend(f"- `{(r.fact or {})['command']}`" for r in commands)
     return "\n".join(lines).rstrip("\n") + "\n"

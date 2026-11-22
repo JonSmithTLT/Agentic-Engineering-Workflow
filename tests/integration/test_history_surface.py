@@ -30,11 +30,9 @@ from aewflow import (  # noqa: E402
     submit_record,
 )
 from conftest import IS_WINDOWS, clean_env, run_aew  # noqa: E402
-from invariants import assert_control_invariants, load_control  # noqa: E402
+from invariants import assert_control_invariants, load_control, write_control_v1  # noqa: E402
 
-from aew.engine.base import as_v1  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
-from aew.engine.store import serialize_control  # noqa: E402
 from aew.util import dump_yaml, load_yaml  # noqa: E402
 
 
@@ -117,9 +115,7 @@ def test_an_unknown_or_current_id_is_not_historical(tmp_path):
 
 def test_a_v1_project_has_no_cold_history(tmp_path):
     p = sample_project(tmp_path)
-    control = p.root / ".aew/state/control.yaml"
-    state = load_control(p.root)
-    control.write_bytes(serialize_control(as_v1(state)))
+    write_control_v1(p.root)
     for args in (("show", "T-0001"), ("list",), ("audit",)):
         assert p.aew("history", *args).error["code"] == "USAGE"
 

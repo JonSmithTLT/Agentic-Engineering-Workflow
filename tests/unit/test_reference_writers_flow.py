@@ -1873,16 +1873,24 @@ def test_a_handler_that_calls_its_engine_method_by_a_name_held_in_a_variable_is_
     assert W.NO_CHAIN in [i["why"] for i in by_key["state/p"].fact_coverage["writers"]["unresolved"]]  # type: ignore[index]
 
 
-def test_the_page_says_how_many_registrations_and_which_it_could_not_read():
-    page = W.page(cli_analysis(), W.records_of(cli_analysis()), tuple(sorted(TOP)))
-    assert "2 registrations of a command handler" in page
-    line = page.split("The parser cut:")[1].splitlines()[0]
+def test_the_page_names_unread_registrations_and_the_counts_report_gives_the_totals():
+    a = cli_analysis()
+    lead = "    lead = sub.add_parser('lead')"
+    another = CLI.replace(lead, "    sub.add_parser('other').set_defaults(handler=cmd_store)\n" + lead)
+    b = cli_analysis(another)
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert page == W.page(b, W.records_of(b), tuple(sorted(TOP)))
+    assert "`python tools/reference.py counts`" in page
+    assert W.parser_counts(a.cut, a.roles) == {"registrations": 2, "handlers_by_role": {GENERAL: 1, NAMED: 1}}
+    assert W.parser_counts(b.cut, b.roles) == {"registrations": 3, "handlers_by_role": {GENERAL: 1, NAMED: 1}}
+    line = page.split("The parser cut reports ")[1].splitlines()[0]
     assert "cannot read: none. " in line and line.endswith("can name: none.")
     unread = W.page(cli_analysis(UNREAD), W.records_of(cli_analysis(UNREAD)), tuple(sorted(TOP)))
-    said = unread.split("The parser cut:")[1].splitlines()[0]
+    said = unread.split("The parser cut reports ")[1].splitlines()[0]
     assert "cannot read: `aew.m:register` (" in said and said.endswith("can name: none.")
     nameless = cli_analysis(CLI.replace("handler=cmd_store", "handler=mystery"))
-    said = W.page(nameless, W.records_of(nameless), tuple(sorted(TOP))).split("The parser cut:")[1].splitlines()[0]
+    page = W.page(nameless, W.records_of(nameless), tuple(sorted(TOP)))
+    said = page.split("The parser cut reports ")[1].splitlines()[0]
     assert "cannot read: none. " in said and said.endswith("can name: `aew.m:register`."), said
 
 

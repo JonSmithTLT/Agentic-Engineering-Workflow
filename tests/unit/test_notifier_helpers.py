@@ -24,7 +24,7 @@ def test_wait_for_close_retries_an_unreadable_beat_and_returns_the_closed_observ
     closed = {"closed_at": 1.0}
     reads = iter((broker_liveness.Unreadable(), None, {"closed_at": None}, closed))
     monkeypatch.setattr(broker_liveness, "read", lambda root: next(reads))
-    assert until(lambda: liveness_record(tmp_path, closed=True), what="the closed beat") is closed
+    assert until(lambda: liveness_record(tmp_path, closed=True), "wait.chain", what="the closed beat") is closed
 
 
 class _Recycled(threading.Thread):

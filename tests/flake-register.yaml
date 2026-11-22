@@ -1168,6 +1168,40 @@ entries:
     cause: Half-close writes and drain the unread request to a deadline before closing the relay socket.
     test: tests/unit/test_provider_relay.py::test_a_refusal_survives_a_delayed_body_without_a_connection_reset
     proof: fixed order
+- id: messaging-off-snapshot-timeout
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: autopsy evidence
+  cause: >-
+    The stdout reader for messaging_off_snapshot.py was still waiting at the 60-second deadline.
+    subprocess.run performed timeout cleanup before the autopsy collected the process tree. The bundle
+    contains no stack from the helper. The reason stdout stayed open is unknown.
+  owner: CI timing fixes
+  test: tests/integration/test_messaging_off_outputs.py::test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin[disabled]
+  planned_fix: >-
+    Use childdiag to record the helper's stack during the snapshot. At timeout, before cleanup, record the
+    helper's PID and exit state and its descendants. Bound collection so a stuck collector cannot prevent
+    cleanup. Add Windows evidence tests for a blocked helper and for an exited helper whose descendant holds
+    stdout open. In each case assert that the retained, redacted bundle identifies which process is responsible.
+    Preserve the 60-second deadline and the golden-output assertions.
+  evidence:
+  - run: 45047876857
+    job: 137286503001
+    at: '2026-11-22T17:20:22Z'
+    note: >-
+      Main ec5aae96, Windows integration 10/15. The whole test took 91.123s. Artifact 14764373465
+      contains the parent traceback and an empty post-cleanup process list.
+  - run: 45047876857
+    job: 137297975485
+    at: '2026-11-22T18:12:08Z'
+    kind: diagnostic
+    note: >-
+      Same commit and runner image on attempt 2. The test passed in 6.977s. A separate Linux probe
+      counted 82 Git launches in the helper. Injecting 0.75s per launch reached the deadline
+      on the 79th invocation. The failed Windows run has no per-command timings.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

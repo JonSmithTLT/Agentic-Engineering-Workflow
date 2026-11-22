@@ -541,24 +541,21 @@ def literal_windows(source: str) -> set[int]:
         local[fn.name] = ({i for i, a in enumerate(named) if a in WINDOWS},
                           {a for a in (*named, *(k.arg for k in fn.args.kwonlyargs)) if a in WINDOWS}, None)
     found = set()
-    for scope, serial in _scopes(tree):
-        if serial:
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and _called_name(node) in POLLERS):
             continue
-        for node in _own(scope):
-            if not (isinstance(node, ast.Call) and _called_name(node) in POLLERS):
-                continue
-            if isinstance(node.func, ast.Attribute) and ast.unparse(node.func.value).split(".")[0] in product:
-                continue
-            positions, keywords, _ = local.get(_called_name(node)) or window_params()[_called_name(node)]
-            given = [node.args[i] for i in sorted(positions) if i < len(node.args)]
-            given += [k.value for k in node.keywords if k.arg in keywords]
-            for g in given:
-                value = g.operand if isinstance(g, ast.UnaryOp) else g
-                number = isinstance(value, ast.Constant) and isinstance(value.value, int | float)
-                unknown = (isinstance(value, ast.Constant) and isinstance(value.value, str)
-                           and value.value != bounds.WATCHDOG and value.value not in bounds.BOUNDS)
-                if number or unknown:
-                    found.add(node.lineno)
+        if isinstance(node.func, ast.Attribute) and ast.unparse(node.func.value).split(".")[0] in product:
+            continue
+        positions, keywords, _ = local.get(_called_name(node)) or window_params()[_called_name(node)]
+        given = [node.args[i] for i in sorted(positions) if i < len(node.args)]
+        given += [k.value for k in node.keywords if k.arg in keywords]
+        for g in given:
+            value = g.operand if isinstance(g, ast.UnaryOp) else g
+            number = isinstance(value, ast.Constant) and isinstance(value.value, int | float)
+            unknown = (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                       and value.value != bounds.WATCHDOG and value.value not in bounds.BOUNDS)
+            if number or unknown:
+                found.add(node.lineno)
     return found
 
 
@@ -567,26 +564,49 @@ def elapsed_asserts(source: str) -> set[int]:
     or a name the same scope bound to one, compared with ``<`` or ``<=`` (or ``>``/``>=`` with it on the right)."""
     tree = ast.parse(source)
     found = set()
+    # Local helpers can return the duration directly or alongside a subprocess result.
+    returns: dict[str, set[int | None]] = {}
+    for fn in (node for node in tree.body if isinstance(node, ast.FunctionDef)):
+        for ret in (node for node in _own(fn) if isinstance(node, ast.Return)):
+            if isinstance(ret.value, ast.Tuple):
+                for index, item in enumerate(ret.value.elts):
+                    if _clock_difference(item):
+                        returns.setdefault(fn.name, set()).add(index)
+            elif ret.value is not None and _clock_difference(ret.value):
+                returns.setdefault(fn.name, set()).add(None)
     for scope, serial in _scopes(tree):
         if serial:
             continue
         own = _own(scope)
-        names = {t.id for n in own if isinstance(n, ast.Assign) and _clock_difference(n.value)
-                 for t in n.targets if isinstance(t, ast.Name)}
+        names = set()
+        for assign in (node for node in own if isinstance(node, ast.Assign)):
+            value = assign.value
+            positions = returns.get(value.func.id, set()) if (
+                isinstance(value, ast.Call) and isinstance(value.func, ast.Name)) else set()
+            for target in assign.targets:
+                if isinstance(target, ast.Tuple):
+                    names.update(item.id for i, item in enumerate(target.elts)
+                                 if i in positions and isinstance(item, ast.Name))
+                elif isinstance(target, ast.Name) and (_clock_difference(value) or None in positions):
+                    names.add(target.id)
         for node in own:
             if not isinstance(node, ast.Assert):
                 continue
             for cmp in (n for n in ast.walk(node.test) if isinstance(n, ast.Compare)):
                 operands = [cmp.left, *cmp.comparators]
                 for op, left, right in zip(cmp.ops, operands, operands[1:], strict=False):
-                    below = isinstance(op, ast.Lt | ast.LtE) and _timed(left, names)
-                    above = isinstance(op, ast.Gt | ast.GtE) and _timed(right, names)
+                    below = isinstance(op, ast.Lt | ast.LtE) and _timed(left, names, returns)
+                    above = isinstance(op, ast.Gt | ast.GtE) and _timed(right, names, returns)
                     if below or above:
                         found.add(node.lineno)
     return found
 
 
-def _timed(node: ast.AST, names: set[str]) -> bool:
+def _timed(node: ast.AST, names: set[str], returns: dict[str, set[int | None]]) -> bool:
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _timed(node.left, names, returns)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return None in returns.get(node.func.id, ())
     return _clock_difference(node) or isinstance(node, ast.Name) and node.id in names
 
 
@@ -619,5 +639,19 @@ def _planted(body: str) -> str:
 
 def test_a_planted_literal_window_and_a_planted_elapsed_assert_are_each_found():
     """The two checks above, each against one planted site: the live tree's empty lists are their other half."""
-    assert literal_windows(_planted('lab.until(lambda: ready(), 30, "x")')) == {5}
+    polling = _planted('lab.until(lambda: ready(), 30, "x")')
+    assert literal_windows(polling) == {5}
+    assert literal_windows(polling.replace("def test_", "@pytest.mark.serial\ndef test_")) == {6}
     assert elapsed_asserts(_planted("assert time.monotonic() - started < 10")) == {5}
+
+
+def test_elapsed_guard_follows_helper_results_and_time_per_item():
+    helpers = """def measured():
+    return time.monotonic() - start
+def timed_child():
+    return proc, time.monotonic() - start
+"""
+    for body in ("assert measured() < 5", "proc, took = timed_child()\n    assert took < 5",
+                 "assert (time.perf_counter() - start) / len(items) < 0.5"):
+        assert elapsed_asserts(helpers + _planted(body))
+    assert not elapsed_asserts(helpers + _planted("proc, took = timed_child()\n    assert proc < limit"))

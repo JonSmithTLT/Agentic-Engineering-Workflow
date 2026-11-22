@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import autopsy
 import bounds
@@ -81,6 +82,7 @@ def dumps(hangs: Path) -> list[str]:
     return [p.read_text(encoding="utf-8") for p in sorted(hangs.glob("hang-*.txt"))] if hangs.exists() else []
 
 
+@pytest.mark.serial
 @pytest.mark.skipif(not watchdog.USE_ALARM, reason="needs SIGALRM to interrupt a blocking call (POSIX); "
                                                    "Windows records the stacks only, tested below")
 @pytest.mark.parametrize("mode", [("-n", "2", "--dist", "worksteal"), ("-p", "no:xdist")], ids=["xdist", "no_xdist"])
@@ -131,6 +133,7 @@ def test_waits_for_its_start():
 '''
 
 
+@pytest.mark.serial
 def test_a_watchdog_wait_fails_by_name_after_the_watchdogs_own_evidence(tmp_path):
     """A start-up wait names WATCHDOG: no deadline of its own (#497). On POSIX the watchdog's alarm ends it in place at
     the limit; on Windows, where the watchdog only dumps stacks, the wait itself raises by name, once the dump is on
@@ -145,12 +148,13 @@ def test_a_watchdog_wait_fails_by_name_after_the_watchdogs_own_evidence(tmp_path
 
 
 def test_a_watchdog_bound_is_the_time_left_and_room_for_its_evidence_and_none_when_the_watchdog_is_off(monkeypatch):
-    monkeypatch.setattr(watchdog, "_deadline", time.monotonic() + 100)
+    monkeypatch.setattr(watchdog, "time", SimpleNamespace(monotonic=lambda: 10.0))
+    monkeypatch.setattr(watchdog, "_deadline", 110.0)
     left = bounds.seconds(bounds.WATCHDOG)
-    assert left is not None and 99 + bounds.WATCHDOG_EVIDENCE_S < left <= 100 + bounds.WATCHDOG_EVIDENCE_S, left
+    assert left is not None and left == 100 + bounds.WATCHDOG_EVIDENCE_S, left
     assert bounds.lead_session_bound() == bounds.WATCHDOG
     assert bounds.WATCHDOG_EVIDENCE_S > autopsy.WATCHER_GRACE_S  # the autopsy watcher fires within it
-    monkeypatch.setattr(watchdog, "_deadline", time.monotonic() + 1200)
+    monkeypatch.setattr(watchdog, "_deadline", 1210.0)
     assert bounds.lead_session_bound() == 900
     monkeypatch.setattr(watchdog, "_deadline", None)
     assert bounds.seconds(bounds.WATCHDOG) is None

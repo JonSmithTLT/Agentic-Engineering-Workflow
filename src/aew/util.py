@@ -257,7 +257,8 @@ def yaml_too_deep(text: str, *, loader: Any = _SafeLoader, limit: int = YAML_MAX
                     return event.start_mark.line + 1
             elif isinstance(event, _CLOSES):
                 depth -= 1
-    except yaml.scanner.ScannerError as exc:
+    # PyYAML loads its scanner with the loaders. Keep the bare yaml import used by the loader census.
+    except yaml.scanner.ScannerError as exc:  # pyright: ignore[reportAttributeAccessIssue]
         # libyaml 0.2.6 can reach its own nesting limit during scanner lookahead, before delivering our
         # first over-limit event. Recover that event's line without composing or changing libyaml's global limit.
         if loader is not yaml.SafeLoader and exc.problem == "exceeded maximum nesting depth":

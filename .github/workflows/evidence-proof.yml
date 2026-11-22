@@ -36,7 +36,7 @@ jobs:
           - {os: windows-latest, kind: deadline, ablate: stacks}
           - {os: windows-latest, kind: hang, ablate: stacks}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    timeout-minutes: 17
+    timeout-minutes: 18
     concurrency:
       group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
       cancel-in-progress: true
@@ -71,6 +71,7 @@ jobs:
             --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
       - name: Confirm planted death
+        timeout-minutes: 1
         if: matrix.kind != 'normal' && matrix.kind != 'cancel'
         shell: bash
         env:

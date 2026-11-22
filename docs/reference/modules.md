@@ -51,7 +51,7 @@ None.
 
 ### `aew.exclusive_server`
 
-None.
+- `aew.http_close`
 
 ### `aew.g3client`
 
@@ -69,6 +69,10 @@ None.
 - `aew.harness.weaker_register`
 
 ### `aew.hoststate`
+
+None.
+
+### `aew.http_close`
 
 None.
 
@@ -506,6 +510,7 @@ None.
 - `aew.engine.api`
 - `aew.errors`
 - `aew.exclusive_server`
+- `aew.http_close`
 
 ### `aew.dashboard.service`
 
@@ -1411,6 +1416,7 @@ None.
 
 - `aew.errors`
 - `aew.harness.containment.peer`
+- `aew.http_close`
 
 ### `aew.harness.containment.layout`
 
@@ -1458,6 +1464,7 @@ None.
 - `aew.harness.defects`
 - `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
+- `aew.http_close`
 - `aew.knowledge.manifest`
 
 ### `aew.harness.containment.shim`

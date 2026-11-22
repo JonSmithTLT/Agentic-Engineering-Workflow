@@ -1144,6 +1144,33 @@ entries:
     job: 135977484549
     at: '2026-11-20T00:23:33Z'
     note: integration 7/14 (windows-latest) on #501.
+- id: qualify-relay-refusal-reset
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: connection reset
+  cause: >-
+    The provider relay answers a refusal (403 outside the upstream path; 503 for a busy credential store) without
+    reading the request body, then closes. On Windows a close with unread input is a reset, which can discard the
+    queued answer before the client reads it (WinError 10054). The fake upstream is never connected on these paths.
+  owner: CI timing fixes
+  test: tests/integration/test_harness_qualify.py::test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_credentials[priced]
+  evidence:
+  - run: 43725900315
+    job: 132847727178
+    at: '2026-11-15T15:35:24Z'
+    note: reference serial 8/13 (windows-latest), nightly on main; the [refused] case.
+  - run: 44605225416
+    job: 135847272029
+    at: '2026-11-19T20:23:06Z'
+    note: integration 9/14 (windows-latest) on main; the [priced] case, at the busy-store 503.
+  closure:
+    pr: 473
+    cause: Half-close writes and drain the unread request to a deadline before closing the relay socket.
+    test: tests/unit/test_provider_relay.py::test_a_refusal_survives_a_delayed_body_without_a_connection_reset
+    proof: fixed order
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

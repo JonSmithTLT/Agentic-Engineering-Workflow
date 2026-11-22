@@ -710,6 +710,14 @@ def role_reach(analysis: Analysis, records: list[C.Record]
     return store, {key: found - store[key] for key, found in local.items()}
 
 
+def parser_counts(cut: ROLES.Cut, roles: ROLES.Roles) -> dict[str, Any]:
+    """Count handler registrations and distinct handlers reached by each parser role."""
+    return {
+        "registrations": len(cut.registrations),
+        "handlers_by_role": {role: len(cut.handlers.get(role, ())) for role in sorted(roles.all - {roles.worker})},
+    }
+
+
 def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
     store, local = role_reach(analysis, records)
     non_writers = [key for key in sorted(analysis.kinds) if analysis.kinds[key] == NON_WRITER]
@@ -737,16 +745,14 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
-        roles = analysis.roles
-        named = ", ".join(f"`{role}`: {len(cut.handlers.get(role, ()))}" for role in sorted(roles.all - {roles.worker}))
         undecided = sorted(cut.undecided)
         nameless = sorted({r.registrar for r in cut.registrations if not r.handlers})
 
         def where(found: list[tuple[str, str]]) -> str:
             return ", ".join(_anchor(m, s or None) for m, s in found) if found else "none"
 
-        lines += [f"The parser cut: {len(cut.registrations)} registrations of a command handler; handlers by role "
-                  f"({named}; `{roles.worker}`: none, by the environment). Registrations of a command this reading "
+        lines += ["Use `python tools/reference.py counts` for the parser's registration and handler totals.", "",
+                  "The parser cut reports registrations of a command this reading "
                   f"cannot read: {where(undecided)}"
                   + (" (their handlers count as run by every role, and the writers behind them say so)"
                      if undecided else "")
@@ -821,9 +827,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         for r in items:
             fact = r.fact or {}
             named = ", ".join(_anchor(n["module"], n["symbol"]) for n in fact["named_by"])
-            who = "; ".join(f"{_anchor(w['module'], w['symbol'])} ({w['mechanism']}: {', '.join(w['via'])})"
-                            for w in fact["writers"])
-            lines.append(f"- `{r.key}`" + (f", named by {named}" if named else "") + f": written or removed by {who}")
+            lines.append(f"- `{r.key}`" + (f", named by {named}" if named else ""))
+            lines.extend(f"  - {_anchor(w['module'], w['symbol'])} ({w['mechanism']}: {', '.join(w['via'])})"
+                         for w in fact["writers"])
         lines.append("")
     lines += reach_lines(analysis, records)
     lines += cap_lines((*F.caps(), *ROLES.caps()) if caps is None else caps)
@@ -860,4 +866,6 @@ def build(ctx: C.Context) -> C.Built:
     def written() -> str:  # the figures are the whole render's when `reference.py` runs every family under one block
         return page(analysis, records, TOP_LEVEL, (*F.caps(peaks), *ROLES.caps()))
 
-    return C.Built(records=records, pages={"writers.md": written()}, late={"writers.md": written})
+    cut, roles = analysis.cut, analysis.roles
+    counts = {"parser_cut": parser_counts(cut, roles)} if cut is not None and roles is not None else {}
+    return C.Built(records=records, pages={"writers.md": written()}, late={"writers.md": written}, counts=counts)

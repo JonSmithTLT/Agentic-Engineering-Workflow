@@ -90,7 +90,6 @@ declare("wait.beat", 5, why="the broker writes its next liveness beat")
 declare("wait.never", 0.1, why="a wait that is meant to time out, to test the timeout itself")
 declare("wait.custody", 90, why="a custody worker registers, or exits")
 declare("wait.validation", 300, lanes=("integration",), why="a custodian's validation run routes its entry")
-declare("wait.session", 900, lanes=("acceptance", "live"), why="a scripted Lead session finishes its whole script")
 
 
 def seconds(bound: str | float) -> float | None:

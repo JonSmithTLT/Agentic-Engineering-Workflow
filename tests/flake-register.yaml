@@ -1141,6 +1141,29 @@ entries:
     job: 135977484549
     at: '2026-11-20T00:23:33Z'
     note: integration 7/14 (windows-latest) on #501.
+- id: model-list-deadline-before-server
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: wall clock
+  cause: >-
+    The doctor model-list read's start deadline counts from before the containment, as a launch's does. On a slow
+    runner the 4s deadline ran out before the OpenCode server started, and that read was reported as a harness that
+    failed to start instead of as the start deadline. The sibling
+    test_a_read_that_outlasts_the_launchs_start_deadline_is_a_fail_with_its_fix_and_leaves_nothing has the same 4s
+    exposure, so a sighting of it belongs here too.
+  owner: CI timing fixes
+  test: tests/integration/test_doctor_model_list.py::test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the_catalog_wait
+  planned_fix: >-
+    A start that fails once the deadline has passed is the start deadline row, wherever in the read it ran out; a zero
+    deadline proves it deterministically. Closure awaits the fix PR number.
+  evidence:
+  - run: 43746378961
+    job: 132912728970
+    at: '2026-11-15T19:05:04Z'
+    note: integration 7/14 (windows-latest) on fix/by-class-monotone.
 - id: qualify-relay-refusal-reset
   scope: test
   lane: integration
@@ -1168,29 +1191,40 @@ entries:
     cause: Half-close writes and drain the unread request to a deadline before closing the relay socket.
     test: tests/unit/test_provider_relay.py::test_a_refusal_survives_a_delayed_body_without_a_connection_reset
     proof: fixed order
-- id: model-list-deadline-before-server
+- id: messaging-off-snapshot-timeout
   scope: test
   lane: integration
   platforms:
   - windows
   status: open
-  class: wall clock
+  class: autopsy evidence
   cause: >-
-    The doctor model-list read's start deadline counts from before the containment, as a launch's does. On a slow
-    runner the 4s deadline ran out before the OpenCode server started, and that read was reported as a harness that
-    failed to start instead of as the start deadline. The sibling
-    test_a_read_that_outlasts_the_launchs_start_deadline_is_a_fail_with_its_fix_and_leaves_nothing has the same 4s
-    exposure, so a sighting of it belongs here too.
+    The stdout reader for messaging_off_snapshot.py was still waiting at the 60-second deadline.
+    subprocess.run performed timeout cleanup before the autopsy collected the process tree. The bundle
+    contains no stack from the helper. The reason stdout stayed open is unknown.
   owner: CI timing fixes
-  test: tests/integration/test_doctor_model_list.py::test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the_catalog_wait
+  test: tests/integration/test_messaging_off_outputs.py::test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin[disabled]
   planned_fix: >-
-    A start that fails once the deadline has passed is the start deadline row, wherever in the read it ran out; a zero
-    deadline proves it deterministically. Closure awaits the fix PR number.
+    Use childdiag to record the helper's stack during the snapshot. At timeout, before cleanup, record the
+    helper's PID and exit state and its descendants. Bound collection so a stuck collector cannot prevent
+    cleanup. Add Windows evidence tests for a blocked helper and for an exited helper whose descendant holds
+    stdout open. In each case assert that the retained, redacted bundle identifies which process is responsible.
+    Preserve the 60-second deadline and the golden-output assertions.
   evidence:
-  - run: 43746378961
-    job: 132912728970
-    at: '2026-11-15T19:05:04Z'
-    note: integration 7/14 (windows-latest) on fix/by-class-monotone.
+  - run: 45047876857
+    job: 137286503001
+    at: '2026-11-22T17:20:22Z'
+    note: >-
+      Main ec5aae96, Windows integration 10/15. The whole test took 91.123s. Artifact 14764373465
+      contains the parent traceback and an empty post-cleanup process list.
+  - run: 45047876857
+    job: 137297975485
+    at: '2026-11-22T18:12:08Z'
+    kind: diagnostic
+    note: >-
+      Same commit and runner image on attempt 2. The test passed in 6.977s. A separate Linux probe
+      counted 82 Git launches in the helper. Injecting 0.75s per launch reached the deadline
+      on the 79th invocation. The failed Windows run has no per-command timings.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

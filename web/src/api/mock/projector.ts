@@ -182,11 +182,34 @@ export class DemoProjector {
     ]);
     const revision = this.revision ?? first.control_revision;
     const token = url.searchParams.get('cursor');
-    const prior = token ? this.cursors.get(token) : undefined;
+    const activity = path === '/activity';
+    const activityPrefix = 'activity-demo-v1:';
+    let prior = token ? this.cursors.get(token) : undefined;
+    if (activity && token?.startsWith(activityPrefix)) {
+      try {
+        const value = JSON.parse(decodeURIComponent(token.slice(activityPrefix.length)));
+        const expectedCount = this.world.fixture === 'F7' && first.data.items.length ? 61 : first.data.items.length;
+        if (value.fixture === this.world.fixture && value.project === first.project_id && value.scope === scope &&
+            typeof value.revision === 'string' && Number.isSafeInteger(value.count) && value.count <= expectedCount &&
+            Number.isSafeInteger(value.offset) && value.offset >= 0 && value.offset < value.count) prior = value;
+      } catch { /* malformed synthetic locator is refused below */ }
+    }
     if (token && (!prior || prior.scope !== scope)) return { status: 400 };
-    if (prior && path !== '/history' && prior.revision !== revision)
+    if (prior && !activity && path !== '/history' && prior.revision !== revision)
       return { status: 409 };
     let items = first.data.items;
+    // F7 is the explicitly synthetic large-data world; preserve its supplied
+    // first activity and extend it for bounded-page presentation checks.
+    if (activity && this.world.fixture === 'F7' && items.length) {
+      const firstActivity = items[0];
+      items = [firstActivity, ...Array.from({ length: 60 }, (_, index) => ({
+        ...firstActivity,
+        id: `ACT-SYNTHETIC-${index + 1}`,
+        title: `Synthetic activity ${index + 1}: ${'Long supplied activity title '.repeat(5)}`,
+        subject: { id: `R-SYNTHETIC-${index + 1}`, kind: 'transition', title: 'Synthetic transition' },
+        reason: { code: 'SYNTHETIC_REASON', message: '<script>window.__activityHostile=1</script>' },
+      }))];
+    }
     if (path === '/work') {
       const unique = new Map<string, Item>();
       for (const payload of [
@@ -221,6 +244,8 @@ export class DemoProjector {
       const work = url.searchParams.get('work');
       if (work) items = items.filter((x) => (x.subject as Item).id === work);
     }
+    // Activity is newest first. New arrivals prepend and do not move the pinned window.
+    if (activity && prior) items = items.slice(items.length - prior.count);
     const history = path === '/history';
     const generated = history && this.world.fixture === 'F7';
     const count =
@@ -251,7 +276,11 @@ export class DemoProjector {
     }
     let next_cursor: string | null = null;
     if (offset < count) {
-      next_cursor = this.issueCursor({ scope, offset, revision, count });
+      next_cursor = activity
+        ? activityPrefix + encodeURIComponent(JSON.stringify({
+            scope, offset, revision: prior?.revision ?? revision, count, fixture: this.world.fixture, project: first.project_id,
+          }))
+        : this.issueCursor({ scope, offset, revision, count });
     }
     return {
       status: 200,

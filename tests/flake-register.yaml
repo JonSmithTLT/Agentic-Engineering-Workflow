@@ -1361,6 +1361,13 @@ entries:
     at: '2026-11-22T21:05:31Z'
     kind: diagnostic
     note: Attempt 2 on the same head and shard reported 214 passed and 15 skipped.
+  - run: 45081755636
+    job: 137391400179
+    at: '2026-11-22T23:35:52Z'
+    note: >-
+      Windows integration 8/14 on main 188eab22. The first drain and its receipt assertions
+      passed. The ten-second drain after a deliberate second read returned false at line 435.
+      On 61847d98 the first drain failed at line 370.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

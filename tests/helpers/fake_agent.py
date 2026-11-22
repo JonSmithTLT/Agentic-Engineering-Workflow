@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import bounds
 import proctree
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
@@ -172,8 +173,9 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "aew":
         return aew(*[a.replace("{FORGED_CREDENTIAL}", forged) for a in s["args"]], env=env, input_bytes=stdin)
     if do == "shell":
-        # The server has already emitted tool.called. A planted stream drop can precede CLI startup.
-        if s.get("start_after_file") and not wait_file(s["start_after_file"], 60):
+        # The server has already emitted tool.called. A planted stream drop can precede CLI startup. The test releases
+        # the barrier; its own limit bounds the wait (bounds.WATCHDOG on its side), never a tighter one here.
+        if s.get("start_after_file") and not wait_file(s["start_after_file"], bounds.TEST_TIMEOUT_S):
             raise RuntimeError("the fake shell's start barrier was not released")
         command = s["command"]
         argv = (["powershell", "-NoProfile", "-NonInteractive", "-Command", command] if sys.platform == "win32"

@@ -380,8 +380,8 @@ class Reaper:
     def _run(self) -> None:
         gate = os.environ.get(REAP_GATE_ENV)  # a test of the reaper only: it starts when this file exists
         if gate:
-            bounds.bounded_wait("session.reap_gate", lambda: Path(gate).exists(), seconds=600, poll_s=0.05,
-                                gone=self.stop.is_set)
+            bounds.bounded_wait("session.reap_gate", lambda: Path(gate).exists(), seconds=bounds.TEST_TIMEOUT_S,
+                                poll_s=0.05, gone=self.stop.is_set)
         while not self.stop.wait(REAP_POLL_S):  # bounded: it stops with the session (finish); a daemon thread
             try:
                 self.poll()

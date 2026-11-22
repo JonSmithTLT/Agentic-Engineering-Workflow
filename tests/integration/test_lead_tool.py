@@ -262,6 +262,7 @@ def test_a_wait_never_holds_the_broker_and_channels_never_bleed(held, monkeypatc
     assert set(seen) == {0}, "the cooperative wait checks once per observation, never blocking in the engine"
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_typed_wait_ends_at_its_own_timeout(held, monkeypatch):
     p, wid, engine, broker = held
     seen: list[float] = []

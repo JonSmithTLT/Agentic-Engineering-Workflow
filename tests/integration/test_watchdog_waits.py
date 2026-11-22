@@ -53,6 +53,7 @@ from pathlib import Path
 from types import CodeType, FrameType
 from typing import Any
 
+import bounds
 import pytest
 from notifier import liveness_record, takeover, until
 
@@ -261,10 +262,11 @@ def run_census(project: Any, monkeypatch: pytest.MonkeyPatch, *, check: Callable
         # the takeover, so the one that sees it belongs to a later iteration, wherever the takeover lands. Counting an
         # iteration from its stop wait's start raced the takeover against that wait (nightly 2026-10-26..28: iteration
         # 3's own check saw it, 3 > 3). A generous window: the profiler slows each iteration's read.
-        until(lambda: census.completed >= 3, 60, "three watchdog iterations completed as the current Lead")
+        until(lambda: census.completed >= 3, "wait.condition",
+              "three watchdog iterations completed as the current Lead")
         current = census.completed
         takeover(project, monkeypatch)
-        until(lambda: liveness_record(root, closed=True), 60, "the superseded broker's closed_at")
+        until(lambda: liveness_record(root, closed=True), "wait.condition", "the superseded broker's closed_at")
         assert broker.superseded and census.iteration > current
     finally:
         broker.close()
@@ -367,17 +369,18 @@ class Lockstep:
                 with self._cv:
                     self._held = reached
                     self._cv.notify_all()
-                    assert self._cv.wait_for(lambda: self._free or not self._held, 60), "never released"
+                    released = self._cv.wait_for(lambda: self._free or not self._held, bounds.seconds("wait.condition"))
+                    assert released, "never released"
                     self._held = 0
             finally:
                 sys.setprofile(profile)
             return None
 
-        def looked(predicate: Callable[[], Any], timeout: float = 30.0, what: str = "the condition",
+        def looked(predicate: Callable[[], Any], bound: str | float, what: str = "the condition",
                    **kwargs: Any) -> Any:
             if self._free:
-                return real_until(predicate, timeout, what, **kwargs)
-            deadline = time.monotonic() + timeout
+                return real_until(predicate, bound, what, **kwargs)
+            deadline = time.monotonic() + (bounds.seconds(bound) or 0.0)
             with self._cv:
                 while self._cv.wait_for(lambda: self._held, max(0.0, deadline - time.monotonic())):
                     result = predicate()

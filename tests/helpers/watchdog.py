@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any
 
+import bounds
 import pytest
 from evidence_files import ARMED_NOTE, FRAME, WATCHDOG_HEADER, WATCHDOG_PREFIX, open_observation, stacks_ablated
 from evidence_files import state as evidence_state
@@ -46,12 +47,19 @@ from evidence_files import state as evidence_state
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
 # Publish source identifiers only. Parametrization IDs and stacks go through the scanned evidence path.
 SOURCE_TEST = re.compile(r"tests/(?:[\w-]+/)*[\w-]+\.py(?:::[\w]+)+", re.ASCII)
+_deadline: float | None = None  # the running test's limit (monotonic), while the watchdog is on
+
+
+def left() -> float | None:
+    """Seconds left until the running test's limit, or None when the watchdog is off (``bounds.WATCHDOG``'s bound)."""
+    return None if _deadline is None else max(0.0, _deadline - time.monotonic())
 
 
 def addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("aew-lanes")
-    group.addoption("--test-timeout", dest="aew_test_timeout", type=float, default=0.0, metavar="SECONDS",
-                    help="fail a test still running after SECONDS, with every thread's stack (0: off)")
+    group.addoption("--test-timeout", dest="aew_test_timeout", type=float, default=bounds.TEST_TIMEOUT_S,
+                    metavar="SECONDS", help="fail a test still running after SECONDS, with every thread's stack "
+                    f"(default {bounds.TEST_TIMEOUT_S:g}, as CI passes; 0: off, as under a debugger)")
     group.addoption("--hang-dir", dest="aew_hang_dir", default=None, metavar="DIR",
                     help="where the watchdog writes stack dumps (default: the lane report's directory)")
     group.addoption("--running-tests-dir", default=None, metavar="DIR",
@@ -135,6 +143,7 @@ class HangWatchdog:
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
+        global _deadline
         if self.running is not None:
             node = item.nodeid.split("[", 1)[0]
             self.running.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +155,7 @@ class HangWatchdog:
         self._fired = 0
         self._keep_inflight = False
         self.started = time.monotonic()
+        _deadline = self.started + self.timeout
         f = self._reset(self._header(item))
         armed_size = os.fstat(f.fileno()).st_size  # on disk: Windows text mode writes the header's "\n" as "\r\n"
         if USE_ALARM:
@@ -166,6 +176,7 @@ class HangWatchdog:
             result = yield
             normal_end = getattr(result, "excinfo", None) is None
         finally:
+            _deadline = None
             if USE_ALARM:
                 signal.setitimer(signal.ITIMER_REAL, 0)
                 signal.signal(signal.SIGALRM, previous)

@@ -403,6 +403,7 @@ def crashed_launch(p, tmp_path, monkeypatch, when: str):
     [run] = si["steps"][1]["outputs"]["runs"]
     if when == "ended":
         lab.until(lambda: runlog.observed_status(runlog.run_dir(p.root / ".aew", run))[0] not in SI.LIVE_RUN,
+                  "wait.condition",
                   what=f"{run} to end")
     return lab, wid, sid, run
 

@@ -12,6 +12,7 @@ import re
 import shutil
 import sys
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -3417,8 +3418,25 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     import vertical.workers  # noqa: F401
 
     assert {"vertical.chat", "vertical.conversation", "vertical.implementer_gate"} <= set(bounds.BOUNDS)
-    problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
+    problems = []
+    for invocation in _workflow_lanes():
+        if invocation.lane == "X":  # workflow_lanes substitutes X for GitHub expressions
+            assert (invocation.workflow, invocation.job) == ("ci.yml", "lanes"), invocation.label
+            for name in shard_plan.LANES:
+                actual = replace(invocation, lane=name, step=f"{invocation.step} [{name}]")
+                problems.extend(bounds.nesting_problems(actual))
+        else:
+            problems.extend(bounds.nesting_problems(invocation))
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
+
+
+def test_ci_passes_the_test_limit_that_is_also_the_watchdogs_default():
+    """One value: ``--test-timeout``'s default, which a local run gets and a ``bounds.WATCHDOG`` wait reads, is what
+    every lane of ci.yml passes."""
+    import bounds
+
+    limits = {(lane.label, lane.test_timeout_s) for lane in _workflow_lanes() if lane.workflow == "ci.yml"}
+    assert limits and {t for _, t in limits} == {bounds.TEST_TIMEOUT_S}, sorted(limits)
 
 
 def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():

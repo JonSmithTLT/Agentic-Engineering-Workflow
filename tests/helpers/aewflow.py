@@ -8,10 +8,11 @@ generated launch contract would. Nothing here reaches into engine internals.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from conftest import Project, make_git_repo, run_aew
+from conftest import Project, acquire_test_lead, copy_test_repository, make_git_repo, run_aew
 
 from aew.knowledge.manifest import DEFAULT_GATES
 from aew.policy import execution as X
@@ -92,7 +93,26 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
                    maps: str | None = None) -> Project:
     """``maps``: the project's ``maps.pack_slices`` in place of a new project's (``X.NEW_PROJECT_PACK_SLICES``), for a
     test whose subject needs the switch off, as a project initialized before maps were on by default reads it."""
-    repo = make_git_repo(tmp_path / "repo", SAMPLE_FILES)
+    build = partial(_sample_repository, guardrails=guardrails, checks=checks, gates=gates, maps=maps)
+    variant = dump_yaml([guardrails, checks, gates, maps])
+    return acquire_test_lead(Project(copy_test_repository(tmp_path / "repo", ("sample", variant), build)))
+
+
+def legacy_project(root: Path, *, lead: bool = False) -> Project:
+    """An initialized project with its control state still on schema v1."""
+    from invariants import write_control_v1
+
+    p = Project(make_git_repo(root))
+    p.ok("init", "--project-id", "legacy")
+    if lead:
+        acquire_test_lead(p)
+    write_control_v1(root)
+    return p
+
+
+def _sample_repository(path: Path, *, guardrails: dict[str, Any] | None, checks: dict[str, Any] | None,
+                       gates: dict[str, Any] | None, maps: str | None = None) -> Path:
+    repo = make_git_repo(path, SAMPLE_FILES)
     p = Project(repo)
     p.ok("init", "--project-id", "calc")
     policy = repo / ".aew/policy"
@@ -119,8 +139,7 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
     current.setdefault("post_integration", {})["custody_register_s"] = 3600
     (policy / "gates.yaml").write_text(dump_yaml(current), encoding="utf-8", newline="\n")
     p.pin_policy()
-    p.token =p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
-    return p
+    return repo
 
 
 def set_mutating_concurrency(p: Project, cap: int) -> None:

@@ -48,14 +48,14 @@ def _victim_and_other(lab, tmp_path, victim_title="Victim"):
     other = create_investigation(lab.project, tmp_path, title="Other agent")
     lab.script("R-INV-0001-1", [{"do": "hang"}])
     lab.lead("work", "dispatch", victim, "--launch")
-    lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running", what="victim run")
+    lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running", "wait.condition", what="victim run")
     return other
 
 
 def _refused(lab, run, name):
     """The supervisor saw the file and discarded it."""
     return lab.until(lambda: any(e.get("event") == "request_refused" and e.get("file") == name
-                                 for e in _events(lab, run)), what=f"{run} to refuse {name}")
+                                 for e in _events(lab, run)), "wait.condition", what=f"{run} to refuse {name}")
 
 
 def _events(lab, run):
@@ -99,7 +99,7 @@ def test_an_agent_cannot_send_a_prompt_to_another_run_by_writing_a_request_file(
     # The Lead's own message is delivered.
     lab.ok("harness", "send", "R-INV-0001-1", "--text", "Lead message", env={"AEW_LEAD_TOKEN": lab.project.token})
     inbox = victim_dir / "harness" / "inbox.jsonl"
-    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
+    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), "wait.condition", what="the Lead's message")
     assert [json.loads(line)["text"] for line in inbox.read_text(encoding="utf-8").splitlines()] == ["Lead message"]
     assert_control_invariants(lab.project)
 
@@ -111,7 +111,7 @@ def test_a_lead_request_is_acted_on_once_and_only_as_recorded(lab, tmp_path):
     victim_dir = runlog.run_dir(lab.aew_root, run)
     lab.ok("harness", "send", run, "--text", "first", env={"AEW_LEAD_TOKEN": lab.project.token})
     inbox = victim_dir / "harness" / "inbox.jsonl"
-    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
+    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), "wait.condition", what="the Lead's message")
     entry = next(r for r in lab.ok("invoke", "show", "INV-0001")["runs"] if r["run"] == run)["requests"][0]
     assert entry["kind"] == "send" and len(entry["sha256"]) == 64 and "text" not in entry
     # Replaying the recorded file name, with the recorded content or another, is refused.

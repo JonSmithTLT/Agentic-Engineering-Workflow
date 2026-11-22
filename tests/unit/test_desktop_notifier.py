@@ -282,7 +282,7 @@ def test_the_endpoints_watcher_delivers_the_default_as_its_own_engine(project, t
     try:
         event_spool.append(project.root / ".aew", event_spool.BROKER, "loop_stopped", subject="T-0001",
                            reason="REPETITION: the test's stop", ref="LA-1-1")
-        until(lambda: argvs, what="the delivery")
+        until(lambda: argvs, "wait.chain", what="the delivery")
     finally:
         watcher.close()
     assert argvs[0] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "notify", "desktop"], argvs

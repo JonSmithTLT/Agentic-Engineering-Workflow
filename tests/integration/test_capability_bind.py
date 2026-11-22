@@ -386,7 +386,7 @@ def test_with_no_ripgrep_anywhere_doctor_names_it_with_the_fix_and_an_agents_run
         lab.script("default", [{"do": "dump_env", "path": str(sync / "env.json")},
                                {"do": "touch", "path": str(sync / "ran")}])
         run = lab.lead("work", "assign", wid, "--launch", env=env)["launch"]["run"]
-        lab.until(lambda: (sync / "ran").exists(), what="the agent's run, with no ripgrep anywhere")
+        lab.until(lambda: (sync / "ran").exists(), "wait.condition", what="the agent's run, with no ripgrep anywhere")
         assert lab.record(run)["containment"]["self_test"]["tools"]["ripgrep"]["served"] is None
         doctor_rows = {c["check"]: c for c in lab.ok("doctor", "--json", env=env)["checks"]}
         row = doctor_rows["capability:EXACT_CODE_SEARCH"]
@@ -652,7 +652,7 @@ def test_a_worker_runs_with_the_entries_first_on_its_harnesss_path_and_its_label
         wid = create_planned_ticket(lab.project, tmp_path)
         lab.script("default", [{"do": "dump_env", "path": str(sync / "env.json")}])
         run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-        lab.until(lambda: (sync / "env.json").exists(), what="the agent has run")
+        lab.until(lambda: (sync / "env.json").exists(), "wait.condition", what="the agent has run")
         path = json.loads((sync / "env.json").read_text(encoding="utf-8"))["PATH"].split(":")
         first = path[0]
         assert first.endswith("/tools/first") and run in first, first
@@ -674,7 +674,7 @@ def test_a_check_a_worker_runs_gets_the_entries_too(tmp_path):
         wid = create_planned_ticket(lab.project, tmp_path)
         lab.script("default", [{"do": "check", "id": "unit"}, {"do": "touch", "path": str(sync / "done")}])
         lab.lead("work", "assign", wid, "--launch")
-        lab.until(lambda: (sync / "done").exists(), what="the agent's check has run")
+        lab.until(lambda: (sync / "done").exists(), "wait.condition", what="the agent's check has run")
         _says_the_entry(sync / "check.txt")
     finally:
         lab.cleanup()

@@ -66,6 +66,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import NamedTuple
 
+import bounds
 import pytest
 from test_polling_predicates import POLLERS  # the polling helpers, by name: that check owns the list
 
@@ -73,7 +74,7 @@ from aew.harness import broker_liveness, lead_broker
 
 ROOT = Path(__file__).resolve().parents[2]
 EXEMPT = {Path(__file__).resolve()}  # this module plants injections as strings: the text detector skips it
-WINDOWS = ("timeout", "seconds")  # how a poller's definition names its window
+WINDOWS = ("timeout", "seconds", "bound")  # how a poller's definition names its window
 DEF_TEXT = re.compile(rf"\bdef (?:{'|'.join(sorted(POLLERS))})\(")  # a cheap filter: parse only files that define one
 INJECTION_TEXT = re.compile(r"\block_timeout\s*=(?!=)|\bsetattr\([^\n]*?[\"']lock_timeout[\"']")
 OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
@@ -128,6 +129,8 @@ def _fold(node: ast.expr | None, names: dict[str, ast.expr], pick: Callable[[flo
         return None
     if isinstance(node, ast.Constant):
         value = node.value
+        if isinstance(value, str) and value in bounds.BOUNDS:  # a declared bound's name: its seconds
+            return bounds.BOUNDS[value].seconds
         return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         inner = _fold(node.operand, names, pick, depth + 1)
@@ -228,11 +231,11 @@ def _window(call: ast.Call, names: dict[str, ast.expr]) -> float | None:
 
 
 def _what(call: ast.Call) -> str:
-    """What the wait is for: its first string argument (``until``'s ``what``, ``bounded_wait``'s ``name``)."""
-    for node in (*call.args, *(k.value for k in call.keywords)):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-    return ""
+    """What the wait is for: its first string argument that is not a declared bound's name (``until``'s ``what``),
+    else the first (``bounded_wait``'s ``name``)."""
+    texts = [node.value for node in (*call.args, *(k.value for k in call.keywords))
+             if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+    return next((t for t in texts if t not in bounds.BOUNDS), texts[0] if texts else "")
 
 
 def scan(source: str, path: str = "<planted>") -> tuple[list[Site], list[str]]:
@@ -328,11 +331,11 @@ WRONG = [  # one site each, on the body's last line
     'poll = 0.25\nmonkeypatch.setattr(lead_broker, "POLL_S", poll)\n'
     'engine.store.lock_timeout = 0.5 if case == "wedged" else 10.0\n'
     "until(lambda: ready(), 10, \"the superseded broker's closed_at\")",
-    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), timeout=10, what="x")',  # the window by keyword
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), bound=10, what="x")',  # the window by keyword
     'store = ControlStore(root, lock_timeout=10)\nuntil(lambda: ready(), 5, "x")',  # the injection by keyword
     'monkeypatch.setattr(engine.store, "lock_timeout", 10.0)\nuntil(lambda: ready(), 5, "x")',
     't = 10.0\nengine.store.lock_timeout = t\nw = 5 + 5\nuntil(lambda: ready(), w, "x")',  # through names, arithmetic
-    'engine.store.lock_timeout = 30.0\nuntil(lambda: ready(), what="x")',  # until's default, 30 s, under 32 s
+    'engine.store.lock_timeout = 30.0\nuntil(lambda: ready(), "wait.chain", "x")',  # a declared bound: 30 s, under 32 s
     'engine.store.lock_timeout = 10.0\nmonkeypatch.setattr(lead_broker, "POLL_S", 0.25)\n'
     'until(lambda: ready(), 10.5, "x")',  # at the bound itself
     'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 20 if slow else 10, "x")',  # the smaller window
@@ -484,10 +487,10 @@ def test_each_poller_takes_its_window_where_its_definition_names_it():
     """Read from the definitions under tests/, so a window that moves moves the scan with it. This pins the result:
     a poller added, or one whose window moves, has to update it."""
     assert window_params() == {
-        "until": (frozenset({1}), frozenset({"timeout"}), 30.0),  # notifier's (30 s) and HarnessLab's (60 s)
-        "wait_for": (frozenset({1}), frozenset({"timeout"}), 10.0),
+        "until": (frozenset({1}), frozenset({"bound"}), None),  # no default: a declared bound's name, or seconds
+        "wait_for": (frozenset({1}), frozenset({"bound"}), None),
         "wait_until": (frozenset(), frozenset(), None),  # no test defines it
-        "_wait_for": (frozenset({2}), frozenset({"timeout"}), 90.0),
+        "_wait_for": (frozenset({2}), frozenset({"bound"}), None),
         "bounded_wait": (frozenset(), frozenset({"seconds"}), None),  # keyword-only, and its default is None
         "waiting": (frozenset(), frozenset(), None),  # no window
         "_retrying": (frozenset(), frozenset(), None),

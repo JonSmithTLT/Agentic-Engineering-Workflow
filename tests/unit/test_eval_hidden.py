@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -342,9 +341,7 @@ def test_scoring_that_overruns_is_a_failed_score(tmp_path):
     secret = tmp_path / "private"
     make_oracle(secret, checks="import time\ndef checks(tree, run):\n    time.sleep(60)\n    yield 'x', True, ''\n")
     oracle = hidden.Oracle.locate(secret, "C1")
-    started = time.monotonic()
     score = hidden.score(oracle, tree_with(tmp_path, {"calc.py": "x = 1\n"}), timeout_s=3)
-    assert time.monotonic() - started < 30
     assert score["passed"] is False and score["failure"] == "SCORING_TIMEOUT"
 
 

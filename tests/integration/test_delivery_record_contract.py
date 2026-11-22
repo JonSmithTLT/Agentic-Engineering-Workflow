@@ -128,7 +128,7 @@ def test_real_run_sequence_and_end_records_satisfy_the_same_class_oracle(tmp_pat
         run = lab.lead("work", "assign", create_planned_ticket(lab.project, tmp_path), "--launch")["launch"]["run"]
         lab.wait(run)
         record = lab.record(run)
-        lab.until(lambda: supervisor_gone(record), 30, "the supervisor to finish all record writes")
+        lab.until(lambda: supervisor_gone(record), "wait.exit", "the supervisor to finish all record writes")
         directory = runlog.run_dir(lab.aew_root, run)
         # Disposable delivery-state loss is allowed; derive the recreated records from the actual ended-run result.
         for name in (runlog.RETURNED_FILE, runlog.END_RETURNED_FILE):

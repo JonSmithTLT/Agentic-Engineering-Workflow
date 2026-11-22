@@ -14,6 +14,7 @@ permissions:
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  AEW_TEST_FRESH_WORLDS: "1"
 
 # Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
 # the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".

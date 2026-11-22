@@ -11,7 +11,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
+import autopsy
+import bounds
 import lanes
 import proctree
 import pytest
@@ -81,6 +84,7 @@ def dumps(hangs: Path) -> list[str]:
     return [p.read_text(encoding="utf-8") for p in sorted(hangs.glob("hang-*.txt"))] if hangs.exists() else []
 
 
+@pytest.mark.serial
 @pytest.mark.skipif(not watchdog.USE_ALARM, reason="needs SIGALRM to interrupt a blocking call (POSIX); "
                                                    "Windows records the stacks only, tested below")
 @pytest.mark.parametrize("mode", [("-n", "2", "--dist", "worksteal"), ("-p", "no:xdist")], ids=["xdist", "no_xdist"])
@@ -112,9 +116,12 @@ def test_a_test_that_outlives_its_limit_leaves_its_stacks_on_disk(tmp_path):
     assert "not fired" not in named[0].splitlines()[0]
 
 
-def test_a_run_without_a_hang_leaves_no_dump_and_the_default_is_off(tmp_path):
-    root = project(tmp_path, "def test_ok():\n    pass\n")
-    for extra in (["--test-timeout", "30"], []):
+def test_a_run_without_a_hang_leaves_no_dump_and_the_limit_is_on_by_default(tmp_path):
+    """On by default, at the limit CI passes; ``--test-timeout 0`` turns it off, as under a debugger."""
+    cases = ((["--test-timeout", "30"], 30.0), ([], bounds.TEST_TIMEOUT_S), (["--test-timeout", "0"], 0.0))
+    for extra, limit in cases:
+        check = f"def test_the_limit(request):\n    assert request.config.getoption('aew_test_timeout') == {limit!r}\n"
+        root = project(tmp_path / f"{limit:g}", check)
         proc, _ = inner_pytest(root, tmp_path / "hangs", "-p", "no:xdist", *extra)
         assert proc.returncode == 0, proc.stdout + proc.stderr
     assert dumps(tmp_path / "hangs") == []
@@ -235,6 +242,46 @@ def test_windows_step_cutoff_waits_for_a_leaked_child_after_pytest_passes(tmp_pa
     progress, status = run_windows_cutoff(tmp_path, "    pass")
     assert "Lane command had exited with code 0" in status
     assert not list(progress.glob("running-*.txt"))
+
+
+WATCHDOG_WAIT = f'''import sys
+sys.path.insert(0, {str(HELPERS)!r})
+import bounds
+
+
+def test_waits_for_its_start():
+    bounds.until(lambda: False, bounds.WATCHDOG, "a start that never comes")
+'''
+
+
+@pytest.mark.serial
+def test_a_watchdog_wait_fails_by_name_after_the_watchdogs_own_evidence(tmp_path):
+    """A start-up wait names WATCHDOG: no deadline of its own (#497). On POSIX the watchdog's alarm ends it in place at
+    the limit; on Windows, where the watchdog only dumps stacks, the wait itself raises by name, once the dump is on
+    disk, instead of running on to the session deadline."""
+    hangs = tmp_path / "hangs"
+    proc, took = inner_pytest(project(tmp_path, WATCHDOG_WAIT), hangs, "--test-timeout", "2", "-p", "no:xdist")
+    out = proc.stdout + proc.stderr
+    assert proc.returncode == 1, out
+    assert ("(watchdog) waiting for a start that never comes" if IS_WINDOWS else "HungTest") in out, out
+    [dump] = dumps(hangs)
+    assert "test_w.py::test_waits_for_its_start started" in dump and "limit 2s;" in dump, dump
+    assert "aew hang watchdog: fired" in dump and "in test_waits_for_its_start" in dump, dump
+    assert took < 120, took
+
+
+def test_a_watchdog_bound_is_the_time_left_and_room_for_its_evidence_and_none_when_the_watchdog_is_off(monkeypatch):
+    monkeypatch.setattr(watchdog, "time", SimpleNamespace(monotonic=lambda: 10.0))
+    monkeypatch.setattr(watchdog, "_deadline", 110.0)
+    left = bounds.seconds(bounds.WATCHDOG)
+    assert left is not None and left == 100 + bounds.WATCHDOG_EVIDENCE_S, left
+    assert bounds.lead_session_bound() == bounds.WATCHDOG
+    assert bounds.WATCHDOG_EVIDENCE_S > autopsy.WATCHER_GRACE_S  # the autopsy watcher fires within it
+    monkeypatch.setattr(watchdog, "_deadline", 1210.0)
+    assert bounds.lead_session_bound() == 900
+    monkeypatch.setattr(watchdog, "_deadline", None)
+    assert bounds.seconds(bounds.WATCHDOG) is None
+    assert bounds.lead_session_bound() == 900
 
 
 @pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])

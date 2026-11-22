@@ -22,6 +22,11 @@ import session_deadline
 from conftest import IS_WINDOWS
 
 TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
+bounds.declare("test.holder_ready", 30, why="a holder of a file announces it holds it")
+bounds.declare("test.child_is_a_zombie", 30, why="an ended child is a zombie until it is reaped")
+bounds.declare("test.never", 0.2, why="a wait meant to run out, to test bounded_wait itself")
+bounds.declare("test.soon", 1, why="a wait whose predicate holds at once")
+bounds.declare("test.gone", 5, why="a wait whose gone() holds at once")
 
 
 # ---------------------------------------------------------------------------------------------- the writer (L1)
@@ -117,7 +122,7 @@ def test_the_file_holder_lookup_names_the_process_holding_a_file(tmp_path):
             "time.sleep(60)")
     holder = subprocess.Popen([sys.executable, "-c", code], **kwargs)
     try:
-        bounds.bounded_wait("test.holder_ready", ready.exists, seconds=30, gone=lambda: holder.poll() is not None)
+        bounds.bounded_wait("test.holder_ready", ready.exists, gone=lambda: holder.poll() is not None)
         found = proctree.holders([str(held)])[str(held)]
         holder_pids = {holder.pid} | {p.pid for p in proctree.descendants(proctree.identity(holder.pid) or (0, 0),
                                                                           proctree.table())}
@@ -265,9 +270,9 @@ def test_the_nesting_rule_names_each_broken_link():
 def test_a_bounded_wait_names_its_bound_and_records_how_it_ended():
     flight_recorder.clear()
     with pytest.raises(bounds.BoundExpired, match="bound test.never"):
-        bounds.bounded_wait("test.never", lambda: False, seconds=0.2, poll_s=0.01)
-    assert bounds.bounded_wait("test.soon", lambda: "yes", seconds=1) == "yes"
-    assert bounds.bounded_wait("test.gone", lambda: False, seconds=5, gone=lambda: True) is None
+        bounds.bounded_wait("test.never", lambda: False, poll_s=0.01)
+    assert bounds.bounded_wait("test.soon", lambda: "yes") == "yes"
+    assert bounds.bounded_wait("test.gone", lambda: False, gone=lambda: True) is None
     ended = [(e["name"], e["ended"]) for e in flight_recorder.snapshot() if e["kind"] == "wait"]
     assert ended == [("test.never", "timeout"), ("test.soon", "ok"), ("test.gone", "gone")]
     flight_recorder.clear()
@@ -382,8 +387,7 @@ def _status_with_a_reap_in_the_record_window(own) -> tuple[int, int]:
     passed = threading.Event()
 
     def seam(pid):
-        bounds.bounded_wait("test.child_is_a_zombie", lambda: (proctree.linux_state(pid) or ("",))[0] == "Z",
-                            seconds=30)
+        bounds.bounded_wait("test.child_is_a_zombie", lambda: (proctree.linux_state(pid) or ("",))[0] == "Z")
         threading.Thread(target=lambda: (reaper.poll(), passed.set()), daemon=True).start()
         passed.wait(2)  # unlocked: the pass reaps here; locked: it waits for the recording, after this seam
 

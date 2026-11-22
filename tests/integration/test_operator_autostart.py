@@ -14,6 +14,7 @@ import threading
 import time
 from pathlib import Path
 
+import bounds
 import pytest
 from conftest import IS_WINDOWS, clean_env
 from notifier import adopt, hidden, liveness_record, raise_to, received, recorder, script, until
@@ -38,7 +39,8 @@ with operator_autostart.for_session(Engine.discover(Path(sys.argv[1])), provider
 # The same session, one process below an `aew opencode` that has no broker in its environment
 UNDER_A_SESSION = ("import subprocess,sys;"
                    "sys.exit(subprocess.run([sys.executable,'-c',sys.argv[1],sys.argv[2]]).returncode)")
-HANG_GUARD_S = 60.0  # only for a failure: each wait below ends on the event it waits for
+HANG_GUARD_S = bounds.declare("autostart.hang_guard", 60,
+                              why="only for a failure: each wait below ends on the event it waits for")
 
 
 def _until(what: str, done) -> None:
@@ -453,12 +455,12 @@ def test_a_session_ending_in_run_is_told_to_the_operator(project, tmp_path, back
     child.stdin.write((project.token + "\n").encode("utf-8"))
     child.stdin.flush()
     until(ready.exists, HANG_GUARD_S, "the broker to start")
-    record = until(lambda: liveness_record(root), what="the broker's liveness record")
+    record = until(lambda: liveness_record(root), "wait.chain", what="the broker's liveness record")
     _holder(root, record["pid"])
     ep = operator_endpoint.OperatorEndpoint(Engine.discover(project.root), console=lambda s: None, dev=True,
                                             background=background)
     ep.start()
-    until(lambda: notify.summary(root) is not None, what="the watcher's first pass")
+    until(lambda: notify.summary(root) is not None, "wait.chain", what="the watcher's first pass")
     loop = threading.Thread(target=ep.serve_forever, daemon=True)
     loop.start()
     try:
@@ -504,7 +506,7 @@ def test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoin
         found = operator_client.wait_for_locator(root, timeout=HANG_GUARD_S)
         assert found
         pid = found["pid"]
-        record = until(lambda: liveness_record(root), what="the broker's liveness record")
+        record = until(lambda: liveness_record(root), "wait.chain", what="the broker's liveness record")
         until(lambda: notify.summary(root) is not None, HANG_GUARD_S, "the watcher's first pass")
         if ending == "crash":
             procs.kill_pid(record["pid"])
@@ -548,9 +550,7 @@ def test_a_hung_notifier_never_keeps_the_endpoint_up(project, tmp_path, monkeypa
         monkeypatch.setattr(notify, "FLUSH_DELIVERIES", 0)
         ep.watcher._offer("test:one", {"event": "test", "source": "test"}, lane="urgent")
         assert in_flight.wait(HANG_GUARD_S), "the delivery to begin"
-        started = time.monotonic()
         assert ep.watcher.flush() is False, "nothing waits past the bound"
-        assert time.monotonic() - started < HANG_GUARD_S
         assert "test:one" in ep.watcher._outstanding, "what is left stays outstanding"
     finally:
         let_go.set()

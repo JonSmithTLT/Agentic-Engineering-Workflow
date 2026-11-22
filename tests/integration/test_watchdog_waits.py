@@ -24,7 +24,8 @@ the census checks its bound against the term, derived), ``INSIDE`` (its waits si
 ``NO_WAIT`` (it names a blocking call without making one). It fails on a function the scan finds that ``WAITS`` does not
 hold, an entry for one it does not find, a census wait whose function the scan does not find, a wait whose function
 ``WAITS`` holds as anything but ``COUNTED`` or ``EXCUSED``, a counted wait whose bound is not its term, and the total of
-an iteration's counted bounds past the bound less one ``POLL_S`` of work.
+an iteration's counted bounds past the bound less one ``POLL_S`` of work. The two retry helpers excused for
+``Beat.close`` must have it on their call stack even on a run with no contention.
 
 What it does not see, each a defect the reviewer reads for:
 - a ``with lock:`` over a lock that is no call (``with self._mu:``): a C lock's acquire is no call the profiler reports,
@@ -56,7 +57,8 @@ import pytest
 from notifier import takeover, until
 
 import aew
-from aew.engine import faults
+from aew import util
+from aew.engine import faults, store
 from aew.engine.api import Engine
 from aew.engine.authority import require_held_lead, require_lead
 from aew.engine.lock import FileLock
@@ -143,6 +145,7 @@ PROFILED: dict[CodeType, tuple[str, Callable[[FrameType], float | None]]] = {
     FileLock.__enter__.__code__: ("FileLock", lambda f: f.f_locals["self"].timeout),
 }
 SLEEP = time.sleep  # the C function the profiler reports a sleep as
+CLOSE_RETRIES = {store.retry_lock_free.__code__, util.replace_with_retry.__code__}
 TICK = broker_liveness.Beat.tick.__code__  # an iteration's last step, once its authority check found the Lead current
 
 
@@ -150,6 +153,7 @@ TICK = broker_liveness.Beat.tick.__code__  # an iteration's last step, once its 
 class Census:
     ran: dict[str, CodeType] = field(default_factory=dict)
     waits: list[Wait] = field(default_factory=list)
+    retry_stacks: set[tuple[str, ...]] = field(default_factory=set)
     iteration: int = 0
     completed: int = 0  # the last iteration whose authority check found the Lead current: it reached Beat.tick
     watch: int | None = None  # the watchdog thread's identifier
@@ -160,6 +164,15 @@ class Census:
     def profile(self, frame: FrameType, event: str, arg: Any) -> None:
         if event == "call":
             code = frame.f_code
+            if code in CLOSE_RETRIES:
+                stack = []
+                caller: FrameType | None = frame
+                while caller is not None:
+                    name = _aew_function(caller.f_code)
+                    if name is not None:
+                        stack.append(name)
+                    caller = caller.f_back
+                self.retry_stacks.add(tuple(stack))
             if code is TICK:
                 self.completed = self.iteration
             if code not in self._codes:  # each function once: the profiler runs on every call
@@ -267,6 +280,9 @@ def problems(census: Census) -> list[str]:
             for name, names in sorted(found.items()) if name not in WAITS]
     out += [f"WAITS holds {name}, which no watchdog iteration ran or which makes no blocking call"
             for name in sorted(WAITS) if name not in found]
+    for stack in sorted(census.retry_stacks):
+        if "aew.harness.broker_liveness:Beat.close" not in stack:
+            out.append(f"{stack[0]} outside Beat.close: {' <- '.join(stack)}")
     broker = census.broker
     counted: dict[int, float] = {}
     for wait in census.waits:
@@ -302,6 +318,15 @@ def test_an_authority_check_that_reads_the_archive_is_found_waiting_on_the_histo
     assert any("aew.history.index:HistoryIndex._db makes a blocking call (connect)" in p for p in found), found
     waited = "sqlite3.connect (bound 30.0) from aew.history.index:HistoryIndex._db"
     assert any(p.startswith(waited) for p in found), found
+
+
+def test_a_lock_free_read_in_the_authority_check_is_not_excused_as_shutdown(project, monkeypatch):
+    def reading(state: dict[str, Any], token: str) -> Any:
+        broker_liveness.read(project.root / ".aew")
+        return require_held_lead(state, token)
+
+    found = problems(run_census(project, monkeypatch, check=reading))
+    assert any(p.startswith("aew.engine.store:retry_lock_free outside Beat.close") for p in found), found
 
 
 def test_a_sleep_on_the_watchdog_path_is_found(project, monkeypatch):

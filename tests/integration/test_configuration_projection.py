@@ -979,7 +979,6 @@ def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch,
     The read retries through the store's one owner and reports the true state, never DRIFTED or MANIFEST_DRIFTED."""
     if collision == "reported_missing" and sys.platform != "win32":
         pytest.skip("only Windows reports a present file missing mid-replace; POSIX rename is atomic")
-    monkeypatch.setattr(store, "IS_WINDOWS", True)  # the injected open errors model Windows
     e = configured(engine)
     target = aew(e) / rel
     data = target.read_bytes()
@@ -1009,6 +1008,7 @@ def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch,
     monkeypatch.setattr(Path, "is_file", is_file)
     thread = threading.Thread(target=writer, daemon=True)
     thread.start()
+    monkeypatch.setattr(store, "IS_WINDOWS", True)  # the injected open errors model Windows
     out = fresh.configuration("execution")
     thread.join(30)
     assert collided.is_set() and replaced.is_set() and not thread.is_alive()

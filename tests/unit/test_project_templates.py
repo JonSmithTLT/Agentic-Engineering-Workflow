@@ -1,15 +1,15 @@
 """A fresh repository and a copy start with the same project state and independent authority."""
 
 import json
-from functools import partial
 from pathlib import Path
 
+import aewflow
 import conftest
 import pytest
-from aewflow import _sample_repository
 
 from aew.engine.store import deserialize_control
-from aew.util import dump_yaml
+from aew.policy import execution
+from aew.util import load_yaml
 
 CONTROL = ".aew/state/control.yaml"
 
@@ -52,32 +52,52 @@ def test_a_project_template_matches_fresh_setup_and_each_copy_acquires_its_own_l
     monkeypatch.setattr(conftest, "_template_cache", {})
     for name in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
         monkeypatch.setenv(name, "2001-01-01T00:00:00+00:00")  # equal initial Git objects and reflogs
-    variant = ("sample", dump_yaml([None, None, None])) if kind == "sample" else ("repo", "True")
-    sample = partial(_sample_repository, guardrails=None, checks=None, gates=None)
-    build = (partial(conftest.copy_test_repository, variant=variant, build=sample) if kind == "sample"
-             else partial(conftest.fixture_repository, initialized=True))
-    first = build(tmp_path / "first" / "repo")
-    second = build(tmp_path / "second" / "repo")
-    seed = conftest._template_cache[variant]
+    # Capture the exact copy before acquisition writes the new Lead's identity and transition.
+    snapshots = []
+
+    def acquire(project):
+        snapshots.append(files(project.root))
+        return conftest.acquire_test_lead(project)
+
+    def build(parent):
+        if kind == "sample":
+            return aewflow.sample_project(parent)
+        return acquire(conftest.Project(conftest.fixture_repository(parent / "repo", initialized=True)))
+
+    monkeypatch.setattr(aewflow, "acquire_test_lead", acquire)
+    first = build(tmp_path / "first")
+    second = build(tmp_path / "second")
+    seed, = conftest._template_cache.values()
     assert conftest.git("worktree", "list", "--porcelain", cwd=seed).count("worktree ") == 1
     vacant = deserialize_control((seed / CONTROL).read_bytes(), source=CONTROL)
     assert vacant["revision"] == 0 and vacant["lead"]["status"] == "vacant"
     assert vacant["tokens"] == vacant["invocations"] == vacant["work"] == {}
 
     monkeypatch.setenv("AEW_TEST_FRESH_WORLDS", "1")
-    fresh = build(tmp_path / "fresh" / "repo")
-    first_files = files(first)
-    assert first_files == files(second) == files(seed)
+    fresh = build(tmp_path / "fresh")
+    first_files, second_files, fresh_files = snapshots
+    assert first_files == second_files == files(seed)
     for path in (seed, seed.parent):
         for spelling in {str(path), path.as_posix(), str(path).replace("\\", "\\\\")}:
             leaks = [rel for rel, data in first_files.items() if spelling.lower().encode() in data.lower()]
             assert not leaks, leaks
-    assert without_init_metadata(first_files) == without_init_metadata(files(fresh))
+    assert without_init_metadata(first_files) == without_init_metadata(fresh_files)
 
-    projects = [conftest.acquire_test_lead(conftest.Project(root)) for root in (first, second, fresh)]
-    assert len({p.token for p in projects}) == 3
-    (first / "README.md").write_text("# only the first copy\n", encoding="utf-8")
-    assert (second / "README.md").read_bytes() == (fresh / "README.md").read_bytes()
+    assert len({first.token, second.token, fresh.token}) == 3
+    (first.root / "README.md").write_text("# only the first copy\n", encoding="utf-8")
+    assert (second.root / "README.md").read_bytes() == (fresh.root / "README.md").read_bytes()
+
+
+@pytest.mark.parametrize("first_off", [False, True], ids=["default-first", "off-first"])
+def test_sample_project_keeps_default_and_maps_off_templates_separate(tmp_path, monkeypatch, first_off):
+    monkeypatch.delenv("AEW_TEST_FRESH_WORLDS", raising=False)
+    monkeypatch.setattr(conftest, "_template_cache", {})
+    for i, off in enumerate((first_off, not first_off, first_off, not first_off)):
+        parent = tmp_path / str(i)
+        project = aewflow.sample_project(parent, maps="off") if off else aewflow.sample_project(parent)
+        policy = load_yaml((project.root / ".aew/policy/execution.yaml").read_text(encoding="utf-8"))
+        assert execution.pack_slices(policy) == ("off" if off else execution.NEW_PROJECT_PACK_SLICES)
+    assert len(conftest._template_cache) == 2
 
 
 def test_each_copy_of_a_released_world_acquires_at_its_own_revision(project, tmp_path):

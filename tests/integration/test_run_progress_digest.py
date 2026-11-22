@@ -8,6 +8,7 @@ import json
 import time
 from pathlib import Path
 
+import bounds
 import pytest
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
@@ -92,11 +93,11 @@ class _RecordingPoster:
         return [json.loads(text.splitlines()[1])["why"] for text in self.posts]
 
 
-def _until(predicate, seconds: float = 60.0) -> bool:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline and not predicate():
-        time.sleep(0.05)
-    return bool(predicate())
+def _until(predicate) -> bool:
+    try:
+        return bool(bounds.until(predicate, "wait.condition", "the wake"))
+    except AssertionError:
+        return False
 
 
 def test_a_real_dispatch_under_a_real_broker_says_end_your_turn_and_the_wake_comes(lab: HarnessLab, tmp_path: Path):

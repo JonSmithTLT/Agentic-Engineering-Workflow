@@ -373,13 +373,14 @@ def test_a_cancellations_effects_are_declared(tmp_path, monkeypatch, held):
             assert call(p, "ticket_start", work_id=wid)["ok"]
             [run] = [r["run"] for inv in e.store.read()["invocations"].values() for r in inv.get("runs") or []]
             directory = runlog.run_dir(p.root / ".aew", run)
-            lab.until(lambda: runlog.observed_status(directory)[0] == "running", what=f"{run} to run")
+            lab.until(lambda: runlog.observed_status(directory)[0] == "running", "wait.condition", what=f"{run} to run")
         before = _observe(p)
         e.work_transition(token=p.token, expect_rev=rev(), work_id=wid, to="CANCELLED", reason="not needed")
         if held == "observation":
             assert not path.exists()  # removed with its invocation's archival
         else:
-            lab.until(lambda: runlog.observed_status(directory)[0] not in LIVE, timeout=60, what=f"{run} to end")
+            lab.until(lambda: runlog.observed_status(directory)[0] not in LIVE, bound="wait.condition",
+                      what=f"{run} to end")
         seen = _effects(before, _observe(p))
         assert seen <= _declared("work.transition"), seen
         assert {"control_state", "credential", "workspace" if held == "observation" else "harness_process"} <= seen

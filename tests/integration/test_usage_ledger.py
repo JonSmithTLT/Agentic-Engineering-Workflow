@@ -116,7 +116,7 @@ def test_a_relaunch_copies_the_ended_run_and_leaves_the_new_one_provisional(lab,
     assert "usage" not in second and second["run"] == run2  # running: provisional, never fixed as absent
     lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
     assert "usage" not in runs(lab, inv)[1]  # still running while the cancel commits
-    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run2))[0] in K.TERMINAL,
+    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run2))[0] in K.TERMINAL, "wait.condition",
               what="the cancelled run to end")
     lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
     archived = O.Reader(lab.aew_root, None).invocation(inv, archived_invocation(lab, wid, inv))
@@ -254,12 +254,12 @@ def test_a_run_still_live_at_archival_is_recorded_with_its_observed_status_and_a
     rewritten (#137 review, F3)."""
     wid, inv, run = launched(lab, tmp_path, [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}],
                              {"tokens": TOKENS})
-    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] == K.RUNNING,
+    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] == K.RUNNING, "wait.condition",
               what="the run to start")
     lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
     [usage] = archived_usage(lab, wid, inv)
     assert (usage["status"], usage["tokens_trust"]) == (K.RUNNING, "absent")
-    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] in K.TERMINAL,
+    lab.until(lambda: runlog.observed_status(runlog.run_dir(lab.aew_root, run))[0] in K.TERMINAL, "wait.condition",
               what="the cancelled run to end")
     assert archived_usage(lab, wid, inv) == [usage]
     assert_control_invariants(lab.project)

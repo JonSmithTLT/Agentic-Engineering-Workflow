@@ -445,6 +445,7 @@ def test_a_flag_line_that_cannot_be_written_never_stops_the_launch(reg, monkeypa
     assert [f["command"] for f in ops.flag_missing(STUB)] == ["fake"]
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):
     """CAPR-12: recording a check never stops a launch for as long as a register command may wait."""
     monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)

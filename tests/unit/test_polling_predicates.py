@@ -123,21 +123,27 @@ DEF_TEXT = re.compile(rf"\bdef (?:{'|'.join(sorted(POLLERS))})\(")  # a cheap fi
 @functools.cache
 def poller_params() -> dict[str, tuple[frozenset[int], frozenset[str]]]:
     """Where each polling helper takes its predicate: ``{name: (positions, keywords)}``, read from the definitions under
-    tests/. A predicate is a parameter the body calls (``ready()``), and a method's ``self`` is not counted, as a call
-    does not pass it. A helper no test defines takes it first, as ``predicate``."""
+    tests/. A predicate is a parameter the body calls (``ready()``), or passes on where another poller takes its
+    predicate (``bounds.until(predicate, ...)``), and a method's ``self`` is not counted, as a call does not pass it. A
+    helper no test defines takes it first, as ``predicate``."""
     positions: dict[str, set[int]] = {name: set() for name in POLLERS}
     keywords: dict[str, set[str]] = {name: set() for name in POLLERS}
+    defs = []
     for path in sorted((ROOT / "tests").rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if not DEF_TEXT.search(source):
-            continue
-        for fn in ast.walk(ast.parse(source)):
-            if not (isinstance(fn, ast.FunctionDef) and fn.name in POLLERS):
-                continue
+        if DEF_TEXT.search(source):
+            defs += [fn for fn in ast.walk(ast.parse(source)) if isinstance(fn, ast.FunctionDef) and fn.name in POLLERS]
+    for _ in range(2):  # a forwarding helper reads the slot of the poller it forwards to, which the first pass found
+        for fn in defs:
             positional = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
             if positional[:1] in (["self"], ["cls"]):
                 positional = positional[1:]
             called = {c.func.id for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+            for c in ast.walk(fn):
+                if isinstance(c, ast.Call) and _called_name(c) in POLLERS:
+                    at, by = positions[_called_name(c)] or {0}, keywords[_called_name(c)]
+                    called |= {a.id for i, a in enumerate(c.args) if i in at and isinstance(a, ast.Name)}
+                    called |= {k.value.id for k in c.keywords if k.arg in by and isinstance(k.value, ast.Name)}
             positions[fn.name] |= {i for i, name in enumerate(positional) if name in called}
             given_by_name = (*positional, *(a.arg for a in fn.args.kwonlyargs))
             keywords[fn.name] |= {name for name in given_by_name if name in called}
@@ -418,7 +424,8 @@ def test_each_poller_takes_its_predicate_where_its_definition_calls_it():
     """Read from the definitions under tests/, so a parameter that moves moves the detectors with it. This pins the
     result: a poller added, or one whose predicate moves, has to update it."""
     assert poller_params() == {
-        "until": ({0}, {"predicate", "describe"}),  # notifier's calls its describer too: a lambda there is scanned
+        # bounds.until calls ready, before and describe; the lab's and notifier's forward predicate and describe to it
+        "until": ({0}, {"predicate", "describe", "ready", "before"}),
         "wait_for": ({0}, {"cond"}),
         "wait_until": ({0}, {"predicate"}),  # no test defines it: the default
         "_wait_for": ({0}, {"predicate"}),
@@ -472,3 +479,182 @@ def test_a_half_written_json_file_reads_as_not_yet(tmp_path, text):
     record = tmp_path / "loop.json"
     record.write_text(text, encoding="utf-8")
     assert read_json_or_none(record) is None
+
+
+# ------------------------------------------------------------------------------- a polled wait names its bound
+# Every polled wait names a bound declared in tests/helpers/bounds.py, ``bounds.WATCHDOG``, or seconds derived from a
+# product value; never a literal number. And no test outside the serial lane asserts how long something took: there
+# the time is the property, elsewhere a loaded runner fails it at random (test-suite redesign, PR4). A window is a
+# poller's parameter that ``test_lock_timeout_waits.window_params`` finds; a call through a name a module imports from
+# aew is the product's own API, not a test's wait. A window passed through a name (``T = 30; until(p, T)``) is not
+# seen: the check reads literals and undeclared bound names, and a module constant should be ``bounds.declare(...)``.
+
+CLOCKS = {"time.monotonic", "time.time", "time.perf_counter", "monotonic", "perf_counter"}
+
+
+def _serial(decorators: list[ast.expr]) -> bool:
+    return any("mark.serial" in ast.unparse(d) for d in decorators)
+
+
+def _scopes(tree: ast.Module) -> list[tuple[ast.AST, bool]]:
+    """Each function or class under the module, with whether it runs in the serial lane (its own mark, an enclosing
+    one's, or the module's ``pytestmark``), the module itself first."""
+    module = any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in n.targets)
+                 and "serial" in ast.unparse(n.value) for n in tree.body)
+    found: list[tuple[ast.AST, bool]] = []
+
+    def walk(node: ast.AST, serial: bool) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                inner = serial or _serial(child.decorator_list)
+                found.append((child, inner))
+                walk(child, inner)
+
+    walk(tree, module)
+    return [(tree, module), *found]
+
+
+def _own(scope: ast.AST) -> list[ast.AST]:
+    """The nodes of ``scope`` outside the functions and classes nested in it (each is its own scope)."""
+    out, todo = [], list(ast.iter_child_nodes(scope))
+    while todo:
+        node = todo.pop()
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            out.append(node)
+            todo.extend(ast.iter_child_nodes(node))
+    return out
+
+
+def _clock_difference(node: ast.AST) -> bool:
+    return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub) and any(
+        isinstance(n, ast.Call) and ast.unparse(n.func) in CLOCKS for n in ast.walk(node.left))
+
+
+def literal_windows(source: str) -> set[int]:
+    """Lines of polled waits whose window is a literal number, or names a bound no module declares."""
+    import bounds
+    from test_lock_timeout_waits import WINDOWS, window_params
+
+    tree = ast.parse(source)
+    product = set(_aew_names(tree))
+    local = {}  # a poller this module defines itself takes its window where its own definition names it
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in POLLERS):
+        named = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
+        named = named[1:] if named[:1] in (["self"], ["cls"]) else named
+        local[fn.name] = ({i for i, a in enumerate(named) if a in WINDOWS},
+                          {a for a in (*named, *(k.arg for k in fn.args.kwonlyargs)) if a in WINDOWS}, None)
+    found = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and _called_name(node) in POLLERS):
+            continue
+        if isinstance(node.func, ast.Attribute) and ast.unparse(node.func.value).split(".")[0] in product:
+            continue
+        positions, keywords, _ = local.get(_called_name(node)) or window_params()[_called_name(node)]
+        given = [node.args[i] for i in sorted(positions) if i < len(node.args)]
+        given += [k.value for k in node.keywords if k.arg in keywords]
+        for g in given:
+            value = g.operand if isinstance(g, ast.UnaryOp) else g
+            number = isinstance(value, ast.Constant) and isinstance(value.value, int | float)
+            unknown = (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                       and value.value != bounds.WATCHDOG and value.value not in bounds.BOUNDS)
+            if number or unknown:
+                found.add(node.lineno)
+    return found
+
+
+def elapsed_asserts(source: str) -> set[int]:
+    """Lines outside the serial lane that assert an elapsed time is below (or not above) a bound: a clock difference,
+    or a name the same scope bound to one, compared with ``<`` or ``<=`` (or ``>``/``>=`` with it on the right)."""
+    tree = ast.parse(source)
+    found = set()
+    # Local helpers can return the duration directly or alongside a subprocess result.
+    returns: dict[str, set[int | None]] = {}
+    for fn in (node for node in tree.body if isinstance(node, ast.FunctionDef)):
+        for ret in (node for node in _own(fn) if isinstance(node, ast.Return)):
+            if isinstance(ret.value, ast.Tuple):
+                for index, item in enumerate(ret.value.elts):
+                    if _clock_difference(item):
+                        returns.setdefault(fn.name, set()).add(index)
+            elif ret.value is not None and _clock_difference(ret.value):
+                returns.setdefault(fn.name, set()).add(None)
+    for scope, serial in _scopes(tree):
+        if serial:
+            continue
+        own = _own(scope)
+        names = set()
+        for assign in (node for node in own if isinstance(node, ast.Assign)):
+            value = assign.value
+            positions = returns.get(value.func.id, set()) if (
+                isinstance(value, ast.Call) and isinstance(value.func, ast.Name)) else set()
+            for target in assign.targets:
+                if isinstance(target, ast.Tuple):
+                    names.update(item.id for i, item in enumerate(target.elts)
+                                 if i in positions and isinstance(item, ast.Name))
+                elif isinstance(target, ast.Name) and (_clock_difference(value) or None in positions):
+                    names.add(target.id)
+        for node in own:
+            if not isinstance(node, ast.Assert):
+                continue
+            for cmp in (n for n in ast.walk(node.test) if isinstance(n, ast.Compare)):
+                operands = [cmp.left, *cmp.comparators]
+                for op, left, right in zip(cmp.ops, operands, operands[1:], strict=False):
+                    below = isinstance(op, ast.Lt | ast.LtE) and _timed(left, names, returns)
+                    above = isinstance(op, ast.Gt | ast.GtE) and _timed(right, names, returns)
+                    if below or above:
+                        found.add(node.lineno)
+    return found
+
+
+def _timed(node: ast.AST, names: set[str], returns: dict[str, set[int | None]]) -> bool:
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _timed(node.left, names, returns)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return None in returns.get(node.func.id, ())
+    return _clock_difference(node) or isinstance(node, ast.Name) and node.id in names
+
+
+@functools.cache
+def _bound_sites() -> dict[str, tuple[set[int], set[int]]]:
+    """Each test file's literal windows and elapsed asserts. This module and test_lock_timeout_waits.py plant them as
+    strings only, so they are read like any other file."""
+    sites = {}
+    for path in sorted((ROOT / "tests").rglob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        sites[path.relative_to(ROOT).as_posix()] = (literal_windows(source), elapsed_asserts(source))
+    return sites
+
+
+def test_every_polled_wait_names_a_declared_bound_never_a_literal_number():
+    found = sorted(f"{p}:{line}" for p, (windows, _) in _bound_sites().items() for line in windows)
+    assert not found, ("name a bound declared in tests/helpers/bounds.py (or bounds.WATCHDOG for a start-up or "
+                       f"admission wait), never a number: {found}")
+
+
+def test_no_test_outside_the_serial_lane_asserts_how_long_something_took():
+    found = sorted(f"{p}:{line}" for p, (_, elapsed) in _bound_sites().items() for line in elapsed)
+    assert not found, ("assert the event or the count instead, or mark the test serial where the time is the "
+                       f"property: {found}")
+
+
+def _planted(body: str) -> str:
+    return f"import time\n\n\ndef test_planted(lab):\n    {body}\n"
+
+
+def test_a_planted_literal_window_and_a_planted_elapsed_assert_are_each_found():
+    """The two checks above, each against one planted site: the live tree's empty lists are their other half."""
+    polling = _planted('lab.until(lambda: ready(), 30, "x")')
+    assert literal_windows(polling) == {5}
+    assert literal_windows(polling.replace("def test_", "@pytest.mark.serial\ndef test_")) == {6}
+    assert elapsed_asserts(_planted("assert time.monotonic() - started < 10")) == {5}
+
+
+def test_elapsed_guard_follows_helper_results_and_time_per_item():
+    helpers = """def measured():
+    return time.monotonic() - start
+def timed_child():
+    return proc, time.monotonic() - start
+"""
+    for body in ("assert measured() < 5", "proc, took = timed_child()\n    assert took < 5",
+                 "assert (time.perf_counter() - start) / len(items) < 0.5"):
+        assert elapsed_asserts(helpers + _planted(body))
+    assert not elapsed_asserts(helpers + _planted("proc, took = timed_child()\n    assert proc < limit"))

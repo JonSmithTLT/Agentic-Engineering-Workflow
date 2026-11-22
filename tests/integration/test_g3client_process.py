@@ -544,6 +544,7 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     assert "aew g3: the G3 service does not answer: the answer on" in err  # the probe found it not G3's first
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """#286 review F2, on a real socket: a service that takes a request and never answers. Each request is bounded by

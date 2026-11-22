@@ -36,6 +36,7 @@ from typing import Any
 import fake_opencode
 import pytest
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
+from bounds import LEAD_SESSION_TIMEOUT_S
 from conftest import IS_WINDOWS, CLIResult, clean_env
 from fake_harness import (
     AGENT,
@@ -108,7 +109,7 @@ class LeadSession:
     # Why the driver ended the session at its start, or "" (the tool screen it could not answer: FakeOpenCodeDriver)
     ended_by_driver: Callable[[], str] = lambda: ""
 
-    def result(self, timeout: float = 900) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
+    def result(self, timeout: float = LEAD_SESSION_TIMEOUT_S) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
         """Wait for the session to end: the command's result (what the operator's terminal shows) and the steps
         the Lead's model took."""
         out, err = self.proc.communicate(timeout=timeout)
@@ -583,7 +584,7 @@ def rotation_leaves_the_old_run_without_authority(lab, driver, tmp_path):
     wid, inv, run = launch_ticket(lab, driver, tmp_path, [
         {"do": "dump_env", "path": str(sync / "env1")}, {"do": "touch", "path": str(sync / "ready")},
         {"do": "wait_file", "path": str(sync / "never"), "timeout": 300}])
-    lab.until(lambda: (sync / "ready").exists(), what="run 1 ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="run 1 ready")
     driver.script(lab, "R-INV-0001-2", IMPLEMENT)
     lab.lead("harness", "launch", inv, "--replace")
     old = json.loads((sync / "env1").read_text())
@@ -637,12 +638,12 @@ def stopping_a_run_ends_every_process_it_started(lab, driver, tmp_path):
         {"do": "spawn_orphan", "pidfile": str(sync / "orphan")},
         {"do": "wait_file", "path": str(sync / "never"), "timeout": 300, "pidfile": str(sync / "agent"),
          "ready": str(sync / "ready")}])
-    lab.until(lambda: (sync / "ready").exists(), what="ready")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     watches = [watch_agent_pid(lab, run, int((sync / n).read_text())) for n in ("orphan", "agent")]
     assert all(w.alive() for w in watches)
     lab.ok("harness", "stop", run, "--reason", "conformance", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
-    lab.until(lambda: not any(w.alive() for w in watches), 30, "every harness process gone")
+    lab.until(lambda: not any(w.alive() for w in watches), "wait.exit", "every harness process gone")
 
 
 @scenario()
@@ -663,9 +664,9 @@ def repeated_runs_start_and_end_cleanly_with_private_state(lab, driver, tmp_path
         assert driver.sessions(lab, r) == {lab.record(r)["launch"]["session"]}  # its own session only
         assert Path(driver.state_dir(lab, r)).resolve().is_relative_to(runlog.run_dir(lab.aew_root, r).resolve())
     for rec in records:
-        lab.until(lambda rec=rec: supervisor_gone(rec), 30, "every supervisor to exit")
+        lab.until(lambda rec=rec: supervisor_gone(rec), "wait.exit", "every supervisor to exit")
         for pid, named in harness_processes(rec):  # no harness process (a server, an agent) outlives its run
-            lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), 30,
+            lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), "wait.exit",
                       f"harness process {pid} to exit")
 
 
@@ -699,7 +700,7 @@ def an_incompatible_harness_fails_closed(lab, driver, tmp_path):
     record = lab.record("R-INV-0001-1")
     assert record["status"] == "launch_failed" and not record.get("harness_pids")
     assert record["reason_code"] == "incompatible_config", record
-    lab.until(lambda: supervisor_gone(record), 30, "the supervisor to exit")
+    lab.until(lambda: supervisor_gone(record), "wait.exit", "the supervisor to exit")
     assert lab.ok("harness", "status")["runs"][0]["status"] == "launch_failed"
 
 

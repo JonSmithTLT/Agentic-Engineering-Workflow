@@ -662,6 +662,7 @@ def test_a_high_anomaly_stops_auto_run_and_changes_no_availability(lab_project, 
     assert control(p)["anomalies"]
 
 
+@pytest.mark.serial
 def test_disposed_anomalies_leave_hot_state_and_read_cold_quickly(tmp_path):
     """TIS-35: only open anomalies are hot; each disposed one leaves it in the same commit, and its cold record is
     found without scanning (a pointer on its live Ticket)."""

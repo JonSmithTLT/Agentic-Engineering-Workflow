@@ -61,8 +61,82 @@ def declare(name: str, seconds: float, *, within: str | None = None, lanes: Iter
     return bound.seconds
 
 
+# The per-test watchdog's limit (watchdog.py): ``--test-timeout``'s default, and what CI's lanes pass. A start-up or
+# admission wait names WATCHDOG instead of a number: it is bounded by the time left to this limit, so it never adds a
+# tighter deadline of its own (#497), and on Windows, where the watchdog only dumps stacks, it still fails by name.
+TEST_TIMEOUT_S = 600.0
+WATCHDOG = "watchdog"
+# Past the test's limit, a WATCHDOG wait gives the watchdog's own evidence time to land first: on Windows the
+# faulthandler dump at the limit, and the autopsy watcher one WATCHER_GRACE_S later (autopsy.py), which collects while
+# the test still runs. On POSIX the watchdog's alarm raises in the test at the limit itself, before this.
+WATCHDOG_EVIDENCE_S = 10.0
+# A scripted Lead session's own result timeout, including when the test watchdog is off.
+LEAD_SESSION_TIMEOUT_S = 900.0
+
+
 class BoundExpired(Exception):
     """A bounded wait ran out: its message names the bound."""
+
+
+# The polled waits' bounds, by what they wait for. Their seconds are those the waits had before they were named (the
+# lab's default 60, the notifier helper's 30, and the literals the calls passed): a bound is never raised to pass.
+declare("wait.condition", 60, why="a run, a lab or a process reaches the state the test observes next")
+declare("wait.chain", 30, why="a notifier or broker chain delivers, or reaches its next state")
+declare("wait.exit", 30, why="a supervisor or a process tree exits, or is killed")
+declare("wait.run_end", 120, why="a run ends, or its observed progress moves, after a slower step")
+declare("wait.kill", 15, why="the notifier's process tree is killed at its timeout")
+declare("wait.challenge", 15, why="a resumed seat's challenge is shown")
+declare("wait.selector", 10, why="a worker wait reaches the engine's selector, or leaves it")
+declare("wait.meter", 10, why="a live run's meter or turn reaches its next state")
+declare("wait.beat", 5, why="the broker writes its next liveness beat")
+declare("wait.never", 0.1, why="a wait that is meant to time out, to test the timeout itself")
+declare("wait.custody", 90, why="a custody worker registers, or exits")
+declare("wait.validation", 300, lanes=("integration",), why="a custodian's validation run routes its entry")
+
+
+def seconds(bound: str | float) -> float | None:
+    """A wait's bound in seconds: a declared bound's; for :data:`WATCHDOG`, the time left to the test's limit and
+    :data:`WATCHDOG_EVIDENCE_S` (None when the watchdog is off: ``--test-timeout 0``); or ``bound`` itself, when it
+    is seconds already."""
+    import sys
+
+    if bound == WATCHDOG:
+        left_of = getattr(sys.modules.get("watchdog"), "left", None)  # tests/helpers/watchdog.py, not a namesake
+        left = left_of() if callable(left_of) else None
+        return None if left is None else left + WATCHDOG_EVIDENCE_S
+    return BOUNDS[bound].seconds if isinstance(bound, str) else float(bound)
+
+
+def lead_session_bound() -> str | float:
+    """Use the test watchdog when it ends the wait first, keeping the Lead session's own ceiling otherwise."""
+    remaining = seconds(WATCHDOG)
+    return WATCHDOG if remaining is not None and remaining < LEAD_SESSION_TIMEOUT_S else LEAD_SESSION_TIMEOUT_S
+
+
+def until(ready: Callable[[], Any], bound: str | float, what: str, *, every: float = 0.05,
+         before: Callable[[], None] | None = None, describe: Callable[[], str] | None = None) -> Any:
+    """``ready()``'s first truthy result within ``bound``: a declared bound's name, :data:`WATCHDOG`, or seconds
+    derived from a product value (never a literal: tests/unit/test_polling_predicates.py). ``before`` runs ahead of
+    each check; on a timeout the AssertionError names the bound and, with ``describe``, what was happening then."""
+    limit = seconds(bound)
+    name = bound if isinstance(bound, str) else f"{limit:g}s"
+    started = time.monotonic()
+    while limit is None or time.monotonic() < started + limit:
+        if before is not None:
+            before()
+        value = ready()
+        if value:
+            flight_recorder.wait(name, limit or 0.0, "ok", time.monotonic() - started)
+            return value
+        time.sleep(every)
+    flight_recorder.wait(name, limit, "timeout", time.monotonic() - started)
+    message = f"timed out after {limit:g}s ({name}) waiting for {what}"
+    if describe is not None:
+        try:
+            message += f"; at the timeout:\n{describe()}"
+        except Exception as exc:  # the timeout is the failure: a broken describer must not hide it  # noqa: BLE001
+            message += f"; the describer failed: {type(exc).__name__}: {exc}"
+    raise AssertionError(message)
 
 
 def bounded_wait(name: str, ready: Callable[[], Any], *, seconds: float | None = None, poll_s: float = 0.05,

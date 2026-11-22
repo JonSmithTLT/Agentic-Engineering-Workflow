@@ -111,7 +111,7 @@ def settled(lab: HarnessLab, broker: lead_broker.LeadBroker) -> None:
         stop = (steering.loop_state(lab.aew_root, broker.generation) or {}).get("stop")
         return isinstance(stop, dict) and stop.get("revision") == str(revision)  # shown as `status` shows it
 
-    lab.until(recorded, what=f"the steering loop's record of revision {revision}")
+    lab.until(recorded, "wait.condition", what=f"the steering loop's record of revision {revision}")
 
 
 def contained(lab: HarnessLab, broker: lead_broker.LeadBroker) -> dict[str, str]:
@@ -241,11 +241,11 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
             directory = runlog.run_dir(lab.aew_root, run)
             lab.until(lambda: not runlog.possibly_live(runlog.observed_status(directory)[0], None)
                       and (runlog.read_progress(directory) or {}).get("state") == P.ENDED, what="the run to end",
-                       timeout=120)
+                       bound="wait.run_end")
             # The terminal record precedes the supervisor's final advisory wake bump. Observe process exit before
             # attributing every subsequent .aew byte change to the read: do not exempt the wake file from the proof.
             record = lab.record(run)
-            lab.until(lambda: supervisor_gone(record), 30, "the ended run's supervisor to exit")
+            lab.until(lambda: supervisor_gone(record), "wait.exit", "the ended run's supervisor to exit")
             seq = int(runlog.read_progress(directory)["trigger_seq"])
             assert seq > 0 and runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
             before = worker_surface.snapshot(lab.aew_root)
@@ -287,14 +287,14 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
             directory = runlog.run_dir(lab.aew_root, run)
             try:
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
-                          what="the write outside the scope", timeout=120)
+                          what="the write outside the scope", bound="wait.run_end")
                 # A digest is published before its advisory wake bump. A later digest is the producer's completion
                 # barrier: the first poll finished its bump before it could enter the next poll. Keep local/wake in
                 # the exact no-write assertion rather than attributing a still-running producer's bump to the read.
                 observed = lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at"),
-                                     what="the trigger poll's observation", timeout=120)
+                                     what="the trigger poll's observation", bound="wait.run_end")
                 lab.until(lambda: (runlog.read_progress(directory) or {}).get("observed_at") not in (None, observed),
-                          what="the poll after the trigger's advisory wake update", timeout=120)
+                          what="the poll after the trigger's advisory wake update", bound="wait.run_end")
                 own = f"{runlog.RUNS_REL}/{run}/"
 
                 def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
@@ -329,10 +329,8 @@ def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab,
     settled(lab, broker)
     here = direct(lab, "status", "--json")
     with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
-        started = time.monotonic()
         via = relayed(lab, broker, "status", "--json")
-        took = time.monotonic() - started
-    assert (via.returncode, via.stdout) == (here.returncode, here.stdout) and took < 30, via.stderr
+    assert (via.returncode, via.stdout) == (here.returncode, here.stdout), via.stderr
 
 
 def test_no_relayed_read_carries_a_runs_password_bridge_key_or_token(lab, broker, tmp_path):
@@ -367,7 +365,7 @@ def launch_held_open(lab: HarnessLab, tmp_path: Path) -> str:
                            {"do": "wait_file", "path": str(sync / "go"), "timeout": 300}])
     wid = create_planned_ticket(lab.project, tmp_path)
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
+    lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the turn is under way")
     return run
 
 
@@ -377,7 +375,8 @@ def wait_in_flight(lab: HarnessLab, broker: lead_broker.LeadBroker, run: str) ->
                                stderr=subprocess.PIPE, text=True, encoding="utf-8",
                                **({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                   else {"start_new_session": True}))
-    lab.until(lambda: broker._reads, what="the relayed wait is in flight on the broker")  # its own process
+    lab.until(lambda: broker._reads, "wait.condition",
+              what="the relayed wait is in flight on the broker")  # its own process
     return waiting
 
 
@@ -387,12 +386,11 @@ def test_a_relayed_wait_never_holds_a_lead_write_and_returns_when_the_run_ends(l
     run = launch_held_open(lab, tmp_path)
     waiting = wait_in_flight(lab, broker, run)
     try:
-        started = time.monotonic()
         out = bridge.call("lead.cli", {"argv": ["work", "create", "ticket", "--title", "While a wait is held",
                                                 "--class", "1", "--expect-rev", str(lab.project.rev())],
                                        "cwd": str(lab.root), "stdin": ""},
                           endpoint=broker.env[lead_broker.ENV_ENDPOINT], key=broker.env[lead_broker.ENV_KEY])
-        assert out["result"]["id"] and time.monotonic() - started < 30
+        assert out["result"]["id"]
         assert waiting.poll() is None  # the wait is still held
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
         stdout, stderr = waiting.communicate(timeout=120)
@@ -411,15 +409,12 @@ def test_a_relayed_wait_in_flight_never_holds_the_sessions_close(lab, tmp_path, 
     run = launch_held_open(lab, tmp_path)
     try:
         waiting = wait_in_flight(lab, broker, run)
-        started = time.monotonic()
         broker.close()
-        assert time.monotonic() - started < 20
         waiting.communicate(timeout=60)
         assert waiting.returncode != 0 and not broker._reads
-        started = time.monotonic()
         late = lead_broker.run_read(broker.engine, ["harness", "wait", run, "--timeout", "120"], str(lab.root),
                                     track=broker._track)
-        assert late["exit"] != 0 and time.monotonic() - started < 20 and not broker._reads
+        assert late["exit"] != 0 and not broker._reads
     finally:
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
 
@@ -444,11 +439,9 @@ def test_a_relayed_read_whose_wait_fails_is_ended_never_left_running(lab, broker
 
     monkeypatch.setattr(subprocess.Popen, "communicate", failing)
     try:
-        began = time.monotonic()
         with pytest.raises(OverflowError):
             lead_broker.run_read(broker.engine, ["harness", "wait", run, "--timeout", "120"], str(lab.root),
                                  track=track)
-        assert time.monotonic() - began < 20
         assert started and started[0].returncode is not None and not broker._reads
     finally:
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")

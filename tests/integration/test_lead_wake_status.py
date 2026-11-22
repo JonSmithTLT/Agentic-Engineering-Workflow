@@ -7,6 +7,7 @@ import threading
 import time
 from types import SimpleNamespace
 
+import bounds
 import pytest
 from conftest import IS_WINDOWS
 
@@ -224,21 +225,15 @@ def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_th
         poster = _CountingPoster()
         broker.start_wakes(poster)
 
-        def until(predicate) -> None:
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline and not predicate():
-                time.sleep(0.05)
-            assert predicate()
-
         assert Q.serving(root) == broker.generation
         state["switch"] = X.PUSH_WAKE_OFF
-        until(lambda: Q.serving(root) is None)
+        bounds.until(lambda: Q.serving(root) is None, "wait.chain", "the serving mark cleared")
         _a_run_with_news(root, monkeypatch)
         time.sleep(3 * POLL_S)  # passes that would have posted it
         assert poster.posts == []
         state["switch"] = X.PUSH_WAKE_ON
-        until(lambda: Q.serving(root) == broker.generation)
-        until(lambda: len(poster.posts) == 1)  # what was held
+        bounds.until(lambda: Q.serving(root) == broker.generation, "wait.chain", "the serving mark set again")
+        bounds.until(lambda: len(poster.posts) == 1, "wait.chain", "the held wake posted")
     finally:
         broker.close()
 

@@ -39,6 +39,7 @@ def _a_thread_that_will_never_accept() -> tuple[threading.Thread, threading.Even
     return thread, release
 
 
+@pytest.mark.serial
 def test_closing_the_control_channel_never_waits_on_a_serving_thread_that_will_not_accept(monkeypatch):
     """The race's end state, made deterministic: the serving thread is alive but will never accept again."""
     monkeypatch.setattr(bridge, "WAKE_TIMEOUT_S", 0.5)
@@ -106,6 +107,7 @@ def test_a_closed_bridge_whose_owner_waits_is_stopped_with_its_endpoint_removed(
     assert not server._thread.is_alive()
 
 
+@pytest.mark.serial
 def test_waiting_for_a_bridge_stop_is_bounded(monkeypatch):
     """A stop that does not finish never holds its owner past the bound; the stop goes on, on its own thread."""
     monkeypatch.setattr(bridge, "STOP_BOUND_S", 0.2)
@@ -200,6 +202,7 @@ def _exists(path: str) -> bool:
     return os.path.exists(path)
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("round_", range(25))
 def test_a_control_channel_closed_right_after_a_request_stops_promptly(round_):
     """The original race, run for real: a request is served, and close() follows at once, while the serving thread is
@@ -218,6 +221,7 @@ def test_a_control_channel_closed_right_after_a_request_stops_promptly(round_):
     assert not server._thread.is_alive()
 
 
+@pytest.mark.serial
 def test_serve_listener_returns_only_after_an_accept_once_closed():
     """The loop observes the closure only after an accept, so the wake connection always has a taker."""
     import os

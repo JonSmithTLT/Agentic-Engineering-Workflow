@@ -15,15 +15,16 @@ from aew.harness import broker_liveness
 
 
 def test_a_describer_that_raises_never_hides_the_timeout():
-    with pytest.raises(AssertionError, match=r"timed out waiting for x; the describer failed: ZeroDivisionError"):
-        until(lambda: None, 0.1, "x", describe=lambda: str(1 / 0))
+    failed = r"timed out after 0.1s \(wait\.never\) waiting for x; the describer failed: ZeroDivisionError"
+    with pytest.raises(AssertionError, match=failed):
+        until(lambda: None, "wait.never", "x", describe=lambda: str(1 / 0))
 
 
 def test_wait_for_close_retries_an_unreadable_beat_and_returns_the_closed_observation(monkeypatch, tmp_path):
     closed = {"closed_at": 1.0}
     reads = iter((broker_liveness.Unreadable(), None, {"closed_at": None}, closed))
     monkeypatch.setattr(broker_liveness, "read", lambda root: next(reads))
-    assert until(lambda: liveness_record(tmp_path, closed=True), what="the closed beat") is closed
+    assert until(lambda: liveness_record(tmp_path, closed=True), "wait.chain", what="the closed beat") is closed
 
 
 class _Recycled(threading.Thread):

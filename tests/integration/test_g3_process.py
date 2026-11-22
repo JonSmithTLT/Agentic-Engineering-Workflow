@@ -336,6 +336,7 @@ def test_a_refusal_waits_for_the_body_the_client_declared_so_the_client_always_r
     assert raw_call(run / REQUEST_SOCK, head + body)[0] == 201  # control: a whole request is answered at once
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_client_that_declares_a_body_and_never_sends_it_holds_a_thread_only_until_the_request_timeout(
         in_process: tuple[G.Rig, Path], monkeypatch: pytest.MonkeyPatch) -> None:
     """The drain above waits for the declared body, so a stalled client is dropped at the handler's socket timeout

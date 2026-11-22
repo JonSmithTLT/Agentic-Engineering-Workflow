@@ -182,7 +182,7 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
             assert out["ok"], out["stopped"]
             custodian = lease(p)["custodian"]
             [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
-            lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+            lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the verifier to report")
             (sync / "release").touch()
             lab.wait(run)
             assert Engine.discover(p.root).custody_step(custodian, held[custodian])[0] == CO.ACTED

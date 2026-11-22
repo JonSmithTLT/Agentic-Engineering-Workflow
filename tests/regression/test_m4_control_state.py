@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from conftest import Project, make_git_repo
 
 
@@ -44,6 +45,7 @@ time.sleep(float(sys.argv[3]))
 """
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_busy_history_index_does_not_fail_an_authoritative_commit(tmp_path):
     """P3: a Lead commit that needs a cold fact (an edge to archived work) builds a private index from the history
     when another process holds the shared one, instead of failing with LOCK_TIMEOUT after 30 s."""

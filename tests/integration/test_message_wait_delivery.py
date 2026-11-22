@@ -34,7 +34,7 @@ def test_broker_wait_returns_existing_live_reply_but_local_told_suppresses_new_n
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     e = Engine.discover(lab.root)
     result = e.harness_wait(run, timeout=0, triggers=True, message_after={})
     assert result["why"] == [K.WORKER_MESSAGE]
@@ -98,7 +98,7 @@ def test_explicit_ended_run_carries_its_existing_reply_even_after_end_was_report
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     (sync / "end").touch()
     lab.wait(run)
     e = Engine.discover(lab.root)
@@ -115,7 +115,7 @@ def test_a_relayed_live_wait_records_only_its_carried_body_locally(lab, tmp_path
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     e = Engine.discover(lab.root)
     # Use the engine's verified identity rather than assuming which planning unit came first.
     inv = e.store.read()["invocations"]["INV-0001"]
@@ -149,7 +149,7 @@ def test_post_before_wait_suppresses_messages_but_not_an_explicit_end_and_keeps_
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     (sync / "end").touch()
     lab.wait(run)
     e = Engine.discover(lab.root)
@@ -176,7 +176,7 @@ def test_worker_message_handler_ablation_breaks_the_actual_wait_assertion_and_re
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     e = Engine.discover(lab.root)
     original = P.holds
 
@@ -206,7 +206,7 @@ def test_failed_relayed_wait_send_records_neither_message_nor_sequence_or_end_re
     run, sync = launch(lab, tmp_path, [REPLY])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2)["exit"] == 0
+    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
     if ended:
         (sync / "end").touch()
         lab.wait(run)
@@ -272,7 +272,7 @@ def test_two_real_runs_share_the_twenty_body_wait_budget_and_omitted_replies_ret
     (sync / "go").touch()
     try:
         lab.until(lambda: all((sync / f"done-{n}").exists() for n in (1, 2)),
-                  60, "both real workers' eleven replies")
+                  "wait.condition", "both real workers' eleven replies")
         expected = {f"MSG-INV-{n:04d}-{seq}" for n in (1, 2) for seq in range(2, 13)}
         first = e.harness_wait(runs, timeout=0, any_=True, triggers=True, message_after={})
         carried = {m["id"] for m in first["messages"]}

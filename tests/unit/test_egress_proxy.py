@@ -584,6 +584,7 @@ def test_the_proxy_serves_its_listener_and_close_ends_every_tunnel():
         spy.close()
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_the_whole_request_head_has_one_deadline():
     """However its bytes are spaced, the request head must be complete ``header_timeout`` after the connection began:
     a byte now and then does not extend it."""
@@ -768,6 +769,7 @@ class RefusingListener(socket.socket):
         raise OSError(errno.EMFILE, "synthetic: too many open files")
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_failing_accept_waits_between_tries_and_close_still_returns():
     front = RefusingListener(socket.AF_INET, socket.SOCK_STREAM)
     proxy = EgressProxy(AnyPublic(), listener=front, resolve=Resolver(), connect=ConnectSpy())

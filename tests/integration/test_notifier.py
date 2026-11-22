@@ -65,7 +65,7 @@ def serve(project):
         ep.start()
         started.append(ep)
         # The watcher's cursor starts at its first pass: wait for it, so what the test does next is after it.
-        until(lambda: notify.summary(project.root / ".aew") is not None, what="the watcher's first pass")
+        until(lambda: notify.summary(project.root / ".aew") is not None, "wait.chain", what="the watcher's first pass")
         return ep, console
 
     yield start
@@ -109,7 +109,7 @@ def test_notifies_with_no_broker_running(project, tmp_path, monkeypatch, serve, 
     if case == "takeover":
         assert broker_liveness.read(root) is None  # no broker was ever started
         takeover(project, monkeypatch)
-        [ended] = until(lambda: events(out, "generation_ended"), what="generation_ended")
+        [ended] = until(lambda: events(out, "generation_ended"), "wait.chain", what="generation_ended")
         assert (ended["reason"], ended["subject"], ended["source"], ended["authenticated"]) == (
             "takeover", f"lead generation {generation}", "control_state", True)
         assert not events(out, "broker_gone")
@@ -123,8 +123,8 @@ def test_notifies_with_no_broker_running(project, tmp_path, monkeypatch, serve, 
             assert child.stdin is not None
             child.stdin.write((project.token + "\n").encode("utf-8"))
             child.stdin.close()
-            until(ready.exists, 60, "the broker to start")
-            record = until(lambda: liveness_record(root), what="the broker's liveness record")
+            until(ready.exists, "wait.condition", "the broker to start")
+            record = until(lambda: liveness_record(root), "wait.chain", what="the broker's liveness record")
             # The broker's own process (a venv's launcher on Windows starts the interpreter as its child).
             assert record["generation"] == generation and procs.pid_alive(record["pid"])
             pids.add(record["pid"])
@@ -132,7 +132,8 @@ def test_notifies_with_no_broker_running(project, tmp_path, monkeypatch, serve, 
             for pid in pids:
                 procs.kill_pid(pid)
             child.wait(30)
-        until(lambda: events(out, "generation_ended") and events(out, "broker_gone"), what="the crash events")
+        until(lambda: events(out, "generation_ended") and events(out, "broker_gone"), "wait.chain",
+              what="the crash events")
         [ended], [gone] = events(out, "generation_ended"), events(out, "broker_gone")
         assert ended["reason"] == gone["reason"] == "crash"
         assert ended["source"] == gone["source"] == "liveness" and not ended["authenticated"]
@@ -140,7 +141,7 @@ def test_notifies_with_no_broker_running(project, tmp_path, monkeypatch, serve, 
         broker = lead_broker.LeadBroker(Engine.discover(project.root), project.token)
         broker.start()
         broker.close()
-        [gone] = until(lambda: events(out, "broker_gone"), what="broker_gone")
+        [gone] = until(lambda: events(out, "broker_gone"), "wait.chain", what="broker_gone")
         assert gone["reason"] == "closed" and gone["subject"] == f"lead generation {generation}"
         ep.watcher.pass_once()
         assert ep.watcher.drain()
@@ -161,7 +162,7 @@ def test_delivery_failure_is_visible_and_moves_no_revision(project, tmp_path, se
     request(project, "raise")
     revision = project.rev()
     control = (root / "state/control.yaml").read_bytes()
-    until(lambda: (notify.summary(root) or {}).get("failed"), what="the failed delivery")
+    until(lambda: (notify.summary(root) or {}).get("failed"), "wait.chain", what="the failed delivery")
     ep.watcher.pass_once()
     assert ep.watcher.drain()
     assert project.rev() == revision and (root / "state/control.yaml").read_bytes() == control
@@ -188,7 +189,7 @@ def test_a_slow_notifier_never_delays_a_challenge(project, tmp_path, serve):
     adopt(project, command=[sys.executable, "-I", script(tmp_path, "slow", body)], timeout_s=30)
     _, console = serve()
     request(project, "raise")
-    until(started.exists, what="the slow notifier to start")
+    until(started.exists, "wait.chain", what="the slow notifier to start")
     seen: dict[str, Any] = {}
 
     def answer(prompt: str) -> str:
@@ -244,7 +245,7 @@ def test_notifier_child_inherits_no_endpoint_handle(project, tmp_path, serve, mo
         found = read_json_or_none(report)
         return None if found is None else [found]
 
-    [found] = until(whole_report, what="the notifier's whole report")
+    [found] = until(whole_report, "wait.chain", what="the notifier's whole report")
     [call] = [c for c in spawned if c["argv"] == command]
     assert call.get("close_fds") is True
     inherited = [(fd, target) for fd, target in found if fd > 2 and not str(target).startswith("/proc/")]
@@ -273,10 +274,10 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, monkeypatch):
     broker.start()
     try:
         generation = broker.generation
-        first = until(lambda: liveness_record(root), what="the first beat")
+        first = until(lambda: liveness_record(root), "wait.chain", what="the first beat")
         assert (first["pid"], first["generation"]) == (os.getpid(), generation)
         assert first["wedge_after_s"] == pytest.approx(engine.store.lock_timeout + 2 * poll)
-        until(lambda: (liveness_record(root) or first)["beat_at"] > first["beat_at"], 5, "a second beat")
+        until(lambda: (liveness_record(root) or first)["beat_at"] > first["beat_at"], "wait.beat", "a second beat")
         assert broker_liveness.judge(broker_liveness.read(root), generation=generation, poll_s=poll) is None
         takeover(project, monkeypatch)
         # The watchdog's next iteration may first wait out the control lock: the wait is the broker's own bound for one
@@ -516,7 +517,8 @@ def test_launch_failed_events_come_from_the_supervisor_only(tmp_path, site):
             res = lab.lead_res("work", "assign", wid, "--launch")  # no fake script for the run: the start fails
             assert res.error["code"] == "HARNESS_LAUNCH_FAILED"
             runs = ["R-INV-0001-1"]
-            until(lambda: lab.record(runs[0]).get("status") == K.LAUNCH_FAILED, what="the launch_failed record")
+            until(lambda: lab.record(runs[0]).get("status") == K.LAUNCH_FAILED, "wait.chain",
+                  what="the launch_failed record")
         else:
             runs = ["R-INV-0007-1", "R-INV-0008-1"]
             for run, stdin in zip(runs, (b"", b"not json\n"), strict=True):

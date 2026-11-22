@@ -1128,8 +1128,10 @@ entries:
   owner: CI timing fixes
   test: tests/integration/test_worker_messages.py::test_a_stream_drop_during_an_open_shell_refuses_wait_and_explains_the_loss
   planned_fix: >-
-    Restore watchdog_only for the shell step, so the watchdog is the one bound on its startup. Closure awaits the fix
-    PR number.
+    Restore watchdog_only for the shell step (now its "watchdog" bound), so no deadline is tighter than the test's
+    own limit. On POSIX the watchdog's alarm ends a hang there; on Windows the watchdog only names it, and the
+    "watchdog" bound (the time left to that limit) makes the wait itself fail by name just after the watchdog's
+    dump, where before the session deadline ended it. Closure awaits the fix PR number.
   evidence:
   - run: 44591817415
     job: 135800292632
@@ -1147,8 +1149,9 @@ entries:
   status: open
   class: test failure
   cause: >-
-    Cause unestablished. Its shell step's startup wait already has watchdog_only, so the second deadline of
-    stream-drop-shell-startup is not its cause.
+    Cause unestablished. Its shell step's startup wait already deferred to the watchdog, so the second deadline of
+    stream-drop-shell-startup is not its cause. Four sightings are exit-1 assertions; the fifth (job 132890484979)
+    is a 60s timeout.
   owner: CI flake triage
   test: tests/integration/test_worker_messages.py::test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery
   evidence:

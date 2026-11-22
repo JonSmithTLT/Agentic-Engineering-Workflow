@@ -249,13 +249,22 @@ def yaml_too_deep(text: str, *, loader: Any = _SafeLoader, limit: int = YAML_MAX
     it before composing anything that may be hostile; a syntax error raises ``yaml.YAMLError`` as composing would. The
     bound is syntactic: an alias counts as a leaf, so the value composed may be deeper than ``limit``."""
     depth = 0
-    for event in yaml.parse(text, Loader=loader):  # noqa: S506 - events only, nothing is constructed
-        if isinstance(event, _OPENS):
-            depth += 1
-            if depth > limit:
-                return event.start_mark.line + 1
-        elif isinstance(event, _CLOSES):
-            depth -= 1
+    try:
+        for event in yaml.parse(text, Loader=loader):  # noqa: S506 - events only, nothing is constructed
+            if isinstance(event, _OPENS):
+                depth += 1
+                if depth > limit:
+                    return event.start_mark.line + 1
+            elif isinstance(event, _CLOSES):
+                depth -= 1
+    except yaml.scanner.ScannerError as exc:
+        # libyaml 0.2.6 can reach its own nesting limit during scanner lookahead, before delivering our
+        # first over-limit event. Recover that event's line without composing or changing libyaml's global limit.
+        if loader is not yaml.SafeLoader and exc.problem == "exceeded maximum nesting depth":
+            line = yaml_too_deep(text, loader=yaml.SafeLoader, limit=limit)
+            if line is not None:
+                return line
+        raise
     return None
 
 

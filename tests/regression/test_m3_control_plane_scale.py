@@ -120,8 +120,8 @@ def test_no_engine_operation_changes_the_shared_parse(tmp_path, monkeypatch):
 
     original = ST.ControlStore._load
 
-    def checked(self):
-        state = original(self)
+    def checked(self, *, lock_free=False):
+        state = original(self, lock_free=lock_free)
         assert state == ST.deserialize_control(self.control_path.read_bytes(), source="check"), \
             "the store's shared parse was changed in place"
         return state

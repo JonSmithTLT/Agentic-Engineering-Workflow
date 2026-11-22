@@ -394,21 +394,31 @@ def lock_path_refs(source: str) -> set[int]:
 
 
 def lock_path_refs_by_text(source: str) -> set[int]:
-    """The second detector, written apart from the first: a line naming ``LOCK_REL`` in a file that imports the store
-    module or a name from it, or a line with the path's literal."""
+    """The second detector, written apart from the first: a direct import of ``LOCK_REL``, a reference qualified by
+    the store's imported name, or the path's literal."""
     import re
 
-    lines = source.splitlines()
-    imports = r"from aew\.engine\.store import|import aew\.engine\.store|from aew\.engine import .*\bstore\b"
-    store = any(re.search(imports, line) for line in lines)
-    return {n for n, line in enumerate(lines, 1)
-            if (store and re.search(r"\bLOCK_REL\b", line)) or "control.lock" in line}
+    direct = r"^\s*from aew\.engine\.store import\s+(?:\([^)]*\)|[^\n#]*)"
+    hits = {source.count("\n", 0, match.start()) + 1 for match in re.finditer(direct, source, re.M)
+            if re.search(r"\bLOCK_REL\b", match.group())}
+    modules = {"aew.engine.store"}
+    for match in re.finditer(r"^\s*import aew\.engine\.store\s+as\s+(\w+)", source, re.M):
+        modules.add(match[1])
+    for match in re.finditer(r"^\s*from aew\.engine import\s+(?:\([^)]*\)|[^\n#]*)", source, re.M):
+        if imported := re.search(r"\bstore\b(?:\s+as\s+(\w+))?", match.group().split("import", 1)[1]):
+            modules.add(imported[1] or "store")
+    qualified = r"\b(?:" + "|".join(map(re.escape, sorted(modules))) + r")\s*\.\s*LOCK_REL\b"
+    return hits | {n for n, line in enumerate(source.splitlines(), 1)
+                   if re.search(qualified, line) or "control.lock" in line}
 
 
 PLANTED_LOCK_REFS = {  # source -> does it name the control lock's path
     "from aew.engine.store import LOCK_REL\nL = FileLock(root / LOCK_REL)\n": True,
     "from aew.engine.store import ControlStore, LOCK_REL as L\nx = root / L\n": True,
     "from aew.engine import store as S\nx = FileLock(root / S.LOCK_REL)\n": True,
+    "from aew.engine.store import (\n    ControlStore,\n    LOCK_REL as L,\n)\nx = root / L\n": True,
+    "import aew.engine.store as S\nx = root / S.LOCK_REL\n": True,
+    'from aew.engine.store import read_replaced\nLOCK_REL = "endpoint.lock"\nx = root / LOCK_REL\n': False,
     "import aew.engine.store\nx = aew.engine.store.LOCK_REL\n": True,
     'x = FileLock(root / "local" / "control.lock")\n': True,
     "from aew.dashboard.service import LOCK_REL\nx = FileLock(root / LOCK_REL)\n": False,  # its own endpoint lock

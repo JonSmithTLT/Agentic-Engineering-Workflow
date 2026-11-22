@@ -23,6 +23,7 @@ import calendar
 import contextlib
 import errno
 import json
+import logging
 import os
 import re
 import stat
@@ -36,6 +37,8 @@ from typing import Any, BinaryIO
 from aew.harness import contract as K
 from aew.util import IS_WINDOWS, atomic_write, utc_now
 
+log = logging.getLogger(__name__)
+
 RUNS_REL = "local/harness/runs"
 RECORD = "run.json"                        # the run record
 # Each request the run's provider relays took, one JSON line each (``relay.RequestLog``): outside every sandbox
@@ -48,6 +51,7 @@ PROGRESS_SCHEMA = "aew/run-progress/v1"
 RETURNED_FILE = "progress.returned.json"   # the newest trigger a wait returned for the run (steering design §1)
 END_RETURNED_FILE = "progress.end-returned"  # a wait returned this run's end to the Lead
 HEARTBEAT_S = 1.0
+READ_BUDGET_S = 5.0  # preserve the Windows sharing tolerance of the original run-file reader
 # A supervisor that has not beaten for this long has stopped supervising (tests shorten it).
 STALE_AFTER_S = float(os.environ.get("AEW_RUN_STALE_S", "10"))
 
@@ -93,26 +97,56 @@ read_regular = _read_regular  # for the register of weaker contexts' marker scan
 
 
 def _read_text(path: Path) -> str | None:
-    """None only when the file does not exist. On Windows a reader can briefly collide with a writer's atomic
-    replace (a sharing violation): that is retried, never mistaken for absence. Elsewhere a permission error is
-    final: retrying it would only hold the control lock longer."""
-    deadline = time.monotonic() + 5.0
-    while True:
-        try:
-            return _read_regular(path).decode("utf-8")
-        except FileNotFoundError:
-            return None
-        except PermissionError:
-            if os.name != "nt" or time.monotonic() > deadline:
-                raise
-            time.sleep(0.02)
+    """None only when the file does not exist. A sharing refusal is retried by the shared reader."""
+    from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
+
+    def known() -> bool:
+        return ((path.name == RECORD and (path.parent / "heartbeat").exists()) or replace_pending(path))
+
+    try:
+        return retry_lock_free(lambda: _read_regular(path), also=MISSING_MID_REPLACE,
+                               budget_s=READ_BUDGET_S, missing_when=known).decode("utf-8")
+    except FileNotFoundError as exc:
+        if IS_WINDOWS and replace_pending(path):
+            _read_problem(path, exc)
+        return None
+    except (OSError, ValueError) as exc:
+        _read_problem(path, exc)
+        raise
 
 
-def read_record(directory: Path) -> dict[str, Any] | None:
+def _read_problem(path: Path, exc: Exception) -> None:
+    event = {"event": "run_file_unreadable", "file": path.name, "error": type(exc).__name__,
+             "errno": getattr(exc, "errno", None), "winerror": getattr(exc, "winerror", None)}
+    log.warning("%s: run=%s file=%s %s errno=%s winerror=%s", event["event"], path.parent.name,
+                path.name, event["error"], event["errno"], event["winerror"])
+    # Deduplicate successive identical observations without writing to the run record itself.
+    events = path.parent / "events.jsonl"
+    try:
+        with _open_regular(events) as stream:
+            stream.seek(max(0, stream.seek(0, os.SEEK_END) - 4096))
+            recent = stream.read(4096).splitlines()
+        if any(all(json.loads(line).get(key) == value for key, value in event.items())
+               for line in recent[-1:] if line.startswith(b"{")):
+            return
+    except (OSError, ValueError, RecursionError, AttributeError):
+        pass
+    EventLog(events)(event)
+
+
+def read_record(directory: Path, *, distinguish_unreadable: bool = False) -> dict[str, Any] | None:
+    """Read a run record. Status observers can surface an exhausted sharing refusal as unreadable."""
     try:
         text = _read_text(directory / RECORD)
         record = json.loads(text) if text is not None else None
-    except (OSError, ValueError, RecursionError):  # nesting past the parser's depth is no record (#137 re-review, F1)
+    except PermissionError:
+        if IS_WINDOWS and distinguish_unreadable:
+            raise
+        return None
+    except OSError:
+        return None  # _read_text has already recorded the failed read
+    except (ValueError, RecursionError) as exc:
+        _read_problem(directory / RECORD, exc)
         return None
     # The run directory is writable by the run's own user (the supervisor's note on local/): a record that is not an
     # object is no record, so no reader of it (a cancel's usage copy among them) fails on its shape (#137 review, F1).
@@ -180,6 +214,8 @@ def read_returned(directory: Path) -> int:
     try:
         text = _read_text(directory / RETURNED_FILE)
         value = json.loads(text).get("trigger_seq") if text is not None else 0
+    except PermissionError:
+        raise  # an unread watermark is not permission to replay old triggers or move the watermark back
     except (OSError, ValueError, RecursionError, AttributeError):
         return 0
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
@@ -246,33 +282,54 @@ def beat(directory: Path) -> None:
         pass
 
 
-def heartbeat_age(directory: Path) -> float | None:
+def heartbeat_age(directory: Path, *, distinguish_unreadable: bool = False) -> float | None:
     """The heartbeat's age, or None when there is none. Only a regular file beats: the file is not followed, and a
     link, a directory or one that cannot be read is no heartbeat (the run reads as ``lost``), never an error that
     fails the reader (#137 re-review: the run's own user can replace it)."""
+    from aew.engine.store import retry_lock_free
+
     try:
-        info = os.lstat(directory / "heartbeat")
-    except OSError:
+        info = retry_lock_free(lambda: os.lstat(directory / "heartbeat"), budget_s=READ_BUDGET_S)
+    except FileNotFoundError:
+        return None
+    except PermissionError as exc:
+        _read_problem(directory / "heartbeat", exc)
+        if IS_WINDOWS and distinguish_unreadable:
+            raise
+        return None
+    except OSError as exc:
+        _read_problem(directory / "heartbeat", exc)
         return None
     if not stat.S_ISREG(info.st_mode):
         return None
     return max(0.0, time.time() - info.st_mtime)
 
 
-def observed_status(directory: Path) -> tuple[str, dict[str, Any] | None]:
-    """What local evidence says about a run: its recorded status, or ``unconfirmed`` / ``lost``."""
-    record = read_record(directory)
-    if record is None:
+def observed_status(directory: Path, *, require_readable: bool = False) -> tuple[str, dict[str, Any] | None]:
+    """What local evidence says about a run: its status, or ``unconfirmed``, ``unreadable`` or ``lost``."""
+    unreadable = False
+    try:
+        record = read_record(directory, distinguish_unreadable=True)
+    except PermissionError:
+        if require_readable:
+            raise
+        unreadable, record = True, None
+    if record is None and not unreadable:
         return K.UNCONFIRMED, None
-    status = record.get("status")
+    status = (record or {}).get("status")
     if not isinstance(status, str):
         status = None
     if status in K.TERMINAL:
         return status, record
-    age = heartbeat_age(directory)
+    try:
+        age = heartbeat_age(directory, distinguish_unreadable=True)
+    except PermissionError:
+        if require_readable:
+            raise
+        return K.LOST, record  # liveness requires a readable, fresh heartbeat
     if age is None or age > STALE_AFTER_S:
         return K.LOST, record
-    return status or K.STARTING, record
+    return K.UNREADABLE if unreadable else status or K.STARTING, record
 
 
 UNCONFIRMED_GRACE_S = 30.0
@@ -281,7 +338,7 @@ UNCONFIRMED_GRACE_S = 30.0
 def possibly_live(status: str, launched_at: str | None, *, grace_s: float = UNCONFIRMED_GRACE_S) -> bool:
     """Could a supervisor for a run in ``status`` still hold custody? Conservative: an unconfirmed run launched
     moments ago may be between its launch commit and its first record."""
-    if status in (K.STARTING, K.RUNNING):
+    if status in (K.STARTING, K.RUNNING, K.UNREADABLE):
         return True
     if status == K.UNCONFIRMED and launched_at:
         try:
@@ -333,6 +390,8 @@ def deliver_request(directory: Path, name: str, text: str) -> Path:
 def take_requests(directory: Path, *,
                   on_unread: Callable[[str, PermissionError], None] | None = None) -> list[tuple[str, str]]:
     """Take readable requests and discard invalid entries. Report unavailable Windows reads and leave them queued."""
+    from aew.engine.store import retry_lock_free
+
     queue = directory / "requests"
     out = []
     try:  # a queue that is a link is not the run's queue: its target's files are never read or removed
@@ -343,7 +402,8 @@ def take_requests(directory: Path, *,
         try:
             # Read as a run record is: no link followed, no FIFO blocked on, bounded. The watchdog loop takes the
             # queue, so a request that could block it would stop the deadline and every later Lead request.
-            out.append((path.name, _read_regular(path).decode("utf-8", errors="replace")))
+            raw = retry_lock_free(lambda path=path: _read_regular(path))
+            out.append((path.name, raw.decode("utf-8", errors="replace")))
         except PermissionError as exc:
             # Another Windows handle can allow deletion while blocking this read. The CRT reports EACCES,
             # and unlink below could succeed even while that handle is open.

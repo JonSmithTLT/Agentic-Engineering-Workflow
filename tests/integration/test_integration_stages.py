@@ -1490,7 +1490,7 @@ def test_a_lost_verifier_run_is_routed_never_waited_on(tmp_path, monkeypatch, cu
         custodian = lease(p)["custodian"]
         status = K.LOST if observed == "lost" else K.UNCONFIRMED
         with monkeypatch.context() as patched:  # undone before the teardown below, which must see the run as it is
-            patched.setattr(runlog, "observed_status", lambda directory: (status, None))
+            patched.setattr(runlog, "observed_status", lambda directory, **kwargs: (status, None))
             if observed == "unconfirmed_past_grace":
                 patched.setattr(runlog, "possibly_live", lambda status, launched_at, **kw: False)
             found, routed = engine(p).custody_step(custodian, custody[custodian])

@@ -19,6 +19,7 @@ from typing import Any
 
 from aew import errors, operator
 from aew.engine.lock import FileLock
+from aew.engine.store import read_replaced
 from aew.errors import LockTimeout
 from aew.harness import procs
 from aew.harness.bridge import rebuild_error
@@ -193,7 +194,10 @@ def session_holders_live(aew_root: Path) -> bool:
     for path in files:
         data = None
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(read_replaced(path))
+        except PermissionError:
+            live = True  # an unreadable holder is not proof that the session died
+            continue
         except (OSError, ValueError):
             pass
         if isinstance(data, dict) and _same_process(data):
@@ -205,7 +209,7 @@ def session_holders_live(aew_root: Path) -> bool:
 
 def read_locator(path: Path) -> dict[str, Any] | None:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(read_replaced(path))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) and data.get("schema") == LOCATOR_SCHEMA else None

@@ -52,6 +52,21 @@ def test_read_committed_without_a_project_is_not_found(tmp_path):
         make_store(tmp_path).read_committed()
 
 
+def test_posix_permission_denied_is_final_on_the_first_read(monkeypatch):
+    from aew.engine import store
+
+    calls = []
+
+    def denied():
+        calls.append(None)
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(store, "IS_WINDOWS", False)
+    with pytest.raises(PermissionError):
+        store.retry_lock_free(denied, budget_s=5)
+    assert calls == [None]
+
+
 def test_read_committed_sees_each_commit_as_a_whole(tmp_path):
     """Concurrent lock-free reads during commits never see a torn or stale-then-newer sequence: revisions are
     monotonic and every state parses and verifies (the file is replaced atomically)."""

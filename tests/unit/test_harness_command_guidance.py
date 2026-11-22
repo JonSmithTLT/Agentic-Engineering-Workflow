@@ -147,6 +147,19 @@ def _stage(monkeypatch: pytest.MonkeyPatch, tmp: Path, status: str) -> str:
     return stages._launch_check({"n": 2, "outputs": {"runs": ["R-INV-0012-1"]}}, "SI-0003")["message"]
 
 
+def test_an_unreadable_stage_run_pauses_without_reporting_an_end(tmp_path, monkeypatch):
+    from aew.engine.stage_intents import _refuse_unless_continuable
+
+    stages = StageIntents.__new__(StageIntents)
+    stages.k = SimpleNamespace(aew_root=tmp_path)
+    monkeypatch.setattr(runlog, "observed_status", lambda *_: ("unreadable", None))
+    launch = stages._launch_check({"n": 1, "outputs": {"runs": ["R-INV-0012-1"]}}, "SI-0003")
+    assert launch["status"] == "unreadable" and "could not be read" in launch["message"]
+    checks = dict.fromkeys(("policy", "contract", "subject", "rebinds"), {"status": "ok"})
+    with pytest.raises(IllegalTransition, match="could not be read"):
+        _refuse_unless_continuable({"id": "SI-0003"}, {"checks": {**checks, "launch": launch}})
+
+
 def _resume(monkeypatch: pytest.MonkeyPatch, tmp: Path, record: dict[str, object] | None) -> str:
     harness = Harness.__new__(Harness)
     harness.k = SimpleNamespace(

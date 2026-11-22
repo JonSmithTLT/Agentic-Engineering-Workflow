@@ -58,6 +58,18 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 CTX = SurfaceContext.outside_session()
 
 
+@pytest.mark.parametrize("reader", ["status", "loop"])
+def test_steering_state_readers_do_not_open_a_nonregular_path(tmp_path, monkeypatch, reader):
+    target = tmp_path / S.LOOP_REL
+    target.mkdir(parents=True)
+
+    def unexpected_open(path):
+        pytest.fail(f"attempted to open {path}")
+
+    monkeypatch.setattr(Path, "read_bytes", unexpected_open)
+    assert (S.loop_state(tmp_path) if reader == "status" else L._read(target)) is None
+
+
 # ---------------------------------------------------------------------------------------------- fixtures and helpers
 
 

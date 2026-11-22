@@ -34,6 +34,7 @@ def registry_file(tmp_path):
 @pytest.mark.parametrize("error", [FileNotFoundError, PermissionError])
 def test_a_transient_replace_error_retries_the_bounded_read(tmp_path, monkeypatch, boundary, error):
     _, data = registry_file(tmp_path)
+    monkeypatch.setattr(S, "IS_WINDOWS", True)
     monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,))  # Windows policy, on every test platform
     sleeps = patch_sleep(monkeypatch, S)
     original = getattr(MS, boundary)
@@ -55,10 +56,11 @@ def test_a_transient_replace_error_retries_the_bounded_read(tmp_path, monkeypatc
 def test_true_absence_uses_the_store_missing_file_policy(tmp_path, monkeypatch, windows):
     (tmp_path / MS.REGISTRY_REL).parent.mkdir(parents=True)  # maps exist, but none has been selected
     monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,) if windows else ())
+    monkeypatch.setattr(S, "IS_WINDOWS", windows)
     sleeps = patch_sleep(monkeypatch, S)
     result = R.MapsReader(tmp_path).registry()
     assert result.state == R.NONE and result.revision == "none:0"
-    assert len(sleeps) == (S.READ_RETRIES - 1 if windows else 0)
+    assert sleeps == []
     assert not (tmp_path / MS.REGISTRY_REL).exists()
 
 
@@ -81,6 +83,7 @@ def test_a_missing_file_is_not_retried_under_the_posix_policy(tmp_path, monkeypa
 @pytest.mark.parametrize("boundary", ["lstat_regular", "read_bounded"])
 def test_exhausted_sharing_violations_raise_the_last_error(tmp_path, monkeypatch, boundary):
     registry_file(tmp_path)
+    monkeypatch.setattr(S, "IS_WINDOWS", True)
     sleeps = patch_sleep(monkeypatch, S)
     errors = []
 
@@ -115,6 +118,7 @@ def test_the_registry_cache_tracks_identity_and_retries_before_reusing_it(tmp_pa
     replacement.write_text(json.dumps(data), encoding="utf-8")
     replacement.replace(path)
     monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    monkeypatch.setattr(S, "IS_WINDOWS", True)
     sleeps = patch_sleep(monkeypatch, S)
     lstat = MS.lstat_regular
     calls = []
@@ -164,6 +168,7 @@ def test_a_replace_during_the_identity_recheck_never_reads_invalid(tmp_path, mon
     """Review M2 repro: a second replace collides with the identity-change branch's own lstat."""
     _, data = registry_file(tmp_path)
     monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    monkeypatch.setattr(S, "IS_WINDOWS", True)
     sleeps = patch_sleep(monkeypatch, S)
     real_lstat, real_read = MS.lstat_regular, MS.read_bounded
     lstats, reads = [], []

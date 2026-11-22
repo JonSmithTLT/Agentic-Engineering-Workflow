@@ -60,7 +60,7 @@ from aew.policy import execution as X
 from aew.roles import archetype
 from aew.skills import plan as skills_plan
 from aew.snapshot.fingerprint import changed_paths
-from aew.util import sha256_text, utc_now
+from aew.util import IS_WINDOWS, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
@@ -93,13 +93,19 @@ def record_told(aew_root: Path, result: Mapping[str, Any], *, lead: bool) -> Non
     if isinstance(triggers, list):  # a trigger: the run still works
         seqs = [t["seq"] for t in triggers if isinstance(t, Mapping) and type(t.get("seq")) is int]
         if seqs:
-            runlog.write_returned(directory, max(seqs))
+            try:
+                runlog.write_returned(directory, max(seqs))
+            except PermissionError:
+                pass  # the completed wait is still deliverable
         return
     if lead:
         runlog.write_end_returned(directory)
     digest = (result.get("runs") or {}).get(run)
     if isinstance(digest, Mapping) and type(digest.get("trigger_seq")) is int:  # the run is over: none of it is news
-        runlog.write_returned(directory, digest["trigger_seq"])
+        try:
+            runlog.write_returned(directory, digest["trigger_seq"])
+        except PermissionError:
+            pass  # the end receipt above remains valid
 
 
 def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
@@ -181,7 +187,7 @@ class Harness:
                 recovery = ({"recovery": self._unconfirmed_recovery(invocation, run)}
                             if status == K.UNCONFIRMED and target["status"] == "active"
                             and target["runs"][-1]["run"] == run["run"] else {})
-                return replay | recovery | {"ok": status != K.UNCONFIRMED, "spawn": status,
+                return replay | recovery | {"ok": status not in (K.UNCONFIRMED, K.UNREADABLE), "spawn": status,
                                             "supervisor_status": status_command,
                                             "next_action": f"Check `{status_command}`."}
             state = ctx.state
@@ -222,9 +228,13 @@ class Harness:
                                      "next_action": self._wait_on([run])})
 
     def wakes_reach_lead(self) -> bool:
+        """Whether a live broker is confirmed to post wakes for the Lead."""
+        return self._wake_posting() is True
+
+    def _wake_posting(self) -> bool | None:
         """Whether a wake would reach the Lead now: the policy has push wakes on, and a live broker posts them (steering
         design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback. It costs no second parse of
-        the control state: each run `aew status` reports asks, and so does a wait's end (OBX-38). **Limit:** right after
+        the control state. None means the broker's posting state could not be checked. **Limit:** right after
         a takeover the old mark can count until the old broker's watchdog closes its record, within a poll (0.83 s and
         0.88 s, measured), and longer only if that watchdog is stuck on the control lock."""
         try:
@@ -238,7 +248,8 @@ class Harness:
         """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait, which says when it
         is the fallback for a broker that isn't posting (steering design r4 §1). Reuse a caller's ``state`` rather
         than re-parsing control state for guidance (OBX-38)."""
-        if self.wakes_reach_lead():
+        posting = self._wake_posting()
+        if posting:
             return K.wake_step(runs)
         messaging = self.coordination.project_switch(
             self.k.store.current() if state is None else state) == X.MESSAGING_ENABLED
@@ -246,7 +257,8 @@ class Harness:
             fallback = X.wakes_post_here(self.k.execution_policy()[0])
         except AEWError:
             fallback = False
-        return K.no_broker_step(runs, messaging=messaging) if fallback else K.wait_step(runs, messaging=messaging)
+        return (K.no_broker_step(runs, messaging=messaging) if fallback and posting is False
+                else K.wait_step(runs, messaging=messaging))
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -604,7 +616,12 @@ class Harness:
                     None, {"why": K.WORKER_MESSAGE, "message": m["id"]}, eligible_messages=eligible)]
             return view
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
-        returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+        try:
+            returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+        except PermissionError as exc:
+            remedy = "retry the wait" if IS_WINDOWS else "check the watermark file permissions"
+            raise IllegalTransition(f"the returned progress watermark cannot be read; {remedy}",
+                                    reason="run_progress_unreadable") from exc
 
         def digests() -> dict[str, Any]:
             return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}
@@ -793,6 +810,8 @@ class Harness:
                     raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
                                             f"latest run {inv['runs'][-1]['run']})")
                 status, _ = runlog.observed_status(directory)
+                if status == K.UNREADABLE:
+                    raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
                 if status not in (K.STARTING, K.RUNNING):
                     raise IllegalTransition(
                         f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
@@ -909,6 +928,8 @@ class Harness:
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
                 action = f"{run} is running for {inv_id}: {self._wait_on([run], state)}"
+            elif status == K.UNREADABLE:
+                action = f"{run}'s record is unreadable: {K.wait_step([run])}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")

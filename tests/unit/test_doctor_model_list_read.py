@@ -158,3 +158,35 @@ def test_a_catalog_that_settled_with_nothing_to_offer_is_empty_and_never_complet
     contract = SimpleNamespace(execution_profile={"provider": "fakeprov", "model": "fake-model"})
     out = _reading(models, relayed=relayed).read_model_list(contract, {}, until=A.time.monotonic() + 60)
     assert out["complete"] is False and out["empty"] is True and out["models"] == []
+
+
+@pytest.mark.parametrize("started", [False, True])
+def test_a_failure_caught_after_the_start_deadline_is_the_deadline_row_and_names_its_cause(tmp_path, monkeypatch,
+                                                                                        started):
+    """Review of the start-deadline fix, M1 and M2: a real failure caught once the deadline passed keeps its cause in
+    the deadline row, and the row sends the operator to the catalog's network only if the server had started."""
+
+    class Adapter(A.OpenCodeAdapter):
+        def __init__(self, *_: Any) -> None:
+            pass
+
+        def read_model_list(self, contract: Any, agent_env: dict[str, str], *, until: float) -> dict[str, Any]:
+            if started:
+                self.server = SimpleNamespace()  # type: ignore[assignment]  (a server that came up, then failed)
+            raise OSError("synthetic spawn failure")
+
+    monkeypatch.setenv("AEW_RUN_START_S", "0")  # the deadline has passed by the time the stand-in fails
+    monkeypatch.setattr(containment, "establish", lambda **kw: (None, containment.label(contained=False, reason="x")))
+    monkeypatch.setattr(W, "ownership_of", lambda label: "subreaper")
+    monkeypatch.setattr(netns, "provider_key_missing", lambda *a, **kw: None)
+    monkeypatch.setattr(procs, "ProcessTree", _Tree)
+    engine = SimpleNamespace(aew_root=tmp_path / ".aew", repo_root=tmp_path)
+    pin = {"harness": "opencode", "provider": "fakeprov", "model": "fake-model"}
+    with pytest.raises(model_list._Unread) as unread:
+        model_list.read(engine, {}, pin, Adapter)
+    detail = str(unread.value)
+    assert "the model list was not read within 0s, a launch's own start deadline (AEW_RUN_START_S)" in detail, detail
+    assert "(what ended it: OSError: synthetic spawn failure)" in detail, detail
+    assert ("the harness's model catalog" in detail) is started, detail
+    assert ("had not started by then, so raise AEW_RUN_START_S" in detail) is not started, detail
+    assert unread.value.red and unread.value.waited

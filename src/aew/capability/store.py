@@ -65,9 +65,11 @@ def empty() -> dict[str, Any]:
 def read(directory: Path | None = None) -> dict[str, Any]:
     """The register's state; an empty one where none was written yet. An unreadable one raises ``IntegrityError``,
     which every reader reports as the cause of every capability's REFUSED (never a crash, never a silent default)."""
+    from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
+
     path = (directory or root()) / REGISTER
     try:
-        raw = path.read_bytes()
+        raw = retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path))
     except FileNotFoundError:
         return empty()
     except OSError as exc:

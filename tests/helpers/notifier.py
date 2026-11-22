@@ -137,6 +137,14 @@ def thread_stack(thread: threading.Thread) -> str:
     return "".join(traceback.format_stack(frame))
 
 
+def liveness_record(root: Path, *, closed: bool = False) -> dict[str, Any] | None:
+    """A readable beat for polling, optionally one that already records the close."""
+    record = broker_liveness.read(root)
+    if isinstance(record, dict) and (not closed or record.get("closed_at") is not None):
+        return record
+    return None
+
+
 def watchdog_wait_s(record: dict[str, Any], poll_s: float) -> float:
     """How long a test waits for a Lead broker's watchdog to act on a commit (main's run at f41b001e, whose literal
     10 s was below this). One watchdog iteration may take the broker's own recorded bound, ``wedge_after_s``
@@ -165,7 +173,9 @@ def broker_chain(broker: Any, aew_root: Path) -> Callable[[], str]:
         now, record, watch = time.time(), broker_liveness.read(aew_root), broker._watch
         lines = [f"broker.superseded: {broker.superseded!r}",
                  f"the watchdog thread: {'alive' if watch.is_alive() else 'ended'}; its stack:\n{thread_stack(watch)}"]
-        if record is None:
+        if isinstance(record, broker_liveness.Unreadable):
+            lines.append("the liveness record: unreadable at this moment")
+        elif record is None:
             lines.append("the liveness record: none at this moment (absent, or racing its rewrite)")
         else:
             lines.append(f"the liveness record: beat_at {now - record['beat_at']:.2f}s ago, watchdog_tick_at "
@@ -311,7 +321,7 @@ class Stepped:
         steps = self._steps(beat._stop)
         steps.finish(steps.release(), beat._thread)
         record = broker_liveness.read(self.root)
-        assert record is not None, "the beat wrote no record broker_liveness.read takes"
+        assert isinstance(record, dict), "the beat wrote no readable liveness record"
         return record
 
     def in_lock_wait(self) -> bool:

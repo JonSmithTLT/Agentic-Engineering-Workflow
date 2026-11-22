@@ -220,12 +220,12 @@ def test_broker_close_cannot_discard_a_successfully_sent_receipt(w, monkeypatch,
     assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if route == "typed" else [mid])
 
 
-@pytest.mark.parametrize("seat", ["held", "taken_over"])
+@pytest.mark.parametrize("seat", ["held", "taken_over", "handoff_pending"])
 def test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_not_a_lost_seat(w, monkeypatch, seat):
     """Close's bound (``RECEIPT_CLOSE_LOCK_S``) is for a client stalled in its send. Once the bytes are sent the receipt
     is owed: this session's close, even run to the end of its teardown (which clears the broker's credential), never
     discards it, and only a lost seat does. The order is forced: between the record's two authority checks, close
-    starts, runs out its bound and finishes; with ``taken_over`` the operator also takes the seat."""
+    starts, runs out its bound and finishes. A takeover changes the generation; a handoff offer leaves it in place."""
     import aew.operator
     from aew.errors import StaleAuthority
     from aew.harness import lead_broker
@@ -255,6 +255,10 @@ def test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_
                 if seat == "taken_over":
                     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "test"})
                     w.e.lead_takeover(expect_rev=w.rev(), reason="a lost seat", session_label="lead-b")
+                elif seat == "handoff_pending":
+                    w.lead("lead_handoff_offer", carry_invocations=[w.inv])
+                    lead = w.e.store.read_committed()["lead"]
+                    assert lead["status"] == "handoff_pending" and lead["generation"] == generation
             return load(path)
 
         monkeypatch.setattr(T, "_load", held)

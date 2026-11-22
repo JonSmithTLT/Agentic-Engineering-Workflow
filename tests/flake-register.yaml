@@ -1146,7 +1146,7 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: wall clock
   cause: >-
     A relayed read's receipt rechecks the broker's own closing inside the told-message record. On a slow runner the
@@ -1154,12 +1154,11 @@ entries:
     receipt for bytes already sent was refused as lost authority.
   owner: CI timing fixes
   test: tests/integration/test_message_result_receipts.py::test_broker_close_cannot_discard_a_successfully_sent_receipt[relayed]
-  planned_fix: >-
-    Judge the broker's closing once after the send succeeds; the owed receipt then rechecks only Lead authority, with
-    the credential taken when the read was served (close clears its own). Proof, fixed order:
-    test_message_result_receipts.py::test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_not_a_lost_seat
-    (close runs out its bound and finishes its teardown between the record's two checks). Closure awaits the fix PR
-    number.
+  closure:
+    pr: 500
+    cause: Judge closing once after a successful send and recheck Lead authority using the credential held at serve time.
+    test: tests/integration/test_message_result_receipts.py::test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_not_a_lost_seat
+    proof: fixed order
   evidence:
   - run: 44591617412
     job: 135799162847

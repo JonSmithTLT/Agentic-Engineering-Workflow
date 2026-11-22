@@ -54,7 +54,7 @@ from types import CodeType, FrameType
 from typing import Any
 
 import pytest
-from notifier import takeover, until
+from notifier import liveness_record, takeover, until
 
 import aew
 from aew import util
@@ -264,7 +264,7 @@ def run_census(project: Any, monkeypatch: pytest.MonkeyPatch, *, check: Callable
         until(lambda: census.completed >= 3, 60, "three watchdog iterations completed as the current Lead")
         current = census.completed
         takeover(project, monkeypatch)
-        until(lambda: (broker_liveness.read(root) or {}).get("closed_at"), 60, "the superseded broker's closed_at")
+        until(lambda: liveness_record(root, closed=True), 60, "the superseded broker's closed_at")
         assert broker.superseded and census.iteration > current
     finally:
         broker.close()

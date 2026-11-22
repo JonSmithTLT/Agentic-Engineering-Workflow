@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -338,7 +339,8 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
     path = Path(aew_root) / LOOP_REL
 
     def read() -> bytes:
-        return path.read_bytes() if path.stat().st_size <= 64 * 1024 else b"null"
+        info = path.stat()
+        return path.read_bytes() if stat.S_ISREG(info.st_mode) and info.st_size <= 64 * 1024 else b"null"
 
     try:
         data = json.loads(retry_lock_free(read, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path)))

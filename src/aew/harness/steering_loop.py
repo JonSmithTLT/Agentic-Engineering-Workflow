@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 import time
 from collections import OrderedDict
@@ -742,7 +743,8 @@ class SteeringLoop:
 def _read(path: Path) -> dict[str, Any] | None:
     """The loop's own last record, or None when there is none or it can't be read."""
     def read() -> bytes:
-        return path.read_bytes() if path.stat().st_size <= 64 * 1024 else b"null"
+        info = path.stat()
+        return path.read_bytes() if stat.S_ISREG(info.st_mode) and info.st_size <= 64 * 1024 else b"null"
 
     try:
         data = json.loads(retry_lock_free(read, also=MISSING_MID_REPLACE, missing_when=lambda: replace_pending(path)))

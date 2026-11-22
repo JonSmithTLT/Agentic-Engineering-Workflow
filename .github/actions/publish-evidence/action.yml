@@ -13,6 +13,10 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Prepare the scanner for a standalone publication
+      if: always() && inputs.portion == 'both'
+      shell: bash
+      run: python tools/ci/install_evidence.py --scanner-only
     - name: Find evidence and isolate watchdog dumps
       id: inputs
       if: always()

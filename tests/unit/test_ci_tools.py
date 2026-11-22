@@ -277,7 +277,13 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
 def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_secrets():
     workflows = ROOT / ".github" / "workflows"
     action = ROOT / ".github" / "actions" / "publish-evidence" / "action.yml"
-    steps = workflow_doc(action.read_text(encoding="utf-8"))["runs"]["steps"]
+    publication = workflow_doc(action.read_text(encoding="utf-8"))
+    steps = publication["runs"]["steps"]
+    assert publication["inputs"]["portion"]["default"] == "both"
+    scanner_command = "python tools/ci/install_evidence.py --scanner-only"
+    install = next(i for i, step in enumerate(steps) if step.get("run") == scanner_command)
+    assert steps[install]["if"] == "always() && inputs.portion == 'both'"
+    assert all(i > install for i, step in enumerate(steps) if "stage_evidence.py" in step.get("run", ""))
     upload = next(step for step in steps if step.get("id") == "upload")
     assert upload["with"]["retention-days"] == 14
     assert upload["with"]["path"] == "${{ steps.stage.outputs.directory }}"
@@ -299,6 +305,7 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
             if label == "lane":
                 assert artifact == "${{ inputs.artifact }}"
             else:
+                assert step["with"].get("portion", "both") == "both", label
                 assert artifact.endswith("attempt-${{ github.run_attempt }}"), (label, artifact)
                 assert "${ " not in artifact, (label, artifact)
         if not tests:

@@ -205,6 +205,25 @@ def test_priority_preparation_keeps_deadline_stacks_and_the_publisher_labels_eve
     assert _load("evidence_problems").evidence_problems(output) == []
 
 
+@pytest.mark.parametrize("omissions", [False, True])
+def test_state_and_omission_rows_respect_the_inventory_cap(tmp_path, monkeypatch, omissions):
+    stage = _load("stage_evidence")
+    source = tmp_path / "source"
+    autopsy = source / "autopsy"
+    autopsy.mkdir(parents=True)
+    for i in range(12):
+        (autopsy / f"observation-{i:04}.txt").write_bytes(b"\x00" if omissions else b"observed")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    monkeypatch.setattr(stage, "INDEX_CAP", 270)
+    output = tmp_path / "published"
+    assert stage.stage(source, output) == "evidence defect: inventory cap exceeded"
+    inventory = output / "inventory.txt"
+    assert list(output.iterdir()) == [inventory]
+    assert inventory.stat().st_size <= stage.INDEX_CAP
+    assert "observation-" not in inventory.read_text()
+    assert "evidence defect: [cap] inventory cap exceeded" in _load("evidence_problems").evidence_problems(output)
+
+
 def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names(tmp_path):
     import hashlib
     import json
@@ -360,7 +379,8 @@ def test_a_cutoff_snapshot_needs_the_full_tagged_test_path(tmp_path):
     assert check.evidence_problems(tmp_path, require_stacks=True) == []
 
 
-def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scanner_only", [False, True])
+def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, monkeypatch, scanner_only):
     installer = _load("install_evidence")
     output = tmp_path / "outputs"
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
@@ -373,9 +393,9 @@ def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, m
     monkeypatch.setattr(installer, "install_scanner", offline)
     calls = []
     monkeypatch.setattr(installer, "install_spy", calls.append)
-    installer.main()
-    assert output.read_text().splitlines() == ["scanner=false", "spy=true"]
-    assert calls == [tmp_path / "evidence-tools"]
+    installer.main(scanner_only=scanner_only)
+    assert output.read_text().splitlines() == (["scanner=false"] if scanner_only else ["scanner=false", "spy=true"])
+    assert calls == ([] if scanner_only else [tmp_path / "evidence-tools"])
 
 
 def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, monkeypatch):

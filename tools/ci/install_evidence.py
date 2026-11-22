@@ -1,7 +1,8 @@
-"""Install checksum-pinned evidence tools before test execution."""
+"""Install checksum-pinned tools for evidence collection and publication."""
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import subprocess
@@ -57,12 +58,15 @@ def install_spy(target: Path) -> None:
     stamp.touch()
 
 
-def main() -> None:
+def main(*, scanner_only: bool = False) -> None:
     target = Path(os.environ["RUNNER_TEMP"]) / "evidence-tools"
     target.mkdir(parents=True, exist_ok=True)
     with Path(os.environ["GITHUB_PATH"]).open("a", encoding="utf-8") as output:
         output.write(str(target) + "\n")
-    for key, label, install in (("scanner", "scan", install_scanner), ("spy", "py-spy", install_spy)):
+    tools = [("scanner", "scan", install_scanner)]
+    if not scanner_only:
+        tools.append(("spy", "py-spy", install_spy))
+    for key, label, install in tools:
         try:
             install(target)
             available = True
@@ -74,4 +78,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scanner-only", action="store_true", help="prepare a standalone evidence publication")
+    main(scanner_only=parser.parse_args().scanner_only)

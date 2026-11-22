@@ -214,12 +214,10 @@ def stage(source: Path, destination: Path) -> str:
             out.write_bytes(data)
             staged.add(out.relative_to(candidate))
             left -= len(data)
-            line = f"file-{kept:05d} ({len(data)} bytes)\n".encode()
-            if len(inventory) + len(line) < INDEX_CAP - 512:
-                inventory.extend(line)
             kept += 1
 
         report = Path(temporary) / "scan.json"
+        summary = f"{kept} candidate files, {omitted} omitted\nfinding inventory.txt (publisher)\n"
         publish = False
         try:
             initial = scan(candidate, report, staged)
@@ -245,30 +243,37 @@ def stage(source: Path, destination: Path) -> str:
             }
             listing = "".join(f"{action} {path}:{line} ({rule})\n"
                               for path, rule, line, action in sorted(entries)).encode()
-            if len(listing) > INDEX_CAP - 512:
-                raise OverflowError("gitleaks findings exceed inventory cap")
             if sum((candidate / path).stat().st_size for path in staged - withheld.keys()) > JOB_CAP - INDEX_CAP:
-                raise OverflowError("masked evidence exceeds job cap")
-            inventory = bytearray(listing)
+                raise OverflowError("job cap exceeded")
+            masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
+            status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
+                      if initial else "gitleaks clean")
+            body_limit = INDEX_CAP - len(f"{status}\n{summary}".encode())
+
+            def append_row(row: bytes) -> None:
+                if len(inventory) + len(row) > body_limit:
+                    raise OverflowError("inventory cap exceeded")
+                inventory.extend(row)
+
+            append_row(listing)
             for path in sorted(staged - withheld.keys()):
                 shown = "<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix()
                 classification = state(path, (candidate / path).read_bytes())
                 writer = owner(path) or "UNKNOWN-WRITER"
-                inventory.extend(f"{classification} {shown} ({writer})\n".encode())
+                append_row(f"{classification} {shown} ({writer})\n".encode())
             for path, reason in omissions:
                 shown = "/".join(visible(part) for part in path.parts)
                 if any(occurrences(shown.encode(), secrets)):
                     shown = "<redacted-path>"
-                inventory.extend(f"omitted {shown} ({reason})\n".encode())
-            masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
-            status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
-                      if initial else "gitleaks clean")
+                append_row(f"omitted {shown} ({reason})\n".encode())
             publish = True
-        except OverflowError:
-            status = "evidence defect: job cap exceeded"
+        except OverflowError as error:
+            status = f"evidence defect: {error}"
+            inventory.clear()
         except (OSError, ValueError, subprocess.TimeoutExpired):
             status = "gitleaks scan unavailable; evidence defect: scan unavailable"
-        header = f"{status}\n{kept} candidate files, {omitted} omitted\nfinding inventory.txt (publisher)\n"
+            inventory.clear()
+        header = f"{status}\n{summary}"
         if publish:
             candidate.rename(destination)
         else:

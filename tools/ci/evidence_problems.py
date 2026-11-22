@@ -24,6 +24,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
     for inventory, listing in inventories.items():
         if "evidence defect: job cap exceeded" in listing:
             report("cap", "job cap exceeded")
+        if "evidence defect: inventory cap exceeded" in listing:
+            report("cap", "inventory cap exceeded")
         if "scan unavailable" in listing:
             report("scan-unavailable", "scan unavailable")
         if "unlisted writer" in listing:

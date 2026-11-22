@@ -36,6 +36,7 @@ from typing import Any
 import fake_opencode
 import pytest
 from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
+from bounds import LEAD_SESSION_TIMEOUT_S
 from conftest import IS_WINDOWS, CLIResult, clean_env
 from fake_harness import (
     AGENT,
@@ -108,7 +109,7 @@ class LeadSession:
     # Why the driver ended the session at its start, or "" (the tool screen it could not answer: FakeOpenCodeDriver)
     ended_by_driver: Callable[[], str] = lambda: ""
 
-    def result(self, timeout: float = 900) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
+    def result(self, timeout: float = LEAD_SESSION_TIMEOUT_S) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
         """Wait for the session to end: the command's result (what the operator's terminal shows) and the steps
         the Lead's model took."""
         out, err = self.proc.communicate(timeout=timeout)

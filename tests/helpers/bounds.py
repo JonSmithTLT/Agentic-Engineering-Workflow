@@ -70,6 +70,8 @@ WATCHDOG = "watchdog"
 # faulthandler dump at the limit, and the autopsy watcher one WATCHER_GRACE_S later (autopsy.py), which collects while
 # the test still runs. On POSIX the watchdog's alarm raises in the test at the limit itself, before this.
 WATCHDOG_EVIDENCE_S = 10.0
+# A scripted Lead session's own result timeout, including when the test watchdog is off.
+LEAD_SESSION_TIMEOUT_S = 900.0
 
 
 class BoundExpired(Exception):
@@ -103,6 +105,12 @@ def seconds(bound: str | float) -> float | None:
         left = left_of() if callable(left_of) else None
         return None if left is None else left + WATCHDOG_EVIDENCE_S
     return BOUNDS[bound].seconds if isinstance(bound, str) else float(bound)
+
+
+def lead_session_bound() -> str | float:
+    """Use the test watchdog when it ends the wait first, keeping the Lead session's own ceiling otherwise."""
+    remaining = seconds(WATCHDOG)
+    return WATCHDOG if remaining is not None and remaining < LEAD_SESSION_TIMEOUT_S else LEAD_SESSION_TIMEOUT_S
 
 
 def until(ready: Callable[[], Any], bound: str | float, what: str, *, every: float = 0.05,

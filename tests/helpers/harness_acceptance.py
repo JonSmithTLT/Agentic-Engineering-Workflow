@@ -22,7 +22,7 @@ from typing import Any
 
 import yaml
 from aewflow import SUBTRACT_PATCH, create_planned_ticket
-from bounds import WATCHDOG
+from bounds import lead_session_bound
 from conftest import git
 from fake_harness import IMPL_REPORT, HarnessLab, contains_credential, credential_hits, run_contained
 from harness_conformance import (
@@ -520,8 +520,7 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
         {"do": "touch", "path": str(sync / "lead-ready")},
         {"do": "wait_file", "path": str(sync / "lead-go"), "timeout": 600},
         lead("checkpoint", "--next", "after the takeover")], acquire=True)                      # 18
-    # This barrier spans the whole scripted session, including both role runs. The test owns its deadline.
-    lab.until((sync / "lead-ready").exists, WATCHDOG, "the Lead session to finish its work")
+    lab.until((sync / "lead-ready").exists, lead_session_bound(), "the Lead session to finish its work")
 
     # --- while the Lead's session is live: the relaunch left run 1 without authority ---------------------------
     assert lab.wait(r1)["status"] == "terminated" and lab.wait(r2)["status"] == "ended_with_evidence"

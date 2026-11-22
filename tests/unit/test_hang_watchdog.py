@@ -148,9 +148,13 @@ def test_a_watchdog_bound_is_the_time_left_and_room_for_its_evidence_and_none_wh
     monkeypatch.setattr(watchdog, "_deadline", time.monotonic() + 100)
     left = bounds.seconds(bounds.WATCHDOG)
     assert left is not None and 99 + bounds.WATCHDOG_EVIDENCE_S < left <= 100 + bounds.WATCHDOG_EVIDENCE_S, left
+    assert bounds.lead_session_bound() == bounds.WATCHDOG
     assert bounds.WATCHDOG_EVIDENCE_S > autopsy.WATCHER_GRACE_S  # the autopsy watcher fires within it
+    monkeypatch.setattr(watchdog, "_deadline", time.monotonic() + 1200)
+    assert bounds.lead_session_bound() == 900
     monkeypatch.setattr(watchdog, "_deadline", None)
     assert bounds.seconds(bounds.WATCHDOG) is None
+    assert bounds.lead_session_bound() == 900
 
 
 @pytest.mark.parametrize("mode", [["-p", "no:xdist"], ["-n", "2"]], ids=["no_xdist", "xdist"])

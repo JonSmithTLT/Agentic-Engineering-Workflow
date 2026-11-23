@@ -179,7 +179,7 @@ class AutopsyPlugin:
         return self.root / hd.safe_dir(test_id)
 
     def collect(self, test_id: str, reason: str, *, item: pytest.Item | None = None, failure: str | None = None,
-                own_stacks: bool = True, cheap: bool = False) -> Path:
+                own_stacks: bool = True, cheap: bool = False, children: bool = False) -> Path:
         """Write this test's autopsy. Never raises: an error is itself written down, and the rest carries on."""
         with self._lock:
             dest = self.dest(test_id)
@@ -208,6 +208,8 @@ class AutopsyPlugin:
                 step("failure", lambda: hd.write_text(dest, name("failure"), failure, budget=budget,
                                                       cap=cap))
             if cheap:
+                if children:
+                    step("children", lambda: self._children(test_id, dest, budget, errors))
                 step("processes", lambda: hd.write_text(
                     dest, name("processes"), self._processes(), budget=budget, cap=hd.CHEAP_FILE))
                 step("workdirs", lambda: self._workdirs(item, dest, budget, errors, cheap=True))
@@ -289,8 +291,10 @@ class AutopsyPlugin:
         outcome = yield
         rep: pytest.TestReport = outcome.get_result()
         if rep.failed:
+            mark = item.get_closest_marker(MARKER)
+            children_only = bool(mark and mark.kwargs.get("children_only"))
             self.collect(item.nodeid, f"failed in {rep.when}", item=item, failure=str(rep.longrepr),
-                         cheap=item.get_closest_marker(MARKER) is None)
+                         cheap=mark is None or children_only, children=children_only)
         dest = self.collected.get(item.nodeid)
         if dest is not None and (rep.failed or rep.when == "call"):
             rep.sections.append(("aew autopsy", f"the autopsy is kept in {dest}"))
@@ -438,7 +442,8 @@ def addoption(parser: pytest.Parser) -> None:
 
 def configure(config: pytest.Config) -> None:
     global _plugin
-    config.addinivalue_line("markers", f"{MARKER}: keep an autopsy (stacks, processes, children, files) if it fails")
+    config.addinivalue_line("markers", f"{MARKER}: retain full diagnostics on failure; children_only adds child "
+                             "diagnostics to the usual bounded fixture evidence")
     _plugin = AutopsyPlugin(config)
     config.pluginmanager.register(_plugin, PLUGIN_NAME)
 

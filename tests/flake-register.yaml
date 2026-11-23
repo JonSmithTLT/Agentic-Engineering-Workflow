@@ -1313,7 +1313,7 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: autopsy evidence
   cause: >-
     The stdout reader for messaging_off_snapshot.py was still waiting at the 60-second deadline.
@@ -1321,12 +1321,6 @@ entries:
     contains no stack from the helper. The reason stdout stayed open is unknown.
   owner: CI timing fixes
   test: tests/integration/test_messaging_off_outputs.py::test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin[disabled]
-  planned_fix: >-
-    Use childdiag to record the helper's stack during the snapshot. At timeout, before cleanup, record the
-    helper's PID and exit state and its descendants. Bound collection so a stuck collector cannot prevent
-    cleanup. Add Windows evidence tests for a blocked helper and for an exited helper whose descendant holds
-    stdout open. In each case assert that the retained, redacted bundle identifies which process is responsible.
-    Preserve the 60-second deadline and the golden-output assertions.
   evidence:
   - run: 45047876857
     job: 137286503001
@@ -1342,6 +1336,21 @@ entries:
       Same commit and runner image on attempt 2. The test passed in 6.977s. A separate Linux probe
       counted 82 Git launches in the helper. Injecting 0.75s per launch reached the deadline
       on the 79th invocation. The failed Windows run has no per-command timings.
+  - run: 45091596379
+    job: 137422159436
+    at: '2026-11-23T00:56:42Z'
+    kind: diagnostic
+    note: >-
+      Windows artifact 14780724104 from the three planted timeouts contains a running helper with its blocked
+      frame, an exited helper with stdout still open and live descendants, and an explicitly timed-out observation.
+      A process list shows possible stdout holders. It cannot attribute an inherited handle to an individual among
+      multiple descendants. All three cases retained the original timeout and redacted the synthetic marker.
+      The original stall remains unexplained.
+  closure:
+    pr: 514
+    cause: Capture the helper state and descendants before cleanup and retain the helper's stacks in the autopsy.
+    test: tests/integration/test_messaging_off_outputs.py::test_snapshot_timeouts_retain_the_helper_state_before_cleanup
+    proof: fault injection
 - id: wait-any-fixture-git-add
   scope: test
   lane: integration

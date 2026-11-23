@@ -147,7 +147,9 @@ def main():
     run = _api(repo, f"actions/runs/{args.run}/attempts/{args.attempt}")
     ci = run["path"] == ".github/workflows/ci.yml"
     plant = (run["path"] == ".github/workflows/evidence-proof.yml" and run["event"] == "workflow_dispatch"
-             and re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", run["display_title"]))
+             and run["name"] == "evidence-proof" and any(
+                 re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", job["name"])
+                 for job in run_jobs(repo, run["id"], run["run_attempt"])))
     if run["conclusion"] == "cancelled" and (ci or plant) and run["repository"]["full_name"] == repo:
         rows = record(repo, run, args.report_dir)
         if _own_ci_run(repo, run) and args.index_dir is not None:

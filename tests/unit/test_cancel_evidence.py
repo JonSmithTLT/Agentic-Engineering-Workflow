@@ -324,3 +324,51 @@ def test_run_wide_manual_actor_covers_queued_siblings_but_a_job_actor_alone_cann
     outcomes[0] = CANCEL.classify(run, {**jobs[0], "cancelled_by": {"login": "job-user"}}, NOTES[:1])
     CANCEL.attach_reasons("test/repo", run, jobs)
     assert jobs[1]["cancel_reason"] == missing
+
+
+def test_stable_target_run_name_never_identifies_an_unrelated_dispatch(monkeypatch):
+    proof = _load("prove_cancel_evidence")
+    marker = "evidence-cancel-run-100-1-manual-target"
+    base = {"id": 201, "head_sha": OLD["head_sha"], "workflow_id": 5, "event": "workflow_dispatch",
+            "head_branch": "main", "created_at": OLD["created_at"], "head_repository": {"full_name": "test/repo"},
+            "name": "evidence-proof", "display_title": "evidence-proof"}
+    runs = [base, {**base, "id": 202}, {**base, "id": 203, "head_sha": NEW["head_sha"]}]
+    markers = {201: "evidence-cancel-run-99-1-manual-target", 202: marker}
+
+    def api(repo, endpoint):
+        if "/workflows/" in endpoint:
+            return {"workflow_runs": runs}
+        ident = int(endpoint.split("/")[2])
+        return {"jobs": [{"name": markers[ident]}]}
+
+    monkeypatch.setattr(proof, "_api", api)
+    args = ("test/repo", 5, 100, OLD["head_sha"], "main", OLD["created_at"], marker)
+    assert proof.target_run(*args)["id"] == 202
+    markers[201] = marker
+    with pytest.raises(RuntimeError, match="multiple matching"):
+        proof.target_run(*args)
+    markers.clear()
+    runs.clear()
+    assert proof.target_run(*args) is None
+
+
+def test_recorder_accepts_only_a_marked_target_from_the_subscribed_workflow(monkeypatch, tmp_path):
+    import sys
+
+    record = _load("record_cancel_evidence")
+    repo = {"full_name": "test/repo"}
+    run = {**OLD, "path": ".github/workflows/evidence-proof.yml", "event": "workflow_dispatch",
+           "conclusion": "cancelled", "name": "evidence-proof", "display_title": "evidence-proof", "repository": repo}
+    jobs = [{"name": "ordinary dispatch"}]
+    monkeypatch.setenv("GITHUB_REPOSITORY", "test/repo")
+    argv = ["record", "--run", str(run["id"]), "--attempt", "1", "--report-dir", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(record, "_api", lambda *args: run)
+    monkeypatch.setattr(record, "run_jobs", lambda *args: jobs)
+    checks = []
+    monkeypatch.setattr(record, "record", lambda repo, source, dest: checks.append(source["id"]))
+    record.main()
+    assert checks == []
+    jobs.append({"name": "evidence-cancel-run-100-1-supersede-target"})
+    record.main()
+    assert checks == [OLD["id"]]

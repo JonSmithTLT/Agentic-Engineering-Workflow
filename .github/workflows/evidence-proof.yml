@@ -1,5 +1,6 @@
 name: evidence-proof
-run-name: ${{ inputs.probe_origin && format('evidence-cancel-run-{0}-{1}-{2}', inputs.probe_origin, inputs.probe_scenario, inputs.probe_role) || github.event.pull_request.title || 'evidence-proof' }}
+# workflow_run matches GitHub's run name. Keep the target subscribed and carry its unique identity in a job.
+run-name: ${{ inputs.probe_role == 'replacement' && inputs.probe_origin && format('evidence-cancel-run-{0}-{1}-replacement', inputs.probe_origin, inputs.probe_scenario) || github.event.pull_request.title || 'evidence-proof' }}
 on:
   pull_request:
     paths:
@@ -260,12 +261,12 @@ jobs:
           SCENARIO: ${{ matrix.scenario }}
         run: python tools/ci/prove_cancel_evidence.py "$SCENARIO"
   run-cancel-replacement:
-    name: Controlled cancellation replacement
-    if: inputs.probe_origin && inputs.probe_role == 'replacement'
+    name: ${{ inputs.probe_origin && format('evidence-cancel-run-{0}-{1}-{2}', inputs.probe_origin, inputs.probe_scenario, inputs.probe_role) || 'Identify controlled cancellation child' }}
+    if: inputs.probe_origin
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - run: echo 'This run replaced its corresponding controlled target.'
+      - run: echo 'Recorded the unique identity of this controlled cancellation child.'
   verify:
     if: always() && !inputs.probe_origin
     needs: [plant, cancel-plant, cancel-trigger-linux, cancel-trigger-windows, run-cancel-control]

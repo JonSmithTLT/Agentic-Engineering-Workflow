@@ -37,14 +37,25 @@ def dispatch(repo, workflow, ref, origin, scenario, role):
              "-f", f"inputs[probe_role]={role}")
 
 
-def target_run(repo, workflow, parent, head, branch, title):
+def target_run(repo, workflow, parent, head, branch, since, title):
     from urllib.parse import quote
 
     data = _api(repo, f"actions/workflows/{workflow}/runs?event=workflow_dispatch&branch={quote(branch, safe='')}"
                 f"&head_sha={head}&per_page=100")
-    found = [r for r in data["workflow_runs"] if r["id"] != parent and r["display_title"] == title
-             and r["head_sha"] == head and r["workflow_id"] == workflow and r["event"] == "workflow_dispatch"
-             and r["head_branch"] == branch and (r["head_repository"] or {}).get("full_name") == repo]
+    found = []
+    for run in data["workflow_runs"]:
+        if (run["id"] == parent or run["head_sha"] != head or run["workflow_id"] != workflow
+                or run["event"] != "workflow_dispatch" or run["head_branch"] != branch or run["created_at"] < since
+                or (run.get("head_repository") or {}).get("full_name") != repo):
+            continue
+        if title.endswith("-target"):
+            if run["name"] != "evidence-proof":
+                continue
+            jobs = _api(repo, f"actions/runs/{run['id']}/jobs?per_page=100")["jobs"]
+            if any(j["name"] == title for j in jobs):
+                found.append(run)
+        elif run["display_title"] == title:
+            found.append(run)
     if len(found) > 1:
         raise RuntimeError("multiple matching synthetic targets; no cancellation issued")
     return found[0] if found else None
@@ -88,7 +99,11 @@ def main(scenario):
                   "The scheduled default-branch proof must exercise it.")
             return
         raise
-    target = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-target"), 90, "the target run")
+
+    def find_child(role):
+        return target_run(repo, workflow, parent, head, branch, current["created_at"], f"{group}-{role}")
+
+    target = poll(lambda: find_child("target"), 90, "the uniquely identified target run")
     ident = target["id"]
 
     def live():
@@ -108,8 +123,7 @@ def main(scenario):
         replacements = []
     else:
         dispatch(repo, workflow, branch, origin, scenario, "replacement")
-        successor = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-replacement"),
-                         90, "the unique replacement run")
+        successor = poll(lambda: find_child("replacement"), 90, "the unique replacement run")
         replacements = [successor]
         trigger_at = successor["created_at"]
 

@@ -316,7 +316,13 @@ def test_an_api_key_session_after_a_chatgpt_login_session_sends_its_own_key_and_
             assert [[(e["route"], e["login"], e["swap"], e["outcome"], e["status"]) for e in r] for r in records] == [
                 [("openai", "oauth", "swapped", "forwarded", 200)],
                 [("openai", "key", "swapped", "forwarded", 200)]]
-            blob = json.dumps(records)
+            views = lab.ok("credentials", "--json")["credentials"]
+            assert {v["source"] for v in views} == {"saved_oauth", "environment:OPENAI_API_KEY"}
+            for view in views:
+                assert view["last_launch"]["env_matches"] == 0 and view["last_launch"]["config_match"] is False
+                [dest] = view["destinations"].values()
+                assert dest["confirmed_sends"] == 1
+            blob = json.dumps(records) + json.dumps(views)
             assert SECRET not in blob and "synthetic-access-" not in blob and "aew-relay-" not in blob
         finally:
             lab.cleanup()

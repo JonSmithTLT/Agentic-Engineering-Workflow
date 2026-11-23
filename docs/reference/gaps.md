@@ -115,6 +115,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.check_changes:run_once`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.containment:establish`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.layout:for_run`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
+- `aew.harness.containment.netns:RunNetwork.record_credential_check`: atomic_write of a path this reading cannot place: `directory` of `RunNetwork.record_credential_check`, which no static call binds
 - `aew.harness.containment.probe:_markers`: Path.mkdir of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers`: Path.write_bytes of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test`: Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read

@@ -829,7 +829,11 @@ class ContainedLead:
                                             tools=capability.placed(label, contained=True),
                                              push_wake=pushes_wakes(engine), switches=self.surface_switches)
             inside = self._inside(child_env, layout, run_dir, state, config, network)
-            leaked = network.leaks(json.dumps(inside), json.dumps(config)) if network else []
+            leaked = []
+            if network is not None:
+                serialized = json.dumps(config)
+                leaked = network.leaks(*inside.values(), json.dumps(inside), serialized)
+                network.record_credential_check(run_dir, inside, serialized, gate_matches=leaked)
             if leaked:  # F28 §3.6, row 6: names only
                 raise ContainmentUnavailable(f"a provider key would be inside the Lead's sandbox: {', '.join(leaked)}",
                                              reason="credential_inside")

@@ -37,6 +37,7 @@ from __future__ import annotations
 import base64
 import binascii
 import datetime as dt
+import hashlib
 import os
 import ssl
 from collections.abc import Mapping
@@ -242,14 +243,32 @@ def _validity(found: ClientCert, text: bytes, now: dt.datetime) -> list[str]:
 _BEGIN, _END = b"-----BEGIN CERTIFICATE-----", b"-----END CERTIFICATE-----"
 
 
+def _leaf_der(text: bytes) -> bytes:
+    start = text.index(_BEGIN) + len(_BEGIN)
+    end = text.index(_END, start)
+    return base64.b64decode(b"".join(text[start:end].split()), validate=True)
+
+
+def public_snapshot(found: ClientCert) -> dict[str, str | None]:
+    """The public leaf file seen at relay start. This observation does not establish what the peer requested."""
+    result: dict[str, str | None] = {
+        "file": found.cert if found.cert != found.key else None, "sha256": None, "expires": None}
+    try:
+        with open(found.cert, "rb") as stream:
+            pem = stream.read(1 << 20)
+        der = _leaf_der(pem)
+        window = validity(pem)
+        if window is not None:
+            result.update(sha256=hashlib.sha256(der).hexdigest(), expires=window[1].strftime("%Y-%m-%dT%H:%M:%SZ"))
+    except (OSError, ValueError):
+        pass
+    return result
+
+
 def validity(text: bytes) -> tuple[dt.datetime, dt.datetime] | None:
     """(notBefore, notAfter) of the first PEM certificate in ``text``, in UTC; None when there is none to read."""
-    start = text.find(_BEGIN)
-    end = text.find(_END, start + len(_BEGIN)) if start >= 0 else -1
-    if start < 0 or end < 0:
-        return None
     try:
-        der = base64.b64decode(b"".join(text[start + len(_BEGIN):end].split()), validate=True)
+        der = _leaf_der(text)
         cert, _ = _tlv(der, 0, 0x30)
         tbs, _ = _tlv(der, cert, 0x30)
         at = tbs

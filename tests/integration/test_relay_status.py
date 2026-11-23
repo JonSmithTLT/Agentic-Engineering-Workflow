@@ -8,11 +8,12 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
+from types import SimpleNamespace
 
 from tcp_pair import tcp_pair
 
 from aew.harness import runlog
-from aew.harness.containment import relay
+from aew.harness.containment import netns, relay
 
 
 @contextmanager
@@ -145,3 +146,78 @@ def test_an_unreadable_journal_does_not_prevent_project_status(project):
     report = project.ok("status", "--json")
     assert report["relay"] == {"partial": True, "routes": {}}
     assert report["revision"] == project.rev() and "work_graph" in report
+
+
+def test_credentials_reports_a_confirmed_send_and_retains_provider_and_local_failures(project):
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    journal = directory / runlog.RELAY_REQUESTS
+    key, unused = "synthetic-selected-secret", "synthetic-unused-secret"
+    token, other = relay.sentinel(), relay.sentinel()
+    source, other_source = "environment:EXAMPLE_KEY", "environment:SECOND_KEY"
+    revision = project.rev()
+
+    def offline(*args):
+        raise OSError("synthetic-offline")
+
+    with provider_endpoint() as (upstream, calls):
+        service = relay.ProviderRelay(upstream, {token: key, other: unused}, route="openai", login="key",
+                                      sources={token: source, other: other_source}, record=relay.RequestLog(journal))
+        with closing(netns.RunNetwork(SimpleNamespace(network="proxy_only", net_dir=""), provider_relay=service,
+                                      sentinels={"EXAMPLE_KEY": token, "SECOND_KEY": other},
+                                      values={"EXAMPLE_KEY": key, "SECOND_KEY": unused})) as network:
+            projected = {"ONE": key, "TWO": f"prefix-{key}"}
+            network.record_credential_check(directory, projected, key, gate_matches=network.leaks(*projected.values()))
+            evidence = project.ok("credentials", "--json")["credentials"][0]["last_launch"]
+            assert (evidence["gate"], evidence["env_matches"], evidence["config_match"]) == ("failed", 2, True)
+            environment = {"EXAMPLE_KEY": token, "SECOND_KEY": other}
+            network.record_credential_check(directory, environment, "{}",
+                                            gate_matches=network.leaks(*environment.values()))
+            headers = {"Authorization": f"Bearer {token}"}
+            assert request(service, method="POST", path="/v1/responses?private-query-marker", headers=headers) == 401
+            with closing(relay.ProviderRelay(upstream, {token: key}, route="openai", login="key", connect=offline,
+                                             sources={token: source}, record=relay.RequestLog(journal))) as failed:
+                assert request(failed, method="POST", path="/v1/responses", headers=headers) == 502
+            assert request(service, method="GET", path="/v1/models", headers=headers) == 200
+        assert network.leaks(key, unused) == []
+        assert calls == [("POST", "/v1/responses?private-query-marker", f"Bearer {key}"),
+                         ("GET", "/v1/models", f"Bearer {key}")]
+        address = f"{upstream.host}:{upstream.port}"
+
+    records = [journal, directory / runlog.RELAY_CREDENTIAL_CHECK]
+    before = [p.read_bytes() for p in records]
+    report = project.ok("credentials", "--json")
+    assert report["partial"] is False and report["runtime_process_env_count"] is None
+    selected, second = report["credentials"]
+    assert (selected["source"], second["source"], second["destinations"]) == (source, other_source, {})
+    launch = selected["last_launch"]
+    assert (launch["configured_destination"], launch["env_matches"], launch["config_match"], launch["gate"]) == (
+        address, 0, False, "passed")
+    dest = selected["destinations"][address]
+    assert (dest["requests"], dest["confirmed_sends"], dest["unconfirmed_sends"], dest["plain_http_sends"],
+            dest["verified_tls_sends"], dest["last_request"]["transport"]) == (3, 2, 0, 2, 0, "http")
+    assert {(f["status"], f["reason"], f["answered"]) for f in selected["recent_failures"]} == {
+        (401, None, 401), (None, "upstream_unreachable", 502)}
+    text = project.aew("credentials").stdout
+    assert all(label in text for label in ("environment export EXAMPLE_KEY", address, "upstream HTTP 401",
+                                            "relay refusal upstream_unreachable (502)", "0 matching entries",
+                                            "2 plain HTTP", "Runtime sandbox process-environment count: unmeasured"))
+    assert all(private not in text + json.dumps(report) for private in
+               (key, unused, token, other, "synthetic-provider-body-marker", "private-query-marker"))
+    assert all(private.encode() not in b"".join(before) for private in (key, unused, token, other))
+    assert [p.read_bytes() for p in records] == before and project.rev() == revision
+
+
+def test_credentials_keeps_missing_legacy_provenance_and_transport_unknown(project):
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-2")
+    directory.mkdir(parents=True)
+    (directory / runlog.RELAY_CREDENTIAL_CHECK).write_text("{")
+    relay.RequestLog(directory / runlog.RELAY_REQUESTS)({
+        "at": "2026-01-04T01:02:03Z", "route": "gateway+west", "destination": "service.example:443",
+        "swap": "swapped", "login": "key", "outcome": "forwarded", "status": 401, "answered": 401})
+    report = project.ok("credentials", "--json")
+    [view] = report["credentials"]
+    assert report["partial"] and view["source"] == "unknown" and view["last_launch"] is None
+    dest = view["destinations"]["service.example:443"]
+    assert (dest["last_request"]["transport"], dest["confirmed_sends"], dest["unconfirmed_sends"]) == ("unknown", 0, 1)
+    assert "Partial history" in project.aew("credentials").stdout

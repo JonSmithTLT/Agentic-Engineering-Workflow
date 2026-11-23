@@ -197,17 +197,17 @@ def _placeholders(value: str, own: Collection[str], foreign: Collection[str]) ->
     raise _Refused(401, STALE_PLACEHOLDER, stale_message())
 
 
-def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[str] = ()) -> tuple[str, bool]:
+def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[str] = ()) -> tuple[str, str | None]:
     """A credential header's value with its sentinel, alone or after a scheme (``Bearer <sentinel>``), swapped, and
-    whether one was. Any sentinel still in it after the swap is refused (:func:`_placeholders`): in a credential header
-    not even this relay's own passes, as it would go where the credential goes."""
+    the sentinel used, if any. A sentinel left in the credential header is refused (:func:`_placeholders`),
+    including this relay's own, as it would go where the credential goes."""
     scheme, sep, token = value.partition(" ")
     if sep and token.strip() in credentials:
-        return f"{scheme} {credentials[token.strip()]}", True
+        return f"{scheme} {credentials[token.strip()]}", token.strip()
     if value.strip() in credentials:
-        return credentials[value.strip()], True
+        return credentials[value.strip()], value.strip()
     _placeholders(value, (), foreign)
-    return value, False
+    return value, None
 
 
 def _operation(method: str, target: str, base: str) -> str:
@@ -254,10 +254,11 @@ class ProviderRelay(Service):
                  body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None,
                  client: ClientCert | None = None, record: Callable[[dict[str, Any]], None] | None = None,
                  route: str | None = None, login: str = "none", login_headers: Collection[str] = (),
-                 issued: Collection[str] = ()) -> None:
+                 issued: Collection[str] = (), sources: Mapping[str, str] | None = None) -> None:
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
         self._credentials = dict(credentials)
+        self.sources = dict(sources or {})  # sentinel to logical source name; only the name goes in a record
         self._resolve = resolve
         self.login_headers = frozenset(h.lower() for h in login_headers)
         self.own = frozenset(credentials) | frozenset(issued)  # the sentinels this relay issued (a grant's included)
@@ -277,6 +278,7 @@ class ProviderRelay(Service):
     def close(self) -> None:
         super().close()
         self._credentials.clear()
+        self.sources.clear()
         self._resolve = None
 
     def _grant(self) -> Grant:
@@ -319,6 +321,9 @@ class ProviderRelay(Service):
                                  "destination": f"{self.upstream.host}:{self.upstream.port}", "login": self.login,
                                  "swap": "none", "operation": "unknown", "outcome": None, "reason": None,
                                  "status": None, "answered": None}
+        entry.update(configured_sources=sorted(set(self.sources.values())), swapped_sources=[],
+                     client_certificate_configured=self.client is not None,
+                     upstream_headers_written=False, transport="not_established")
         held: list[str] = []  # this request's credential values, kept out of the record's excerpt
         excerpt: _Excerpt | None = None
         try:
@@ -336,13 +341,22 @@ class ProviderRelay(Service):
                     entry["swap"] = "refused_unknown_placeholder"
                 raise
             entry["swap"] = "swapped" if swapped else "none"
+            entry["swapped_sources"] = sorted(swapped)
             if any(k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             upstream = self._connect_upstream()
+            if isinstance(upstream, ssl.SSLSocket):
+                verified = upstream.context.check_hostname and upstream.context.verify_mode == ssl.CERT_REQUIRED
+                entry["transport"] = "tls_verified" if verified else "tls_unverified"
+            else:
+                entry["transport"] = "http"
             if not self._track(upstream):
                 entry.update(outcome="refused", reason="closed")
                 return
-            upstream.sendall(_head(f"{method} {target} HTTP/1.1", rewritten))
+            wire_head = _head(f"{method} {target} HTTP/1.1", rewritten)
+            entry["upstream_headers_written"] = None  # on a partial write sendall cannot say how many bytes left
+            upstream.sendall(wire_head)
+            entry["upstream_headers_written"] = True
             self._send_body(conn, upstream, framing, early)
             reader, response = self._relay_head(conn, upstream)
             answered = True
@@ -424,23 +438,24 @@ class ProviderRelay(Service):
         return method, target, headers
 
     def _rewrite(self, headers: list[tuple[str, str]], credentials: Mapping[str, str],
-                 extra: Mapping[str, str]) -> tuple[list[tuple[str, str]], bool]:
+                 extra: Mapping[str, str]) -> tuple[list[tuple[str, str]], set[str]]:
         """Hop-by-hop headers (and any the client's ``Connection`` names) out; ``Host`` the upstream's; the
         credential in for its sentinel, in a credential header only; the grant's headers in place of any of the same
         name, and the client's of a name in ``login_headers`` dropped; ``Connection: close``. A sentinel this relay did
-        not issue, in any header kept, is refused (:func:`_placeholders`). Returns the headers and whether a sentinel
-        was swapped."""
+        not issue, in any header kept, is refused (:func:`_placeholders`). Returns the headers and the
+        logical sources swapped into them."""
         named = {t.strip().lower() for k, v in headers if k.lower() == "connection" for t in v.split(",")}
         replaced = {k.lower() for k in extra} | self.login_headers
         out = [("Host", self.upstream.authority)]
-        swapped = False
+        swapped: set[str] = set()
         for name, value in headers:
             low = name.lower()
             if low in HOP_BY_HOP or low in named or low == "host" or low in replaced:
                 continue
             if low in CREDENTIAL_HEADERS:
                 value, one = _credential(value, credentials, self.foreign)
-                swapped = swapped or one
+                if one is not None:
+                    swapped.add(self.sources.get(one, "unknown"))
             else:
                 _placeholders(value, credentials, self.foreign)
             out.append((name, value))

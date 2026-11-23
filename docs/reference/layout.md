@@ -119,7 +119,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.event_spool:Reader.retire`
     - `aew.harness.event_spool:_open_append`
     - `aew.harness.event_spool:append`
-- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.relay_status`: `_regular_dir`, `summary`; `aew.kit.receipt`: `write_receipt`
+- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.harness.containment.layout:for_run`
 - `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
@@ -143,7 +143,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.opencode.lead:ContainedLead._seed_models`
-- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`, `summary`; `aew.kit.receipt`: `write_receipt`
+- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -621,7 +621,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)
 - `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_once` (Path.is_file), `run_once` (shutil.copyfile)
-- `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open)
+- `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open), `public_snapshot` (open)
 - `aew.harness.containment.layout`: `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `display_files` (os.path.isfile), `for_run` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2)
 - `aew.harness.containment.netns`: `_shim_source` (open)
 - `aew.harness.containment.probe`: `_row5` (Path.exists), `_row5` (Path.read_bytes), `_self_test` (Path.exists), `_self_test` (Path.is_dir), `_self_test` (Path.read_bytes), `_stores` (os.path.isdir)

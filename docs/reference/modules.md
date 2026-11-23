@@ -254,6 +254,7 @@ None.
 - `aew.errors`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
+- `aew.harness.credential_report`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
@@ -1443,10 +1444,13 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
+- `aew.harness.defects`
 - `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
 - `aew.harness.registry`
+- `aew.harness.runlog`
 - `aew.policy.execution`
+- `aew.util`
 
 ### `aew.harness.containment.peer`
 
@@ -1485,6 +1489,18 @@ None.
 
 - `aew.harness.desktop_notifier`
 - `aew.harness.wait_binding`
+
+### `aew.harness.credential_report`
+
+- `aew.engine.configuration`
+- `aew.errors`
+- `aew.harness.containment.client_cert`
+- `aew.harness.containment.netns`
+- `aew.harness.containment.relay`
+- `aew.harness.defects`
+- `aew.harness.relay_status`
+- `aew.harness.runlog`
+- `aew.policy.execution`
 
 ### `aew.harness.dashboard_autostart`
 

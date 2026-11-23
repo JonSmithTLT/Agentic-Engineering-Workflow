@@ -775,6 +775,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.check_changes:remove_copy.writable` (direct: os.unlink): `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:run_once` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.containment.layout:for_run` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
+- `aew.harness.containment.netns:RunNetwork.record_credential_check` (direct: atomic_write): `directory` of `RunNetwork.record_credential_check`, which no static call binds
 - `aew.harness.containment.probe:_markers` (direct: Path.mkdir): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers` (direct: Path.write_bytes): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test` (direct: Path.rmdir): a loop variable over `markers`, a list this reading cannot read

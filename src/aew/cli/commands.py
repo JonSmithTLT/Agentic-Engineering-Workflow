@@ -118,6 +118,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     _add_json(p)
     p.set_defaults(handler=_status)
 
+    p = sub.add_parser("credentials", help="show recorded provider credential sources, destinations and failures")
+    _add_json(p)
+    p.set_defaults(handler=_credentials)
+
     p = sub.add_parser("resume", help="reconstruct the Lead's context from durable state (read-only)")
     _add_json(p)
     p.set_defaults(handler=_resume)
@@ -541,3 +545,17 @@ def _status(args: argparse.Namespace) -> Any:
     engine = _engine(args)
     report = engine.status(args.work_id)
     return report if args.json else engine.render_status(report)
+
+
+def _credentials(args: argparse.Namespace) -> Any:
+    from aew.errors import AEWError
+    from aew.harness import credential_report
+
+    engine = _engine(args)
+    try:
+        policy, _ = engine.execution_policy()
+        problem = None
+    except AEWError as exc:
+        policy, problem = None, exc.code
+    report = credential_report.summary(engine.aew_root, policy, policy_problem=problem)
+    return report if args.json else credential_report.render(report)

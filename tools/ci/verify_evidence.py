@@ -252,7 +252,8 @@ def main(root: Path) -> int:
     failures = []
     rows = []
     for job in jobs:
-        match = re.fullmatch(r"plant \(([^,]+), ([^,]+), ([^)]+)\)", job["name"])
+        # GitHub returns an unexpanded placeholder for the entire skipped PR cancellation matrix.
+        match = re.fullmatch(r"plant \((ubuntu-24\.04|windows-latest), ([^,]+), ([^)]+)\)", job["name"])
         if not match:
             continue
         runner, kind, ablate = match.groups()

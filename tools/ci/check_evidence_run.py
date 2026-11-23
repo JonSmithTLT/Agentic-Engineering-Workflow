@@ -22,8 +22,15 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
     if not job.get("check_run_url"):
         return False
     ident = int(job["check_run_url"].split("/")[-1])
-    return any(re.fullmatch(r"The action .+ has timed out after [0-9]+ minutes?\.", row.get("message") or "")
-               for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"))
+    for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"):
+        message = row.get("message") or ""
+        if re.fullmatch(r"The action .+ has timed out after [0-9]+ minutes?\.", message):
+            return True
+        # The runner gives no action name when the enclosing composite expires.
+        if (message == "The action has timed out." and row.get("path") == ".github"
+                and row.get("annotation_level") == "failure"):
+            return True
+    return False
 
 
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None) -> list[str]:

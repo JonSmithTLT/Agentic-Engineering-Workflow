@@ -10,6 +10,20 @@ from evidence_files import ARMED_NOTE, state
 from test_ci_tools import ROOT, _load
 
 
+@pytest.mark.parametrize("message,path,level,expected", [
+    ("The action has timed out.", ".github", "failure", True),
+    ("The action has timed out.", "tests/test_sample.py", "failure", False),
+    ("The action has timed out.", ".github", "warning", False),
+    ("The action timed out in a test.", ".github", "failure", False),
+    ("The action 'Run a test' has timed out after 2 minutes.", ".github", "failure", True),
+])
+def test_recognizes_hosted_timeout_annotation(monkeypatch, message, path, level, expected):
+    check = _load("check_evidence_run")
+    rows = [{"message": message, "path": path, "annotation_level": level}]
+    monkeypatch.setattr(check, "_pages", lambda *_: rows)
+    assert check.hosted_step_timeout("owner/repo", {"check_run_url": "https://host/123"}) is expected
+
+
 @pytest.mark.parametrize("payload,expected", [
     (b"", "empty"),
     (b"armed 2026-01-01T00:00:00Z for 60s; a dump below records a fire\n", "armed-placeholder"),

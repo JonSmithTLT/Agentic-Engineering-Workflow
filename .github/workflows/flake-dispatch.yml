@@ -30,7 +30,7 @@ jobs:
           import yaml
 
           rows = yaml.safe_load(Path('tests/flake-register.yaml').read_text())['entries']
-          nodes = sorted({row['test'] for row in rows if 'windows' in row.get('platforms', []) and row.get('test')})
+          nodes = sorted({row['test'] for row in rows if 'windows' in row.get('platforms', []) and row.get('test') and row['lane'] != 'serial'})
           stats = []
           for index, value in enumerate([0, 1, 1, 0]):
               root = Path(os.environ['RUNNER_TEMP']) / f'census-{index}'

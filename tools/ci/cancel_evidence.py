@@ -79,6 +79,7 @@ def classify(run, job, notes, candidates=(), jobs=()):
         return {"kind": "unresolved", "detail": "priority cancellation observed; replacement not established"}
     notes = [n.get("message") or "" for n in notes if n.get("path") == ".github"]
     actors = {m[1] for text in notes if (m := CANCEL_ACTOR.fullmatch(text))}
+    run_wide = bool(actors or run.get("cancelled_by"))
     if MANUAL in notes or actors:
         result = {"kind": "manual-or-api", "message": MANUAL}
         # actor/triggering_actor identify who started a run. They do not identify the caller that cancelled it.
@@ -88,6 +89,8 @@ def classify(run, job, notes, candidates=(), jobs=()):
             actors.add(actor)
         if len(actors) == 1:
             result["actor"] = actors.pop()
+            if run_wide:
+                result["scope"] = "run"
         return result
     return {"kind": "unresolved", "detail": "cancellation annotation unavailable"}
 
@@ -146,18 +149,24 @@ def observe(repo, run, job, jobs):
 
 
 def attach_reasons(repo, run, jobs):
-    """A run-wide replacement also cancels queued siblings that have no annotation of their own."""
+    """A verified run-wide cancellation also covers queued siblings with no annotation of their own."""
     cancelled = [j for j in jobs if j.get("conclusion") == "cancelled"]
     if not cancelled:
         return
     with ThreadPoolExecutor(max_workers=CHECK_CONCURRENCY) as pool:
         reasons = list(pool.map(lambda j: observe(repo, run, j, jobs), cancelled))
-    successors = {r["run"]: r for r in reasons if valid(r) and r["kind"] == "superseded" and r["run"] != run["id"]}
+    origins = {}
+    for reason in reasons:
+        if valid(reason):
+            if reason["kind"] == "superseded" and reason["run"] != run["id"]:
+                origins[("superseded", reason["run"])] = reason
+            elif reason.get("scope") == "run" and reason.get("actor"):
+                origins[("manual-or-api", reason["actor"])] = reason
     for job, reason in zip(cancelled, reasons, strict=True):
-        if (run.get("conclusion") == "cancelled" and len(successors) == 1
+        if (run.get("conclusion") == "cancelled" and len(origins) == 1
                 and reason["kind"] in {"unresolved", "manual-or-api"} and not reason.get("actor")
                 and not reason.get("detail", "").startswith("priority")):
-            reason = next(iter(successors.values()))
+            reason = next(iter(origins.values()))
         job["cancel_reason"] = reason
 
 

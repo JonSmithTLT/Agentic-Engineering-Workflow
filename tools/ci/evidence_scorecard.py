@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile
@@ -115,14 +116,14 @@ def download_artifacts(repo, run, selected, directory):
     return links, gaps
 
 
-def inspect_run(repo, run, selected=None):
+def inspect_run(repo, run, selected=None, *, directory=None):
     jobs = run_jobs(repo, run["id"], int(run["run_attempt"]))
     selected = [j for j in jobs if j["conclusion"] in RED and (selected is None or j["id"] in selected)]
     if not selected:
         return []
     attach_reasons(repo, run, jobs)
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
+    with (tempfile.TemporaryDirectory() if directory is None else nullcontext(directory)) as location:
+        root = Path(location)
         links, gaps = download_artifacts(repo, run, selected, root)
         rows = []
         for job in selected:

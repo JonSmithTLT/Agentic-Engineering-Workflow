@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import time
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 from cancel_evidence import _api, _pages, classify, run_jobs
 from cancel_evidence_plant import SENTINEL_READY_S, ready_job
+from evidence_files import PREFIX, entries
 from evidence_scorecard import inspect_run
 from flake_register import _gh_read
+from verify_evidence import observe_cancel
 
 
 def poll(find, seconds, purpose):
@@ -41,6 +48,22 @@ def target_run(repo, workflow, parent, head, branch, title):
     if len(found) > 1:
         raise RuntimeError("multiple matching synthetic targets; no cancellation issued")
     return found[0] if found else None
+
+
+def verify_pretrigger(directory, attempt, trigger_at):
+    windows = directory / f"plant-Windows-cancel-none-attempt-{attempt}"
+    problems = observe_cancel(windows, "Windows", [], trigger_at=trigger_at)
+    if problems:
+        raise RuntimeError(str(problems))
+    # On the downloaded copy, remove only older snapshots. A post-trigger live observation cannot prove this twin.
+    bound = datetime.fromisoformat(trigger_at).timestamp()
+    for ring in windows.rglob("snapshots/*.txt"):
+        blocks = re.split(r"(?m)(?=^" + re.escape(PREFIX) + ")", ring.read_text(encoding="utf-8"))
+        kept = [block for block in blocks if not any(sample["at"] <= bound for sample, _ in entries(block))]
+        ring.write_text("".join(kept), encoding="utf-8")
+    problems = observe_cancel(windows, "Windows", [], trigger_at=trigger_at)
+    if not any("no labelled worker sample predating" in problem for problem in problems):
+        raise RuntimeError("the missing pre-trigger Windows sample went undetected")
 
 
 def main(scenario):
@@ -76,6 +99,11 @@ def main(scenario):
 
     targets = poll(live, 540, "both controlled pytest lanes to enter their worker sessions")
     if scenario == "manual":
+        # A server timestamp taken before requesting cancellation is a conservative, independent lower bound.
+        response = _gh_read("--include", "--silent", f"repos/{repo}/actions/runs/{ident}")
+        date = next(line.split(b":", 1)[1].decode().strip() for line in response.splitlines()
+                    if line.lower().startswith(b"date:"))
+        trigger_at = parsedate_to_datetime(date).isoformat()
         _gh_read("--method", "POST", f"repos/{repo}/actions/runs/{ident}/cancel")
         replacements = []
     else:
@@ -83,6 +111,7 @@ def main(scenario):
         successor = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-replacement"),
                          90, "the unique replacement run")
         replacements = [successor]
+        trigger_at = successor["created_at"]
 
     def finished():
         run = _api(repo, f"actions/runs/{ident}")
@@ -94,7 +123,14 @@ def main(scenario):
 
     ended = poll(finished, 360, "the target's canceled run conclusion")
     ids = {job["id"] for job in targets}
-    rows = inspect_run(repo, ended, ids)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        all_rows = inspect_run(repo, ended, directory=root)
+        verify_pretrigger(root, ended["run_attempt"], trigger_at)
+    gaps = {r["job"]: r["missing"] for r in all_rows if r["missing"]}
+    if gaps:
+        raise RuntimeError(f"the completed child record has missing evidence: {gaps}")
+    rows = [r for r in all_rows if r["job"] in ids]
     if {r["job"] for r in rows} != ids:
         raise RuntimeError("the completed run did not retain both canceled target jobs")
     for row in rows:

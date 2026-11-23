@@ -310,3 +310,17 @@ def test_skipped_pytest_timestamp_is_not_a_worker_start_and_an_unclassified_deat
     rows = []
     check.check_jobs(tmp_path, [{**job, "conclusion": "failure"}], score_rows=rows)
     assert rows[0]["kind"] == "unclassified" and any("[job-kind]" in d for d in rows[0]["missing"])
+
+
+def test_run_wide_manual_actor_covers_queued_siblings_but_a_job_actor_alone_cannot(monkeypatch):
+    run = {**OLD, "conclusion": "cancelled"}
+    jobs = [{"id": n, "conclusion": "cancelled"} for n in range(2)]
+    service = {"path": ".github", "message": "The run was canceled by @github-actions[bot]."}
+    missing = CANCEL.classify(run, jobs[1], [])
+    outcomes = [CANCEL.classify(run, jobs[0], [service, *NOTES[:1]]), missing]
+    monkeypatch.setattr(CANCEL, "observe", lambda repo, run, job, jobs: outcomes[job["id"]])
+    CANCEL.attach_reasons("test/repo", run, jobs)
+    assert jobs[1]["cancel_reason"] == outcomes[0] and jobs[1]["cancel_reason"]["actor"] == "github-actions[bot]"
+    outcomes[0] = CANCEL.classify(run, {**jobs[0], "cancelled_by": {"login": "job-user"}}, NOTES[:1])
+    CANCEL.attach_reasons("test/repo", run, jobs)
+    assert jobs[1]["cancel_reason"] == missing

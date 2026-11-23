@@ -191,14 +191,14 @@ def abrupt_twins(root: Path, kind: str, job: dict) -> list[str]:
     return failures
 
 
-def observe_cancel(root: Path, platform: str, jobs: list[dict]) -> list[str]:
+def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: str | None = None) -> list[str]:
     observed = [json.loads(path.read_text()) for glob in ("cancelled-*.txt", "interrupted-*.txt")
                 for path in root.rglob(glob)]
     if not observed or any(type(row.get("alive_when_observed")) is not bool for row in observed):
         return ["plant misfired: no live/dead identity observed during cancellation"]
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
-        ended = ready.get("completed_at")
+        ended = trigger_at or ready.get("completed_at")
         if not ended:
             return ["plant misfired: cancellation poll did not finish"]
         # Queueing starts after this job completes, giving a conservative server-side lower bound on cancel time.

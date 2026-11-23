@@ -57,6 +57,34 @@ def job_digest(directory):
     return None
 
 
+def finished_tests(bundle, complete_report):
+    sessions = list(bundle.rglob("session-started.txt"))
+    if len(sessions) != 1:
+        return False
+    directory = sessions[0].parent
+    try:
+        finish = directory / "session-finished.txt"
+        if complete_report and finish.is_file():
+            pid = int((directory / "controller-pid.txt").read_text())
+            if re.search(rf"\bpid {pid}: the session finished \(exit (?:None|0|1)\);", finish.read_text()):
+                return True
+        # An interrupted controller may not have written its report. Every configured
+        # worker must have finished its pytest session with its own matching PID.
+        count = int((directory / "worker-count.txt").read_text())
+        pids = list(directory.glob("worker-gw*-pid.txt"))
+        if not pids or count != len(pids):
+            return False
+        for index in range(count):
+            worker = f"worker-gw{index}"
+            pid = int((directory / f"{worker}-pid.txt").read_text())
+            exit_note = (directory / f"{worker}-exit.txt").read_text(encoding="utf-8")
+            if not re.search(rf"\bpid {pid}: worker gw{index} finished its session \(exit [01]\);", exit_note):
+                return False
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
                score_rows: list | None = None) -> list[str]:
     defects = []
@@ -131,6 +159,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     observed.add((invocation(breadcrumb), node, phase))
             recorded = set()
             collection_exits = set()
+            completed = set()
             report_exits = []
             for name in prefixes:
                 lane_report = root / ("lane-report-" + name)
@@ -143,6 +172,9 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                         continue
                     if not isinstance(doc, dict) or "exitstatus" not in doc:
                         continue
+                    if (doc.get("schema") == "aew/lane-report/v1" and doc.get("complete") is True
+                            and doc["exitstatus"] in (0, 1)):
+                        completed.add(name)
                     results = doc.get("results")
                     phases = {(name, node, record["phase"]) for node, result in
                               (results.items() if isinstance(results, dict) else ()) if isinstance(result, dict)
@@ -181,7 +213,13 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if conclusion == "cancelled":
-                kind = "cancel"
+                death_marker = any(re.fullmatch(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+"
+                                                r"|worker-gw[0-9]+-down|session-deadline|cutoff|abnormal-exit"
+                                                r"|(?:running|hang)-.+", name) for name in markers)
+                after_tests = (not death_marker and not abnormal_command and len(report_exits) <= len(prefixes)
+                               and all(code in (0, 1) for code in report_exits)
+                               and all(finished_tests(root / name, name in completed) for name in prefixes))
+                kind = "cancel-after-tests" if after_tests else "cancel"
             elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
                 kind = "oom"
             elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
@@ -202,13 +240,14 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             missing = defects[first_defect:]
             nodes = sorted({node for _, node, _ in recorded | observed})
             row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
+                           else f"{cancelled_as} after tests" if kind == "cancel-after-tests"
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":
                 incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))
                                  for problem in missing)
                 row["A1"] = "yes" if nodes and not incomplete else "no"
-            if kind or died:
+            if (kind or died) and kind != "cancel-after-tests":
                 row["A2"] = "no" if any("[failure-" not in p for p in missing) else "yes"
             row["missing"] = missing
     return defects

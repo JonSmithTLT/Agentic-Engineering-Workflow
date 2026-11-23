@@ -625,6 +625,12 @@ class Controller:
     # ------------------------------------------------------------------ the pytest hooks
 
     @pytest.hookimpl(optionalhook=True)
+    def pytest_xdist_setupnodes(self, config: Any, specs: list[Any]) -> None:
+        # The final lane report may disappear if GitHub interrupts controller shutdown.
+        # Pin the expected worker roster before any of its tests start.
+        _write(self.dir, "worker-count", f"{len(specs)}\n")
+
+    @pytest.hookimpl(optionalhook=True)
     def pytest_configure_node(self, node: Any) -> None:
         node.workerinput[WORKER_KEY] = self.wall
         node.workerinput[DIR_KEY] = str(self.dir)

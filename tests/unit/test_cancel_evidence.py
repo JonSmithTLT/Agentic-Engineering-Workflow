@@ -77,6 +77,67 @@ def test_queued_cancel_does_not_mask_a_real_failure_in_a_partial_report(tmp_path
     assert any("[cancel-reason]" in d for d in check.check_jobs(out, [{**job, "cancel_reason": None}]))
 
 
+def test_an_assurance_dependency_install_does_not_start_pytest(tmp_path):
+    check = _load("check_evidence_run")
+    step = {"name": 'Run python -m pip install "PyYAML>=6.0" "pytest>=8"', "started_at": "2026-11-23",
+            "conclusion": "success"}
+    job = {"id": 7, "name": "assurance", "conclusion": "failure", "steps": [step]}
+    rows = []
+    assert check.check_jobs(tmp_path, [job], score_rows=rows) == []
+    assert (rows[0]["A1"], rows[0]["A2"]) == ("n/a", "n/a")
+    step["name"] = "Run python -m pytest tests"
+    assert any("[job-evidence]" in p for p in check.check_jobs(tmp_path, [job]))
+
+
+def test_cancel_after_pytest_needs_a_completed_report_and_matching_session(tmp_path, monkeypatch):
+    check = _load("check_evidence_run")
+    stage = _load("stage_evidence")
+    raw = tmp_path / "raw"
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    job = {"id": 7, "name": "integration 1/1 (windows-latest)", "conclusion": "cancelled", "steps": [],
+           "cancel_reason": CANCEL.classify(OLD, {"id": 7}, NOTES, [NEW])}
+    (raw / "runner-resources-job.txt").write_text(json.dumps({"job_label": job["name"]}))
+    (session / "controller-pid.txt").write_text("42")
+    (session / "session-started.txt").write_text("started")
+    (session / "session-finished.txt").write_text("2026-11-23 10:20:12 pid 42: the session finished (exit None);")
+    (raw / "report.json").write_text(json.dumps({"schema": "aew/lane-report/v1", "complete": True,
+                                                  "exitstatus": 0, "results": {}}))
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    root = tmp_path / "published"
+    root.mkdir()
+    stage.stage(raw, root / "evidence-attempt-1")
+    stage.stage(raw, root / "lane-report-evidence-attempt-1", reports_only=True)
+    rows = []
+    assert check.check_jobs(root, [job], score_rows=rows) == []
+    assert rows[0]["kind"].endswith("after tests") and rows[0]["A2"] == "n/a"
+    assert any("[cancel-reason]" in p for p in check.check_jobs(root, [{**job, "cancel_reason": None}]))
+    published = root / "evidence-attempt-1/autopsy/session-42-abc"
+    (published / "controller-pid.txt").write_text("77")
+    assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
+    (published / "controller-pid.txt").write_text("42")
+    (published / "cancelled-43.txt").write_text("{}")
+    assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
+
+
+def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
+    from types import SimpleNamespace
+
+    from session_deadline import Controller
+
+    check = _load("check_evidence_run")
+    (tmp_path / "session-started.txt").write_text("started")
+    Controller.pytest_xdist_setupnodes(SimpleNamespace(dir=tmp_path), None, [object(), object()])
+    for index, pid in enumerate((31, 55)):
+        (tmp_path / f"worker-gw{index}-pid.txt").write_text(str(pid))
+        assert not check.finished_tests(tmp_path, False)
+        (tmp_path / f"worker-gw{index}-exit.txt").write_text(
+            f"2026-11-23 10:20:12 pid {pid}: worker gw{index} finished its session (exit 0);")
+    assert check.finished_tests(tmp_path, False)
+    (tmp_path / "worker-gw1-pid.txt").write_text("56")
+    assert not check.finished_tests(tmp_path, False)
+
+
 def test_archive_reader_confines_artifact_data_and_accounts_for_the_expanded_size(tmp_path):
     def archive(name):
         stream = io.BytesIO()

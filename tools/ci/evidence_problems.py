@@ -115,7 +115,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
 
     files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
     texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
-    if kind == "cancel":
+    if kind in {"cancel", "cancel-after-tests"}:
         from cancel_evidence import REASON_FILE, valid
 
         if not valid(cancel_reason):

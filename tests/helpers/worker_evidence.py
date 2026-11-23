@@ -32,6 +32,7 @@ class Worker:
     node: str
     began: float
     limit: float
+    controller: bool = False
 
     @property
     def identity(self) -> tuple[int, int]:
@@ -52,7 +53,8 @@ def workers(root: Path):
                 with open_observation(inflight) as stream:
                     header = WATCHDOG_HEADER.match(stream.readline())
                 if header:
-                    yield Worker(directory, pid, start, header[1], float(header[4]), float(header[3]))
+                    yield Worker(directory, pid, start, header[1], float(header[4]), float(header[3]),
+                                 controller=worker == "controller")
             except (OSError, ValueError):
                 continue
 
@@ -274,8 +276,12 @@ class Monitor:
         self.scope = scope
         self.next_sample = {}
         self.next_poll = 0.
-        proof = os.environ.get("AEW_EVIDENCE_PLANT") in PROOF_KINDS
-        self.periodic = (proof or os.environ.get("AEW_WORKER_SNAPSHOTS") == "1") and not ablated("ring")
+        plant = os.environ.get("AEW_EVIDENCE_PLANT")
+        mode = os.environ.get("AEW_WORKER_SNAPSHOTS")
+        # The hosted cancellation control exercises the production switch.
+        proof = plant in PROOF_KINDS and (plant != "cancel" or mode is None)
+        self.periodic = (proof or mode in {"1", "xdist"}) and not ablated("ring")
+        self.xdist_only = mode == "xdist" and not proof
         self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
         self.group = cgroup() if sys.platform == "linux" else None
         proof_group = os.environ.get("AEW_PROOF_OOM_GROUP")
@@ -312,7 +318,8 @@ class Monitor:
             if crossed:
                 self.high = False  # the first worker can still see pressure that began during startup
             return
-        due = [w for w in observed if self.periodic and now >= self.next_sample.get(w.identity, 0)]
+        due = [w for w in observed if self.periodic and not (self.xdist_only and w.controller)
+               and now >= self.next_sample.get(w.identity, 0)]
         if not crossed and not due:
             return
         allowed = self.scope()

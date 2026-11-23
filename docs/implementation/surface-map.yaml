@@ -1566,6 +1566,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "reads local launch evidence and request journals and the current execution policy"
+    mutates_exempt: "an operator-only read of host credential use; it changes no credential, record or policy"
     probe: [[credentials], [credentials, --json]]
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "Names credential sources, destinations, observed outbound use and recent failures. Values stay private."

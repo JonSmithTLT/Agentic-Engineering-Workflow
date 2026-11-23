@@ -5,12 +5,18 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import re
+import shutil
 import socket
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from tcp_pair import tcp_pair
 
 from aew.harness import runlog
@@ -273,3 +279,45 @@ def test_interrupted_outbound_header_write_has_unconfirmed_delivery(project):
     [source] = project.ok("credentials", "--json")["credentials"]
     dest = source["destinations"]["provider.example:80"]
     assert dest["confirmed_sends"] == 0 and dest["unconfirmed_sends"] == 1 and dest["last_confirmed_send"] is None
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux strace observes the worker relay's connect syscalls")
+def test_direct_relay_connect_destinations_match_the_receiver_and_report(project, tmp_path):
+    tracer = shutil.which("strace")
+    assert tracer, "Linux relay destination verification requires strace"
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    driver = Path(__file__).resolve().parents[1] / "helpers" / "relay_destination_tracee.py"
+    with provider_endpoint() as (upstream, received), provider_endpoint() as (control, unexpected):
+        # The control address is an available proxy that the policy did not select. Both receivers live outside strace.
+        command = [tracer, "-ff", "-qq", "--kill-on-exit", "-e", "trace=connect", "-e", "signal=none", "-o", "connect",
+                   sys.executable, str(driver), str(directory), upstream.url, control.url]
+        env = {"PYTHONPATH": str(driver.parents[2] / "src"), "LC_ALL": "C"}
+        result = subprocess.run(command, cwd=tmp_path, env=env, check=True, capture_output=True, text=True, timeout=30)
+        attempts = []
+        for trace in tmp_path.glob("connect.*"):
+            for line in trace.read_text().splitlines():
+                # One file per thread prevents interleaved syscalls. Keep failed and short-lived attempts too.
+                call = re.fullmatch(r"connect\(\d+, (\{.*\}), \d+\)\s+= .*", line)
+                assert call, f"unrecognized connect trace: {line}"
+                address = call[1]
+                if not address.startswith("{sa_family=AF_UNIX,"):
+                    attempts.append(address)
+        expected = (f'{{sa_family=AF_INET, sin_port=htons({upstream.port}), '
+                    f'sin_addr=inet_addr("{upstream.host}")}}')
+        assert attempts == [expected, expected]
+        assert [(method, path) for method, path, _ in received] == [("POST", "/v1/responses"), ("GET", "/v1/models")]
+        assert all(auth == "Bearer synthetic-destination-test" for _, _, auth in received)
+        assert not unexpected and json.loads(result.stdout) == [401, 200]
+
+    destination = f"{upstream.host}:{upstream.port}"
+    records = [json.loads(line) for line in (directory / runlog.RELAY_REQUESTS).read_bytes().splitlines()]
+    assert [(row["destination"], row["status"], row["upstream_headers_written"]) for row in records] == [
+        (destination, 401, True), (destination, 200, True)]
+    report = project.ok("credentials", "--json")
+    [view] = report["credentials"]
+    assert not report["partial"] and (view["provider"], view["source"]) == ("openai", "environment:OPENAI_API_KEY")
+    assert list(view["destinations"]) == [destination]
+    counts = view["destinations"][destination]
+    assert (counts["requests"], counts["confirmed_sends"], counts["plain_http_sends"]) == (2, 2, 2)
+    assert [failure["status"] for failure in view["recent_failures"]] == [401]

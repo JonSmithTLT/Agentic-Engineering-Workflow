@@ -146,7 +146,7 @@ jobs:
         if: always()
         with:
           name: nightly-reference-${{ runner.os }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}${{ steps.lane_5.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}/*.json
+          path: ${{ runner.temp }}/evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}${{ steps.lane_5.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}
           retention-days: 30
 
 

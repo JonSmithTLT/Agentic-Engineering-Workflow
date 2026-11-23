@@ -258,7 +258,7 @@ def test_the_lane_report_counts_each_tests_cli_calls_including_its_fixtures(tmp_
 
 
 @pytest.mark.parametrize("args", [[], ["-n", "2"]], ids=["serial", "xdist"])
-def test_failed_setup_teardown_and_collection_keep_pytest_causes(tmp_path, args):
+def test_failed_setup_teardown_and_collection_keep_pytest_causes(tmp_path, args, monkeypatch):
     root = scratch(tmp_path, {"tests/unit/test_broken.py": """
 import pytest
 
@@ -284,6 +284,14 @@ def test_teardown(cleanup): raise AssertionError("call cause")
     for phase, message in expected.items():
         assert message in phases[phase]["crash"] and message in phases[phase]["longrepr"]
 
+    from test_ci_tools import _load
+
+    # The ordinary collector and lane reporter observe independent sides of the native collection notification.
+    conf = root / "tests/conftest.py"
+    conf.write_text(conf.read_text() + "    import autopsy\n    autopsy.configure(config)\n")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = raw / "report.json"
     (root / "tests/unit/test_broken.py").write_text('raise RuntimeError("module collection cause")\n')
     proc = inner_pytest(root, *args, "tests/unit/test_broken.py", f"--lane-report={report}")
     assert proc.returncode != 0, proc.stdout + proc.stderr
@@ -292,6 +300,28 @@ def test_teardown(cleanup): raise AssertionError("call cause")
     [failure] = result["failures"]
     assert failure["phase"] == "collect" and "module collection cause" in failure["longrepr"]
     assert "module collection cause" in failure["crash"]
+    assert proc.returncode == (1 if args else 2)
+    assert list(raw.rglob("reason.collect.*.txt"))
+    (raw / "runner-resources-test-exit.txt").write_text(json.dumps({"lane_exit": proc.returncode}))
+    artifacts = tmp_path / "published"
+    artifacts.mkdir()
+    _load("evidence_inputs").prepare(raw, artifacts / "case-watchdog-input", job="my job", copy_priority=False)
+    (artifacts / "case-names").rename(artifacts / "case-running")
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    stage.stage(raw, artifacts / "case")
+    stage.stage(raw, artifacts / "lane-report-case", reports_only=True)
+    jobs = [{"name": "my job", "conclusion": "failure"}]
+    check = _load("check_evidence_run").check_jobs
+    assert check(artifacts, jobs) == []
+    for copy in artifacts.rglob("report.json"):
+        doc = json.loads(copy.read_text())
+        doc["results"] = {}
+        copy.write_text(json.dumps(doc))
+    defects = check(artifacts, jobs)
+    assert any("[failure-report]" in defect and "(collect)" in defect for defect in defects)
+    assert any("[job-kind]" in defect for defect in defects) == (proc.returncode == 2)
+
 
 
 def test_partial_lane_report_survives_controller_exit_after_a_failed_phase(tmp_path):

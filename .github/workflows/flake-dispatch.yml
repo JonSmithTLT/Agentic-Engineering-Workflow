@@ -76,5 +76,5 @@ jobs:
         if: always()
         with:
           name: flake-dispatch-evidence
-          path: ${{ runner.temp }}/evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}${{ steps.lane_3.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}/**/report.json
+          path: ${{ runner.temp }}/evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}${{ steps.lane_3.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}
           retention-days: 14

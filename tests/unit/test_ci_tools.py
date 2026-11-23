@@ -419,6 +419,35 @@ def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
     assert json.loads(report.read_text(encoding="utf-8"))["attempt"] == 3
 
 
+@pytest.mark.parametrize("workflow,job,alias,report_path", [
+    ("nightly", "reference", "nightly-reference-", "reference-linux-0.json"),
+    ("flake-dispatch", "regression", "flake-dispatch-evidence", "shard/report.json"),
+])
+def test_report_aliases_retain_the_complete_scanned_artifact(tmp_path, monkeypatch, workflow, job, alias, report_path):
+    steps = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())["jobs"][job]["steps"]
+    upload = next(s["with"] for s in steps if s.get("with", {}).get("name", "").startswith(alias))
+    assert upload["path"].endswith("'-reports' || '-recovered-reports' }}")
+    raw = tmp_path / "raw"
+    path = raw / report_path
+    path.parent.mkdir(parents=True)
+    overflow = Path("failures", "f" * 64 + ".txt")
+    (path.parent / overflow).parent.mkdir()
+    cause = "E   RuntimeError: retained text"
+    (path.parent / overflow).write_text(cause)
+    doc = report("linux", "fast", {})
+    doc["results"] = {"tests/test_one.py::test_case": {"outcome": "failed", "failures": [
+        {"phase": "call", "longrepr": cause, "crash": "file.py:1: RuntimeError: retained text",
+         "overflow": overflow.as_posix()}]}}
+    path.write_text(json.dumps(doc))
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    published = tmp_path / alias
+    stage.stage(raw, published, reports_only=True)
+    [found] = check_assurance.load_reports(published)
+    assert _load("evidence_problems").failure_problems(published / found["_source"], found) == []
+    assert (published / report_path).parent.joinpath(overflow).read_text() == cause
+
+
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
     """Structure of .github/workflows/nightly.yml: `reference-plan` sizes the shards (shard_plan.py --reference), every
     OS gets shards 1..N of one N, each under its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance)

@@ -314,7 +314,7 @@ class LanePlugin:
         if not self.report_path or _is_worker(self.config):
             return
         # Reuse pytest's rendered representation. xdist forwards failed collection and test reports to this controller.
-        from harness_diagnostics import CHEAP_FILE
+        from bounds import CHEAP_FILE
 
         node = report.nodeid
         text = str(report.longrepr) if report.longrepr is not None else ""
@@ -325,7 +325,7 @@ class LanePlugin:
             # Collection and native-worker reports sometimes carry just a rendered message.
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             crash = next((line.removeprefix("E   ").strip() for line in reversed(lines) if line.startswith("E   ")),
-                         lines[-1] if lines else "")
+                         lines[0] if lines else "")
         failure = {"phase": phase, "crash": crash[:CHEAP_FILE], "longrepr": text}
         raw = text.encode("utf-8", "replace")
         if len(raw) > CHEAP_FILE:  # the ordinary autopsy's per-file allowance also bounds inline lane evidence

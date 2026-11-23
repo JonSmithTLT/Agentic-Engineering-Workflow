@@ -9,7 +9,10 @@ import re
 import subprocess
 import sys
 import time
+from array import array
+from bisect import bisect_left
 from dataclasses import dataclass, replace
+from itertools import chain
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
@@ -104,30 +107,58 @@ def values(group: dict[Path, list[Hit]]) -> dict[bytes, str]:
     return {hit.value: hit.rule for path in sorted(group) for hit in group[path]}
 
 
-def occurrences(data: bytes, secrets: dict[bytes, str]):
+class MaskTimeout(TimeoutError):
+    """Reserve time for gitleaks to verify the evidence that has already been masked."""
+
+
+def check_time(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() >= deadline:
+        raise MaskTimeout
+
+
+def occurrences(data: bytes, secrets: dict[bytes, str], deadline: float | None = None):
     for value, rule in secrets.items():
+        check_time(deadline)
         start = data.find(value)
         while start >= 0:
+            check_time(deadline)
             yield start, rule, value
             start = data.find(value, start + 1)
 
 
 def mask_bytes(original: bytes, secrets: dict[bytes, str], *, xml: bool = False,
-               whole_lines: bool = False) -> tuple[bytes, set[tuple[str, int]]]:
+               whole_lines: bool = False, deadline: float | None = None) -> tuple[bytes, set[tuple[str, int]]]:
+    matches = occurrences(original, secrets, deadline)
+    first = next(matches, None)
+    if first is None:
+        return original, set()
+    # Repeated occurrences must not repeatedly count the entire file prefix or walk the same line.
+    newlines = array("Q")
+    for i, match in enumerate(re.finditer(b"\n", original)):
+        if i % 1024 == 0:
+            check_time(deadline)
+        newlines.append(match.start())
     spans = []
     notes = set()
-    for start, rule, value in occurrences(original, secrets):
-        tail = TOKEN_TAIL.match(original, start + len(value))
-        assert tail is not None
-        end = tail.end()
+    tail_start = tail_end = -1
+    for start, rule, value in chain((first,), matches):
+        end = start + len(value)
+        if not tail_start <= end <= tail_end:
+            tail_start = end
+            tail = TOKEN_TAIL.match(original, end)
+            assert tail is not None
+            tail_end = tail.end()
+        end = tail_end
+        row = bisect_left(newlines, start)
         if whole_lines:
-            start = original.rfind(b"\n", 0, start) + 1
-            newline = original.find(b"\n", end)
-            end = len(original) if newline == -1 else newline
+            start = newlines[row - 1] + 1 if row else 0
+            after = bisect_left(newlines, end)
+            end = newlines[after] if after < len(newlines) else len(original)
         spans.append((start, end, rule))
-        notes.add((rule, original.count(b"\n", 0, start) + 1))
+        notes.add((rule, row + 1))
     merged: list[tuple[int, int, str]] = []
     for start, end, rule in sorted(spans):
+        check_time(deadline)
         if merged and start < merged[-1][1]:
             left, right, first_rule = merged.pop()
             merged.append((left, max(right, end), first_rule))
@@ -137,11 +168,12 @@ def mask_bytes(original: bytes, secrets: dict[bytes, str], *, xml: bool = False,
         chunks = []
         cursor = 0
         for start, end, rule in merged:
+            check_time(deadline)
             marker = f"<redacted:{rule}>"
             if xml:
                 marker = marker.replace("<", "&lt;").replace(">", "&gt;")
             chunks.extend((original[cursor:start], marker.encode(),
-                           b"\n" * original.count(b"\n", start, end)))
+                           b"\n" * (bisect_left(newlines, end) - bisect_left(newlines, start))))
             cursor = end
         return b"".join([*chunks, original[cursor:]]), notes
     return original, notes
@@ -178,13 +210,15 @@ def map_xml(data: bytes | str, transform) -> str:
     return ElementTree.tostring(root, encoding="unicode")
 
 
-def mask(file: Path, secrets: dict[bytes, str], *, whole_lines: bool = False) -> set[tuple[str, int]]:
+def mask(file: Path, secrets: dict[bytes, str], *, whole_lines: bool = False,
+         deadline: float | None = None) -> set[tuple[str, int]]:
+    check_time(deadline)
     data = file.read_bytes()
     if file.suffix == ".json" or (whole_lines and file.suffix == ".xml"):
         notes = set()
 
         def transform(value: str) -> str:
-            masked, lines = mask_bytes(value.encode("utf-8"), secrets, whole_lines=whole_lines)
+            masked, lines = mask_bytes(value.encode("utf-8"), secrets, whole_lines=whole_lines, deadline=deadline)
             notes.update(lines)
             return masked.decode("utf-8")
 
@@ -195,19 +229,21 @@ def mask(file: Path, secrets: dict[bytes, str], *, whole_lines: bool = False) ->
         if notes:
             file.write_text(masked, encoding="utf-8")
     else:
-        masked_data, notes = mask_bytes(data, secrets, xml=file.suffix == ".xml", whole_lines=whole_lines)
+        masked_data, notes = mask_bytes(data, secrets, xml=file.suffix == ".xml", whole_lines=whole_lines,
+                                         deadline=deadline)
         if notes:
             file.write_bytes(masked_data)
     return notes
 
 
-def mask_reported_lines(file: Path, group: list[Hit]) -> None:
+def mask_reported_lines(file: Path, group: list[Hit], deadline: float | None = None) -> None:
     """Retain surrounding context even when a decoder's finding has no literal match in the output."""
     by_line = {}
     for hit in group:
         if file.suffix in {".json", ".xml"} and not hit.decoded:
             continue  # JSON's decoded view supplies lines inside individual keys and values.
         for number in range(hit.line, hit.end_line + 1):
+            check_time(deadline)
             by_line[number] = f"<redacted:{hit.rule}>"
     if not by_line:
         return
@@ -217,6 +253,7 @@ def mask_reported_lines(file: Path, group: list[Hit]) -> None:
         nonlocal next_line
         lines = value.split("\n")
         for i in range(len(lines)):
+            check_time(deadline)
             if next_line in by_line:
                 lines[i] = by_line[next_line]
             next_line += 1
@@ -389,6 +426,14 @@ def stage(source: Path, destination: Path, *, reports_only: bool = False) -> str
 
         deadline = time.monotonic() + EVIDENCE_BUNDLE_SCAN_S
 
+        # Keep one quarter of the original wall budget to verify the final, bounded set after expensive masking.
+        mask_deadline = deadline - EVIDENCE_BUNDLE_SCAN_S / 4
+
+        def omit_unfinished(path: Path) -> None:
+            (candidate / path).unlink()
+            staged.remove(path)
+            omissions.append((path, "masking time budget expired before verification"))
+
         def scan_current():
             paths = [shown(path) for path in staged] + [shown(path) for path, _ in omissions]
             return scan_material(candidate, report, staged, paths, deadline)
@@ -402,8 +447,13 @@ def stage(source: Path, destination: Path, *, reports_only: bool = False) -> str
                 if not hits:
                     break
                 secrets.update(values(hits))
-                for path in sorted(staged):
-                    notes = mask(candidate / path, secrets, whole_lines=whole_lines)
+                for path in sorted(staged, key=lambda p: (p in hits, p)):
+                    # Process clean siblings first so one expensive match cannot erase verified context.
+                    try:
+                        notes = mask(candidate / path, secrets, whole_lines=whole_lines, deadline=mask_deadline)
+                    except MaskTimeout:
+                        omit_unfinished(path)
+                        continue
                     if notes:
                         masked.setdefault(path, set()).update(notes)
                     if any(occurrences(path.as_posix().encode(), secrets)):
@@ -421,7 +471,11 @@ def stage(source: Path, destination: Path, *, reports_only: bool = False) -> str
                 for path, group in hits.items():
                     if path not in staged:
                         raise ValueError("unverifiable inventory")
-                    mask_reported_lines(candidate / path, group)
+                    try:
+                        mask_reported_lines(candidate / path, group, mask_deadline)
+                    except MaskTimeout:
+                        omit_unfinished(path)
+                        continue
                     masked.setdefault(path, set()).update((hit.rule, hit.line) for hit in group)
                 if scan_current():
                     raise ValueError("scanner could not verify masked output")

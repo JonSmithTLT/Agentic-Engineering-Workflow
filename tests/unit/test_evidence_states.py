@@ -286,6 +286,51 @@ def test_decoder_only_finding_masks_its_reported_lines_preserving_siblings(tmp_p
         stage.map_xml('<!DOCTYPE doc [<!ENTITY name "value">]><doc>&name;</doc>', str)
 
 
+def test_repeated_masks_index_the_source_lines_once(tmp_path):
+    stage = _load("stage_evidence")
+
+    class Counted(bytes):
+        def count(self, sub, start=0, end=None):
+            raise AssertionError("masking repeatedly counted the input")
+
+    source = Counted(b"kept fixture end\n" * 2048)
+    text, notes = stage.mask_bytes(source, {b"fixture": "rule"})
+    assert text == b"kept <redacted:rule> end\n" * 2048
+    assert notes == {("rule", n + 1) for n in range(2048)}
+    with pytest.raises(stage.MaskTimeout):
+        stage.mask_bytes(source, {b"fixture": "rule"}, deadline=0)
+
+
+def test_mask_timeout_keeps_verified_siblings_and_records_the_omission(tmp_path, monkeypatch):
+    stage = _load("stage_evidence")
+    raw = tmp_path / "raw"
+    (raw / "autopsy").mkdir(parents=True)
+    (raw / "autopsy/context.txt").write_text("context")
+    (raw / "autopsy/failure.txt").write_text("controlled fixture")
+    hit = Path("autopsy/failure.txt")
+    calls = []
+
+    def scan(candidate, *args):
+        calls.append(True)
+        return {hit: [stage.Hit("rule", 1, b"fixture", 1)]} if (candidate / hit).exists() else {}
+
+    mask = stage.mask
+
+    def bounded(path, *args, **kwargs):
+        if path.name == "failure.txt":
+            raise stage.MaskTimeout
+        return mask(path, *args, **kwargs)
+
+    monkeypatch.setattr(stage, "scan", scan)
+    monkeypatch.setattr(stage, "mask", bounded)
+    out = tmp_path / "published"
+    stage.stage(raw, out)
+    assert len(calls) == 2
+    assert (out / "autopsy/context.txt").read_text() == "context"
+    assert not (out / hit).exists()
+    assert "withheld/omitted (masking time budget expired" in (out / "inventory.txt").read_text()
+
+
 def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names(tmp_path):
     import hashlib
     import json

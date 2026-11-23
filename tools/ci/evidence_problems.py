@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+from bounds import CHEAP_FILE  # noqa: E402
 from evidence_files import (  # noqa: E402
     FRAME,
     FRESH_S,
@@ -89,11 +90,14 @@ def failure_problems(path: Path, report: dict) -> list[str]:
                     except (OSError, UnicodeError):
                         defect("failure-overflow", f"{detail}: unreadable full failure file")
             # ReprFileLocation supplies a path, line and message. Some collection and native reports have just text.
-            message = re.split(r":[0-9]+: ", crash, maxsplit=1)[-1].splitlines()
-            line = message[0].strip() if message else ""
-            exception = re.match(r"(?:[\w.]+\.)?([\w]+(?:Error|Exception|Exit|Interrupt))\b", line)
-            if (not failure.get("longrepr") or not line
-                    or (line not in text and not (exception and exception[1] in text))):
+            message = re.split(r":[0-9]+: ", crash, maxsplit=1)[-1].strip()
+            lines = (re.sub(r"^E\s+", "", row.strip()) for row in text.splitlines())
+            # Compare the actual exception line or its native file:line rendering. A class name in source code
+            # (e.g. pytest.raises) does not establish the cause. Pytest can prefix rewritten asserts with the type.
+            matching = any(row == message or row == "AssertionError: " + message
+                           or re.split(r":[0-9]+: ", row, maxsplit=1)[-1] == message
+                           or row.startswith(message) and len(crash) == CHEAP_FILE for row in lines)
+            if not failure.get("longrepr") or not message or not matching:
                 defect("failure-text", f"{detail}: no failure text with its exception line")
             if ELISION.search(text):
                 defect("failure-elision", f"{detail}: pytest elided failure text")

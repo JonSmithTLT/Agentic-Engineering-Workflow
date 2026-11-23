@@ -178,6 +178,19 @@ class AutopsyPlugin:
     def dest(self, test_id: str) -> Path:
         return self.root / hd.safe_dir(test_id)
 
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.failed:
+            # A collection error has no runtest phase. Keep the independent observer's node and phase without
+            # copying a second traceback. xdist workers use distinct filenames when they collect the same module.
+            try:
+                hd.write_text(self.dest(report.nodeid), f"reason.collect.{self.worker}",
+                              f"[{self.worker} pid {os.getpid()}] {report.nodeid}: failed in collect\n",
+                              cap=hd.CHEAP_FILE)
+            except OSError as exc:
+                import warnings
+
+                warnings.warn(pytest.PytestWarning(f"could not write the collection observation: {exc}"), stacklevel=2)
+
     def collect(self, test_id: str, reason: str, *, item: pytest.Item | None = None, failure: str | None = None,
                 own_stacks: bool = True, cheap: bool = False, children: bool = False,
                 failed_io: tuple[str, str] | None = None) -> Path:

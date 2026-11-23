@@ -306,7 +306,7 @@ def failure_twins(root: Path, job: dict) -> list[str]:
                         doc["results"] = {}
                     for result in doc["results"].values():
                         for failure in result.get("failures", []):
-                            failure["longrepr"] = "unrelated explanation"
+                            failure["longrepr"] = "with pytest.raises(AssertionError):\n    compare()"
                             failure.pop("overflow", None)
                     path.write_text(json.dumps(doc), encoding="utf-8")
             errors.extend(expect_rule(mutation, rule, check_jobs(twin, [job], include_success=True)))

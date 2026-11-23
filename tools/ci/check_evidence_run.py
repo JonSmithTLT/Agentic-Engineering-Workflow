@@ -84,41 +84,62 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             merged = Path(temporary)
             for path in found:
                 shutil.copytree(path, merged / path.name)
-            reports = []
-            for bundle in found:
-                if bundle.name.endswith("-running"):
-                    lane_report = root / ("lane-report-" + bundle.name.removesuffix("-running"))
-                    if lane_report.is_dir() and (lane_report / "inventory.txt").exists():
-                        shutil.copytree(lane_report, merged / lane_report.name, dirs_exist_ok=True)
-                    for path in lane_report.rglob("*.json"):
-                        if not report_json(path.relative_to(lane_report)):
-                            continue
-                        try:
-                            data = json.loads(path.read_text(encoding="utf-8"))
-                        except (OSError, ValueError):
-                            continue  # collection can leave an incomplete report; use the other observations
-                        if isinstance(data, dict) and "exitstatus" in data:
-                            reports.append(data)
+            # Keep separate invocations in the same job distinct (for example, nightly reference shards).
+            # A valid collection error in one invocation cannot explain an unrelated command's interrupt.
+            def invocation(path, directory=merged):
+                return path.relative_to(directory).parts[0].removesuffix("-running").removesuffix("-watchdog")
+
+            failed_phase = re.compile(r"(?m)^.*?\[\S+ pid [0-9]+\] (.+): failed in (setup|call|teardown|collect)$")
             observed = set()
-            for reason in merged.rglob("reason.txt"):
-                observed.update(re.findall(r"(?m)^.*?\[\S+ pid [0-9]+\] (.+): failed in (setup|call|teardown)$",
-                                           reason.read_text(encoding="utf-8")))
-            recorded = {(node, phase.get("phase")) for doc in reports if isinstance(doc.get("results"), dict)
-                        for node, result in doc["results"].items() if isinstance(result, dict)
-                        and isinstance(result.get("failures"), list)
-                        for phase in result["failures"] if isinstance(phase, dict)
-                        and isinstance(phase.get("phase"), str)}
-            for node, phase in sorted(observed - recorded):
+            for reason in (*merged.rglob("reason.txt"), *merged.rglob("reason.collect.*.txt")):
+                for node, phase in failed_phase.findall(reason.read_text(encoding="utf-8")):
+                    observed.add((invocation(reason), node, phase))
+            recorded = set()
+            collection_exits = set()
+            report_exits = []
+            for bundle in found:
+                if not bundle.name.endswith("-running"):
+                    continue
+                name = bundle.name.removesuffix("-running")
+                lane_report = root / ("lane-report-" + name)
+                if lane_report.is_dir() and (lane_report / "inventory.txt").exists():
+                    shutil.copytree(lane_report, merged / lane_report.name, dirs_exist_ok=True)
+                for path in lane_report.rglob("*.json"):
+                    if not report_json(path.relative_to(lane_report)):
+                        continue
+                    try:
+                        doc = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        continue
+                    if not isinstance(doc, dict) or "exitstatus" not in doc:
+                        continue
+                    results = doc.get("results")
+                    phases = {(name, node, record["phase"]) for node, result in
+                              (results.items() if isinstance(results, dict) else ()) if isinstance(result, dict)
+                              and isinstance(result.get("failures"), list) for record in result["failures"]
+                              if isinstance(record, dict) and isinstance(record.get("phase"), str)}
+                    recorded.update(phases)
+                    # Serial pytest returns INTERRUPTED (2) for an ordinary collection error.
+                    if (doc["exitstatus"] == 2 and doc.get("complete") is True
+                            and any(item[-1] == "collect" for item in observed & phases)):
+                        collection_exits.add(name)
+                        report_exits.append(1)
+                    else:
+                        report_exits.append(doc["exitstatus"])
+            for _, node, phase in sorted(observed - recorded):
                 report("failure-report", f"{node} ({phase}): observed failure missing from lane report")
             command_exits = []
+            abnormal_command = False
             for path in merged.rglob("runner-resources-*-exit.txt"):
                 record = json.loads(path.read_text())
-                command_exits.append(record.get("lane_exit", record.get("command_exit")))
+                code = record.get("lane_exit", record.get("command_exit"))
+                command_exits.append(code)
+                if code not in (0, 1) and not (code == 2 and invocation(path) in collection_exits):
+                    abnormal_command = True
                 if record.get("ablation") not in (None, "none"):
                     report("job-ablation", "ablation enabled in a real lane")
-            died = (any(report.get("exitstatus") not in (0, 1) for report in reports)
-                    or any(code not in (0, 1) for code in command_exits)
-                    or (not reports and not command_exits))
+            died = abnormal_command or any(code not in (0, 1) for code in report_exits)
+            died |= not report_exits and not command_exits
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if conclusion == "cancelled":

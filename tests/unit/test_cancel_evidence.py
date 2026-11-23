@@ -76,6 +76,20 @@ def test_queued_cancel_does_not_mask_a_real_failure_in_a_partial_report(tmp_path
     assert "test_failure (superseded by run 43752657105)" in summary and "death-record" in summary
     assert any("[cancel-reason]" in d for d in check.check_jobs(out, [{**job, "cancel_reason": None}]))
 
+    # The controller snapshot during shutdown retains the failed phase and its
+    # partial report (null exit status), even though all planned workers finished.
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    for filename, value in {"session-started": "started", "worker-count": "1", "worker-gw0-pid": "43",
+                            "worker-gw0-exit": "pid 43: worker gw0 finished its session (exit 1);"}.items():
+        (session / f"{filename}.txt").write_text(value)
+    priority = tmp_path / "priority-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=name)
+    stage.stage(priority, out / "evidence-selected-attempt-1-watchdog")
+    rows = []
+    assert not check.check_jobs(out, [job], score_rows=rows)
+    assert (rows[0]["A1"], rows[0]["A2"]) == ("yes", "n/a")
+
 
 def test_an_assurance_dependency_install_does_not_start_pytest(tmp_path):
     check = _load("check_evidence_run")
@@ -112,9 +126,21 @@ def test_cancel_after_pytest_needs_a_completed_report_and_matching_session(tmp_p
     assert check.check_jobs(root, [job], score_rows=rows) == []
     assert rows[0]["kind"].endswith("after tests") and rows[0]["A2"] == "n/a"
     assert any("[cancel-reason]" in p for p in check.check_jobs(root, [{**job, "cancel_reason": None}]))
-    published = root / "evidence-attempt-1/autopsy/session-42-abc"
+    # The full upload can be lost after the priority upload. A fully successful
+    # lane can also have published only the report and names when a later step is canceled.
+    (root / "evidence-attempt-1").rename(tmp_path / "withheld-full-upload")
+    priority = tmp_path / "priority-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=job["name"])
+    saved = root / "evidence-attempt-1-watchdog"
+    stage.stage(priority, saved)
+    assert not check.check_jobs(root, [job])
+    published = saved / "autopsy/session-42-abc"
     (published / "controller-pid.txt").write_text("77")
     assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
+    successful = {"name": "Run python -m pytest tests", "conclusion": "success", "started_at": OLD["created_at"]}
+    later = {"name": "Publish coverage", "conclusion": "cancelled", "started_at": OLD["created_at"]}
+    post = {**successful, "name": "Post pytest --lane integration"}
+    assert not check.check_jobs(root, [{**job, "steps": [successful, later, post]}])
     (published / "controller-pid.txt").write_text("42")
     (published / "cancelled-43.txt").write_text("{}")
     assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
@@ -130,12 +156,12 @@ def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
     Controller.pytest_xdist_setupnodes(SimpleNamespace(dir=tmp_path), None, [object(), object()])
     for index, pid in enumerate((31, 55)):
         (tmp_path / f"worker-gw{index}-pid.txt").write_text(str(pid))
-        assert not check.finished_tests(tmp_path, False)
+        assert not check.finished_tests([tmp_path], False)
         (tmp_path / f"worker-gw{index}-exit.txt").write_text(
             f"2026-11-23 10:20:12 pid {pid}: worker gw{index} finished its session (exit 0);")
-    assert check.finished_tests(tmp_path, False)
+    assert check.finished_tests([tmp_path], False)
     (tmp_path / "worker-gw1-pid.txt").write_text("56")
-    assert not check.finished_tests(tmp_path, False)
+    assert not check.finished_tests([tmp_path], False)
 
 
 def test_archive_reader_confines_artifact_data_and_accounts_for_the_expanded_size(tmp_path):

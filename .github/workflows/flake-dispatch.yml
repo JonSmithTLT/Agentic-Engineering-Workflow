@@ -1,80 +1,59 @@
-name: flake-dispatch
-
+name: Compare the Windows flake census with periodic snapshots on and off
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
-
 jobs:
-  regression:
+  census:
     runs-on: windows-latest
-    timeout-minutes: 53
+    timeout-minutes: 90
     steps:
-      - name: Set the job deadline and start the evidence record
-        shell: bash
-        run: |
-          echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/flake-dispatch"
-          printf 'commit=%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/flake-dispatch/dispatch.txt"
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
-          python-version: "3.13"
-      - name: Run the deadline plants, isolated test and regression shard
-        timeout-minutes: 41
-        uses: ./.github/actions/lane
-        id: lane_3
-        with:
-          job-label: regression
-          source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
-          shell: bash
-          command: |
-            evidence="$RUNNER_TEMP/flake-dispatch"
-            if (( $(date +%s) + 28 * 60 > AEW_JOB_DEADLINE )); then
-              echo "Setup left less than 28 minutes before the session deadline" | tee -a "$evidence/dispatch.txt"
-              exit 1
-            fi
-            base=$(python -c 'import sys; print(sys._base_executable)')
-            failed=0
+          python-version: '3.13'
+      - name: Install pinned evidence tools
+        run: python tools/ci/install_evidence.py
+      - name: Compare the same register entries on one runner
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import shlex
+          import subprocess
+          import sys
+          import time
+          import yaml
 
-            echo "deadline plants" | tee -a "$evidence/dispatch.txt"
-            "$base" -m pytest tests/integration/test_hang_autopsy.py -q -p no:cacheprovider -p no:xdist \
-              --test-timeout 180 --session-deadline 240 \
-              "--lane-report=${{ runner.temp }}/flake-dispatch/plants/report.json" --junitxml="$evidence/plants/junit.xml" \
-              -k 'worker_hung_in_native_code or controller_hung_in_native_code or controller_that_cannot_exit or child_left_holding_the_steps_output or child_started_as_the_session_finishes or sentinel_ends_the_session or backstop_moves_with_a_session or marker_an_earlier_session or nothing_hung_so_no_stacks or deadline_thread_that_is_running or after_finish_timer_is_off' \
-              || failed=1
-
-            for attempt in $(seq 1 2); do
-              echo "isolated session $attempt" | tee -a "$evidence/dispatch.txt"
-              "$base" -m pytest tests/regression/test_m4b_review.py::test_the_hostile_repository_runs_its_programs_under_plain_git \
-                -q -p no:cacheprovider --lane regression --test-timeout 150 --session-deadline 180 \
-                "--lane-report=${{ runner.temp }}/flake-dispatch/isolated-$attempt/report.json" \
-                --junitxml="$evidence/isolated-$attempt/junit.xml" || { failed=1; break; }
-            done
-
-            echo "regression shard 2/3" | tee -a "$evidence/dispatch.txt"
-            "$base" -m pytest tests/regression -q -p no:cacheprovider --lane regression --shard 2/3 \
-              -n auto --dist worksteal --test-timeout 600 --session-deadline 780 --max-worker-restart 0 \
-              "--lane-report=${{ runner.temp }}/flake-dispatch/shard/report.json" --junitxml="$evidence/shard/junit.xml" \
-              || failed=1
-            exit "$failed"
-      - name: Recover evidence if the lane action was interrupted
-        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_3.outcome) && steps.lane_3.outputs.finished != 'success'
-        timeout-minutes: 11
-        uses: ./.github/actions/recover-lane
-        with:
-          job-label: regression
-          source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
-          outcome: ${{ steps.lane_3.outcome }}
-      - uses: actions/upload-artifact@v7
-        timeout-minutes: 1
-        if: always()
-        with:
-          name: flake-dispatch-evidence
-          path: ${{ runner.temp }}/evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}${{ steps.lane_3.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}
-          retention-days: 14
+          rows = yaml.safe_load(Path('tests/flake-register.yaml').read_text())['entries']
+          nodes = sorted({row['test'] for row in rows if 'windows' in row.get('platforms', []) and row.get('test')})
+          stats = []
+          for index, value in enumerate([0, 1, 1, 0]):
+              root = Path(os.environ['RUNNER_TEMP']) / f'census-{index}'
+              root.mkdir()
+              script = root / 'command.sh'
+              command = [sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-n', '4', '--dist',
+                         'worksteal', '--session-deadline', '1080', '--session-deadline-margin', '3',
+                         '--test-timeout', '240', f'--lane-report={root}/report.json', *nodes]
+              script.write_text('exec ' + shlex.join(command) + '\n', newline='\n')
+              env = {**os.environ, 'AEW_RUNNING_TESTS_DIR': str(root), 'AEW_JOB_DEADLINE': str(time.time() + 1140),
+                     'AEW_WORKER_SNAPSHOTS': str(value)}
+              start = time.monotonic()
+              result = subprocess.run([sys.executable, 'tools/ci/lane_step.py', '--root', str(root), '--script',
+                                       str(script)], env=env, timeout=1200)
+              report = json.loads((root/'report.json').read_text())
+              samples = sum(p.read_text().count('worker snapshot ') for p in (root/'snapshots').glob('*.txt'))
+              stats.append({'samples_enabled': bool(value), 'wall_s': round(time.monotonic()-start, 3),
+                            'pytest_exit': result.returncode, 'tests': len(report['results']), 'samples': samples,
+                            'failed': [node for node, row in report['results'].items() if row['outcome'] != 'passed']})
+              print(json.dumps(stats[-1]), flush=True)
+          summary = json.dumps(stats, indent=2)
+          print(summary, flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
+              fh.write('Paired flake-register census on a single Windows runner\n\n```json\n' + summary + '\n```\n')
+          assert all(row['pytest_exit'] == 0 and row['tests'] >= len(nodes) and not row['failed']
+                     and row['samples_enabled'] == bool(row['samples']) for row in stats), summary

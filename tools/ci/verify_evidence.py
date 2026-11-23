@@ -29,7 +29,8 @@ DEATH_TWINS = {"stacks": "stacks", "kind": "kind", "running": "running", "runnin
 JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ablation": "job-ablation"}
 OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
                "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
-               "missing-counter": "oom-event", "wrong-bundle": "file-class", "live": "live-stack"}
+               "missing-counter": "oom-event", "missing-peak": "pressure", "wrong-bundle": "file-class",
+               "live": "live-stack"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
 PLANTED = {"stacks": {"stacks"}, "unlabelled": {"snapshot-label"}, "trigger": {"pressure"},
            "ring": {"snapshot", "snapshot-label", "snapshot-age"}}
@@ -150,7 +151,8 @@ def job_twins(root: Path, job: dict) -> list[str]:
 
 def abrupt_twins(root: Path, kind: str) -> list[str]:
     failures = []
-    cases = ("missing-death", "stale", "wrong-bundle") if kind == "worker-killed" else ("missing-counter",)
+    cases = (("missing-death", "stale", "wrong-bundle") if kind == "worker-killed"
+             else ("missing-counter", "missing-peak"))
     for case in cases:
         with tempfile.TemporaryDirectory() as temporary:
             twin = Path(temporary) / "copy"
@@ -160,8 +162,9 @@ def abrupt_twins(root: Path, kind: str) -> list[str]:
                 bad = inventory.parent / "junit.xml"
                 bad.write_text("<testsuite/>", encoding="utf-8")
                 label(inventory, bad, "pytest")
-            elif case == "missing-counter":
-                for path in twin.rglob("runner-resources-oom.txt"):
+            elif case in {"missing-counter", "missing-peak"}:
+                name = "runner-resources-oom.txt" if case == "missing-counter" else "runner-resources-high-water.txt"
+                for path in twin.rglob(name):
                     path.unlink()
             else:
                 for path in twin.rglob("worker-killed-*.txt"):

@@ -40,6 +40,8 @@ runs:
         SOURCE: ${{ inputs.source }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
+        # The paired hosted Linux census gates this rollout. Other runners may opt in explicitly.
+        AEW_WORKER_SNAPSHOTS: ${{ env.AEW_WORKER_SNAPSHOTS || (runner.environment == 'github-hosted' && runner.os == 'Linux' && !env.AEW_EVIDENCE_PLANT && '1' || '0') }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
         AEW_LANE_STEP: ${{ inputs.artifact }}
       run: |

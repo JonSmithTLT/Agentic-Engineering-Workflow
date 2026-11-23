@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,7 +78,10 @@ def save_sample(root: Path, worker: Worker, at: float, elapsed: float, method: s
     path.parent.mkdir(parents=True, exist_ok=True)
     prior = b""
     with contextlib.suppress(FileNotFoundError):
-        prior = path.read_bytes()
+        with path.open("rb") as old:
+            size = old.seek(0, os.SEEK_END)
+            old.seek(max(0, size - RING_BYTES))
+            prior = old.read(RING_BYTES)
     combined = prior + body
     if len(combined) > RING_BYTES:
         tail = combined[-limit:]
@@ -170,21 +174,28 @@ def ablated(mode: str) -> bool:
 
 
 def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed) -> set[tuple[int, int]]:
-    captured = set()
-    for worker in observed:
-        if worker.identity not in allowed or not proctree.same(worker.identity):
-            continue
+    # A slow or inaccessible worker cannot multiply the pre-cleanup wait by the number of workers.
+    # All attaches have their own three-second subprocess cutoff. After this common window expires,
+    # queued workers are skipped; four concurrent readers bound the runner load.
+    until = time.monotonic() + 3
+
+    def sample(worker: Worker):
+        if time.monotonic() >= until or worker.identity not in allowed or not proctree.same(worker.identity):
+            return None
         at = time.time()
         elapsed = time.monotonic() - worker.began
         result = attach(worker.pid)
         if result is None:
-            continue
+            return None
         # A sample straddling a test boundary has no trustworthy node label.
         if worker not in workers(root) or not proctree.same(worker.identity):
-            continue
+            return None
         if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
-            captured.add(worker.identity)
-    return captured
+            return worker.identity
+        return None
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        return {identity for identity in pool.map(sample, observed) if identity is not None}
 
 
 def dmesg_victim() -> int | str:
@@ -226,7 +237,8 @@ def record_oom(root: Path) -> None:
         # in that group, then associate only a contemporaneous crash; publish the strength of the attribution.
         if ([worker.pid, worker.start] in event.get("members", []) and abs(fact["at"] - event["at"]) <= 5
                 and fact["signal"] in (None, 9)):
-            scope = "kernel victim PID" if event["kernel_victim"] == worker.pid else "cgroup increase near worker crash"
+            scope = ("cgroup increase and matching PID in recent kernel messages"
+                     if event["kernel_victim"] == worker.pid else "cgroup increase near worker crash")
             record(root, worker, "oom", fact["at"], scope=scope)
 
 
@@ -239,7 +251,7 @@ class Monitor:
         self.next_poll = 0.
         proof = os.environ.get("AEW_EVIDENCE_PLANT") in PROOF_KINDS
         self.periodic = (proof or os.environ.get("AEW_WORKER_SNAPSHOTS") == "1") and not ablated("ring")
-        self.interval = 3 if proof else FRESH_S - 3  # allow a bounded attach before the 60s freshness boundary
+        self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
         self.group = cgroup() if sys.platform == "linux" else None
         proof_group = os.environ.get("AEW_PROOF_OOM_GROUP")
         if proof_group and os.environ.get("AEW_EVIDENCE_PLANT") == "oom":
@@ -248,6 +260,7 @@ class Monitor:
         self.last_kills = before[2] if before else None
         self.members = set()
         self.high = False
+        self.pressure_seen = False
 
     def poll(self, *, final: bool = False) -> None:
         now = time.monotonic()
@@ -257,8 +270,11 @@ class Monitor:
         reading = memory(self.group) if self.group else None
         high = bool(reading and reading[1] > 0 and reading[0] >= .85 * reading[1])
         if reading and self.last_kills is not None and reading[2] > self.last_kills:
+            victim = dmesg_victim()
+            if isinstance(victim, int) and victim not in {pid for pid, _ in self.members}:
+                victim = "no matching worker"
             event = {"oom_kill_before": self.last_kills, "oom_kill_after": reading[2], "at": time.time(),
-                     "kernel_victim": dmesg_victim(), "members": sorted(self.members)}
+                     "kernel_victim": victim, "members": sorted(self.members), "pressure_seen": self.pressure_seen}
             (self.root / "runner-resources-oom.txt").write_text(json.dumps(event) + "\n", encoding="utf-8")
         if reading:
             self.last_kills = reading[2]
@@ -266,10 +282,10 @@ class Monitor:
             return
         crossed = high and not self.high
         self.high = high
-        if not self.periodic and not crossed:
-            return
-        observed = list(workers(self.root))
+        observed = list(workers(self.root)) if self.periodic or crossed else []
         if not observed:
+            if crossed:
+                self.high = False  # the first worker can still see pressure that began during startup
             return
         due = [w for w in observed if self.periodic and now >= self.next_sample.get(w.identity, 0)]
         if not crossed and not due:
@@ -278,7 +294,8 @@ class Monitor:
         observed = [w for w in observed if w.identity in allowed]
         if self.group:
             self.members.update(w.identity for w in observed if cgroup(w.pid) == self.group)
-        if crossed:
+        if crossed and observed:
+            self.pressure_seen = True
             peak = {"at": time.time(), "used_bytes": reading[0], "limit_bytes": reading[1]}
             if not ablated("trigger"):
                 peak["top_workers"] = top_rss(observed)

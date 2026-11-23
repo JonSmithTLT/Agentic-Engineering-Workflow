@@ -201,9 +201,9 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             if used is not None:
                 peak = max(used, peak or 0)
             snapshot(root, seen=snapshots_seen)
-            if not interrupted:
-                monitor.poll()
             cutoff_reached = time.time() >= cutoff
+            if not interrupted and not cutoff_reached:
+                monitor.poll()
             if interrupted or cutoff_reached:
                 if interrupted:
                     at = time.time()

@@ -95,7 +95,7 @@ def test_a_flagged_init_writes_the_files_it_pins_so_no_adopt_or_credential_is_ne
     doctor = run_aew("-C", str(root), "doctor", "--json").json
     lines = {c["check"]: c["status"] for c in doctor["checks"]}
     assert lines["policy:execution"] == "PASS" and lines["model-refs"] == "PASS", doctor
-    assert "provider-env" in lines  # nothing looked for the key at init: doctor is what does, in its own environment
+    assert "provider-env" in lines  # doctor checks its own environment again
 
 
 def test_a_flag_never_writes_on_a_pinned_project_and_the_integrity_error_stands(tmp_path):
@@ -248,7 +248,7 @@ def test_flagless_init_names_both_missing_settings_and_orders_the_route(tmp_path
     # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
     # `map`: the first structural map, generated and selected by init (register E184), or the line saying why not
     assert sorted(out) == ["aew_root", "authority_candidates", "map", "next", "ok", "project_id", "provider_key",
-                           "revision", "tools"]
+                           "provider_relay", "revision", "tools"]
     # the first-use line (the operator's decision of 2026-11-06): a provider key and a paid model, no free models
     assert "AEW needs a provider key" in out["provider_key"] and "https://opencode.ai/docs/zen/" in out["provider_key"]
 

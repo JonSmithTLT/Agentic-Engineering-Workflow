@@ -93,6 +93,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=_doctor)
 
     p = sub.add_parser("init", help="initialize AEW in the current git repository")
+    _add_json(p)
     p.add_argument("--project-id")
     p.add_argument("--name")
     p.add_argument("--branch", help="authoritative branch (default: current branch)")
@@ -404,6 +405,7 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.engine import first_configuration
     from aew.engine.api import Engine
     from aew.harness import contract as K
+    from aew.harness import doctor_relay
     from aew.harness.containment import netns
     from aew.policy import execution
 
@@ -434,7 +436,9 @@ def _init(args: argparse.Namespace) -> Any:
     if "pricing" not in engine.manifest["policy"]:
         out["price_table"] = ("this package holds no bundled price table, so every cost reads unpriced until the "
                               "project adopts one as policy.pricing")
-    return {**out, **consent.init_keys(out["next"], consent.at_init(args.fetch_tool))}
+    out.update(consent.init_keys(out["next"], consent.at_init(args.fetch_tool)))
+    out["provider_relay"] = doctor_relay.init_rows(engine)
+    return out
 
 
 def _lead_tool(args: argparse.Namespace) -> Any:

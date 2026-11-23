@@ -100,7 +100,7 @@ CHILD_DATA_BASE: Path | None = None  # the session's base for the register of ev
 
 
 @pytest.fixture(autouse=True)
-def guard_worker_key_store() -> Iterator[None]:
+def guard_worker_key_store(request, capability_register_dir) -> Iterator[None]:
     from aew.harness.opencode import login
 
     inherited = HOST_ENV.get("HOME")
@@ -114,6 +114,11 @@ def guard_worker_key_store() -> Iterator[None]:
 
     # Keep the guard's lifetime independent of a test's environment monkeypatches.
     with pytest.MonkeyPatch.context() as patch:
+        if not request.node.path.is_relative_to(Path(__file__).parent / "live"):
+            from host_env import isolate_provider_credentials
+
+            assert CHILD_DATA_BASE is not None  # capability_register_dir installed the session's data directory
+            isolate_provider_credentials(patch, CHILD_DATA_BASE)
         patch.setattr(login, "worker_keys", checked_read)
         yield
 

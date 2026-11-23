@@ -77,11 +77,13 @@ A certificate-only provider skips key setup.
   `.aew/policy/checks.yaml`, which goes wherever that file is committed.
 - **`--model`** sets the workers' model, written as the harness lists it, in one profile named `default`; **`--provider`**
   goes with a bare id. They don't set the Lead's own model. For a provider that needs a key, `provider_env` gets the
-  variable's name. `aew init` only records the name. Use a paid model. An unknown provider takes the route below, as
+  variable's name. The policy records only that name. Use a paid model. An unknown provider takes the route below, as
   does a proxy variable such as `HTTPS_PROXY`.
-- **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
-  `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
-  head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
+- **Init checks the provider login.** After creating the project, init makes a no-cost models request through each
+  available worker and default Lead relay. Its `provider_relay` rows identify which login the route used and the
+  provider's HTTP status. A rejection or unavailable route leaves the project initialized. Run `aew doctor` to check
+  again. Init runs no model completion or project check. It also builds the first project map from the branch head
+  when it has a commit. The `map` result says what happened.
 - **Project maps are on for a new project.** Each worker's pack carries a bounded slice of that map, as navigation and
   never authority, and a dispatch whose map is out of date for its work makes a new one first. To turn them off, set
   `maps.pack_slices` to `"off"` (with the quotes) in `.aew/policy/execution.yaml`, then adopt it as in
@@ -90,9 +92,9 @@ A certificate-only provider skips key setup.
   its start, where Enter alone keeps them off, and `aew doctor` shows the answer. To be asked again instead, delete
   that switch's row from `.aew/local/switch-offers.json`: the next `aew opencode` start asks, with no seat needed.
 - **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
-  may run again, with other values. Its last two steps, the first project map (a few seconds on a large repository)
-  and the tool screen, come after that. Interrupted there, init is refused like any other, and nothing is lost: the
-  tool screen comes again when the Lead starts, and the first dispatch that needs a map makes one.
+  may run again, with other values. The first project map, tool screen and provider relay checks follow the initial
+  pin. If interrupted after the pin, use `aew doctor` to repeat the relay checks. The tool screen comes again when
+  the Lead starts, and the first dispatch that needs a map makes one.
 
 ### Edit pinned settings or classify authority candidates
 

@@ -132,3 +132,22 @@ def lead_rows(engine: Any) -> list[dict[str, str]]:
         rows.extend(result(f"default Lead {p}", "WARN", "the Lead's provider relay could not be established")
                     for p in routes)
     return rows
+
+
+def init_rows(engine: Any) -> list[dict[str, str]]:
+    """Finish project initialization with the live relay diagnostics. The project has already been pinned.
+    A diagnostic failure leaves its own route unverified and never obscures the other route's result."""
+    from aew.harness import model_list
+
+    try:
+        workers = model_list.doctor_rows(engine, catalog=False)
+    except Exception:
+        workers = [result("worker profiles", "WARN", "could not check the worker provider relays")]
+    try:
+        leads = lead_rows(engine)
+    except Exception:
+        leads = [result("default Lead", "WARN", "could not check the Lead's provider relays")]
+    return [
+        *(workers or [result("worker profiles", "WARN", "no worker profile selected for a relay models request")]),
+        *(leads or [result("default Lead", "WARN", "no provider relay on the Lead's launch route")]),
+    ]

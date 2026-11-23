@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -36,6 +37,16 @@ def clean_launching_env(monkeypatch: pytest.MonkeyPatch, home: str | os.PathLike
     monkeypatch.setenv("USERPROFILE", str(home))
     for name in launching_names()[1:]:
         monkeypatch.delenv(name, raising=False)
+
+
+def isolate_provider_credentials(patch: pytest.MonkeyPatch, data: Path) -> None:
+    """Offline commands, in this process and its children, start with no operator login or provider export.
+    A test that exercises a relay supplies its own synthetic environment after setup."""
+    from aew.harness.containment import netns
+
+    for name in (*netns.PROVIDER_KEY_ENV.values(), "OPENCODE_DB"):
+        patch.delenv(name, raising=False)
+    patch.setenv("XDG_DATA_HOME", str(data))  # the default OpenCode database is under this directory
 
 
 @pytest.fixture

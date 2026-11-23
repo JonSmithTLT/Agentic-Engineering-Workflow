@@ -255,6 +255,7 @@ None.
 - `aew.errors`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
+- `aew.harness.doctor_relay`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
@@ -1520,6 +1521,7 @@ None.
 - `aew.harness.containment`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.relay`
+- `aew.harness.model_list`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
 - `aew.harness.opencode.lead`

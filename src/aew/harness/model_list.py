@@ -42,8 +42,9 @@ def _row(status: str, detail: str) -> dict[str, str]:
     return {"check": CHECK, "status": status, "detail": detail}
 
 
-def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
+def doctor_rows(engine: Any, *, refresh: bool = False, catalog: bool = True) -> list[dict[str, str]]:
     """Fresh provider-relay results and one ``model-list`` row comparing the profiles' pins to the harness's catalog.
+    With ``catalog=False`` (project initialization), only check the relays, without a harness process or catalog.
     FAIL names each pinned model the list does not offer, with the models the provider does list, and each cause a
     launch would be refused for (a provider key missing, a catalog that offered nothing in time); WARN where the list
     could not be read and a launch would not be stopped by the same cause (no binary here, a sandbox not established
@@ -82,6 +83,10 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
             probes[source] = doctor_relay.WorkerProbe(provider, route)
             if netns.relay_route(policy, adapter_cls.PROVIDER_RELAY):
                 probe = probes[source].check
+        if not catalog:
+            if probe is not None:
+                _probe_only(engine, policy, pin, adapter_cls, probe)
+            continue
         shared = read.get(source)
         if shared is not None and any(m["providerID"] == pin["provider"] and m["id"] == pin["model"]
                                       for m in shared[0].get("models") or []):
@@ -191,6 +196,14 @@ def _cached(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cl
     return not refresh and key is not None and key in _load(engine.aew_root / CACHE_REL)
 
 
+def _probe_only(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any,
+                probe: Callable[[Any, float], None]) -> None:
+    try:
+        read(engine, policy, pin, adapter_cls, probe=probe, catalog=False)
+    except _Unread:
+        pass  # The relay row stays unavailable when its launch route could not be established.
+
+
 def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any, *,
              refresh: bool, probe: Callable[[Any, float], None] | None) -> tuple[dict[str, Any], str]:
     """The list for ``pin``: cached under its key, or read now (and cached when the read completed)."""
@@ -204,10 +217,7 @@ def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_c
     cache = _load(path)
     if not refresh and key in cache:
         if probe is not None:
-            try:
-                read(engine, policy, pin, adapter_cls, probe=probe, catalog=False)
-            except _Unread:
-                pass  # The uncached relay row remains unavailable; the cached catalog still answers the pin check.
+            _probe_only(engine, policy, pin, adapter_cls, probe)
         return cache[key], f"read {cache[key]['read_at']}, cached: `aew doctor --refresh` reads it again"
     bound = _bound(pin)
     # The default doctor can now wait for a harness to start and its catalog to fill (review of #367, F5): say so.

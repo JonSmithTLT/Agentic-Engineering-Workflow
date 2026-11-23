@@ -295,3 +295,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python tools/ci/verify_evidence.py published
+      - name: Confirm the recorder can independently recover both controlled attempts
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python tools/ci/record_cancel_evidence.py --read-only-proof
+          --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --report-dir "$RUNNER_TEMP/cancel-record"

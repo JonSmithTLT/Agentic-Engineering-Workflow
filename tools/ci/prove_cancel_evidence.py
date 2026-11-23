@@ -13,7 +13,7 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from cancel_evidence import _api, _pages, classify, run_jobs
+from cancel_evidence import _api, classify, run_jobs
 from cancel_evidence_plant import SENTINEL_READY_S, ready_job
 from evidence_files import PREFIX, entries
 from evidence_scorecard import inspect_run
@@ -147,14 +147,6 @@ def main(scenario):
     blind = classify(ended, targets[0], [], replacements, run_jobs(repo, ident, ended["run_attempt"]))
     if blind["kind"] != "unresolved":
         raise RuntimeError("disabling the annotation fetch retained attribution")
-    if current["event"] == "schedule" or (current["event"] == "workflow_dispatch" and branch == "main"):
-        external = f"aew-evidence-run-{ident}-attempt-{ended['run_attempt']}"
-        check = poll(lambda: next((c for c in _pages(repo, f"commits/{head}/check-runs?check_name=evidence"
-                                                     "&filter=all&per_page=100", "check_runs")
-                                  if c.get("external_id") == external), None), 420, "the default-branch recorder")
-        if check["status"] != "completed" or check["conclusion"] != "success":
-            raise RuntimeError(f"completed-run evidence record did not pass: {check['id']}")
-        print(f"Verified default-branch evidence check {check['id']} for the canceled run.")
 
 
 if __name__ == "__main__":

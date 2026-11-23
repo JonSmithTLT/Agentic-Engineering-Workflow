@@ -105,6 +105,8 @@ def test_completed_run_recorder_uses_only_default_branch_code_and_read_only_arti
     assert checkout["ref"] == "${{ github.sha }}" and checkout["persist-credentials"] is False
     assert "github.event.workflow_run.head_sha" not in str(job)
     assert all("workflow_run" not in step.get("run", "") for step in job["steps"])
+    full = next(s for s in job["steps"] if s.get("with", {}).get("path") == "${{ runner.temp }}/cancel-check/")
+    assert full["if"] == "${{ !cancelled() }}"
 
 
 def test_trusted_recorder_index_preserves_the_subject_run_and_only_declared_test_failure(tmp_path, monkeypatch):
@@ -324,3 +326,54 @@ def test_run_wide_manual_actor_covers_queued_siblings_but_a_job_actor_alone_cann
     outcomes[0] = CANCEL.classify(run, {**jobs[0], "cancelled_by": {"login": "job-user"}}, NOTES[:1])
     CANCEL.attach_reasons("test/repo", run, jobs)
     assert jobs[1]["cancel_reason"] == missing
+
+
+def test_completed_parent_finds_only_its_own_original_attempts(monkeypatch):
+    record = _load("record_cancel_evidence")
+    repo = "test/repo"
+    parent = {**OLD, "status": "completed", "updated_at": NEW["created_at"]}
+    base = {**OLD, "event": "workflow_dispatch", "actor": {"login": "github-actions[bot]"},
+            "head_repository": {"full_name": repo}, "conclusion": "cancelled", "run_attempt": 3}
+    children = {n: {**base, "id": n, "display_title": f"evidence-cancel-run-{OLD['id']}-1-{s}-target"}
+                for n, s in ((101, "manual"), (102, "supersede"))}
+    runs = [*children.values(), {**children[101], "id": 105, "head_sha": NEW["head_sha"]},
+            {**children[102], "id": 106, "actor": {"login": "operator"}},
+            {**children[101], "id": 107, "head_branch": "other"}]
+    monkeypatch.setattr(record, "_pages", lambda *args: runs)
+    attempts = {f"actions/runs/{n}/attempts/1": {**r, "run_attempt": 1} for n, r in children.items()}
+    monkeypatch.setattr(record, "_api", lambda repo, endpoint: attempts[endpoint])
+    found = record.proof_subjects(repo, parent)
+    assert {s: (r["id"], r["run_attempt"]) for s, r in found.items()} == {"manual": (101, 1), "supersede": (102, 1)}
+    runs.append({**children[101], "id": 108})
+    assert list(record.proof_subjects(repo, parent)) == ["supersede"]
+
+
+def test_parent_observer_records_and_reads_back_both_sources_but_premerge_probe_only_reads(monkeypatch, tmp_path):
+    record = _load("record_cancel_evidence")
+    children = {s: {**OLD, "id": n} for s, n in (("manual", 101), ("supersede", 102))}
+    logged = []
+    persisted = []
+    monkeypatch.setattr(record, "proof_subjects", lambda *args: children)
+
+    def inspect(repo, child):
+        logged.append(child["id"])
+        reason = ({"kind": "manual-or-api", "actor": "github-actions[bot]"} if child["id"] == 101 else
+                  {"kind": "superseded", "run": 200, "event": "workflow_dispatch", "head_sha": child["head_sha"]})
+        return [{"name": f"plant ({os}, cancel, none)", "A2": "yes", "missing": [],
+                 "artifacts": [123], "cancel_reason": reason} for os in ("ubuntu-24.04", "windows-latest")]
+
+    def write(repo, child, path):
+        persisted.append(child["id"])
+        return inspect(repo, child)
+
+    def checks(repo, endpoint, key):
+        return [{"id": n + 10, "external_id": f"aew-evidence-run-{n}-attempt-1",
+                 "app": {"slug": "github-actions"}, "conclusion": "success"} for n in persisted]
+
+    monkeypatch.setattr(record, "inspect_run", inspect)
+    monkeypatch.setattr(record, "record", write)
+    monkeypatch.setattr(record, "_pages", checks)
+    record.record_proof_children("test/repo", OLD, tmp_path, publish=False)
+    assert logged == [101, 102] and persisted == []
+    record.record_proof_children("test/repo", OLD, tmp_path)
+    assert persisted == [101, 102]

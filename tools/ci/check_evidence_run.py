@@ -18,7 +18,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flake_register import _gh_read, _pages  # noqa: E402
 
 
-def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -> list[str]:
+def hosted_step_timeout(repo: str, job: dict) -> bool:
+    if not job.get("check_run_url"):
+        return False
+    ident = int(job["check_run_url"].split("/")[-1])
+    for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"):
+        message = row.get("message") or ""
+        if re.fullmatch(r"The action .+ has timed out after [0-9]+ minutes?\.", message):
+            return True
+        # The runner gives no action name when the enclosing composite expires.
+        if (message == "The action has timed out." and row.get("path") == ".github"
+                and row.get("annotation_level") == "failure"):
+            return True
+    return False
+
+
+def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None) -> list[str]:
     defects = []
 
     def report(rule: str, detail: str) -> None:
@@ -91,10 +106,24 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -
                     or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
+            if conclusion == "cancelled":
+                kind = "cancel"
+            elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
+                kind = "oom"
+            elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
+                # The xdist down hook is an independent observation even if the attribution marker was lost.
+                kind = "worker-killed"
+            elif kind is None and "abnormal-exit" in markers and 137 in command_exits:
+                kind = "sigkill"
+            elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):
+                # A hosted timeout needs independent runner evidence. A generic interrupt alone is ambiguous.
+                step_timed_out = any(step.get("conclusion") == "timed_out" for step in job.get("steps", []))
+                if step_timed_out or job.get("step_timeout") or (timeout_observation and timeout_observation(job)):
+                    kind = "time-limit-github"
             if died and kind is None and conclusion != "cancelled":
                 report("job-kind", "death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
-                merged, kind=kind, require_stacks=died and kind is not None))
+                merged, kind=kind, require_stacks=died and kind in {"deadline", "time-limit"}))
     return defects
 
 
@@ -103,7 +132,7 @@ def main(root: Path) -> int:
     run = os.environ["GITHUB_RUN_ID"]
     attempt = os.environ["GITHUB_RUN_ATTEMPT"]
     jobs = list(_pages(repo, f"actions/runs/{run}/attempts/{attempt}/jobs?per_page=100", "jobs"))
-    problems = check_jobs(root, jobs)
+    problems = check_jobs(root, jobs, timeout_observation=lambda job: hosted_step_timeout(repo, job))
     text = "\n".join(problems) or "Published evidence states match their recorded contents."
     payload = {"name": "evidence", "head_sha": os.environ["EVIDENCE_HEAD"], "status": "completed",
                "conclusion": "failure" if problems else "success",

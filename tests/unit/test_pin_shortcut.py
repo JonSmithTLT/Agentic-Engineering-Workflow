@@ -630,3 +630,12 @@ def test_a_run_of_static_reads_the_pins_on_the_new_tree():
     """No lane runs, so this is the proof at this head that each pin's test exists and each skip has its pin."""
     assert "reuse_run" not in str(_workflow()["static"].get("if"))
     assert any("tools/ci/skip_pins.py" in (s.get("run") or "") for s in _workflow()["static"]["steps"])
+
+
+def test_the_evidence_proof_oom_skip_matches_the_hosted_matrix():
+    pins = yaml.safe_load((ROOT / PINS).read_text())["evidence_proof_skips"]
+    jobs = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())["jobs"]
+    matrix = jobs["plant"]["strategy"]["matrix"]
+    assert "oom" in pins["win32"] and "cgroup" in pins["win32"]["oom"]
+    assert 'oom' not in matrix["kind"]
+    assert {row["os"] for row in matrix["include"] if row["kind"] == "oom"} == {"ubuntu-24.04"}

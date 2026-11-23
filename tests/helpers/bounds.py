@@ -352,7 +352,9 @@ def job_deadline_problems(workflows: Path) -> list[str]:
                 last = max(index for index, step in enumerate(steps) if step.get("uses") == "./.github/actions/lane")
                 lane_minutes = publication_lane_minutes(want)
                 for step in steps:
-                    if (step.get("uses") == "./.github/actions/lane"
+                    hosted_expiry_plant = (path.name == "evidence-proof.yml" and step.get("id") == "timed"
+                                           and step.get("if") == "matrix.kind == 'time-limit-github'")
+                    if (step.get("uses") == "./.github/actions/lane" and not hosted_expiry_plant
                             and float(step.get("timeout-minutes", 0)) < lane_minutes):
                         problems.append(f"{label}: lane step needs {lane_minutes} minutes including publication")
                 if any("timeout-minutes" not in step for step in steps[last + 1:]):

@@ -4,11 +4,14 @@ on:
     paths:
       - '.github/actions/lane/**'
       - '.github/actions/publish-evidence/**'
+      - '.github/actions/recover-lane/**'
       - '.github/workflows/evidence-*.yml'
       - 'tests/helpers/watchdog.py'
       - 'tests/helpers/session_deadline.py'
       - 'tests/helpers/autopsy.py'
       - 'tests/helpers/evidence_files.py'
+      - 'tests/helpers/worker_evidence.py'
+      - 'tests/integration/evidence_plants/**'
       - 'tools/ci/lane_step.py'
       - 'tools/ci/*evidence*'
       - 'tools/flake_register.py'
@@ -23,24 +26,31 @@ permissions:
 jobs:
   plant:
     name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+    # Let the two cancellation timers reach their targets before the rest of the matrix competes for runners.
+    needs: [cancel-trigger-linux, cancel-trigger-windows]
+    if: always()
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
-        kind: ${{ fromJSON(github.event_name == 'schedule' && '["normal","deadline","time-limit","hang","cancel"]' || '["normal","deadline","time-limit","hang"]') }}
+        kind: [normal, deadline, time-limit, hang, worker-kill, time-limit-github]
         ablate: [none]
         include:
           - {os: ubuntu-24.04, kind: sigkill, ablate: none}
+          - {os: ubuntu-24.04, kind: oom, ablate: none}
+          - {os: ubuntu-24.04, kind: oom, ablate: trigger}
+          - {os: ubuntu-24.04, kind: worker-kill, ablate: ring}
+          - {os: windows-latest, kind: worker-kill, ablate: unlabelled}
           - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
           - {os: ubuntu-24.04, kind: hang, ablate: stacks}
           - {os: windows-latest, kind: deadline, ablate: stacks}
           - {os: windows-latest, kind: hang, ablate: stacks}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    timeout-minutes: 18
-    concurrency:
+    timeout-minutes: 30
+    concurrency: &plant-concurrency
       group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
       cancel-in-progress: true
-    steps:
+    steps: &plant-steps
       - name: The job's deadline
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 360 ))" >> "$GITHUB_ENV"
@@ -50,42 +60,93 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Bound the synthetic OOM worker to a private cgroup
+        if: matrix.kind == 'oom'
+        shell: bash
+        run: |
+          group="/sys/fs/cgroup/aew-evidence-oom-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          sudo -n mkdir "$group"
+          echo 201326592 | sudo -n tee "$group/memory.max"
+          echo 0 | sudo -n tee "$group/memory.swap.max"
+          echo "AEW_PROOF_OOM_GROUP=$group" >> "$GITHUB_ENV"
+      - name: Install tools before starting the GitHub step timer
+        if: matrix.kind == 'time-limit-github' || matrix.kind == 'cancel'
+        shell: bash
+        run: python tools/ci/install_evidence.py
       - name: Real planted lane
         id: lane
+        if: matrix.kind != 'time-limit-github'
         continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' }}
         timeout-minutes: 17
         uses: ./.github/actions/lane
-        env:
+        env: &plant-env
           AEW_EVIDENCE_PLANT: ${{ matrix.kind }}
           AEW_EVIDENCE_ABLATE: ${{ matrix.ablate }}
           AEW_EVIDENCE_PROBE: ${{ matrix.os == 'ubuntu-24.04' && matrix.kind == 'normal' }}
           AEW_LANE_CUTOFF_AFTER_S: ${{ matrix.kind == 'time-limit' && '35' || '' }}
-        with:
+        with: &plant-inputs
           job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
-            python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (contains(fromJSON('["oom","worker-kill","cancel"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
             tests/integration/evidence_plants/deaths.py --lane integration
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
-            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
+            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || (matrix.kind == 'cancel' && 360 || 180) }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+      - name: GitHub timed execution
+        id: timed
+        if: matrix.kind == 'time-limit-github'
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/lane
+        env: *plant-env
+        with: *plant-inputs
+      - name: Recover the interrupted lane's evidence
+        if: >-
+          always() && ((contains(fromJSON('["failure","cancelled"]'), steps.timed.outcome) && steps.timed.outputs.finished != 'success') ||
+          (contains(fromJSON('["failure","cancelled"]'), steps.lane.outcome) && steps.lane.outputs.finished != 'success'))
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+          source: ${{ runner.temp }}/lane-reports
+          artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
+          outcome: ${{ matrix.kind == 'time-limit-github' && steps.timed.outcome || steps.lane.outcome }}
+      - name: Release the empty proof cgroup
+        timeout-minutes: 1
+        if: always() && matrix.kind == 'oom' && env.AEW_PROOF_OOM_GROUP
+        shell: bash
+        run: sudo -n rmdir "$AEW_PROOF_OOM_GROUP"
       - name: Confirm planted death
         timeout-minutes: 1
         if: matrix.kind != 'normal' && matrix.kind != 'cancel'
         shell: bash
         env:
-          LANE_OUTCOME: ${{ steps.lane.outcome }}
+          LANE_OUTCOME: ${{ matrix.kind == 'time-limit-github' && steps.timed.outcome || steps.lane.outcome }}
           PLANT_KIND: ${{ matrix.kind }}
           SOURCE: ${{ runner.temp }}/lane-reports
         run: |
-          if [ "$LANE_OUTCOME" != failure ]; then
+          if [ "$LANE_OUTCOME" != failure ] && ! { [ "$PLANT_KIND" = time-limit-github ] && [ "$LANE_OUTCOME" = cancelled ]; }; then
             echo "::error::Expected $PLANT_KIND to fail the lane, got $LANE_OUTCOME"
             exit 1
           fi
           python tools/ci/verify_evidence.py "$SOURCE" --plant-death "$PLANT_KIND"
+  cancel-plant:
+    if: github.event_name != 'pull_request'
+    name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+        kind: [cancel]
+        ablate: [none]
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    timeout-minutes: 30
+    concurrency: *plant-concurrency
+    steps: *plant-steps
   cancel-ready-linux:
-    if: github.event_name == 'schedule'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -113,7 +174,7 @@ jobs:
     steps:
       - run: echo 'Queued the planted concurrency cancellation.'
   cancel-ready-windows:
-    if: github.event_name == 'schedule'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -142,7 +203,7 @@ jobs:
       - run: echo 'Queued the planted concurrency cancellation.'
   verify:
     if: always()
-    needs: [plant, cancel-trigger-linux, cancel-trigger-windows]
+    needs: [plant, cancel-plant, cancel-trigger-linux, cancel-trigger-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

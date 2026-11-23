@@ -37,7 +37,7 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 68
+    timeout-minutes: 79
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -61,6 +61,15 @@ jobs:
           artifact: evidence-vertical-ledger-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/vertical/hangs" "--junitxml=${{ runner.temp }}/vertical/junit.xml"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.pytest.outcome) && steps.pytest.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: vertical (${{ matrix.os }})
+          source: ${{ runner.temp }}/vertical/
+          artifact: evidence-vertical-ledger-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.pytest.outcome }}
       - name: The series of main's runs, for the scoreboard (the newest)
         timeout-minutes: 1
         if: always()

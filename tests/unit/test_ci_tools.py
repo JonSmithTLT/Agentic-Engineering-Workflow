@@ -3084,7 +3084,7 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 # decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
 # every timeout with it, or the pin fails.
 PRE_G3A_TIMEOUT_MIN = {
-    "evidence-proof.yml": {"plant": 6},
+    "evidence-proof.yml": {"plant": 6, "cancel-plant": 6},
     # fastbase: 15 before G3a; 16 since its lane runs under xdist, sized from strategy §8 (2 x 7.4 + 0.8 minutes;
     # operator, 2026-10-22, #232)
     "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
@@ -3478,7 +3478,8 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
-    pytest_step, upload = steps[-2:]
+    pytest_step, recovery, upload = steps[-3:]
+    assert recovery["uses"] == "./.github/actions/recover-lane" and recovery["if"].startswith("always() && ")
     action = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
     evidence = next(step for step in action if step.get("with", {}).get("portion") == "full")
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]

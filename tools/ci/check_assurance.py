@@ -53,9 +53,15 @@ def load_reports(root: Path) -> list[dict[str, Any]]:
     """The lane reports under ``root``, each shard's latest attempt only (``latest_attempts``)."""
     reports = []
     for path in sorted(root.rglob("*.json")):
-        if AUTOPSY_DIR in path.relative_to(root).parts:
+        relative = path.relative_to(root)
+        if AUTOPSY_DIR in relative.parts:
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
+        bundle = relative.parts[0]
+        if bundle.startswith("lane-report-") and bundle.endswith("-recovered"):
+            original = root / bundle.removesuffix("-recovered") / Path(*relative.parts[1:])
+            if original.is_file() and json.loads(original.read_text(encoding="utf-8")) == data:
+                continue  # the action expired after uploading JSON, before finishing scanned publication
         if data.get("schema") == REPORT_SCHEMA:
             data["_source"] = str(path.relative_to(root))
             reports.append(data)

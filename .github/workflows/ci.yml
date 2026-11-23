@@ -160,7 +160,7 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.core_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 32
+    timeout-minutes: 43
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -197,22 +197,42 @@ jobs:
         if: matrix.lane == 'fast'
         timeout-minutes: 31
         uses: ./.github/actions/lane
+        id: lane_7
         with:
           job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-7-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_7.outcome) && steps.lane_7.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-7-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_7.outcome }}
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: matrix.lane == 'serial'
         timeout-minutes: 31
         uses: ./.github/actions/lane
+        id: lane_8
         with:
           job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-8-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_8.outcome) && steps.lane_8.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-8-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_8.outcome }}
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
       # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps. The serial
       # lane runs without coverage, as it always has.
@@ -237,7 +257,7 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.lanes_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 42
+    timeout-minutes: 53
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -265,12 +285,22 @@ jobs:
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         timeout-minutes: 41
         uses: ./.github/actions/lane
+        id: lane_5
         with:
           job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
           source: ${{ runner.temp }}/lane-reports/
           artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_5.outcome) && steps.lane_5.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_5.outcome }}
       - uses: actions/upload-artifact@v7
         timeout-minutes: 1
         if: success() && runner.os == 'Linux'  # only from a passing job, as core's

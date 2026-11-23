@@ -16,11 +16,19 @@ inputs:
   shell:
     description: Command interpreter
     default: bash
+  recovery-outcome:
+    description: Outcome of an enclosing action that expired before its normal collection and publication finished
+    default: ''
+outputs:
+  finished:
+    description: Whether this action reached its final step after publishing
+    value: ${{ steps.finished.outcome }}
 runs:
   using: composite
   steps:
     - name: Install evidence tools
       id: tools
+      if: always()
       continue-on-error: true
       shell: bash
       run: python tools/ci/install_evidence.py
@@ -34,12 +42,15 @@ runs:
         echo "method=$method" >> "$GITHUB_OUTPUT"
     - name: Execute pytest
       id: pytest
+      if: inputs.recovery-outcome == ''
       shell: bash
       env:
         COMMAND: ${{ inputs.command }}
         SOURCE: ${{ inputs.source }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
+        # The paired hosted Linux census gates this rollout. Other runners may opt in explicitly.
+        AEW_WORKER_SNAPSHOTS: ${{ env.AEW_WORKER_SNAPSHOTS || (runner.environment == 'github-hosted' && runner.os == 'Linux' && !env.AEW_EVIDENCE_PLANT && '1' || '0') }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
         AEW_LANE_STEP: ${{ inputs.artifact }}
       run: |
@@ -56,6 +67,8 @@ runs:
       env:
         SOURCE: ${{ inputs.source }}
         AEW_LANE_JOB_STATUS: ${{ job.status }}
+        AEW_PYTEST_OUTCOME: ${{ inputs.recovery-outcome || steps.pytest.outcome }}
+        AEW_LANE_RECOVERY_OUTCOME: ${{ inputs.recovery-outcome }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
       run: python tools/ci/lane_step.py --collect --root "$SOURCE"
     - name: Prepare owned evidence inputs
@@ -66,7 +79,7 @@ runs:
         ARTIFACT: ${{ inputs.artifact }}
         JOB_LABEL: ${{ inputs.job-label }}
         COLLECTION_OUTCOME: ${{ steps.collect.outcome }}
-        LANE_OUTCOME: ${{ steps.pytest.outcome }}
+        LANE_OUTCOME: ${{ inputs.recovery-outcome || steps.pytest.outcome }}
         SCANNER_AVAILABLE: ${{ steps.tools.outputs.scanner }}
         SPY_AVAILABLE: ${{ steps.tools.outputs.spy }}
         ATTACHMENT_PROBE: ${{ steps.probe.outputs.method }}
@@ -80,7 +93,7 @@ runs:
         if-no-files-found: ignore
         retention-days: 14
     - name: Publish priority evidence
-      if: always() && (steps.pytest.outcome != 'success' || steps.collect.outcome != 'success')
+      if: always() && (inputs.recovery-outcome != '' || steps.pytest.outcome != 'success' || steps.collect.outcome != 'success')
       uses: ./.github/actions/publish-evidence
       with:
         source: ${{ inputs.source }}
@@ -95,9 +108,14 @@ runs:
         if-no-files-found: ignore
         retention-days: 14
     - name: Publish full evidence
-      if: always() && (steps.pytest.outcome != 'success' || steps.collect.outcome != 'success')
+      if: always() && (inputs.recovery-outcome != '' || steps.pytest.outcome != 'success' || steps.collect.outcome != 'success')
       uses: ./.github/actions/publish-evidence
       with:
         source: ${{ inputs.source }}
         artifact: ${{ inputs.artifact }}
         portion: full
+    - name: Mark the end of lane publication
+      id: finished
+      if: always()
+      shell: bash
+      run: echo 'Lane publication finished.'

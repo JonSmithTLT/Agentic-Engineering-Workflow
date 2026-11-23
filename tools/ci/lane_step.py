@@ -21,6 +21,7 @@ HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
 sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
+import worker_evidence  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
 from evidence_files import open_observation, stacks_ablated  # noqa: E402
 from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
@@ -43,11 +44,12 @@ def note(directory: Path, name: str, text: str) -> None:
         pass
 
 
-def attach(pid: int) -> tuple[str, str] | None:
+def attach(pid: int, *, allow_sudo: bool = True) -> tuple[str, str] | None:
     binary = shutil.which("py-spy")
     if binary is None:
         return None
-    prefixes = [[], ["sudo", "-n"]] if sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true" else [[]]
+    hosted_linux = sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true"
+    prefixes = [[], ["sudo", "-n"]] if allow_sudo and hosted_linux else [[]]
     until = time.monotonic() + SPY_TIMEOUT_S
     for prefix in prefixes:
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
@@ -74,7 +76,7 @@ def probe() -> str:
 
 def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]] | None = None) -> None:
     captured = seen if seen is not None else set()
-    known = {identity[0]: identity for _, identity in identities(root)}
+    known = {identity[0]: (directory, identity) for directory, identity in identities(root)}
     bases = {directory.parent.parent for directory in session_directories(root)}
     for path in (path for base in bases for path in base.glob("hang-*.txt")):
         try:
@@ -87,7 +89,7 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
             elapsed = time.monotonic() - float(started)
             out = root / "snapshots" / f"{pid}.txt"
             key = pid, started
-            if (pid not in known or not proctree.same(known[pid])
+            if (pid not in known or not proctree.same(known[pid][1])
                     or (not all_workers and (elapsed < float(limit) or key in captured))):
                 continue
             if stacks_ablated():
@@ -96,11 +98,15 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
             out.parent.mkdir(parents=True, exist_ok=True)
             result = attach(pid)
             if result is None:
-                out.write_text(f"evidence defect: py-spy unavailable for {node}\n", encoding="utf-8")
+                out.with_name(f"{pid}-unavailable.txt").write_text(
+                    f"evidence defect: py-spy unavailable for {node}\n", encoding="utf-8")
             else:
-                method, dump = result
-                out.write_text(f"snapshot {time.time():.6f} for {node}, running {elapsed:.3f}s via {method}\n" + dump,
-                               encoding="utf-8")
+                with open_observation(path) as stream:
+                    after = HEADER.match(stream.readline())
+                if after and after.groups() == header.groups() and proctree.same(known[pid][1]):
+                    worker = worker_evidence.Worker(known[pid][0], pid, known[pid][1][1], node, float(started),
+                                                    float(limit))
+                    worker_evidence.save_sample(root, worker, time.time(), elapsed, *result, reason="warning")
         except (OSError, ValueError):
             continue
 
@@ -177,10 +183,16 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     snapshots_seen: set[tuple[int, str]] = set()
     lane_exit = None
 
+    def scope():
+        if job:
+            return {p.identity for p in job.members(command_lines=False)}
+        supervisor = proctree.identity(os.getpid())
+        return {p.identity for p in proctree.descendants(supervisor, proctree.table())} if supervisor else set()
+
+    monitor = worker_evidence.Monitor(root, attach, scope)
+
     def forward(signum, frame):
         interrupted.append(signal.Signals(signum).name)
-        with contextlib.suppress(OSError):
-            child.send_signal(signum)
 
     previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
@@ -190,7 +202,15 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 peak = max(used, peak or 0)
             snapshot(root, seen=snapshots_seen)
             cutoff_reached = time.time() >= cutoff
+            if not interrupted and not cutoff_reached:
+                monitor.poll()
             if interrupted or cutoff_reached:
+                if interrupted:
+                    at = time.time()
+                    for worker in worker_evidence.workers(root):
+                        worker_evidence.record(root, worker, "interrupted", at)
+                    with contextlib.suppress(OSError):
+                        child.send_signal(signal.Signals[interrupted[0]])
                 snapshot(root, all_workers=True)
                 exit_code = 128 + signal.Signals[interrupted[0]] if interrupted else SUPERVISOR_CUTOFF_EXIT
                 if not interrupted:
@@ -218,6 +238,8 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     finally:
         if relay is not None:
             relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
+        monitor.poll(final=True)
+        worker_evidence.record_oom(root)
         record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -245,6 +267,23 @@ def main(argv: list[str]) -> int:
         metadata = {"job_label": os.environ.get("AEW_LANE_JOB_LABEL", ""),
                     "job_status_at_collect": os.environ.get("AEW_LANE_JOB_STATUS", "unknown")}
         (args.root / "runner-resources-job.txt").write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+        cancelled = (metadata["job_status_at_collect"] == "cancelled"
+                     or os.environ.get("AEW_PYTEST_OUTCOME") == "cancelled")
+        step_ended = os.environ.get("AEW_LANE_RECOVERY_OUTCOME") in {"failure", "cancelled"}
+        if cancelled or step_ended:
+            active = list(worker_evidence.workers(args.root))
+            at = time.time()
+            # Only attach to a live worker whose identity was sampled inside the supervisor's owned tree.
+            allowed = {worker.identity for worker in active if any(
+                sample.get("pid") == worker.pid and sample.get("start") == worker.start
+                for sample, _ in worker_evidence.read_ring(args.root, worker))}
+            worker_evidence.capture(args.root, active, lambda pid: attach(pid, allow_sudo=False),
+                                    reason="cancel collection", allowed=allowed)
+            for worker in active:
+                worker_evidence.record(args.root, worker, "cancelled" if cancelled else "interrupted",
+                                       time.time(), collect_at=at)
+        worker_evidence.record_oom(args.root)
+        worker_evidence.controller_loss(args.root)
         collect(args.root)
         print(f"evidence timing collect {time.monotonic() - started:.3f}s")
         return 0

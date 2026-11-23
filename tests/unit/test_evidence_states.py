@@ -10,6 +10,20 @@ from evidence_files import ARMED_NOTE, state
 from test_ci_tools import ROOT, _load
 
 
+@pytest.mark.parametrize("message,path,level,expected", [
+    ("The action has timed out.", ".github", "failure", True),
+    ("The action has timed out.", "tests/test_sample.py", "failure", False),
+    ("The action has timed out.", ".github", "warning", False),
+    ("The action timed out in a test.", ".github", "failure", False),
+    ("The action 'Run a test' has timed out after 2 minutes.", ".github", "failure", True),
+])
+def test_recognizes_hosted_timeout_annotation(monkeypatch, message, path, level, expected):
+    check = _load("check_evidence_run")
+    rows = [{"message": message, "path": path, "annotation_level": level}]
+    monkeypatch.setattr(check, "_pages", lambda *_: rows)
+    assert check.hosted_step_timeout("owner/repo", {"check_run_url": "https://host/123"}) is expected
+
+
 @pytest.mark.parametrize("payload,expected", [
     (b"", "empty"),
     (b"armed 2026-01-01T00:00:00Z for 60s; a dump below records a fire\n", "armed-placeholder"),
@@ -125,11 +139,14 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
         "pull_request": {"paths": [
             ".github/actions/lane/**",
             ".github/actions/publish-evidence/**",
+            ".github/actions/recover-lane/**",
             ".github/workflows/evidence-*.yml",
             "tests/helpers/watchdog.py",
             "tests/helpers/session_deadline.py",
             "tests/helpers/autopsy.py",
             "tests/helpers/evidence_files.py",
+            "tests/helpers/worker_evidence.py",
+            "tests/integration/evidence_plants/**",
             "tools/ci/lane_step.py",
             "tools/ci/*evidence*",
             "tools/flake_register.py",
@@ -137,7 +154,7 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
     }
 
 
-def test_evidence_proof_cancels_superseded_runs_and_reserves_cancel_plants_for_nightly():
+def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedule_or_dispatch():
     import yaml
 
     proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
@@ -147,15 +164,14 @@ def test_evidence_proof_cancels_superseded_runs_and_reserves_cancel_plants_for_n
     }
     jobs = proof["jobs"]
     matrix = jobs["plant"]["strategy"]["matrix"]
-    assert matrix["kind"] == (
-        "${{ fromJSON(github.event_name == 'schedule' && "
-        """'["normal","deadline","time-limit","hang","cancel"]' || """
-        """'["normal","deadline","time-limit","hang"]') }}"""
-    )
-    assert all(row["kind"] != "cancel" for row in matrix["include"])
+    assert "cancel" not in matrix["kind"] and all(row["kind"] != "cancel" for row in matrix["include"])
+    cancel = jobs["cancel-plant"]
+    assert cancel["if"] == "github.event_name != 'pull_request'" and cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    assert cancel["steps"] == jobs["plant"]["steps"]
+    assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
         ready = f"cancel-ready-{platform}"
-        assert jobs[ready]["if"] == "github.event_name == 'schedule'"
+        assert jobs[ready]["if"] == "github.event_name != 'pull_request'"
         trigger = jobs[f"cancel-trigger-{platform}"]
         assert trigger["needs"] == ready and trigger.get("if", "success()") == "success()"
 
@@ -486,3 +502,200 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert not lane.marker(tmp_path, "cutoff").exists()
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
+
+
+def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):
+    import json
+
+    import worker_evidence as ev
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    first = ev.Worker(session, 100, 110, "tests/test_a.py::test_first", 1, 120)
+    last = ev.Worker(session, 100, 110, "tests/test_a.py::test_last", 2, 120)
+    monkeypatch.setattr(ev, "RING_BYTES", 1000)
+    frame = "process with private argv\n    test_first (tests/test_a.py:4)"
+    for at in range(20):
+        assert ev.save_sample(tmp_path, first, at, 1, "unelevated", frame, reason="periodic")
+    path = ev.ring_path(tmp_path, first)
+    assert path.stat().st_size <= ev.RING_BYTES
+    assert path.read_text().startswith(ev.DROPPED) and "private argv" not in path.read_text()
+    ev.record(tmp_path, last, "worker-killed", 20, exit=-9, signal=9)
+    record = json.loads((session / "worker-killed-100.txt").read_text())
+    assert record["node"] == last.node and record["snapshot_node"] == first.node and record["age_s"] == 1
+    check = _load("evidence_problems").evidence_problems
+    assert not any("[snapshot" in why for why in check(tmp_path, kind="worker-killed"))
+    path.write_text(path.read_text().replace('"start": 110', '"start": 111'))
+    assert any("[snapshot]" in why for why in check(tmp_path, kind="worker-killed"))
+
+
+def test_file_classes_preserve_scanned_and_priority_publication(tmp_path, monkeypatch):
+    from evidence_files import owner, priority, publishable
+
+    stage, inputs = _load("stage_evidence"), _load("evidence_inputs")
+    check = _load("evidence_problems").evidence_problems
+    source = tmp_path / "source"
+    cases = {
+        "snapshots/123.txt": (True, True), "autopsy/session-1/worker-killed-123.txt": (True, True),
+        "autopsy/case/reason.txt": (True, True), "harness-runs/case/info.txt": (True, False),
+        "junit.xml": (True, False), "dispatch.txt": (True, False), "running-123.txt": (False, False),
+        "report.json": (False, False),
+    }
+    for name, expected in cases.items():
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("tests/test_a.py::test_a\n")
+        assert owner(Path(name)) and (publishable(Path(name)), priority(Path(name))) == expected
+    monkeypatch.setattr(stage, "scan", lambda *_args: {})
+    partial = tmp_path / "partial"
+    inputs.prepare(source, partial)
+    for selected, bundle, idx in [(source, "out", 0), (partial, "out-watchdog", 1)]:
+        target = tmp_path / bundle
+        stage.stage(selected, target)
+        assert {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
+                and p.name != "inventory.txt"} == {name for name, flags in cases.items() if flags[idx]}
+        assert check(target) == []
+
+
+def test_final_cgroup_read_keeps_a_kill_between_the_last_poll_and_exit(tmp_path, monkeypatch):
+    import json
+
+    import worker_evidence as ev
+
+    group = tmp_path / "group"
+    group.mkdir()
+    for name, value in {"memory.current": "70", "memory.max": "100",
+                        "memory.events": "oom 0\noom_kill 0\n"}.items():
+        (group / name).write_text(value)
+    monkeypatch.setattr(ev, "cgroup", lambda: group)
+    monkeypatch.setattr(ev, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(ev, "dmesg_victim", lambda: "unavailable")
+    monitor = ev.Monitor(tmp_path, None, lambda: set())
+    monitor.poll()
+    monitor.members.add((123, 456))
+    (group / "memory.events").write_text("oom 1\noom_kill 1\n")
+    monitor.poll(final=True)
+    event = json.loads((tmp_path / "runner-resources-oom.txt").read_text())
+    assert (event["oom_kill_before"], event["oom_kill_after"], event["members"]) == (0, 1, [[123, 456]])
+    assert event["kernel_victim"] == "unavailable"
+
+
+def test_no_xdist_controller_is_the_worker_only_while_its_own_watchdog_is_active(tmp_path):
+    import os
+
+    import proctree
+    import worker_evidence as ev
+
+    pid, birth = proctree.identity(os.getpid())
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    for name, value in [("controller-pid", pid), ("controller-start", birth),
+                        ("sentinel-pid", pid + 1), ("sentinel-start", birth + 1)]:
+        (directory / f"{name}.txt").write_text(str(value))
+    assert list(ev.workers(tmp_path)) == []
+    node = "tests/test_a.py::test_wait[serial]"
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_args: str(tmp_path)), 10)
+    (tmp_path / f"hang-main-{pid}.txt").write_text(guard._header(SimpleNamespace(nodeid=node)))
+    [serial] = ev.workers(tmp_path)
+    assert serial.identity == (pid, birth) and serial.node == node
+
+
+@pytest.mark.parametrize("victim,expected", [(101, {101}), ("unavailable", set()), ("no matching worker", set())])
+@pytest.mark.parametrize("sample_second", [False, True])
+def test_one_cgroup_increase_does_not_label_a_second_simultaneous_crash(
+        tmp_path, monkeypatch, victim, expected, sample_second):
+    import json
+
+    import worker_evidence as ev
+
+    source = tmp_path / "source"
+    directory = source / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    for gateway, pid in enumerate((101, 202)):
+        worker = ev.Worker(directory, pid, 23, f"tests/test_a.py::test_case[{pid}]", 0, 0)
+        if pid == 101 or sample_second:
+            assert ev.save_sample(source, worker, 9, 1, "unelevated", "    test_case (tests/test_a.py:4)",
+                                  reason="periodic")
+        ev.record(source, worker, "worker-killed", 10, signal=9)
+        (directory.parent / f"worker-gw{gateway}-down.txt").write_text("worker crashed\n")
+        (directory / f"worker-gw{gateway}-pid.txt").write_text(str(pid))
+        (directory / f"worker-gw{gateway}-start.txt").write_text("23")
+    event = {"at": 10, "members": [[101, 23], [202, 23]], "oom_kill_before": 0, "oom_kill_after": 1,
+             "kernel_victim": victim}
+    (source / "runner-resources-oom.txt").write_text(json.dumps(event))
+    ev.record_oom(source)
+    assert {int(path.stem.split("-")[1]) for path in directory.glob("oom-*.txt")} == expected
+    (source / "runner-resources-job.txt").write_text(json.dumps({"job_label": "mixed"}))
+    bundles = tmp_path / "bundles"
+    bundles.mkdir()
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *_: {})
+    assert stage.stage(source, bundles / "full") == "gitleaks clean"
+    defects = _load("check_evidence_run").check_jobs(bundles, [{"name": "mixed", "conclusion": "failure"}])
+    if sample_second:
+        assert defects == []
+    else:
+        assert _load("verify_evidence").rule_ids(defects) == {"snapshot", "snapshot-age", "snapshot-label"}
+        assert all("worker-killed pid 202" in defect for defect in defects)
+
+
+@pytest.mark.parametrize("pid,birth,param,began,reason", [
+    (202, 12, "current", 5., "periodic"), (101, 12, "current", 5., "warning"),
+    (202, 11, "current", 5., "warning"), (202, 12, "old", 5., "warning"),
+    (202, 12, "current", 4., "warning"), (202, 12, "current", 5., "warning"),
+])
+def test_only_the_current_invocations_own_warning_sample_can_satisfy_a_deadline(tmp_path, pid, birth, param, began,
+                                                                              reason):
+    import worker_evidence as ev
+
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text("202")
+    (directory / "worker-gw0-start.txt").write_text("12")
+    (directory / "session-deadline.txt").write_text("deadline")
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_args: str(tmp_path)), 10)
+    guard.started = 5.
+    active = SimpleNamespace(nodeid="tests/test_a.py::test_a[current]")
+    (tmp_path / "hang-gw0-202.txt").write_text(guard._header(active))
+    worker = ev.Worker(directory, pid, birth, f"tests/test_a.py::test_a[{param}]", began, 10)
+    ev.save_sample(tmp_path, worker, 20, 10, "unelevated", "    test_a (tests/test_a.py:3)", reason=reason)
+    check = _load("evidence_problems").evidence_problems
+    defects = check(tmp_path, kind="deadline", require_stacks=True)
+    assert (not any("[stacks]" in row for row in defects)) == (
+        pid == 202 and birth == 12 and param == "current" and began == 5 and reason == "warning")
+
+
+def test_deployed_lanes_recover_with_the_same_inputs_in_a_separate_bounded_step():
+    import yaml
+
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        for job in yaml.safe_load(path.read_text())["jobs"].values():
+            steps = job.get("steps", [])
+            for i, lane in enumerate(steps):
+                if lane.get("uses") != "./.github/actions/lane":
+                    continue
+                if path.name == "evidence-proof.yml" and lane.get("id") != "timed":
+                    continue
+                following = steps[i + 1]
+                assert following["uses"] == "./.github/actions/recover-lane" and following["timeout-minutes"] == 11
+                for key in ("job-label", "source", "artifact"):
+                    assert following["with"][key] == lane["with"][key], (path, key)
+                assert following["if"].startswith("always() && ") and f"steps.{lane['id']}.outputs.finished" in (
+                    following["if"])
+                assert f"steps.{lane['id']}.outcome" in following["with"]["outcome"]
+
+
+def test_republishing_the_same_report_keeps_one_observation_while_different_reports_remain(tmp_path):
+    import json
+
+    reader = _load("check_assurance")
+    report = {"schema": reader.REPORT_SCHEMA, "platform": "linux", "lane": "fast", "attempt": 1, "exitstatus": 1}
+    first = tmp_path / "lane-report-example-attempt-1/fast.json"
+    second = tmp_path / "lane-report-example-attempt-1-recovered/fast.json"
+    for file in (first, second):
+        file.parent.mkdir()
+        file.write_text(json.dumps(report))
+    assert len(reader.load_reports(tmp_path)) == 1
+    second.write_text(json.dumps({**report, "exitstatus": 2}))
+    assert len(reader.load_reports(tmp_path)) == 2
+    first.unlink()
+    assert reader.load_reports(tmp_path)[0]["exitstatus"] == 2

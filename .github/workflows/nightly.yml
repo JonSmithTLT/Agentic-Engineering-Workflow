@@ -104,7 +104,7 @@ jobs:
       matrix: ${{ fromJSON(needs.reference-plan.outputs.matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 72
+    timeout-minutes: 83
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -124,6 +124,7 @@ jobs:
           path: ${{ runner.temp }}/reference-durations
       # `--durations-file=`, one word (ci.yml's lanes job: a separate word counts as a test path)
       - uses: ./.github/actions/lane
+        id: lane_5
         timeout-minutes: 71
         with:
           job-label: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
@@ -131,6 +132,15 @@ jobs:
           artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30 --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/reference-durations/durations.json" --test-timeout 600 --session-deadline 3600 "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_5.outcome) && steps.lane_5.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/nightly-reports/
+          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_5.outcome }}
       - uses: actions/upload-artifact@v7
         timeout-minutes: 1
         if: always()
@@ -222,7 +232,7 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 71
+    timeout-minutes: 82
     env:
       AEW_WALK_STEPS: "150"
       AEW_WALK_FAULT_RATE: "0.15"
@@ -249,6 +259,7 @@ jobs:
           echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest tests/regression/test_composition_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/lane
+        id: lane_4
         timeout-minutes: 71
         with:
           job-label: walk block ${{ matrix.block }} (${{ matrix.os }})
@@ -256,6 +267,15 @@ jobs:
           artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-step-4-attempt-${{ github.run_attempt }}
           command: |
             python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_4.outcome) && steps.lane_4.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: walk block ${{ matrix.block }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-step-4-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_4.outcome }}
   race-repeat:
     name: race and kill repetition (${{ matrix.os }})
     strategy:
@@ -266,7 +286,7 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 71
+    timeout-minutes: 82
     steps:
       # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
@@ -281,6 +301,7 @@ jobs:
       - name: serial lane x10
         timeout-minutes: 71
         uses: ./.github/actions/lane
+        id: lane_3
         with:
           job-label: race and kill repetition (${{ matrix.os }})
           source: ${{ runner.temp }}/hangs/
@@ -293,9 +314,19 @@ jobs:
                 --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
               echo "::endgroup::"
             done
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_3.outcome) && steps.lane_3.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: race and kill repetition (${{ matrix.os }})
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_3.outcome }}
       - name: racing writers with 4x the transactions
         timeout-minutes: 71
         uses: ./.github/actions/lane
+        id: lane_4
         env:
           AEW_RACE_WRITES: 200
         with:
@@ -305,6 +336,15 @@ jobs:
           shell: bash
           command: |
             python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_4.outcome) && steps.lane_4.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: race and kill repetition (${{ matrix.os }})
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-4-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_4.outcome }}
   crash-extended:
     name: randomized store crashes (${{ matrix.os }})
     strategy:
@@ -315,7 +355,7 @@ jobs:
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 71
+    timeout-minutes: 82
     env:
       AEW_CRASH_ITERATIONS: "2000"
     steps:
@@ -332,6 +372,7 @@ jobs:
       - name: 2000 randomized crash iterations with a rotating seed
         timeout-minutes: 71
         uses: ./.github/actions/lane
+        id: lane_3
         with:
           job-label: randomized store crashes (${{ matrix.os }})
           source: ${{ runner.temp }}/hangs/
@@ -342,6 +383,15 @@ jobs:
             AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
               --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
               "tests/unit/test_store.py::test_randomized_crash_iterations"
+      - name: Recover evidence if the lane action was interrupted
+        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_3.outcome) && steps.lane_3.outputs.finished != 'success'
+        timeout-minutes: 11
+        uses: ./.github/actions/recover-lane
+        with:
+          job-label: randomized store crashes (${{ matrix.os }})
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
+          outcome: ${{ steps.lane_3.outcome }}
 
   flake-queue:
     if: always() && github.event_name == 'schedule'

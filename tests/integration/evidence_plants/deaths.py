@@ -4,9 +4,11 @@ import ctypes
 import os
 import re
 import signal
+import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -33,8 +35,68 @@ def planted_block_hang():
         os.close(write_fd)
 
 
-@pytest.mark.parametrize("kind", [os.environ.get("AEW_EVIDENCE_PLANT", "disabled")])
-def test_death(kind, request):
+KIND = os.environ.get("AEW_EVIDENCE_PLANT", "disabled")
+CHAIN = {"worker-kill", "oom", "time-limit-github", "cancel"}
+
+
+def oom_group() -> Path:
+    """Only the dedicated synthetic worker may consume memory in the capped, swap-free proof leaf."""
+    pid = os.getpid()
+    path = Path(os.environ["AEW_PROOF_OOM_GROUP"])
+    assert path.parent == Path("/sys/fs/cgroup") and path.name.startswith("aew-evidence-oom-")
+    cap = int((path / "memory.max").read_text())
+    assert 0 < cap <= 192 * 1024 * 1024 and (path / "memory.swap.max").read_text().strip() == "0"
+    subprocess.run(["sudo", "-n", "tee", str(path / "cgroup.procs")], input=str(pid), text=True,
+                   stdout=subprocess.DEVNULL, check=True, timeout=5)
+    assert (path / "cgroup.procs").read_text().split() == [str(pid)]
+    assert Path("/proc/self/cgroup").read_text().strip() == "0::/" + path.name
+    return path
+
+
+def reach_memory_limit() -> None:
+    group = oom_group()
+    cap = int((group / "memory.max").read_text())
+    held = []
+    size = 1024 * 1024
+    for _ in range(cap // size):
+        held.append(bytearray(size))
+        if int((group / "memory.current").read_text()) >= .86 * cap:
+            # Allow the real monitor one bounded chance to capture the high-water state before the kernel acts.
+            time.sleep(5)
+            break
+    for _ in range((cap - len(held) * size) // size):
+        held.append(bytearray(size))
+    raise AssertionError("plant misfired: capped worker survived its bounded allocation")
+
+
+def end_this_worker() -> None:
+    # An external child can signal only its own still-identical parent. It accepts no target from the lane's files.
+    import proctree
+
+    pid, birth = proctree.identity(os.getpid())
+    code = ("import os,sys; sys.path.insert(0,sys.argv[1]); import proctree; "
+            "identity=(int(sys.argv[2]),int(sys.argv[3])); "
+            "sys.exit(0 if os.getppid()==identity[0] and proctree.end(identity) else 1)")
+    subprocess.run([sys._base_executable, "-B", "-c", code, str(Path(proctree.__file__).parent), str(pid), str(birth)],
+                   check=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    raise AssertionError("plant misfired: signalled worker continued")
+
+
+@pytest.mark.parametrize("step", range(180 if KIND == "cancel" else 90) if KIND in CHAIN else [0])
+@pytest.mark.parametrize("kind", [KIND])
+def test_death(kind, step, request):
+    if kind in CHAIN:
+        selected = 2 + int(os.environ.get("GITHUB_RUN_ID", "0")) % 3
+        if kind == "oom" and step == 0:
+            oom_group()
+        if step == selected and kind in {"oom", "worker-kill"}:
+            time.sleep(0.5 + int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")) % 3)
+            if kind == "oom":
+                reach_memory_limit()
+            else:
+                end_this_worker()
+        time.sleep(2 + step % 4)
+        return
     if kind == "normal":
         return
     if kind.startswith("hang"):

@@ -2,6 +2,10 @@
 # "Platform responsibilities"). The CI assurance job fails on any skip not listed here, and on a listed
 # test that no longer skips. Adding an entry is a reviewed decision: say which platform covers it instead.
 schema: aew/platform-skips/v1
+# Standalone hosted plants are deliberately outside ordinary pytest collection.
+evidence_proof_skips:
+  win32:
+    oom: Linux cgroup v2 supplies an isolated, swap-free memory limit and an oom_kill counter.
 skipped:
   win32:
     tests/integration/test_seat_resume.py::test_v2_driver_answers_and_counts_the_resume_prompt: >-

@@ -96,6 +96,7 @@ import contextlib
 import faulthandler
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -496,6 +497,29 @@ class Controller:
             _write(self.dir, "sentinel-start", f"{self.sentinel_id[1]}\n")
         flight_recorder.spawned(["session_deadline.py", "sentinel"], proc.pid)
         return proc
+
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_handlecrashitem(self, crashitem: str, report: Any, sched: Any) -> None:
+        """xdist owns attribution of the crash item. Its local transport can also supply the real exit status."""
+        node = getattr(report, "node", None)
+        gateway = getattr(node, "gateway", None)
+        workerid = getattr(gateway, "id", "")
+        if not re.fullmatch(r"gw[0-9]+", workerid):
+            return
+        process = getattr(getattr(gateway, "_io", None), "popen", None)
+        code = process.poll() if process is not None else None
+        when = time.time()
+        sig = -code if isinstance(code, int) and code < 0 and os.name != "nt" else None
+        import worker_evidence
+
+        try:
+            pid = int(marker(self.dir, f"worker-{workerid}-pid").read_text())
+            start = int(marker(self.dir, f"worker-{workerid}-start").read_text())
+        except (OSError, ValueError):
+            return
+        current = worker_evidence.Worker(self.dir, pid, start, crashitem, 0, 0)
+        root = Path(os.environ.get("AEW_RUNNING_TESTS_DIR") or self.dir.parent.parent)
+        worker_evidence.record(root, current, "worker-killed", when, exit=code, signal=sig)
 
     def report_header(self) -> str:
         capped = "; capped by the CI job's deadline" if JOB_DEADLINE_ENV in self.cause else ""

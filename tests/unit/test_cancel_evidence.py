@@ -164,6 +164,37 @@ def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
     assert not check.finished_tests([tmp_path], False)
 
 
+@pytest.mark.parametrize("queue_seconds,outcome", [(660, "ready"), (1300, "allocation"), (660, "finished")])
+def test_cancel_control_times_runner_allocation_separately_from_running_workers(monkeypatch, queue_seconds, outcome):
+    from datetime import UTC, datetime
+
+    prove = _load("prove_cancel_evidence")
+    now = [0]
+    monkeypatch.setattr(prove.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(prove.time, "time", lambda: now[0])
+    monkeypatch.setattr(prove.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    start = datetime.fromtimestamp(queue_seconds, UTC).isoformat()
+
+    def jobs(repo, endpoint):
+        assert endpoint == "actions/runs/42/attempts/1/jobs?per_page=100"
+        rows = [{"name": "unrelated", "runner_id": 7, "conclusion": "success"}]
+        for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
+            running = now[0] >= queue_seconds + index * 10
+            rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel, none)",
+                         "runner_id": 7 if running else 0,
+                         "conclusion": "failure" if running and outcome == "finished" else None,
+                         "steps": [{"name": "Real planted lane", "started_at": start}] if running else []})
+        return {"jobs": rows}
+
+    monkeypatch.setattr(prove, "_api", jobs)
+    if outcome == "ready":
+        assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
+    else:
+        expected = "runner to be assigned" if outcome == "allocation" else "target finished"
+        with pytest.raises(RuntimeError, match=expected):
+            prove.wait_for_workers("x/y", 42)
+
+
 def test_archive_reader_confines_artifact_data_and_accounts_for_the_expanded_size(tmp_path):
     def archive(name):
         stream = io.BytesIO()

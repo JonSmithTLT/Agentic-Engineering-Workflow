@@ -164,11 +164,16 @@ def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
     assert not check.finished_tests([tmp_path], False)
 
 
-@pytest.mark.parametrize("queue_seconds,outcome", [(660, "ready"), (1300, "allocation"), (660, "finished")])
+@pytest.mark.parametrize("queue_seconds,outcome", [(660, "ready"), (1300, "allocation"), (660, "finished"),
+                                                     (660, "staggered"), (660, "collected")])
 def test_cancel_control_times_runner_allocation_separately_from_running_workers(monkeypatch, queue_seconds, outcome):
     from datetime import UTC, datetime
 
     prove = _load("prove_cancel_evidence")
+    workflow = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())
+    deadline_step = next(step for step in workflow["jobs"]["cancel-plant"]["steps"]
+                         if step.get("name") == "The job's deadline")
+    assert f"+ {prove.CANCEL_PLANT_SECONDS} " in deadline_step["run"]
     now = [0]
     monkeypatch.setattr(prove.time, "monotonic", lambda: now[0])
     monkeypatch.setattr(prove.time, "time", lambda: now[0])
@@ -179,18 +184,22 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
         assert endpoint == "actions/runs/42/attempts/1/jobs?per_page=100"
         rows = [{"name": "unrelated", "runner_id": 7, "conclusion": "success"}]
         for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
-            running = now[0] >= queue_seconds + index * 10
+            offset = index * (305 if outcome == "staggered" else 10)
+            running = now[0] >= queue_seconds + offset
             rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel, none)",
                          "runner_id": 7 if running else 0,
                          "conclusion": "failure" if running and outcome == "finished" else None,
-                         "steps": [{"name": "Real planted lane", "started_at": start}] if running else []})
+                         "steps": [{"name": "The job's deadline", "started_at": start}, {
+                             "name": "Real planted lane", "started_at": start,
+                             "status": "completed" if outcome == "collected" else "in_progress"}] if running else []})
         return {"jobs": rows}
 
     monkeypatch.setattr(prove, "_api", jobs)
     if outcome == "ready":
         assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
     else:
-        expected = "runner to be assigned" if outcome == "allocation" else "target finished"
+        expected = {"allocation": "runner to be assigned", "finished": "target finished",
+                    "staggered": "no overlapping time", "collected": "no active execution window"}[outcome]
         with pytest.raises(RuntimeError, match=expected):
             prove.wait_for_workers("x/y", 42)
 

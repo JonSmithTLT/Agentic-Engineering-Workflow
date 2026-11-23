@@ -50,6 +50,13 @@ def target_run(repo, workflow, parent, head, branch, title):
     return found[0] if found else None
 
 
+# Both controlled plants get 360 s from their first deadline step, and run at
+# least that long if uninterrupted (180 serially scheduled cases of 2-5 s).
+# Leave time for dispatch and delivery before pytest switches to collection.
+CANCEL_PLANT_SECONDS = 360
+TRIGGER_RESERVE_SECONDS = 60
+
+
 def wait_for_workers(repo, ident):
     labels = [f"plant ({runner}, cancel, none)" for runner in ("ubuntu-24.04", "windows-latest")]
 
@@ -67,6 +74,15 @@ def wait_for_workers(repo, ident):
     def live():
         attempt = jobs()
         active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]
+        for job in filter(None, active):
+            steps = {step["name"]: step for step in job["steps"]}
+            lane = steps["Real planted lane"]
+            deadline_step = steps.get("The job's deadline", {})
+            if not deadline_step.get("started_at") or lane.get("status") != "in_progress":
+                raise RuntimeError("controlled pytest lane has no active execution window")
+            opened = datetime.fromisoformat(deadline_step["started_at"]).timestamp()
+            if time.time() >= opened + CANCEL_PLANT_SECONDS - TRIGGER_RESERVE_SECONDS:
+                raise RuntimeError("controlled pytest lanes have no overlapping time before collection")
         return active if all(active) else None
 
     return poll(live, 9 * 60, "both controlled pytest lanes to enter their worker sessions")

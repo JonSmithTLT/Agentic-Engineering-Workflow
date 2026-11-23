@@ -105,7 +105,8 @@ def failure_problems(path: Path, report: dict) -> list[str]:
     return problems
 
 
-def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bool = False) -> list[str]:
+def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bool = False,
+                      cancel_reason: dict | None = None) -> list[str]:
     """Check published states and warning-death stacks, also used by the hosted proof."""
     defects = []
 
@@ -114,6 +115,15 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
 
     files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
     texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
+    if kind == "cancel":
+        from cancel_evidence import REASON_FILE, valid
+
+        if not valid(cancel_reason):
+            report("cancel-reason", "no verified cancellation reason and replacement or manual/API observation")
+        for early in rows_named(texts, REASON_FILE):
+            if valid(early) and valid(cancel_reason) and any(
+                    early.get(k) != cancel_reason.get(k) for k in ("kind", "run", "head_sha", "event", "message")):
+                report("cancel-reason", "collected cancellation reason conflicts with the completed-run observation")
     inventories = {path: text for path, text in texts.items() if path.name == "inventory.txt"}
     if not inventories:
         report("inventory", "missing publication inventory")

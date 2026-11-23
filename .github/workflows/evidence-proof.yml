@@ -1,4 +1,5 @@
 name: evidence-proof
+run-name: ${{ inputs.probe_origin && format('evidence-cancel-run-{0}-{1}-{2}', inputs.probe_origin, inputs.probe_scenario, inputs.probe_role) || github.event.pull_request.title || 'evidence-proof' }}
 on:
   pull_request:
     paths:
@@ -22,17 +23,34 @@ on:
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:
+    inputs:
+      probe_origin:
+        description: Parent run ID and attempt for a controlled cancellation
+        type: string
+        required: false
+      probe_scenario:
+        description: Controlled cancellation scenario
+        type: choice
+        options: [manual, supersede]
+        default: manual
+      probe_role:
+        description: Isolated child run role
+        type: choice
+        options: [target, replacement]
+        default: target
 concurrency:
-  group: evidence-proof-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ inputs.probe_origin && format('evidence-cancel-run-{0}-{1}', inputs.probe_origin, inputs.probe_scenario) || format('evidence-proof-{0}', github.event.pull_request.number || github.ref) }}
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
+  checks: read
 jobs:
   plant:
     name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
     # Let the two cancellation timers reach their targets before the rest of the matrix competes for runners.
     needs: [cancel-trigger-linux, cancel-trigger-windows]
-    if: always()
+    if: always() && !inputs.probe_origin
     strategy:
       fail-fast: false
       matrix:
@@ -148,7 +166,7 @@ jobs:
           fi
           python tools/ci/verify_evidence.py "$SOURCE" --plant-death "$PLANT_KIND"
   cancel-plant:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.probe_origin
     name: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
     strategy:
       fail-fast: false
@@ -161,7 +179,7 @@ jobs:
     concurrency: *plant-concurrency
     steps: *plant-steps
   cancel-ready-linux:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.probe_origin
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -189,7 +207,7 @@ jobs:
     steps:
       - run: echo 'Queued the planted concurrency cancellation.'
   cancel-ready-windows:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.probe_origin
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -216,9 +234,56 @@ jobs:
       cancel-in-progress: true
     steps:
       - run: echo 'Queued the planted concurrency cancellation.'
+  run-cancel-control:
+    if: "!inputs.probe_origin && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [manual, supersede]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 26
+    permissions:
+      contents: read
+      actions: write
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0'
+      - name: Dispatch and observe only this proof's target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: python tools/ci/prove_cancel_evidence.py "$SCENARIO"
+  run-cancel-target:
+    name: Controlled cancellation target
+    if: inputs.probe_origin && inputs.probe_role == 'target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Record the target's readiness
+        run: echo 'Controlled cancellation target ready.' > "$RUNNER_TEMP/controlled-cancel-ready.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: controlled-cancel-ready
+          path: ${{ runner.temp }}/controlled-cancel-ready.txt
+          retention-days: 7
+      - name: Hold the synthetic target
+        run: sleep 540
+  run-cancel-replacement:
+    name: Controlled cancellation replacement
+    if: inputs.probe_origin && inputs.probe_role == 'replacement'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo 'This run replaced its corresponding controlled target.'
   verify:
-    if: always()
-    needs: [plant, cancel-plant, cancel-trigger-linux, cancel-trigger-windows]
+    if: always() && !inputs.probe_origin
+    needs: [plant, cancel-plant, cancel-trigger-linux, cancel-trigger-windows, run-cancel-control]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -237,6 +302,10 @@ jobs:
         with:
           pattern: '*plant-*-attempt-${{ github.run_attempt }}*'
           path: published
+      - name: Require successful run cancellation controls
+        env:
+          CONTROL: ${{ needs.run-cancel-control.result }}
+        run: test "$CONTROL" = success || test "$CONTROL" = skipped
       - name: Verify downloaded evidence and checker ablations
         env:
           GH_TOKEN: ${{ github.token }}

@@ -41,6 +41,8 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read  # match a cancellation to the run and attempt after test processes end
+  checks: read   # read the runner's cancellation annotation
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"

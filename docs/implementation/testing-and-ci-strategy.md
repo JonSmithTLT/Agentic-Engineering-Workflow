@@ -403,3 +403,18 @@ The enclosing workflow step bounds the shared lane action, including its publica
 bound from their caller. Each later workflow step has its own timeout. `bounds.publication_job_minutes` sums these
 limits with the sentinel's longest path, its cutoff clearance and collection. Three scanned bundles share a four-minute scanner budget, and four artifact uploads have a reserved budget. Existing absolute test deadlines are preserved. Upload reserves are
 provisional until the first hosted run measures them. The verifier reports the hosted steps' elapsed times.
+
+### Cancellation evidence
+
+The lane cleanup records what it can observe before upload. Assurance reads the completed check-run annotations
+again. A concurrency cancellation names the replacement run, commit and event when GitHub's group and run history
+establish a unique successor. A manual/API cancellation records GitHub's message and a cancellation actor only
+where one is available. A canceled job with a failed phase in its partial report counts as a test failure. Queued
+supersessions retain their job IDs and do not count as failed test runs.
+
+The completed-run workflow reads the default branch's recorder and records each canceled CI run even when its
+own assurance job never started. The superseding run's assurance also reports its predecessor when established.
+Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent CI runs or
+`python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
+kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker
+as assurance and excludes the proof workflow.

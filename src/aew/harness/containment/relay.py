@@ -27,7 +27,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
 5. sends the request and its body (framed by ``Content-Length`` or chunked), then streams the response back as it
    comes, until the upstream ends it or the client goes away.
 
-**The record:** each request, whatever became of it, is one entry given to the relay's ``record`` (one per request,
+**The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
+request target. Each request, whatever became of it, is one entry given to the relay's ``record`` (one per request,
 when the request ends): when, the provider route, the fixed destination, what became of its credential header
 (:data:`SWAP_OUTCOMES`), the login kind, what the relay answered and, for one it forwarded, the upstream's status, with
 a short excerpt of a failure's body, redacted. Never a credential value. A forwarded request is also counted by its
@@ -209,6 +210,20 @@ def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[
     return value, False
 
 
+def _operation(method: str, target: str, base: str) -> str:
+    """Recognize API operations relative to the exact configured base, without retaining the path or query."""
+    path = target.partition("?")[0]
+    if not path.startswith(base + "/"):
+        return "unknown"
+    endpoint = path[len(base):]
+    if method == "GET" and endpoint == "/models":
+        return "models_list"
+    if method == "POST" and (endpoint in ("/responses", "/chat/completions", "/completions", "/messages")
+                             or re.fullmatch(r"/models/[^/:]+:(?:generateContent|streamGenerateContent)", endpoint)):
+        return "model"
+    return "unknown"
+
+
 class _Refused(Exception):
     def __init__(self, status: int, reason: str, message: str) -> None:
         super().__init__(message)
@@ -302,12 +317,14 @@ class ProviderRelay(Service):
         answered = False  # once the response's head has gone to the client, nothing else may be sent it
         entry: dict[str, Any] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "route": self.route,
                                  "destination": f"{self.upstream.host}:{self.upstream.port}", "login": self.login,
-                                 "swap": "none", "outcome": None, "reason": None, "status": None, "answered": None}
+                                 "swap": "none", "operation": "unknown", "outcome": None, "reason": None,
+                                 "status": None, "answered": None}
         held: list[str] = []  # this request's credential values, kept out of the record's excerpt
         excerpt: _Excerpt | None = None
         try:
             head, early = _read_head(conn, self.head_timeout)
             method, target, headers = self._request(head)
+            entry["operation"] = _operation(method, target, self.upstream.path)
             framing = _framing(headers)
             credentials, extra = self._grant()  # before anything is connected: a refusal connects nothing
             held = [*credentials.values(), *extra.values()]

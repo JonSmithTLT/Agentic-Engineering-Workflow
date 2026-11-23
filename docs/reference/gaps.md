@@ -46,6 +46,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.dashboard.projections`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.engine.history_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.engine.migrate_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
+- `aew.harness.doctor_relay`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.harness.opencode.adapter`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.harness.opencode.lead`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 - `aew.harness.opencode.login`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
@@ -74,6 +75,13 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 ## writers
 
 - `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
+- `aew.capability.bind:_write_entry`: Path.unlink of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry`: Path.write_bytes of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry`: os.replace of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry`: os.symlink of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place`: Path.mkdir of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place`: Path.write_bytes of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place`: shutil.rmtree of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.capability.payload:discard`: shutil.rmtree of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.payload:install`: Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.payload:install`: Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -114,13 +122,17 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.check_changes:remove_copy.writable`: os.unlink of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:run_once`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.containment:establish`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
-- `aew.harness.containment.layout:for_run`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
+- `aew.harness.containment.layout:for_run`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:for_run`: Path.write_bytes of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:private_git`: Path.mkdir of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:private_git`: shutil.copy2 of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:retire_private_git`: shutil.rmtree of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.netns:RunNetwork.record_credential_check`: atomic_write of a path this reading cannot place: `directory` of `RunNetwork.record_credential_check`, which no static call binds
 - `aew.harness.containment.probe:_markers`: Path.mkdir of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers`: Path.write_bytes of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test`: Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read
-- `aew.harness.containment.probe:_self_test`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow
-- `aew.harness.containment.probe:_self_test`: Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.containment.probe:_self_test`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.probe:_self_test`: Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.probe:new_sentinel`: Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.relay:RequestLog.__call__`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.containment.shim:start_server`: open of a path this reading cannot place: `serve['log']`, from a value that is not a dict literal
@@ -153,6 +165,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:surviving_login_providers`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer

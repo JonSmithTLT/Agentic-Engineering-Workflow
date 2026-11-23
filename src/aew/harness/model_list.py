@@ -9,7 +9,8 @@ called; the server and everything it started are reaped when the read ends. The 
 start deadline (``supervisor.starting_limit_s``), and one that runs out is a red row with its fix.
 
 A list is cached by the binary's sha256 and the hash of the projected configuration (:func:`cache_key`), so an
-unchanged environment reads it once; ``aew doctor --refresh`` reads it again. The rows refuse nothing: each pinned
+unchanged environment reads it once; ``aew doctor --refresh`` reads it again. The separate provider-relay rows make
+a live models request and are never cached. The rows refuse nothing: each pinned
 model the list does not offer is a FAIL that names the model and the ones the provider does list, and dispatch refuses
 where its own launch check fails, as before.
 """
@@ -22,6 +23,7 @@ import secrets
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -41,14 +43,17 @@ def _row(status: str, detail: str) -> dict[str, str]:
 
 
 def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
-    """One ``model-list`` row: each profile's pinned model against the list its harness offers, read as a launch reads
-    it. FAIL names each pinned model the list does not offer, with the models the provider does list, and each cause a
+    """Fresh provider-relay results and one ``model-list`` row comparing the profiles' pins to the harness's catalog.
+    FAIL names each pinned model the list does not offer, with the models the provider does list, and each cause a
     launch would be refused for (a provider key missing, a catalog that offered nothing in time); WARN where the list
     could not be read and a launch would not be stopped by the same cause (no binary here, a sandbox not established
     here). None of it refuses anything. Profiles of one harness and provider share a read that lists their model, and
     a read that waited for nothing is waited for once in a run, whatever ended the wait (review of #367, N2; of E137,
     F3): the answer does not depend on which of its models is pinned. A profile with a cached list still gets its
     answer from it, as that waits for nothing (of E137, F4)."""
+    from aew.harness import doctor_relay
+    from aew.harness.containment import netns
+
     policy, sha = engine.execution_policy()
     if not policy or not policy.get("profiles"):
         return []
@@ -57,6 +62,7 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
     unread: list[str] = []
     read: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
     waited: dict[tuple[str, str, str], str] = {}  # the sources a read waited on for nothing, by the profile that waited
+    probes: dict[tuple[str, str, str], doctor_relay.WorkerProbe] = {}
     for name in sorted(policy["profiles"]):
         try:
             pin = X.resolve(policy, sha, archetype=ROLE, card_id=None, risk_class=None, request={"profile": name},
@@ -69,6 +75,13 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
         if not hasattr(adapter_cls, "read_model_list"):  # a harness without the capability (harness_capabilities)
             continue
         source = (str(pin["harness"]), str(pin["provider"]), pin.get("credential", "api_key"))
+        provider = str(pin["provider"])
+        probe = None
+        if source not in probes:
+            route = f"worker profile {name} ({provider}, {source[2]})"
+            probes[source] = doctor_relay.WorkerProbe(provider, route)
+            if netns.relay_route(policy, adapter_cls.PROVIDER_RELAY):
+                probe = probes[source].check
         shared = read.get(source)
         if shared is not None and any(m["providerID"] == pin["provider"] and m["id"] == pin["model"]
                                       for m in shared[0].get("models") or []):
@@ -79,7 +92,7 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
             continue
         else:
             try:
-                listing, when = _listing(engine, policy, pin, adapter_cls, refresh=refresh)
+                listing, when = _listing(engine, policy, pin, adapter_cls, refresh=refresh, probe=probe)
             except _Unread as exc:
                 (problems if exc.red else unread).append(f"profile {name}: {exc}")
                 if exc.waited:
@@ -88,12 +101,14 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
             read[source] = (listing, when)
         found.append(_judge(name, pin, listing, when, problems))
     if problems:
-        return [_row("FAIL", "; ".join(problems) + "; a launch of these profiles is refused until they are fixed"
-                     + (f" ({'; '.join(unread)})" if unread else ""))]
-    if unread:
-        return [_row("WARN", "the model list was not read: " + "; ".join(unread)
-                     + (f" ({'; '.join(f for f in found if f)})" if any(found) else ""))]
-    return [_row("PASS", "; ".join(found))] if found else []
+        row = _row("FAIL", "; ".join(problems) + "; a launch of these profiles is refused until they are fixed"
+                   + (f" ({'; '.join(unread)})" if unread else ""))
+    elif unread:
+        row = _row("WARN", "the model list was not read: " + "; ".join(unread)
+                   + (f" ({'; '.join(f for f in found if f)})" if any(found) else ""))
+    else:
+        row = _row("PASS", "; ".join(found))
+    return [*([row] if found or problems or unread else []), *(p.row for p in probes.values())]
 
 
 def _judge(name: str, pin: dict[str, Any], listing: dict[str, Any], when: str, problems: list[str]) -> str:
@@ -177,7 +192,7 @@ def _cached(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cl
 
 
 def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any, *,
-             refresh: bool) -> tuple[dict[str, Any], str]:
+             refresh: bool, probe: Callable[[Any, float], None] | None) -> tuple[dict[str, Any], str]:
     """The list for ``pin``: cached under its key, or read now (and cached when the read completed)."""
     try:
         key = cache_key(adapter_cls, policy, pin)
@@ -188,13 +203,18 @@ def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_c
     path = engine.aew_root / CACHE_REL
     cache = _load(path)
     if not refresh and key in cache:
+        if probe is not None:
+            try:
+                read(engine, policy, pin, adapter_cls, probe=probe, catalog=False)
+            except _Unread:
+                pass  # The uncached relay row remains unavailable; the cached catalog still answers the pin check.
         return cache[key], f"read {cache[key]['read_at']}, cached: `aew doctor --refresh` reads it again"
     bound = _bound(pin)
     # The default doctor can now wait for a harness to start and its catalog to fill (review of #367, F5): say so.
     print(f"aew doctor: reading {pin['harness']}'s model list for {pin['provider']}/{pin['model']} as a launch reads "
           f"it (up to {bound:.0f}s, the launch's start deadline; the list is cached, and `aew doctor --refresh` reads "
           "it again)", file=sys.stderr, flush=True)
-    listing = read(engine, policy, pin, adapter_cls)
+    listing = read(engine, policy, pin, adapter_cls, probe=probe)
     if listing.get("complete"):
         entry = {**listing, "read_at": utc_now()}
         cache = {k: v for k, v in cache.items() if k != key}
@@ -239,7 +259,8 @@ def _past_deadline(bound: float, *, cause: str | None = None, started: bool = Tr
                    + f"; {fix}, then run `aew doctor --refresh`", red=True, waited=True)
 
 
-def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any) -> dict[str, Any]:
+def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any, *,
+         probe: Callable[[Any, float], None] | None = None, catalog: bool = True) -> dict[str, Any]:
     """Read the list as a launch of ``pin`` would: its containment and network (``contain_launch``), its process tree,
     its server, its catalog; nothing else. Everything it started is reaped, and its directory removed, whatever
     happens. Raises :class:`_Unread`."""
@@ -282,6 +303,10 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
         # The tree first: from here, the network it holds is closed whatever fails (review of #367, F7).
         tree = procs.ProcessTree(layout=layout, network=network)  # no layout and no network off Linux
         marker.write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if not catalog:
+            if probe is not None:
+                probe(network, until)
+            return {}
         adapter = adapter_cls(tree, run_dir, lambda _event: None)
         if weaker is not None:
             weaker.started()
@@ -300,6 +325,9 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
             raise _Unread(f"the harness did not start as a launch starts it: {detail}; a launch from here fails "
                           "the same way (see `aew harness status` after one, or run `aew doctor --refresh` again)",
                           red=True, waited=True) from None
+        finally:
+            if probe is not None:
+                probe(network, until)
         if listing.get("empty"):
             raise _Unread(f"{pin['harness']} offered no model at all within its catalog wait, as a launch waits for "
                           "it: a launch from here would be refused the same way, which is timing-dependent, never a "

@@ -165,6 +165,22 @@ def clear_saved_permissions(db: Path, state: Path) -> int:
 AEW_ROW_PREFIX = "cred_aew_"  # the ids of the login rows AEW writes in the contained Lead's store, one per provider
 
 
+_AEW_ROW_PATTERN = AEW_ROW_PREFIX.replace("_", r"\_") + "%"
+
+
+def surviving_login_providers(db: Path, state: Path) -> set[str]:
+    """Providers with a project login that the default Lead's startup cleanup preserves. Inspect names only."""
+    own_store(db, state)
+    if not db.is_file():
+        return set()
+    with closing(sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_S)) as con:
+        if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credential'").fetchone():
+            return set()
+        require_schema(con, "credential", CREDENTIAL_SCHEMA)
+        return {row[0] for row in con.execute(
+            "SELECT DISTINCT integration_id FROM credential WHERE id NOT LIKE ? ESCAPE '\\'", (_AEW_ROW_PATTERN,))}
+
+
 def clear_aew_logins(db: Path, state: Path) -> int:
     """Remove every login row AEW wrote in the contained Lead's own OpenCode store (``cred_aew_<provider>``), and
     return how many went. Each holds an earlier session's relay sentinel, which no relay of this session knows: left
@@ -185,10 +201,9 @@ def clear_aew_logins(db: Path, state: Path) -> int:
             if "credential" not in tables:
                 return 0
             require_schema(con, "credential", CREDENTIAL_SCHEMA)
-            pattern = AEW_ROW_PREFIX.replace("_", r"\_") + "%"
             providers = [row[0] for row in con.execute(
-                "SELECT DISTINCT integration_id FROM credential WHERE id LIKE ? ESCAPE '\\'", (pattern,))]
-            removed = con.execute("DELETE FROM credential WHERE id LIKE ? ESCAPE '\\'", (pattern,)).rowcount
+                "SELECT DISTINCT integration_id FROM credential WHERE id LIKE ? ESCAPE '\\'", (_AEW_ROW_PATTERN,))]
+            removed = con.execute("DELETE FROM credential WHERE id LIKE ? ESCAPE '\\'", (_AEW_ROW_PATTERN,)).rowcount
             for provider in providers:
                 if con.execute("SELECT 1 FROM credential WHERE integration_id = ? AND active = 1",
                                (provider,)).fetchone() is None:

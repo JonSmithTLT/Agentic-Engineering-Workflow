@@ -9,7 +9,6 @@ import importlib.util
 import json
 import os
 import re
-import shutil
 import sys
 import tomllib
 from dataclasses import replace
@@ -52,8 +51,6 @@ update_durations = _load("update_durations")
 shard_plan = _load("shard_plan")
 cost_record = _load("cost_record")
 coverage_gate = _load("coverage_gate")
-coverage_premise = _load("coverage_premise")
-unit_isolation_audit = _load("unit_isolation_audit")
 
 ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
        "tests/integration/test_c.py::posix_only"]
@@ -1216,6 +1213,10 @@ def docs_tier_run(with_lanes: bool = True) -> list[dict]:
     (["docs/design/proposals/dashboard-configuration-read-v0.1.md"], "full"),  # the 0.1.4 change note (F46.1)
     (["src/aew/README.md"], "full"),  # Markdown under a code root is not documentation
     (["tests/fixtures/notes.md"], "full"),
+    (["tests/unit/test_x.py"], "full"),
+    (["tests/test_spec_pin.py"], "full"),
+    (["tests/durations.json"], "full"),
+    (["docs/README.md", "tests/unit/test_x.py"], "full"),
     (["tools/ci/tier.py"], "full"),
     (["docs/README.md", "src/aew/cli/main.py"], "full"),
     ([".github/workflows/ci.yml"], "full"),
@@ -1336,7 +1337,7 @@ def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monke
     monkeypatch.chdir(tmp_path)
     args = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", ""]
     assert tier.main(args) == 0
-    assert f"decision={expected} tier={expected}" in capsys.readouterr().out
+    assert f"tier={expected}" in capsys.readouterr().out
     if change in {"delete-entry", "trim-evidence"}:
         import flake_register
 
@@ -1353,7 +1354,7 @@ def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_
     listing.write_text(path, encoding="utf-8")
     args = ["--event", "pull_request", "--base-ref", "main", "--paths-file", str(listing), "--labels", ""]
     assert tier.main(args) == 0
-    assert "decision=full tier=full" in capsys.readouterr().out
+    assert "tier=full" in capsys.readouterr().out
     assert tier.decide("pull_request", [path], "main", forced=True, register_valid=True) == "full"
     assert tier.decide("push", [path], "main", register_valid=True) == "full"
     assert tier.decide("pull_request", [path], "other", register_valid=True) == "full"
@@ -1395,10 +1396,8 @@ def test_decide_requires_an_exact_register_path_even_with_valid_history(code):
     assert tier.decide("pull_request", [tier.FLAKE_REGISTER, code], "main", register_valid=True) == "full"
 
 
-GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success",
-         "fastbase": "skipped"}
+GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success"}
 REDUCED = {**GREEN, "lanes": "skipped"}
-FAST = {**REDUCED, "fastbase": "success"}
 
 
 @pytest.mark.parametrize(("tier_name", "results", "ok"), [
@@ -1414,14 +1413,6 @@ FAST = {**REDUCED, "fastbase": "success"}
     ("", {**REDUCED, "changes": "failure"}, False),  # the tier unknown: everything required
     ("", REDUCED, False),  # ... the lanes too, though every other job succeeded (PR #99 re-review, A)
     ("full", {k: v for k, v in GREEN.items() if k != "static"}, False),  # a needed job missing
-    ("fast", FAST, True),
-    ("fast", {**FAST, "fastbase": "failure"}, False),  # the base footprint is unknown
-    ("fast", {**FAST, "fastbase": "skipped"}, False),  # (a module changed: --jobs-for's default)
-    ("fast", {**FAST, "lanes": "success"}, False),
-    ("fast", {**FAST, "web": "failure"}, False),
-    ("full", {**GREEN, "fastbase": "failure"}, True),  # a shadow run: fastbase ran on the decision, the run is full
-    ("full", {**GREEN, "fastbase": "cancelled"}, True),
-    ("docs", {**REDUCED, "fastbase": "success"}, True),
 ])
 def test_the_gate_requires_every_needed_job_in_every_tier(tier_name, results, ok):
     """Every needed job, any of which failing fails the gate (review of PR #99, finding 1: a shell && chain followed
@@ -1721,8 +1712,7 @@ def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
     discovery's conventions, which one fixture project is laid out by, are listed by file from discovery's own table
     (NOT_OURS). The fast lane's own readers (tests/unit, the spec pin) run in every tier and are left out; what reaches
     into the fast lane's test modules is the other guard's (test_nothing_outside_the_unit_lane_reaches_a_unit_module),
-    and tests/durations.json, a fast-tier input, is read only by the shard partitioner, which decides balance, never
-    outcomes."""
+    and changes to tests/durations.json run in full."""
     named, problems = reduced_readers(non_core_sources())
     assert "docs/design/dashboard-api-v1-provisional.yaml" in named
     assert problems == []
@@ -1850,7 +1840,7 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     assert jobs["core"]["if"] == "needs.changes.outputs.reuse_run == ''"
     assert jobs["core"]["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.core_matrix) }}"
     gate = jobs["assurance"]
-    assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static", "fastbase"}
+    assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static"}
     assert gate["if"] == "always()"
     reports = next(s for s in gate["steps"] if "check_assurance.py" in str(s.get("run", "")))
     assert "if" not in reports  # the lane-report check always runs (review of PR #99, finding 1)
@@ -2497,8 +2487,8 @@ def test_only_the_core_lanes_read_the_repositorys_git_history():
 
 # -------------------------------------------------------------- nothing outside tests/unit reaches it (plan v7 §3.2)
 
-# The classifiers that must name the directory: the lane rule (and its error message) and the tier.
-UNIT_ALLOWED: dict[str, str | None] = {"tests/helpers/lanes.py": "lane_of", "tools/ci/tier.py": None}
+# The lane rule and its error message name the unit directory.
+UNIT_ALLOWED: dict[str, str | None] = {"tests/helpers/lanes.py": "lane_of"}
 # E117's literal command and scopes refer to files in the separately initialized seed repository.
 KIT_SEED_LITERALS = {"{python} -m pytest -q tests/unit", "tests/unit/test_money.py", "tests/unit/test_dates.py"}
 REACH_CALLS = ("import_module", "__import__", "spec_from_file_location", "run_module", "run_path")
@@ -2596,8 +2586,7 @@ def outside_unit_sources() -> list[Path]:
 
 
 def test_nothing_outside_the_unit_lane_reaches_a_unit_module():
-    """Plan v7 §3.2, the fast tier's safety: a heavy test runs the same code on the same inputs in the tested tree and
-    its base only if no changed fast-lane test module can reach it. True today: the only module reference into
+    """A heavy test must be independent of unit-test modules. True today: the only module reference into
     tests/unit is test_map_slices -> test_context_budget, inside the unit lane, and the other mentions of tests/unit
     in src/ are comments and docstrings."""
     names = unit_module_names()
@@ -2658,205 +2647,12 @@ def test_what_does_not_reach_a_unit_module_is_not_a_violation(source):
 
 
 def test_only_the_classifiers_may_name_the_unit_directory():
-    """The allowlist: tier.py in full, lanes.py only inside lane_of (the rule and its error message)."""
+    """Only lane_of may name the unit directory in the classifier."""
     source = "def lane_of(path):\n    return path.startswith('tests/unit/')\nOTHER = 'tests/unit'\n"
-    assert unit_reach("tools/ci/tier.py", source, set()) == []
+    assert len(unit_reach("tools/ci/tier.py", source, set())) == 2
     found = unit_reach("tests/helpers/lanes.py", source, set())
     assert len(found) == 1 and ":3:" in found[0]
     assert len(unit_reach("tests/helpers/other.py", source, set())) == 2
-
-
-# ------------------------------------------------------------------ the fast tier (CI plan v7, PR 1: shadow)
-
-FAST_ONLY = {"fast"}
-
-
-@pytest.mark.parametrize(("paths", "lanes", "expected"), [
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": {"fast"}}, "fast"),
-    (["docs/README.md", "tests/unit/test_x.py"], {"tests/unit/test_x.py": {"fast"}}, "fast"),
-    (["tests/unit/sub/test_y.py"], {"tests/unit/sub/test_y.py": {"fast"}}, "fast"),
-    (["tests/test_spec_pin.py"], {"tests/test_spec_pin.py": {"fast"}}, "fast"),
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": {"serial"}}, "fast"),  # serial runs in core too
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": {"fast", "serial"}}, "fast"),
-    (["tests/durations.json"], {}, "fast"),
-    (["docs/README.md", "tests/durations.json", "AGENTS.md"], {}, "fast"),
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": {"fast", "acceptance"}}, "full"),  # a heavy test module
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": {"adversarial"}}, "full"),
-    (["tests/unit/test_x.py"], {"tests/unit/test_x.py": None}, "full"),  # lanes not readable
-    (["tests/unit/test_x.py"], {}, "full"),  # lanes not computed
-    (["tests/unit/test_x.py", "web/src/App.tsx"], {"tests/unit/test_x.py": {"fast"}}, "full"),  # V3-1
-    (["tests/durations.json", "web/package.json"], {}, "full"),  # V3-1
-    (["tests/unit/test_x.py", "src/aew/cli/main.py"], {"tests/unit/test_x.py": {"fast"}}, "full"),
-    (["tests/unit/conftest.py"], {}, "full"),
-    (["tests/unit/helpers.py"], {}, "full"),  # a helper, not a test module
-    (["tests/unit/data.json"], {}, "full"),
-    (["tests/conftest.py"], {}, "full"),
-    (["tests/helpers/lanes.py"], {}, "full"),
-    (["tests/integration/test_x.py"], {"tests/integration/test_x.py": {"fast"}}, "full"),  # a heavy directory
-    (["tests/fixtures/notes.md"], {}, "full"),
-    (["tests/coverage-baseline.json"], {}, "full"),
-    (["tests/platform-skips.yaml"], {}, "full"),
-    (["Tests/Unit/test_x.py"], {"Tests/Unit/test_x.py": {"fast"}}, "full"),  # not what the lane plugin collects
-    (["eval/m3/dogfood/dogfood.py"], {}, "full"),
-    (["pyproject.toml", "tests/durations.json"], {}, "full"),
-    (["docs/README.md"], {}, "docs"),  # docs-only stays docs: fast needs at least one path that is not documentation
-    (["docs/README.md", "web/src/App.tsx"], {}, "web"),
-], ids=lambda v: v if isinstance(v, str) else None)
-def test_a_change_takes_the_fast_tier_only_when_every_path_is_docs_or_a_fast_lane_test_input(paths, lanes, expected):
-    assert tier.decide("pull_request", paths, "main", lanes) == expected
-
-
-def test_a_forced_change_or_another_event_is_full_whatever_its_paths():
-    lanes = {"tests/unit/test_x.py": FAST_ONLY}
-    assert tier.decide("pull_request", ["tests/unit/test_x.py"], "main", lanes) == "fast"
-    assert tier.decide("pull_request", ["tests/unit/test_x.py"], "main", lanes, forced=True) == "full"
-    assert tier.decide("pull_request", ["docs/README.md"], "main", None, forced=True) == "full"
-    assert tier.decide("push", ["tests/unit/test_x.py"], "main", lanes) == "full"
-    assert tier.decide("pull_request", ["tests/unit/test_x.py"], "feature", lanes) == "full"
-
-
-PATH_KINDS = {"doc": "docs/README.md", "web": "web/src/App.tsx", "module": "tests/unit/test_x.py",
-              "heavy-module": "tests/unit/test_h.py", "durations": "tests/durations.json", "code": "src/aew/x.py"}
-KIND_LANES = {"tests/unit/test_x.py": {"fast", "serial"}, "tests/unit/test_h.py": {"fast", "acceptance"}}
-
-
-def test_no_tier_and_path_kind_combination_escapes_the_runtime_checks():
-    """Plan v7 §4 (V3-1): the lane check and the premise check are keyed on the changed paths, not the tier's name.
-    Every combination of path kinds, forced or not, is decided; whenever a fast-lane test module changed and the tier
-    is reduced, both checks are required. And for every tier a run could be under, a changed module without both
-    checks fails the gate unless the tier is full."""
-    import itertools
-
-    kinds = sorted(PATH_KINDS)
-    for n in range(1, len(kinds) + 1):
-        for combo in itertools.combinations(kinds, n):
-            for forced in (False, True):
-                paths = [PATH_KINDS[k] for k in combo]
-                decision = tier.decide("pull_request", paths, "main", KIND_LANES, forced)
-                modules = any(tier.fast_kind(p) == "module" for p in paths)
-                if {"web", "module"} <= set(combo) or {"web", "durations"} <= set(combo):
-                    assert decision == "full", combo
-                if modules and decision != "full":
-                    assert decision == "fast", combo
-                    assert len(tier.check_problems(decision, True, {})) == 2, combo
-                for mode in tier.MODES:
-                    taken = tier.run_tier(decision, mode)
-                    if modules and taken != "full":
-                        assert tier.check_problems(taken, True, {}) != [], (combo, mode)
-    for name in tier.TIERS + ("",):
-        missing = tier.check_problems(name, True, {"lanecheck": "success"})
-        assert (missing == []) is (name == "full"), name
-        assert tier.check_problems(name, True, {"lanecheck": "success", "premise": "success"}) == []
-        assert tier.check_problems(name, False, {}) == []
-
-
-def test_the_gate_fails_when_a_required_runtime_check_did_not_run():
-    jobs = ",".join(f"{k}={v}" for k, v in FAST.items())
-    base = ["--jobs-for", "fast", "--jobs", jobs, "--modules-changed", "true"]
-    assert tier.main([*base, "--checks", "lanecheck=success,premise=success"]) == 0
-    assert tier.main([*base, "--checks", "lanecheck=success,premise=skipped"]) == 1
-    assert tier.main([*base, "--checks", "lanecheck=success,premise="]) == 1
-    assert tier.main([*base, "--checks", "lanecheck=failure,premise=success"]) == 1
-    full = ",".join(f"{k}={v}" for k, v in GREEN.items())
-    assert tier.main(["--jobs-for", "full", "--jobs", full, "--modules-changed", "true", "--checks",
-                      "lanecheck=success,premise=skipped"]) == 0
-
-
-# ------------------------------------------------------------------ lanes from markers (plan v7 §3.1)
-
-@pytest.mark.parametrize(("source", "lanes"), [
-    ("def test_a(): pass\n", {"fast"}),
-    ("import pytest\npytestmark = pytest.mark.serial\ndef test_a(): pass\n", {"serial"}),
-    ("import pytest\npytestmark = [pytest.mark.serial, pytest.mark.skipif(True, reason='x')]\ndef test_a(): pass\n",
-     {"serial"}),
-    ("import pytest\n@pytest.mark.serial\ndef test_a(): pass\ndef test_b(): pass\n", {"serial", "fast"}),
-    ("import pytest\n@pytest.mark.acceptance('AT-1')\nclass TestX:\n    def test_a(self): pass\n", {"acceptance"}),
-    ("import pytest\nclass TestX:\n    pytestmark = pytest.mark.exploratory\n    def test_a(self): pass\n",
-     {"adversarial"}),
-    ("import pytest\n@pytest.mark.serial\nclass TestX:\n    class TestY:\n        def test_a(self): pass\n",
-     {"serial"}),
-    ("import pytest\n@pytest.mark.parametrize('x', [1, pytest.param(2, marks=pytest.mark.acceptance)])\n"
-     "def test_a(x): pass\n", {"fast", "acceptance"}),
-    ("import pytest\nCASES = [pytest.param(1, marks=[pytest.mark.serial])]\n"
-     "@pytest.mark.parametrize('x', CASES)\ndef test_a(x): pass\n", {"fast", "serial"}),
-    ("import pytest\nPOSIX_ONLY = pytest.mark.skipif(True, reason='x')\n@POSIX_ONLY\ndef test_a(): pass\n",
-     {"fast"}),
-    ("import pytest, sys\nif sys.platform == 'win32':\n    @pytest.mark.acceptance\n    def test_a(): pass\n",
-     {"acceptance"}),  # a test under a module-level `if` is still collected
-    ("def helper(): pass\nclass Heading:\n    pass\n", set()),
-])
-def test_a_test_modules_lanes_are_read_from_every_level_of_its_marks(source, lanes):
-    assert tier.lanes_in_module("tests/unit/test_m.py", source) == lanes
-
-
-@pytest.mark.parametrize("source", [
-    "import functools\n@functools.cache\ndef test_a(): pass\n",  # an unknown decorator
-    "MARKS = make()\npytestmark = MARKS\ndef test_a(): pass\n",
-    "import pytest\n@pytest.mark.parametrize('x', [pytest.param(1, marks=heavy())])\ndef test_a(x): pass\n",
-    "import pytest\n@pytest.mark.parametrize('x', [pytest.param(1, **kw)])\ndef test_a(x): pass\n",
-    "from pytest import mark\n@mark.serial\ndef test_a(): pass\n",
-    "pytest_plugins = ['x']\ndef test_a(): pass\n",
-    "def pytest_collection_modifyitems(items): pass\ndef test_a(): pass\n",
-    "import pytest\n@pytest.fixture\ndef thing(): pass\ndef test_a(thing): pass\n",
-    "import pytest\n@pytest.fixture(autouse=True)\ndef thing(): pass\ndef test_a(): pass\n",
-    "class TestX(Base):\n    pass\n",  # inherits tests whose marks are elsewhere
-    "from tests.helpers import test_shared\n",  # an imported test
-    "test_alias = make_test()\n",
-    "def test_a(:\n",
-], ids=["decorator", "pytestmark-name", "param-call", "param-kwargs", "mark-alias", "plugins", "hook", "fixture",
-        "autouse-fixture", "inherited", "imported", "assigned", "syntax"])
-def test_a_mark_that_cannot_be_read_literally_makes_the_change_full(source):
-    with pytest.raises(tier.NotLiteral):
-        tier.lanes_in_module("tests/unit/test_m.py", source)
-
-
-def test_a_merge_commits_tier_is_decided_from_both_versions_of_each_changed_module(tmp_path, monkeypatch):
-    """Real git: the merge commit's diff against its first parent, the module's lanes over the merge's and the
-    base's versions, the forced flag from the head commit's trailer and the labels; shadow keeps the run full."""
-    git = _git(tmp_path)
-    git("init", "-q")
-    (tmp_path / "tests" / "unit").mkdir(parents=True)
-    (tmp_path / "docs").mkdir()
-    module = tmp_path / "tests" / "unit" / "test_m.py"
-    module.write_text("def test_a(): pass\n", encoding="utf-8")
-    (tmp_path / "docs" / "x.md").write_text("x\n", encoding="utf-8")
-    git("add", "-A")
-    git("commit", "-q", "-m", "base")
-
-    def pr(name: str, content: str, message: str = "change") -> str:
-        git("checkout", "-q", "-b", name, "main")
-        module.write_text(content, encoding="utf-8")
-        (tmp_path / "docs" / "x.md").write_text(f"{name}\n", encoding="utf-8")
-        git("commit", "-q", "-am", message)
-        return _merge(git, name)
-
-    monkeypatch.chdir(tmp_path)
-
-    def run(merge: str, *extra: str) -> tuple[int, dict]:
-        out = tmp_path / f"out-{len(list(tmp_path.glob('out-*')))}"
-        rc = tier.main(["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", "",
-                        "--github-output", str(out), *extra])
-        return rc, dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())
-
-    fast = pr("fast", "def test_a(): pass\ndef test_b(): pass\n")
-    rc, got = run(fast)
-    assert rc == 0 and (got["decision"], got["tier"], got["modules"]) == ("fast", "full", "true")  # shadow
-    monkeypatch.setattr(tier, "MODE", "enforce")  # PR 1b's switch
-    assert run(fast)[1]["tier"] == "fast"
-    monkeypatch.setattr(tier, "MODE", "shadow")
-    assert run(fast, "--labels", "full-ci")[1]["decision"] == "full"
-    heavy = pr("heavy", "import pytest\n@pytest.mark.acceptance\ndef test_a(): pass\n")
-    assert run(heavy)[1]["decision"] == "full"
-    trailer = pr("trailer", "def test_a(): pass\ndef test_c(): pass\n", "change\n\nCI-Full: yes")
-    assert run(trailer)[1]["decision"] == "full"
-    head = git("rev-parse", "trailer")
-    assert run(head)[1]["decision"] == "full"  # not a two-parent merge
-    # the base's version held a heavy test: changing it is changing a heavy test module
-    git("checkout", "-q", "main")
-    module.write_text("import pytest\n@pytest.mark.acceptance\ndef test_a(): pass\n", encoding="utf-8")
-    git("commit", "-q", "-am", "heavy on main")
-    healed = pr("healed", "def test_a(): pass\n")
-    assert run(healed)[1]["decision"] == "full"
 
 
 def test_the_labels_unread_is_full(tmp_path, monkeypatch):
@@ -2865,19 +2661,7 @@ def test_the_labels_unread_is_full(tmp_path, monkeypatch):
     out = tmp_path / "out"
     assert tier.main(["--event", "pull_request", "--base-ref", "main", "--paths-file", str(changed),
                       "--github-output", str(out)]) == 0  # no --labels, no --repo/--pr: the labels are unknown
-    assert "decision=full\n" in out.read_text(encoding="utf-8")
-
-
-def test_fastbase_is_required_only_when_a_fast_lane_test_module_changed():
-    """PR #163 review, V7-2: a fast decision with only docs and tests/durations.json has no premise, so fastbase does
-    not run and is not required; with a changed module it must succeed."""
-    skipped = {**FAST, "fastbase": "skipped"}
-    assert tier.job_problems("fast", skipped, modules_changed=False) == []
-    assert tier.job_problems("fast", skipped, modules_changed=True) != []
-    jobs = ",".join(f"{k}={v}" for k, v in skipped.items())
-    assert tier.main(["--jobs-for", "fast", "--jobs", jobs, "--modules-changed", "false"]) == 0
-    assert tier.main(["--jobs-for", "fast", "--jobs", jobs, "--modules-changed", "true", "--checks",
-                      "lanecheck=success,premise=success"]) == 1
+    assert "tier=full\n" in out.read_text(encoding="utf-8")
 
 
 def test_an_unreadable_label_in_the_recompute_says_so_and_is_retried_once(tmp_path, monkeypatch, capsys):
@@ -2932,180 +2716,29 @@ def test_the_recompute_refuses_a_run_narrower_than_itself(tmp_path, capsys):
     assert tier.FORCED_MESSAGE in capsys.readouterr().err
     assert tier.main([*base, "--labels", "", "--ran", "web"]) == 1
     assert tier.main([*base, "--labels", "", "--ran", ""]) == 1
-    assert [tier.covers(r, "fast") for r in tier.TIERS] == [False, True, False, True]
+    assert not tier.covers("fast", "full")
 
 
-def test_the_decision_record_names_the_commits_the_mode_and_the_eligible_paths(tmp_path, monkeypatch):
-    changed = tmp_path / "changed.txt"
-    changed.write_text("docs/README.md\ntests/durations.json\n", encoding="utf-8")
-    record = tmp_path / "rec" / "tier-decision.json"
-    modules = tmp_path / "modules.txt"
-    assert tier.main(["--event", "pull_request", "--base-ref", "main", "--paths-file", str(changed), "--labels", "",
-                      "--record", str(record), "--modules-out", str(modules)]) == 0
+def test_the_decision_record_runs_a_changed_unit_module_in_full(tmp_path, monkeypatch):
+    git = _git(tmp_path)
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "pr")
+    module = tmp_path / "tests" / "unit" / "test_example.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("def test_example(): pass\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-q", "-m", "add unit test")
+    head = git("rev-parse", "HEAD")
+    merge = _merge(git, "pr")
+    monkeypatch.chdir(tmp_path)
+    record = tmp_path / "tier-decision.json"
+    assert tier.main(["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", "",
+                      "--record", str(record), "--ran", "full"]) == 0
     rec = json.loads(record.read_text(encoding="utf-8"))
-    assert rec["schema"] == "aew/tier-decision/v1" and rec["mode"] == tier.MODE == "shadow"
-    assert (rec["decision"], rec["tier"], rec["forced"]) == ("fast", "full", False)
-    assert rec["eligible"] == {"tests/durations.json": "durations"}
-    assert modules.read_text(encoding="utf-8") == ""  # durations.json is not a test module
-
-
-# ------------------------------------------------------------------ the runtime lane check (plan v7 §4)
-
-def fast_tier_run(lanes: dict[str, str]) -> list[dict]:
-    runs = []
-    for platform in ("linux", "win32"):
-        runs += [report(platform, "fast", {ALL[0]: "passed"}, lanes=dict(lanes)),
-                 report(platform, "serial", {ALL[1]: "passed"}, lanes=dict(lanes))]
-    return runs
-
-
-def test_the_runtime_lane_check_passes_when_every_changed_modules_test_is_fast_or_serial():
-    runs = fast_tier_run(LANE_OF)
-    assert check_assurance.check(runs, EXPECT, ["linux", "win32"], "fast")[0] == []
-    assert check_assurance.lane_check(runs, ["tests/unit/test_a.py"], ["linux", "win32"]) == []
-
-
-def test_a_changed_module_holding_a_heavy_lane_test_fails_the_runtime_lane_check():
-    lanes = {**LANE_OF, ALL[1]: "acceptance"}  # a conftest made test_a.py::t2 an acceptance test at runtime
-    found = check_assurance.lane_check(fast_tier_run(lanes), ["tests/unit/test_a.py"], ["linux", "win32"])
-    assert found and all(check_assurance.HEAVY_MODULE in p for p in found)
-    assert any("test_a.py::t2 is in the acceptance lane" in p for p in found)
-    unrecorded = check_assurance.lane_check([{**r, "lanes": {}} for r in fast_tier_run(LANE_OF)],
-                                            ["tests/unit/test_a.py"], ["linux", "win32"])
-    assert any("unrecorded" in p for p in unrecorded)
-    missing = check_assurance.lane_check(fast_tier_run(LANE_OF)[:2], ["tests/unit/test_a.py"], ["linux", "win32"])
-    assert any(p.startswith("win32: no lane reports") for p in missing)
-
-
-def test_the_cli_runs_the_lane_check_in_a_reduced_tier_only(tmp_path):
-    for i, r in enumerate(fast_tier_run({**LANE_OF, ALL[1]: "acceptance"})):
-        (tmp_path / "reports" / f"job{i}").mkdir(parents=True)
-        (tmp_path / "reports" / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
-    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
-    (tmp_path / "modules.txt").write_text("tests/unit/test_a.py\n", encoding="utf-8")
-    base = [str(tmp_path / "reports"), "--skips", str(tmp_path / "skips.yaml"), "--event", "pull_request",
-            "--changed-modules", str(tmp_path / "modules.txt")]
-    assert check_assurance.main([*base, "--tier", "fast"]) == 1
-    (tmp_path / "modules.txt").write_text("tests/unit/test_other.py\n", encoding="utf-8")
-    assert check_assurance.main([*base, "--tier", "fast"]) == 0
-
-
-# ------------------------------------------------------------------ the coverage premise (plan v7 §5)
-
-BASE_ROOT = "/home/runner/work/_temp/base"
-HEAD_ROOT = "/home/runner/work/AEW/AEW"
-WIN_ROOT = "D:\\a\\AEW\\AEW"
-
-
-def write_coverage(where: Path, root: str, arcs: dict[str, set[tuple[int, int]]], sep: str = "/") -> Path:
-    """A coverage data file as a Linux job writes it: arcs (branch = true) keyed by absolute path under ``root``."""
-    import coverage
-
-    where.mkdir(parents=True, exist_ok=True)
-    data = coverage.CoverageData(basename=str(where / ".coverage"), suffix="run1")
-    data.add_arcs({sep.join([root, "src", "aew", *rel.split("/")]): a for rel, a in arcs.items()})
-    data.write()
-    return where
-
-
-FOOTPRINT = {"engine/a.py": {(-1, 1), (1, 2), (2, 3), (3, -1)}, "cli/b.py": {(-1, 1), (1, -1)}}
-
-
-def premise(tmp_path: Path, base: dict, head: dict, base_result: str | None = "success", **kw) -> dict:
-    return coverage_premise.evaluate(write_coverage(tmp_path / "base", BASE_ROOT, base),
-                                     write_coverage(tmp_path / "head", kw.get("head_root", HEAD_ROOT), head,
-                                                    kw.get("sep", "/")),
-                                     ROOT / "pyproject.toml", base_result)
-
-
-def test_the_premise_holds_when_this_run_covers_every_base_line_and_arc(tmp_path):
-    more = {**FOOTPRINT, "engine/c.py": {(-1, 1), (1, -1)}}  # coverage may rise freely
-    result = premise(tmp_path, FOOTPRINT, more)
-    assert result["result"] == "holds" and result["files"] == 2
-
-
-def test_a_two_root_sample_compares_equal_after_path_remapping(tmp_path):
-    """V4-3: the base was measured under $RUNNER_TEMP/base, this run under the workspace (and a Windows-style root
-    for good measure): keyed by repository-relative path under src/aew, they are the same files."""
-    assert premise(tmp_path, FOOTPRINT, FOOTPRINT)["result"] == "holds"
-    assert premise(tmp_path / "w", FOOTPRINT, FOOTPRINT, head_root=WIN_ROOT, sep="\\")["result"] == "holds"
-    assert coverage_premise.repo_relative(f"{BASE_ROOT}/src/aew/engine/a.py") == "src/aew/engine/a.py"
-    assert coverage_premise.repo_relative(f"{WIN_ROOT}\\src\\aew\\engine\\a.py") == "src/aew/engine/a.py"
-    assert coverage_premise.repo_relative("/usr/lib/python3/json/__init__.py") is None
-
-
-def test_a_lost_line_fails_the_premise_with_the_lines(tmp_path):
-    lost = {**FOOTPRINT, "engine/a.py": {(-1, 1), (1, 2), (2, -1)}}  # line 3 and two arcs no longer run
-    result = premise(tmp_path, FOOTPRINT, lost)
-    assert result["result"] == "loss" and result["message"] == coverage_premise.LOSS
-    assert result["lost"]["src/aew/engine/a.py"]["lines"] == [3]
-    assert "`src/aew/engine/a.py`: lines 3" in coverage_premise.summary(result)
-
-
-def test_a_test_moved_to_serial_fails_the_premise(tmp_path):
-    """Serial runs without coverage: the lines only that test reached vanish from this run's fast lane."""
-    result = premise(tmp_path, FOOTPRINT, {"engine/a.py": FOOTPRINT["engine/a.py"]})
-    assert result["result"] == "loss" and set(result["lost"]) == {"src/aew/cli/b.py"}
-
-
-@pytest.mark.parametrize("outcome", ["failure", "cancelled", "skipped", ""])
-def test_a_base_that_did_not_pass_leaves_the_premise_unknown(tmp_path, outcome):
-    result = premise(tmp_path, FOOTPRINT, FOOTPRINT, base_result=outcome)
-    assert result["result"] == "unknown"
-    assert result["message"] == f"base footprint unknown (`fastbase`: {outcome}): add `full-ci`, then Re-run all jobs."
-
-
-def test_missing_base_data_leaves_the_premise_unknown(tmp_path):
-    head = write_coverage(tmp_path / "head", HEAD_ROOT, FOOTPRINT)
-    for base in (tmp_path / "absent", tmp_path / "empty"):
-        (tmp_path / "empty").mkdir(exist_ok=True)
-        result = coverage_premise.evaluate(base, head, ROOT / "pyproject.toml", "success")
-        assert result["result"] == "unknown" and result["message"].startswith("base footprint unknown (")
-    rc = coverage_premise.main(["--base", str(tmp_path / "absent"), "--head", str(head), "--rcfile",
-                                str(ROOT / "pyproject.toml"), "--out", str(tmp_path / "p.json")])
-    assert rc == 1 and json.loads((tmp_path / "p.json").read_text(encoding="utf-8"))["result"] == "unknown"
-
-
-def test_the_premise_combines_every_fast_lane_shards_data_the_head_name_matches(tmp_path):
-    """core runs the fast lane in shards, each uploading its own data: the head is all of them combined (a base line
-    one shard covers is covered), and a shard whose data is missing loses what only it covered."""
-    half = {"engine/a.py": FOOTPRINT["engine/a.py"]}
-    base = write_coverage(tmp_path / "base", BASE_ROOT, FOOTPRINT)
-    data = tmp_path / "coverage-data"
-    write_coverage(data / "coverage-core-fast-1-Linux", HEAD_ROOT, half)
-    write_coverage(data / "coverage-core-fast-2-Linux", HEAD_ROOT, {"cli/b.py": FOOTPRINT["cli/b.py"]})
-    write_coverage(data / "coverage-integration-1-Linux", HEAD_ROOT, FOOTPRINT)  # another lane's: never the head
-
-    def run(name: str) -> str:
-        out = tmp_path / f"{name}.json"
-        coverage_premise.main(["--base", str(base), "--head", str(data), "--head-name", "coverage-core-fast-*-Linux",
-                               "--rcfile", str(ROOT / "pyproject.toml"), "--out", str(out)])
-        return json.loads(out.read_text(encoding="utf-8"))["result"]
-
-    assert run("both") == "holds"  # right: the two shards together cover the base
-    shutil.rmtree(data / "coverage-core-fast-2-Linux")
-    assert run("one") == "loss"  # wrong: cli/b.py was only the lost shard's, and the other lane's data does not count
-    shutil.rmtree(data / "coverage-core-fast-1-Linux")
-    assert run("none") == "unknown"  # missing: no shard's data at all
-
-
-def test_the_premise_never_writes_into_the_data_the_ratchet_reads(tmp_path):
-    premise(tmp_path, FOOTPRINT, FOOTPRINT)
-    assert sorted(p.name for p in (tmp_path / "head").iterdir()) == [".coverage.run1"]
-
-
-# ------------------------------------------------------------------ the workflow (plan v7 §6, §7)
-
-def strategy_fast_lane_minutes() -> tuple[float, float]:
-    """The slowest measured fast-lane step and setup-aew step, from strategy §8."""
-    import re
-
-    text = (ROOT / "docs" / "implementation" / "testing-and-ci-strategy.md").read_text(encoding="utf-8")
-    section = text.split("## 8. Runtime budgets", 1)[1].split("\n## 9.", 1)[0]
-    step = re.search(r"fast-lane step: [\d.]+ to ([\d.]+) minutes", section)
-    setup = re.search(r"setup: [\d.]+ to ([\d.]+) minutes", section)
-    assert step and setup, "strategy §8 records the fast lane's measured wall time"
-    return float(step.group(1)), float(setup.group(1))
+    assert (rec["base_ref"], rec["base"], rec["head"], rec["merge"]) == ("main", base, head, merge)
+    assert rec["tier"] == "full" and rec["paths"] == ["tests/unit/test_example.py"]
 
 
 def _deadline_margins_min() -> float:
@@ -3122,81 +2755,13 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 # every timeout with it, or the pin fails.
 PRE_G3A_TIMEOUT_MIN = {
     "evidence-proof.yml": {"plant": 6, "cancel-plant": 6},
-    # fastbase: 15 before G3a; 16 since its lane runs under xdist, sized from strategy §8 (2 x 7.4 + 0.8 minutes;
-    # operator, 2026-10-22, #232)
-    "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
+    "ci.yml": {"core": 20, "lanes": 30},
     "vertical.yml": {"vertical": 45},
     "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
     "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60},
-    "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
     "flake-dispatch.yml": {"regression": 30},
 }
 
-
-# ... and its shard of the lane and the table the shards balance on (core's fast step; fastbase runs the whole lane)
-PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations", "--shard", "--durations-file",
-                 "--cov-config")
-
-
-def pytest_flags(run: str) -> list[str]:
-    """The Linux pytest flags, excluding the paths and limits set per job."""
-    import shlex
-
-    after = run.split(" pytest", 1)[1].replace(
-        "${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }}", "--cov --cov-report=")
-    # an expression is one word (core's `--shard ${{ matrix.shard }}/${{ matrix.of }}`, dropped with its flag)
-    words = shlex.split(re.sub(r"\$\{\{[^}]*\}\}", "EXPR", after))
-    out, skip = [], False
-    for word in words:
-        if skip:
-            skip = False
-        elif word.split("=", 1)[0] in PER_JOB_FLAGS:
-            skip = "=" not in word
-        else:
-            out.append(word)
-    return out
-
-
-def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
-    """Fastbase runs on the mode-independent decision and has a timeout of at
-    least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
-    the ratchet's artifacts, with the Linux fast step's test selection and coverage settings."""
-    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
-    outputs = jobs["changes"]["outputs"]
-    assert outputs["decision"] == "${{ steps.tier.outputs.decision }}"
-    assert outputs["tier"] == "${{ steps.tier.outputs.tier }}"
-    base = jobs["fastbase"]
-    assert base["needs"] == "changes"
-    # only with a changed fast-lane test module: docs plus durations has no premise to check (PR #163 review, V7-2)
-    assert base["if"] == "needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'"
-    assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
-    assert base["runs-on"] == LINUX_IMAGE
-    step, setup = strategy_fast_lane_minutes()
-    # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
-    assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
-    assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
-    runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
-    assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
-    lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
-    assert lane["run"].startswith("python -m pytest --cov --cov-report= ")
-    assert '"--cov-config=${{ github.workspace }}/pyproject.toml"' in lane["run"]
-    fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
-    # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
-    # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
-    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["with"]["command"])
-    assert base_flags == fast_flags and "-n" in base_flags, (base_flags, fast_flags)
-    assert "--session-deadline 960" in lane["run"] and '"--hang-dir=${{ runner.temp }}/fastbase/hangs"' in lane["run"]
-    assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
-    assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
-    assert lane["working-directory"] == "${{ runner.temp }}/base"
-    upload = next(s for s in base["steps"] if "upload-artifact" in s.get("uses", ""))
-    assert upload["with"]["name"] == "fastbase-coverage" and upload["if"] == "always()"
-    assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
-    assert "fastbase" in jobs["assurance"]["needs"]
-    core = jobs["core"]
-    assert core["timeout-minutes"] == publication_job_minutes(core)
-    core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
-    assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
 
 # The image every Linux job runs on, not `ubuntu-latest` (operator, 2026-11-01: "Pin 24.04, qualify 26.04";
@@ -3233,123 +2798,6 @@ def test_every_linux_job_in_every_workflow_runs_on_the_pinned_image_never_ubuntu
                 assert runner == LINUX_IMAGE or not runner.startswith("ubuntu"), (where, label, runner)
             checked.append(where)
     assert any(n.startswith("ci.yml: ") for n in checked) and any(n.startswith("nightly.yml: ") for n in checked)
-
-
-def test_assurance_requires_the_runtime_checks_by_path_and_reports_them_in_shadow():
-    """Plan v7 §4, §7: the premise step runs when a fast-lane module changed in a reduced tier; --jobs-for gets the
-    fastbase result and both checks' outcomes; the shadow step evaluates both on a fast decision the run did not
-    take, and can never fail the run."""
-    gate = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]["assurance"]
-    steps = {s.get("id"): s for s in gate["steps"] if s.get("id")}
-    assert '--changed-modules "$RUNNER_TEMP/changed-modules.txt"' in steps["assure"]["run"]
-    assert '--modules-out "$RUNNER_TEMP/changed-modules.txt"' in steps["tier"]["run"]
-    premise_step = steps["premise"]
-    assert premise_step["if"] == ("(success() || failure()) && steps.tier.outputs.tier != 'full' && "
-                                  "steps.tier.outputs.modules == 'true'")
-    assert ('coverage_premise.py --base fastbase-data --head coverage-data --head-name "coverage-core-fast-*-Linux"'
-            in " ".join(premise_step["run"].split()))
-    assert '--base-result "$BASE_RESULT"' in premise_step["run"]
-    assert premise_step["env"]["BASE_RESULT"] == "${{ needs.fastbase.result }}"
-    download = [s["with"]["pattern"] for s in gate["steps"] if "download-artifact" in s.get("uses", "")]
-    assert "fastbase-coverage" in download
-    final = gate["steps"][-1]
-    assert "fastbase=$FASTBASE" in final["run"] and '--checks "lanecheck=$LANECHECK,premise=$PREMISE"' in final["run"]
-    assert final["env"]["LANECHECK"] == "${{ steps.assure.outcome }}"
-    assert final["env"]["PREMISE"] == "${{ steps.premise.outcome }}"
-    assert final["env"]["MODULES"] == "${{ steps.tier.outputs.modules }}"
-    shadow = steps["shadow"]
-    assert shadow["if"] == "always() && steps.tier.outputs.decision == 'fast' && steps.tier.outputs.tier != 'fast'"
-    assert shadow["continue-on-error"] is True and shadow["timeout-minutes"] < gate["timeout-minutes"]
-    assert "--tier fast" in shadow["run"] and "coverage_premise.py" in shadow["run"] and "--out" in shadow["run"]
-    assert shadow["run"].rstrip().endswith("exit 0")
-    assert any(s.get("with", {}).get("name") == "tier-shadow" for s in gate["steps"])
-
-
-def test_the_shadow_path_runs_fastbase_reports_the_premise_and_never_fails_the_run(tmp_path):
-    """Plan v7 §7 (V6-1): decision fast, tier full. fastbase runs (it is keyed on the decision); the premise is
-    evaluated from its data and reported; neither its result nor the premise's can fail the full run."""
-    assert tier.MODE == "shadow" and tier.run_tier("fast") == "full"
-    assert tier.run_tier("fast", "enforce") == "fast" and tier.run_tier("docs") == "docs"
-    for fastbase in ("success", "failure", "cancelled"):
-        assert tier.job_problems("full", {**GREEN, "fastbase": fastbase}) == []
-    assert tier.check_problems("full", True, {}) == []  # the gating checks are not required in shadow
-    lost = premise(tmp_path, FOOTPRINT, {"engine/a.py": FOOTPRINT["engine/a.py"]})
-    assert lost["result"] == "loss"  # evaluated and reported, by the non-gating step
-
-
-def test_the_audit_workflow_collects_only_the_heavy_directories_under_the_plugin():
-    """Plan v7 §7 (V3-3, V4-3): dispatched by hand only; sharded jobs with -m "not serial" -n auto --dist worksteal and
-    one serial job per OS with -p no:xdist, each over tests/integration tests/regression tests/acceptance only."""
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "unit-isolation-audit.yml").read_text(encoding="utf-8"))
-    assert set(wf[True]) == {"workflow_dispatch"}  # never on a pull request, a push or a schedule
-    jobs = wf["jobs"]
-    collect = "python -m pytest tests/integration tests/regression tests/acceptance"
-    plugin = "-p unit_isolation_audit --unit-isolation-dir=tests/unit"
-    parallel = next(s["run"] for s in jobs["parallel"]["steps"] if "pytest" in str(s.get("run", "")))
-    serial = next(s["run"] for s in jobs["serial"]["steps"] if "pytest" in str(s.get("run", "")))
-    assert parallel.startswith(collect) and serial.startswith(collect)
-    assert '-m "not serial" -n auto --dist worksteal' in parallel and "--shard ${{ matrix.shard }}" in parallel
-    assert "-m serial -p no:xdist" in serial
-    assert plugin in parallel and plugin in serial
-    assert {e["os"] for e in jobs["parallel"]["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
-    assert {e["os"] for e in jobs["serial"]["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
-    result = "\n".join(str(s.get("run", "")) for s in jobs["result"]["steps"])
-    assert "unit_isolation_audit.py --check audit" in result and jobs["result"]["if"] == "always()"
-    # a shard that stopped at collection still writes a clean report: both audited jobs must succeed (V7-4)
-    assert 'test "$PARALLEL" = success' in result and 'test "$SERIAL" = success' in result
-    assert jobs["result"]["steps"][-1]["env"] == {"PARALLEL": "${{ needs.parallel.result }}",
-                                                  "SERIAL": "${{ needs.serial.result }}"}
-
-
-def test_the_audit_plugin_catches_a_heavy_module_importing_a_unit_module(tmp_path):
-    """Plan v7 §7: a synthetic heavy module imports a unit module at top level and inside a test; the audit records
-    the import by module name and the open of the unit file by path, names the test and the importer."""
-    import subprocess
-
-    unit, heavy, out = tmp_path / "unit", tmp_path / "heavy", tmp_path / "audit"
-    unit.mkdir()
-    heavy.mkdir()
-    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")  # keeps the repository's conftest out
-    (unit / "test_widget.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (unit / "test_gadget.py").write_text("VALUE = 2\n", encoding="utf-8")
-    (heavy / "test_heavy.py").write_text(
-        "import test_widget\n\n"
-        "def test_reaches_in():\n"
-        "    import test_gadget\n"
-        "    assert test_widget.VALUE + test_gadget.VALUE == 3\n", encoding="utf-8")
-    env = {k: v for k, v in __import__("os").environ.items() if not k.startswith(("PYTEST_", "COV_", "COVERAGE"))}
-    env["PYTHONPATH"] = __import__("os").pathsep.join([str(ROOT / "tools" / "ci"), str(unit)])
-    proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-                           "-p", "unit_isolation_audit", "--unit-isolation-dir", str(unit),
-                           "--unit-isolation-report", str(out), "heavy"],
-                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120,
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    violations = [v for f in out.glob("audit-*.json") for v in json.loads(f.read_text(encoding="utf-8"))["violations"]]
-    whys = [v["why"] for v in violations]
-    assert "import of test_widget" in whys and "import of test_gadget" in whys  # top level and inside a function
-    opened = [w for w in whys if w.startswith("open of ")]
-    assert any(w.endswith("test_widget.py") for w in opened) and any(w.endswith("test_gadget.py") for w in opened)
-    inside = next(v for v in violations if v["why"] == "import of test_gadget")
-    assert "test_reaches_in" in (inside["test"] or "") and "test_heavy.py" in (inside["importer"] or "")
-    problems = unit_isolation_audit.check(out)
-    assert problems and all("test_" in p for p in problems)
-    assert unit_isolation_audit.check(tmp_path / "nothing") == [f"no audit reports under {tmp_path / 'nothing'}: "
-                                                                "the audit did not run"]
-
-
-def test_the_audit_flags_a_subprocess_naming_a_unit_file_and_ignores_the_rest(tmp_path):
-    (tmp_path / "unit").mkdir()
-    (tmp_path / "unit" / "test_widget.py").write_text("", encoding="utf-8")
-    auditor = unit_isolation_audit.Auditor(tmp_path / "unit")
-    target = str(tmp_path / "unit" / "test_widget.py")
-    assert auditor.classify("subprocess.Popen", ("python", ["python", target], None, None))
-    assert auditor.classify("subprocess.Popen", ("python", ["python", "-c", "1"], None, {"X": target}))
-    assert auditor.classify("open", (target, "r", 0))
-    assert auditor.classify("import", ("pkg.test_widget", None, [], [], []))
-    assert auditor.classify("subprocess.Popen", ("python", ["python", "-c", "1"], None, None)) is None
-    assert auditor.classify("open", (str(tmp_path / "unit" / "notes.txt"), "r", 0)) is None
-    assert auditor.classify("import", ("json", None, [], [], [])) is None
 
 
 # ------------------------------------------------- the hang autopsy and the session deadline (G3, the hang-and-flake
@@ -3418,7 +2866,7 @@ def test_every_value_option_of_the_repositorys_plugins_names_its_value():
     escape it (review of #235, F4: `--unit-isolation-report` had none). Every value option names its value; one that
     takes a path names it PATH, DIR or FILE."""
     options = plugin_value_options()
-    assert {"--unit-isolation-dir", "--unit-isolation-report", "--lane-report"} <= set(options)
+    assert {"--lane-report"} <= set(options)
     assert [o for o, metavar in options.items() if not metavar] == []
 
 
@@ -3435,8 +2883,7 @@ def test_every_path_option_of_the_repositorys_plugins_is_one_word_in_every_workf
     workflows), a value option whose metavar is not a path's but which is given one, pytest started from Python, and
     PYTEST_ADDOPTS (no workflow sets it)."""
     options = plugin_path_options()
-    assert {"--lane-report", "--hang-dir", "--durations-file", "--discovery-out", "--harness-evidence",
-            "--unit-isolation-dir", "--unit-isolation-report"} <= options
+    assert {"--lane-report", "--hang-dir", "--durations-file", "--discovery-out", "--harness-evidence"} <= options
     separate = [(lane.label, word) for lane in _workflow_lanes()
                 for word in re.sub(r"\$\{\{[^}]*\}\}", "X", lane.command).replace('"', " ").split() if word in options]
     assert separate == [], separate

@@ -567,13 +567,11 @@ def test_the_way_out_it_prints_reaches_the_normal_tier(github, tree, tmp_path, m
 
 
 def test_under_a_reused_run_core_and_lanes_must_be_skipped_and_the_rest_still_pass():
-    good = {"changes": "success", "core": "skipped", "lanes": "skipped", "web": "success", "static": "success",
-            "fastbase": "skipped"}
+    good = {"changes": "success", "core": "skipped", "lanes": "skipped", "web": "success", "static": "success"}
     assert tiers.job_problems(tiers.REUSED, good) == []
     for job, result in (("core", "success"), ("lanes", "failure"), ("static", "failure"), ("web", "skipped")):
         assert tiers.job_problems(tiers.REUSED, {**good, job: result}), job
     assert tiers.job_problems("full", good), "a plain full run with its lanes skipped still fails"
-    assert tiers.check_problems(tiers.REUSED, True, {}) == []
 
 
 def test_reused_isnt_a_tier_a_change_can_be_given():

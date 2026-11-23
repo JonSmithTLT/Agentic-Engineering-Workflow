@@ -693,7 +693,33 @@ def test_no_xdist_controller_is_the_worker_only_while_its_own_watchdog_is_active
     guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_args: str(tmp_path)), 10)
     (tmp_path / f"hang-main-{pid}.txt").write_text(guard._header(SimpleNamespace(nodeid=node)))
     [serial] = ev.workers(tmp_path)
-    assert serial.identity == (pid, birth) and serial.node == node
+    assert serial.identity == (pid, birth) and serial.node == node and serial.controller
+
+
+@pytest.mark.parametrize("plant,mode,expected", [(None, "xdist", [2]), ("cancel", "xdist", [2]),
+                                                 ("cancel", "0", []), (None, "1", [1, 2])])
+def test_periodic_sampling_selects_the_same_workers_in_ci_and_its_cancel_control(
+        tmp_path, monkeypatch, plant, mode, expected):
+    import worker_evidence as ev
+
+    if plant:
+        monkeypatch.setenv("AEW_EVIDENCE_PLANT", plant)
+    else:
+        monkeypatch.delenv("AEW_EVIDENCE_PLANT", raising=False)
+    monkeypatch.setenv("AEW_WORKER_SNAPSHOTS", mode)
+    monkeypatch.setattr(ev, "cgroup", lambda: None)
+    candidates = [ev.Worker(tmp_path, pid, 100, "test.py::test_case", 0, 120, controller=pid == 1)
+                  for pid in (1, 2)]
+    monkeypatch.setattr(ev, "workers", lambda root: iter(candidates))
+    sampled = []
+
+    def capture(root, due, attach, *, reason, allowed):
+        sampled.extend(worker.pid for worker in due)
+        return {worker.identity for worker in due}
+
+    monkeypatch.setattr(ev, "capture", capture)
+    ev.Monitor(tmp_path, None, lambda: {w.identity for w in candidates}).poll()
+    assert sampled == expected
 
 
 @pytest.mark.parametrize("victim,expected", [(101, {101}), ("unavailable", set()), ("no matching worker", set())])

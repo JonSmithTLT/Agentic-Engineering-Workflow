@@ -49,8 +49,13 @@ runs:
         SOURCE: ${{ inputs.source }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
-        # The paired hosted Linux census gates this rollout. Other runners may opt in explicitly.
-        AEW_WORKER_SNAPSHOTS: ${{ env.AEW_WORKER_SNAPSHOTS || (runner.environment == 'github-hosted' && runner.os == 'Linux' && !env.AEW_EVIDENCE_PLANT && '1' || '0') }}
+        # Hosted Windows CI and its cancellation control sample xdist workers only.
+        AEW_WORKER_SNAPSHOTS: >-
+          ${{ env.AEW_WORKER_SNAPSHOTS ||
+              (runner.environment == 'github-hosted' && (!env.AEW_EVIDENCE_PLANT || env.AEW_EVIDENCE_PLANT == 'cancel') &&
+               (runner.os == 'Linux' && '1' ||
+                runner.os == 'Windows' && (github.workflow == 'ci' || env.AEW_EVIDENCE_PLANT == 'cancel') && 'xdist'))
+              || '0' }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
         AEW_LANE_STEP: ${{ inputs.artifact }}
       run: |

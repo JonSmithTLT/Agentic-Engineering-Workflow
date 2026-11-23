@@ -1511,6 +1511,18 @@ None.
 - `aew.harness.file_notifier`
 - `aew.harness.procs`
 
+### `aew.harness.doctor_relay`
+
+- `aew.errors`
+- `aew.harness.containment.client_cert`
+- `aew.harness.containment.layout`
+- `aew.harness.containment.netns`
+- `aew.harness.containment.relay`
+- `aew.harness.opencode.capabilities`
+- `aew.harness.opencode.client`
+- `aew.harness.opencode.lead`
+- `aew.harness.opencode.login`
+
 ### `aew.harness.event_spool`
 
 - `aew.errors`
@@ -1578,6 +1590,7 @@ None.
 - `aew.harness.containment`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
+- `aew.harness.doctor_relay`
 - `aew.harness.procs`
 - `aew.harness.registry`
 - `aew.harness.runlog`

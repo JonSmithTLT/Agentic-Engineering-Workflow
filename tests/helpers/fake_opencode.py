@@ -1017,7 +1017,25 @@ class ProviderUpstream:
         seen: list[str] = []
         self.seen = seen
 
+        self.model_requests: list[tuple[str, str]] = []
+        self.models_status: dict[str, int] = {}
+        requests, responses = self.model_requests, self.models_status
+
         class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 (http.server's name)
+                token = (self.headers.get("Authorization") or "").removeprefix("Bearer ")
+                digest = hashlib.sha256(token.encode()).hexdigest()
+                requests.append((self.path, digest))
+                status = responses.get(digest, 200)
+                if not status:  # closes without any response
+                    return
+                body = b'{"data":[]}' if status == 200 else b'private-provider-error'
+                self.send_response(status)
+                self.send_header("X-Private-Probe-Header", "upstream-private-value")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self) -> None:  # noqa: N802 (http.server's name)
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 token = (self.headers.get("Authorization") or "").removeprefix("Bearer ")

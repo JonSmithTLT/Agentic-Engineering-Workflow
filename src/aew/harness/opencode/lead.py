@@ -582,29 +582,12 @@ class StartStages:
         log.debug("aew opencode: start stage %s took %.3f s", stage, self.seconds[stage])
 
 
-class ContainedLead:
-    """The contained Lead's session (STG-05 CS-4), made before the seat is taken: the operator's terminal, the
-    providers to relay (their keys in this process's memory only), and what the session leaves out. Called by the
-    broker once it serves (``lead_broker.run_session``'s ``contained``), it builds the sandbox and returns what runs.
+class LeadProviders:
+    """The provider routes of a contained Lead. Doctor checks the default start (no explicit provider variables)."""
 
-    Raises ``UsageError`` before anything starts: without a terminal (the TUI runs on a relayed one), or for a
-    ``--provider-env`` variable that cannot be passed or that no relayed provider reads."""
-
-    def __init__(self, engine: Any, *, argv: list[str], provider_env: list[str], guide: str,
-                 base: Mapping[str, str], stages: StartStages | None = None) -> None:
+    def __init__(self, policy: dict[str, Any] | None, provider_env: list[str], base: Mapping[str, str]) -> None:
         from aew.harness.containment import client_cert, netns
 
-        self.stages = stages or StartStages()
-
-        if not os.isatty(0):
-            raise UsageError("the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4): run `aew opencode` "
-                             "at a terminal")
-        refuse_unusable(provider_env, base)
-        self.terminal = _launching_terminal()
-        self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
-        self.surface_switches: frozenset[str] = frozenset()  # set by the broker's post-offer presentation callback
-        policy = engine.execution_policy()[0]
-        self.warning_h = login_warning_h(policy)
         self.provider_env = [str(n) for n in provider_env]
         by_variable = {v: p for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED}
         self.keys: dict[str, str] = {}
@@ -673,6 +656,30 @@ class ContainedLead:
                         if v not in self.fed and agentenv.lookup(base, v)}.items())
         self.unfed = [v for v, p in unfed if v in by_variable]
         self.unserved = [(v, p) for v, p in unfed if v not in by_variable]
+
+
+class ContainedLead(LeadProviders):
+    """The contained Lead's session (STG-05 CS-4), made before the seat is taken: the operator's terminal, the
+    providers to relay (their keys in this process's memory only), and what the session leaves out. Called by the
+    broker once it serves (``lead_broker.run_session``'s ``contained``), it builds the sandbox and returns what runs.
+
+    Raises ``UsageError`` before anything starts: without a terminal (the TUI runs on a relayed one), or for a
+    ``--provider-env`` variable that cannot be passed or that no relayed provider reads."""
+
+    def __init__(self, engine: Any, *, argv: list[str], provider_env: list[str], guide: str,
+                 base: Mapping[str, str], stages: StartStages | None = None) -> None:
+        self.stages = stages or StartStages()
+
+        if not os.isatty(0):
+            raise UsageError("the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4): run `aew opencode` "
+                             "at a terminal")
+        refuse_unusable(provider_env, base)
+        self.terminal = _launching_terminal()
+        self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
+        self.surface_switches: frozenset[str] = frozenset()  # set by the broker's post-offer presentation callback
+        policy = engine.execution_policy()[0]
+        self.warning_h = login_warning_h(policy)
+        super().__init__(policy, provider_env, base)
         self.mcp, self.unread = operator_mcp_servers(base)
         self.preferences, self.plugins, self.unread_preferences = operator_preferences(base)
 

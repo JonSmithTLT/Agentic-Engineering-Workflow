@@ -600,21 +600,42 @@ def test_no_xdist_controller_is_the_worker_only_while_its_own_watchdog_is_active
 
 
 @pytest.mark.parametrize("victim,expected", [(101, {101}), ("unavailable", set()), ("no matching worker", set())])
-def test_one_cgroup_increase_does_not_label_a_second_simultaneous_crash(tmp_path, victim, expected):
+@pytest.mark.parametrize("sample_second", [False, True])
+def test_one_cgroup_increase_does_not_label_a_second_simultaneous_crash(
+        tmp_path, monkeypatch, victim, expected, sample_second):
     import json
 
     import worker_evidence as ev
 
-    directory = tmp_path / "autopsy/session-test"
+    source = tmp_path / "source"
+    directory = source / "autopsy/session-test"
     directory.mkdir(parents=True)
-    for pid in (101, 202):
+    for gateway, pid in enumerate((101, 202)):
         worker = ev.Worker(directory, pid, 23, f"tests/test_a.py::test_case[{pid}]", 0, 0)
-        ev.record(tmp_path, worker, "worker-killed", 10, signal=9)
+        if pid == 101 or sample_second:
+            assert ev.save_sample(source, worker, 9, 1, "unelevated", "    test_case (tests/test_a.py:4)",
+                                  reason="periodic")
+        ev.record(source, worker, "worker-killed", 10, signal=9)
+        (directory.parent / f"worker-gw{gateway}-down.txt").write_text("worker crashed\n")
+        (directory / f"worker-gw{gateway}-pid.txt").write_text(str(pid))
+        (directory / f"worker-gw{gateway}-start.txt").write_text("23")
     event = {"at": 10, "members": [[101, 23], [202, 23]], "oom_kill_before": 0, "oom_kill_after": 1,
              "kernel_victim": victim}
-    (tmp_path / "runner-resources-oom.txt").write_text(json.dumps(event))
-    ev.record_oom(tmp_path)
+    (source / "runner-resources-oom.txt").write_text(json.dumps(event))
+    ev.record_oom(source)
     assert {int(path.stem.split("-")[1]) for path in directory.glob("oom-*.txt")} == expected
+    (source / "runner-resources-job.txt").write_text(json.dumps({"job_label": "mixed"}))
+    bundles = tmp_path / "bundles"
+    bundles.mkdir()
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *_: {})
+    assert stage.stage(source, bundles / "full") == "gitleaks clean"
+    defects = _load("check_evidence_run").check_jobs(bundles, [{"name": "mixed", "conclusion": "failure"}])
+    if sample_second:
+        assert defects == []
+    else:
+        assert _load("verify_evidence").rule_ids(defects) == {"snapshot", "snapshot-age", "snapshot-label"}
+        assert all("worker-killed pid 202" in defect for defect in defects)
 
 
 @pytest.mark.parametrize("pid,birth,param,began,reason", [

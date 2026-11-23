@@ -101,15 +101,20 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
               "time-limit-github": "interrupted"}
     if kind in abrupt:
         records = {}
-        endings = {abrupt[kind]}
+        causes = {abrupt[kind]: kind}
         if kind in {"cancel", "time-limit-github"}:
-            endings.update(("cancelled", "interrupted"))
+            causes.update(cancelled=kind, interrupted=kind)
+        if kind == "oom":
+            # A cgroup event can coincide with a separate worker crash. Each observation needs its own sample.
+            causes["worker-killed"] = "worker-killed"
         for path, body in texts.items():
-            if not any(re.fullmatch(name + r"-[0-9]+", path.stem) for name in endings):
+            marker, _, suffix = path.stem.rpartition("-")
+            cause = causes.get(marker)
+            if cause is None or not suffix.isdecimal():
                 continue
             try:
                 row = json.loads(body)
-                records[(int(row["pid"]), int(row["start"]))] = row
+                records[(cause, int(row["pid"]), int(row["start"]))] = row
             except (ValueError, KeyError, TypeError):
                 report("death-record", f"{path.name}: unreadable worker identity")
         if kind in {"worker-killed", "oom"}:
@@ -127,25 +132,25 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                         continue
                 if not attributed:
                     report("death-record", f"{down.name}: no matching xdist worker-crash identity")
-        if not records:
+        if not any(cause == kind for cause, _, _ in records):
             report("death-record", f"{kind}: no pre-cleanup worker observation")
-        for (pid, start), row in records.items():
+        for (cause, pid, start), row in records.items():
             node = row.get("node")
             sample_node = row.get("snapshot_node")
             stamp, death = row.get("snapshot_at"), row.get("at")
             age = row.get("age_s")
             if not all(isinstance(value, str) and "::" in value for value in (node, sample_node)):
-                report("snapshot-label", f"{kind} pid {pid}: missing active or sampled test identity")
+                report("snapshot-label", f"{cause} pid {pid}: missing active or sampled test identity")
             valid_age = (all(isinstance(t, (int, float)) and math.isfinite(t) for t in (stamp, death, age))
                          and 0 <= death - stamp <= FRESH_S and abs(age - (death - stamp)) < .002)
             if not valid_age:
-                report("snapshot-age", f"{kind} pid {pid}: missing or stale sample age")
+                report("snapshot-age", f"{cause} pid {pid}: missing or stale sample age")
             captured = [sample for path, body in texts.items()
                         if path.name == f"{pid}.txt" and "snapshots" in path.parts
                         for sample, _ in entries(body) if sample.get("pid") == pid and sample.get("start") == start
                         and sample.get("at") == stamp and sample.get("node") == sample_node]
             if not captured:
-                report("snapshot", f"{kind} pid {pid}: no matching retained sample")
+                report("snapshot", f"{cause} pid {pid}: no matching retained sample")
         if kind == "cancel":
             for path, body in texts.items():
                 if not re.fullmatch(r"(?:cancelled|interrupted)-[0-9]+", path.stem):

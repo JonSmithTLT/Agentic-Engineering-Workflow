@@ -1,0 +1,8 @@
+schema: aew/eval-case/v1
+id: REPORT-1
+family: report-export-calibration
+task: Add status to JSON reports
+fixture:
+  base: fixture
+hidden_sha256: a1457ce4efa275b52b01da23672dd4da7d7e602bec65c19bc806d02f78e96ebe
+control_of: null

@@ -1,0 +1,25 @@
+schema: aew/eval-prereg/v1
+experiment: context-pack-offline-1
+purpose: qualification
+question: Does each intended implementer input reach a fresh scripted session through the current adapter?
+profiles:
+  roles: {implementer: none}
+  budget_usd: 0
+runs_per_cell: 1
+assignment: {method: fixed, seed: 1}
+primary_measure: Exact match of captured initial prompt to preregistered bytes.
+metrics: [{name: prompt-sha256, version: '1'}]
+validity_rules:
+  infrastructure_invalid: [delivery mismatch, changed fixture or oracle]
+  counted_failures: [any failed product criterion]
+  retry_policy: {max_retries: 0, allowed_for: []}
+  missing_result_policy: Rehearsal incomplete.
+stopping_rule: One scripted attempt per delivery variant.
+held_out: []
+scoring:
+  hidden_channel: aew_eval.hidden
+  who_scores: automated
+  blinding: arm_hidden
+  adjudication_policy: Grade only the exported tree after every attempt has ended.
+exposure_policy: Public synthetic case. Only the fixture subtree enters the worker repository.
+amendment_policy: A material change requires a new experiment id.

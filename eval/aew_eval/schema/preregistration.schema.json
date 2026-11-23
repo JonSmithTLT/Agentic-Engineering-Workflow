@@ -8,6 +8,10 @@
                "primary_measure", "metrics", "validity_rules", "stopping_rule", "scoring", "held_out",
                "exposure_policy", "amendment_policy"],
   "additionalProperties": false,
+  "allOf": [{
+    "if": {"properties": {"arms": {"contains": {"properties": {"kind": {"enum": ["aew", "raw"]}}}}}},
+    "then": {"properties": {"profiles": {"properties": {"budget_usd": {"exclusiveMinimum": 0}}}}}
+  }],
   "properties": {
     "schema": {"const": "aew/eval-prereg/v1"},
     "experiment": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
@@ -49,7 +53,7 @@
       "additionalProperties": false,
       "properties": {
         "roles": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
-        "budget_usd": {"type": "number", "exclusiveMinimum": 0}
+        "budget_usd": {"type": "number", "minimum": 0}
       }
     },
     "runs_per_cell": {"type": "integer", "minimum": 1},

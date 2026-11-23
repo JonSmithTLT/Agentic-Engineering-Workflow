@@ -1,0 +1,85 @@
+schema: aew/eval-prereg/v1
+experiment: context-pack-offline-1
+purpose: qualification
+question: Does each intended implementer input reach a fresh scripted session through the current adapter?
+profiles:
+  roles:
+    implementer: none
+  budget_usd: 0
+runs_per_cell: 1
+assignment:
+  method: fixed
+  seed: 1
+  order:
+  - order_index: 0
+    cell: REPORT-1/a/1
+    case: REPORT-1
+    arm: a
+    repetition: 1
+  - order_index: 1
+    cell: REPORT-1/b/1
+    case: REPORT-1
+    arm: b
+    repetition: 1
+  - order_index: 2
+    cell: REPORT-1/c/1
+    case: REPORT-1
+    arm: c
+    repetition: 1
+primary_measure: Exact match of captured initial prompt to preregistered bytes.
+metrics:
+- name: prompt-sha256
+  version: '1'
+validity_rules:
+  infrastructure_invalid:
+  - delivery mismatch
+  - changed fixture or oracle
+  counted_failures:
+  - any failed product criterion
+  retry_policy:
+    max_retries: 0
+    allowed_for: []
+  missing_result_policy: Rehearsal incomplete.
+stopping_rule: One scripted attempt per delivery variant.
+held_out: []
+scoring:
+  hidden_channel: aew_eval.hidden
+  who_scores: automated
+  blinding: arm_hidden
+  adjudication_policy: Grade only the exported tree after every attempt has ended.
+exposure_policy: Public synthetic case. Only the fixture subtree enters the worker repository.
+amendment_policy: A material change requires a new experiment id.
+cases:
+- id: REPORT-1
+  family: report-export-calibration
+  sha256: cc1f339f3f0ba62d2533a01898bc9e03bb579442b7d0d7a00594672b9cf003b6
+  hidden_sha256: a1457ce4efa275b52b01da23672dd4da7d7e602bec65c19bc806d02f78e96ebe
+  control_of: null
+arms:
+- id: a
+  kind: scripted
+  description: common ticket and role
+  config:
+    variant: A
+    steps: []
+    pack_sha256: ed8ff669ccf63559d74cd6effc37c8caf8e866b3b7db54515d5da8215ea0418e
+    prompt_sha256: 2f1bd0259af48629d78dc36805b408aeb3c40e5e4a99ee29d024bfb89ce14e26
+- id: b
+  kind: scripted
+  description: current dispatch
+  config:
+    variant: B
+    steps: []
+    pack_sha256: 947d700a6ce6e00097589481c435b87dc4c63804639167951185d8c6f6d6cf00
+    prompt_sha256: 7ac08c371f9aa25a9127d34712abaac7467f4a39210232f076bd4e6daa1d6008
+- id: c
+  kind: scripted
+  description: common and reference sources
+  config:
+    variant: C
+    steps: []
+    pack_sha256: 387b7a7db194fb7e65c3f8fbc498e260a65d68772b2fde9d7ee1be6fd5ccc0eb
+    prompt_sha256: 6cf7ef66490d718d672de6f69a03e16b0778dfd99e6f021458421516cdb89c0d
+frozen_at: '2026-11-23T23:21:05Z'
+frozen_by: offline rehearsal
+canonical_sha256: 03bcd5a0ee6ca5a1177b3834c9f7188a806f4c94605970d41d37ffd8878e91c1

@@ -1,12 +1,15 @@
-name: Compare stock and scanned reports from one worker loss
+name: Observe the normal lane action at its GitHub step timeout
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
 jobs:
-  stock-reports:
-    runs-on: ubuntu-24.04
+  actual-lane:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -14,28 +17,29 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
-          python-version: '3.11'
-      - name: Install the stock reporter in this comparison only
-        run: python -m pip install --no-deps pytest-reportlog==1.0.0
-      - name: Set the lane deadline
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 180 ))" >> "$GITHUB_ENV"
-      - name: Run one planted loss with xdist, reportlog and the lane sampler together
-        timeout-minutes: 12
+          python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Set deadline and prime pinned tool installation
+        shell: bash
+        run: |
+          echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 360 ))" >> "$GITHUB_ENV"
+          python tools/ci/install_evidence.py
+      - name: Actual lane action with a shortened outer limit
+        timeout-minutes: 1
         id: lane
         continue-on-error: true
         uses: ./.github/actions/lane
         env:
-          AEW_EVIDENCE_PLANT: worker-kill
+          AEW_EVIDENCE_PLANT: time-limit-github
         with:
           source: ${{ runner.temp }}/lane-reports
-          job-label: stock-reports
-          artifact: comparison-worker-kill-attempt-${{ github.run_attempt }}
+          artifact: actual-timeout-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          job-label: actual-lane (${{ matrix.os }})
           command: >-
-            python -m pytest -q -p no:cacheprovider --report-log="${{ runner.temp }}/stock-worker.jsonl"
-            -n 1 --dist worksteal --max-worker-restart 0 tests/integration/evidence_plants/deaths.py
-            --lane integration --test-timeout 120 --session-deadline 90 --session-deadline-margin 3
-            "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
-      - name: Compare reports from this worker loss
+            python -m pytest -q -p no:cacheprovider -n 1 --dist worksteal --max-worker-restart 0
+            tests/integration/evidence_plants/deaths.py --lane integration --test-timeout 120
+            --session-deadline 180 --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+      - name: Identify which steps completed inside the real action
+        if: always()
         shell: python
         env:
           OUTCOME: ${{ steps.lane.outcome }}
@@ -44,19 +48,9 @@ jobs:
           import os
           from pathlib import Path
           root = Path(os.environ['RUNNER_TEMP'])
-          rows = [json.loads(line) for line in (root/'stock-worker.jsonl').read_text().splitlines()]
-          [stock] = [row for row in rows if row.get('outcome') == 'failed' and row.get('when') == '???']
-          [artifact] = (root/f"comparison-worker-kill-attempt-{os.environ['GITHUB_RUN_ATTEMPT']}").rglob('worker-killed-*.txt')
-          recorded = json.loads(artifact.read_text())
-          assert stock['nodeid'] == recorded['node'] and os.environ['OUTCOME'] == 'failure'
-          summary = {'stock_keys': sorted(stock),
-                     'xdist_crash': stock['longrepr'].splitlines()[0],
-                     'stock_times': [stock[key] for key in ('start','stop','duration')],
-                     'stock_gateway': stock.get('node'),
-                     'artifact_identity': [recorded['pid'], recorded['start']],
-                     'native_status': [recorded['exit'], recorded['signal']],
-                     'sampled_node': recorded['snapshot_node'], 'age_seconds': recorded['age_s']}
-          print(json.dumps(summary))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
-              fh.write('Stock report and scanned artifact from the same worker loss\n\n```json\n' +
-                       json.dumps(summary, indent=2) + '\n```\n')
+          lane = root/'lane-reports'
+          evidence = root/f"actual-timeout-{os.environ['RUNNER_OS']}-attempt-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          result = {'outcome': os.environ['OUTCOME'], 'collect_reached': (lane/'runner-resources-job.txt').exists(),
+                    'full_scan_reached': (evidence/'inventory.txt').exists(),
+                    'observations': [p.name for p in lane.rglob('*.txt') if p.name.startswith(('cancelled-', 'interrupted-'))]}
+          print(json.dumps(result))

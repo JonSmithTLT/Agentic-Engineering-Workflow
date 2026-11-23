@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from contextlib import closing
 
 import pytest
-from conftest import make_git_repo
+from conftest import clean_env, make_git_repo
 from fake_opencode import ProviderUpstream
-from host_env import clean_launching_env
+from host_env import clean_launching_env, isolate_provider_credentials
 from lead_session import synthetic_home
 
 from aew.cli.main import main
 from aew.engine.api import Engine
 from aew.harness import model_list, runlog
+from aew.harness.opencode import login
 from aew.policy import execution
 
 
@@ -71,3 +73,15 @@ def test_init_without_a_configured_model_or_login_names_what_was_unchecked(tmp_p
     worker, lead = report["provider_relay"]
     assert report["revision"] == 0 and worker["status"] == lead["status"] == "WARN"
     assert "no worker profile selected" in worker["detail"] and "default Lead" in lead["detail"]
+
+
+def test_offline_test_environment_discards_inherited_logins_for_both_cli_entry_points(tmp_path, monkeypatch):
+    home = synthetic_home(tmp_path / "operator", {"openai": "synthetic-inherited-store"})
+    clean_launching_env(monkeypatch, home)
+    store = home / ".local/share/opencode/opencode.db"
+    monkeypatch.setenv("OPENCODE_DB", str(store))
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-inherited-export")
+    isolate_provider_credentials(monkeypatch, tmp_path / "offline-data")
+    for environment in (os.environ, clean_env()):
+        assert "OPENAI_API_KEY" not in environment and "OPENCODE_DB" not in environment
+        assert login.db_path(environment) != store and not login.db_path(environment).exists()

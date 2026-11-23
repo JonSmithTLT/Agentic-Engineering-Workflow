@@ -428,7 +428,7 @@ def test_inits_option_set_is_exactly_these():
     causes, the steering extras) is a parser option, here or on any later row without changing this pin."""
     parser = init_parser()
     options = {o for a in parser._actions for o in a.option_strings}
-    assert options == {"-h", "--help", "--fields", "--project-id", "--name", "--branch", "--workspaces-root",
+    assert options == {"-h", "--help", "--fields", "--json", "--project-id", "--name", "--branch", "--workspaces-root",
                        "--check-command", "--check-timeout", "--model", "--provider",
                        "--fetch-tool"}  # --fields: every leaf has it; --fetch-tool: the operator's choice of tools
     assert parser.parse_args(["--fetch-tool", "none"]).fetch_tool == ["none"]

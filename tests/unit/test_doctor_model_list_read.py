@@ -86,7 +86,7 @@ def test_a_server_that_fails_to_start_is_waited_for_once_across_profiles(tmp_pat
     monkeypatch.setattr(model_list, "cache_key", lambda cls, policy, pin: pin["model"])
     policy = {"profiles": {"one": "first-model", "two": "second-model"}}
     engine = SimpleNamespace(aew_root=tmp_path / ".aew", repo_root=tmp_path, execution_policy=lambda: (policy, "sha"))
-    [row] = model_list.doctor_rows(engine)
+    row = next(r for r in model_list.doctor_rows(engine) if r["check"] == model_list.CHECK)
     assert tries == ["first-model"], tries
     assert row["status"] == "FAIL" and "the stand-in server did not start" in row["detail"], row
     assert "profile two: the same harness and provider as profile one, not waited for again" in row["detail"], row
@@ -122,7 +122,7 @@ def test_a_profile_a_list_already_read_names_is_answered_by_it_after_a_sibling_w
                                              "models": listed}}), encoding="utf-8")
     policy = {"profiles": {"a": "model-a", "b": "model-b", "c": "model-c"}}
     engine = SimpleNamespace(aew_root=root, repo_root=tmp_path, execution_policy=lambda: (policy, "sha"))
-    [row] = model_list.doctor_rows(engine)
+    row = next(r for r in model_list.doctor_rows(engine) if r["check"] == model_list.CHECK)
     assert tries == ["model-b"], tries
     assert "profile b: the harness did not start" in row["detail"] and "profile c" not in row["detail"], row
 
@@ -190,3 +190,43 @@ def test_a_failure_caught_after_the_start_deadline_is_the_deadline_row_and_names
     assert ("the harness's model catalog" in detail) is started, detail
     assert ("had not started by then, so raise AEW_RUN_START_S" in detail) is not started, detail
     assert unread.value.red and unread.value.waited
+
+
+@pytest.mark.parametrize(("provider", "plan", "header", "value"), [
+    ("anthropic", False, "x-api-key", "synthetic-sentinel"),
+    ("google", False, "x-goog-api-key", "synthetic-sentinel"),
+    ("openai", True, "Authorization", "Bearer synthetic-sentinel"),
+    ("opencode", False, "Authorization", "Bearer synthetic-sentinel"),
+])
+def test_models_probe_uses_the_providers_credential_header(provider, plan, header, value, monkeypatch):
+    from contextlib import nullcontext
+
+    from aew.harness import doctor_relay
+    from aew.harness.opencode import capabilities
+
+    sent = []
+
+    class Connection:
+        def request(self, method, path, *, headers):
+            sent.append((method, path, headers))
+
+        def getresponse(self):
+            return nullcontext(SimpleNamespace(status=200, getheader=lambda _: None))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(doctor_relay, "UnixConnection", lambda path, timeout: Connection())
+    service = SimpleNamespace(upstream=SimpleNamespace(path="/base"), listener=SimpleNamespace(getsockname=lambda: "x"),
+                              counts=lambda: {})
+    network = SimpleNamespace(lead=False, relay=service,
+                              login_sentinels={provider: "synthetic-sentinel"} if plan else {},
+                              sentinels={} if plan else {netns.PROVIDER_KEY_ENV[provider]: "synthetic-sentinel"})
+
+    row = doctor_relay.request(network, provider, route="test", source="test", until=doctor_relay.time.monotonic() + 5)
+    [request] = sent
+    method, path, headers = request
+    assert method == "GET" and path == "/base/models" + (f"?client_version={capabilities.TESTED_VERSIONS[0]}" if plan
+                                                        else "")
+    assert headers[header] == value and (headers.get("anthropic-version") == "2023-06-01") == (provider == "anthropic")
+    assert row["status"] == "PASS" and "synthetic-sentinel" not in str(row)

@@ -4,14 +4,18 @@ fake V2 server stands in for OpenCode; synthetic providers and ids only."""
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import sys
 from typing import Any
 
 import pytest
 from fake_harness import HarnessLab
 from harness_conformance import FakeOpenCodeDriver
+from lead_session import synthetic_home
 
 from aew.harness import model_list, runlog
+from aew.harness.opencode import lead, login
 from aew.util import dump_yaml, load_yaml
 
 LISTED = [{"id": "fake-model", "providerID": "fakeprov", "enabled": True, "variants": [{"id": "high"}]},
@@ -22,6 +26,7 @@ ELSEWHERE = [{"id": "cheaper-model", "providerID": "other", "enabled": True, "va
 @pytest.fixture
 def lab(tmp_path):
     lab = FakeOpenCodeDriver().create_lab(tmp_path)
+    lab.env["OPENCODE_DB"] = str(tmp_path / "no-host-login.db")
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"  # a catalog that never lists the pin settles quickly here
     try:
         yield lab
@@ -64,6 +69,7 @@ def leftovers(lab: HarnessLab) -> list[str]:
 def test_doctor_refuses_a_free_zen_pin_even_with_an_export(lab):
     def configure(policy):
         policy["provider_env"] = ["OPENCODE_API_KEY"]
+        policy["containment"]["network"]["upstreams"]["opencode"] = lab.provider.url
         for profile in policy["profiles"].values():
             profile.update(provider="opencode", model="synthetic-free")
             profile.pop("effort", None)
@@ -266,3 +272,119 @@ def test_a_provider_key_a_launch_would_not_get_is_named_as_the_launchs_refusal(l
         return
     assert row["status"] == "FAIL" and "a launch would be refused (provider_key_missing)" in row["detail"], row
     assert "containment was not established" not in row["detail"], row
+
+
+@pytest.mark.parametrize("route", ["default Lead", "worker profile"])
+def test_live_models_request_uses_the_launchs_login_even_with_a_cached_catalog(lab, tmp_path, route):
+    saved, exported = "synthetic-saved-login", "synthetic-worker-export"
+    saved_hash, export_hash = (hashlib.sha256(value.encode()).hexdigest() for value in (saved, exported))
+    home = synthetic_home(tmp_path / "operator", {"openai": saved})
+    lab.env.update(OPENCODE_DB=str(home / ".local/share/opencode/opencode.db"), OPENAI_API_KEY=exported)
+
+    def configure(policy):
+        policy["containment"]["network"]["upstreams"]["openai"] = lab.provider.url
+        if route == "worker profile":
+            policy["profiles"]["standard"] = {"provider": "openai", "model": "listed-model"}
+
+    edit_policy(lab, configure)
+    # The default Lead can select OpenAI when all worker pins use a different provider.
+    serve(lab, LISTED if route == "default Lead" else [
+        {"id": "listed-model", "providerID": "openai", "family": "synthetic", "enabled": True}])
+    first = lab.aew("doctor", "--json")
+    rows = [r for r in first.json["checks"] if r["check"] == "provider-relay"]
+    if not sys.platform.startswith("linux"):
+        assert lab.provider.model_requests == [] and rows and all(r["status"] == "WARN" for r in rows)
+        return
+    tested = saved_hash if route == "default Lead" else export_hash
+    source = "saved OpenCode API key" if route == "default Lead" else "environment"
+    passed = next(r for r in rows if r["detail"].startswith(route))
+    assert passed["status"] == "PASS" and "provider answered HTTP 200" in passed["detail"]
+    assert source in passed["detail"] and lab.provider.model_requests.count(("/v1/models", tested)) == 1
+    assert (lab.aew_root / model_list.CACHE_REL).is_file()
+
+    kept = leftovers(lab)
+    lab.provider.models_status[tested] = 401
+    for args in (("--json",), ()):
+        response = lab.aew("doctor", *args)
+        assert response.returncode == 1
+        if args:
+            failed = next(r for r in response.json["checks"] if r["check"] == "provider-relay"
+                          and r["detail"].startswith(route))
+            assert failed["status"] == "FAIL" and "provider answered HTTP 401" in failed["detail"]
+            assert source in failed["detail"]
+        else:
+            line = next(line for line in response.stdout.splitlines() if "provider-relay" in line and route in line)
+            assert "FAIL" in line and "provider answered HTTP 401" in line
+        assert "cached" in response.stdout
+        assert all(v not in response.stdout + response.stderr for v in (
+            saved, exported, "X-Private-Probe-Header", "upstream-private-value", "private-provider-error",
+            "Authorization:", "aew-relay-"))
+    assert lab.provider.model_requests.count(("/v1/models", tested)) == 3
+
+    lab.provider.models_status[tested] = 0  # upstream closes before replying
+    unavailable = lab.aew("doctor", "--json")
+    row = next(r for r in unavailable.json["checks"] if r["check"] == "provider-relay"
+               and r["detail"].startswith(route))
+    assert row["status"] == "WARN" and "relay answered HTTP 502" in row["detail"]
+    assert lab.provider.model_requests.count(("/v1/models", tested)) == 4 and leftovers(lab) == kept
+
+    sent = list(lab.provider.model_requests)
+    edit_policy(lab, lambda p: p["containment"]["network"].update(mode="isolated"))
+    offline = lab.aew("doctor", "--json")
+    [skipped] = [r for r in offline.json["checks"] if r["check"] == "provider-relay"]
+    assert skipped["status"] == "WARN" and "no provider relay" in skipped["detail"]
+    assert lab.provider.model_requests == sent
+
+
+@pytest.mark.parametrize("case", ["fallback", "project login"])
+def test_default_lead_probe_reports_unavailable_without_sending_the_wrong_login(lab, tmp_path, case):
+    home = synthetic_home(tmp_path / "operator", {"openai": "synthetic-operator-key"})
+    host_store = home / ".local/share/opencode/opencode.db"
+    lab.env.update(OPENCODE_DB=str(host_store), OPENAI_API_KEY="synthetic-export")
+
+    def configure(policy):
+        policy["containment"]["network"]["upstreams"]["openai"] = lab.provider.url
+        if case == "fallback":
+            policy["containment"]["mode"] = "allow_weaker"
+            policy["containment"]["writable"].append(str(tmp_path / "missing-policy-root"))
+
+    edit_policy(lab, configure)
+    serve(lab, LISTED)
+    stores = [host_store]
+    if case == "project login":
+        other = synthetic_home(tmp_path / "previous", {"openai": "synthetic-project-key"})
+        project_store = lab.aew_root / lead.LEAD_DIR / login.STORE_REL
+        project_store.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(other / ".local/share/opencode/opencode.db", project_store)
+        stores.append(project_store)
+    before = [path.read_bytes() for path in stores]
+    response = lab.aew("doctor", "--json")
+    assert not lab.provider.model_requests and [path.read_bytes() for path in stores] == before
+    rows = [r for r in response.json["checks"] if r["detail"].startswith("default Lead openai:")]
+    if sys.platform.startswith("linux"):
+        [row] = rows
+        assert row["status"] == "WARN"
+        assert ("no provider relay on the Lead's launch route" if case == "fallback"
+                else "the project's OpenCode store has its own login") in row["detail"]
+    else:
+        assert not rows
+
+
+def test_doctor_reports_when_an_export_only_supplies_the_worker(lab):
+    lab.env["OPENAI_API_KEY"] = "synthetic-worker-export"
+
+    def configure(policy):
+        policy["containment"]["network"]["upstreams"]["openai"] = lab.provider.url
+        policy["profiles"]["standard"] = {"provider": "openai", "model": "listed-model"}
+
+    edit_policy(lab, configure)
+    serve(lab, [{"id": "listed-model", "providerID": "openai", "family": "synthetic", "enabled": True}])
+    report = lab.aew("doctor", "--json")
+    rows = [r for r in report.json["checks"] if r["check"] == "provider-relay"]
+    assert any(r["detail"].startswith("worker profile standard") for r in rows)
+    lead_rows = [r for r in rows if r["detail"].startswith("default Lead:")]
+    if sys.platform.startswith("linux"):
+        [row] = lead_rows
+        assert row["status"] == "WARN" and "no login or client certificate selected" in row["detail"]
+    else:
+        assert not lead_rows

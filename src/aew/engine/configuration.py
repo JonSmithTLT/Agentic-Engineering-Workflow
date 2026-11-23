@@ -403,7 +403,7 @@ def _name(value: Any) -> str | None:
     return None if ok else NOT_A_NAME
 
 
-def _model_id(value: Any) -> str | None:
+def model_id_problem(value: Any) -> str | None:
     text = str(value)
     if credential_shaped(text):
         return CREDENTIAL_SHAPED
@@ -543,7 +543,7 @@ class _Projector:
         try:
             pair = X.model_pair(self.document, key, registry.model_identity if rule == BY_ADAPTER else None)
         except ModelIdRefused as exc:
-            suggestion = next((s for s in exc.details.get("suggestions") or [] if _model_id(s) is None), None)
+            suggestion = next((s for s in exc.details.get("suggestions") or [] if model_id_problem(s) is None), None)
             # the refusal names the field it refused: the provider's when template text is typed there (PR #309, F6)
             refused = "provider" if str(exc.details.get("field")).endswith(".provider") else "model"
             return none | {"identity_error": {
@@ -582,8 +582,8 @@ class _Projector:
                                    effective=X.profile_harness(self.document, profile),
                                    effective_source=(FROM_PROFILE if "harness" in profile else
                                                      FROM_POLICY if "harness" in self.document else FROM_DEFAULT)),
-                "provider": self.fv(("profiles", key, "provider"), _model_id, F46_2),
-                "model": self.fv(("profiles", key, "model"), _model_id, F46_2),
+                "provider": self.fv(("profiles", key, "provider"), model_id_problem, F46_2),
+                "model": self.fv(("profiles", key, "model"), model_id_problem, F46_2),
                 "effort": self.fv(("profiles", key, "effort"), _text, F46_2),
                 "max_steps": self.fv(("profiles", key, "max_steps"), _text, F46_2),
                 "deadline_s": self.fv(("profiles", key, "deadline_s"), _text, F46_2),

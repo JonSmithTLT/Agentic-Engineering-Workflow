@@ -922,8 +922,8 @@ def test_withheld_key_path_not_editable(engine):
     c = C.read_committed(k)
     document = load_yaml((aew(e) / X.REL_PATH).read_text(encoding="utf-8"))
     proj = C._Projector(k, c, document, C.AVAILABLE)
-    masked = proj.fv(("profiles", SECRET, "model"), C._model_id, C.F46_2)
-    shown = proj.fv(("profiles", "standard", "model"), C._model_id, C.F46_2)
+    masked = proj.fv(("profiles", SECRET, "model"), C.model_id_problem, C.F46_2)
+    shown = proj.fv(("profiles", "standard", "model"), C.model_id_problem, C.F46_2)
     later = proj.fv(("steering", "mode"), C._text, C.LATER)
     assert masked["path"] == "/profiles/@3/model" and masked["editable"] is False
     assert shown["editable"] is True and later["editable"] is False

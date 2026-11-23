@@ -71,14 +71,14 @@ def test_model_failure_stays_visible_after_a_models_list_succeeds(project):
     key, token = "synthetic-relay-status-key", relay.sentinel()
     revision = project.rev()
     with provider_endpoint() as (upstream, calls), closing(relay.ProviderRelay(
-            upstream, {token: key}, route="openai", login="key",
+            upstream, {token: key}, route="gateway+west:chat@v2", login="key",
             record=relay.RequestLog(journal))) as service:
         assert request(service, method="POST", path="/v1/responses?private-query-marker",
                        headers={"Authorization": f"Bearer {token}"}) == 401
         assert request(service, method="GET", path="/v1/models", headers={}) == 200
         before = journal.read_bytes()
         assert b"private-query-marker" not in before and b"synthetic-provider-body-marker" in before
-        view = project.ok("status", "--json")["relay"]["routes"]["openai"]
+        view = project.ok("status", "--json")["relay"]["routes"]["gateway+west:chat@v2"]
         model = view["last_model"]
         assert model == {"run": run, "role": "worker", "at": json.loads(before.splitlines()[0])["at"],
                          "operation": "model", "login": "key", "swap": "swapped", "outcome": "forwarded",
@@ -86,6 +86,7 @@ def test_model_failure_stays_visible_after_a_models_list_succeeds(project):
         assert view["last_request"]["operation"] == "models_list" and view["last_request"]["status"] == 200
         assert view["counts"] == {"upstream_2xx": 1, "upstream_non_2xx": 1, "refused": 0, "unknown": 0}
         text = project.aew("status").stdout
+        assert "gateway+west:chat@v2: 2 recorded" in text
         assert f"Last recognized model request: upstream HTTP 401, key login, swap swapped, {model['at']}" in text
         assert "Last provider request (models_list): upstream HTTP 200" in text
         assert not any(secret in text + json.dumps(view) for secret in
@@ -94,7 +95,7 @@ def test_model_failure_stays_visible_after_a_models_list_succeeds(project):
 
         assert request(service, method="POST", path="/v1/responses",
                        headers={"Authorization": f"Bearer {relay.sentinel()}"}) == 401
-        refused = project.ok("status", "--json")["relay"]["routes"]["openai"]
+        refused = project.ok("status", "--json")["relay"]["routes"]["gateway+west:chat@v2"]
         assert refused["counts"] == dict(view["counts"], refused=1)
         last = refused["last_model"]
         assert last["answered"] == 401 and last["status"] is None and last["swap"] == "refused_unknown_placeholder"
@@ -134,6 +135,7 @@ def test_status_selects_each_route_across_retained_runs_and_handles_incomplete_h
     assert anthropic["last_model"] is None and anthropic["last_request"]["operation"] == "unknown"
     assert anthropic["last_request"]["status"] == 201
     text = project.aew("status").stdout
+    assert f"A journal over {runlog.MAX_RECORD_BYTES // (1 << 20)} MiB is omitted in full." in text
     assert "Partial history" in text and "Last recognized model request: none recorded" in text
 
 

@@ -1764,6 +1764,7 @@ None.
 
 ### `aew.harness.relay_status`
 
+- `aew.engine.configuration`
 - `aew.harness.containment.relay`
 - `aew.harness.defects`
 - `aew.harness.runlog`

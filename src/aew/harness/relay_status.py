@@ -10,6 +10,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from aew.engine.configuration import model_id_problem
 from aew.harness import defects, runlog
 from aew.harness.containment import relay
 
@@ -33,8 +34,8 @@ def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any]] | None:
         dt.datetime.fromisoformat(at)
     except (ValueError, RecursionError):
         return None
-    if (not isinstance(route, str) or not route or relay.SENTINEL_PREFIX in route
-            or defects.field(route) != route):
+    if (not isinstance(route, str) or model_id_problem(route) or relay.SENTINEL_PREFIX in route
+            or defects.redact_text(route) != route):
         return None
     login, swap, outcome = row.get("login"), row.get("swap"), row.get("outcome")
     if login not in ("key", "oauth", "none") or swap not in relay.SWAP_OUTCOMES:
@@ -125,7 +126,8 @@ def _result(row: dict[str, Any]) -> str:
 def render(report: dict[str, Any]) -> list[str]:
     lines = ["Provider relay (recorded Lead and worker requests)"]
     if report["partial"]:
-        lines.append("  Partial history: some records were unreadable. Results and counts cover readable rows.")
+        lines.append("  Partial history: results and counts cover readable records. A journal over "
+                     f"{runlog.MAX_RECORD_BYTES // (1 << 20)} MiB is omitted in full.")
     if not report["routes"]:
         lines.append("  No recorded provider requests found.")
     for provider, view in report["routes"].items():

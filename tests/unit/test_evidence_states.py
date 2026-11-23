@@ -540,3 +540,26 @@ def test_file_classes_preserve_scanned_and_priority_publication(tmp_path, monkey
         assert {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
                 and p.name != "inventory.txt"} == {name for name, flags in cases.items() if flags[idx]}
         assert check(target) == []
+
+
+def test_final_cgroup_read_keeps_a_kill_between_the_last_poll_and_exit(tmp_path, monkeypatch):
+    import json
+
+    import worker_evidence as ev
+
+    group = tmp_path / "group"
+    group.mkdir()
+    for name, value in {"memory.current": "70", "memory.max": "100",
+                        "memory.events": "oom 0\noom_kill 0\n"}.items():
+        (group / name).write_text(value)
+    monkeypatch.setattr(ev, "cgroup", lambda: group)
+    monkeypatch.setattr(ev, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(ev, "dmesg_victim", lambda: "unavailable")
+    monitor = ev.Monitor(tmp_path, None, lambda: set())
+    monitor.poll()
+    monitor.members.add((123, 456))
+    (group / "memory.events").write_text("oom 1\noom_kill 1\n")
+    monitor.poll(final=True)
+    event = json.loads((tmp_path / "runner-resources-oom.txt").read_text())
+    assert (event["oom_kill_before"], event["oom_kill_after"], event["members"]) == (0, 1, [[123, 456]])
+    assert event["kernel_victim"] == "unavailable"

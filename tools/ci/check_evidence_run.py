@@ -26,7 +26,7 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
                for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"))
 
 
-def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -> list[str]:
+def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None) -> list[str]:
     defects = []
 
     def report(rule: str, detail: str) -> None:
@@ -110,7 +110,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -
             elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):
                 # A hosted timeout needs independent runner evidence. A generic interrupt alone is ambiguous.
                 step_timed_out = any(step.get("conclusion") == "timed_out" for step in job.get("steps", []))
-                if step_timed_out or job.get("step_timeout"):
+                if step_timed_out or job.get("step_timeout") or (timeout_observation and timeout_observation(job)):
                     kind = "time-limit-github"
             if died and kind is None and conclusion != "cancelled":
                 report("job-kind", "death has no kind marker")
@@ -124,10 +124,7 @@ def main(root: Path) -> int:
     run = os.environ["GITHUB_RUN_ID"]
     attempt = os.environ["GITHUB_RUN_ATTEMPT"]
     jobs = list(_pages(repo, f"actions/runs/{run}/attempts/{attempt}/jobs?per_page=100", "jobs"))
-    for job in jobs:
-        if job.get("conclusion") in {"failure", "timed_out"}:
-            job["step_timeout"] = hosted_step_timeout(repo, job)
-    problems = check_jobs(root, jobs)
+    problems = check_jobs(root, jobs, timeout_observation=lambda job: hosted_step_timeout(repo, job))
     text = "\n".join(problems) or "Published evidence states match their recorded contents."
     payload = {"name": "evidence", "head_sha": os.environ["EVIDENCE_HEAD"], "status": "completed",
                "conclusion": "failure" if problems else "success",

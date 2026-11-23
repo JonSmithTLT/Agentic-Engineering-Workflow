@@ -150,11 +150,14 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 except (KeyError, TypeError, ValueError):
                     report("death-record", f"{path.name}: unreadable live-worker observation")
         if kind == "oom":
-            counters = rows_named(texts, "runner-resources-oom.txt")
+            counters = list(rows_named(texts, "runner-resources-oom.txt"))
             if not any(isinstance(row.get("oom_kill_before"), int) and isinstance(row.get("oom_kill_after"), int)
                        and row["oom_kill_after"] > row["oom_kill_before"] for row in counters):
                 report("oom-event", "no increase in the cgroup's oom_kill counter")
-            for peak in rows_named(texts, "runner-resources-high-water.txt"):
+            peaks = list(rows_named(texts, "runner-resources-high-water.txt"))
+            if any(row.get("pressure_seen") for row in counters) and not peaks:
+                report("pressure", "the observed high-water crossing has no usable pressure record")
+            for peak in peaks:
                 if not peak.get("top_workers") or not all(
                     any(sample.get("reason") == "memory pressure" and sample.get("pid") == worker["pid"]
                         and sample.get("node") == worker["node"] and test_frame(worker["node"], frames)

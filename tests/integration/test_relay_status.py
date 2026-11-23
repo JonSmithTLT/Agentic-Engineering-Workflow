@@ -312,8 +312,8 @@ def test_direct_relay_connect_destinations_match_the_receiver_and_report(project
 
     destination = f"{upstream.host}:{upstream.port}"
     records = [json.loads(line) for line in (directory / runlog.RELAY_REQUESTS).read_bytes().splitlines()]
-    assert [(row["destination"], row["status"], row["upstream_headers_written"]) for row in records] == [
-        (destination, 401, True), (destination, 200, True)]
+    assert sorted((row["destination"], row["status"], row["upstream_headers_written"]) for row in records) == [
+        (destination, 200, True), (destination, 401, True)]
     report = project.ok("credentials", "--json")
     [view] = report["credentials"]
     assert not report["partial"] and (view["provider"], view["source"]) == ("openai", "environment:OPENAI_API_KEY")

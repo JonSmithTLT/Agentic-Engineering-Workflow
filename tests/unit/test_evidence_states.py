@@ -90,11 +90,10 @@ def test_retained_workflows_use_lane_action_and_keep_names_and_reports_on_collec
     sources = [*(ROOT / ".github/workflows").glob("*.yml"),
                *(ROOT / ".github/actions").glob("*/action.yml")]
     for path in sources:
-        if path.parent.name == "workflows" and path.name in {"discovery.yml", "unit-isolation-audit.yml"}:
+        if path.parent.name == "workflows" and path.name == "discovery.yml":
             continue
         doc = yaml.safe_load(path.read_text())
-        containers = [job for name, job in doc.get("jobs", {}).items()
-                      if (path.name, name) != ("ci.yml", "fastbase")]
+        containers = list(doc.get("jobs", {}).values())
         if "runs" in doc:
             containers.append(doc["runs"])
         for job in containers:

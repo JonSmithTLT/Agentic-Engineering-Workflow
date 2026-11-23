@@ -1866,7 +1866,6 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
         assert "pytest" in installs and "PyYAML" in installs
 
 
-
 class _Config:
     """What ``lanes.ignore_collect`` reads of a pytest config."""
 
@@ -2768,7 +2767,6 @@ PRE_G3A_TIMEOUT_MIN = {
     "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60},
     "flake-dispatch.yml": {"regression": 30},
 }
-
 
 
 # The image every Linux job runs on, not `ubuntu-latest` (operator, 2026-11-01: "Pin 24.04, qualify 26.04";

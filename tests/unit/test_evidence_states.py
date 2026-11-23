@@ -601,7 +601,8 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert record["step_signal"] == ["SIGTERM"]
 
 
-@pytest.mark.parametrize("fault", [None, "unavailable", "changed-node", "support-frame", "lost-record"])
+@pytest.mark.parametrize("fault", [None, "unavailable", "changed-node", "support-frame",
+                                   "partial-first", "lost-record"])
 def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):
     import signal
     import sys
@@ -625,16 +626,20 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     signals = []
     together = threading.Barrier(4)
 
-    def attach(pid):
-        assert not signals
-        together.wait(timeout=2)
+    calls = dict.fromkeys(pids, 0)
+
+    def attach(pid, *, timeout):
+        assert not signals and 0 < timeout <= 3
+        calls[pid] += 1
+        if calls[pid] == 1:
+            together.wait(timeout=2)
         if pid == pids[0]:
             if fault == "unavailable":
                 return None
             if fault == "changed-node":
                 (tmp_path / f"hang-gw0-{pid}.txt").write_text(
                     guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_next")))
-            if fault == "support-frame":
+            if fault == "support-frame" or (fault == "partial-first" and calls[pid] == 1):
                 return "unelevated", "    support (tests/helpers/support.py:4)"
         return "unelevated", "    test_case (tests/test_a.py:4)"
 
@@ -664,10 +669,12 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     failures = verify.observe_cancel(tmp_path, "Linux", [])
     if fault == "lost-record":
         assert failures == ["Linux: cancellation did not observe all four registered workers alive"]
-    elif fault:
+    elif fault in {"unavailable", "changed-node", "support-frame"}:
         assert failures == ["Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]"]
     else:
         assert failures == []
+    if fault == "partial-first":
+        assert calls == {101: 2, 102: 1, 103: 1, 104: 1}
     assert (tmp_path / "snapshots/101-unavailable.txt").exists() == (fault == "unavailable")
 
 

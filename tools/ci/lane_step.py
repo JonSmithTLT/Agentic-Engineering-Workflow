@@ -44,13 +44,13 @@ def note(directory: Path, name: str, text: str) -> None:
         pass
 
 
-def attach(pid: int, *, allow_sudo: bool = True) -> tuple[str, str] | None:
+def attach(pid: int, *, allow_sudo: bool = True, timeout: float = SPY_TIMEOUT_S) -> tuple[str, str] | None:
     binary = shutil.which("py-spy")
     if binary is None:
         return None
     hosted_linux = sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true"
     prefixes = [[], ["sudo", "-n"]] if allow_sudo and hosted_linux else [[]]
-    until = time.monotonic() + SPY_TIMEOUT_S
+    until = time.monotonic() + min(SPY_TIMEOUT_S, timeout)
     for prefix in prefixes:
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--full-filenames", "--pid", str(pid)],

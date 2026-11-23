@@ -23,18 +23,8 @@ from evidence_files import (  # noqa: E402
     report_json,
     stack_file,
     state,
+    test_frame,
 )
-
-
-def test_frame(node: str, frames: str) -> bool:
-    source, _, test = node.partition("::")
-    function = test.split("[", 1)[0].split("::")[-1]
-    for frame in FRAME.finditer(frames):
-        file = frame.group("file") or frame.group("spy_file")
-        called = frame.group("function") or frame.group("spy_function")
-        if ("/" + file.replace("\\", "/")).endswith("/" + source.replace("\\", "/")) and called == function:
-            return True
-    return False
 
 
 def rows_named(texts: dict, name: str):

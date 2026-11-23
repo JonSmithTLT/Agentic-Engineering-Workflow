@@ -1025,3 +1025,19 @@ def test_a_failed_answers_body_is_recorded_even_when_its_client_stops_reading_at
     assert (entry["status"], entry["outcome"]) == (401, "forwarded")
     assert "Incorrect API key provided" in entry["excerpt"] and "invalid_api_key" in entry["excerpt"], entry
     assert service.counts().get("upstream_status:401") == 1
+
+
+@pytest.mark.parametrize(("method", "path", "base", "kind"), [
+    ("POST", "/backend-api/codex/responses", "/backend-api/codex", "model"),
+    ("POST", "/inference/openai/v1/chat/completions", "/inference/openai/v1", "model"),
+    ("POST", "/v1/messages", "/v1", "model"),
+    ("POST", "/v1beta/models/example:streamGenerateContent?alt=sse", "/v1beta", "model"),
+    ("POST", "/v1beta/models/example:generateContent", "/v1beta", "model"),
+    ("GET", "/v1/models", "/v1", "models_list"),
+    ("POST", "/v1/messages/count_tokens", "/v1", "unknown"),
+    ("POST", "/other/responses", "/v1", "unknown"),
+    ("POST", "/gateway/invoke", "/gateway", "unknown"),
+    ("GET", "/v1/responses", "/v1", "unknown"),
+])
+def test_operation_names_only_recognized_provider_api_requests(method, path, base, kind):
+    assert relay._operation(method, path, base) == kind

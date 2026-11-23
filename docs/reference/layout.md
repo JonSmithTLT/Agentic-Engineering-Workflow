@@ -119,7 +119,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.event_spool:Reader.retire`
     - `aew.harness.event_spool:_open_append`
     - `aew.harness.event_spool:append`
-- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.kit.receipt`: `write_receipt`
+- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.relay_status`: `_regular_dir`, `summary`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.harness.containment.layout:for_run`
 - `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
@@ -143,7 +143,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.opencode.lead:ContainedLead._seed_models`
-- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.kit.receipt`: `write_receipt`
+- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`, `summary`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -322,7 +322,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
+- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`

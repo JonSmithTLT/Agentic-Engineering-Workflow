@@ -607,6 +607,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
+- `aew.harness.relay_status`
 - `aew.history.manifest`
 - `aew.knowledge.discovery`
 - `aew.knowledge.manifest`
@@ -1207,6 +1208,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.hierarchy`
 - `aew.harness.notify`
+- `aew.harness.relay_status`
 - `aew.harness.wake_queue`
 - `aew.util`
 
@@ -1759,6 +1761,12 @@ None.
 - `aew.errors`
 - `aew.harness.base`
 - `aew.harness.models`
+
+### `aew.harness.relay_status`
+
+- `aew.harness.containment.relay`
+- `aew.harness.defects`
+- `aew.harness.runlog`
 
 ### `aew.harness.runlog`
 

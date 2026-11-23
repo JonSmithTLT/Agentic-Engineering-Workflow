@@ -1300,8 +1300,8 @@ class Engine:
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
         return self._invocations.snapshot_of(path, workspace_id)
 
-    def status(self, work_id: str | None = None, *, usage: bool = True) -> dict[str, Any]:
-        """``usage=False``: without the usage summary, for a caller that reads only the guidance (#368 review, m1)."""
+    def status(self, work_id: str | None = None, *, usage: bool = True, relay: bool = True) -> dict[str, Any]:
+        """Project or work-unit status. A guidance-only caller can omit the usage and relay telemetry reads."""
         out = self._resume.status(work_id)
         if work_id is None:
             state = self._k.store.current()
@@ -1316,6 +1316,10 @@ class Engine:
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
+            if relay:
+                from aew.harness import relay_status
+
+                out["relay"] = relay_status.summary(self._k.aew_root)
             if usage:
                 out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
         coordination = self.message_attention(work_id=work_id)

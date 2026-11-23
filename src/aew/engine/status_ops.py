@@ -120,6 +120,10 @@ class StatusViews:
                 in_force = " (Run is in force, and cannot act)" if steering["effective"] == "run" else ""
                 lines += ["  Run: ready"] if not problems else [f"  Run: not ready{in_force}:",
                                                                 *(f"    - {p}" for p in problems)]
+        if "relay" in report:
+            from aew.harness import relay_status
+
+            lines += ["", *relay_status.render(report["relay"])]
         notifier = report.get("notifier")
         if notifier:  # M4-E E7a: delivery failures are visible here and in the dashboard's attention, and move nothing
             dropped = ", ".join(f"{n} {why}" for why, n in sorted(notifier["dropped"].items()))

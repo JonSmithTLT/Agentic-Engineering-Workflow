@@ -169,8 +169,9 @@ def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
     monkeypatch.setattr(netns, "mode", lambda _: netns.PROXY_ONLY)
     monkeypatch.setitem(netns.UPSTREAMS, "openai", UPSTREAM)
     monkeypatch.setattr(netns, "listen", lambda _: None)
-    monkeypatch.setattr(relay, "ProviderRelay", lambda target, credentials, **_: ProviderRelay(
-        target, credentials, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT, body_timeout=TIMEOUT,
+    monkeypatch.setattr(relay, "ProviderRelay", lambda target, credentials, sources, **_: ProviderRelay(
+        target, credentials, connect=seam, sources=sources, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+        body_timeout=TIMEOUT,
     ))
     monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
     layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir="unused")
@@ -185,6 +186,7 @@ def _check_stored_worker_relay(monkeypatch, *, other_export: bool):
         token = inside[variable]
         extra_header = f"X-Api-Key: {inside[other]}\r\n" if other_export else ""
         assert token != synthetic
+        assert network.relay.sources == {token: "saved_key"}
         assert network.describe()["provider_key_source"] == "stored OpenCode login"
         assert synthetic not in repr(network.describe())
         client.sendall(f"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"

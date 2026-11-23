@@ -159,6 +159,7 @@ def test_operator_only_commands_are_refused_and_read_only_commands_are_not_relay
                  ("lead", "acquire", "--expect-rev", "1"), ("lead", "takeover", "--expect-rev", "1", "--reason", "x"),
                  ("dashboard", "open")):
         assert lead_broker.refuses_locally(_ns(*argv)), argv
+    assert "operator's own shell" in lead_broker.refuses_locally(_ns("credentials", "--json"))
     assert lead_broker.refuses_locally(_ns("status")) is None  # read-only: runs locally, holds no authority
 
 

@@ -7,6 +7,7 @@ import io
 import json
 import re
 import stat
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +24,24 @@ def _code(value: Any) -> int | None:
     return value if isinstance(value, int) and 100 <= value <= 599 else None
 
 
-def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any]] | None:
+def valid_stamp(value: Any) -> bool:
+    if not isinstance(value, str) or not _STAMP.fullmatch(value):
+        return False
+    try:
+        dt.datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any], dict[str, Any]] | None:
     try:
         row = json.loads(raw)
         if not isinstance(row, dict):
             return None
         at, route = row.get("at"), row.get("route")
-        if not isinstance(at, str) or not _STAMP.fullmatch(at):
+        if not valid_stamp(at):
             return None
-        dt.datetime.fromisoformat(at)
     except (ValueError, RecursionError):
         return None
     if (not isinstance(route, str) or model_id_problem(route) or relay.SENTINEL_PREFIX in route
@@ -49,7 +59,7 @@ def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any]] | None:
                    "login": login, "swap": swap, "outcome": outcome or "unknown",
                    "operation": operation if operation in ("model", "models_list") else "unknown",
                    "status": _code(row.get("status")) if outcome == "forwarded" else None,
-                   "answered": _code(row.get("answered")), "reason": reason if outcome == "refused" else None}
+                   "answered": _code(row.get("answered")), "reason": reason if outcome == "refused" else None}, row
 
 
 def _count(row: dict[str, Any]) -> str:
@@ -65,14 +75,14 @@ def _regular_dir(path: Path) -> bool:
     return stat.S_ISDIR(info.st_mode) and not getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
 
 
-def summary(aew_root: Path) -> dict[str, Any]:
-    """One count per complete recorded request. For ties use run ID, then append order within the run."""
-    routes: dict[str, Any] = {}
+def visit(aew_root: Path, observe: Callable[[str, dict[str, Any], dict[str, Any]], None], *,
+          on_run: Callable[[Path], bool] | None = None) -> bool:
+    """Read each eligible run and its complete journal rows. Return true if any retained evidence was unreadable."""
     partial = False
     try:
         parent = aew_root / runlog.RUNS_REL
         if not _regular_dir(parent):
-            return {"partial": True, "routes": {}}
+            return True
         for directory in parent.iterdir():
             run = directory.name
             if not _RUN.fullmatch(run):
@@ -81,6 +91,8 @@ def summary(aew_root: Path) -> dict[str, Any]:
                 if not _regular_dir(directory):
                     partial = True
                     continue
+                if on_run is not None and not on_run(directory):
+                    partial = True
                 data = runlog.read_regular(directory / runlog.RELAY_REQUESTS)
             except FileNotFoundError:  # older runs, unrelayed runs, or a run with no completed requests
                 continue
@@ -95,20 +107,30 @@ def summary(aew_root: Path) -> dict[str, Any]:
                 if observation is None:
                     partial = True
                     continue
-                provider, row = observation
-                if provider not in routes:
-                    routes[provider] = {"counts": dict.fromkeys(_BUCKETS, 0), "last_request": None, "last_model": None}
-                view = routes[provider]
-                view["counts"][_count(row)] += 1
-                fields = ("last_request", "last_model") if row["operation"] == "model" else ("last_request",)
-                for field in fields:
-                    previous = view[field]
-                    if previous is None or (row["at"], run) >= (previous["at"], previous["run"]):
-                        view[field] = row
+                observe(*observation)
     except FileNotFoundError:
         pass
     except OSError:
         partial = True
+    return partial
+
+
+def summary(aew_root: Path) -> dict[str, Any]:
+    """One count per complete recorded request. For ties use run ID, then append order within the run."""
+    routes: dict[str, Any] = {}
+
+    def observe(provider: str, row: dict[str, Any], _raw: dict[str, Any]) -> None:
+        if provider not in routes:
+            routes[provider] = {"counts": dict.fromkeys(_BUCKETS, 0), "last_request": None, "last_model": None}
+        view = routes[provider]
+        view["counts"][_count(row)] += 1
+        fields = ("last_request", "last_model") if row["operation"] == "model" else ("last_request",)
+        for field in fields:
+            previous = view[field]
+            if previous is None or (row["at"], row["run"]) >= (previous["at"], previous["run"]):
+                view[field] = row
+
+    partial = visit(aew_root, observe)
     return {"partial": partial, "routes": dict(sorted(routes.items()))}
 
 

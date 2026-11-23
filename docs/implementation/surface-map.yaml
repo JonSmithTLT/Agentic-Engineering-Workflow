@@ -1560,6 +1560,16 @@ commands:
     note: "the headless notifier for an endpoint with no desktop session (an ssh login on a Linux host):
       `notify.command: [aew, notify, file, <absolute path>]`; the endpoint runs it
       as its own engine, as the default; CAPABILITY_UNAVAILABLE (not_writable) when the path cannot take the event"
+  - name: credentials
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "reads local launch evidence and request journals and the current execution policy"
+    mutates_exempt: "an operator-only read of host credential use; it changes no credential, record or policy"
+    probe: [[credentials], [credentials, --json]]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "Names credential sources, destinations, observed outbound use and recent failures. Values stay private."
   - name: settings show
     home: operator-admin
     users: [operator]

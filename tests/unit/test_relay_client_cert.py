@@ -203,10 +203,12 @@ def to_local(port: int) -> relay.Connector:
     return lambda _h, _p, t: socket.create_connection(("127.0.0.1", port), timeout=t)
 
 
-def ask(port: int, *, tls: ssl.SSLContext | None, client: client_cert.ClientCert | None) -> tuple[bytes, ProviderRelay]:
+def ask(port: int, *, tls: ssl.SSLContext | None, client: client_cert.ClientCert | None,
+        record=None) -> tuple[bytes, ProviderRelay]:
     """One request through a relay to the provider on ``port``: what the client got, and the relay."""
     service = ProviderRelay(Upstream(f"https://{HOST}:{port}/v1"), {}, connect=to_local(port), tls=tls,
-                            client=client, head_timeout=TIMEOUT, connect_timeout=TIMEOUT, body_timeout=TIMEOUT)
+                            client=client, record=record, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+                            body_timeout=TIMEOUT)
     return through(service), service
 
 
@@ -241,9 +243,17 @@ def trusting(pki: Pki) -> ssl.SSLContext:
 def test_the_relay_presents_the_policys_certificate_and_the_provider_takes_it(pki):
     found = pki.files()
     tls, client = netns.relay_tls(PROVIDER, policy_of(found))
+    from cryptography.hazmat.primitives import hashes
+
     assert client == found
+    assert client_cert.public_snapshot(found) == {
+        "file": found.cert, "sha256": pki.client.cert.fingerprint(hashes.SHA256()).hex(),
+        "expires": pki.client.cert.not_valid_after_utc.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    records = []
     with provider(pki) as (port, seen):
-        answer, service = ask(port, tls=tls, client=client)
+        answer, service = ask(port, tls=tls, client=client, record=records.append)
+    [row] = records
+    assert row["client_certificate_configured"] and row["transport"] == "tls_verified"
     assert answer.startswith(b"HTTP/1.1 200"), answer
     assert seen.error is None and seen.head.startswith(b"POST /v1/chat/completions")
     assert seen.peer is not None and ((("commonName", "aew-relay"),),) == seen.peer["subject"]

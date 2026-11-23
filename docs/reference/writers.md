@@ -788,6 +788,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.containment.layout:private_git` (direct: Path.mkdir): the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:private_git` (direct: shutil.copy2): the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.netns:RunNetwork.record_credential_check` (direct: atomic_write): `directory` of `RunNetwork.record_credential_check`, which no static call binds
 - `aew.harness.containment.probe:_markers` (direct: Path.mkdir): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers` (direct: Path.write_bytes): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test` (direct: Path.rmdir): a loop variable over `markers`, a list this reading cannot read

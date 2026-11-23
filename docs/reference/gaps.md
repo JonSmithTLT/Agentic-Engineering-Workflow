@@ -127,6 +127,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.containment.layout:private_git`: Path.mkdir of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:private_git`: shutil.copy2 of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:retire_private_git`: shutil.rmtree of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.netns:RunNetwork.record_credential_check`: atomic_write of a path this reading cannot place: `directory` of `RunNetwork.record_credential_check`, which no static call binds
 - `aew.harness.containment.probe:_markers`: Path.mkdir of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers`: Path.write_bytes of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test`: Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read

@@ -138,6 +138,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `checkpoint`
 - `context pack`
 - `context show`
+- `credentials`
 - `dashboard open`
 - `dashboard serve`
 - `dashboard status`

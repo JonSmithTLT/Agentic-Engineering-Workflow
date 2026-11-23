@@ -43,6 +43,7 @@ RUNS_REL = "local/harness/runs"
 RECORD = "run.json"                        # the run record
 # Each request the run's provider relays took, one JSON line each (``relay.RequestLog``): outside every sandbox
 RELAY_REQUESTS = "relay-requests.jsonl"
+RELAY_CREDENTIAL_CHECK = "relay-credential-check.json"
 LIVE_FILE = "usage.live.json"              # the run's live usage sample (F25 L2)
 LIVE_STATE_FILE = "usage.live.state.json"  # its meter's high-water state; not part of any contract
 LIVE_SCHEMA = "aew/usage-live/v1"

@@ -43,6 +43,7 @@ NOT_DISPATCHING = {
     "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
+    "credentials",  # retained provider records and policy, no dispatch
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
     "capability add", "capability check", "capability fetch", "capability host-copies", "capability import",
     "capability list", "capability remove",  # the host's capability register (STG-15, CAP-1): outside the engine

@@ -848,7 +848,13 @@ class ContainedLead(LeadProviders):
                                             tools=capability.placed(label, contained=True),
                                              push_wake=pushes_wakes(engine), switches=self.surface_switches)
             inside = self._inside(child_env, layout, run_dir, state, config, network)
-            leaked = network.leaks(json.dumps(inside), json.dumps(config)) if network else []
+            password = secrets.token_urlsafe(32)
+            launch_env = {**inside, "OPENCODE_PASSWORD": password, weaker_register.MARKER: str(where["marker"])}
+            leaked = []
+            if network is not None:
+                serialized = json.dumps(config)
+                leaked = network.leaks(*launch_env.values(), json.dumps(launch_env), serialized)
+                network.record_credential_check(run_dir, launch_env, serialized, gate_matches=leaked)
             if leaked:  # F28 §3.6, row 6: names only
                 raise ContainmentUnavailable(f"a provider key would be inside the Lead's sandbox: {', '.join(leaked)}",
                                              reason="credential_inside")
@@ -865,8 +871,6 @@ class ContainedLead(LeadProviders):
             # The server in the sandbox with the TUI, in the same environment, which is what every Lead shell gets: the
             # TUI sends a --server none of its own (ADR-0009, amendment 2026-11-08). In a network of its own the broker
             # reaches it by the shim's server leg, as a worker's supervisor does.
-            password = secrets.token_urlsafe(32)
-            inside["OPENCODE_PASSWORD"] = password
             served = serve_spec(run_dir / "harness" / "xdg-runtime", port=netns.SERVER_PORT if own_network else 0)
             poster = lead_poster(policy, password, url_file=Path(served["url_file"]),
                                  unix=own_network.server_socket if own_network else None)
@@ -878,8 +882,7 @@ class ContainedLead(LeadProviders):
         except BaseException:
             self._retire(run_dir, layout, network)
             raise
-        inside[weaker_register.MARKER] = str(where["marker"])
-        return lead_broker.Harness(argv=argv, env=inside, relay=True, label=label,
+        return lead_broker.Harness(argv=argv, env=launch_env, relay=True, label=label,
                                    close=lambda: self._retire(run_dir, layout, network), entry=entry, poster=poster)
 
     def _inside(self, child_env: Mapping[str, str], layout: Any, run_dir: Path, state: Path,

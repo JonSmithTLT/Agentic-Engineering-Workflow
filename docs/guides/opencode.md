@@ -61,6 +61,8 @@ AEW needs a provider key and a paid model, and does not use OpenCode's free mode
 
 **OpenCode Zen's Console library on Windows.** OpenCode fetches the session instructions and skills set in your OpenCode Console account whenever an `OPENCODE_API_KEY` is set. A contained run on Linux refuses that fetch. On Windows, where AEW provides no network containment, a Zen run receives them, and AEW neither blocks nor records them. If you don't want them in AEW's runs, keep your Console account's instructions and skills empty.
 
+Run `aew credentials` in your project to see which credential source each provider relay used. The report shows the configured destination, completed outbound header writes by destination and transport, and recent provider errors and relay refusals. It reads retained Lead and worker records. `aew credentials --json` returns the same evidence for scripts. Older records can lack the source, transport or launch check. A count of zero matching entries covers the projected launch environment. The runtime process-environment count is unmeasured.
+
 **A provider that requires a client certificate** (mTLS) is reached through AEW's provider relay, which presents the certificate; OpenCode and the agents never get it. Name the provider's API address and its three files in the execution policy, by the profile's provider:
 
 ```yaml

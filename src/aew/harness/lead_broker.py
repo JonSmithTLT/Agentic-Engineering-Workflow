@@ -106,7 +106,9 @@ OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator"
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
                      frozenset({"capability", "remove"}), frozenset({"capability", "host-copies"}))
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
-OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
+CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
+OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
+                 + (CREDENTIAL_REPORT,))
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -214,6 +216,8 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     Lead-authenticated command nobody has classified Lead-reachable (fail closed). The one reachability check: the
     ``aew`` client applies it before relaying, and the broker again before it runs anything."""
     path = command_path(ns)
+    if path == CREDENTIAL_REPORT:
+        return "`aew credentials` reports host-side provider credential use. Run it in the operator's own shell."
     if any(p <= path for p in OPERATOR_CONFIRMED):
         return (f"`aew {command_name(ns)}` is confirmed by the operator with a code typed at their own terminal; "
                 "a Lead session cannot run it: ask the operator")

@@ -508,7 +508,9 @@ class OpenCodeAdapter(HarnessAdapter):
             env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
         if network is not None:  # the provider's variables are sentinels inside; the relay holds the values
             env = network.harness_env(env)
-            leaked = network.leaks(*env.values(), json.dumps(config))
+            serialized = json.dumps(config)
+            leaked = network.leaks(*env.values(), serialized)
+            network.record_credential_check(self.run_dir, env, serialized, gate_matches=leaked)
             if leaked:  # F28 §3.6, row 6: never started with a provider secret in its reach
                 raise HarnessIncompatible(f"the value of {', '.join(leaked)} would reach the run's sandbox in the "
                                           "harness's environment or configuration, so the harness was not started; "

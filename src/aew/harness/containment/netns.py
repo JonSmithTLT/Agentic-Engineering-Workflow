@@ -35,6 +35,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any
 
 from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible
@@ -438,6 +439,14 @@ def operator_proxy(target: relay.Upstream, names: Iterable[str], env: Mapping[st
     return relay.Proxy(url)
 
 
+def export_source(name: str) -> str:
+    from aew.harness import defects
+
+    if name.isascii() and name.isidentifier() and len(name) <= 128 and defects.redact_text(name) == name:
+        return f"environment:{name}"
+    return "unknown"
+
+
 class RunNetwork:
     """One contained run's network, outside its sandbox: its directory, its relay and egress proxy, and the sentinels
     its harness gets for the provider's variables. The run's process tree owns it: killing the tree closes it."""
@@ -500,7 +509,7 @@ class RunNetwork:
                 net.relay = relay.ProviderRelay(
                     target, {}, proxy=proxy, resolve=functools.partial(_grant, token, resolver.worker_grant),
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record,
-                    route=resolver.integration, login="oauth", issued=(token,),
+                    route=resolver.integration, login="oauth", issued=(token,), sources={token: "saved_oauth"},
                     login_headers=tuple(login.LOGIN_HEADERS.get(resolver.integration, {}))).start()
             elif relay_needed:
                 target = upstream(provider, policy)
@@ -518,7 +527,9 @@ class RunNetwork:
                 net.relay = relay.ProviderRelay(
                     target, keyed, proxy=proxy, tls=tls, client=client,
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record, route=provider,
-                    login="key" if keyed else "none").start()
+                    login="key" if keyed else "none",
+                    sources={sentinels[n]: "saved_key" if n == net.stored_key_variable else export_source(n)
+                             for n in relayed_names if values[n]}).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
                 if net.key_relayed:
                     net.key_source = "stored OpenCode login" if net.stored_key_variable else "environment"
@@ -575,7 +586,9 @@ class RunNetwork:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
                     served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener,
-                                                 tls=tls, client=client, record=record, route=provider, login="key")
+                                                 tls=tls, client=client, record=record, route=provider, login="key",
+                                                 sources={token: export_source(PROVIDER_KEY_ENV[provider])
+                                                          if PROVIDER_KEY_ENV[provider] in names else "saved_key"})
                 else:
                     net.login_sentinels[provider] = token
                     try:  # what the login holds now, for the leak check; one already expired has nothing to leak
@@ -585,6 +598,7 @@ class RunNetwork:
                     served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
                                                  resolve=functools.partial(_grant, token, resolve), record=record,
                                                  route=provider, login="oauth", issued=(token,),
+                                                 sources={token: "saved_oauth"},
                                                  login_headers=tuple(login.LOGIN_HEADERS.get(provider, {})))
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
@@ -652,6 +666,36 @@ class RunNetwork:
         """The provider variables whose value appears in any of ``texts`` (the harness's environment and configuration,
         say): F28 §3.6, row 6. Names only."""
         return sorted(n for n, v in self._values.items() if v and any(v in t for t in texts))
+
+    def record_credential_check(self, directory: Path, env: Mapping[str, str], config: str, *,
+                                gate_matches: list[str]) -> None:
+        """Snapshot each selected source and its known value's matches before launching the sandboxed process."""
+        from aew.harness import runlog
+        from aew.util import atomic_write, utc_now
+
+        variables = {sentinel: name for name, sentinel in self.sentinels.items()}
+        variables.update({sentinel: f"{provider} login" for provider, sentinel in self.login_sentinels.items()})
+        providers = []
+        services = [service for _, service in self.relays.values()]
+        if self.relay is not None:
+            services.append(self.relay)
+        for service in services:
+            sources = []
+            for sentinel, source in service.sources.items():
+                value = self._values.get(variables.get(sentinel, ""))
+                matches = sum(value in v for v in env.values()) if value else None
+                sources.append({"source": source, "env_matches": matches,
+                                "config_match": (value in config) if value else None})
+            destination = f"{service.upstream.host}:{service.upstream.port}"
+            providers.append({"provider": service.route, "destination": destination,
+                              "sources": sources, "certificate": client_cert.public_snapshot(service.client)
+                              if service.client is not None else None})
+        if providers:
+            record = {"at": utc_now(), "providers": providers, "launch_check": "failed" if gate_matches else "passed"}
+            try:
+                atomic_write(directory / runlog.RELAY_CREDENTIAL_CHECK, json.dumps(record) + "\n")
+            except OSError:
+                pass  # telemetry: a missing check is unknown to the reader; the launch gate still decides
 
     def provider_base(self, upstream_path: str | None = None) -> str | None:
         """The harness's provider ``baseURL``: the relay's loopback port inside, with the upstream's path."""

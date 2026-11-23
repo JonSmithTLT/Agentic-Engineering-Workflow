@@ -200,18 +200,30 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             used = memory_used()
             if used is not None:
                 peak = max(used, peak or 0)
-            snapshot(root, seen=snapshots_seen)
+            if not interrupted:
+                snapshot(root, seen=snapshots_seen)
             cutoff_reached = time.time() >= cutoff
             if not interrupted and not cutoff_reached:
                 monitor.poll()
             if interrupted or cutoff_reached:
+                before_signal = interrupted and sys.platform == "linux" and os.name != "nt"
                 if interrupted:
                     at = time.time()
-                    for worker in worker_evidence.workers(root):
-                        worker_evidence.record(root, worker, "interrupted", at)
+                    active = list(worker_evidence.workers(root))
+                    if before_signal and active:
+                        alive = {worker.identity: proctree.same(worker.identity) for worker in active}
+                        if not stacks_ablated():
+                            worker_evidence.capture(root, active, attach, reason="warning", allowed=scope())
+                        for worker in active:
+                            worker_evidence.record(root, worker, "interrupted", time.time(),
+                                                   collect_at=at, alive_when_observed=alive[worker.identity])
+                    else:
+                        for worker in active:
+                            worker_evidence.record(root, worker, "interrupted", at)
                     with contextlib.suppress(OSError):
                         child.send_signal(signal.Signals[interrupted[0]])
-                snapshot(root, all_workers=True)
+                if not before_signal:
+                    snapshot(root, all_workers=True)
                 exit_code = 128 + signal.Signals[interrupted[0]] if interrupted else SUPERVISOR_CUTOFF_EXIT
                 if not interrupted:
                     for directory, _ in identities(root):

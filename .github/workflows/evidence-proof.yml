@@ -121,7 +121,7 @@ jobs:
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
-            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
+            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (matrix.os == 'ubuntu-24.04' && matrix.kind == 'cancel' && '-n 4 --dist worksteal --max-worker-restart 0' || contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
             tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || 'deaths.py' }} --lane integration
             ${{ matrix.ablate == 'verbosity' && '-o verbosity_assertions=0' || '' }}
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}

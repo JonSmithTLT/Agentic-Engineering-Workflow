@@ -200,10 +200,20 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
         at = time.time()
         elapsed = time.monotonic() - worker.began
         result = attach(worker.pid)
-        if result is None:
+        if result is None and reason != "warning":
             return None
         # A sample straddling a test boundary has no trustworthy node label.
         if worker not in workers(root) or not proctree.same(worker.identity):
+            return None
+        if result is None:
+            path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
+            with contextlib.suppress(OSError):
+                if is_link(root):
+                    return None
+                path.parent.mkdir(exist_ok=True)
+                if not is_link(path.parent):
+                    with path.open("x", encoding="utf-8") as stream:
+                        stream.write(f"evidence defect: py-spy unavailable for {worker.node}\n")
             return None
         with contextlib.suppress(OSError):
             if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):

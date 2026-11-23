@@ -16,7 +16,7 @@ from pathlib import Path
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
 from evidence_files import FRAME, entries, state
-from evidence_problems import evidence_problems
+from evidence_problems import evidence_problems, test_frame
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
 STATE_TWINS = {
@@ -196,6 +196,20 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: s
                 for path in root.rglob(glob)]
     if not observed or any(type(row.get("alive_when_observed")) is not bool for row in observed):
         return ["plant misfired: no live/dead identity observed during cancellation"]
+    if platform == "Linux":
+        registered = {(int(pid.read_text()), int(pid.with_name(pid.name.replace("-pid.", "-start.")).read_text()))
+                      for pid in root.rglob("worker-gw*-pid.txt")}
+        interrupted = [row for row in observed if row.get("kind") == "interrupted" and row["alive_when_observed"]]
+        if len(registered) != 4 or registered != {(row["pid"], row["start"]) for row in interrupted}:
+            return ["Linux: cancellation did not observe all four registered workers alive"]
+        for row in interrupted:
+            captures = ((sample, frames) for path in root.rglob(f"snapshots/{row['pid']}.txt")
+                        for sample, frames in entries(path.read_text()))
+            if not any(sample.get("reason") == "warning" and sample.get("pid") == row["pid"]
+                       and sample.get("start") == row["start"] and sample.get("node") == row["node"]
+                       and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]
+                       and test_frame(row["node"], frames) for sample, frames in captures):
+                return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"]
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
         ended = trigger_at or ready.get("completed_at")

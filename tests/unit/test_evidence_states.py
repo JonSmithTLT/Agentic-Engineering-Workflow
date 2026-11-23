@@ -601,6 +601,76 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert record["step_signal"] == ["SIGTERM"]
 
 
+@pytest.mark.parametrize("fault", [None, "unavailable", "changed-node", "support-frame", "lost-record"])
+def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):
+    import signal
+    import sys
+    import threading
+
+    lane = _load("lane_step")
+    verify = _load("verify_evidence")
+    ev = lane.worker_evidence
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    pids = list(range(101, 105))
+    participants = {pid: (pid, pid * 2) for pid in pids}
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+    for index, (pid, birth) in enumerate(participants.values()):
+        (session / f"worker-gw{index}-pid.txt").write_text(str(pid))
+        (session / f"worker-gw{index}-start.txt").write_text(str(birth))
+        (tmp_path / f"hang-gw{index}-{pid}.txt").write_text(
+            guard._header(SimpleNamespace(nodeid=f"tests/test_a.py::test_case[{pid}]")))
+
+    handlers = {}
+    signals = []
+    together = threading.Barrier(4)
+
+    def attach(pid):
+        assert not signals
+        together.wait(timeout=2)
+        if pid == pids[0]:
+            if fault == "unavailable":
+                return None
+            if fault == "changed-node":
+                (tmp_path / f"hang-gw0-{pid}.txt").write_text(
+                    guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_next")))
+            if fault == "support-frame":
+                return "unelevated", "    support (tests/helpers/support.py:4)"
+        return "unelevated", "    test_case (tests/test_a.py:4)"
+
+    def deliver(signum):
+        assert len(list(session.glob("interrupted-*.txt"))) == 4
+        signals.append(signum)
+
+    process = SimpleNamespace(poll=lambda: None, send_signal=deliver, kill=lambda: None, wait=lambda **_: None)
+    monkeypatch.setattr(lane, "sys", SimpleNamespace(platform="linux", stdout=sys.stdout, stderr=sys.stderr))
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane.proctree, "identity", lambda pid: (pid, 1))
+    monkeypatch.setattr(lane.proctree, "table", lambda: {})
+    monkeypatch.setattr(lane.proctree, "descendants", lambda *_: [SimpleNamespace(identity=i)
+                                                                 for i in participants.values()])
+    monkeypatch.setattr(lane.proctree, "same", lambda identity: identity in participants.values())
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", lambda *_args, **_kw: handlers[signal.SIGTERM](signal.SIGTERM, None))
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane, "memory_used", lambda: None)
+    monkeypatch.setattr(lane, "attach", attach)
+    monkeypatch.setattr(ev, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 143
+    assert signals == [signal.SIGTERM]
+    if fault == "lost-record":
+        (session / "interrupted-101.txt").unlink()
+    failures = verify.observe_cancel(tmp_path, "Linux", [])
+    if fault == "lost-record":
+        assert failures == ["Linux: cancellation did not observe all four registered workers alive"]
+    elif fault:
+        assert failures == ["Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]"]
+    else:
+        assert failures == []
+    assert (tmp_path / "snapshots/101-unavailable.txt").exists() == (fault == "unavailable")
+
+
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):
     import json
 

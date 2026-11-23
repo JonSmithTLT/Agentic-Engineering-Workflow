@@ -51,6 +51,9 @@ def target_run(repo, workflow, parent, head, branch, title):
 
 
 def verify_pretrigger(directory, attempt, trigger_at):
+    linux = directory / f"plant-Linux-cancel-none-attempt-{attempt}"
+    if problems := observe_cancel(linux, "Linux", []):
+        raise RuntimeError(str(problems))
     windows = directory / f"plant-Windows-cancel-none-attempt-{attempt}"
     problems = observe_cancel(windows, "Windows", [], trigger_at=trigger_at)
     if problems:

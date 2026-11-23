@@ -139,6 +139,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
 - `local/harness/lead/xdg-state/opencode/model.json`
   - `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.write_text)
+- `local/harness/runs`, named by `aew.harness.runlog:RUNS_REL`
+  - `aew.harness.doctor_relay:lead_rows` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}`
   - `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/.aew-mask`
@@ -751,6 +753,13 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 ## Writes this reading could not place
 
+- `aew.capability.bind:_write_entry` (direct: Path.unlink): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry` (direct: Path.write_bytes): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry` (direct: os.replace): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:_write_entry` (direct: os.symlink): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place` (direct: Path.mkdir): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place` (direct: Path.write_bytes): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.capability.bind:place` (direct: shutil.rmtree): the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.capability.payload:discard` (direct: shutil.rmtree): `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.payload:install` (direct: Path.mkdir): `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.payload:install` (direct: Path.unlink): `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -774,12 +783,16 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.check_changes:remove_copy.writable` (direct: os.rmdir): `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:remove_copy.writable` (direct: os.unlink): `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:run_once` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
-- `aew.harness.containment.layout:for_run` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
+- `aew.harness.containment.layout:for_run` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:for_run` (direct: Path.write_bytes): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:private_git` (direct: Path.mkdir): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:private_git` (direct: shutil.copy2): the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree): the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.probe:_markers` (direct: Path.mkdir): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers` (direct: Path.write_bytes): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_self_test` (direct: Path.rmdir): a loop variable over `markers`, a list this reading cannot read
-- `aew.harness.containment.probe:_self_test` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow
-- `aew.harness.containment.probe:_self_test` (direct: Path.write_text): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.containment.probe:_self_test` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
+- `aew.harness.containment.probe:_self_test` (direct: Path.write_text): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.probe:new_sentinel` (direct: Path.write_bytes): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.shim:start_server` (direct: open): `serve['log']`, from a value that is not a dict literal
 - `aew.harness.containment.shim:start_server` (direct: os.open): a relative path, `{}.tmp`, with no root this reading can name
@@ -802,6 +815,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.login:StoredLogin._deciding_row` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:surviving_login_providers` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:worker_keys` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live` (direct: Path.unlink): a loop variable over `files`, a list this reading cannot read
 - `aew.harness.runlog:_open_append` (direct: os.open): `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds

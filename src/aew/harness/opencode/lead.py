@@ -582,6 +582,20 @@ class StartStages:
         log.debug("aew opencode: start stage %s took %.3f s", stage, self.seconds[stage])
 
 
+def establish_layout(engine: Any, policy: dict[str, Any] | None, run_dir: Path, *,
+                     terminal: list[int] | None, bridge_dir: str | None = None,
+                     bridge: str | None = None) -> tuple[Any, dict[str, Any]]:
+    """Build and self-test the contained Lead's layout, including the relayed-terminal check."""
+    from aew.harness import containment
+    from aew.harness.containment import egress
+
+    project = str(engine.repo_root)
+    return containment.establish(
+        role="lead", scope="project", workspace=project, run_dir=run_dir, scratch=str(run_dir / "scratch"),
+        bridge_dir=bridge_dir, policy=policy, project=project, bridge=bridge, egress_policy=egress.AnyPublic(),
+        state_dir=str(engine.aew_root / LEAD_DIR), relayed_terminal={"forbid": terminal})
+
+
 class LeadProviders:
     """The provider routes of a contained Lead. Doctor checks the default start (no explicit provider variables)."""
 
@@ -759,7 +773,7 @@ class ContainedLead(LeadProviders):
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
         from aew.harness import containment, runlog, weaker_register
-        from aew.harness.containment import client_cert, egress, netns, relay
+        from aew.harness.containment import client_cert, netns, relay
 
         engine = self.engine
         self.stages.mark("seat")
@@ -771,10 +785,8 @@ class ContainedLead(LeadProviders):
                  "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
         policy, _ = engine.execution_policy()
         project = str(engine.repo_root)
-        layout, label = containment.establish(
-            role="lead", scope="project", workspace=project, run_dir=run_dir, scratch=str(run_dir / "scratch"),
-            bridge_dir=bridge_dir, policy=policy, project=project, bridge=child_env.get(lead_broker.ENV_ENDPOINT),
-            egress_policy=egress.AnyPublic(), state_dir=str(state), relayed_terminal={"forbid": self.terminal})
+        layout, label = establish_layout(engine, policy, run_dir, terminal=self.terminal,
+                                         bridge_dir=bridge_dir, bridge=child_env.get(lead_broker.ENV_ENDPOINT))
         self.stages.mark("sandbox")
         label["session"] = run_dir.name
         label["start_s"] = self.stages.seconds  # the stages to come are added in place, before the label is recorded

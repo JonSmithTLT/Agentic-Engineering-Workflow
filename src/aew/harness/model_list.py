@@ -63,7 +63,6 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
     read: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
     waited: dict[tuple[str, str, str], str] = {}  # the sources a read waited on for nothing, by the profile that waited
     probes: dict[tuple[str, str, str], doctor_relay.WorkerProbe] = {}
-    providers: set[str] = set()
     for name in sorted(policy["profiles"]):
         try:
             pin = X.resolve(policy, sha, archetype=ROLE, card_id=None, risk_class=None, request={"profile": name},
@@ -77,7 +76,6 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
             continue
         source = (str(pin["harness"]), str(pin["provider"]), pin.get("credential", "api_key"))
         provider = str(pin["provider"])
-        providers.add(provider)
         probe = None
         if source not in probes:
             route = f"worker profile {name} ({provider}, {source[2]})"
@@ -110,8 +108,7 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
                    + (f" ({'; '.join(f for f in found if f)})" if any(found) else ""))
     else:
         row = _row("PASS", "; ".join(found))
-    return [*([row] if found or problems or unread else []), *(p.row for p in probes.values()),
-            *doctor_relay.lead_rows(policy, providers)]
+    return [*([row] if found or problems or unread else []), *(p.row for p in probes.values())]
 
 
 def _judge(name: str, pin: dict[str, Any], listing: dict[str, Any], when: str, problems: list[str]) -> str:

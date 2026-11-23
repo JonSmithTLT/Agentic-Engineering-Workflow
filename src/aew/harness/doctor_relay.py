@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import http.client
 import os
+import sqlite3
+import tempfile
 import time
-from contextlib import closing
+from contextlib import ExitStack, closing
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from aew.errors import AEWError
-from aew.harness.containment import client_cert, netns, relay
-from aew.harness.containment.layout import Layout
+from aew.harness import containment, runlog
+from aew.harness.containment import netns, relay
 from aew.harness.opencode import capabilities, lead, login
 from aew.harness.opencode.client import UnixConnection
 
@@ -82,33 +85,50 @@ class WorkerProbe:
                                                              else "no known provider key"), until=until)
 
 
-def lead_rows(policy: dict[str, Any], providers: set[str]) -> list[dict[str, str]]:
-    """Check the default contained Lead's login for the project's providers, independently of worker login policy."""
-    if not providers or not lead.contained_here() or netns.mode(policy) != netns.PROXY_ONLY:
-        return []
-    eligible = providers.intersection(netns.PROVIDER_KEY_ENV.keys() | client_cert.configured(policy).keys())
-    eligible.difference_update(netns.CATALOG_ADDRESSED)
-    if not eligible:
+def lead_rows(engine: Any) -> list[dict[str, str]]:
+    """Check the routes a default contained Lead would open, independently of worker profiles."""
+    policy, _ = engine.execution_policy()
+    if not lead.contained_here() or netns.mode(policy) != netns.PROXY_ONLY:
         return []
     chosen = lead.LeadProviders(policy, [], os.environ)
-    keys = {p: chosen.keys[p] for p in providers & chosen.keys.keys()}
-    refreshing = {p: login.StoredLogin(p, os.environ) for p in providers & chosen.refreshing.keys()}
-    keyless = providers & chosen.certified.keys()
-    routes = sorted({*keys, *refreshing, *keyless})
-    absent = [result(f"default Lead {p}", "WARN", "no login or client certificate selected for this relay")
-              for p in sorted(eligible.difference(routes))]
+    routes = sorted({*chosen.keys, *chosen.refreshing, *chosen.certified})
     if not routes:
-        return absent
-    # Only the relay runs. No Lead seat, terminal, session, or sandbox process is needed for this request.
+        return []
+    state = engine.aew_root / lead.LEAD_DIR
     try:
-        layout = Layout(role="lead", access="read", bwrap="", writable=(), readonly=(),
-                        network=netns.PROXY_ONLY, net_dir=netns.private_dir())
-        network = netns.RunNetwork.start_lead(layout, keys=keys, provider_env=[], policy=policy, env=os.environ,
-                                              refreshing=refreshing, keyless=keyless)
-    except (AEWError, OSError, ValueError):
-        return [*absent, *(result(f"default Lead {p}", "WARN", "provider relay unavailable") for p in routes)]
+        surviving = login.surviving_login_providers(state / login.STORE_REL, state)
+    except (AEWError, OSError, sqlite3.Error, ValueError):
+        return [result(f"default Lead {p}", "WARN", "could not verify logins in the project's OpenCode store")
+                for p in routes]
+    # An OAuth route seeds its own active row. On the other routes a surviving project login may override the key.
+    conflicts = surviving.difference(chosen.refreshing).intersection(routes)
+    rows = [result(f"default Lead {p}", "WARN", "the project's OpenCode store has its own login; "
+                   "the credential a launch would send could not be verified") for p in sorted(conflicts)]
+    routes = [p for p in routes if p not in conflicts]
+    if not routes:
+        return rows
+    keys = {p: chosen.keys[p] for p in routes if p in chosen.keys}
+    refreshing = {p: login.StoredLogin(p, os.environ) for p in routes if p in chosen.refreshing}
+    keyless = [p for p in routes if p in chosen.certified]
     sources = {**dict.fromkeys(keys, "saved OpenCode API key"), **dict.fromkeys(refreshing, "saved plan login"),
                **dict.fromkeys(keyless, "client certificate")}
-    with closing(network):
-        return absent + [request(network, p, route=f"default Lead {p}", source=sources[p],
-                                 until=time.monotonic() + relay.HEAD_TIMEOUT) for p in routes]
+    try:
+        parent = engine.aew_root / runlog.RUNS_REL
+        parent.mkdir(parents=True, exist_ok=True)
+        with ExitStack() as stack:
+            run_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="doctor-lead-", dir=parent)))
+            stack.callback(containment.retire_private_git, run_dir)
+            layout, _ = lead.establish_layout(engine, policy, run_dir,
+                                              terminal=lead._launching_terminal() if os.isatty(0) else None)
+            if layout is None or not layout.private_network:
+                return rows + [result(f"default Lead {p}", "WARN", "no provider relay on the Lead's launch route")
+                               for p in routes]
+            network = netns.RunNetwork.start_lead(layout, keys=keys, provider_env=[], policy=policy,
+                                                  env=os.environ, refreshing=refreshing, keyless=keyless)
+            stack.callback(network.close)
+            rows.extend(request(network, p, route=f"default Lead {p}", source=sources[p],
+                                until=time.monotonic() + relay.HEAD_TIMEOUT) for p in routes)
+    except (AEWError, OSError, ValueError):
+        rows.extend(result(f"default Lead {p}", "WARN", "the Lead's provider relay could not be established")
+                    for p in routes)
+    return rows

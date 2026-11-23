@@ -39,6 +39,7 @@ None.
 - `aew.g3standing`
 - `aew.harness.check_changes`
 - `aew.harness.containment.netns`
+- `aew.harness.doctor_relay`
 - `aew.harness.model_list`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`
@@ -1514,14 +1515,14 @@ None.
 ### `aew.harness.doctor_relay`
 
 - `aew.errors`
-- `aew.harness.containment.client_cert`
-- `aew.harness.containment.layout`
+- `aew.harness.containment`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.relay`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
 - `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`
+- `aew.harness.runlog`
 
 ### `aew.harness.event_spool`
 

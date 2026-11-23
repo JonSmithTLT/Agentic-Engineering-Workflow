@@ -12,17 +12,18 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from cancel_evidence import attach_reasons, valid
 from evidence_problems import evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from flake_register import _gh_read, _pages  # noqa: E402
+from flake_register import _api, _gh_read, _pages, _started_pytest, check_annotations  # noqa: E402
 
 
 def hosted_step_timeout(repo: str, job: dict) -> bool:
     if not job.get("check_run_url"):
         return False
     ident = int(job["check_run_url"].split("/")[-1])
-    for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"):
+    for row in check_annotations(repo, ident):
         message = row.get("message") or ""
         if re.fullmatch(r"The action .+ has timed out after [0-9]+ minutes?\.", message):
             return True
@@ -33,7 +34,31 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
     return False
 
 
-def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None) -> list[str]:
+def bundle_prefix(name):
+    return name.removeprefix("lane-report-").removesuffix("-running").removesuffix("-watchdog")
+
+
+def job_digest(directory):
+    digest = directory / "job-label-sha256.txt"
+    if digest.is_file():
+        try:
+            value = digest.read_text(encoding="ascii").strip()
+            if re.fullmatch(r"[0-9a-f]{64}", value):
+                return value
+        except (OSError, ValueError):
+            pass
+    for metadata in directory.glob("runner-resources-*.txt"):
+        try:
+            data = json.loads(metadata.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("job_label"), str) and data["job_label"]:
+                return hashlib.sha256(data["job_label"].encode()).hexdigest()
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
+               score_rows: list | None = None) -> list[str]:
     defects = []
 
     def report(rule: str, detail: str) -> None:
@@ -52,32 +77,41 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
         conclusion = job.get("conclusion")
         if conclusion in {"skipped", None} or (conclusion == "success" and not include_success):
             continue
-        found = []
-        for path in root.iterdir() if root.is_dir() else ():
-            labels = []
-            for record in path.glob("runner-resources-*.txt"):
-                try:
-                    data = json.loads(record.read_text())
-                    if isinstance(data, dict):
-                        labels.append(data.get("job_label"))
-                except (ValueError, OSError):
-                    continue
-            digest = path / "job-label-sha256.txt"
-            named = digest.is_file() and digest.read_text().strip() == hashlib.sha256(job["name"].encode()).hexdigest()
-            if job["name"] in labels or named:
-                found.append(path)
-        for path in list(found):
-            if path.name.endswith("-running"):
-                found.extend(sibling for sibling in root.glob(path.name.removesuffix("-running") + "*")
-                             if sibling not in found)
+        first_defect = len(defects)
+        reason = job.get("cancel_reason")
+        row = {"job": job.get("id"), "name": job["name"], "kind": conclusion, "A1": "n/a", "A2": "n/a",
+               "failed_nodes": [], "cancel_reason": reason, "started_at": job.get("started_at")}
+        if score_rows is not None:
+            score_rows.append(row)
+        archives = list(root.iterdir()) if root.is_dir() else []
+        digest = hashlib.sha256(job["name"].encode()).hexdigest()
+        prefixes = {bundle_prefix(path.name) for path in archives if job_digest(path) == digest}
+        found = [path for path in archives if bundle_prefix(path.name) in prefixes]
         started = bool(found) or any(
             step.get("started_at") and step.get("conclusion") != "skipped"
             and any(pattern.fullmatch(step["name"]) for pattern in patterns)
             for step in job.get("steps", []))
+        steps = job.get("steps", [])
+        executed = [s for s in steps if s.get("conclusion") != "skipped"]
+        started |= bool(executed) and _started_pytest(executed)
+        superseded = valid(reason) and reason["kind"] == "superseded"
+        cancelled_as = (f"superseded (by run {reason['run']})" if superseded
+                        else "manual/API cancel" if valid(reason) else "cancel")
         if not started:
+            if conclusion == "cancelled":
+                ran_steps = any(step.get("started_at") and step.get("conclusion") != "skipped" for step in steps)
+                row["kind"] = (cancelled_as if ran_steps else "superseded-before-start" if superseded
+                               else "cancelled-before-start")
+                if not valid(reason):
+                    report("cancel-reason", "no verified reason for a cancellation before the lane started")
+            elif conclusion in {"failure", "timed_out"}:
+                row["kind"] = "before-test"
+            row["missing"] = defects[first_defect:]
             continue
         if not found:
             report("job-evidence", "no published evidence")
+            row.update(kind=cancelled_as if conclusion == "cancelled" else "unclassified",
+                       A1="n/a" if conclusion == "cancelled" else "no", A2="no", missing=defects[first_defect:])
             continue
         # Priority and full bundles are each checked; names in either can identify a running test.
         with tempfile.TemporaryDirectory() as temporary:
@@ -88,23 +122,18 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             # A valid collection error in one invocation cannot explain an unrelated command's interrupt.
 
             def invocation(path, directory=merged):
-                return path.relative_to(directory).parts[0].removesuffix("-running").removesuffix("-watchdog")
+                return bundle_prefix(path.relative_to(directory).parts[0])
 
             failed_phase = re.compile(r"(?m)^.*?\[\S+ pid [0-9]+\] (.+): failed in (setup|call|teardown|collect)$")
             observed = set()
-            for reason in (*merged.rglob("reason.txt"), *merged.rglob("reason.collect.*.txt")):
-                for node, phase in failed_phase.findall(reason.read_text(encoding="utf-8")):
-                    observed.add((invocation(reason), node, phase))
+            for breadcrumb in (*merged.rglob("reason.txt"), *merged.rglob("reason.collect.*.txt")):
+                for node, phase in failed_phase.findall(breadcrumb.read_text(encoding="utf-8")):
+                    observed.add((invocation(breadcrumb), node, phase))
             recorded = set()
             collection_exits = set()
             report_exits = []
-            for bundle in found:
-                if not bundle.name.endswith("-running"):
-                    continue
-                name = bundle.name.removesuffix("-running")
+            for name in prefixes:
                 lane_report = root / ("lane-report-" + name)
-                if lane_report.is_dir() and (lane_report / "inventory.txt").exists():
-                    shutil.copytree(lane_report, merged / lane_report.name, dirs_exist_ok=True)
                 for path in lane_report.rglob("*.json"):
                     if not report_json(path.relative_to(lane_report)):
                         continue
@@ -117,8 +146,10 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     results = doc.get("results")
                     phases = {(name, node, record["phase"]) for node, result in
                               (results.items() if isinstance(results, dict) else ()) if isinstance(result, dict)
+                              and result.get("outcome") in ("failed", "error")
                               and isinstance(result.get("failures"), list) for record in result["failures"]
-                              if isinstance(record, dict) and isinstance(record.get("phase"), str)}
+                              if isinstance(record, dict)
+                              and record.get("phase") in ("collect", "setup", "call", "teardown")}
                     recorded.update(phases)
                     # Serial pytest returns INTERRUPTED (2) for an ordinary collection error.
                     if (doc["exitstatus"] == 2 and doc.get("complete") is True
@@ -132,7 +163,13 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             command_exits = []
             abnormal_command = False
             for path in merged.rglob("runner-resources-*-exit.txt"):
-                record = json.loads(path.read_text())
+                try:
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    record = None
+                if not isinstance(record, dict):
+                    report("job-evidence", "unreadable command exit record")
+                    continue
                 code = record.get("lane_exit", record.get("command_exit"))
                 command_exits.append(code)
                 if code not in (0, 1) and not (code == 2 and invocation(path) in collection_exits):
@@ -160,7 +197,20 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             if died and kind is None and conclusion != "cancelled":
                 report("job-kind", "death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
-                merged, kind=kind, require_stacks=died and kind in {"deadline", "time-limit"}))
+                merged, kind=kind, require_stacks=died and kind in {"deadline", "time-limit"},
+                cancel_reason=reason))
+            missing = defects[first_defect:]
+            nodes = sorted({node for _, node, _ in recorded | observed})
+            row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
+                           else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
+            row["failed_nodes"] = nodes
+            if nodes or not kind and conclusion == "failure":
+                incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))
+                                 for problem in missing)
+                row["A1"] = "yes" if nodes and not incomplete else "no"
+            if kind or died:
+                row["A2"] = "no" if any("[failure-" not in p for p in missing) else "yes"
+            row["missing"] = missing
     return defects
 
 
@@ -169,8 +219,25 @@ def main(root: Path) -> int:
     run = os.environ["GITHUB_RUN_ID"]
     attempt = os.environ["GITHUB_RUN_ATTEMPT"]
     jobs = list(_pages(repo, f"actions/runs/{run}/attempts/{attempt}/jobs?per_page=100", "jobs"))
-    problems = check_jobs(root, jobs, timeout_observation=lambda job: hosted_step_timeout(repo, job))
+    current = _api(repo, f"actions/runs/{run}")
+    attach_reasons(repo, current, jobs)
+    rows = []
+    problems = check_jobs(root, jobs, score_rows=rows, timeout_observation=lambda job: hosted_step_timeout(repo, job))
     text = "\n".join(problems) or "Published evidence states match their recorded contents."
+    for row in rows:
+        reason = row.get("cancel_reason") or {}
+        if reason:
+            text += f"\nJob {row['job']}: {row['kind']}; cancel_reason={json.dumps(reason)}"
+    if current.get("event") == "pull_request":
+        from record_cancel_evidence import predecessor
+
+        if not current.get("pull_requests") and os.environ.get("GITHUB_EVENT_PATH"):
+            event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+            if isinstance(event.get("number"), int):
+                current["pull_requests"] = [{"number": event["number"]}]
+        previous = predecessor(repo, current)
+        if previous:
+            text += f"\nSuperseded predecessor: run {previous['id']} at {previous['head_sha']} ({previous['event']})."
     payload = {"name": "evidence", "head_sha": os.environ["EVIDENCE_HEAD"], "status": "completed",
                "conclusion": "failure" if problems else "success",
                "output": {"title": f"{len(problems)} evidence defects", "summary": text}}

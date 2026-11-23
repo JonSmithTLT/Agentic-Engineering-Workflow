@@ -285,6 +285,10 @@ def main(argv: list[str]) -> int:
         worker_evidence.record_oom(args.root)
         worker_evidence.controller_loss(args.root)
         collect(args.root)
+        if cancelled:
+            from cancel_evidence import collect_reason
+
+            collect_reason(args.root, metadata["job_label"])
         print(f"evidence timing collect {time.monotonic() - started:.3f}s")
         return 0
     cutoff = float(os.environ["AEW_JOB_DEADLINE"]) + CUTOFF_GRACE_S

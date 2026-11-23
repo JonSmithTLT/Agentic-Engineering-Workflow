@@ -15,6 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/helpers"))
 from session_deadline import SENTINEL_READY_S  # noqa: E402
 
 
+def ready_job(target, jobs, delay):
+    job = next((job for job in jobs if job["name"] == target), None)
+    if job:
+        if job.get("conclusion"):
+            raise RuntimeError("cancellation target finished before its replacement queued")
+        step = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), None)
+        if step and step.get("started_at"):
+            started = datetime.fromisoformat(step["started_at"].replace("Z", "+00:00")).timestamp()
+            if time.time() - started >= delay:
+                return job
+    return None
+
+
 def main(runner: str) -> None:
     target = f"plant ({runner}, cancel, none)"
     endpoint = (f"actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/"
@@ -22,17 +35,9 @@ def main(runner: str) -> None:
     until = time.monotonic() + 600  # inside this polling job's 12-minute bound, including setup and one API timeout
     while time.monotonic() < until:
         jobs = list(_pages(os.environ["GITHUB_REPOSITORY"], endpoint, "jobs"))
-        job = next((job for job in jobs if job["name"] == target), None)
-        if job:
-            if job.get("conclusion"):
-                raise SystemExit("plant misfired: cancellation target finished before its replacement queued")
-            step = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), None)
-            if step and step.get("started_at"):
-                started = datetime.fromisoformat(step["started_at"].replace("Z", "+00:00")).timestamp()
-                # Poll throughout the session-start allowance. The downloaded names must still prove a test started.
-                if time.time() - started >= SENTINEL_READY_S:
-                    print("The cancellation target entered its lane; queue its concurrency replacement.")
-                    return
+        if ready_job(target, jobs, SENTINEL_READY_S):
+            print("The cancellation target entered its lane; queue its concurrency replacement.")
+            return
         time.sleep(2)
     raise SystemExit("plant did not start before the cancellation poll expired")
 

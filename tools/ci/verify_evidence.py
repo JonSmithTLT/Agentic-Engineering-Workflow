@@ -13,6 +13,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
 from evidence_files import FRAME, entries, state
 from evidence_problems import evidence_problems
@@ -30,7 +31,7 @@ JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ab
 OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
                "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
                "missing-counter": "oom-event", "missing-peak": "pressure", "wrong-bundle": "file-class",
-               "live": "live-stack"}
+               "live": "live-stack", "annotations-off": "cancel-reason"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
 FAILURE_TWINS = {"invalid-json": "failure-report", "missing-exception": "failure-text",
                  "missing-result": "failure-report"}
@@ -57,6 +58,14 @@ def github_jobs() -> list[dict]:
         if ", time-limit-github," not in job["name"]:
             continue
         job["step_timeout"] = hosted_step_timeout(os.environ["GITHUB_REPOSITORY"], job)
+    if any(job["conclusion"] == "cancelled" and ", cancel," in job["name"] for job in jobs):
+        from flake_register import _api
+
+        repo = os.environ["GITHUB_REPOSITORY"]
+        run = _api(repo, f"actions/runs/{os.environ['GITHUB_RUN_ID']}")
+        for job in jobs:
+            if job["conclusion"] == "cancelled" and ", cancel," in job["name"]:
+                job["cancel_reason"] = observe(repo, run, job, jobs)
     return jobs
 
 
@@ -182,14 +191,14 @@ def abrupt_twins(root: Path, kind: str, job: dict) -> list[str]:
     return failures
 
 
-def observe_cancel(root: Path, platform: str, jobs: list[dict]) -> list[str]:
+def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: str | None = None) -> list[str]:
     observed = [json.loads(path.read_text()) for glob in ("cancelled-*.txt", "interrupted-*.txt")
                 for path in root.rglob(glob)]
     if not observed or any(type(row.get("alive_when_observed")) is not bool for row in observed):
         return ["plant misfired: no live/dead identity observed during cancellation"]
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
-        ended = ready.get("completed_at")
+        ended = trigger_at or ready.get("completed_at")
         if not ended:
             return ["plant misfired: cancellation poll did not finish"]
         # Queueing starts after this job completes, giving a conservative server-side lower bound on cancel time.
@@ -345,7 +354,8 @@ def main(root: Path) -> int:
                 shutil.copytree(path, merged / path.name)
             needs_stack = kind in {"deadline", "time-limit", "hang", "failure-in-death"}
             cause = "deadline" if kind == "failure-in-death" else ABRUPT.get(kind, kind)
-            defects = evidence_problems(merged, kind=cause, require_stacks=needs_stack)
+            reason = job.get("cancel_reason")
+            defects = evidence_problems(merged, kind=cause, require_stacks=needs_stack, cancel_reason=reason)
             expected_rules = PLANTED.get(ablate, set())
             if rule_ids(defects) != expected_rules:
                 failures.append(f"{job['name']}: checker expected {sorted(expected_rules)}, found {defects}")
@@ -372,6 +382,14 @@ def main(root: Path) -> int:
                     failures.append(f"{job['name']}: GitHub did not report its own step timeout")
             if kind == "cancel":
                 failures += [f"{job['name']}: {why}" for why in observe_cancel(merged, platform, jobs)]
+                if not list(merged.rglob(REASON_FILE)):
+                    failures.append(f"{job['name']}: cleanup wrote no cancellation observation")
+                if (not reason or reason.get("kind") != "superseded"
+                        or reason.get("run") != int(os.environ["GITHUB_RUN_ID"])
+                        or reason.get("head_sha") != os.environ["GITHUB_SHA"]):
+                    failures.append(f"{job['name']}: no attribution to the actual concurrency replacement")
+                failures.extend(expect_rule("annotations-off", OTHER_TWINS["annotations-off"],
+                                            check_jobs(merged, [{**job, "cancel_reason": None}])))
             if kind in {"worker-kill", "oom"} and ablate == "none":
                 failures.extend(abrupt_twins(merged, ABRUPT[kind], job))
             if kind == "normal":

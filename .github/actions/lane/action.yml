@@ -71,6 +71,14 @@ runs:
         AEW_LANE_RECOVERY_OUTCOME: ${{ inputs.recovery-outcome }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
       run: python tools/ci/lane_step.py --collect --root "$SOURCE"
+    - name: Read the hosted cancellation annotation after cleanup
+      if: always() && (cancelled() || inputs.recovery-outcome == 'cancelled' || steps.pytest.outcome == 'cancelled')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE: ${{ inputs.source }}
+        JOB_LABEL: ${{ inputs.job-label }}
+      run: python tools/ci/cancel_evidence.py "$SOURCE" "$JOB_LABEL"
     - name: Prepare owned evidence inputs
       if: always()
       shell: bash

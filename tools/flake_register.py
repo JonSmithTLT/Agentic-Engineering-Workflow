@@ -55,7 +55,7 @@ CHECK_DETAILS = """query($ids: [ID!]!) {
     ... on CheckRun {
       id
       steps(first: 40) { pageInfo { hasNextPage } nodes { name startedAt } }
-      annotations(first: 12) { pageInfo { hasNextPage } nodes { message } }
+      annotations(first: 12) { pageInfo { hasNextPage } nodes { message path } }
     }
   }
 }"""
@@ -290,7 +290,7 @@ def check_base(base_ref: str, current: dict[str, Any]) -> None:
     validate_history(load_register(git("show", f"{base}:{REGISTER}"), source), current)
 
 
-def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]]]:
+def index_sightings(data: bytes, run: int, *, recorder: bool = False) -> Iterable[tuple[str, dict[str, Any]]]:
     if len(data) > MAX_INDEX_BYTES:
         raise InvalidRegister("oversized flake sighting index archive")
     try:
@@ -303,6 +303,10 @@ def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]
     if not isinstance(rows, list):
         raise InvalidRegister("flake sighting index must contain a list")
     for row in rows:
+        if recorder and isinstance(row, dict):
+            # Only a trusted default-branch recorder may bind the index to the canceled source run.
+            row = row.copy()
+            run = row.pop("source_run", None)
         if (not isinstance(row, dict) or not {"entry", "job", "at"} <= row.keys()
                 or row.keys() - {"entry", "job", "at", "observation"}
                 or not isinstance(row["entry"], str) or not IDENTIFIER.fullmatch(row["entry"])):
@@ -362,7 +366,11 @@ def session_sightings(doc: dict[str, Any], runs: Iterable[dict[str, Any]],
             if not matched or not job.get("started_at") or not _started_pytest(job.get("steps") or []):
                 continue
             notes = annotations(job["id"]) if cancelled else []
-            if session_problem(run, job, notes, now):
+            from ci.cancel_evidence import priority_group
+
+            # The node index already retains genuine test failures, including a failure before cancellation.
+            # A superseding job is observable in annotations and is not a new hung-session sighting.
+            if not priority_group(notes) and session_problem(run, job, notes, now):
                 for entry in matched:
                     yield entry["id"], {"run": run["id"], "job": job["id"], "at": job["started_at"]}
 
@@ -401,8 +409,29 @@ def _api(repo: str, endpoint: str, *flags: str) -> Any:
 
 
 def _pages(repo: str, endpoint: str, key: str | None = None) -> Iterable[dict[str, Any]]:
-    for page in _api(repo, endpoint, "--paginate", "--slurp"):
+    try:
+        pages = _api(repo, endpoint, "--paginate", "--slurp")
+    except subprocess.CalledProcessError as exc:
+        if b"unknown flag: --slurp" not in (exc.stderr or b""):
+            raise
+        # Older gh versions emit one JSON document for each page, separated by whitespace.
+        data = _gh_read("--paginate", f"repos/{repo}/{endpoint}").decode()
+        decoder = json.JSONDecoder()
+        pages = []
+        offset = 0
+        while offset < len(data):
+            if data[offset].isspace():
+                offset += 1
+                continue
+            page, offset = decoder.raw_decode(data, offset)
+            pages.append(page)
+    for page in pages:
         yield from page[key] if key else page
+
+
+def check_annotations(repo: str, job: int) -> list[dict[str, Any]]:
+    """Read every annotation for a GitHub Actions job's check run."""
+    return list(_pages(repo, f"check-runs/{job}/annotations?per_page=100"))
 
 
 def _own_ci_run(repo: str, run: dict[str, Any]) -> bool:
@@ -420,7 +449,7 @@ def recent_index_sightings(
     repo: str, cutoff: datetime, warn: Callable[[str], None] = _index_warning,
 ) -> Iterable[tuple[str, dict[str, Any]]]:
     # GitHub filters exact names, and pages can contain out-of-order timestamps.
-    trusted: dict[int, bool] = {}
+    trusted: dict[int, str | None] = {}
     for artifact in _pages(repo, f"actions/artifacts?per_page=100&name={INDEX_ARTIFACT}", "artifacts"):
         if artifact["expired"] or _time(artifact["created_at"]) < cutoff:
             continue
@@ -430,14 +459,19 @@ def recent_index_sightings(
             warn("Skipped a flake sighting index with invalid artifact or run metadata.")
             continue
         if run not in trusted:
-            trusted[run] = _own_ci_run(repo, _api(repo, f"actions/runs/{run}"))
+            producer = _api(repo, f"actions/runs/{run}")
+            recorder = (producer.get("path") == ".github/workflows/evidence-cancel-record.yml"
+                        and producer.get("event") == "workflow_run" and producer.get("head_branch") == "main"
+                        and all((producer.get(k) or {}).get("full_name", "").casefold() == repo.casefold()
+                                for k in ("repository", "head_repository")))
+            trusted[run] = "ci" if _own_ci_run(repo, producer) else "recorder" if recorder else None
         if not trusted[run]:
             continue
         try:
             if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
                 raise InvalidRegister("invalid flake sighting index size")
             data = _gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip")
-            rows = list(index_sightings(data, run))
+            rows = list(index_sightings(data, run, recorder=trusted[run] == "recorder"))
         except (ValueError, KeyError, TypeError):
             warn(f"Skipped malformed flake sighting index {artifact_id} from run {run}.")
             continue
@@ -504,9 +538,7 @@ def _github_sessions(
     notes = {job["id"]: job["annotations"] for job in check_jobs if "annotations" in job}
 
     def annotations(job: int) -> list[dict[str, Any]]:
-        if job in notes:
-            return notes[job]
-        return list(_pages(repo, f"check-runs/{job}/annotations?per_page=100"))
+        return notes[job] if job in notes else check_annotations(repo, job)
 
     yield from session_sightings(doc, runs, lambda run: jobs_by_run[run["id"]], annotations, now)
 

@@ -20,7 +20,7 @@ from test_ci_tools import ROOT, _load
 def test_recognizes_hosted_timeout_annotation(monkeypatch, message, path, level, expected):
     check = _load("check_evidence_run")
     rows = [{"message": message, "path": path, "annotation_level": level}]
-    monkeypatch.setattr(check, "_pages", lambda *_: rows)
+    monkeypatch.setattr(check, "check_annotations", lambda *_: rows)
     assert check.hosted_step_timeout("owner/repo", {"check_run_url": "https://host/123"}) is expected
 
 
@@ -138,9 +138,11 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
     import yaml
 
     proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
+    dispatch = proof[True]["workflow_dispatch"]
+    assert set(dispatch["inputs"]) == {"probe_origin", "probe_scenario", "probe_role"}
     assert proof[True] == {
         "schedule": [{"cron": "41 3 * * *"}],
-        "workflow_dispatch": None,
+        "workflow_dispatch": dispatch,
         "pull_request": {"paths": [
             ".github/actions/lane/**",
             ".github/actions/publish-evidence/**",
@@ -168,19 +170,23 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
 
     proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
     assert proof["concurrency"] == {
-        "group": "evidence-proof-${{ github.event.pull_request.number || github.ref }}",
+        "group": "${{ inputs.probe_origin && format('evidence-cancel-run-{0}-{1}', inputs.probe_origin, "
+                 "inputs.probe_scenario) || format('evidence-proof-{0}', "
+                 "github.event.pull_request.number || github.ref) }}",
         "cancel-in-progress": True,
     }
     jobs = proof["jobs"]
     matrix = jobs["plant"]["strategy"]["matrix"]
     assert "cancel" not in matrix["kind"] and all(row["kind"] != "cancel" for row in matrix["include"])
     cancel = jobs["cancel-plant"]
-    assert cancel["if"] == "github.event_name != 'pull_request'" and cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    assert cancel["if"] == ("github.event_name != 'pull_request' && "
+                            "(!inputs.probe_origin || inputs.probe_role == 'target')")
+    assert cancel["strategy"]["matrix"]["kind"] == ["cancel"]
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
         ready = f"cancel-ready-{platform}"
-        assert jobs[ready]["if"] == "github.event_name != 'pull_request'"
+        assert jobs[ready]["if"] == "github.event_name != 'pull_request' && !inputs.probe_origin"
         trigger = jobs[f"cancel-trigger-{platform}"]
         assert trigger["needs"] == ready and trigger.get("if", "success()") == "success()"
 

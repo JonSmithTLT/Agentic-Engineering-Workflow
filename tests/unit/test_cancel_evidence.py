@@ -170,6 +170,8 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
     from datetime import UTC, datetime
     from types import SimpleNamespace
 
+    import cancel_evidence_plant
+
     prove = _load("prove_cancel_evidence")
     workflow = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())
     deadline_step = next(step for step in workflow["jobs"]["cancel-plant"]["steps"]
@@ -180,8 +182,9 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
     def now():
         return sum(waits)
 
-    monkeypatch.setattr(prove, "time", SimpleNamespace(monotonic=now, time=now, sleep=waits.append))
-    start = datetime.fromtimestamp(queue_seconds, UTC).isoformat()
+    clock = SimpleNamespace(monotonic=now, time=now, sleep=waits.append)
+    monkeypatch.setattr(prove, "time", clock)
+    monkeypatch.setattr(cancel_evidence_plant, "time", clock)
 
     def jobs(repo, endpoint):
         assert endpoint == "actions/runs/42/attempts/1/jobs?per_page=100"
@@ -189,6 +192,7 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
         for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
             offset = index * (305 if outcome == "staggered" else 10)
             running = now() >= queue_seconds + offset
+            start = datetime.fromtimestamp(queue_seconds + offset, UTC).isoformat()
             rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel, none)",
                          "runner_id": 7 if running else 0,
                          "conclusion": "failure" if running and outcome == "finished" else None,
@@ -200,6 +204,7 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
     monkeypatch.setattr(prove, "_api", jobs)
     if outcome == "ready":
         assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
+        assert now() == queue_seconds + 10 + prove.SENTINEL_READY_S
     else:
         expected = {"allocation": "runner to be assigned", "finished": "target finished",
                     "staggered": "no overlapping time", "collected": "no active execution window"}[outcome]

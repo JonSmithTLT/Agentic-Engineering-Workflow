@@ -253,7 +253,12 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
                if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
     [report_upload] = [s for s in lane if str(s.get("with", {}).get("name", "")).startswith("lane-report-")]
-    assert report_upload["if"] == "always()"
+    stage = next(step for step in lane if step.get("id") == "reports")
+    assert lane.index(stage) < lane.index(report_upload)
+    assert stage["if"] == "always()"
+    assert 'stage_evidence.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-reports" --reports-only' in stage["run"]
+    assert report_upload["if"] == "always() && steps.reports.outcome == 'success'"
+    assert report_upload["with"]["path"] == "${{ runner.temp }}/${{ inputs.artifact }}-reports"
     assert report_upload["with"]["name"] == "lane-report-${{ inputs.artifact }}"
     callers = [s for name in ("core", "lanes") for s in wf["jobs"][name]["steps"]
                if s.get("uses") == "./.github/actions/lane"]

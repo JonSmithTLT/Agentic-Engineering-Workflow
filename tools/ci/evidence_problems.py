@@ -91,7 +91,8 @@ def failure_problems(path: Path, report: dict) -> list[str]:
                         defect("failure-overflow", f"{detail}: unreadable full failure file")
             # ReprFileLocation supplies a path, line and message. Some collection and native reports have just text.
             message = re.split(r":[0-9]+: ", crash, maxsplit=1)[-1].strip()
-            lines = (re.sub(r"^E\s+", "", row.strip()) for row in text.splitlines())
+            # Native exception groups indent their exception lines with one or more tree bars.
+            lines = (re.sub(r"^(?:E\s+)?(?:\|\s+)*", "", row.strip()) for row in text.splitlines())
             # Compare the actual exception line or its native file:line rendering. A class name in source code
             # (e.g. pytest.raises) does not establish the cause. Pytest can prefix rewritten asserts with the type.
             matching = any(row == message or row == "AssertionError: " + message

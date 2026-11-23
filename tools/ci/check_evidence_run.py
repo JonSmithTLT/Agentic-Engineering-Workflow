@@ -86,6 +86,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                 shutil.copytree(path, merged / path.name)
             # Keep separate invocations in the same job distinct (for example, nightly reference shards).
             # A valid collection error in one invocation cannot explain an unrelated command's interrupt.
+
             def invocation(path, directory=merged):
                 return path.relative_to(directory).parts[0].removesuffix("-running").removesuffix("-watchdog")
 

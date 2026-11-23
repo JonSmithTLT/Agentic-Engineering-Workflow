@@ -323,6 +323,35 @@ def test_teardown(cleanup): raise AssertionError("call cause")
     assert any("[job-kind]" in defect for defect in defects) == (proc.returncode == 2)
 
 
+def test_native_multi_fixture_teardown_keeps_the_exception_group_line(tmp_path):
+    from test_ci_tools import _load
+
+    root = scratch(tmp_path, {"tests/unit/test_group.py": """import pytest
+
+@pytest.fixture
+def first():
+    yield
+    raise ValueError("first cleanup failed")
+
+@pytest.fixture
+def second():
+    yield
+    raise ValueError("second cleanup failed")
+
+def test_case(first, second): pass
+"""})
+    path = tmp_path / "report.json"
+    proc = inner_pytest(root, "-p", "no:xdist", "tests/unit/test_group.py", f"--lane-report={path}")
+    assert proc.returncode == 1
+    doc = json.loads(path.read_text())
+    [failure] = doc["results"]["tests/unit/test_group.py::test_case"]["failures"]
+    assert "ExceptionGroup:" in failure["crash"] and failure["phase"] == "teardown"
+    assert all(message in failure["longrepr"] for message in ("first cleanup failed", "second cleanup failed"))
+    check = _load("evidence_problems").failure_problems
+    assert check(path, doc) == []
+    failure["longrepr"] = "with pytest.raises(ExceptionGroup):\n    compare()"
+    assert any("[failure-text]" in defect for defect in check(path, doc))
+
 
 def test_partial_lane_report_survives_controller_exit_after_a_failed_phase(tmp_path):
     root = scratch(tmp_path, {"tests/unit/test_broken.py": """

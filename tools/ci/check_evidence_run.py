@@ -99,14 +99,15 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
-            if any(re.fullmatch(r"oom-\d+", name) for name in markers):
+            if conclusion == "cancelled":
+                kind = "cancel"
+            elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
                 kind = "oom"
-            elif any(re.fullmatch(r"worker-killed-\d+", name) for name in markers) and kind is None:
+            elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
+                # The xdist down hook is an independent observation even if the attribution marker was lost.
                 kind = "worker-killed"
             elif kind is None and "abnormal-exit" in markers and 137 in command_exits:
                 kind = "sigkill"
-            elif conclusion == "cancelled":
-                kind = "cancel"
             elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):
                 # A hosted timeout needs independent runner evidence. A generic interrupt alone is ambiguous.
                 step_timed_out = any(step.get("conclusion") == "timed_out" for step in job.get("steps", []))

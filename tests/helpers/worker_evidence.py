@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -16,7 +17,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import proctree
-from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, open_observation
+from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, is_link, open_observation
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
 DROPPED = "older snapshots dropped\n"
@@ -41,12 +42,13 @@ def workers(root: Path):
     from session_deadline import marker, session_directories
 
     for directory in session_directories(root):
-        for path in directory.glob("worker-*-pid.txt"):
+        for path in (*directory.glob("worker-*-pid.txt"), marker(directory, "controller-pid")):
             try:
                 worker = path.stem.removesuffix("-pid")
                 pid = int(path.read_text().strip())
                 start = int(marker(directory, worker + "-start").read_text().strip())
-                inflight = directory.parent.parent / f"hang-{worker.removeprefix('worker-')}-{pid}.txt"
+                gateway = "main" if worker == "controller" else worker.removeprefix("worker-")
+                inflight = directory.parent.parent / f"hang-{gateway}-{pid}.txt"
                 with open_observation(inflight) as stream:
                     header = WATCHDOG_HEADER.match(stream.readline())
                 if header:
@@ -66,7 +68,7 @@ def save_sample(root: Path, worker: Worker, at: float, elapsed: float, method: s
         return False
     row = {"at": at, "utc": datetime.fromtimestamp(at, UTC).isoformat(),
            "pid": worker.pid, "start": worker.start, "node": worker.node,
-           "running_s": round(elapsed, 3), "via": method, "reason": reason}
+           "test_began": worker.began, "running_s": round(elapsed, 3), "via": method, "reason": reason}
     if os.environ.get("AEW_EVIDENCE_PLANT") in PROOF_KINDS and os.environ.get("AEW_EVIDENCE_ABLATE") == "unlabelled":
         row.pop("node")
     header = PREFIX + json.dumps(row, ensure_ascii=True) + "\n"
@@ -75,10 +77,19 @@ def save_sample(root: Path, worker: Worker, at: float, elapsed: float, method: s
     if len(body) > limit:
         body = body[:limit - 30].rsplit(b"\n", 1)[0] + b"\nremaining frames truncated\n"
     path = ring_path(root, worker)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if is_link(root):
+        return False
+    path.parent.mkdir(exist_ok=True)
+    if is_link(path.parent):
+        return False
     prior = b""
     with contextlib.suppress(FileNotFoundError):
-        with path.open("rb") as old:
+        if is_link(path) or not path.is_file():
+            return False
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        with os.fdopen(os.open(path, flags | getattr(os, "O_BINARY", 0)), "rb") as old:
+            if not stat.S_ISREG(os.fstat(old.fileno()).st_mode):
+                return False
             size = old.seek(0, os.SEEK_END)
             old.seek(max(0, size - RING_BYTES))
             prior = old.read(RING_BYTES)
@@ -99,7 +110,11 @@ def save_sample(root: Path, worker: Worker, at: float, elapsed: float, method: s
 
 def read_ring(root: Path, worker: Worker):
     try:
-        return list(entries(ring_path(root, worker).read_text(encoding="utf-8")))
+        path = ring_path(root, worker)
+        if is_link(root) or is_link(path.parent) or is_link(path) or not path.is_file():
+            return []
+        with path.open("rb") as source:
+            return list(entries(source.read(RING_BYTES).decode("utf-8", errors="replace")))
     except OSError:
         return []
 
@@ -190,8 +205,9 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
         # A sample straddling a test boundary has no trustworthy node label.
         if worker not in workers(root) or not proctree.same(worker.identity):
             return None
-        if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
-            return worker.identity
+        with contextlib.suppress(OSError):
+            if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
+                return worker.identity
         return None
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -226,20 +242,29 @@ def record_oom(root: Path) -> None:
         event = json.loads((root / "runner-resources-oom.txt").read_text())
     except (OSError, ValueError):
         return
-    crashes = (path for directory in session_directories(root) for path in directory.glob("worker-killed-*.txt"))
-    for path in crashes:
-        try:
-            fact = json.loads(path.read_text(encoding="utf-8"))
-            worker = Worker(path.parent, fact["pid"], fact["start"], fact["node"], 0, 0)
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-        # The counter covers the group, not necessarily this process. Require the worker to have been seen
-        # in that group, then associate only a contemporaneous crash; publish the strength of the attribution.
-        if ([worker.pid, worker.start] in event.get("members", []) and abs(fact["at"] - event["at"]) <= 5
-                and fact["signal"] in (None, 9)):
-            scope = ("cgroup increase and matching PID in recent kernel messages"
-                     if event["kernel_victim"] == worker.pid else "cgroup increase near worker crash")
-            record(root, worker, "oom", fact["at"], scope=scope)
+    candidates = []
+    for directory in session_directories(root):
+        for path in directory.glob("worker-killed-*.txt"):
+            try:
+                fact = json.loads(path.read_text(encoding="utf-8"))
+                if ([fact["pid"], fact["start"]] in event["members"] and abs(fact["at"] - event["at"]) <= 5
+                        and fact["signal"] in (None, 9)):
+                    candidates.append((directory, fact))
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+    victim = event.get("kernel_victim")
+    if isinstance(victim, int):
+        candidates = [(directory, row) for directory, row in candidates if row["pid"] == victim]
+    elif victim == "no matching worker":
+        return
+    # Multiple simultaneous crashes in a group cannot be assigned to one counter increment.
+    # Preserve its group event and the independent xdist crash records without guessing a victim.
+    if len(candidates) == 1:
+        directory, row = candidates[0]
+        worker = Worker(directory, row["pid"], row["start"], row["node"], 0, 0)
+        scope = ("cgroup increase and matching PID in recent kernel messages" if isinstance(victim, int)
+                 else "only observed worker crash near the cgroup increase")
+        record(root, worker, "oom", row["at"], scope=scope)
 
 
 class Monitor:

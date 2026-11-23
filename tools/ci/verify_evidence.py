@@ -115,7 +115,7 @@ def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
             shutil.copytree(root, twin)
             for path in list(twin.rglob("*.txt")):
                 if case == "kind" and (path.stem in {"session-deadline", "cutoff"} or re.fullmatch(
-                    r"(?:worker-killed|oom|interrupted|cancelled)-[0-9]+", path.stem
+                    r"(?:(?:worker-killed|oom|interrupted|cancelled)-[0-9]+|worker-gw[0-9]+-down)", path.stem
                 )):
                     path.unlink()
                 elif case == "running" and path.name.startswith(("running-", "hang-")):
@@ -149,7 +149,7 @@ def job_twins(root: Path, job: dict) -> list[str]:
                                       check_jobs(twin, [job], include_success=True))
 
 
-def abrupt_twins(root: Path, kind: str) -> list[str]:
+def abrupt_twins(root: Path, kind: str, job: dict) -> list[str]:
     failures = []
     cases = (("missing-death", "stale", "wrong-bundle") if kind == "worker-killed"
              else ("missing-counter", "missing-peak"))
@@ -175,6 +175,7 @@ def abrupt_twins(root: Path, kind: str) -> list[str]:
                         row["age_s"] = 100
                         path.write_text(json.dumps(row), encoding="utf-8")
             failures.extend(expect_rule(case, OTHER_TWINS[case], evidence_problems(twin, kind=kind)))
+            failures.extend(expect_rule(case, OTHER_TWINS[case], check_jobs(twin, [job], include_success=True)))
     return failures
 
 
@@ -227,8 +228,18 @@ def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
             failures.append(f"plant misfired: external worker exit was not observed: {crashes}")
         if kind == "oom" and not list(root.rglob("runner-resources-high-water.txt")):
             failures.append("plant misfired: no observed high-water crossing")
-    if kind == "time-limit-github" and any(root.rglob("cutoff.txt")):
-        failures.append("plant misfired: supervisor cutoff preempted the hosted deadline")
+    if kind == "time-limit-github":
+        if any(root.rglob("cutoff.txt")) or any(root.rglob("session-deadline.txt")):
+            failures.append("plant misfired: a local deadline preempted the hosted deadline")
+        serial = False
+        for observation in (*root.rglob("interrupted-*.txt"), *root.rglob("cancelled-*.txt")):
+            row = json.loads(observation.read_text())
+            controller = observation.parent / "controller-pid.txt"
+            birth = observation.parent / "controller-start.txt"
+            if controller.is_file() and birth.is_file():
+                serial |= (row["pid"], row["start"]) == (int(controller.read_text()), int(birth.read_text()))
+        if not serial:
+            failures.append("plant misfired: no observation of the active no-xdist controller")
     if kind == "normal" and platform == "Linux":
         probes = [p.read_text(encoding="utf-8").strip() for p in root.rglob("runner-resources-attachment.txt")]
         if len(probes) != 1 or probes[0] not in {"unelevated", "sudo -n"}:
@@ -247,9 +258,15 @@ def main(root: Path) -> int:
         runner, kind, ablate = match.groups()
         platform = "Windows" if runner == "windows-latest" else "Linux"
         prefix = f"plant-{platform}-{kind}-{ablate}-attempt-{os.environ['GITHUB_RUN_ATTEMPT']}"
-        paths = [path for path in root.iterdir() if path.name in {
-            prefix, prefix + "-running", prefix + "-watchdog", "lane-report-" + prefix,
-        }]
+        prefixes = {prefix, prefix + "-recovered"}
+        names = {name for attempt in prefixes for name in (attempt, attempt + "-running", attempt + "-watchdog",
+                                                           "lane-report-" + attempt)}
+        paths = [path for path in root.iterdir() if path.name in names]
+        recovered = any(path.name == prefix + "-recovered" for path in paths)
+        if kind == "time-limit-github" and not recovered:
+            failures.append(f"{job['name']}: evidence was not published by the post-timeout recovery step")
+        if kind not in {"time-limit-github", "cancel"} and recovered:
+            failures.append(f"{job['name']}: completed lane unexpectedly required recovery")
         target = "GitHub timed execution" if kind == "time-limit-github" else "Real planted lane"
         lane_step = next((step for step in job.get("steps", []) if step["name"] == target), None)
         if not paths or not lane_step or not lane_step.get("started_at"):
@@ -282,7 +299,7 @@ def main(root: Path) -> int:
             if kind == "cancel":
                 failures += [f"{job['name']}: {why}" for why in observe_cancel(merged, platform, jobs)]
             if kind in {"worker-kill", "oom"} and ablate == "none":
-                failures.extend(abrupt_twins(merged, ABRUPT[kind]))
+                failures.extend(abrupt_twins(merged, ABRUPT[kind], job))
             if kind == "normal":
                 failures.extend(checker_twins(merged))
             elif needs_stack and ablate == "none":
@@ -297,9 +314,11 @@ def main(root: Path) -> int:
                                 for path in merged.rglob(target) for row in [json.loads(path.read_text())])
                 if live_seen:
                     failures.extend(expect_rule(job["name"], OTHER_TWINS["live"], evidence_problems(merged, kind=kind)))
-                (merged / "cutoff.txt").write_text("step cutoff\n", encoding="utf-8")
-                twin = evidence_problems(merged, kind=kind)
-                failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], twin))
+                for competing in ("cutoff", "session-deadline"):
+                    marker = next(merged.glob("*-watchdog")) / f"{competing}.txt"
+                    marker.write_text("competing deadline\n", encoding="utf-8")
+                    failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], check_jobs(merged, [job])))
+                    marker.unlink()
             rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
     expected_count = 21 if os.environ["GITHUB_EVENT_NAME"] == "pull_request" else 23
     if len(rows) != expected_count:

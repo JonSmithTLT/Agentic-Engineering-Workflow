@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
 import time
@@ -16,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
 from bounds import EVIDENCE_SCAN_S  # noqa: E402
-from evidence_files import owner, publishable, state  # noqa: E402
+from evidence_files import is_link, owner, publishable, state  # noqa: E402
 
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
@@ -31,12 +30,6 @@ def visible(part: str) -> str:
         return part
     digest = hashlib.sha256(part.encode()).hexdigest()[:12]
     return f"file-{digest}-{re.sub(r'[^A-Za-z0-9_.-]', '_', part)[-90:]}"
-
-
-def is_link(path: Path) -> bool:
-    info = path.lstat()
-    return stat.S_ISLNK(info.st_mode) or bool(
-        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 @dataclass(frozen=True)

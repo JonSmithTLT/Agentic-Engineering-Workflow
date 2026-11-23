@@ -1,0 +1,27 @@
+name: Recover evidence after an interrupted lane action
+description: Collect remaining identities and run the same scanned publication in a new bounded step.
+inputs:
+  source:
+    required: true
+    description: Original evidence directory
+  artifact:
+    required: true
+    description: Original attempt-specific artifact prefix
+  job-label:
+    required: true
+    description: Original hosted job name
+  outcome:
+    required: true
+    description: Actual outcome of the interrupted action
+runs:
+  using: composite
+  steps:
+    - name: Finish the original lane
+      if: always()
+      uses: ./.github/actions/lane
+      with:
+        source: ${{ inputs.source }}
+        job-label: ${{ inputs.job-label }}
+        artifact: ${{ inputs.artifact }}-recovered
+        recovery-outcome: ${{ inputs.outcome }}
+        command: ':'

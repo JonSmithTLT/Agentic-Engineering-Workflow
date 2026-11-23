@@ -637,5 +637,5 @@ def test_the_evidence_proof_oom_skip_matches_the_hosted_matrix():
     jobs = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())["jobs"]
     matrix = jobs["plant"]["strategy"]["matrix"]
     assert "oom" in pins["win32"] and "cgroup" in pins["win32"]["oom"]
-    assert '"oom"' not in matrix["kind"]
+    assert 'oom' not in matrix["kind"]
     assert {row["os"] for row in matrix["include"] if row["kind"] == "oom"} == {"ubuntu-24.04"}

@@ -112,6 +112,21 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 records[(int(row["pid"]), int(row["start"]))] = row
             except (ValueError, KeyError, TypeError):
                 report("death-record", f"{path.name}: unreadable worker identity")
+        if kind in {"worker-killed", "oom"}:
+            for down in (p for p in files if re.fullmatch(r"worker-gw[0-9]+-down", p.stem)):
+                gateway = down.stem.removesuffix("-down")
+                workers = list(down.parent.glob(f"session-*/{gateway}-pid.txt"))
+                attributed = False
+                for pid_file in workers:
+                    try:
+                        pid = int(texts[pid_file])
+                        birth = int(texts[pid_file.with_name(gateway + "-start.txt")])
+                        crash = json.loads(texts[pid_file.with_name(f"worker-killed-{pid}.txt")])
+                        attributed |= (crash["pid"], crash["start"]) == (pid, birth)
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                if not attributed:
+                    report("death-record", f"{down.name}: no matching xdist worker-crash identity")
         if not records:
             report("death-record", f"{kind}: no pre-cleanup worker observation")
         for (pid, start), row in records.items():
@@ -165,8 +180,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                         for sample, frames in entries(text)) for worker in peak["top_workers"]
                 ):
                     report("pressure", "observed high-water crossing has no RSS list or pressure sample")
-    if kind == "cancel" and any(path.stem == "cutoff" for path in files):
-        report("false-cutoff", "cancel: cutoff marker claimed during the planted cancellation")
+    if kind == "cancel" and any(path.stem in {"cutoff", "session-deadline"} for path in files):
+        report("false-cutoff", "cancel: a local cutoff or session deadline also fired")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
         expected = {"deadline": {"session-deadline"}, "time-limit": {"cutoff"},
@@ -174,11 +189,22 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
         if expected and not names.intersection(expected):
             report("kind", f"{kind}: missing kind marker")
     running = set()
+    current = {}
+    births = set()
     for path, text in texts.items():
+        ident = re.fullmatch(r"(worker-gw[0-9]+|controller)-pid", path.stem)
+        if ident:
+            try:
+                births.add((int(text), int(texts[path.with_name(ident[1] + "-start.txt")])))
+            except (KeyError, ValueError):
+                pass
         if path.name.startswith("hang-"):
             match = WATCHDOG_HEADER.match(text)
             if match:
                 running.add(match[1])
+                ident = re.fullmatch(r"hang-(?:main|gw[0-9]+)-([0-9]+)", path.stem)
+                if ident:
+                    current[int(ident[1])] = (match[1], float(match[4]))
         elif path.name.startswith("running-"):
             running.update(text.splitlines())
     if require_stacks or kind in {"cancel", "sigkill", "deadline", "time-limit", "hang"}:
@@ -192,13 +218,15 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
             for path, text in texts.items():
                 if PREFIX in text:
                     for sample, frames in entries(text):
-                        if sample.get("node", "").split("[", 1)[0] != node.split("[", 1)[0]:
+                        pid, birth = sample.get("pid"), sample.get("start")
+                        watched = current.get(pid)
+                        if (not watched or (pid, birth) not in births or sample.get("reason") != "warning"
+                                or sample.get("node") != watched[0] or sample.get("test_began") != watched[1]
+                                or node not in {watched[0], watched[0].split("[", 1)[0]}):
                             continue
-                        for frame in FRAME.finditer(frames):
-                            file = frame.group("file") or frame.group("spy_file")
-                            called = frame.group("function") or frame.group("spy_function")
-                            if ("/" + file.replace("\\", "/")).endswith("/" + source) and called == function:
-                                matched = True
+                        if test_frame(watched[0], frames):
+                            matched = True
+                            break
                     if matched:
                         break
                     continue

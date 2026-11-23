@@ -269,7 +269,7 @@ def main(argv: list[str]) -> int:
         (args.root / "runner-resources-job.txt").write_text(json.dumps(metadata) + "\n", encoding="utf-8")
         cancelled = (metadata["job_status_at_collect"] == "cancelled"
                      or os.environ.get("AEW_PYTEST_OUTCOME") == "cancelled")
-        step_ended = os.environ.get("AEW_HOSTED_TIMED_STEP_OUTCOME") in {"failure", "cancelled"}
+        step_ended = os.environ.get("AEW_LANE_RECOVERY_OUTCOME") in {"failure", "cancelled"}
         if cancelled or step_ended:
             active = list(worker_evidence.workers(args.root))
             at = time.time()

@@ -125,6 +125,7 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
         "pull_request": {"paths": [
             ".github/actions/lane/**",
             ".github/actions/publish-evidence/**",
+            ".github/actions/recover-lane/**",
             ".github/workflows/evidence-*.yml",
             "tests/helpers/watchdog.py",
             "tests/helpers/session_deadline.py",
@@ -149,12 +150,11 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     }
     jobs = proof["jobs"]
     matrix = jobs["plant"]["strategy"]["matrix"]
-    assert matrix["kind"] == (
-        "${{ fromJSON(github.event_name != 'pull_request' && "
-        """'["normal","deadline","time-limit","hang","worker-kill","time-limit-github","cancel"]' || """
-        """'["normal","deadline","time-limit","hang","worker-kill","time-limit-github"]') }}"""
-    )
-    assert all(row["kind"] != "cancel" for row in matrix["include"])
+    assert "cancel" not in matrix["kind"] and all(row["kind"] != "cancel" for row in matrix["include"])
+    cancel = jobs["cancel-plant"]
+    assert cancel["if"] == "github.event_name != 'pull_request'" and cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    assert cancel["steps"] == jobs["plant"]["steps"]
+    assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
         ready = f"cancel-ready-{platform}"
         assert jobs[ready]["if"] == "github.event_name != 'pull_request'"
@@ -563,3 +563,104 @@ def test_final_cgroup_read_keeps_a_kill_between_the_last_poll_and_exit(tmp_path,
     event = json.loads((tmp_path / "runner-resources-oom.txt").read_text())
     assert (event["oom_kill_before"], event["oom_kill_after"], event["members"]) == (0, 1, [[123, 456]])
     assert event["kernel_victim"] == "unavailable"
+
+
+def test_no_xdist_controller_is_the_worker_only_while_its_own_watchdog_is_active(tmp_path):
+    import os
+
+    import proctree
+    import worker_evidence as ev
+
+    pid, birth = proctree.identity(os.getpid())
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    for name, value in [("controller-pid", pid), ("controller-start", birth),
+                        ("sentinel-pid", pid + 1), ("sentinel-start", birth + 1)]:
+        (directory / f"{name}.txt").write_text(str(value))
+    assert list(ev.workers(tmp_path)) == []
+    node = "tests/test_a.py::test_wait[serial]"
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_args: str(tmp_path)), 10)
+    (tmp_path / f"hang-main-{pid}.txt").write_text(guard._header(SimpleNamespace(nodeid=node)))
+    [serial] = ev.workers(tmp_path)
+    assert serial.identity == (pid, birth) and serial.node == node
+
+
+@pytest.mark.parametrize("victim,expected", [(101, {101}), ("unavailable", set()), ("no matching worker", set())])
+def test_one_cgroup_increase_does_not_label_a_second_simultaneous_crash(tmp_path, victim, expected):
+    import json
+
+    import worker_evidence as ev
+
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    for pid in (101, 202):
+        worker = ev.Worker(directory, pid, 23, f"tests/test_a.py::test_case[{pid}]", 0, 0)
+        ev.record(tmp_path, worker, "worker-killed", 10, signal=9)
+    event = {"at": 10, "members": [[101, 23], [202, 23]], "oom_kill_before": 0, "oom_kill_after": 1,
+             "kernel_victim": victim}
+    (tmp_path / "runner-resources-oom.txt").write_text(json.dumps(event))
+    ev.record_oom(tmp_path)
+    assert {int(path.stem.split("-")[1]) for path in directory.glob("oom-*.txt")} == expected
+
+
+@pytest.mark.parametrize("pid,birth,param,began,reason", [
+    (202, 12, "current", 5., "periodic"), (101, 12, "current", 5., "warning"),
+    (202, 11, "current", 5., "warning"), (202, 12, "old", 5., "warning"),
+    (202, 12, "current", 4., "warning"), (202, 12, "current", 5., "warning"),
+])
+def test_only_the_current_invocations_own_warning_sample_can_satisfy_a_deadline(tmp_path, pid, birth, param, began,
+                                                                              reason):
+    import worker_evidence as ev
+
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text("202")
+    (directory / "worker-gw0-start.txt").write_text("12")
+    (directory / "session-deadline.txt").write_text("deadline")
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_args: str(tmp_path)), 10)
+    guard.started = 5.
+    active = SimpleNamespace(nodeid="tests/test_a.py::test_a[current]")
+    (tmp_path / "hang-gw0-202.txt").write_text(guard._header(active))
+    worker = ev.Worker(directory, pid, birth, f"tests/test_a.py::test_a[{param}]", began, 10)
+    ev.save_sample(tmp_path, worker, 20, 10, "unelevated", "    test_a (tests/test_a.py:3)", reason=reason)
+    check = _load("evidence_problems").evidence_problems
+    defects = check(tmp_path, kind="deadline", require_stacks=True)
+    assert (not any("[stacks]" in row for row in defects)) == (
+        pid == 202 and birth == 12 and param == "current" and began == 5 and reason == "warning")
+
+
+def test_deployed_lanes_recover_with_the_same_inputs_in_a_separate_bounded_step():
+    import yaml
+
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        for job in yaml.safe_load(path.read_text())["jobs"].values():
+            steps = job.get("steps", [])
+            for i, lane in enumerate(steps):
+                if lane.get("uses") != "./.github/actions/lane":
+                    continue
+                if path.name == "evidence-proof.yml" and lane.get("id") != "timed":
+                    continue
+                following = steps[i + 1]
+                assert following["uses"] == "./.github/actions/recover-lane" and following["timeout-minutes"] == 11
+                for key in ("job-label", "source", "artifact"):
+                    assert following["with"][key] == lane["with"][key], (path, key)
+                assert following["if"].startswith("always() && ") and f"steps.{lane['id']}.outputs.finished" in (
+                    following["if"])
+                assert f"steps.{lane['id']}.outcome" in following["with"]["outcome"]
+
+
+def test_republishing_the_same_report_keeps_one_observation_while_different_reports_remain(tmp_path):
+    import json
+
+    reader = _load("check_assurance")
+    report = {"schema": reader.REPORT_SCHEMA, "platform": "linux", "lane": "fast", "attempt": 1, "exitstatus": 1}
+    first = tmp_path / "lane-report-example-attempt-1/fast.json"
+    second = tmp_path / "lane-report-example-attempt-1-recovered/fast.json"
+    for file in (first, second):
+        file.parent.mkdir()
+        file.write_text(json.dumps(report))
+    assert len(reader.load_reports(tmp_path)) == 1
+    second.write_text(json.dumps({**report, "exitstatus": 2}))
+    assert len(reader.load_reports(tmp_path)) == 2
+    first.unlink()
+    assert reader.load_reports(tmp_path)[0]["exitstatus"] == 2

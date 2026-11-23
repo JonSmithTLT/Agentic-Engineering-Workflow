@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,9 +13,14 @@ from pathlib import Path
 @dataclass(frozen=True)
 class FileFamily:
     pattern: str
-    writer: str
+    writer: str | None
     scanned: bool = False
-    priority: bool = False
+    priority: bool | Callable[[Path], bool] = False
+    stack: bool = False
+
+
+def autopsy_priority(path: Path) -> bool:
+    return any(p.startswith("session-") for p in path.parts) or path.name.startswith(("reason", "stacks"))
 
 
 # Ordered like the writers: a watchdog or running name keeps its owner even in a nested session.
@@ -26,7 +32,8 @@ FAMILIES = (
     FileFamily("running-*.tmp", "watchdog"),
     FileFamily("collection-incomplete.txt", "evidence_inputs"),
     FileFamily("tools-unavailable.txt", "evidence_inputs"),
-    FileFamily("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder", scanned=True),
+    FileFamily("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder",
+               scanned=True, priority=autopsy_priority),
     FileFamily("harness-runs/**", "harness_diagnostics", scanned=True),
     FileFamily("snapshots/*.txt", "lane_step", scanned=True, priority=True),
     FileFamily("runner-resources-*.txt", "lane_step", scanned=True, priority=True),
@@ -36,6 +43,12 @@ FAMILIES = (
     FileFamily("junit.xml", "pytest", scanned=True),
     FileFamily("vertical-summary.txt", "vertical", scanned=True),
     FileFamily("dispatch.txt", "flake-dispatch", scanned=True),
+    # Shape-only selectors preserve priority staging even for an unknown writer; full publication checks ownership.
+    FileFamily("hang-*", None, priority=True, stack=True),
+    FileFamily("stacks.*", None, priority=True, stack=True),
+    FileFamily("*-stacks*", None, priority=True, stack=True),
+    FileFamily("snapshots/**", None, scanned=True, priority=True, stack=True),
+    FileFamily("runner-resources-*", None, priority=True),
 )
 WATCHDOG_PREFIX = "aew hang watchdog: "
 ARMED_NOTE = "a dump below records a fire"
@@ -96,7 +109,7 @@ def families(path: Path):
 
 
 def owner(path: Path) -> str | None:
-    return next((family.writer for family in families(path)), None)
+    return next((family.writer for family in families(path) if family.writer), None)
 
 
 def publishable(path: Path) -> bool:
@@ -106,13 +119,11 @@ def publishable(path: Path) -> bool:
 
 
 def stack_file(path: Path) -> bool:
-    return path.name.startswith(("hang-", "stacks.")) or "-stacks" in path.name or "snapshots" in path.parts
+    return any(family.stack for family in families(path))
 
 
 def priority(path: Path) -> bool:
-    return (any(family.priority for family in families(path)) or stack_file(path)
-            or ("autopsy" in path.parts and (any(p.startswith("session-") for p in path.parts)
-                                            or path.name.startswith(("reason", "stacks")))))
+    return any(family.priority(path) if callable(family.priority) else family.priority for family in families(path))
 
 
 def state(path: Path, data: bytes) -> str:

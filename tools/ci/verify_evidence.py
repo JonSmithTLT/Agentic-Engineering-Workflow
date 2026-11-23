@@ -29,7 +29,7 @@ DEATH_TWINS = {"stacks": "stacks", "kind": "kind", "running": "running", "runnin
 JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ablation": "job-ablation"}
 OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
                "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
-               "missing-counter": "oom-event", "wrong-bundle": "file-class"}
+               "missing-counter": "oom-event", "wrong-bundle": "file-class", "live": "live-stack"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
 PLANTED = {"stacks": {"stacks"}, "unlabelled": {"snapshot-label"}, "trigger": {"pressure"},
            "ring": {"snapshot", "snapshot-label", "snapshot-age"}}
@@ -113,7 +113,9 @@ def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
             twin = Path(temporary) / "twin"
             shutil.copytree(root, twin)
             for path in list(twin.rglob("*.txt")):
-                if case == "kind" and path.stem in {"session-deadline", "cutoff"}:
+                if case == "kind" and (path.stem in {"session-deadline", "cutoff"} or re.fullmatch(
+                    r"(?:worker-killed|oom|interrupted|cancelled)-[0-9]+", path.stem
+                )):
                     path.unlink()
                 elif case == "running" and path.name.startswith(("running-", "hang-")):
                     path.unlink()
@@ -188,8 +190,12 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict]) -> list[str]:
         for row in observed:
             samples = [sample for path in root.rglob(f"snapshots/{row['pid']}.txt")
                        for sample, _ in entries(path.read_text()) if sample.get("start") == row["start"]]
-            if not any(sample.get("node") and 0 <= before - sample["at"] <= 60 for sample in samples):
+            earlier = [sample for sample in samples if sample.get("node") and 0 <= before - sample["at"] <= 60]
+            if not earlier:
                 return ["Windows: no labelled worker sample predating the cancellation trigger"]
+            sample = max(earlier, key=lambda entry: entry["at"])
+            print(f"Windows worker {row['pid']} sample {sample['node']} UTC {sample['utc']} predates "
+                  f"the cancellation trigger's lower bound {ended} by {before - sample['at']:.3f}s.")
     return []
 
 
@@ -257,8 +263,6 @@ def main(root: Path) -> int:
                 failures.append(f"{job['name']}: checker expected {sorted(expected_rules)}, found {defects}")
             gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS or kind in ABRUPT)
             expected_rules = expected_rules | ({"job-ablation"} if ablate in PLANTED else set())
-            if kind == "sigkill":
-                expected_rules.add("job-kind")  # the unwarned death's classifier lands separately
             if rule_ids(gate) != expected_rules:
                 failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
             expected = "cancelled" if kind == "cancel" else "success"
@@ -283,6 +287,13 @@ def main(root: Path) -> int:
                 if kind == "deadline":
                     failures.extend(job_twins(merged, job))
             elif kind == "cancel":
+                for path in merged.rglob("snapshots/*.txt"):
+                    text = path.read_text().replace('"reason": "warning"', '"reason": "periodic"')
+                    path.write_text(text.replace('"reason": "cancel collection"', '"reason": "periodic"'))
+                live_seen = any(row.get("alive_when_observed") for target in ("cancelled-*.txt", "interrupted-*.txt")
+                                for path in merged.rglob(target) for row in [json.loads(path.read_text())])
+                if live_seen:
+                    failures.extend(expect_rule(job["name"], OTHER_TWINS["live"], evidence_problems(merged, kind=kind)))
                 (merged / "cutoff.txt").write_text("step cutoff\n", encoding="utf-8")
                 twin = evidence_problems(merged, kind=kind)
                 failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], twin))

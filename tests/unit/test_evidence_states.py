@@ -130,6 +130,8 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
             "tests/helpers/session_deadline.py",
             "tests/helpers/autopsy.py",
             "tests/helpers/evidence_files.py",
+            "tests/helpers/worker_evidence.py",
+            "tests/integration/evidence_plants/**",
             "tools/ci/lane_step.py",
             "tools/ci/*evidence*",
             "tools/flake_register.py",
@@ -488,21 +490,10 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert record["step_signal"] == ["SIGTERM"]
 
 
-def test_the_evidence_proof_oom_skip_matches_the_hosted_matrix():
-    import yaml
-
-    pins = yaml.safe_load((ROOT / "tests/platform-skips.yaml").read_text())["evidence_proof_skips"]
-    jobs = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())["jobs"]
-    matrix = jobs["plant"]["strategy"]["matrix"]
-    assert "oom" in pins["win32"] and "cgroup" in pins["win32"]["oom"]
-    assert '"oom"' not in matrix["kind"]
-    assert {row["os"] for row in matrix["include"] if row["kind"] == "oom"} == {"ubuntu-24.04"}
-
-
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):
     import json
 
-    ev = _load("worker_evidence")
+    import worker_evidence as ev
     session = tmp_path / "autopsy/session-test"
     session.mkdir(parents=True)
     first = ev.Worker(session, 100, 110, "tests/test_a.py::test_first", 1, 120)

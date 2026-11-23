@@ -17,12 +17,11 @@ from threading import Thread
 from typing import BinaryIO
 from uuid import uuid4
 
-import worker_evidence
-
 HELPERS = Path(__file__).resolve().parents[2] / "tests" / "helpers"
 sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
+import worker_evidence  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
 from evidence_files import open_observation, stacks_ablated  # noqa: E402
 from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
@@ -183,6 +182,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     peak = memory_used()
     snapshots_seen: set[tuple[int, str]] = set()
     lane_exit = None
+
     def scope():
         if job:
             return {p.identity for p in job.members(command_lines=False)}
@@ -238,7 +238,8 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     finally:
         if relay is not None:
             relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
-        worker_evidence.record_crashes(root)
+        monitor.poll(final=True)
+        worker_evidence.record_oom(root)
         record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -266,7 +267,10 @@ def main(argv: list[str]) -> int:
         metadata = {"job_label": os.environ.get("AEW_LANE_JOB_LABEL", ""),
                     "job_status_at_collect": os.environ.get("AEW_LANE_JOB_STATUS", "unknown")}
         (args.root / "runner-resources-job.txt").write_text(json.dumps(metadata) + "\n", encoding="utf-8")
-        if metadata["job_status_at_collect"] == "cancelled" or os.environ.get("AEW_PYTEST_OUTCOME") == "cancelled":
+        cancelled = (metadata["job_status_at_collect"] == "cancelled"
+                     or os.environ.get("AEW_PYTEST_OUTCOME") == "cancelled")
+        step_ended = os.environ.get("AEW_HOSTED_TIMED_STEP_OUTCOME") in {"failure", "cancelled"}
+        if cancelled or step_ended:
             active = list(worker_evidence.workers(args.root))
             at = time.time()
             # Only attach to a live worker whose identity was sampled inside the supervisor's owned tree.
@@ -276,8 +280,10 @@ def main(argv: list[str]) -> int:
             worker_evidence.capture(args.root, active, lambda pid: attach(pid, allow_sudo=False),
                                     reason="cancel collection", allowed=allowed)
             for worker in active:
-                worker_evidence.record(args.root, worker, "cancelled", time.time(), collect_at=at)
-        worker_evidence.record_crashes(args.root)
+                worker_evidence.record(args.root, worker, "cancelled" if cancelled else "interrupted",
+                                       time.time(), collect_at=at)
+        worker_evidence.record_oom(args.root)
+        worker_evidence.controller_loss(args.root)
         collect(args.root)
         print(f"evidence timing collect {time.monotonic() - started:.3f}s")
         return 0

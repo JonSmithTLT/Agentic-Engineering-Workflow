@@ -14,13 +14,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/helpers"))
-import proctree  # noqa: E402
-from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, open_observation  # noqa: E402
+import proctree
+from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, open_observation
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
 DROPPED = "older snapshots dropped\n"
-PROOF_KINDS = {"worker-kill", "oom", "cancel", "time-limit-github"}
+PROOF_KINDS = {"sigkill", "worker-kill", "oom", "cancel", "time-limit-github"}
 
 
 @dataclass(frozen=True)
@@ -188,39 +187,41 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
     return captured
 
 
-def crashed(root: Path):
-    from session_deadline import marker, session_directories
-
-    for directory in session_directories(root):
-        for path in directory.glob("worker-*-crash.txt"):
-            try:
-                workerid = path.stem.removesuffix("-crash")
-                proc = int(marker(directory, workerid + "-pid").read_text().strip())
-                start = int(marker(directory, workerid + "-start").read_text().strip())
-                fact = json.loads(path.read_text(encoding="utf-8"))
-                yield Worker(directory, proc, start, fact["node"], 0, 0), fact
-            except (OSError, ValueError, KeyError):
-                continue
-
-
-def dmesg_victim() -> int | None:
+def dmesg_victim() -> int | str:
     """Only read the last kernel message and retain a numeric victim, never raw kernel lines."""
     try:
         result = subprocess.run(["dmesg", "--level=err", "--since=-1min"], capture_output=True,
                                 timeout=1, check=True)
         hits = re.findall(rb"\bKilled process (\d+) ", result.stdout)
-        return int(hits[-1]) if hits else None
+        return int(hits[-1]) if hits else "no victim reported"
     except (OSError, subprocess.SubprocessError):
-        return None
+        return "unavailable"
 
 
-def record_crashes(root: Path) -> None:
+def controller_loss(root: Path) -> None:
+    from session_deadline import ABNORMAL, marker
+
+    for worker in workers(root):
+        abnormal = marker(worker.directory, ABNORMAL)
+        if abnormal.is_file():
+            # The sentinel observes controller loss independently. 137 alone cannot identify the cause.
+            record(root, worker, "controller-lost", abnormal.stat().st_mtime, source="sentinel abnormal-exit")
+
+
+def record_oom(root: Path) -> None:
+    from session_deadline import session_directories
+
     try:
         event = json.loads((root / "runner-resources-oom.txt").read_text())
     except (OSError, ValueError):
-        event = {}
-    for worker, fact in crashed(root):
-        record(root, worker, "worker-killed", fact["at"], exit=fact["exit"], signal=fact["signal"])
+        return
+    crashes = (path for directory in session_directories(root) for path in directory.glob("worker-killed-*.txt"))
+    for path in crashes:
+        try:
+            fact = json.loads(path.read_text(encoding="utf-8"))
+            worker = Worker(path.parent, fact["pid"], fact["start"], fact["node"], 0, 0)
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
         # The counter covers the group, not necessarily this process. Require the worker to have been seen
         # in that group, then associate only a contemporaneous crash; publish the strength of the attribution.
         if ([worker.pid, worker.start] in event.get("members", []) and abs(fact["at"] - event["at"]) <= 5
@@ -248,9 +249,9 @@ class Monitor:
         self.members = set()
         self.high = False
 
-    def poll(self) -> None:
+    def poll(self, *, final: bool = False) -> None:
         now = time.monotonic()
-        if now < self.next_poll:
+        if not final and now < self.next_poll:
             return
         self.next_poll = now + 1
         reading = memory(self.group) if self.group else None
@@ -261,6 +262,8 @@ class Monitor:
             (self.root / "runner-resources-oom.txt").write_text(json.dumps(event) + "\n", encoding="utf-8")
         if reading:
             self.last_kills = reading[2]
+        if final:
+            return
         crossed = high and not self.high
         self.high = high
         if not self.periodic and not crossed:

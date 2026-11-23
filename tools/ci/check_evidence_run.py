@@ -22,7 +22,7 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
     if not job.get("check_run_url"):
         return False
     ident = int(job["check_run_url"].split("/")[-1])
-    return any(re.search(r"(?:timed? out|timeout|time limit|longer than)", row.get("message") or "", re.I)
+    return any(re.fullmatch(r"The action .+ has timed out after [0-9]+ minutes?\.", row.get("message") or "")
                for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"))
 
 
@@ -103,6 +103,8 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -
                 kind = "oom"
             elif any(re.fullmatch(r"worker-killed-\d+", name) for name in markers) and kind is None:
                 kind = "worker-killed"
+            elif kind is None and "abnormal-exit" in markers and 137 in command_exits:
+                kind = "sigkill"
             elif conclusion == "cancelled":
                 kind = "cancel"
             elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):

@@ -23,6 +23,17 @@ from evidence_files import (  # noqa: E402
 )
 
 
+def test_frame(node: str, frames: str) -> bool:
+    source, _, test = node.partition("::")
+    function = test.split("[", 1)[0].split("::")[-1]
+    for frame in FRAME.finditer(frames):
+        file = frame.group("file") or frame.group("spy_file")
+        called = frame.group("function") or frame.group("spy_function")
+        if ("/" + file.replace("\\", "/")).endswith("/" + source.replace("\\", "/")) and called == function:
+            return True
+    return False
+
+
 def rows_named(texts: dict, name: str):
     for path, text in texts.items():
         if path.name == name:
@@ -86,7 +97,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
             if (stack_file(relative) and ("every thread's stack" in text or "Timeout (" in text)
                     and not FRAME.search(text)):
                 report("false-stack", f"{relative}: stack header without stacks")
-    abrupt = {"worker-killed": "worker-killed", "oom": "oom", "cancel": "cancelled",
+    abrupt = {"sigkill": "controller-lost", "worker-killed": "worker-killed", "oom": "oom", "cancel": "cancelled",
               "time-limit-github": "interrupted"}
     if kind in abrupt:
         records = {}
@@ -120,15 +131,35 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                         and sample.get("at") == stamp and sample.get("node") == sample_node]
             if not captured:
                 report("snapshot", f"{kind} pid {pid}: no matching retained sample")
+        if kind == "cancel":
+            for path, body in texts.items():
+                if not re.fullmatch(r"(?:cancelled|interrupted)-[0-9]+", path.stem):
+                    continue
+                try:
+                    observed = json.loads(body)
+                    if not observed.get("alive_when_observed"):
+                        continue
+                    seen = observed.get("collect_at", observed["at"])
+                    stacks = (frames for ring, text in texts.items() if "snapshots" in ring.parts
+                              for sample, frames in entries(text) if sample.get("node") == observed["node"]
+                              and sample.get("pid") == observed["pid"] and sample.get("start") == observed["start"]
+                              and sample.get("reason") in {"warning", "cancel collection"}
+                              and abs(sample["at"] - seen) <= 10)
+                    if not any(test_frame(observed["node"], frames) for frames in stacks):
+                        report("live-stack", f"{path.name}: live worker lacks its interruption stack")
+                except (KeyError, TypeError, ValueError):
+                    report("death-record", f"{path.name}: unreadable live-worker observation")
         if kind == "oom":
             counters = rows_named(texts, "runner-resources-oom.txt")
             if not any(isinstance(row.get("oom_kill_before"), int) and isinstance(row.get("oom_kill_after"), int)
                        and row["oom_kill_after"] > row["oom_kill_before"] for row in counters):
                 report("oom-event", "no increase in the cgroup's oom_kill counter")
             for peak in rows_named(texts, "runner-resources-high-water.txt"):
-                if not peak.get("top_workers") or not any(
-                    sample.get("reason") == "memory pressure" for path, text in texts.items()
-                    if "snapshots" in path.parts for sample, _ in entries(text)
+                if not peak.get("top_workers") or not all(
+                    any(sample.get("reason") == "memory pressure" and sample.get("pid") == worker["pid"]
+                        and sample.get("node") == worker["node"] and test_frame(worker["node"], frames)
+                        for path, text in texts.items() if "snapshots" in path.parts
+                        for sample, frames in entries(text)) for worker in peak["top_workers"]
                 ):
                     report("pressure", "observed high-water crossing has no RSS list or pressure sample")
     if kind == "cancel" and any(path.stem == "cutoff" for path in files):

@@ -508,9 +508,18 @@ class Controller:
             return
         process = getattr(getattr(gateway, "_io", None), "popen", None)
         code = process.poll() if process is not None else None
-        fact = {"node": crashitem, "at": time.time(), "exit": code,
-                "signal": -code if isinstance(code, int) and code < 0 and os.name != "nt" else None}
-        _write(self.dir, f"worker-{workerid}-crash", json.dumps(fact) + "\n")
+        when = time.time()
+        sig = -code if isinstance(code, int) and code < 0 and os.name != "nt" else None
+        import worker_evidence
+
+        try:
+            pid = int(marker(self.dir, f"worker-{workerid}-pid").read_text())
+            start = int(marker(self.dir, f"worker-{workerid}-start").read_text())
+        except (OSError, ValueError):
+            return
+        current = worker_evidence.Worker(self.dir, pid, start, crashitem, 0, 0)
+        root = Path(os.environ.get("AEW_RUNNING_TESTS_DIR") or self.dir.parent.parent)
+        worker_evidence.record(root, current, "worker-killed", when, exit=code, signal=sig)
 
     def report_header(self) -> str:
         capped = "; capped by the CI job's deadline" if JOB_DEADLINE_ENV in self.cause else ""

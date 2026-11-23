@@ -9,6 +9,8 @@ on:
       - 'tests/helpers/session_deadline.py'
       - 'tests/helpers/autopsy.py'
       - 'tests/helpers/evidence_files.py'
+      - 'tests/helpers/worker_evidence.py'
+      - 'tests/integration/evidence_plants/**'
       - 'tools/ci/lane_step.py'
       - 'tools/ci/*evidence*'
       - 'tools/flake_register.py'
@@ -111,7 +113,8 @@ jobs:
         env:
           SOURCE: ${{ runner.temp }}/lane-reports
           AEW_LANE_JOB_LABEL: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
-          AEW_PYTEST_OUTCOME: cancelled
+          AEW_HOSTED_TIMED_STEP_OUTCOME: ${{ steps.timed.outcome }}
+          AEW_LANE_JOB_STATUS: ${{ job.status }}
         run: python tools/ci/lane_step.py --collect --root "$SOURCE"
       - name: Publish after the timed step
         timeout-minutes: 6

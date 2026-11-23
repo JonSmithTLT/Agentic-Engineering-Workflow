@@ -11,24 +11,62 @@ from pathlib import Path
 from urllib.parse import quote
 
 import yaml
-from cancel_evidence import ci_group, observe, run_jobs
+from cancel_evidence import MANUAL, ci_group, classify, observe, run_jobs
 from evidence_scorecard import format_rows, inspect_run
-from flake_register import INDEX_MEMBER, REGISTER_PATH, _api, _gh_read, _matches_session, _pages
+from flake_register import INDEX_MEMBER, REGISTER_PATH, _api, _gh_read, _matches_session, _own_ci_run, _pages
+from stage_evidence import stage
 
 
-def record(repo, run):
+def scan_details(rows):
+    """The completed-run check is public. Re-scan details derived from artifacts in the trusted recorder."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / "raw"
+        checked = Path(tmp) / "checked"
+        source.mkdir()
+        details = {}
+        for row in rows:
+            if row.get("defects"):
+                filename = f"runner-resources-defects-{int(row['job'])}.txt"
+                details[row["job"]] = filename
+                text = "\n".join(d.replace("\r", " ").replace("\n", " ")[:1500] for d in row["defects"])
+                (source / filename).write_text(text, encoding="utf-8")
+        if not details:
+            return
+        stage(source, checked)
+        for row in rows:
+            if row["job"] not in details:
+                continue
+            path = checked / details[row["job"]]
+            if path.is_file():
+                row["defects"] = path.read_text(encoding="utf-8").splitlines()
+            else:
+                row["defects"] = ["evidence defect: [scan-unavailable] defect details withheld"]
+                row["missing"].append("scan-unavailable")
+
+
+def record(repo, run, report_dir=None):
     rows = inspect_run(repo, run)
+    scan_details(rows)
     summary = format_rows(repo, rows)
     artifacts = list(_pages(repo, f"actions/runs/{run['id']}/artifacts?per_page=100", "artifacts"))
     base = f"https://github.com/{repo}/actions/runs/{run['id']}"
     summary += "\n\nRun artifacts: " + (", ".join(f"[{int(a['id'])}]({base}/artifacts/{int(a['id'])})"
                                                   for a in artifacts) or "none")
     missing = sum(bool(r["missing"]) for r in rows)
+    if not rows:
+        jobs = run_jobs(repo, run["id"], run["run_attempt"])
+        status = "Cancelled before any job was recorded" if not jobs else "No canceled job was recorded"
+        reason = classify(run, {}, [{"path": ".github", "message": MANUAL}]) if run.get("cancelled_by") else {}
+        if reason.get("actor"):
+            summary += f"\n\n{status}. {MANUAL} Actor: {reason['actor']}."
+        else:
+            summary += f"\n\n{status}. Run evidence defect: [cancel-reason] no available cancellation attribution."
+            missing += 1
     identity = f"aew-evidence-run-{run['id']}-attempt-{run['run_attempt']}"
     payload = {"name": "evidence", "head_sha": run["head_sha"], "external_id": identity, "status": "completed",
                "conclusion": "failure" if missing else "success",
                "details_url": f"https://github.com/{repo}/actions/runs/{run['id']}/attempts/{run['run_attempt']}",
-               "output": {"title": f"Canceled run {run['id']}: {len(rows)} jobs, {missing} with missing evidence",
+               "output": {"title": f"Canceled run {run['id']}: {len(rows)} red jobs, {missing} evidence gaps",
                           "summary": summary}}
     matches = [check for check in _pages(repo, f"commits/{run['head_sha']}/check-runs?check_name=evidence"
                                           "&filter=all&per_page=100", "check_runs")
@@ -41,9 +79,16 @@ def record(repo, run):
         payload.pop("head_sha")
     # Check outputs cap the summary at 65,535 characters. Retain each job via the run details link when it overflows.
     if len(summary.encode()) > 65000:
-        payload["output"]["summary"] = "\n".join(["The per-job artifact links exceeded the check summary limit.",
-                                                 *(f"Job {row['job']}: {row['kind']} A1={row['A1']} A2={row['A2']}"
-                                                   for row in rows)])
+        if report_dir is None:
+            raise ValueError("the full evidence check needs a report output directory")
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "evidence.md").write_text(summary, encoding="utf-8")
+        recorder = int(os.environ["GITHUB_RUN_ID"])
+        attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+        url = f"https://github.com/{repo}/actions/runs/{recorder}/attempts/{attempt}"
+        payload["output"]["summary"] = (
+            f"The complete scanned A3 diagnostics and job links are in the [recorder artifacts]({url}), "
+            f"under cancel-evidence-{run['id']}-attempt-{run['run_attempt']}.")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "check.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -94,16 +139,18 @@ def predecessor(repo, current):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=int, required=True)
+    parser.add_argument("--attempt", type=int, required=True)
     parser.add_argument("--index-dir", type=Path)
+    parser.add_argument("--report-dir", type=Path, required=True)
     args = parser.parse_args()
     repo = os.environ["GITHUB_REPOSITORY"]
-    run = _api(repo, f"actions/runs/{args.run}")
+    run = _api(repo, f"actions/runs/{args.run}/attempts/{args.attempt}")
     ci = run["path"] == ".github/workflows/ci.yml"
     plant = (run["path"] == ".github/workflows/evidence-proof.yml" and run["event"] == "workflow_dispatch"
              and re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", run["display_title"]))
     if run["conclusion"] == "cancelled" and (ci or plant) and run["repository"]["full_name"] == repo:
-        rows = record(repo, run)
-        if ci and args.index_dir is not None:
+        rows = record(repo, run, args.report_dir)
+        if _own_ci_run(repo, run) and args.index_dir is not None:
             record_test_sightings(args.index_dir, run, rows)
 
 

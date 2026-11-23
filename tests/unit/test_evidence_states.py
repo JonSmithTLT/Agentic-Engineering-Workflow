@@ -179,7 +179,8 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     matrix = jobs["plant"]["strategy"]["matrix"]
     assert "cancel" not in matrix["kind"] and all(row["kind"] != "cancel" for row in matrix["include"])
     cancel = jobs["cancel-plant"]
-    assert cancel["if"] == "github.event_name != 'pull_request' && !inputs.probe_origin"
+    assert cancel["if"] == ("github.event_name != 'pull_request' && "
+                            "(!inputs.probe_origin || inputs.probe_role == 'target')")
     assert cancel["strategy"]["matrix"]["kind"] == ["cancel"]
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}

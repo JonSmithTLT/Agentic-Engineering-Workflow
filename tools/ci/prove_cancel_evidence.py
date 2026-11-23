@@ -7,10 +7,10 @@ import os
 import subprocess
 import sys
 import time
-from io import BytesIO
-from zipfile import ZipFile
 
-from cancel_evidence import _api, _pages, check_annotations, classify
+from cancel_evidence import _api, _pages, classify, run_jobs
+from cancel_evidence_plant import SENTINEL_READY_S, ready_job
+from evidence_scorecard import inspect_run
 from flake_register import _gh_read
 
 
@@ -70,11 +70,11 @@ def main(scenario):
 
     def live():
         jobs = _api(repo, f"actions/runs/{ident}/jobs?per_page=100")["jobs"]
-        return next((j for j in jobs if j["name"] == "Controlled cancellation target" and any(
-            step["name"] == "Hold the synthetic target" and step["status"] == "in_progress"
-            for step in j.get("steps", []))), None)
+        active = [ready_job(f"plant ({runner}, cancel, none)", jobs, SENTINEL_READY_S)
+                  for runner in ("ubuntu-24.04", "windows-latest")]
+        return active if all(active) else None
 
-    job = poll(live, 360, "the synthetic target to publish its readiness artifact and enter its hold step")
+    targets = poll(live, 540, "both controlled pytest lanes to enter their worker sessions")
     if scenario == "manual":
         _gh_read("--method", "POST", f"repos/{repo}/actions/runs/{ident}/cancel")
         replacements = []
@@ -93,25 +93,24 @@ def main(scenario):
         return None
 
     ended = poll(finished, 360, "the target's canceled run conclusion")
-    ended_job = _api(repo, f"actions/jobs/{job['id']}")
-    notes = check_annotations(repo, ended_job["id"])
-    reason = classify(ended, ended_job, notes, replacements)
-    expected = "manual-or-api" if scenario == "manual" else "superseded"
-    if reason["kind"] != expected or (replacements and reason.get("run") != replacements[0]["id"]):
-        raise RuntimeError(f"observed reason does not establish the planted {scenario} cancellation: {reason}")
-    if classify(ended, ended_job, [], replacements)["kind"] != "unresolved":
+    ids = {job["id"] for job in targets}
+    rows = inspect_run(repo, ended, ids)
+    if {r["job"] for r in rows} != ids:
+        raise RuntimeError("the completed run did not retain both canceled target jobs")
+    for row in rows:
+        reason = row["cancel_reason"]
+        expected = "manual-or-api" if scenario == "manual" else "superseded"
+        if reason["kind"] != expected or (replacements and reason.get("run") != replacements[0]["id"]):
+            raise RuntimeError(f"completed-run discovery did not establish the planted {scenario} cancel: {reason}")
+        if scenario == "manual" and reason.get("actor") != "github-actions[bot]":
+            raise RuntimeError("the hosted manual cancellation actor is missing or incorrect")
+        if row["A2"] != "yes" or row["missing"] or not row["artifacts"]:
+            raise RuntimeError(f"target {row['job']} lacks verifiable worker evidence: {row['missing']}")
+        print(f"Canceled run {ident}, job {row['job']}, reason {json.dumps(reason)}, A2={row['A2']}, "
+              f"verified artifact IDs {row['artifacts']}.")
+    blind = classify(ended, targets[0], [], replacements, run_jobs(repo, ident, ended["run_attempt"]))
+    if blind["kind"] != "unresolved":
         raise RuntimeError("disabling the annotation fetch retained attribution")
-    records = list(_pages(repo, f"actions/runs/{ident}/artifacts?per_page=100", "artifacts"))
-    ready = next((a for a in records if a["name"] == "controlled-cancel-ready" and not a["expired"]), None)
-    if not ready or not 0 < ready["size_in_bytes"] < 4096:
-        raise RuntimeError("the canceled run has no bounded readiness artifact")
-    data = _gh_read(f"repos/{repo}/actions/artifacts/{int(ready['id'])}/zip")
-    with ZipFile(BytesIO(data)) as zipped:
-        member = "controlled-cancel-ready.txt"
-        if (zipped.namelist() != [member] or zipped.getinfo(member).file_size > 128
-                or zipped.read(member).strip() != b"Controlled cancellation target ready."):
-            raise RuntimeError("canceled run's downloaded readiness artifact did not match its controlled target")
-    print(f"Canceled run {ident}, job {ended_job['id']}, reason {json.dumps(reason)}.")
     if current["event"] == "schedule" or (current["event"] == "workflow_dispatch" and branch == "main"):
         external = f"aew-evidence-run-{ident}-attempt-{ended['run_attempt']}"
         check = poll(lambda: next((c for c in _pages(repo, f"commits/{head}/check-runs?check_name=evidence"

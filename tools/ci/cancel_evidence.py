@@ -18,6 +18,8 @@ from flake_register import CHECK_CONCURRENCY, _api, _pages, check_annotations  #
 
 PRIORITY = re.compile(r"Cancel(?:ing|ling) since a higher priority waiting request for (.+?) exists\.?")
 MANUAL = "The operation was canceled."
+LOGIN = r"[a-zA-Z0-9-]+(?:\[bot\])?"
+CANCEL_ACTOR = re.compile(rf"The run was cancel(?:ed|led) by @({LOGIN})\.")
 REASON_FILE = "runner-resources-cancel-reason.txt"
 
 
@@ -59,7 +61,7 @@ def replacement(run, group, candidates, jobs):
                 or (candidate.get("head_repository") or {}).get("id") != repository):
             continue
         if group.startswith("ci-"):
-            if run.get("event") != "pull_request" or ci_group(candidate) not in (None, group):
+            if run.get("event") != "pull_request" or ci_group(candidate) != group:
                 continue
         elif candidate.get("display_title") != group + "-replacement":
             continue
@@ -75,13 +77,17 @@ def classify(run, job, notes, candidates=(), jobs=()):
             return {"kind": "superseded", "run": successor["id"], "head_sha": successor["head_sha"],
                     "event": successor["event"]}
         return {"kind": "unresolved", "detail": "priority cancellation observed; replacement not established"}
-    if any(note.get("path") == ".github" and note.get("message") == MANUAL for note in notes):
+    notes = [n.get("message") or "" for n in notes if n.get("path") == ".github"]
+    actors = {m[1] for text in notes if (m := CANCEL_ACTOR.fullmatch(text))}
+    if MANUAL in notes or actors:
         result = {"kind": "manual-or-api", "message": MANUAL}
         # actor/triggering_actor identify who started a run. They do not identify the caller that cancelled it.
         caller = job.get("cancelled_by") or run.get("cancelled_by")
         actor = caller.get("login") if isinstance(caller, dict) else None
-        if actor and re.fullmatch(r"[a-zA-Z0-9-]+(?:\[bot\])?", actor):
-            result["actor"] = actor
+        if isinstance(actor, str) and re.fullmatch(LOGIN, actor):
+            actors.add(actor)
+        if len(actors) == 1:
+            result["actor"] = actors.pop()
         return result
     return {"kind": "unresolved", "detail": "cancellation annotation unavailable"}
 
@@ -109,6 +115,21 @@ def candidates(repo, workflow, branch, event, start, end):
     return list(_pages(repo, endpoint, "workflow_runs"))
 
 
+@cache
+def commit_pulls(repo, sha):
+    return list(_pages(repo, f"commits/{sha}/pulls?per_page=100"))
+
+
+def with_pull_group(repo, run):
+    if run.get("event") != "pull_request" or run.get("pull_requests"):
+        return run
+    # Actions sometimes omits pull_requests on an old run. Branch reuse alone cannot establish its concurrency group.
+    prs = [p for p in commit_pulls(repo, run["head_sha"])
+           if (p.get("head") or {}).get("ref") == run["head_branch"] and
+           ((p.get("head") or {}).get("repo") or {}).get("id") == (run.get("head_repository") or {}).get("id")]
+    return {**run, "pull_requests": prs}
+
+
 def observe(repo, run, job, jobs):
     notes = check_annotations(repo, job["id"])
     group = priority_group(notes)
@@ -119,6 +140,8 @@ def observe(repo, run, job, jobs):
         newer = [r for r in candidates(repo, run["workflow_id"], run["head_branch"], run["event"],
                                        run["created_at"], end)
                  if not job.get("completed_at") or r["created_at"] <= job["completed_at"]]
+    if group and re.fullmatch(r"ci-[0-9]+", group):
+        newer = [with_pull_group(repo, r) for r in newer if r["id"] != run["id"]]
     return classify(run, job, notes, newer, jobs)
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import os
 import re
 import shutil
@@ -16,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile
 
 from cancel_evidence import attach_reasons, run_jobs
-from check_evidence_run import check_jobs, hosted_step_timeout
+from check_evidence_run import bundle_prefix, check_jobs, hosted_step_timeout, job_digest
 from stage_evidence import JOB_CAP
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,7 +38,8 @@ def read_bundle(data, directory, allowance):
         if len(members) > MAX_FILES:
             raise ValueError("artifact member limit")
         for member in members:
-            path = PurePosixPath(member.filename)
+            # ZipInfo.filename normalizes backslashes on Windows. Validate the original archive spelling.
+            path = PurePosixPath(member.orig_filename)
             if (path.is_absolute() or not path.parts or any(part in {"..", "."} or ":" in part or "\\" in part
                                                            for part in path.parts) or member.flag_bits & 1):
                 raise ValueError("invalid artifact member path")
@@ -62,7 +64,6 @@ def download_artifacts(repo, run, selected, directory):
     gaps = []
     by_job = {hashlib.sha256(j["name"].encode()).hexdigest(): j["id"] for j in selected}
     links = {j["id"]: [] for j in selected}
-    prefixes = {}
     # Typed running bundles are much smaller than the scanned evidence; bound the whole operation's reads.
     remaining = READ_LIMIT
 
@@ -89,30 +90,28 @@ def download_artifacts(repo, run, selected, directory):
             staged.rename(target)
         remaining = max(0, allowance - max(artifact["size_in_bytes"], len(data), used))
 
+    bundles = defaultdict(list)
     for artifact in records:
-        name = artifact["name"]
-        if not name.endswith("-running"):
-            continue
-        try:
-            fetch(artifact)
-            digest = (directory / name / "job-label-sha256.txt").read_text().strip()
-            if digest in by_job:
-                job_id = by_job[digest]
-                prefixes[name.removesuffix("-running")] = job_id
-                links[job_id].append(artifact["id"])
-        except (BadZipFile, ValueError, OSError, subprocess.SubprocessError):
-            gaps.append((None, artifact["id"]))
-    for artifact in records:
-        name = artifact["name"]
-        prefix = name.removeprefix("lane-report-").removesuffix("-watchdog")
-        if prefix not in prefixes:
-            continue
-        job_id = prefixes[prefix]
-        try:
-            fetch(artifact)
-            links[job_id].append(artifact["id"])
-        except (BadZipFile, ValueError, OSError, subprocess.SubprocessError):
-            gaps.append((job_id, artifact["id"]))
+        bundles[bundle_prefix(artifact["name"])].append(artifact)
+    for group in bundles.values():
+        loaded, unavailable = [], []
+        digest = None
+        # Prefer the small identity bundle. The scanned report, watchdog and full bundle carry independent identities.
+        for artifact in sorted(group, key=lambda a: (not a["name"].endswith("-running"), a["size_in_bytes"])):
+            if digest and digest not in by_job:
+                break
+            try:
+                fetch(artifact)
+                loaded.append(artifact["id"])
+                digest = digest or job_digest(directory / artifact["name"])
+            except (BadZipFile, ValueError, OSError, subprocess.SubprocessError):
+                unavailable.append(artifact["id"])
+        if digest in by_job:
+            job_id = by_job[digest]
+            links[job_id].extend(loaded)
+            gaps.extend((job_id, ident) for ident in unavailable)
+        elif digest is None:
+            gaps.extend((None, ident) for ident in unavailable)
     return links, gaps
 
 
@@ -139,14 +138,12 @@ def inspect_run(repo, run, selected=None):
         for row in rows:
             row["run"] = run["id"]
             row["artifacts"] = links[row["job"]]
-            row["unreadable_artifacts"] = [ident for job, ident in gaps if job in (None, row["job"])]
-            row["missing"] = sorted({rule for message in row.get("missing", [])
+            row["unreadable_artifacts"] = [ident for job, ident in gaps if job == row["job"]]
+            row["defects"] = row.get("missing", [])
+            row["missing"] = sorted({rule for message in row["defects"]
                                      for rule in re.findall(r"evidence defect: \[([a-z-]+)\]", message)})
-            if row["unreadable_artifacts"]:
-                row["missing"].append("artifact-unavailable")
-                for key in ("A1", "A2"):
-                    if row[key] == "yes":
-                        row[key] = "no"
+        if rows:
+            rows[0]["unassigned_artifacts"] = [ident for job, ident in gaps if job is None]
         return rows
 
 
@@ -159,14 +156,27 @@ def format_rows(repo, rows):
             kind += f" (superseded by run {row['cancel_reason']['run']})"
         reason = row.get("cancel_reason") or {}
         if reason.get("kind") == "superseded":
-            kind += f" · [run {reason['run']}](https://github.com/{repo}/actions/runs/{reason['run']})"
-            kind += f" {reason['head_sha'][:12]} {reason['event']}"
+            if kind == "superseded-before-start":
+                kind += f" (by run {reason['run']})"
+            kind += f" · [{reason['head_sha'][:12]}](https://github.com/{repo}/actions/runs/{reason['run']})"
+            kind += f" {reason['event']}"
         if reason.get("kind") == "manual-or-api":
-            kind += " · " + reason["message"] + (" " + reason["actor"] if reason.get("actor") else "")
+            kind += " · " + reason["message"]
+            kind += " Actor: " + reason["actor"] if reason.get("actor") else " GitHub did not identify the actor."
         base = f"https://github.com/{repo}/actions/runs/{run}"
         links = ", ".join(f"[{a}]({base}/artifacts/{a})" for a in row["artifacts"])
+        for ident in row.get("unreadable_artifacts", []):
+            links += (", " if links else "") + f"[{ident} unavailable]({base}/artifacts/{ident})"
         lines.append(f"| {run} | [{job}](https://github.com/{repo}/actions/runs/{run}/job/{job}) | "
                      f"{kind} | {row['A1']} | {row['A2']} | {', '.join(row['missing']) or '—'} | {links or '—'} |")
+    for row in rows:
+        for ident in row.get("unassigned_artifacts", []):
+            url = f"https://github.com/{repo}/actions/runs/{row['run']}/artifacts/{ident}"
+            lines.append(f"\nUnavailable artifact [{ident}]({url}) has no surviving job identity.")
+        for detail in row.get("defects", []):
+            # Quote artifact-derived names as visible text. Never interpret them as a check's Markdown or HTML.
+            safe = html.escape(detail.translate({ord(c): " " for c in "\r\n"}), quote=True)
+            lines.append(f"\nJob {row['job']}: <code>{safe[:1500]}</code>")
     return "\n".join(lines)
 
 
@@ -202,8 +212,7 @@ def main(argv=None):
     rows = []
     for run in runs:
         if run.get("path") == ".github/workflows/ci.yml":
-            if run.get("conclusion") in RED or args.jobs:
-                rows.extend(inspect_run(args.repo, run, selections.get((run["id"], run["run_attempt"]))))
+            rows.extend(inspect_run(args.repo, run, selections.get((run["id"], run["run_attempt"]))))
     print(format_rows(args.repo, rows))
     return 0
 

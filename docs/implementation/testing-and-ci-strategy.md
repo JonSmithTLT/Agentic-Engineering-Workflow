@@ -412,8 +412,11 @@ establish a unique successor. A manual/API cancellation records GitHub's message
 where one is available. A canceled job with a failed phase in its partial report counts as a test failure. Queued
 supersessions retain their job IDs and do not count as failed test runs.
 
-The completed-run workflow reads the default branch's recorder and records each canceled CI run even when its
-own assurance job never started. The superseding run's assurance also reports its predecessor when established.
+The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
+when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The
+recorder scans detailed A3 diagnostics before publication and stores the complete check as an artifact when it
+exceeds GitHub's summary limit. The flake register accepts test sightings from its existing trusted main sources.
+PR failures remain visible in their own run's evidence. The superseding run's assurance also reports its predecessor when established.
 Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent CI runs or
 `python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
 kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker

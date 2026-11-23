@@ -43,6 +43,7 @@ permissions:
   contents: read
   actions: read  # match a cancellation to the run and attempt after test processes end
   checks: read   # read the runner's cancellation annotation
+  pull-requests: read  # recover a candidate's group when Actions omits its PR number
 
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"

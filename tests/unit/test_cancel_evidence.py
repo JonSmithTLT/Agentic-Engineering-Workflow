@@ -16,7 +16,7 @@ OLD = {"id": 43745782428, "run_attempt": 1, "event": "pull_request", "workflow_i
        "head_branch": "feature", "head_sha": "b4bd4ca5502124c2448a07575856c24a86e0ab0c",
        "created_at": "2026-11-15T18:16:07Z", "pull_requests": [], "head_repository": {"id": 1}}
 NEW = {**OLD, "id": 43752657105, "head_sha": "f558023460af4ede3c0c2309e47da40fe49fcc88",
-       "created_at": "2026-11-15T19:29:00Z"}
+       "created_at": "2026-11-15T19:29:00Z", "pull_requests": [{"number": 480}]}
 NOTES = [{"path": ".github", "message": "The operation was canceled."},
          {"path": ".github", "message": "Canceling since a higher priority waiting request for ci-480 exists"}]
 
@@ -31,6 +31,9 @@ def test_recorded_annotations_supersede_the_generic_cancel_and_require_a_unique_
     assert CANCEL.classify({**OLD, "actor": {"login": "starter"}}, job, NOTES[:1]) == {
         "kind": "manual-or-api", "message": CANCEL.MANUAL}
     assert CANCEL.classify(OLD, {**job, "cancelled_by": {"login": "controller"}}, NOTES[:1])["actor"] == "controller"
+    recorded_manual = [{"path": ".github", "message": "The run was canceled by @github-actions[bot]."}, *NOTES[:1]]
+    assert CANCEL.classify(OLD, job, recorded_manual)["actor"] == "github-actions[bot]"
+    assert "actor" not in CANCEL.classify(OLD, job, [{**recorded_manual[0], "path": "file.txt"}, *NOTES[:1]])
     assert CANCEL.classify(OLD, job, [], [NEW])["kind"] == "unresolved"
 
 
@@ -78,7 +81,10 @@ def test_archive_reader_confines_artifact_data_and_accounts_for_the_expanded_siz
     def archive(name):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-            bundle.writestr(name, b"a" * 150)
+            member = zipfile.ZipInfo(name)
+            member.filename = name  # keep identical on-disk spellings on Windows and Linux
+            member.compress_type = zipfile.ZIP_DEFLATED
+            bundle.writestr(member, b"a" * 150)
         return stream.getvalue()
 
     for invalid in ("../outside", "/outside", "X:/outside", "a\\outside"):
@@ -94,7 +100,7 @@ def test_completed_run_recorder_uses_only_default_branch_code_and_read_only_arti
     flow = yaml.safe_load((ROOT / ".github/workflows/evidence-cancel-record.yml").read_text())
     assert flow[True] == {"workflow_run": {"workflows": ["ci", "evidence-proof"], "types": ["completed"]}}
     job = flow["jobs"]["record"]
-    assert job["permissions"] == {"contents": "read", "checks": "write", "actions": "read"}
+    assert job["permissions"] == {"contents": "read", "checks": "write", "actions": "read", "pull-requests": "read"}
     checkout = job["steps"][0]["with"]
     assert checkout["ref"] == "${{ github.sha }}" and checkout["persist-credentials"] is False
     assert "github.event.workflow_run.head_sha" not in str(job)
@@ -189,3 +195,118 @@ def test_scorecard_cli_selects_the_jobs_original_attempt_and_skips_plants(monkey
     out = capsys.readouterr().out
     assert "superseded-before-start" in out and "f558023460af" in out and "| n/a | n/a |" in out
     assert "/runs/99" not in out
+
+
+def test_missing_candidate_group_requires_an_independent_commit_to_pr_mapping(monkeypatch):
+    raw = {**NEW, "pull_requests": []}
+    assert CANCEL.classify(OLD, {}, NOTES, [raw])["kind"] == "unresolved"
+    prs = [{"number": 480, "head": {"ref": NEW["head_branch"], "repo": {"id": 1}}}]
+    monkeypatch.setattr(CANCEL, "commit_pulls", lambda repo, sha: prs)
+    assert CANCEL.classify(OLD, {}, NOTES, [CANCEL.with_pull_group("test/repo", raw)])["run"] == NEW["id"]
+    prs.append({"number": 481, "head": {"ref": NEW["head_branch"], "repo": {"id": 1}}})
+    assert CANCEL.classify(OLD, {}, NOTES, [CANCEL.with_pull_group("test/repo", raw)])["kind"] == "unresolved"
+
+
+def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_unrelated_loss(tmp_path, monkeypatch):
+    name = "integration 2/8 (ubuntu-latest)"
+    job = {"id": 7, "name": name, "conclusion": "failure", "steps": []}
+    docs = {"runner-resources-job.txt": json.dumps({"job_label": name}),
+            "inventory.txt": "typed source names\n",
+            "report.json": json.dumps({"schema": "aew/lane-report/v1", "exitstatus": 1, "results": {
+                "test_example.py::test_x": {"outcome": "failed", "failures": [
+                    {"phase": "call", "crash": "case.py:2: ValueError: x", "longrepr": "E   ValueError: x"}]}}})}
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        for path, data in docs.items():
+            archive.writestr(path, data)
+    raw = stream.getvalue()
+    artifacts = [{"id": 100, "name": "evidence-windows-attempt-1-running", "expired": True, "size_in_bytes": 15},
+                 {"id": 200, "name": "lane-report-evidence-linux-attempt-1", "expired": False,
+                  "size_in_bytes": len(raw)}]
+    monkeypatch.setattr(SCORE, "run_jobs", lambda *args: [job])
+    monkeypatch.setattr(SCORE, "_pages", lambda *args: artifacts)
+    monkeypatch.setattr(SCORE, "_gh_read", lambda url: raw)
+    [row] = SCORE.inspect_run("test/repo", OLD, {7})
+    assert row["A1"] == "yes" and row["failed_nodes"] == ["test_example.py::test_x"]
+    assert row["artifacts"] == [200] and row["unreadable_artifacts"] == []
+    assert row["unassigned_artifacts"] == [100]
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_recorder_selects_event_attempt_and_keeps_pr_sightings_out_of_main_index(monkeypatch, tmp_path, trusted):
+    import sys
+
+    record = _load("record_cancel_evidence")
+    repo = {"full_name": "test/repo"}
+    run = {**OLD, "run_attempt": 2, "path": ".github/workflows/ci.yml", "conclusion": "cancelled",
+           "repository": repo, "head_repository": repo, "event": "push" if trusted else "pull_request",
+           "head_branch": "main" if trusted else "feature"}
+    monkeypatch.setenv("GITHUB_REPOSITORY", repo["full_name"])
+    argv = ["record", "--run", str(run["id"]), "--attempt", "2", "--index-dir", str(tmp_path),
+            "--report-dir", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+    expected = f"actions/runs/{run['id']}/attempts/2"
+    monkeypatch.setattr(record, "_api", lambda repo, endpoint: {expected: run}[endpoint])
+    calls = []
+    monkeypatch.setattr(record, "record", lambda repo, selected, dest: calls.append("check") or [])
+    monkeypatch.setattr(record, "record_test_sightings", lambda *args: calls.append("index"))
+    record.main()
+    assert calls == (["check", "index"] if trusted else ["check"])
+
+
+def test_default_branch_check_withholds_unscanned_details_but_records_the_rule(monkeypatch):
+    record = _load("record_cancel_evidence")
+    rows = [{"job": 7, "missing": ["failure-text"], "defects": [
+        "evidence defect: [failure-text] tests/foo.py::test_case[private fixture] (call): no retained failure text"]}]
+    monkeypatch.setattr(record, "stage", lambda source, checked: checked.mkdir())
+    record.scan_details(rows)
+    assert rows[0]["missing"] == ["failure-text", "scan-unavailable"]
+    assert rows[0]["defects"] == ["evidence defect: [scan-unavailable] defect details withheld"]
+
+
+def test_empty_canceled_attempt_records_the_unavailable_cause_without_inventing_a_job(monkeypatch):
+    record = _load("record_cancel_evidence")
+    monkeypatch.setattr(record, "inspect_run", lambda *args: [])
+    monkeypatch.setattr(record, "run_jobs", lambda *args: [])
+    monkeypatch.setattr(record, "_pages", lambda *args: [])
+    payload = []
+    monkeypatch.setattr(record, "_gh_read", lambda *args: payload.append(json.loads(Path(args[-1]).read_text())))
+    assert record.record("test/repo", OLD) == []
+    assert payload[0]["conclusion"] == "failure"
+    assert "Cancelled before any job was recorded" in payload[0]["output"]["summary"]
+    assert "[cancel-reason]" in payload[0]["output"]["summary"]
+
+
+def test_oversized_check_keeps_full_scanned_diagnostics_and_links_the_record(monkeypatch, tmp_path):
+    record = _load("record_cancel_evidence")
+    rows = [{"run": OLD["id"], "job": 7, "kind": "test_failure", "A1": "no", "A2": "n/a", "artifacts": [],
+             "defects": [f"evidence defect: [failure-text] case_{n} (call): missing cause" for n in range(1300)],
+             "missing": ["failure-text"]}]
+    monkeypatch.setattr(record, "inspect_run", lambda *args: rows)
+    monkeypatch.setattr(record, "scan_details", lambda rows: None)
+    monkeypatch.setattr(record, "_pages", lambda *args: [])
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    payload = []
+    monkeypatch.setattr(record, "_gh_read", lambda *args: payload.append(json.loads(Path(args[-1]).read_text())))
+    record.record("test/repo", OLD, tmp_path)
+    assert "case_1299 (call)" in (tmp_path / "evidence.md").read_text()
+    assert "actions/runs/123/attempts/2" in payload[0]["output"]["summary"]
+
+
+def test_skipped_pytest_timestamp_is_not_a_worker_start_and_an_unclassified_death_stays_unknown(tmp_path):
+    check = _load("check_evidence_run")
+    job = {"id": 7, "name": "test job", "conclusion": "cancelled", "cancel_reason": CANCEL.classify(OLD, {}, NOTES[:1]),
+           "steps": [{"name": "Set up Python", "started_at": OLD["created_at"], "conclusion": "cancelled"},
+                     {"name": "fast lane (unit, schemas, store model, frozen-spec pin)",
+                      "started_at": OLD["created_at"], "conclusion": "skipped"}]}
+    rows = []
+    assert check.check_jobs(tmp_path, [job], score_rows=rows) == []
+    assert rows[0]["A2"] == "n/a"
+    full = tmp_path / "evidence-one-attempt-1"
+    full.mkdir()
+    (full / "runner-resources-job.txt").write_text(json.dumps({"job_label": job["name"]}))
+    (full / "runner-resources-lane-exit.txt").write_text(json.dumps({"lane_exit": 64}))
+    rows = []
+    check.check_jobs(tmp_path, [{**job, "conclusion": "failure"}], score_rows=rows)
+    assert rows[0]["kind"] == "unclassified" and any("[job-kind]" in d for d in rows[0]["missing"])

@@ -13,6 +13,7 @@ jobs:
       contents: read
       checks: write
       actions: read
+      pull-requests: read
     concurrency:
       group: record-cancel-evidence-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
     steps:
@@ -24,11 +25,23 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install 'PyYAML>=6.0'
+      - name: Install the pinned publication scanner
+        run: python tools/ci/install_evidence.py --scanner-only
       - name: Record the completed run
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN: ${{ github.event.workflow_run.id }}
-        run: python tools/ci/record_cancel_evidence.py --run "$SOURCE_RUN" --index-dir "$RUNNER_TEMP/cancel-index"
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: >-
+          python tools/ci/record_cancel_evidence.py --run "$SOURCE_RUN" --attempt "$SOURCE_ATTEMPT"
+          --index-dir "$RUNNER_TEMP/cancel-index" --report-dir "$RUNNER_TEMP/cancel-check"
+      - name: Publish the complete check when the GitHub summary limit is exceeded
+        uses: actions/upload-artifact@v7
+        with:
+          name: cancel-evidence-${{ github.event.workflow_run.id }}-attempt-${{ github.event.workflow_run.run_attempt }}
+          path: ${{ runner.temp }}/cancel-check/evidence.md
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Publish registered test failures observed before cancellation
         uses: actions/upload-artifact@v7
         with:

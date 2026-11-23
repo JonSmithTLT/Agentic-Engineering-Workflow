@@ -34,6 +34,29 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
     return False
 
 
+def bundle_prefix(name):
+    return name.removeprefix("lane-report-").removesuffix("-running").removesuffix("-watchdog")
+
+
+def job_digest(directory):
+    digest = directory / "job-label-sha256.txt"
+    if digest.is_file():
+        try:
+            value = digest.read_text(encoding="ascii").strip()
+            if re.fullmatch(r"[0-9a-f]{64}", value):
+                return value
+        except (OSError, ValueError):
+            pass
+    for metadata in directory.glob("runner-resources-*.txt"):
+        try:
+            data = json.loads(metadata.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("job_label"), str) and data["job_label"]:
+                return hashlib.sha256(data["job_label"].encode()).hexdigest()
+        except (OSError, ValueError):
+            continue
+    return None
+
+
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
                score_rows: list | None = None) -> list[str]:
     defects = []
@@ -60,30 +83,17 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                "failed_nodes": [], "cancel_reason": reason, "started_at": job.get("started_at")}
         if score_rows is not None:
             score_rows.append(row)
-        found = []
-        for path in root.iterdir() if root.is_dir() else ():
-            labels = []
-            for record in path.glob("runner-resources-*.txt"):
-                try:
-                    data = json.loads(record.read_text())
-                    if isinstance(data, dict):
-                        labels.append(data.get("job_label"))
-                except (ValueError, OSError):
-                    continue
-            digest = path / "job-label-sha256.txt"
-            named = digest.is_file() and digest.read_text().strip() == hashlib.sha256(job["name"].encode()).hexdigest()
-            if job["name"] in labels or named:
-                found.append(path)
-        for path in list(found):
-            if path.name.endswith("-running"):
-                found.extend(sibling for sibling in root.glob(path.name.removesuffix("-running") + "*")
-                             if sibling not in found)
+        archives = list(root.iterdir()) if root.is_dir() else []
+        digest = hashlib.sha256(job["name"].encode()).hexdigest()
+        prefixes = {bundle_prefix(path.name) for path in archives if job_digest(path) == digest}
+        found = [path for path in archives if bundle_prefix(path.name) in prefixes]
         started = bool(found) or any(
             step.get("started_at") and step.get("conclusion") != "skipped"
             and any(pattern.fullmatch(step["name"]) for pattern in patterns)
             for step in job.get("steps", []))
         steps = job.get("steps", [])
-        started |= bool(steps) and _started_pytest(steps)
+        executed = [s for s in steps if s.get("conclusion") != "skipped"]
+        started |= bool(executed) and _started_pytest(executed)
         superseded = valid(reason) and reason["kind"] == "superseded"
         cancelled_as = (f"superseded (by run {reason['run']})" if superseded
                         else "manual/API cancel" if valid(reason) else "cancel")
@@ -112,7 +122,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             # A valid collection error in one invocation cannot explain an unrelated command's interrupt.
 
             def invocation(path, directory=merged):
-                return path.relative_to(directory).parts[0].removesuffix("-running").removesuffix("-watchdog")
+                return bundle_prefix(path.relative_to(directory).parts[0])
 
             failed_phase = re.compile(r"(?m)^.*?\[\S+ pid [0-9]+\] (.+): failed in (setup|call|teardown|collect)$")
             observed = set()
@@ -122,13 +132,8 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             recorded = set()
             collection_exits = set()
             report_exits = []
-            for bundle in found:
-                if not bundle.name.endswith("-running"):
-                    continue
-                name = bundle.name.removesuffix("-running")
+            for name in prefixes:
                 lane_report = root / ("lane-report-" + name)
-                if lane_report.is_dir() and (lane_report / "inventory.txt").exists():
-                    shutil.copytree(lane_report, merged / lane_report.name, dirs_exist_ok=True)
                 for path in lane_report.rglob("*.json"):
                     if not report_json(path.relative_to(lane_report)):
                         continue
@@ -141,6 +146,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     results = doc.get("results")
                     phases = {(name, node, record["phase"]) for node, result in
                               (results.items() if isinstance(results, dict) else ()) if isinstance(result, dict)
+                              and result.get("outcome") in ("failed", "error")
                               and isinstance(result.get("failures"), list) for record in result["failures"]
                               if isinstance(record, dict)
                               and record.get("phase") in ("collect", "setup", "call", "teardown")}
@@ -196,7 +202,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             missing = defects[first_defect:]
             nodes = sorted({node for _, node, _ in recorded | observed})
             row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
-                           else cancelled_as if conclusion == "cancelled" else kind or "test_failure")
+                           else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":
                 incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))

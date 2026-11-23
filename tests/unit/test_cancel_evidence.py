@@ -168,16 +168,19 @@ def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
                                                      (660, "staggered"), (660, "collected")])
 def test_cancel_control_times_runner_allocation_separately_from_running_workers(monkeypatch, queue_seconds, outcome):
     from datetime import UTC, datetime
+    from types import SimpleNamespace
 
     prove = _load("prove_cancel_evidence")
     workflow = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())
     deadline_step = next(step for step in workflow["jobs"]["cancel-plant"]["steps"]
                          if step.get("name") == "The job's deadline")
     assert f"+ {prove.CANCEL_PLANT_SECONDS} " in deadline_step["run"]
-    now = [0]
-    monkeypatch.setattr(prove.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(prove.time, "time", lambda: now[0])
-    monkeypatch.setattr(prove.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    waits = []
+
+    def now():
+        return sum(waits)
+
+    monkeypatch.setattr(prove, "time", SimpleNamespace(monotonic=now, time=now, sleep=waits.append))
     start = datetime.fromtimestamp(queue_seconds, UTC).isoformat()
 
     def jobs(repo, endpoint):
@@ -185,7 +188,7 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
         rows = [{"name": "unrelated", "runner_id": 7, "conclusion": "success"}]
         for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
             offset = index * (305 if outcome == "staggered" else 10)
-            running = now[0] >= queue_seconds + offset
+            running = now() >= queue_seconds + offset
             rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel, none)",
                          "runner_id": 7 if running else 0,
                          "conclusion": "failure" if running and outcome == "finished" else None,

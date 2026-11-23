@@ -390,6 +390,8 @@ class LanePlugin:
             self._write_report(int(session.exitstatus))
 
     def _write_report(self, exitstatus: int | None) -> None:
+        from session_deadline import DEADLINE_EXIT
+
         xdist = self.config.getoption("numprocesses", None) if self.config.pluginmanager.hasplugin("xdist") else None
         report = {
             "schema": REPORT_SCHEMA,
@@ -401,7 +403,8 @@ class LanePlugin:
             "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 1),
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
-            "complete": exitstatus is not None,
+            # The deadline can kill a worker while leaving the controller alive to run sessionfinish.
+            "complete": exitstatus not in (None, DEADLINE_EXIT),
             "wall_s": round(time.perf_counter() - self.started, 2),
             "job_remaining_s": self.job_remaining_s,
             "collected": sorted(self.collected),

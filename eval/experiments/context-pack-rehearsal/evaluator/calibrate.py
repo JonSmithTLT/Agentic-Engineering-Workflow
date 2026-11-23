@@ -19,11 +19,12 @@ from aew_eval.arms import ScriptedArm  # noqa: E402
 CRITERIA = ("json-field", "current-spelling", "legacy-default", "csv-exact")
 # Each one-fault control mutates exactly one place in the same reference exporter.
 FAULTS = {
-    "json-field": ("json-field", 'item["status"] = status',
+    "json-field": (("json-field",), 'item["status"] = status',
                    'if status != "done":\n                item["status"] = status'),
-    "stale-spelling": ("current-spelling", '"pending": "queued"', '"pending": "waiting"'),
-    "legacy-default": ("legacy-default", 'row.get("phase"), "unknown"', 'row.get("phase"), "done"'),
-    "csv-regression": ("csv-exact", "csv.writer(stream)", 'csv.writer(stream, lineterminator="\\n")'),
+    "stale-spelling": (("current-spelling",), '"pending": "queued"', '"pending": "waiting"'),
+    "legacy-default": (("legacy-default",), 'row.get("phase"), "unknown"', 'row.get("phase"), "done"'),
+    "csv-regression": (("csv-exact",), "csv.writer(stream)", 'csv.writer(stream, lineterminator="\\n")'),
+    "batch-last-phase": (("current-spelling", "legacy-default"), 'row.get("phase")', 'rows[-1].get("phase")'),
 }
 
 
@@ -52,8 +53,8 @@ def calibrate():
             ScriptedArm().run(tree, {"steps": edits}, deadline_s=30)
             spec = {"files": files, "layout": None, "env": hidden.program_env(root)}
             results = score_child.score(spec, tree)["checks"]
-        intended = FAULTS[name][0] if name != "good" else None
-        expected = [(criterion, criterion != intended) for criterion in CRITERIA]
+        intended_failures = FAULTS[name][0] if name != "good" else ()
+        expected = [(criterion, criterion not in intended_failures) for criterion in CRITERIA]
         if [(row["name"], row["ok"]) for row in results] != expected:
             raise ValueError(f"{name}: expected {expected}, got {results}")
         controls[name] = {"exporter_sha256": hashlib.sha256(edits[0]["content"].encode()).hexdigest(),

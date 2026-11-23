@@ -1,5 +1,5 @@
 schema: aew/eval-prereg/v1
-experiment: context-pack-offline-1
+experiment: context-pack-offline-2
 purpose: qualification
 question: Does each intended implementer input reach a fresh scripted session through the current adapter?
 profiles:

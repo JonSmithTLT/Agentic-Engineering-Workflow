@@ -1,6 +1,6 @@
 {
   "path": "local/packs/INV-0001/pack.md",
-  "sha256": "947d700a6ce6e00097589481c435b87dc4c63804639167951185d8c6f6d6cf00",
+  "sha256": "f268277543a1dab97db1653a45a01de51f45a44f13d872e427d7afbbac7de608",
   "sources": [
     {
       "name": "archetype:implementer",
@@ -16,12 +16,12 @@
     {
       "name": "current_ticket",
       "path": "work/T-0001/ticket.md",
-      "sha256": "25e6547f787d2964c0694e359a7c2f73adae81abeeed6511d82cdea71ab190f3"
+      "sha256": "9bd64533b3ddf2987734ab19bcc7852cd5ba029df8b594a5687b1cd3070c2401"
     },
     {
       "name": "accepted_plan",
       "path": "work/T-0001/plan-v1.md",
-      "sha256": "44d4e5d4d87097779b27d6201271e6c3fc2c7259fb09a20956dc2663be8a9729"
+      "sha256": "0f6130eb85cb15db0829a98b2e5841df947d50e8b5fffc10b83b5493f33a20db"
     },
     {
       "name": "guardrails",

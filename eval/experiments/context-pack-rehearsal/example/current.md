@@ -8,9 +8,9 @@ you do not need, and must not rely on, anyone's conversation history.
 - Role: **implementer** — authority: modify source and tests within the assigned Ticket scope, in the assigned workspace only (WC §5.5); run project-defined checks and produce implementation evidence; report contradictions or blockers
 - Work unit: **T-0001** — Add status to JSON reports
 - Scope: ticket
-- Workspace: `/dev/shm/f19-capture/test_registered_deliveries0/.aew-workspaces/report/T-0001-1`
+- Workspace: `/var/tmp/pytest-of-agent/pytest-4/test_deferred_product_scores_T0/.aew-workspaces/report/T-0001-1`
 - Evaluated snapshot: base `d5db041a3f277d44687036fdc6960739e3547413`, inputs `git-tree:af540f2c401c55a2478f6b5628072a767b2ef95c`, workspace `ws-T-0001-1`
-- Accepted plan: v1 (sha256 44d4e5d4d870…)
+- Accepted plan: v1 (sha256 0f6130eb85cb…)
 - Required knowledge (included below): current_ticket, accepted_plan, guardrails, ticket_scope, available_checks, open_review_findings, codebase_map
 - Capabilities: exact_code_search, source_mutation, targeted_test_execution
 
@@ -34,7 +34,7 @@ you do not need, and must not rely on, anyone's conversation history.
 
 ### Commands and writeback
 
-Run commands from the workspace, as in `aew -C "/dev/shm/f19-capture/test_registered_deliveries0/.aew-workspaces/report/T-0001-1" whoami`
+Run commands from the workspace, as in `aew -C "/var/tmp/pytest-of-agent/pytest-4/test_deferred_product_scores_T0/.aew-workspaces/report/T-0001-1" whoami`
 - Run a check: `aew check run <check-id>` (records sealed evidence bound to the snapshot)
 - Write back: `aew submit --kind implementation_report --file <your-report.md>`
 

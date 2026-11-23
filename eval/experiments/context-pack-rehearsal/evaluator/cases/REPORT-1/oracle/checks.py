@@ -18,24 +18,32 @@ def json_output(run, rows):
         return None
 
 
+def row_has_status(output, row_id, status):
+    if not isinstance(output, list):
+        return False
+    matching = [item.get("status") for item in output if isinstance(item, dict) and item.get("id") == row_id]
+    return matching == [status]
+
+
 def checks(tree, run):
     rows = [
         {"id": "r3", "title": "Review", "phase": "pending"},
         {"id": "r1", "title": 'Quoted, "café"\nline two'},
         {"id": "r2", "title": "Finish", "phase": "done"},
     ]
-    output = json_output(run, rows)
-    preserves = isinstance(output, list) and len(output) == len(rows) and all(
+    batch = json_output(run, rows)
+    preserves = isinstance(batch, list) and len(batch) == len(rows) and all(
         isinstance(item, dict) and item.get("id") == row["id"] and item.get("title") == row["title"]
         and isinstance(item.get("status"), str)
-        for item, row in zip(output, rows, strict=True)
+        for item, row in zip(batch, rows, strict=True)
     )
-    yield "json-field", preserves and output[2]["status"] == "done", "JSON fields, order and completed row"
+    yield "json-field", preserves and batch[2]["status"] == "done", "JSON fields, order and completed row"
 
     for criterion, row, status in (("current-spelling", rows[0], "queued"), ("legacy-default", rows[1], "unknown")):
-        output = json_output(run, [row])
-        ok = isinstance(output, list) and len(output) == 1 and isinstance(output[0], dict)
-        yield criterion, ok and output[0].get("status") == status, f"{row['id']} JSON status equals {status!r}"
+        singleton = json_output(run, [row])
+        single_ok = row_has_status(singleton, row["id"], status) and len(singleton) == 1
+        batch_ok = row_has_status(batch, row["id"], status)
+        yield criterion, single_ok and batch_ok, f"{row['id']} status {status!r}: single={single_ok}, batch={batch_ok}"
 
     populated = export(run, "csv", rows)
     empty = export(run, "csv", [])

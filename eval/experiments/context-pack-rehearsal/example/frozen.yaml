@@ -1,5 +1,5 @@
 schema: aew/eval-prereg/v1
-experiment: context-pack-offline-1
+experiment: context-pack-offline-2-isolated
 purpose: qualification
 question: Does each intended implementer input reach a fresh scripted session through the current adapter?
 profiles:
@@ -52,8 +52,8 @@ amendment_policy: A material change requires a new experiment id.
 cases:
 - id: REPORT-1
   family: report-export-calibration
-  sha256: cc1f339f3f0ba62d2533a01898bc9e03bb579442b7d0d7a00594672b9cf003b6
-  hidden_sha256: a1457ce4efa275b52b01da23672dd4da7d7e602bec65c19bc806d02f78e96ebe
+  sha256: f3cb717a78bd1e768d9bae513f940b75377fc49037e26c2408647694f57f5ecf
+  hidden_sha256: 738233393a8aaa1381ea3dfd576e7e9170752d45a0465832a45387a8cf4b8e76
   control_of: null
 arms:
 - id: a
@@ -62,24 +62,39 @@ arms:
   config:
     variant: A
     steps: []
-    pack_sha256: ed8ff669ccf63559d74cd6effc37c8caf8e866b3b7db54515d5da8215ea0418e
-    prompt_sha256: 2f1bd0259af48629d78dc36805b408aeb3c40e5e4a99ee29d024bfb89ce14e26
+    pack_sha256: ec5bf7ac054d839a655d6a747bc50aefe89d54fbdf1043894906d3ef42a8d889
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 2cd100b9d8d5c78effe993a0dc87f1096172b5d99b9ac76cbfad89f833e2c3e0
 - id: b
   kind: scripted
   description: current dispatch
   config:
     variant: B
     steps: []
-    pack_sha256: 947d700a6ce6e00097589481c435b87dc4c63804639167951185d8c6f6d6cf00
-    prompt_sha256: 7ac08c371f9aa25a9127d34712abaac7467f4a39210232f076bd4e6daa1d6008
+    pack_sha256: f268277543a1dab97db1653a45a01de51f45a44f13d872e427d7afbbac7de608
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 513186fe2105871ca2ada6ad5bd828c352dc4bc377d6b45f5b9270eb6a27cb6f
 - id: c
   kind: scripted
   description: common and reference sources
   config:
     variant: C
     steps: []
-    pack_sha256: 387b7a7db194fb7e65c3f8fbc498e260a65d68772b2fde9d7ee1be6fd5ccc0eb
-    prompt_sha256: 6cf7ef66490d718d672de6f69a03e16b0778dfd99e6f021458421516cdb89c0d
-frozen_at: '2026-11-23T23:21:05Z'
+    pack_sha256: 4236520b78b31f98b439b76a72b0157f928802707d2e06accbdb9be4144605fc
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 7993947d39859c03fc784f44c96c5287cb38509237977ebdf9003712fd423dbb
+frozen_at: '2026-11-23T23:32:46Z'
 frozen_by: offline rehearsal
-canonical_sha256: 03bcd5a0ee6ca5a1177b3834c9f7188a806f4c94605970d41d37ffd8878e91c1
+canonical_sha256: c95b3ad77a55d94daeeab5cdb844e3f8bc2b6d589a4f101f33d9cb00996a3718

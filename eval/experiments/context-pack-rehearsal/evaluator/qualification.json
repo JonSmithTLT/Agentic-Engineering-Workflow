@@ -2,7 +2,7 @@
   "case": "REPORT-1",
   "instrument": "F19 score_child on fixed trusted scripts",
   "contained": false,
-  "oracle_sha256": "a1457ce4efa275b52b01da23672dd4da7d7e602bec65c19bc806d02f78e96ebe",
+  "oracle_sha256": "738233393a8aaa1381ea3dfd576e7e9170752d45a0465832a45387a8cf4b8e76",
   "controls": {
     "good": {
       "exporter_sha256": "a4ef66aa17ed48daa20e8b6515fd4f67b0ca962dc28b49aa2e30c8455e966ddf",
@@ -47,6 +47,15 @@
         "current-spelling": true,
         "legacy-default": true,
         "csv-exact": false
+      }
+    },
+    "batch-last-phase": {
+      "exporter_sha256": "98706fd863a6a14b2ed0e4177931a207d98f718482e971a4249ac6515861747f",
+      "checks": {
+        "json-field": true,
+        "current-spelling": false,
+        "legacy-default": false,
+        "csv-exact": true
       }
     }
   }

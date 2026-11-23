@@ -416,7 +416,10 @@ The completed-run workflow reads the default branch's recorder and binds the rec
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The
 recorder scans detailed A3 diagnostics before publication and stores the complete check as an artifact when it
 exceeds GitHub's summary limit. The flake register accepts test sightings from its existing trusted main sources.
-PR failures remain visible in their own run's evidence. The superseding run's assurance also reports its predecessor when established.
+PR failures remain visible in their own run's evidence. GitHub delivers the completed-run event for the scheduled
+or account-dispatched proof parent. The observer uses that event to find the two token-dispatched children by their
+parent attempt, workflow, event, commit and branch, verify their worker artifacts, and read back each child's
+persisted evidence check. GitHub can suppress a completion event for a token-dispatched child. The superseding run's assurance also reports its predecessor when established.
 Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent CI runs or
 `python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
 kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker

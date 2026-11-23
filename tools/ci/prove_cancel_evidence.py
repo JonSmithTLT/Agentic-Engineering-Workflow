@@ -13,7 +13,7 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from cancel_evidence import _api, _pages, classify, run_jobs
+from cancel_evidence import _api, classify, run_jobs
 from cancel_evidence_plant import SENTINEL_READY_S, ready_job
 from evidence_files import PREFIX, entries
 from evidence_scorecard import inspect_run
@@ -37,25 +37,14 @@ def dispatch(repo, workflow, ref, origin, scenario, role):
              "-f", f"inputs[probe_role]={role}")
 
 
-def target_run(repo, workflow, parent, head, branch, since, title):
+def target_run(repo, workflow, parent, head, branch, title):
     from urllib.parse import quote
 
     data = _api(repo, f"actions/workflows/{workflow}/runs?event=workflow_dispatch&branch={quote(branch, safe='')}"
                 f"&head_sha={head}&per_page=100")
-    found = []
-    for run in data["workflow_runs"]:
-        if (run["id"] == parent or run["head_sha"] != head or run["workflow_id"] != workflow
-                or run["event"] != "workflow_dispatch" or run["head_branch"] != branch or run["created_at"] < since
-                or (run.get("head_repository") or {}).get("full_name") != repo):
-            continue
-        if title.endswith("-target"):
-            if run["name"] != "evidence-proof":
-                continue
-            jobs = _api(repo, f"actions/runs/{run['id']}/jobs?per_page=100")["jobs"]
-            if any(j["name"] == title for j in jobs):
-                found.append(run)
-        elif run["display_title"] == title:
-            found.append(run)
+    found = [r for r in data["workflow_runs"] if r["id"] != parent and r["display_title"] == title
+             and r["head_sha"] == head and r["workflow_id"] == workflow and r["event"] == "workflow_dispatch"
+             and r["head_branch"] == branch and (r["head_repository"] or {}).get("full_name") == repo]
     if len(found) > 1:
         raise RuntimeError("multiple matching synthetic targets; no cancellation issued")
     return found[0] if found else None
@@ -99,11 +88,7 @@ def main(scenario):
                   "The scheduled default-branch proof must exercise it.")
             return
         raise
-
-    def find_child(role):
-        return target_run(repo, workflow, parent, head, branch, current["created_at"], f"{group}-{role}")
-
-    target = poll(lambda: find_child("target"), 90, "the uniquely identified target run")
+    target = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-target"), 90, "the target run")
     ident = target["id"]
 
     def live():
@@ -123,7 +108,8 @@ def main(scenario):
         replacements = []
     else:
         dispatch(repo, workflow, branch, origin, scenario, "replacement")
-        successor = poll(lambda: find_child("replacement"), 90, "the unique replacement run")
+        successor = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-replacement"),
+                         90, "the unique replacement run")
         replacements = [successor]
         trigger_at = successor["created_at"]
 
@@ -161,14 +147,6 @@ def main(scenario):
     blind = classify(ended, targets[0], [], replacements, run_jobs(repo, ident, ended["run_attempt"]))
     if blind["kind"] != "unresolved":
         raise RuntimeError("disabling the annotation fetch retained attribution")
-    if current["event"] == "schedule" or (current["event"] == "workflow_dispatch" and branch == "main"):
-        external = f"aew-evidence-run-{ident}-attempt-{ended['run_attempt']}"
-        check = poll(lambda: next((c for c in _pages(repo, f"commits/{head}/check-runs?check_name=evidence"
-                                                     "&filter=all&per_page=100", "check_runs")
-                                  if c.get("external_id") == external), None), 420, "the default-branch recorder")
-        if check["status"] != "completed" or check["conclusion"] != "success":
-            raise RuntimeError(f"completed-run evidence record did not pass: {check['id']}")
-        print(f"Verified default-branch evidence check {check['id']} for the canceled run.")
 
 
 if __name__ == "__main__":

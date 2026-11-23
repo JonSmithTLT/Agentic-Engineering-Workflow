@@ -7,6 +7,8 @@ import json
 import os
 import re
 import tempfile
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -88,7 +90,7 @@ def record(repo, run, report_dir=None):
         url = f"https://github.com/{repo}/actions/runs/{recorder}/attempts/{attempt}"
         payload["output"]["summary"] = (
             f"The complete scanned A3 diagnostics and job links are in the [recorder artifacts]({url}), "
-            f"under cancel-evidence-{run['id']}-attempt-{run['run_attempt']}.")
+            f"for canceled run {run['id']}, attempt {run['run_attempt']}.")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "check.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -136,21 +138,109 @@ def predecessor(repo, current):
     return None
 
 
+SCENARIOS = ("manual", "supersede")
+
+
+def proof_subjects(repo, parent):
+    """Find the two token-dispatched children from the completed parent, using only Actions service metadata."""
+    end = parent["updated_at"] if parent["status"] == "completed" else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = parent.get("run_started_at") or parent["created_at"]
+    interval = quote(f"{start}..{end}", safe="")
+    branch = quote(parent["head_branch"], safe="")
+    endpoint = (f"actions/workflows/{parent['workflow_id']}/runs?branch={branch}&event=workflow_dispatch"
+                f"&head_sha={parent['head_sha']}&created={interval}&per_page=100")
+    runs = list(_pages(repo, endpoint, "workflow_runs"))
+    origin = f"evidence-cancel-run-{parent['id']}-{parent['run_attempt']}"
+    children = {}
+    for scenario in SCENARIOS:
+        title = f"{origin}-{scenario}-target"
+        matches = [r for r in runs if r["id"] != parent["id"] and r["display_title"] == title
+                   and r["event"] == "workflow_dispatch" and r["workflow_id"] == parent["workflow_id"]
+                   and r["head_sha"] == parent["head_sha"] and r["head_branch"] == parent["head_branch"]
+                   and (r.get("head_repository") or {}).get("full_name") == repo
+                   and (r.get("actor") or {}).get("login") == "github-actions[bot]"]
+        if len(matches) != 1:
+            continue  # a missing or ambiguous child cannot prevent recording the other scenario
+        # A later rerun of the child must not replace the original attempt created by this parent.
+        child = _api(repo, f"actions/runs/{matches[0]['id']}/attempts/1")
+        if child["conclusion"] == "cancelled" and child["display_title"] == title:
+            children[scenario] = child
+    return children
+
+
+def verified_worker(row, child, scenario):
+    reason = row.get("cancel_reason") or {}
+    if row["A2"] != "yes" or not row["artifacts"]:
+        return False
+    if scenario == "manual":
+        return reason.get("kind") == "manual-or-api" and reason.get("actor") == "github-actions[bot]"
+    return (reason.get("kind") == "superseded" and reason.get("event") == "workflow_dispatch"
+            and reason.get("run") != child["id"] and reason.get("head_sha") == child["head_sha"])
+
+
+def record_proof_children(repo, parent, report_dir, *, publish=True):
+    subjects = proof_subjects(repo, parent)
+    failed = [f"no unique completed canceled {s} child" for s in SCENARIOS if s not in subjects]
+    for scenario, child in subjects.items():
+        if publish:
+            rows = record(repo, child, report_dir / f"run-{child['id']}-attempt-1")
+        else:
+            rows = inspect_run(repo, child)
+        workers = {r["name"]: r for r in rows if r["name"] in {
+            "plant (ubuntu-24.04, cancel, none)", "plant (windows-latest, cancel, none)"}}
+        if (len(workers) != 2 or any(r["missing"] for r in rows)
+                or not all(verified_worker(row, child, scenario) for row in workers.values())):
+            failed.append(f"{scenario} child {child['id']} has incomplete worker evidence")
+            continue
+        if not publish:
+            print(f"Independently recovered {scenario} child {child['id']} and its two worker bundles.")
+            continue
+        external = f"aew-evidence-run-{child['id']}-attempt-1"
+        endpoint = f"commits/{child['head_sha']}/check-runs?check_name=evidence&filter=all&per_page=100"
+        for attempt in range(6):
+            checks = [c for c in _pages(repo, endpoint, "check_runs") if c.get("external_id") == external
+                      and (c.get("app") or {}).get("slug") == "github-actions"]
+            if checks or attempt == 5:
+                break
+            time.sleep(2)
+        if len(checks) != 1 or checks[0].get("conclusion") != "success":
+            failed.append(f"could not confirm the installed {scenario} evidence check for {child['id']}")
+        else:
+            print(f"Verified installed {scenario} evidence check {checks[0]['id']} for canceled run {child['id']}.")
+    if failed:
+        raise RuntimeError("; ".join(failed))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
     parser.add_argument("--index-dir", type=Path)
+    parser.add_argument("--read-only-proof", action="store_true")
     parser.add_argument("--report-dir", type=Path, required=True)
     args = parser.parse_args()
     repo = os.environ["GITHUB_REPOSITORY"]
     run = _api(repo, f"actions/runs/{args.run}/attempts/{args.attempt}")
     ci = run["path"] == ".github/workflows/ci.yml"
     plant = (run["path"] == ".github/workflows/evidence-proof.yml" and run["event"] == "workflow_dispatch"
-             and run["name"] == "evidence-proof" and any(
-                 re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", job["name"])
-                 for job in run_jobs(repo, run["id"], run["run_attempt"])))
-    if run["conclusion"] == "cancelled" and (ci or plant) and run["repository"]["full_name"] == repo:
+             and re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", run["display_title"]))
+    if run["repository"]["full_name"] != repo:
+        return
+    if args.read_only_proof:
+        if (run["path"] != ".github/workflows/evidence-proof.yml"
+                or run["event"] not in {"schedule", "workflow_dispatch"}):
+            raise ValueError("expected a dispatched or scheduled proof parent")
+        record_proof_children(repo, run, args.report_dir, publish=False)
+        return
+    if (not plant and run["path"] == ".github/workflows/evidence-proof.yml" and run["head_branch"] == "main"
+            and run["event"] in {"workflow_dispatch", "schedule"} and run["status"] == "completed"
+            and (run.get("head_repository") or {}).get("full_name") == repo
+            and not run["display_title"].startswith("evidence-cancel-run-")):
+        # GitHub suppresses completed-child workflow_run events when GITHUB_TOKEN created the child.
+        # The schedule or account dispatch delivered this parent event after both controllers finished.
+        record_proof_children(repo, run, args.report_dir)
+    elif run["conclusion"] == "cancelled" and (ci or plant and
+                                              (run.get("actor") or {}).get("login") != "github-actions[bot]"):
         rows = record(repo, run, args.report_dir)
         if _own_ci_run(repo, run) and args.index_dir is not None:
             record_test_sightings(args.index_dir, run, rows)

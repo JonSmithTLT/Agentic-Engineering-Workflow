@@ -12,6 +12,7 @@ import autopsy
 import bounds
 import pytest
 import snapshot_process
+from racing_read import read_text_or_none
 
 
 def block_in_snapshot() -> None:
@@ -48,7 +49,7 @@ def test_snapshot_timeout(case, tmp_path, monkeypatch):
     def communicate_when_ready(proc, *args, **kwargs):
         if kwargs.get("timeout") != plant_deadline or proc.args[3] != __file__:
             return communicate(proc, *args, **kwargs)
-        bounds.bounded_wait("wait.condition", lambda: ready.is_file() and ready.read_text(encoding="ascii").isdigit())
+        bounds.bounded_wait("wait.condition", lambda: (read_text_or_none(ready) or "").isdigit())
         holder = int(ready.read_text(encoding="ascii"))
         # Independent expected identities, outside the retained autopsy.
         (directory.parent.parent / f"expected-{case}.txt").write_text(f"{proc.pid} {holder}", encoding="ascii")
@@ -56,7 +57,7 @@ def test_snapshot_timeout(case, tmp_path, monkeypatch):
             assert proc.wait(30) == 0
         else:
             bounds.bounded_wait("wait.condition", lambda: any(
-                "in block_in_snapshot" in p.read_text(encoding="utf-8", errors="replace")
+                "in block_in_snapshot" in (read_text_or_none(p) or "")
                 for p in directory.glob(f"stacks-{proc.pid}.*.txt")))
         return communicate(proc, *args, **kwargs)
 

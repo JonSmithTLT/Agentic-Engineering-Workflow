@@ -47,7 +47,7 @@ def test_snapshot_timeouts_retain_the_helper_state_before_cleanup(tmp_path):
     plant = Path(__file__).with_name("messaging_snapshot_plant.py")
     result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:xdist", "-p", "no:cacheprovider",
                              "--basetemp", str(base), "--hang-dir", str(hangs), str(plant)],
-                            cwd=ROOT, capture_output=True, text=True, timeout=180,
+                            cwd=tmp_path, capture_output=True, text=True, timeout=180,
                             env={k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))},
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     assert result.returncode == 1 and "3 failed" in result.stdout, result.stdout + result.stderr

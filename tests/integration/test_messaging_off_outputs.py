@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GOLDEN = ROOT / "tests/fixtures/baseline/messaging-off-outputs.json"
 
 
-@pytest.mark.autopsy(tmp_path=False)
+@pytest.mark.autopsy(children_only=True)
 @pytest.mark.parametrize("messaging", [None, "disabled"])
 def test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin(tmp_path, messaging):
     w = world(tmp_path, messaging=messaging)
@@ -54,6 +54,8 @@ def test_snapshot_timeouts_retain_the_helper_state_before_cleanup(tmp_path):
     for case in ("blocked", "exited", "stalled"):
         pid, holder = map(int, (base / f"expected-{case}.txt").read_text().split())
         [directory] = [d for d in (hangs / "autopsy").iterdir() if f"_{case}_" in d.name]
+        [state] = (directory / "harness").rglob("project.yaml.txt")
+        assert state.read_text(encoding="utf-8") == "project: seeded"
         children = directory / "children"
         record = (children / "snapshot-timeout.txt").read_text(encoding="utf-8")
         assert f"helper pid={pid} " in record, record

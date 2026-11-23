@@ -32,11 +32,14 @@ def helper(case: str, ready: Path) -> None:
     block_in_snapshot()
 
 
-@pytest.mark.autopsy(tmp_path=False)
+@pytest.mark.autopsy(children_only=True)
 @pytest.mark.parametrize("case", ["blocked", "exited", "stalled"])
 def test_snapshot_timeout(case, tmp_path, monkeypatch):
     ready = tmp_path / "ready"
     directory = autopsy.child_dir()
+    state = tmp_path / ".aew" / "project.yaml"
+    state.parent.mkdir()
+    state.write_text("project: seeded", encoding="utf-8")
     # Spelled in parts so only the private file contains the synthetic token.
     (directory / "probe.txt").write_text("ghp_" + "0123456789abcdefghijklmnopqrstuvwxyz", encoding="ascii")
     communicate = subprocess.Popen.communicate

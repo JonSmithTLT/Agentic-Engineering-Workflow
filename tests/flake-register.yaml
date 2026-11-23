@@ -1343,7 +1343,9 @@ entries:
     note: >-
       Windows artifact 14780724104 from the three planted timeouts contains a running helper with its blocked
       frame, an exited helper with stdout still open and live descendants, and an explicitly timed-out observation.
-      All three retained the original timeout and redacted the synthetic marker. The original stall remains unexplained.
+      A process list shows possible stdout holders. It cannot attribute an inherited handle to an individual among
+      multiple descendants. All three cases retained the original timeout and redacted the synthetic marker.
+      The original stall remains unexplained.
   closure:
     pr: 514
     cause: Capture the helper state and descendants before cleanup and retain the helper's stacks in the autopsy.

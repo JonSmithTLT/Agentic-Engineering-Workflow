@@ -70,11 +70,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: Dependency for a verified flake register edit (without it the tier is full)
+      - name: Dependencies for a verified flake register edit (without them the tier is full)
         continue-on-error: true
-        run: python -m pip install "PyYAML>=6.0"
+        run: python -m pip install "PyYAML>=6.0" "pytest>=8"
       - id: tier
         env:
+          PYTHONPATH: src  # flake-register validation imports the lane policy and aew.util
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           REPO: ${{ github.repository }}
@@ -410,6 +411,7 @@ jobs:
       - id: tier
         name: The tier, recomputed from the same merge commit with the label read live, is not narrower than the one the jobs ran under
         env:
+          PYTHONPATH: src
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           REPO: ${{ github.repository }}

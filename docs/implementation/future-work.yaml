@@ -1877,12 +1877,12 @@ sections:
       The November 19 test redesign retired the shadow fast tier and its promotion path. Fast-lane test inputs run in full.'
     Source: '[Testing and CI strategy](testing-and-ci-strategy.md) §3'
     When: '**Unscheduled**. Later phases remain deferred. The fast-tier experiment ended before promotion.'
-    Notes: 'Deferred behind their gates (plan v7 §9): Phase 1b, heavy-closure selection (Phase 1a enforced for four weeks
-      with no confirmed miss, and PR runs whose only non-`fast` changes are heavy test modules or helpers saving at least
-      3 % of PR runner-minutes; then the v2 review''s entry conditions V2-1, V2-2, V2-3, V2-5, V2-7 and V2-10), and Phase
-      2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes, a refreshed marginal
-      estimate of at least 8 %; entry condition V2-8). Expected saving of Phase 1a: about 12.5 % of PR runner-minutes on
-      the 27-PR sample (#117, #119, #120 and #145)'
+    Notes: 'Historical entry conditions in the retired fast-tier plan (v7 §9): Phase 1b, heavy-closure selection (Phase
+      1a enforced for four weeks with no confirmed miss, and PR runs whose only non-`fast` changes are heavy test modules
+      or helpers saving at least 3 % of PR runner-minutes; then the v2 review''s entry conditions V2-1, V2-2, V2-3, V2-5,
+      V2-7 and V2-10), and Phase 2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes,
+      a refreshed marginal estimate of at least 8 %; entry condition V2-8). The original Phase 1a estimate was about 12.5
+      % of PR runner-minutes on the 27-PR sample (#117, #119, #120 and #145)'
 
   - '#': E54
     Work: 'OpenCode 2.0.18''s `steps` resets at each promoted input (`harness send`, F9 messages): the operator-adopted

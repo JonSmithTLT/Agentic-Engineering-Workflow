@@ -1858,6 +1858,13 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     assert '--merge-ref "$GITHUB_SHA"' in runs and '--merge-ref "$GITHUB_SHA"' in changes_run
     assert '--repo "$REPO" --pr "$PR"' in runs and '--repo "$REPO" --pr "$PR"' in changes_run
     assert jobs["changes"]["permissions"]["pull-requests"] == "read"
+    for name in ("changes", "assurance"):
+        steps = jobs[name]["steps"]
+        index = next(i for i, step in enumerate(steps) if step.get("id") == "tier")
+        assert steps[index]["env"]["PYTHONPATH"] == "src"
+        installs = "\n".join(step.get("run", "") for step in steps[:index] if "pip install" in step.get("run", ""))
+        assert "pytest" in installs and "PyYAML" in installs
+
 
 
 class _Config:

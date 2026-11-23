@@ -7,7 +7,7 @@ tables and source excerpts are committed. Two guards keep it so, over the eviden
 source (``tests/live/f9a_delivery_probe/``, including its shell scripts):
 
 - no absolute Windows or POSIX path, and no JSON key that carries one (``location``, ``directory``, ``binary``), in
-  the fast tier on every platform. "Absolute path" means what ``HOST_PATHS`` lists: a drive path, a UNC prefix, a
+  the fast lane on every platform. "Absolute path" means what ``HOST_PATHS`` lists: a drive path, a UNC prefix, a
   home or user directory (``/home/``, ``/Users/``, ``/root/``, ``~/``, ``%APPDATA%``, ``%USERPROFILE%``) and a path
   under a POSIX system root (``/tmp/``, ``/var/``, ``/opt/``, ``/srv/``, ``/mnt/``, ``/run/``, ``/etc/``);
 - no word of an account's name, run locally on the commit before pushing and skipped in CI, where the account is the

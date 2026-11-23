@@ -52,7 +52,7 @@ def test_snapshot_timeouts_retain_the_helper_state_before_cleanup(tmp_path):
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     assert result.returncode == 1 and "3 failed" in result.stdout, result.stdout + result.stderr
     for case in ("blocked", "exited", "stalled"):
-        pid, holder = map(int, (base / f"expected-{case}.txt").read_text().split())
+        pid, start, holder, holder_start = map(int, (base / f"expected-{case}.txt").read_text().split())
         [directory] = [d for d in (hangs / "autopsy").iterdir() if f"_{case}_" in d.name]
         [state] = (directory / "harness").rglob("project.yaml.txt")
         assert state.read_text(encoding="utf-8") == "project: seeded"
@@ -72,4 +72,18 @@ def test_snapshot_timeouts_retain_the_helper_state_before_cleanup(tmp_path):
                        for stack in children.glob(f"stacks-{pid}.*.txt"))
         if case == "stalled":
             assert "descendant observation unavailable: TimeoutExpired" in record, record
-        assert proctree.start_time(pid) is None and proctree.start_time(holder) is None
+        assert_gone((pid, start))
+        assert_gone((holder, holder_start))
+
+
+def assert_gone(original: tuple[int, int]) -> None:
+    assert not proctree.same(original), f"snapshot process {original} survived cleanup"
+
+
+def test_snapshot_cleanup_distinguishes_a_survivor_from_a_reused_pid():
+    current = proctree.identity(os.getpid())
+    assert current is not None
+    pid, birth = current
+    assert_gone((pid, birth - 1))  # the current process reused the earlier identity's PID
+    with pytest.raises(AssertionError, match="survived cleanup"):
+        assert_gone(current)

@@ -40,9 +40,10 @@ JOB_MARGIN_S = 180.0
 SESSION_END_MARGINS = 5
 UPLOAD_CLEARANCE_S = 60.0
 
-# Publication reserves the scanner's existing 60s bound for initial and residual scans of two bundles, plus a
-# one-minute upload reserve for names, priority files, lane JSON and full evidence. The composite has one timeout.
+# The composite reserves four minutes of scanner time across its three scanned bundles, plus one minute per upload.
+CHEAP_FILE = 64 * 1024  # ordinary autopsy file allowance and inline failure-report limit
 EVIDENCE_SCAN_S = 60
+EVIDENCE_BUNDLE_SCAN_S = 4 * EVIDENCE_SCAN_S / 3
 PUBLICATION_BUDGET_S = 4 * EVIDENCE_SCAN_S + 4 * UPLOAD_CLEARANCE_S
 COLLECT_BUDGET_S = 10
 CUTOFF_CLEARANCE_S = 10

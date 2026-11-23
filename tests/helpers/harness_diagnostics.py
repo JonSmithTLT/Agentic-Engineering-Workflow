@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from bounds import CHEAP_FILE
 
 from aew.harness import runlog
 from aew.harness.defects import redact_text
@@ -214,7 +215,6 @@ def forget() -> None:
 AUTOPSY_DIR = "autopsy"  # under the hang directory; tools/ci/check_assurance.py and update_durations.py skip it
 AUTOPSY_FILE_CAP = 512 * 1024
 AUTOPSY_TOTAL_CAP = 64 * 1024 * 1024
-CHEAP_FILE = 64 * 1024
 CHEAP_TOTAL = 2 * 1024 * 1024
 OUTPUT_SUFFIXES = {".stdout", ".stderr", ".log", ".txt"}
 TEXT_SUFFIXES = OUTPUT_SUFFIXES | {".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}

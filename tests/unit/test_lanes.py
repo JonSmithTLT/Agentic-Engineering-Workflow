@@ -255,3 +255,114 @@ def test_the_lane_report_counts_each_tests_cli_calls_including_its_fixtures(tmp_
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads((root / "r.json").read_text(encoding="utf-8"))
     assert report["cli_calls"] == {"tests/integration/test_calls.py::test_three": 3}
+
+
+@pytest.mark.parametrize("args", [[], ["-n", "2"]], ids=["serial", "xdist"])
+def test_failed_setup_teardown_and_collection_keep_pytest_causes(tmp_path, args, monkeypatch):
+    root = scratch(tmp_path, {"tests/unit/test_broken.py": """
+import pytest
+
+@pytest.fixture
+def broken():
+    raise LookupError("fixture setup cause")
+
+@pytest.fixture
+def cleanup():
+    yield
+    raise OSError("fixture teardown cause")
+
+def test_setup(broken): pass
+def test_teardown(cleanup): raise AssertionError("call cause")
+"""})
+    report = tmp_path / "report.json"
+    proc = inner_pytest(root, *args, "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    doc = json.loads(report.read_text())
+    assert doc["complete"] is True
+    phases = {failure["phase"]: failure for result in doc["results"].values() for failure in result["failures"]}
+    expected = {"setup": "fixture setup cause", "call": "call cause", "teardown": "fixture teardown cause"}
+    for phase, message in expected.items():
+        assert message in phases[phase]["crash"] and message in phases[phase]["longrepr"]
+
+    from test_ci_tools import _load
+
+    # The ordinary collector and lane reporter observe independent sides of the native collection notification.
+    conf = root / "tests/conftest.py"
+    conf.write_text(conf.read_text() + "    import autopsy\n    autopsy.configure(config)\n")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = raw / "report.json"
+    (root / "tests/unit/test_broken.py").write_text('raise RuntimeError("module collection cause")\n')
+    proc = inner_pytest(root, *args, "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    result = json.loads(report.read_text())["results"]["tests/unit/test_broken.py"]
+    assert result["outcome"] == "error"
+    [failure] = result["failures"]
+    assert failure["phase"] == "collect" and "module collection cause" in failure["longrepr"]
+    assert "module collection cause" in failure["crash"]
+    assert proc.returncode == (1 if args else 2)
+    assert list(raw.rglob("reason.collect.*.txt"))
+    (raw / "runner-resources-test-exit.txt").write_text(json.dumps({"lane_exit": proc.returncode}))
+    artifacts = tmp_path / "published"
+    artifacts.mkdir()
+    _load("evidence_inputs").prepare(raw, artifacts / "case-watchdog-input", job="my job", copy_priority=False)
+    (artifacts / "case-names").rename(artifacts / "case-running")
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    stage.stage(raw, artifacts / "case")
+    stage.stage(raw, artifacts / "lane-report-case", reports_only=True)
+    jobs = [{"name": "my job", "conclusion": "failure"}]
+    check = _load("check_evidence_run").check_jobs
+    assert check(artifacts, jobs) == []
+    for copy in artifacts.rglob("report.json"):
+        doc = json.loads(copy.read_text())
+        doc["results"] = {}
+        copy.write_text(json.dumps(doc))
+    defects = check(artifacts, jobs)
+    assert any("[failure-report]" in defect and "(collect)" in defect for defect in defects)
+    assert any("[job-kind]" in defect for defect in defects) == (proc.returncode == 2)
+
+
+def test_native_multi_fixture_teardown_keeps_the_exception_group_line(tmp_path):
+    from test_ci_tools import _load
+
+    root = scratch(tmp_path, {"tests/unit/test_group.py": """import pytest
+
+@pytest.fixture
+def first():
+    yield
+    raise ValueError("first cleanup failed")
+
+@pytest.fixture
+def second():
+    yield
+    raise ValueError("second cleanup failed")
+
+def test_case(first, second): pass
+"""})
+    path = tmp_path / "report.json"
+    proc = inner_pytest(root, "-p", "no:xdist", "tests/unit/test_group.py", f"--lane-report={path}")
+    assert proc.returncode == 1
+    doc = json.loads(path.read_text())
+    [failure] = doc["results"]["tests/unit/test_group.py::test_case"]["failures"]
+    assert "ExceptionGroup:" in failure["crash"] and failure["phase"] == "teardown"
+    assert all(message in failure["longrepr"] for message in ("first cleanup failed", "second cleanup failed"))
+    check = _load("evidence_problems").failure_problems
+    assert check(path, doc) == []
+    failure["longrepr"] = "with pytest.raises(ExceptionGroup):\n    compare()"
+    assert any("[failure-text]" in defect for defect in check(path, doc))
+
+
+def test_partial_lane_report_survives_controller_exit_after_a_failed_phase(tmp_path):
+    root = scratch(tmp_path, {"tests/unit/test_broken.py": """
+import os
+def test_first(): raise AssertionError("retained before death")
+def test_then_exit(): os._exit(73)
+"""})
+    report = tmp_path / "report.json"
+    proc = inner_pytest(root, "-p", "no:xdist", "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode == 73, proc.stdout + proc.stderr
+    doc = json.loads(report.read_text())
+    assert doc["complete"] is False and doc["exitstatus"] is None
+    [failure] = doc["results"]["tests/unit/test_broken.py::test_first"]["failures"]
+    assert "retained before death" in failure["crash"]

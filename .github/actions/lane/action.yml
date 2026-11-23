@@ -99,12 +99,20 @@ runs:
         source: ${{ inputs.source }}
         artifact: ${{ inputs.artifact }}
         portion: priority
-    - name: Publish lane report
+    - name: Stage and scan lane reports
+      id: reports
       if: always()
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        ARTIFACT: ${{ inputs.artifact }}
+      run: python tools/ci/stage_evidence.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-reports" --reports-only
+    - name: Publish lane report
+      if: always() && steps.reports.outcome == 'success'
       uses: actions/upload-artifact@v7
       with:
         name: lane-report-${{ inputs.artifact }}
-        path: ${{ inputs.source }}/*.json
+        path: ${{ runner.temp }}/${{ inputs.artifact }}-reports
         if-no-files-found: ignore
         retention-days: 14
     - name: Publish full evidence

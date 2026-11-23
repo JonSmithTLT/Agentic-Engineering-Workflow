@@ -178,8 +178,22 @@ class AutopsyPlugin:
     def dest(self, test_id: str) -> Path:
         return self.root / hd.safe_dir(test_id)
 
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.failed:
+            # A collection error has no runtest phase. Keep the independent observer's node and phase without
+            # copying a second traceback. xdist workers use distinct filenames when they collect the same module.
+            try:
+                hd.write_text(self.dest(report.nodeid), f"reason.collect.{self.worker}",
+                              f"[{self.worker} pid {os.getpid()}] {report.nodeid}: failed in collect\n",
+                              cap=hd.CHEAP_FILE)
+            except OSError as exc:
+                import warnings
+
+                warnings.warn(pytest.PytestWarning(f"could not write the collection observation: {exc}"), stacklevel=2)
+
     def collect(self, test_id: str, reason: str, *, item: pytest.Item | None = None, failure: str | None = None,
-                own_stacks: bool = True, cheap: bool = False, children: bool = False) -> Path:
+                own_stacks: bool = True, cheap: bool = False, children: bool = False,
+                failed_io: tuple[str, str] | None = None) -> Path:
         """Write this test's autopsy. Never raises: an error is itself written down, and the rest carries on."""
         with self._lock:
             dest = self.dest(test_id)
@@ -208,6 +222,11 @@ class AutopsyPlugin:
                 step("failure", lambda: hd.write_text(dest, name("failure"), failure, budget=budget,
                                                       cap=cap))
             if cheap:
+                if failed_io:
+                    filename, operation = failed_io
+                    step("file holders", lambda: hd.write_text(
+                        dest, name("file-holders"), operation + "\n" + proctree.describe_holders(
+                            proctree.holders([filename])), budget=budget, cap=cap))
                 if children:
                     step("children", lambda: self._children(test_id, dest, budget, errors))
                 step("processes", lambda: hd.write_text(
@@ -293,8 +312,13 @@ class AutopsyPlugin:
         if rep.failed:
             mark = item.get_closest_marker(MARKER)
             children_only = bool(mark and mark.kwargs.get("children_only"))
+            failed_io = None
+            if call.excinfo and isinstance(call.excinfo.value, OSError) and call.excinfo.value.filename is not None:
+                frame = call.excinfo.traceback[-1]
+                failed_io = (os.fsdecode(call.excinfo.value.filename),
+                             f"{frame.path}:{frame.lineno + 1} in {frame.name}: {frame.statement}")
             self.collect(item.nodeid, f"failed in {rep.when}", item=item, failure=str(rep.longrepr),
-                         cheap=mark is None or children_only, children=children_only)
+                         cheap=mark is None or children_only, children=children_only, failed_io=failed_io)
         dest = self.collected.get(item.nodeid)
         if dest is not None and (rep.failed or rep.when == "call"):
             rep.sections.append(("aew autopsy", f"the autopsy is kept in {dest}"))

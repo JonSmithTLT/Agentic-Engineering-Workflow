@@ -1145,3 +1145,17 @@ def test_a_process_tree_whose_member_was_orphaned_closes_under_the_session(tmp_p
     proc = inner(project(tmp_path, TREE), hangs, "--session-deadline", "120", *mode)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     sentinel_ends(session_dir(hangs))
+
+
+def test_ordinary_oserror_records_raising_operation_and_its_path_holder(tmp_path):
+    hangs = tmp_path / "hangs"
+    fixture = HOLDER.split("@pytest.mark.autopsy")[0]
+    root = project(tmp_path, fixture + '''
+def test_ordinary_io(holder):
+    raise PermissionError(13, "planted operation on an open file", str(holder))
+''')
+    proc = inner(root, hangs, "-p", "no:xdist")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    report = texts(autopsy_of(hangs, "test_ordinary_io"), "file-holders.*")
+    assert "test_ordinary_io" in report and "raise PermissionError" in report, report
+    assert "state.txt" in report and "held by pid" in report, report

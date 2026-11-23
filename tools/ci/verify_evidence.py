@@ -32,9 +32,12 @@ OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snap
                "missing-counter": "oom-event", "missing-peak": "pressure", "wrong-bundle": "file-class",
                "live": "live-stack"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
+FAILURE_TWINS = {"invalid-json": "failure-report", "missing-exception": "failure-text",
+                 "missing-result": "failure-report"}
 PLANTED = {"stacks": {"stacks"}, "unlabelled": {"snapshot-label"}, "trigger": {"pressure"},
-           "ring": {"snapshot", "snapshot-label", "snapshot-age"}}
-DEATH_EXITS = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}
+           "ring": {"snapshot", "snapshot-label", "snapshot-age"}, "verbosity": {"failure-elision"},
+           "mask": {"omission"}, "overflow": {"omission", "failure-overflow"}}
+DEATH_EXITS = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137, "failure": 1, "failure-in-death": 70}
 
 
 def rule_ids(defects: list[str]) -> set[str]:
@@ -247,6 +250,69 @@ def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
     return failures
 
 
+def published_failures(root: Path, kind: str, ablation: str) -> list[str]:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/integration/evidence_plants"))
+    from failures import scanner_fixtures
+
+    token, pem = scanner_fixtures()
+    private_fragments = [part.encode() for part in (token, *pem.splitlines()[1:-1])]
+    exposed = []
+    for path in root.rglob("*"):
+        if path.is_file():
+            content = path.read_bytes()
+            if any(fragment in content for fragment in private_fragments):
+                exposed.append(path.relative_to(root))
+    if exposed:
+        return [f"synthetic fixture bytes survived masking in {path}" for path in exposed]
+    reports = list(root.glob("lane-report-*/plant.json"))
+    if ablation == "mask":
+        return ["masking-off twin published its failure report"] if reports else []
+    if len(reports) != 1:
+        return [f"expected one scanned lane report, found {len(reports)}"]
+    path = reports[0]
+    data = json.loads(path.read_text(encoding="utf-8"))
+    errors = []
+    if data.get("complete") is not (kind == "failure"):
+        errors.append(f"unexpected report completeness: {data.get('complete')}")
+    failed = {node.split("::")[-1]: result["failures"][0] for node, result in data["results"].items()
+              if result.get("failures")}
+    for test, phrase in (("test_list_difference", "actual middle entry"),
+                         ("test_string_difference", "actual string suffix")):
+        if ablation != "verbosity" and phrase not in failed.get(test, {}).get("longrepr", ""):
+            errors.append(f"{test}: missing differing item in published report")
+    overflow = failed.get("test_full_masked_failure", {})
+    full = path.parent / overflow.get("overflow", "absent")
+    if ablation != "overflow" and not full.is_file():
+        errors.append("full overflow file missing from lane-report artifact")
+    for text in [overflow.get("longrepr", ""), *([full.read_text(encoding="utf-8")] if full.is_file() else [])]:
+        if not all(marker in text for marker in ("overflow begins", "overflow ends", "<redacted:github-pat>",
+                                                  "<redacted:private-key>")):
+            errors.append("published failure lost its context or a scanner mask")
+    return errors
+
+
+def failure_twins(root: Path, job: dict) -> list[str]:
+    errors = []
+    for mutation, rule in FAILURE_TWINS.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            twin = Path(tmp) / "copy"
+            shutil.copytree(root, twin)
+            for path in twin.rglob("plant.json"):
+                if mutation == "invalid-json":
+                    path.write_text("{", encoding="utf-8")
+                else:
+                    doc = json.loads(path.read_text(encoding="utf-8"))
+                    if mutation == "missing-result":
+                        doc["results"] = {}
+                    for result in doc["results"].values():
+                        for failure in result.get("failures", []):
+                            failure["longrepr"] = "with pytest.raises(AssertionError):\n    compare()"
+                            failure.pop("overflow", None)
+                    path.write_text(json.dumps(doc), encoding="utf-8")
+            errors.extend(expect_rule(mutation, rule, check_jobs(twin, [job], include_success=True)))
+    return errors
+
+
 def main(root: Path) -> int:
     jobs = github_jobs()
     failures = []
@@ -277,13 +343,16 @@ def main(root: Path) -> int:
             merged = Path(temporary)
             for path in paths:
                 shutil.copytree(path, merged / path.name)
-            needs_stack = kind in {"deadline", "time-limit", "hang"}
-            defects = evidence_problems(merged, kind=ABRUPT.get(kind, kind), require_stacks=needs_stack)
+            needs_stack = kind in {"deadline", "time-limit", "hang", "failure-in-death"}
+            cause = "deadline" if kind == "failure-in-death" else ABRUPT.get(kind, kind)
+            defects = evidence_problems(merged, kind=cause, require_stacks=needs_stack)
             expected_rules = PLANTED.get(ablate, set())
             if rule_ids(defects) != expected_rules:
                 failures.append(f"{job['name']}: checker expected {sorted(expected_rules)}, found {defects}")
             gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS or kind in ABRUPT)
             expected_rules = expected_rules | ({"job-ablation"} if ablate in PLANTED else set())
+            if ablate == "mask":
+                expected_rules = expected_rules | {"failure-report"}
             if rule_ids(gate) != expected_rules:
                 failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
             expected = "cancelled" if kind == "cancel" else "success"
@@ -292,6 +361,10 @@ def main(root: Path) -> int:
                 verdict_step = next((step for step in job["steps"] if step["name"] == "Confirm planted death"), {})
             verdict = verdict_step.get("conclusion")
             failures.extend(f"{job['name']}: {problem}" for problem in observation_problems(merged, platform, kind))
+            if kind in {"failure", "failure-in-death"}:
+                failures.extend(f"{job['name']}: {problem}" for problem in published_failures(merged, kind, ablate))
+                if kind == "failure" and ablate == "none":
+                    failures.extend(failure_twins(merged, job))
             if job["conclusion"] != expected or verdict != expected:
                 failures.append(f"{job['name']}: plant misfired: job {job['conclusion']}, verdict step {verdict}")
             if kind == "time-limit-github":
@@ -303,7 +376,7 @@ def main(root: Path) -> int:
                 failures.extend(abrupt_twins(merged, ABRUPT[kind], job))
             if kind == "normal":
                 failures.extend(checker_twins(merged))
-            elif needs_stack and ablate == "none":
+            elif needs_stack and ablate == "none" and kind != "failure-in-death":
                 failures.extend(death_twins(merged, kind, job))
                 if kind == "deadline":
                     failures.extend(job_twins(merged, job))
@@ -321,7 +394,7 @@ def main(root: Path) -> int:
                     failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], check_jobs(merged, [job])))
                     marker.unlink()
             rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
-    expected_count = 21 if os.environ["GITHUB_EVENT_NAME"] == "pull_request" else 23
+    expected_count = 28 if os.environ["GITHUB_EVENT_NAME"] == "pull_request" else 30
     if len(rows) != expected_count:
         failures.append(f"expected {expected_count} plants, observed {len(rows)}")
     print("\n".join(rows + failures))

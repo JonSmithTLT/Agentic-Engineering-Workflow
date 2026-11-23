@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8.4"]
 # Optional: parallel test execution for the non-serial lanes (docs/implementation/testing-and-ci-strategy.md).
 # Kept out of `dev` so offline installs from the SPT wheelhouse need nothing new.
 parallel = ["pytest-xdist>=3.6"]
@@ -105,7 +105,10 @@ testpaths = ["tests"]
 # The G3 service is its own package beside the aew one (g3/aew_g3), never in the editable install: its tests import it
 # from the checkout under test.
 pythonpath = ["g3"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --strict-config"
+verbosity_assertions = 2
+truncation_limit_lines = 0
+truncation_limit_chars = 0
 # G3 H4: pytest's default retention ("all", the last 3 sessions) keeps every failed test's tmp_path. Not "failed":
 # removing a passing test's directory lets the next test get the same numbered name, and a process the earlier test
 # left running then writes into the new test's project (test_coordination_lifecycle broke its hash chain that way).

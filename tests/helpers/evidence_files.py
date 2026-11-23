@@ -27,6 +27,7 @@ def autopsy_priority(path: Path) -> bool:
 # Ordered like the writers: a watchdog or running name keeps its owner even in a nested session.
 FAMILIES = (
     FileFamily("inventory.txt", "publisher"),
+    FileFamily("inventory-part-*.txt", "publisher", scanned=True, priority=True),
     FileFamily("job-label-sha256.txt", "evidence_inputs"),
     FileFamily("hang-*.txt", "watchdog", scanned=True, priority=True),
     FileFamily("running-*.txt", "watchdog"),
@@ -37,6 +38,7 @@ FAMILIES = (
                scanned=True, priority=autopsy_priority),
     FileFamily("harness-runs/**", "harness_diagnostics", scanned=True),
     FileFamily("snapshots/*.txt", "lane_step", scanned=True, priority=True),
+    FileFamily("failures/*.txt", "lanes", scanned=True, priority=True),
     FileFamily("runner-resources-*.txt", "lane_step", scanned=True, priority=True),
     FileFamily("*vertical*.json", "vertical"),
     FileFamily("vertical-series.jsonl", "vertical"),
@@ -110,6 +112,8 @@ def open_observation(path: Path):
 
 def families(path: Path):
     for family in FAMILIES:
+        if family.pattern == "failures/*.txt" and not failure_overflow(path):
+            continue
         nested = family.pattern.endswith("/**")
         if (family.pattern[:-3] in path.parts[:-1] if nested else path.match(family.pattern)):
             yield family
@@ -121,8 +125,24 @@ def owner(path: Path) -> str | None:
 
 def publishable(path: Path) -> bool:
     # Recursive directories accept text diagnostics only. The specific XML family is scanned as well.
-    return any(family.scanned and (not family.pattern.endswith("/**") or path.suffix == ".txt")
+    return report_json(path) or any(family.scanned and (not family.pattern.endswith("/**") or path.suffix == ".txt")
                for family in families(path))
+
+
+def report_json(path: Path) -> bool:
+    # Existing root report/discovery JSON and the dispatch lane's explicitly named child reports.
+    return path.suffix == ".json" and (len(path.parts) == 1 or (len(path.parts) == 2 and path.name == "report.json"
+                                      and re.fullmatch(r"plants|shard|isolated-[0-9]+", path.parts[0]) is not None))
+
+
+def failure_or_death(path: Path) -> bool:
+    return (report_json(path) or failure_overflow(path) or priority(path)
+            or ("autopsy" in path.parts and path.name.startswith("failure")))
+
+
+def failure_overflow(path: Path) -> bool:
+    return (path.parent.name == "failures" and report_json(path.parent.parent / "report.json")
+            and re.fullmatch(r"[0-9a-f]{64}\.txt", path.name) is not None)
 
 
 def stack_file(path: Path) -> bool:

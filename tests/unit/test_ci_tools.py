@@ -253,7 +253,12 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
                if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
     [report_upload] = [s for s in lane if str(s.get("with", {}).get("name", "")).startswith("lane-report-")]
-    assert report_upload["if"] == "always()"
+    stage = next(step for step in lane if step.get("id") == "reports")
+    assert lane.index(stage) < lane.index(report_upload)
+    assert stage["if"] == "always()"
+    assert 'stage_evidence.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-reports" --reports-only' in stage["run"]
+    assert report_upload["if"] == "always() && steps.reports.outcome == 'success'"
+    assert report_upload["with"]["path"] == "${{ runner.temp }}/${{ inputs.artifact }}-reports"
     assert report_upload["with"]["name"] == "lane-report-${{ inputs.artifact }}"
     callers = [s for name in ("core", "lanes") for s in wf["jobs"][name]["steps"]
                if s.get("uses") == "./.github/actions/lane"]
@@ -363,6 +368,9 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     def scan(argv, **kwargs):
         assert kwargs["capture_output"]
         candidate = Path(argv[-1])
+        if len(calls) == 2:
+            calls.append("verified")
+            return SimpleNamespace(returncode=0)
         name = "failure.txt" if not calls else "still-dirty.txt"
         calls.append(name)
         hit = evidence_hit(candidate / "autopsy" / name)
@@ -375,10 +383,10 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     monkeypatch.setattr(stage.subprocess, "run", scan)
     destination = tmp_path / "public"
     stage.main([str(source), str(destination)])
-    assert calls == ["failure.txt", "still-dirty.txt"]
-    assert not (destination / "autopsy/still-dirty.txt").exists()
-    assert not (destination / "autopsy/copy-of-dirty.txt").exists()
+    assert calls == ["failure.txt", "still-dirty.txt", "verified"]
     expected = {
+        "autopsy/still-dirty.txt": "<redacted:planted-rule>",
+        "autopsy/copy-of-dirty.txt": "<redacted:planted-rule>",
         "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
         "autopsy/other.txt": "context <redacted:planted-rule>",
         "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
@@ -388,11 +396,11 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     timing, _, log = capsys.readouterr().err.partition("\n")
     assert re.fullmatch(r"evidence timing stage \d+\.\d{3}s", timing)
     assert log.splitlines() == [
-        "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
+        "masked autopsy/copy-of-dirty.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:2 (planted-rule)",
         "masked autopsy/other.txt:1 (planted-rule)",
-        "withheld autopsy/still-dirty.txt:1 (planted-rule)",
+        "masked autopsy/still-dirty.txt:1 (planted-rule)",
         "masked junit.xml:1 (planted-rule)",
         "masked vertical-summary.txt:1 (planted-rule)",
     ]
@@ -409,6 +417,35 @@ def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
                    cwd=ROOT, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL, env=env,
                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     assert json.loads(report.read_text(encoding="utf-8"))["attempt"] == 3
+
+
+@pytest.mark.parametrize("workflow,job,alias,report_path", [
+    ("nightly", "reference", "nightly-reference-", "reference-linux-0.json"),
+    ("flake-dispatch", "regression", "flake-dispatch-evidence", "shard/report.json"),
+])
+def test_report_aliases_retain_the_complete_scanned_artifact(tmp_path, monkeypatch, workflow, job, alias, report_path):
+    steps = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())["jobs"][job]["steps"]
+    upload = next(s["with"] for s in steps if s.get("with", {}).get("name", "").startswith(alias))
+    assert upload["path"].endswith("'-reports' || '-recovered-reports' }}")
+    raw = tmp_path / "raw"
+    path = raw / report_path
+    path.parent.mkdir(parents=True)
+    overflow = Path("failures", "f" * 64 + ".txt")
+    (path.parent / overflow).parent.mkdir()
+    cause = "E   RuntimeError: retained text"
+    (path.parent / overflow).write_text(cause)
+    doc = report("linux", "fast", {})
+    doc["results"] = {"tests/test_one.py::test_case": {"outcome": "failed", "failures": [
+        {"phase": "call", "longrepr": cause, "crash": "file.py:1: RuntimeError: retained text",
+         "overflow": overflow.as_posix()}]}}
+    path.write_text(json.dumps(doc))
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    published = tmp_path / alias
+    stage.stage(raw, published, reports_only=True)
+    [found] = check_assurance.load_reports(published)
+    assert _load("evidence_problems").failure_problems(published / found["_source"], found) == []
+    assert (published / report_path).parent.joinpath(overflow).read_text() == cause
 
 
 def test_the_nightly_reference_job_is_sharded_and_aggregated():

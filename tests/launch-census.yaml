@@ -126,7 +126,7 @@ starts:
   call: run_session_tree
   classes: [contained]
   reason: the one Lead harness start; its required `contained` decides (G3 addendum 7, ruling 1)
-  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  contained_by: [src/aew/harness/opencode/lead.py::establish_layout]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__,
                          src/aew/harness/lead_broker.py::WeakerLead.__call__]
 - site: src/aew/harness/notify.py::Watcher._deliver_one
@@ -141,13 +141,13 @@ starts:
   call: bwrap_argv
   classes: [contained]
   reason: the contained Lead's TUI, in its self-tested sandbox (STG-05 CS-4)
-  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  contained_by: [src/aew/harness/opencode/lead.py::establish_layout]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
-- site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
+- site: src/aew/harness/opencode/lead.py::establish_layout
   call: establish
   classes: [contained]
-  reason: the contained Lead's sandbox (STG-05 CS-4)
-  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  reason: the contained Lead's sandbox (STG-05 CS-4), also checked by doctor's Lead relay read, which skips fallback
+  contained_by: [src/aew/harness/opencode/lead.py::establish_layout]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
 - site: src/aew/harness/opencode/adapter.py::OpenCodeAdapter._seed_plan_login.offline
   call: ProcessTree
@@ -174,7 +174,7 @@ starts:
   classes: [contained, weaker_registered]
   reason: '`aew opencode`: contained on Linux (ContainedLead); off Linux it runs labelled not contained (WeakerLead),
     refused under an explicit required before any credential read'
-  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  contained_by: [src/aew/harness/opencode/lead.py::establish_layout]
   registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
 - site: src/aew/harness/operator_autostart.py::_start

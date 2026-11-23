@@ -10,6 +10,7 @@ from pathlib import Path
 
 import autopsy
 import bounds
+import proctree
 import pytest
 import snapshot_process
 from racing_read import read_text_or_none
@@ -20,24 +21,34 @@ def block_in_snapshot() -> None:
 
 
 def helper(case: str, ready: Path) -> None:
+    me = proctree.identity(os.getpid())
+    assert me is not None
+    holder = me
     if case == "exited":
         # Only the descendant's stdout leads back to the pytest process.
         hold = ("import os, sys, threading; from pathlib import Path; "
                 "Path(sys.argv[1]).write_text(str(os.getpid()), encoding='ascii'); threading.Event().wait(60)")
-        child = subprocess.Popen([sys.executable, "-B", "-c", hold, str(ready)],
+        child_ready = ready.with_suffix(".holder")
+        child = subprocess.Popen([sys.executable, "-B", "-c", hold, str(child_ready)],
                                  stdout=sys.stdout, stderr=subprocess.DEVNULL,
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        bounds.bounded_wait("wait.condition", ready.is_file, gone=lambda: child.poll() is not None)
-        return
-    ready.write_text(str(os.getpid()), encoding="ascii")
-    block_in_snapshot()
+        bounds.bounded_wait("wait.condition", lambda: read_text_or_none(child_ready) == str(child.pid),
+                            gone=lambda: child.poll() is not None)
+        holder = proctree.identity(child.pid)
+        assert holder is not None
+    # Publish complete original identities while both the helper and its holder are still alive.
+    writing = ready.with_suffix(".tmp")
+    writing.write_text(f"{me[0]} {me[1]} {holder[0]} {holder[1]}", encoding="ascii")
+    writing.replace(ready)
+    if case != "exited":
+        block_in_snapshot()
 
 
 @pytest.mark.autopsy(children_only=True)
 @pytest.mark.parametrize("case", ["blocked", "exited", "stalled"])
 def test_snapshot_timeout(case, tmp_path, monkeypatch):
-    ready = tmp_path / "ready"
     directory = autopsy.child_dir()
+    ready = directory.parent.parent / f"expected-{case}.txt"  # independent of the retained autopsy
     state = tmp_path / ".aew" / "project.yaml"
     state.parent.mkdir()
     state.write_text("project: seeded", encoding="utf-8")
@@ -49,10 +60,7 @@ def test_snapshot_timeout(case, tmp_path, monkeypatch):
     def communicate_when_ready(proc, *args, **kwargs):
         if kwargs.get("timeout") != plant_deadline or proc.args[3] != __file__:
             return communicate(proc, *args, **kwargs)
-        bounds.bounded_wait("wait.condition", lambda: (read_text_or_none(ready) or "").isdigit())
-        holder = int(ready.read_text(encoding="ascii"))
-        # Independent expected identities, outside the retained autopsy.
-        (directory.parent.parent / f"expected-{case}.txt").write_text(f"{proc.pid} {holder}", encoding="ascii")
+        bounds.bounded_wait("wait.condition", ready.is_file)
         if case == "exited":
             assert proc.wait(30) == 0
         else:

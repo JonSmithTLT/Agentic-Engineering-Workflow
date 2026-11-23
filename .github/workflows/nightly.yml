@@ -146,8 +146,7 @@ jobs:
         if: always()
         with:
           name: nightly-reference-${{ runner.os }}-${{ matrix.shard }}
-          path: |
-            ${{ runner.temp }}/nightly-reports/*.json
+          path: ${{ runner.temp }}/evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}${{ steps.lane_5.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}/*.json
           retention-days: 30
 
 
@@ -266,7 +265,7 @@ jobs:
           source: ${{ runner.temp }}/hangs/
           artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-step-4-attempt-${{ github.run_attempt }}
           command: |
-            python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
+            python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs" "--lane-report=${{ runner.temp }}/hangs/report.json"
       - name: Recover evidence if the lane action was interrupted
         if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_4.outcome) && steps.lane_4.outputs.finished != 'success'
         timeout-minutes: 11
@@ -311,7 +310,7 @@ jobs:
             for i in $(seq 1 10); do
               echo "::group::serial lane repetition $i"
               python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
-                --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
+                --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" "--lane-report=${{ runner.temp }}/hangs/repetition-$i.json" || exit 1
               echo "::endgroup::"
             done
       - name: Recover evidence if the lane action was interrupted
@@ -335,7 +334,7 @@ jobs:
           artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-4-attempt-${{ github.run_attempt }}
           shell: bash
           command: |
-            python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
+            python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing" "--lane-report=${{ runner.temp }}/hangs/racing.json"
       - name: Recover evidence if the lane action was interrupted
         if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_4.outcome) && steps.lane_4.outputs.finished != 'success'
         timeout-minutes: 11
@@ -381,7 +380,7 @@ jobs:
           command: |
             echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
             AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
-              --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
+              --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" "--lane-report=${{ runner.temp }}/hangs/report.json" \
               "tests/unit/test_store.py::test_randomized_crash_iterations"
       - name: Recover evidence if the lane action was interrupted
         if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_3.outcome) && steps.lane_3.outputs.finished != 'success'

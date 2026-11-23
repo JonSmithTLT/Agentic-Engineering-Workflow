@@ -106,7 +106,11 @@ def test_retained_workflows_use_lane_action_and_keep_names_and_reports_on_collec
         if index >= collect:
             assert step.get("if", "").startswith("always()"), step
         if "upload-artifact" in step.get("uses", "") or step["name"] == "Prepare owned evidence inputs":
-            assert index > collect and step["if"] == "always()", step
+            condition = ("always() && steps.reports.outcome == 'success'" if step["name"] == "Publish lane report"
+                         else "always()")
+            assert index > collect and step["if"] == condition, step
+            if step["name"] == "Publish lane report":
+                assert step["with"]["path"].endswith("-reports") and "inputs.source" not in step["with"]["path"]
     publisher = yaml.safe_load((ROOT / ".github/actions/publish-evidence/action.yml").read_text())
     assert all(step.get("if", "").startswith("always()") for step in publisher["runs"]["steps"])
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
@@ -122,10 +126,11 @@ def test_each_checker_rule_names_a_hosted_ablation():
     rules = {
         node.args[0].value for name in ("evidence_problems", "check_evidence_run")
         for node in ast.walk(ast.parse((ROOT / "tools/ci" / f"{name}.py").read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "report"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"report", "defect"}
     }
     twins = set((*verify.STATE_TWINS.values(), *verify.DEATH_TWINS.values(),
-                 *verify.JOB_TWINS.values(), *verify.OTHER_TWINS.values()))
+                 *verify.JOB_TWINS.values(), *verify.OTHER_TWINS.values(), *verify.FAILURE_TWINS.values(),
+                 *set.union(*verify.PLANTED.values())))
     assert rules == twins
 
 
@@ -141,6 +146,9 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
             ".github/actions/publish-evidence/**",
             ".github/actions/recover-lane/**",
             ".github/workflows/evidence-*.yml",
+            "pyproject.toml",
+            "tests/helpers/lanes.py",
+            "tests/helpers/bounds.py",
             "tests/helpers/watchdog.py",
             "tests/helpers/session_deadline.py",
             "tests/helpers/autopsy.py",
@@ -148,6 +156,7 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
             "tests/helpers/worker_evidence.py",
             "tests/integration/evidence_plants/**",
             "tools/ci/lane_step.py",
+            "tools/ci/check_assurance.py",
             "tools/ci/*evidence*",
             "tools/flake_register.py",
         ]},
@@ -218,7 +227,7 @@ def test_priority_preparation_keeps_deadline_stacks_and_the_publisher_labels_eve
     assert "empty autopsy/session-123-test/worker-gw0-deadline-stacks.txt" in inventory
     assert "finding autopsy/session-123-test/stacks.gw0-1.txt" in inventory
     assert "omitted autopsy/session-123-test/oversized.txt" in inventory
-    assert _load("evidence_problems").evidence_problems(output) == []
+    assert _load("verify_evidence").rule_ids(_load("evidence_problems").evidence_problems(output)) == {"omission"}
 
 
 @pytest.mark.parametrize("omissions", [False, True])
@@ -232,12 +241,49 @@ def test_state_and_omission_rows_respect_the_inventory_cap(tmp_path, monkeypatch
     monkeypatch.setattr(stage, "scan", lambda *args: {})
     monkeypatch.setattr(stage, "INDEX_CAP", 270)
     output = tmp_path / "published"
-    assert stage.stage(source, output) == "evidence defect: inventory cap exceeded"
-    inventory = output / "inventory.txt"
-    assert list(output.iterdir()) == [inventory]
-    assert inventory.stat().st_size <= stage.INDEX_CAP
-    assert "observation-" not in inventory.read_text()
-    assert "evidence defect: [cap] inventory cap exceeded" in _load("evidence_problems").evidence_problems(output)
+    assert stage.stage(source, output) == "gitleaks clean"
+    indexes = sorted(output.glob("inventory*.txt"))
+    assert len(indexes) > 1 and all(path.stat().st_size <= stage.INDEX_CAP for path in indexes)
+    listing = "".join(path.read_text() for path in indexes)
+    assert all(f"observation-{i:04}.txt" in listing for i in range(12))
+    check = _load("evidence_problems").evidence_problems
+    assert check(output) == []
+    next(output.glob("inventory-part-*.txt")).unlink()
+    assert "inventory" in _load("verify_evidence").rule_ids(check(output))
+
+
+def test_cap_favors_failed_test_and_preserves_full_overflow(tmp_path, monkeypatch):
+    stage = _load("stage_evidence")
+    raw = tmp_path / "raw"
+    for part in ("autopsy", "failures"):
+        (raw / part).mkdir(parents=True, exist_ok=True)
+    (raw / "autopsy/aaa.txt").write_bytes(b"a" * 800)
+    (raw / "autopsy/failure.txt").write_bytes(b"f" * 720)
+    overflow = Path("failures", "f" * 64 + ".txt")
+    (raw / overflow).write_bytes(b"x" * 2048)
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    monkeypatch.setattr(stage, "JOB_CAP", 1400)
+    monkeypatch.setattr(stage, "INDEX_CAP", 460)
+    output = tmp_path / "published"
+    assert stage.stage(raw, output) == "gitleaks clean"
+    assert (output / "autopsy/failure.txt").stat().st_size == 720
+    assert (output / overflow).stat().st_size == 2048
+    assert "omitted autopsy/aaa.txt (job cap)" in (output / "inventory.txt").read_text()
+    assert sum(p.stat().st_size for p in output.rglob("*") if p.is_file() and p != output / overflow) <= stage.JOB_CAP
+
+
+def test_decoder_only_finding_masks_its_reported_lines_preserving_siblings(tmp_path):
+    import json
+
+    stage = _load("stage_evidence")
+    hit = stage.Hit("fixture", 3, b"decoded", 4, decoded=True)
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps({"cause": "head\nencoded one\nencoded two\ntail", "keep": "useful"}))
+    stage.mask_reported_lines(path, [hit])
+    assert json.loads(path.read_text()) == {
+        "cause": "head\n<redacted:fixture>\n<redacted:fixture>\ntail", "keep": "useful"}
+    with pytest.raises(ValueError, match="document types"):
+        stage.map_xml('<!DOCTYPE doc [<!ENTITY name "value">]><doc>&name;</doc>', str)
 
 
 def test_a_lost_scanned_bundle_is_still_matched_to_its_job_by_typed_source_names(tmp_path):
@@ -538,12 +584,12 @@ def test_file_classes_preserve_scanned_and_priority_publication(tmp_path, monkey
         "snapshots/123.txt": (True, True), "autopsy/session-1/worker-killed-123.txt": (True, True),
         "autopsy/case/reason.txt": (True, True), "harness-runs/case/info.txt": (True, False),
         "junit.xml": (True, False), "dispatch.txt": (True, False), "running-123.txt": (False, False),
-        "report.json": (False, False),
+        "report.json": (True, False),
     }
     for name, expected in cases.items():
         path = source / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("tests/test_a.py::test_a\n")
+        path.write_text("{}" if path.suffix == ".json" else "tests/test_a.py::test_a\n")
         assert owner(Path(name)) and (publishable(Path(name)), priority(Path(name))) == expected
     monkeypatch.setattr(stage, "scan", lambda *_args: {})
     partial = tmp_path / "partial"

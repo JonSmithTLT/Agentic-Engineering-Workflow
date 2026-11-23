@@ -6,6 +6,9 @@ on:
       - '.github/actions/publish-evidence/**'
       - '.github/actions/recover-lane/**'
       - '.github/workflows/evidence-*.yml'
+      - 'pyproject.toml'
+      - 'tests/helpers/lanes.py'
+      - 'tests/helpers/bounds.py'
       - 'tests/helpers/watchdog.py'
       - 'tests/helpers/session_deadline.py'
       - 'tests/helpers/autopsy.py'
@@ -13,6 +16,7 @@ on:
       - 'tests/helpers/worker_evidence.py'
       - 'tests/integration/evidence_plants/**'
       - 'tools/ci/lane_step.py'
+      - 'tools/ci/check_assurance.py'
       - 'tools/ci/*evidence*'
       - 'tools/flake_register.py'
   schedule:
@@ -33,9 +37,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
-        kind: [normal, deadline, time-limit, hang, worker-kill, time-limit-github]
+        kind: [normal, deadline, time-limit, hang, worker-kill, time-limit-github, failure, failure-in-death]
         ablate: [none]
         include:
+          - {os: ubuntu-24.04, kind: failure, ablate: verbosity}
+          - {os: windows-latest, kind: failure, ablate: mask}
+          - {os: ubuntu-24.04, kind: failure, ablate: overflow}
           - {os: ubuntu-24.04, kind: sigkill, ablate: none}
           - {os: ubuntu-24.04, kind: oom, ablate: none}
           - {os: ubuntu-24.04, kind: oom, ablate: trigger}
@@ -60,6 +67,13 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Exercise the supported pytest floor from a local wheel directory
+        if: matrix.kind == 'failure' && matrix.ablate == 'none'
+        shell: bash
+        run: |
+          python -m pip download --only-binary=:all: --dest "$RUNNER_TEMP/pytest-wheels" pytest==8.4.0
+          python -m pip install --no-index --find-links "$RUNNER_TEMP/pytest-wheels" pytest==8.4.0
+          python -m pip check
       - name: Bound the synthetic OOM worker to a private cgroup
         if: matrix.kind == 'oom'
         shell: bash
@@ -89,10 +103,11 @@ jobs:
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
-            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (contains(fromJSON('["oom","worker-kill","cancel"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
-            tests/integration/evidence_plants/deaths.py --lane integration
+            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
+            tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || 'deaths.py' }} --lane integration
+            ${{ matrix.ablate == 'verbosity' && '-o verbosity_assertions=0' || '' }}
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
-            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || (matrix.kind == 'cancel' && 360 || 180) }}
+            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline' || matrix.kind == 'failure-in-death') && 30 || (matrix.kind == 'cancel' && 360 || 180) }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
       - name: GitHub timed execution
         id: timed

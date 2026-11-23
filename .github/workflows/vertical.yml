@@ -60,7 +60,7 @@ jobs:
           source: ${{ runner.temp }}/vertical/
           artifact: evidence-vertical-ledger-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           command: |
-            python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/vertical/hangs" "--junitxml=${{ runner.temp }}/vertical/junit.xml"
+            python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/vertical/hangs" "--lane-report=${{ runner.temp }}/vertical/report.json" "--junitxml=${{ runner.temp }}/vertical/junit.xml"
       - name: Recover evidence if the lane action was interrupted
         if: always() && contains(fromJSON('["failure","cancelled"]'), steps.pytest.outcome) && steps.pytest.outputs.finished != 'success'
         timeout-minutes: 11
@@ -109,6 +109,7 @@ jobs:
           name: vertical-ledger-${{ runner.os }}
           path: |
             ${{ runner.temp }}/vertical/*.json
+            !${{ runner.temp }}/vertical/report.json
             ${{ runner.temp }}/vertical/*.jsonl
             ${{ runner.temp }}/vertical/*/vertical-ledger.json
           if-no-files-found: warn

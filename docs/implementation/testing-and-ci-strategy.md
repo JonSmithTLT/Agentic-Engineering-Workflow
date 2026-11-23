@@ -378,8 +378,14 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 
 Core, sharded, nightly, vertical and flake-dispatch test lanes use the shared lane action. Collection and process
 cleanup precede publication. The publisher
-scans the priority files first, then publishes the lane report and the full scanned autopsy. A scanner outage is
-reported as an evidence defect and keeps the contents withheld.
+scans priority files, lane reports and full autopsies before uploading them. It masks scanner findings in place,
+rescans the result and records each omission. Missing failure or death evidence and an unavailable scanner are
+evidence defects. A scanner outage publishes only its inventory.
+
+The controller writes the lane report atomically after each failing collection, setup, call or teardown report.
+Each entry holds pytest's failure text and crash location. Text larger than the ordinary autopsy's per-file limit
+keeps its head and tail in the report and its full text in a scanned overflow file. An interrupted report has
+`complete: false`. The evidence check compares failures observed by the worker with the published report.
 
 A watchdog file starts with the test name, its UTC start, the limit and a note that a dump below records a fire. A timeout appends its elapsed time
 and stacks. Normal completion removes the working file. Deadline timers write an armed header once and remove it
@@ -395,6 +401,5 @@ limit until the snapshot ring is enabled.
 
 The enclosing workflow step bounds the shared lane action, including its publication. Composite steps inherit that
 bound from their caller. Each later workflow step has its own timeout. `bounds.publication_job_minutes` sums these
-limits with the sentinel's longest path, its cutoff clearance and collection. Four possible scanner invocations and
-four artifact uploads have a reserved budget. Existing absolute test deadlines are preserved. Upload reserves are
+limits with the sentinel's longest path, its cutoff clearance and collection. Three scanned bundles share a four-minute scanner budget, and four artifact uploads have a reserved budget. Existing absolute test deadlines are preserved. Upload reserves are
 provisional until the first hosted run measures them. The verifier reports the hosted steps' elapsed times.

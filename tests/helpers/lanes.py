@@ -21,6 +21,8 @@ from typing import Any
 
 import pytest
 
+from aew.util import atomic_write
+
 LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical", "discovery")
 LIVE_DIR = "tests/live/"
 # The vertical UAT (docs/implementation/vertical-uat.md): its own lane and CI job, in shadow. It is expected to fail
@@ -224,6 +226,7 @@ class LanePlugin:
         self.collected: list[str] = []
         self.lanes: dict[str, str] = {}  # every collected test's lane: assurance requires only the tier's lanes (P1)
         self.phases: dict[str, dict[str, str]] = {}
+        self.failures: dict[str, list[dict[str, str]]] = {}
         self.durations: dict[str, float] = {}
         self.cli_calls: dict[str, int] = {}
         self.started = time.perf_counter()
@@ -300,6 +303,46 @@ class LanePlugin:
         for name, value in report.user_properties:
             if name == CLI_CALLS_PROPERTY and report.when == "teardown":
                 self.cli_calls[report.nodeid] = int(value)
+        if report.failed:
+            self._record_failure(report, report.when)
+
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.failed:
+            self._record_failure(report, "collect")
+
+    def _record_failure(self, report: pytest.TestReport | pytest.CollectReport, phase: str) -> None:
+        if not self.report_path or _is_worker(self.config):
+            return
+        # Reuse pytest's rendered representation. xdist forwards failed collection and test reports to this controller.
+        from harness_diagnostics import CHEAP_FILE
+
+        node = report.nodeid
+        text = str(report.longrepr) if report.longrepr is not None else ""
+        location = getattr(report.longrepr, "reprcrash", None)
+        if location:
+            crash = f"{location.path}:{location.lineno}: {location.message.splitlines()[0] if location.message else ''}"
+        else:
+            # Collection and native-worker reports sometimes carry just a rendered message.
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            crash = next((line.removeprefix("E   ").strip() for line in reversed(lines) if line.startswith("E   ")),
+                         lines[-1] if lines else "")
+        failure = {"phase": phase, "crash": crash[:CHEAP_FILE], "longrepr": text}
+        raw = text.encode("utf-8", "replace")
+        if len(raw) > CHEAP_FILE:  # the ordinary autopsy's per-file allowance also bounds inline lane evidence
+            digest = hashlib.sha256((node + "\0" + phase).encode() + raw).hexdigest()
+            overflow = Path("failures", f"{digest}.txt")
+            target = Path(self.report_path).parent / overflow
+            target.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(target, raw)
+            cut = "\n[full failure in " + overflow.as_posix() + "]\n"
+            half = (CHEAP_FILE - len(cut)) // 2
+            failure.update(longrepr=raw[:half].decode("utf-8", "ignore") + cut + raw[-half:].decode("utf-8", "ignore"),
+                           overflow=overflow.as_posix())
+        failures = self.failures.setdefault(node, [])
+        if phase == "collect" and failure in failures:
+            return  # xdist can forward equivalent rendered collection errors from several workers
+        failures.append(failure)
+        self._write_report(None)
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
@@ -316,6 +359,8 @@ class LanePlugin:
         """What the session itself writes, and may write inside the checkout: the reports, and the directory a failed
         harness test's evidence is copied to (everything under it; #136 review, F4)."""
         outs = [self.report_path, getattr(self.config.option, "xmlpath", None)]
+        if self.report_path:
+            outs.append(Path(self.report_path).parent / "failures")
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
@@ -344,7 +389,7 @@ class LanePlugin:
         if self.report_path:
             self._write_report(int(session.exitstatus))
 
-    def _write_report(self, exitstatus: int) -> None:
+    def _write_report(self, exitstatus: int | None) -> None:
         xdist = self.config.getoption("numprocesses", None) if self.config.pluginmanager.hasplugin("xdist") else None
         report = {
             "schema": REPORT_SCHEMA,
@@ -356,17 +401,20 @@ class LanePlugin:
             "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 1),
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
+            "complete": exitstatus is not None,
             "wall_s": round(time.perf_counter() - self.started, 2),
             "job_remaining_s": self.job_remaining_s,
             "collected": sorted(self.collected),
             "lanes": dict(sorted(self.lanes.items())),
-            "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
-                        for nid, ph in sorted(self.phases.items())},
+            "results": {nid: {"outcome": outcome_of(self.phases[nid]) if nid in self.phases else "error",
+                              "duration": round(self.durations.get(nid, 0.0), 3),
+                              **({"failures": self.failures[nid]} if nid in self.failures else {})}
+                        for nid in sorted(self.phases.keys() | self.failures.keys())},
             "cli_calls": dict(sorted(self.cli_calls.items())),
         }
         path = Path(self.report_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+        atomic_write(path, json.dumps(report, indent=1) + "\n")
 
 
 @pytest.fixture(autouse=True)

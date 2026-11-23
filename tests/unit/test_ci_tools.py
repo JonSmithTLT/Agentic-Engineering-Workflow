@@ -363,6 +363,9 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     def scan(argv, **kwargs):
         assert kwargs["capture_output"]
         candidate = Path(argv[-1])
+        if len(calls) == 2:
+            calls.append("verified")
+            return SimpleNamespace(returncode=0)
         name = "failure.txt" if not calls else "still-dirty.txt"
         calls.append(name)
         hit = evidence_hit(candidate / "autopsy" / name)
@@ -375,10 +378,10 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     monkeypatch.setattr(stage.subprocess, "run", scan)
     destination = tmp_path / "public"
     stage.main([str(source), str(destination)])
-    assert calls == ["failure.txt", "still-dirty.txt"]
-    assert not (destination / "autopsy/still-dirty.txt").exists()
-    assert not (destination / "autopsy/copy-of-dirty.txt").exists()
+    assert calls == ["failure.txt", "still-dirty.txt", "verified"]
     expected = {
+        "autopsy/still-dirty.txt": "<redacted:planted-rule>",
+        "autopsy/copy-of-dirty.txt": "<redacted:planted-rule>",
         "autopsy/failure.txt": "<redacted:planted-rule>\n<redacted:planted-rule>\n",
         "autopsy/other.txt": "context <redacted:planted-rule>",
         "junit.xml": "<failure>&lt;redacted:planted-rule&gt; &lt;redacted&gt;</failure>",
@@ -388,11 +391,11 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
     timing, _, log = capsys.readouterr().err.partition("\n")
     assert re.fullmatch(r"evidence timing stage \d+\.\d{3}s", timing)
     assert log.splitlines() == [
-        "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
+        "masked autopsy/copy-of-dirty.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:2 (planted-rule)",
         "masked autopsy/other.txt:1 (planted-rule)",
-        "withheld autopsy/still-dirty.txt:1 (planted-rule)",
+        "masked autopsy/still-dirty.txt:1 (planted-rule)",
         "masked junit.xml:1 (planted-rule)",
         "masked vertical-summary.txt:1 (planted-rule)",
     ]

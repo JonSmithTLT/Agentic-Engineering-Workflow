@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
-from evidence_problems import evidence_problems
+from evidence_problems import evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flake_register import _gh_read, _pages  # noqa: E402
@@ -88,13 +88,28 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             for bundle in found:
                 if bundle.name.endswith("-running"):
                     lane_report = root / ("lane-report-" + bundle.name.removesuffix("-running"))
-                    for path in lane_report.glob("*.json"):
+                    if lane_report.is_dir() and (lane_report / "inventory.txt").exists():
+                        shutil.copytree(lane_report, merged / lane_report.name, dirs_exist_ok=True)
+                    for path in lane_report.rglob("*.json"):
+                        if not report_json(path.relative_to(lane_report)):
+                            continue
                         try:
                             data = json.loads(path.read_text(encoding="utf-8"))
                         except (OSError, ValueError):
                             continue  # collection can leave an incomplete report; use the other observations
                         if isinstance(data, dict) and "exitstatus" in data:
                             reports.append(data)
+            observed = set()
+            for reason in merged.rglob("reason.txt"):
+                observed.update(re.findall(r"(?m)^.*?\[\S+ pid [0-9]+\] (.+): failed in (setup|call|teardown)$",
+                                           reason.read_text(encoding="utf-8")))
+            recorded = {(node, phase.get("phase")) for doc in reports if isinstance(doc.get("results"), dict)
+                        for node, result in doc["results"].items() if isinstance(result, dict)
+                        and isinstance(result.get("failures"), list)
+                        for phase in result["failures"] if isinstance(phase, dict)
+                        and isinstance(phase.get("phase"), str)}
+            for node, phase in sorted(observed - recorded):
+                report("failure-report", f"{node} ({phase}): observed failure missing from lane report")
             command_exits = []
             for path in merged.rglob("runner-resources-*-exit.txt"):
                 record = json.loads(path.read_text())

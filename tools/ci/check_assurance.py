@@ -159,11 +159,11 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
         pinned_skips = (expectations.get("skipped") or {}).get(platform) or {}
         pinned_xfail = (expectations.get("xfail") or {}).get(platform) or {}
         problems += [f"{platform}: {gap}" for gap in shard_gaps(group)]
-        collected_sets = {frozenset(r["collected"]) for r in group}
+        collected_sets = {frozenset(r["collected"]) for r in group if r.get("complete", True)}
         if len(collected_sets) > 1:
             sizes = ", ".join(f"{_label(r)}={len(r['collected'])}" for r in group)
             problems.append(f"{platform}: jobs collected different test sets ({sizes})")
-        collected = everything = set().union(*collected_sets)
+        collected = everything = set().union(*(r["collected"] for r in group))
         if lanes is not None:
             lane_of: dict[str, str] = {}
             for r in group:
@@ -175,12 +175,17 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             collected = {nid for nid in collected if lane_of.get(nid) in lanes}
         runs = Counter(nid for r in group for nid in r["results"])
         for r in group:
-            if r.get("exitstatus") != 0:
+            if not r.get("complete", True):
+                problems.append(f"{platform}: session {_label(r)} ended before its final lane report")
+            elif r.get("exitstatus") != 0:
                 problems.append(f"{platform}: session {_label(r)} exited {r.get('exitstatus')} "
                                 "(failed tests, a usage error, or the isolation guard)")
         for nid in sorted(collected - set(runs)):
             problems.append(f"{platform}: never ran: {nid}")
-        for nid in sorted(set(runs) - everything):
+        # A controller killed before xdist hands back collection cannot establish the full collected set.
+        ran_complete = {nid for r in group if r.get("complete", True) for nid, result in r["results"].items()
+                        if not any(f.get("phase") == "collect" for f in result.get("failures", []))}
+        for nid in sorted(ran_complete - everything):
             problems.append(f"{platform}: ran but was not collected: {nid}")
         for nid, n in sorted(runs.items()):
             if n > 1:

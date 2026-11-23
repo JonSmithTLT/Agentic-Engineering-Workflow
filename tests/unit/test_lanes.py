@@ -255,3 +255,55 @@ def test_the_lane_report_counts_each_tests_cli_calls_including_its_fixtures(tmp_
     assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads((root / "r.json").read_text(encoding="utf-8"))
     assert report["cli_calls"] == {"tests/integration/test_calls.py::test_three": 3}
+
+
+@pytest.mark.parametrize("args", [[], ["-n", "2"]], ids=["serial", "xdist"])
+def test_failed_setup_teardown_and_collection_keep_pytest_causes(tmp_path, args):
+    root = scratch(tmp_path, {"tests/unit/test_broken.py": """
+import pytest
+
+@pytest.fixture
+def broken():
+    raise LookupError("fixture setup cause")
+
+@pytest.fixture
+def cleanup():
+    yield
+    raise OSError("fixture teardown cause")
+
+def test_setup(broken): pass
+def test_teardown(cleanup): raise AssertionError("call cause")
+"""})
+    report = tmp_path / "report.json"
+    proc = inner_pytest(root, *args, "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    doc = json.loads(report.read_text())
+    assert doc["complete"] is True
+    phases = {failure["phase"]: failure for result in doc["results"].values() for failure in result["failures"]}
+    expected = {"setup": "fixture setup cause", "call": "call cause", "teardown": "fixture teardown cause"}
+    for phase, message in expected.items():
+        assert message in phases[phase]["crash"] and message in phases[phase]["longrepr"]
+
+    (root / "tests/unit/test_broken.py").write_text('raise RuntimeError("module collection cause")\n')
+    proc = inner_pytest(root, *args, "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    result = json.loads(report.read_text())["results"]["tests/unit/test_broken.py"]
+    assert result["outcome"] == "error"
+    [failure] = result["failures"]
+    assert failure["phase"] == "collect" and "module collection cause" in failure["longrepr"]
+    assert "module collection cause" in failure["crash"]
+
+
+def test_partial_lane_report_survives_controller_exit_after_a_failed_phase(tmp_path):
+    root = scratch(tmp_path, {"tests/unit/test_broken.py": """
+import os
+def test_first(): raise AssertionError("retained before death")
+def test_then_exit(): os._exit(73)
+"""})
+    report = tmp_path / "report.json"
+    proc = inner_pytest(root, "-p", "no:xdist", "tests/unit/test_broken.py", f"--lane-report={report}")
+    assert proc.returncode == 73, proc.stdout + proc.stderr
+    doc = json.loads(report.read_text())
+    assert doc["complete"] is False and doc["exitstatus"] is None
+    [failure] = doc["results"]["tests/unit/test_broken.py::test_first"]["failures"]
+    assert "retained before death" in failure["crash"]

@@ -93,7 +93,7 @@ def lead_rows(engine: Any) -> list[dict[str, str]]:
     chosen = lead.LeadProviders(policy, [], os.environ)
     routes = sorted({*chosen.keys, *chosen.refreshing, *chosen.certified})
     if not routes:
-        return []
+        return [result("default Lead", "WARN", "no login or client certificate selected for a provider relay")]
     state = engine.aew_root / lead.LEAD_DIR
     try:
         surviving = login.surviving_login_providers(state / login.STORE_REL, state)

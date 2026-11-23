@@ -368,3 +368,23 @@ def test_default_lead_probe_reports_unavailable_without_sending_the_wrong_login(
                 else "the project's OpenCode store has its own login") in row["detail"]
     else:
         assert not rows
+
+
+def test_doctor_reports_when_an_export_only_supplies_the_worker(lab):
+    lab.env["OPENAI_API_KEY"] = "synthetic-worker-export"
+
+    def configure(policy):
+        policy["containment"]["network"]["upstreams"]["openai"] = lab.provider.url
+        policy["profiles"]["standard"] = {"provider": "openai", "model": "listed-model"}
+
+    edit_policy(lab, configure)
+    serve(lab, [{"id": "listed-model", "providerID": "openai", "family": "synthetic", "enabled": True}])
+    report = lab.aew("doctor", "--json")
+    rows = [r for r in report.json["checks"] if r["check"] == "provider-relay"]
+    assert any(r["detail"].startswith("worker profile standard") for r in rows)
+    lead_rows = [r for r in rows if r["detail"].startswith("default Lead:")]
+    if sys.platform.startswith("linux"):
+        [row] = lead_rows
+        assert row["status"] == "WARN" and "no login or client certificate selected" in row["detail"]
+    else:
+        assert not lead_rows

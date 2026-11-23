@@ -42,6 +42,7 @@ jobs:
           python tools/ci/record_cancel_evidence.py --run "$SOURCE_RUN" --attempt "$SOURCE_ATTEMPT"
           --index-dir "$RUNNER_TEMP/cancel-index" --report-dir "$RUNNER_TEMP/cancel-check"
       - name: Publish the complete check when the GitHub summary limit is exceeded
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: cancel-evidence-${{ github.event.workflow_run.id }}-attempt-${{ github.event.workflow_run.run_attempt }}

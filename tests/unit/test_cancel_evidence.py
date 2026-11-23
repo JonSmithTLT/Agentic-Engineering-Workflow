@@ -105,6 +105,8 @@ def test_completed_run_recorder_uses_only_default_branch_code_and_read_only_arti
     assert checkout["ref"] == "${{ github.sha }}" and checkout["persist-credentials"] is False
     assert "github.event.workflow_run.head_sha" not in str(job)
     assert all("workflow_run" not in step.get("run", "") for step in job["steps"])
+    full = next(s for s in job["steps"] if s.get("with", {}).get("path") == "${{ runner.temp }}/cancel-check/")
+    assert full["if"] == "${{ !cancelled() }}"
 
 
 def test_trusted_recorder_index_preserves_the_subject_run_and_only_declared_test_failure(tmp_path, monkeypatch):

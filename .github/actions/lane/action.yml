@@ -56,6 +56,7 @@ runs:
       env:
         SOURCE: ${{ inputs.source }}
         AEW_LANE_JOB_STATUS: ${{ job.status }}
+        AEW_PYTEST_OUTCOME: ${{ steps.pytest.outcome }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
       run: python tools/ci/lane_step.py --collect --root "$SOURCE"
     - name: Prepare owned evidence inputs

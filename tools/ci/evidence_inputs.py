@@ -11,14 +11,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/helpers"))
-from evidence_files import stack_file  # noqa: E402
+from evidence_files import priority  # noqa: E402
 from stage_evidence import is_link  # noqa: E402
-
-
-def priority(path: Path) -> bool:
-    return (stack_file(path) or path.name.startswith("runner-resources-")
-            or ("autopsy" in path.parts and (any(p.startswith("session-") for p in path.parts)
-                                            or path.name.startswith(("reason", "stacks")))))
 
 
 def prepare(source: Path, target: Path, *, job: str = "", collection: str = "success",

@@ -137,7 +137,7 @@ def test_evidence_proof_triggers_only_on_schedule_dispatch_or_evidence_paths():
     }
 
 
-def test_evidence_proof_cancels_superseded_runs_and_reserves_cancel_plants_for_nightly():
+def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedule_or_dispatch():
     import yaml
 
     proof = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text(encoding="utf-8"))
@@ -148,14 +148,14 @@ def test_evidence_proof_cancels_superseded_runs_and_reserves_cancel_plants_for_n
     jobs = proof["jobs"]
     matrix = jobs["plant"]["strategy"]["matrix"]
     assert matrix["kind"] == (
-        "${{ fromJSON(github.event_name == 'schedule' && "
-        """'["normal","deadline","time-limit","hang","cancel"]' || """
-        """'["normal","deadline","time-limit","hang"]') }}"""
+        "${{ fromJSON(github.event_name != 'pull_request' && "
+        """'["normal","deadline","time-limit","hang","worker-kill","time-limit-github","cancel"]' || """
+        """'["normal","deadline","time-limit","hang","worker-kill","time-limit-github"]') }}"""
     )
     assert all(row["kind"] != "cancel" for row in matrix["include"])
     for platform in ("linux", "windows"):
         ready = f"cancel-ready-{platform}"
-        assert jobs[ready]["if"] == "github.event_name == 'schedule'"
+        assert jobs[ready]["if"] == "github.event_name != 'pull_request'"
         trigger = jobs[f"cancel-trigger-{platform}"]
         assert trigger["needs"] == ready and trigger.get("if", "success()") == "success()"
 
@@ -486,3 +486,66 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert not lane.marker(tmp_path, "cutoff").exists()
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
+
+
+def test_the_evidence_proof_oom_skip_matches_the_hosted_matrix():
+    import yaml
+
+    pins = yaml.safe_load((ROOT / "tests/platform-skips.yaml").read_text())["evidence_proof_skips"]
+    jobs = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())["jobs"]
+    matrix = jobs["plant"]["strategy"]["matrix"]
+    assert "oom" in pins["win32"] and "cgroup" in pins["win32"]["oom"]
+    assert '"oom"' not in matrix["kind"]
+    assert {row["os"] for row in matrix["include"] if row["kind"] == "oom"} == {"ubuntu-24.04"}
+
+
+def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):
+    import json
+
+    ev = _load("worker_evidence")
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    first = ev.Worker(session, 100, 110, "tests/test_a.py::test_first", 1, 120)
+    last = ev.Worker(session, 100, 110, "tests/test_a.py::test_last", 2, 120)
+    monkeypatch.setattr(ev, "RING_BYTES", 1000)
+    frame = "process with private argv\n    test_first (tests/test_a.py:4)"
+    for at in range(20):
+        assert ev.save_sample(tmp_path, first, at, 1, "unelevated", frame, reason="periodic")
+    path = ev.ring_path(tmp_path, first)
+    assert path.stat().st_size <= ev.RING_BYTES
+    assert path.read_text().startswith(ev.DROPPED) and "private argv" not in path.read_text()
+    ev.record(tmp_path, last, "worker-killed", 20, exit=-9, signal=9)
+    record = json.loads((session / "worker-killed-100.txt").read_text())
+    assert record["node"] == last.node and record["snapshot_node"] == first.node and record["age_s"] == 1
+    check = _load("evidence_problems").evidence_problems
+    assert not any("[snapshot" in why for why in check(tmp_path, kind="worker-killed"))
+    path.write_text(path.read_text().replace('"start": 110', '"start": 111'))
+    assert any("[snapshot]" in why for why in check(tmp_path, kind="worker-killed"))
+
+
+def test_file_classes_preserve_scanned_and_priority_publication(tmp_path, monkeypatch):
+    from evidence_files import owner, priority, publishable
+
+    stage, inputs = _load("stage_evidence"), _load("evidence_inputs")
+    check = _load("evidence_problems").evidence_problems
+    source = tmp_path / "source"
+    cases = {
+        "snapshots/123.txt": (True, True), "autopsy/session-1/worker-killed-123.txt": (True, True),
+        "autopsy/case/reason.txt": (True, True), "harness-runs/case/info.txt": (True, False),
+        "junit.xml": (True, False), "dispatch.txt": (True, False), "running-123.txt": (False, False),
+        "report.json": (False, False),
+    }
+    for name, expected in cases.items():
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("tests/test_a.py::test_a\n")
+        assert owner(Path(name)) and (publishable(Path(name)), priority(Path(name))) == expected
+    monkeypatch.setattr(stage, "scan", lambda *_args: {})
+    partial = tmp_path / "partial"
+    inputs.prepare(source, partial)
+    for selected, bundle, idx in [(source, "out", 0), (partial, "out-watchdog", 1)]:
+        target = tmp_path / bundle
+        stage.stage(selected, target)
+        assert {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
+                and p.name != "inventory.txt"} == {name for name, flags in cases.items() if flags[idx]}
+        assert check(target) == []

@@ -10,10 +10,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
-from check_evidence_run import check_jobs
-from evidence_files import FRAME, state
+from check_evidence_run import check_jobs, hosted_step_timeout
+from evidence_files import FRAME, entries, state
 from evidence_problems import evidence_problems
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
@@ -26,7 +27,12 @@ STATE_TWINS = {
 }
 DEATH_TWINS = {"stacks": "stacks", "kind": "kind", "running": "running", "running-label": "label"}
 JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ablation": "job-ablation"}
-OTHER_TWINS = {"cancel": "false-cutoff"}
+OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
+               "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
+               "missing-counter": "oom-event", "wrong-bundle": "file-class"}
+ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
+PLANTED = {"stacks": {"stacks"}, "unlabelled": {"snapshot-label"}, "trigger": {"pressure"},
+           "ring": {"snapshot", "snapshot-label", "snapshot-age"}}
 DEATH_EXITS = {"deadline": 70, "time-limit": 71, "hang": 70, "sigkill": 137}
 
 
@@ -42,7 +48,12 @@ def github_jobs() -> list[dict]:
     endpoint = (f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
                 f"/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}/jobs?per_page=100")
     result = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, timeout=30, check=True)
-    return json.loads(result.stdout)["jobs"]
+    jobs = json.loads(result.stdout)["jobs"]
+    for job in jobs:
+        if ", time-limit-github," not in job["name"]:
+            continue
+        job["step_timeout"] = hosted_step_timeout(os.environ["GITHUB_REPOSITORY"], job)
+    return jobs
 
 
 def label(inventory: Path, path: Path, writer: str, declared: str | None = None) -> None:
@@ -135,6 +146,53 @@ def job_twins(root: Path, job: dict) -> list[str]:
                                       check_jobs(twin, [job], include_success=True))
 
 
+def abrupt_twins(root: Path, kind: str) -> list[str]:
+    failures = []
+    cases = ("missing-death", "stale", "wrong-bundle") if kind == "worker-killed" else ("missing-counter",)
+    for case in cases:
+        with tempfile.TemporaryDirectory() as temporary:
+            twin = Path(temporary) / "copy"
+            shutil.copytree(root, twin)
+            if case == "wrong-bundle":
+                inventory = next(twin.glob("*-watchdog/inventory.txt"))
+                bad = inventory.parent / "junit.xml"
+                bad.write_text("<testsuite/>", encoding="utf-8")
+                label(inventory, bad, "pytest")
+            elif case == "missing-counter":
+                for path in twin.rglob("runner-resources-oom.txt"):
+                    path.unlink()
+            else:
+                for path in twin.rglob("worker-killed-*.txt"):
+                    if case == "missing-death":
+                        path.unlink()
+                    else:
+                        row = json.loads(path.read_text())
+                        row["age_s"] = 100
+                        path.write_text(json.dumps(row), encoding="utf-8")
+            failures.extend(expect_rule(case, OTHER_TWINS[case], evidence_problems(twin, kind=kind)))
+    return failures
+
+
+def observe_cancel(root: Path, platform: str, jobs: list[dict]) -> list[str]:
+    observed = [json.loads(path.read_text()) for glob in ("cancelled-*.txt", "interrupted-*.txt")
+                for path in root.rglob(glob)]
+    if not observed or any(type(row.get("alive_when_observed")) is not bool for row in observed):
+        return ["plant misfired: no live/dead identity observed during cancellation"]
+    if platform == "Windows":
+        ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
+        ended = ready.get("completed_at")
+        if not ended:
+            return ["plant misfired: cancellation poll did not finish"]
+        # Queueing starts after this job completes, giving a conservative server-side lower bound on cancel time.
+        before = datetime.fromisoformat(ended.replace("Z", "+00:00")).timestamp()
+        for row in observed:
+            samples = [sample for path in root.rglob(f"snapshots/{row['pid']}.txt")
+                       for sample, _ in entries(path.read_text()) if sample.get("start") == row["start"]]
+            if not any(sample.get("node") and 0 <= before - sample["at"] <= 60 for sample in samples):
+                return ["Windows: no labelled worker sample predating the cancellation trigger"]
+    return []
+
+
 def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
     """Verify runner observations from the downloaded bundle, alongside GitHub's job conclusion."""
     failures = []
@@ -153,6 +211,15 @@ def observation_problems(root: Path, platform: str, kind: str) -> list[str]:
                     failures.append("plant misfired: heartbeat handshake missing")
                 elif beat.get("observed_until", 0) <= entered + 1 or beat.get("latest_beat_after", 0) > entered + 1:
                     failures.append("plant misfired: heartbeat did not stall through the observation window")
+    if kind in {"worker-kill", "oom"}:
+        crashes = [json.loads(path.read_text()) for path in root.rglob("worker-killed-*.txt")]
+        if not crashes or any(row.get("signal") != 9 if platform == "Linux" else row.get("exit") != 1
+                              for row in crashes):
+            failures.append(f"plant misfired: external worker exit was not observed: {crashes}")
+        if kind == "oom" and not list(root.rglob("runner-resources-high-water.txt")):
+            failures.append("plant misfired: no observed high-water crossing")
+    if kind == "time-limit-github" and any(root.rglob("cutoff.txt")):
+        failures.append("plant misfired: supervisor cutoff preempted the hosted deadline")
     if kind == "normal" and platform == "Linux":
         probes = [p.read_text(encoding="utf-8").strip() for p in root.rglob("runner-resources-attachment.txt")]
         if len(probes) != 1 or probes[0] not in {"unelevated", "sudo -n"}:
@@ -174,7 +241,8 @@ def main(root: Path) -> int:
         paths = [path for path in root.iterdir() if path.name in {
             prefix, prefix + "-running", prefix + "-watchdog", "lane-report-" + prefix,
         }]
-        lane_step = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), None)
+        target = "GitHub timed execution" if kind == "time-limit-github" else "Real planted lane"
+        lane_step = next((step for step in job.get("steps", []) if step["name"] == target), None)
         if not paths or not lane_step or not lane_step.get("started_at"):
             failures.append(f"{job['name']}: plant did not start or artifacts missing")
             continue
@@ -183,25 +251,31 @@ def main(root: Path) -> int:
             for path in paths:
                 shutil.copytree(path, merged / path.name)
             needs_stack = kind in {"deadline", "time-limit", "hang"}
-            defects = evidence_problems(merged, kind=kind, require_stacks=needs_stack)
-            if ablate == "stacks":
-                failures.extend(expect_rule(job["name"], "stacks", defects))
-                defects = [defect for defect in defects if "stacks" not in rule_ids([defect])]
-            failures.extend(f"{job['name']}: {defect}" for defect in defects)
-            gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS)
-            expected_rules = {"job-ablation", "stacks"} if ablate == "stacks" else set()
+            defects = evidence_problems(merged, kind=ABRUPT.get(kind, kind), require_stacks=needs_stack)
+            expected_rules = PLANTED.get(ablate, set())
+            if rule_ids(defects) != expected_rules:
+                failures.append(f"{job['name']}: checker expected {sorted(expected_rules)}, found {defects}")
+            gate = check_jobs(root, [job], include_success=kind in DEATH_EXITS or kind in ABRUPT)
+            expected_rules = expected_rules | ({"job-ablation"} if ablate in PLANTED else set())
             if kind == "sigkill":
                 expected_rules.add("job-kind")  # the unwarned death's classifier lands separately
             if rule_ids(gate) != expected_rules:
                 failures.append(f"{job['name']}: assurance expected {sorted(expected_rules)}, found {gate}")
             expected = "cancelled" if kind == "cancel" else "success"
             verdict_step = lane_step
-            if kind in DEATH_EXITS:
+            if kind in DEATH_EXITS or (kind in ABRUPT and kind != "cancel"):
                 verdict_step = next((step for step in job["steps"] if step["name"] == "Confirm planted death"), {})
             verdict = verdict_step.get("conclusion")
             failures.extend(f"{job['name']}: {problem}" for problem in observation_problems(merged, platform, kind))
             if job["conclusion"] != expected or verdict != expected:
                 failures.append(f"{job['name']}: plant misfired: job {job['conclusion']}, verdict step {verdict}")
+            if kind == "time-limit-github":
+                if lane_step.get("conclusion") != "timed_out" and not job.get("step_timeout"):
+                    failures.append(f"{job['name']}: GitHub did not report its own step timeout")
+            if kind == "cancel":
+                failures += [f"{job['name']}: {why}" for why in observe_cancel(merged, platform, jobs)]
+            if kind in {"worker-kill", "oom"} and ablate == "none":
+                failures.extend(abrupt_twins(merged, ABRUPT[kind]))
             if kind == "normal":
                 failures.extend(checker_twins(merged))
             elif needs_stack and ablate == "none":
@@ -213,7 +287,7 @@ def main(root: Path) -> int:
                 twin = evidence_problems(merged, kind=kind)
                 failures.extend(expect_rule(job["name"], OTHER_TWINS["cancel"], twin))
             rows.append(f"| {platform} | {kind} | {ablate} | [{job['conclusion']}]({job['html_url']}) | {defects} |")
-    expected_count = 15 if os.environ["GITHUB_EVENT_NAME"] == "schedule" else 13
+    expected_count = 21 if os.environ["GITHUB_EVENT_NAME"] == "pull_request" else 23
     if len(rows) != expected_count:
         failures.append(f"expected {expected_count} plants, observed {len(rows)}")
     print("\n".join(rows + failures))
@@ -227,7 +301,7 @@ def main(root: Path) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
-    parser.add_argument("--plant-death", choices=DEATH_EXITS)
+    parser.add_argument("--plant-death", choices=(*DEATH_EXITS, *ABRUPT))
     args = parser.parse_args()
     if args.plant_death:
         problems = observation_problems(args.root, "Windows" if os.name == "nt" else "Linux", args.plant_death)

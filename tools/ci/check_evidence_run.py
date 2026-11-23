@@ -18,6 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flake_register import _gh_read, _pages  # noqa: E402
 
 
+def hosted_step_timeout(repo: str, job: dict) -> bool:
+    if not job.get("check_run_url"):
+        return False
+    ident = int(job["check_run_url"].split("/")[-1])
+    return any(re.search(r"(?:timed? out|timeout|time limit|longer than)", row.get("message") or "", re.I)
+               for row in _pages(repo, f"check-runs/{ident}/annotations?per_page=100"))
+
+
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -> list[str]:
     defects = []
 
@@ -91,10 +99,21 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False) -
                     or (not reports and not command_exits))
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
+            if any(re.fullmatch(r"oom-\d+", name) for name in markers):
+                kind = "oom"
+            elif any(re.fullmatch(r"worker-killed-\d+", name) for name in markers) and kind is None:
+                kind = "worker-killed"
+            elif conclusion == "cancelled":
+                kind = "cancel"
+            elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):
+                # A hosted timeout needs independent runner evidence. A generic interrupt alone is ambiguous.
+                step_timed_out = any(step.get("conclusion") == "timed_out" for step in job.get("steps", []))
+                if step_timed_out or job.get("step_timeout"):
+                    kind = "time-limit-github"
             if died and kind is None and conclusion != "cancelled":
                 report("job-kind", "death has no kind marker")
             defects.extend(f"{job['name']}: {problem}" for problem in evidence_problems(
-                merged, kind=kind, require_stacks=died and kind is not None))
+                merged, kind=kind, require_stacks=died and kind in {"deadline", "time-limit"}))
     return defects
 
 
@@ -103,6 +122,9 @@ def main(root: Path) -> int:
     run = os.environ["GITHUB_RUN_ID"]
     attempt = os.environ["GITHUB_RUN_ATTEMPT"]
     jobs = list(_pages(repo, f"actions/runs/{run}/attempts/{attempt}/jobs?per_page=100", "jobs"))
+    for job in jobs:
+        if job.get("conclusion") in {"failure", "timed_out"}:
+            job["step_timeout"] = hosted_step_timeout(repo, job)
     problems = check_jobs(root, jobs)
     text = "\n".join(problems) or "Published evidence states match their recorded contents."
     payload = {"name": "evidence", "head_sha": os.environ["EVIDENCE_HEAD"], "status": "completed",

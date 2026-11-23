@@ -16,14 +16,13 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
 from bounds import EVIDENCE_SCAN_S  # noqa: E402
-from evidence_files import owner, state  # noqa: E402
+from evidence_files import owner, publishable, state  # noqa: E402
 
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
 FINDINGS_EXIT = 23
 CONFIG = Path(__file__).with_name("evidence-gitleaks.toml").resolve()
 SAFE_PART = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*\Z")
-EXTRA_TEXT = {"junit.xml", "vertical-summary.txt", "dispatch.txt"}
 WORKDIR_TEXT = {".stdout", ".stderr", ".log", ".txt", ".jsonl", ".json", ".yaml", ".yml", ".md", ".py"}
 
 
@@ -164,11 +163,7 @@ def stage(source: Path, destination: Path) -> str:
                 anonymous = Path("file-" + hashlib.sha256(relative.as_posix().encode()).hexdigest()[:12])
                 omissions.append((anonymous, "unlisted writer"))
                 continue
-            diagnostic = (file.suffix == ".txt"
-                          and ({"autopsy", "harness-runs"}.intersection(relative.parts[:-1])
-                               or file.name.startswith(("hang-", "runner-resources-"))
-                               or "snapshots" in relative.parts))
-            if not diagnostic and file.name not in EXTRA_TEXT:
+            if not publishable(relative):
                 continue
             try:
                 if any(is_link(p) for p in (file, *file.parents) if p.is_relative_to(source)) or not file.is_file():

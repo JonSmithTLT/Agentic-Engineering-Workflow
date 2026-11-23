@@ -2,29 +2,40 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
-# The directory owner is recursive. New writers extend this table and its enumeration test.
-WRITERS = (
-    ("inventory.txt", "publisher"),
-    ("job-label-sha256.txt", "evidence_inputs"),
-    ("hang-*.txt", "watchdog"),
-    ("running-*.txt", "watchdog"),
-    ("running-*.tmp", "watchdog"),
-    ("collection-incomplete.txt", "evidence_inputs"),
-    ("tools-unavailable.txt", "evidence_inputs"),
-    ("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder"),
-    ("harness-runs/**", "harness_diagnostics"),
-    ("snapshots/*.txt", "lane_step"),
-    ("runner-resources-*.txt", "lane_step"),
-    ("*vertical*.json", "vertical"),
-    ("vertical-series.jsonl", "vertical"),
-    ("*.json", "lanes"),
-    ("junit.xml", "pytest"),
-    ("vertical-summary.txt", "vertical"),
-    ("dispatch.txt", "flake-dispatch"),
+
+@dataclass(frozen=True)
+class FileFamily:
+    pattern: str
+    writer: str
+    scanned: bool = False
+    priority: bool = False
+
+
+# Ordered like the writers: a watchdog or running name keeps its owner even in a nested session.
+FAMILIES = (
+    FileFamily("inventory.txt", "publisher"),
+    FileFamily("job-label-sha256.txt", "evidence_inputs"),
+    FileFamily("hang-*.txt", "watchdog", scanned=True, priority=True),
+    FileFamily("running-*.txt", "watchdog"),
+    FileFamily("running-*.tmp", "watchdog"),
+    FileFamily("collection-incomplete.txt", "evidence_inputs"),
+    FileFamily("tools-unavailable.txt", "evidence_inputs"),
+    FileFamily("autopsy/**", "autopsy/session_deadline/harness_diagnostics/flight_recorder", scanned=True),
+    FileFamily("harness-runs/**", "harness_diagnostics", scanned=True),
+    FileFamily("snapshots/*.txt", "lane_step", scanned=True, priority=True),
+    FileFamily("runner-resources-*.txt", "lane_step", scanned=True, priority=True),
+    FileFamily("*vertical*.json", "vertical"),
+    FileFamily("vertical-series.jsonl", "vertical"),
+    FileFamily("*.json", "lanes"),
+    FileFamily("junit.xml", "pytest", scanned=True),
+    FileFamily("vertical-summary.txt", "vertical", scanned=True),
+    FileFamily("dispatch.txt", "flake-dispatch", scanned=True),
 )
 WATCHDOG_PREFIX = "aew hang watchdog: "
 ARMED_NOTE = "a dump below records a fire"
@@ -33,6 +44,22 @@ WATCHDOG_HEADER = re.compile(
 FRAME = re.compile(
     r'(?m)^\s*(?:File "(?P<file>[^"\n]+)", line \d+,? in (?P<function>[\w.<>]+)'
     r'|(?P<spy_function>[\w.<>]+) \((?P<spy_file>[^\n]+\.py):\d+\))')
+
+
+FRESH_S = 60
+PREFIX = "worker snapshot "
+
+
+def entries(text: str):
+    """Only complete, labelled samples. Each frame block ends at the next header."""
+    for block in re.split(r"(?m)^" + re.escape(PREFIX), text)[1:]:
+        header, _, frames = block.partition("\n")
+        try:
+            row = json.loads(header)
+            if isinstance(row, dict) and FRAME.search(frames):
+                yield row, frames
+        except ValueError:
+            continue
 
 
 def open_observation(path: Path):
@@ -61,17 +88,31 @@ def open_observation(path: Path):
     return os.fdopen(fd, encoding="utf-8", errors="replace")
 
 
+def families(path: Path):
+    for family in FAMILIES:
+        nested = family.pattern.endswith("/**")
+        if (family.pattern[:-3] in path.parts[:-1] if nested else path.match(family.pattern)):
+            yield family
+
+
 def owner(path: Path) -> str | None:
-    for pattern, writer in WRITERS:
-        if pattern.endswith("/**") and pattern[:-3] in path.parts[:-1]:
-            return writer
-        if path.match(pattern):
-            return writer
-    return None
+    return next((family.writer for family in families(path)), None)
+
+
+def publishable(path: Path) -> bool:
+    # Recursive directories accept text diagnostics only. The specific XML family is scanned as well.
+    return any(family.scanned and (not family.pattern.endswith("/**") or path.suffix == ".txt")
+               for family in families(path))
 
 
 def stack_file(path: Path) -> bool:
     return path.name.startswith(("hang-", "stacks.")) or "-stacks" in path.name or "snapshots" in path.parts
+
+
+def priority(path: Path) -> bool:
+    return (any(family.priority for family in families(path)) or stack_file(path)
+            or ("autopsy" in path.parts and (any(p.startswith("session-") for p in path.parts)
+                                            or path.name.startswith(("reason", "stacks")))))
 
 
 def state(path: Path, data: bytes) -> str:

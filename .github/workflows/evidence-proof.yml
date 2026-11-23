@@ -27,16 +27,20 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
-        kind: ${{ fromJSON(github.event_name == 'schedule' && '["normal","deadline","time-limit","hang","cancel"]' || '["normal","deadline","time-limit","hang"]') }}
+        kind: ${{ fromJSON(github.event_name != 'pull_request' && '["normal","deadline","time-limit","hang","worker-kill","time-limit-github","cancel"]' || '["normal","deadline","time-limit","hang","worker-kill","time-limit-github"]') }}
         ablate: [none]
         include:
           - {os: ubuntu-24.04, kind: sigkill, ablate: none}
+          - {os: ubuntu-24.04, kind: oom, ablate: none}
+          - {os: ubuntu-24.04, kind: oom, ablate: trigger}
+          - {os: ubuntu-24.04, kind: worker-kill, ablate: ring}
+          - {os: windows-latest, kind: worker-kill, ablate: unlabelled}
           - {os: ubuntu-24.04, kind: deadline, ablate: stacks}
           - {os: ubuntu-24.04, kind: hang, ablate: stacks}
           - {os: windows-latest, kind: deadline, ablate: stacks}
           - {os: windows-latest, kind: hang, ablate: stacks}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    timeout-minutes: 18
+    timeout-minutes: 28
     concurrency:
       group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
       cancel-in-progress: true
@@ -50,8 +54,22 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ runner.os == 'Windows' && '3.13' || '3.11' }}
+      - name: Bound the synthetic OOM worker to a private cgroup
+        if: matrix.kind == 'oom'
+        shell: bash
+        run: |
+          group="/sys/fs/cgroup/aew-evidence-oom-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          sudo -n mkdir "$group"
+          echo 201326592 | sudo -n tee "$group/memory.max"
+          echo 0 | sudo -n tee "$group/memory.swap.max"
+          echo "AEW_PROOF_OOM_GROUP=$group" >> "$GITHUB_ENV"
+      - name: Install tools before starting the GitHub step timer
+        if: matrix.kind == 'time-limit-github' || matrix.kind == 'cancel'
+        shell: bash
+        run: python tools/ci/install_evidence.py
       - name: Real planted lane
         id: lane
+        if: matrix.kind != 'time-limit-github'
         continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' }}
         timeout-minutes: 17
         uses: ./.github/actions/lane
@@ -64,28 +82,65 @@ jobs:
           job-label: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
-          command: >-
-            python -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+          command: &plant-command >-
+            python -m pytest -q -p no:cacheprovider -n ${{ contains(fromJSON('["oom","worker-kill","time-limit-github","cancel"]'), matrix.kind) && 1 || 'auto' }} --dist worksteal --max-worker-restart 0
             tests/integration/evidence_plants/deaths.py --lane integration
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
             --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline') && 30 || 180 }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
+      - name: GitHub timed execution
+        id: timed
+        if: matrix.kind == 'time-limit-github'
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        env:
+          AEW_EVIDENCE_PLANT: time-limit-github
+          COMMAND: *plant-command
+          SOURCE: ${{ runner.temp }}/lane-reports
+          AEW_RUNNING_TESTS_DIR: ${{ runner.temp }}/lane-reports
+          AEW_LANE_JOB_LABEL: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+        run: |
+          script="$RUNNER_TEMP/timed-plant.sh"
+          printf '%s\n' "$COMMAND" > "$script"
+          exec python tools/ci/lane_step.py --root "$SOURCE" --shell bash --script "$script"
+      - name: Collect after the GitHub step's own deadline
+        timeout-minutes: 1
+        if: always() && matrix.kind == 'time-limit-github'
+        shell: bash
+        env:
+          SOURCE: ${{ runner.temp }}/lane-reports
+          AEW_LANE_JOB_LABEL: plant (${{ matrix.os }}, ${{ matrix.kind }}, ${{ matrix.ablate }})
+          AEW_PYTEST_OUTCOME: cancelled
+        run: python tools/ci/lane_step.py --collect --root "$SOURCE"
+      - name: Publish after the timed step
+        timeout-minutes: 6
+        if: always() && matrix.kind == 'time-limit-github'
+        uses: ./.github/actions/publish-evidence
+        with:
+          source: ${{ runner.temp }}/lane-reports
+          artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
+      - name: Release the empty proof cgroup
+        timeout-minutes: 1
+        if: always() && matrix.kind == 'oom' && env.AEW_PROOF_OOM_GROUP
+        shell: bash
+        run: sudo -n rmdir "$AEW_PROOF_OOM_GROUP"
       - name: Confirm planted death
         timeout-minutes: 1
         if: matrix.kind != 'normal' && matrix.kind != 'cancel'
         shell: bash
         env:
-          LANE_OUTCOME: ${{ steps.lane.outcome }}
+          LANE_OUTCOME: ${{ matrix.kind == 'time-limit-github' && steps.timed.outcome || steps.lane.outcome }}
           PLANT_KIND: ${{ matrix.kind }}
           SOURCE: ${{ runner.temp }}/lane-reports
         run: |
-          if [ "$LANE_OUTCOME" != failure ]; then
+          if [ "$LANE_OUTCOME" != failure ] && ! { [ "$PLANT_KIND" = time-limit-github ] && [ "$LANE_OUTCOME" = cancelled ]; }; then
             echo "::error::Expected $PLANT_KIND to fail the lane, got $LANE_OUTCOME"
             exit 1
           fi
           python tools/ci/verify_evidence.py "$SOURCE" --plant-death "$PLANT_KIND"
   cancel-ready-linux:
-    if: github.event_name == 'schedule'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -113,7 +168,7 @@ jobs:
     steps:
       - run: echo 'Queued the planted concurrency cancellation.'
   cancel-ready-windows:
-    if: github.event_name == 'schedule'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:

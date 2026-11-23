@@ -248,9 +248,11 @@ def test_anonymous_provider_failure_stays_separate_from_a_working_export(project
 
 
 def test_interrupted_outbound_header_write_has_unconfirmed_delivery(project):
+    writes = []
+
     class Interrupted(socket.socket):
         def sendall(self, data):
-            assert b"Authorization: Bearer synthetic-interrupted-secret" in data
+            writes.append(data)
             raise BrokenPipeError("synthetic interrupted header write")
 
     directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
@@ -264,6 +266,9 @@ def test_interrupted_outbound_header_write_has_unconfirmed_delivery(project):
         assert request(service, method="POST", path="/v1/responses",
                        headers={"Authorization": f"Bearer {token}"}) == 502
     [row] = [json.loads(line) for line in journal.read_bytes().splitlines()]
+    [wire] = writes
+    assert b"Authorization: Bearer synthetic-interrupted-secret" in wire
+    assert row["reason"] == "upstream_unreachable"
     assert row["upstream_headers_written"] is None and row["swapped_sources"] == ["saved_key"]
     [source] = project.ok("credentials", "--json")["credentials"]
     dest = source["destinations"]["provider.example:80"]

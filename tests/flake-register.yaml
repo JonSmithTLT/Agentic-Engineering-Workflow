@@ -110,6 +110,25 @@ entries:
   - run: 43044751020
     job: 130608819960
     at: '2026-11-11T15:29:02Z'
+- id: autopsy-windows-finalization
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: autopsy evidence
+  cause: >-
+    A faulthandler timeout during interpreter finalization is suspected. The cause of the access violation is unconfirmed.
+    The session-deadline timer still uses dump_traceback_later after the evidence changes in PR 499.
+  owner: CI timing fixes
+  test: tests/integration/test_hang_autopsy.py::test_a_marker_an_earlier_session_with_this_pid_left_says_nothing_to_this_session[sentinel-ready]
+  evidence:
+  - run: 44648159084
+    job: 136003368703
+    at: '2026-11-20T02:09:23Z'
+    note: >-
+      Windows integration shard 11/14 on PR 480. The inner pytest reported a pass, then the process exited with
+      0xC0000005 after a faulthandler timeout dump during finalization.
 - id: autostart-unlink
   scope: test
   lane: integration

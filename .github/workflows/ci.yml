@@ -152,9 +152,6 @@ jobs:
   # a runner twice as slow). Until 2026-11-07 this was one job per runner running both lanes one after the other under
   # one deadline, which nothing sized: the fast lane grew until a slow runner left the serial lane no time.
   core:
-    permissions:
-      contents: read
-      actions: read  # fetch this job's evidence archive by upload ID
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.reuse_run == ''
@@ -162,11 +159,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.core_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 24
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 32
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1200 ))" >> "$GITHUB_ENV"
@@ -199,42 +195,29 @@ jobs:
       # as in the lanes job.
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         if: matrix.lane == 'fast'
-        run: >-
-          python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }}
-          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
-          --shard ${{ matrix.shard }}/${{ matrix.of }}
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
+        timeout-minutes: 31
+        uses: ./.github/actions/lane
+        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/lane-reports/
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-7-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: matrix.lane == 'serial'
-        run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
-          --shard ${{ matrix.shard }}/${{ matrix.of }}
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
-      # Named per run attempt: `download-artifact` keeps one artifact of a name, not always the newest, so a re-run's
-      # report must not share its earlier attempt's name (assurance keeps each shard's latest attempt).
-      - uses: actions/upload-artifact@v7
-        if: always()
+        timeout-minutes: 31
+        uses: ./.github/actions/lane
         with:
-          name: lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/lane-reports/*.json
-          retention-days: 14
-
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
           source: ${{ runner.temp }}/lane-reports/
-          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-      - uses: ./.github/actions/prove-evidence
-        if: needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1
+          artifact: evidence-lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-step-8-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1200 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
       # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps. The serial
       # lane runs without coverage, as it always has.
       - uses: actions/upload-artifact@v7
+        timeout-minutes: 1
         if: success() && runner.os == 'Linux' && matrix.lane == 'fast'
         with:
           name: coverage-core-fast-${{ matrix.shard }}-${{ runner.os }}
@@ -253,11 +236,10 @@ jobs:
       # and lane, shards 1..N of N, N the fewest that fit the session deadline on a runner twice as slow.
       matrix: ${{ fromJSON(needs.changes.outputs.lanes_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 34
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 42
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
@@ -281,27 +263,16 @@ jobs:
       # an existing file given as a separate word counts as a test path, and the rootdir becomes its common ancestor
       # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
-        run: >-
-          python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }}
-          -q -p no:cacheprovider --durations=20
-          --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
-          --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
-      - uses: actions/upload-artifact@v7
-        if: always()
+        timeout-minutes: 41
+        uses: ./.github/actions/lane
         with:
-          name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/lane-reports/*.json
-          retention-days: 14
-
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
+          job-label: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
           source: ${{ runner.temp }}/lane-reports/
-          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest ${{ runner.os == 'Linux' && '--cov --cov-report=' || '' }} -q -p no:cacheprovider --durations=20 --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal "--durations-file=${{ runner.temp }}/shard-durations/durations.json" --test-timeout 600 --session-deadline 1800 --max-worker-restart 0 "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
+        timeout-minutes: 1
         if: success() && runner.os == 'Linux'  # only from a passing job, as core's
         with:
           name: coverage-${{ matrix.lane }}-${{ matrix.shard }}-${{ runner.os }}
@@ -443,6 +414,7 @@ jobs:
     permissions:
       contents: read
       actions: read  # the run's jobs, for the cost record's queue and runner times; an earlier run's reports
+      checks: write  # report evidence defects on the PR head
       pull-requests: read  # the recompute reads the `full-ci` label live
     steps:
       - uses: actions/checkout@v7
@@ -453,6 +425,19 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install "PyYAML>=6.0" "coverage[toml]>=7.10" "pytest>=8"
+      - uses: actions/download-artifact@v8
+        if: always()
+        continue-on-error: true
+        with:
+          pattern: '*evidence-*-attempt-${{ github.run_attempt }}*'
+          path: evidence-artifacts
+      - name: Report evidence defects
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/ci/check_evidence_run.py evidence-artifacts
       - id: tier
         name: The tier, recomputed from the same merge commit with the label read live, is not narrower than the one the jobs ran under
         env:

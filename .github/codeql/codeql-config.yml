@@ -7,3 +7,5 @@ name: aew-codeql
 
 paths-ignore:
   - eval/**
+  # The Windows hang plant uses deliberate regex backtracking to hold the GIL.
+  - tests/integration/evidence_plants/**

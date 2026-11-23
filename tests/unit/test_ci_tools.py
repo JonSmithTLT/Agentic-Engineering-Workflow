@@ -21,6 +21,21 @@ import yaml
 from aew.knowledge import discovery
 
 ROOT = Path(__file__).resolve().parents[2]
+from bounds import publication_job_minutes  # noqa: E402
+
+
+def workflow_doc(text):
+    """Expose the lane action's command to the existing command and flag invariants."""
+    doc = yaml.safe_load(text)
+    if isinstance(doc, dict):
+        containers = [*doc.get("jobs", {}).values()]
+        if "runs" in doc:
+            containers.append(doc["runs"])
+        for job in containers:
+            for step in job.get("steps", []):
+                if step.get("uses") == "./.github/actions/lane":
+                    step["run"] = step["with"]["command"]
+    return doc
 
 
 def _load(name: str):
@@ -236,17 +251,23 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     uploads = [s for j in wf["jobs"].values() for s in j.get("steps", [])
                if str(s.get("uses", "")).startswith("actions/upload-artifact")]
-    reports = [s for s in uploads if s["with"]["name"].startswith("lane-report-")]
-    assert len(reports) == 2 and all(s["if"] == "always()" for s in reports)
-    assert all(s["with"]["name"].endswith("-attempt-${{ github.run_attempt }}") for s in reports)
+    lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    [report_upload] = [s for s in lane if str(s.get("with", {}).get("name", "")).startswith("lane-report-")]
+    assert report_upload["if"] == "always()"
+    assert report_upload["with"]["name"] == "lane-report-${{ inputs.artifact }}"
+    callers = [s for name in ("core", "lanes") for s in wf["jobs"][name]["steps"]
+               if s.get("uses") == "./.github/actions/lane"]
+    assert len(callers) == 3
+    assert all(s["with"]["artifact"].endswith("-attempt-${{ github.run_attempt }}") for s in callers)
     coverage = [s for s in uploads if s["with"]["name"].startswith("coverage-")]
     assert len(coverage) == 2 and all(s["if"].startswith("success() && ") for s in coverage)
     assert all(s["with"]["path"] == "${{ runner.temp }}/coverage/.coverage" for s in coverage)
     assert all(s["with"].get("include-hidden-files") is True for s in coverage)
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert "subprocess" not in config["tool"]["coverage"]["run"].get("patch", [])
-    lanes = wf["jobs"]["lanes"]["steps"]
-    assert any("--cov --cov-report=" in step.get("run", "") and "-n auto" in step["run"] for step in lanes)
+    parallel_commands = [step["with"]["command"] for step in callers if "-n auto" in step["with"]["command"]]
+    assert len(parallel_commands) == 2
+    assert all("--cov --cov-report=" in command for command in parallel_commands)
     gate = wf["jobs"]["assurance"]["steps"]
     download = next(s for s in gate if s.get("with", {}).get("pattern") == "lane-report-*")
     assert "merge-multiple" not in download["with"]
@@ -257,16 +278,21 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
 def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_secrets():
     workflows = ROOT / ".github" / "workflows"
     action = ROOT / ".github" / "actions" / "publish-evidence" / "action.yml"
-    steps = yaml.safe_load(action.read_text(encoding="utf-8"))["runs"]["steps"]
-    upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+    publication = workflow_doc(action.read_text(encoding="utf-8"))
+    steps = publication["runs"]["steps"]
+    assert publication["inputs"]["portion"]["default"] == "both"
+    scanner_command = "python tools/ci/install_evidence.py --scanner-only"
+    install = next(i for i, step in enumerate(steps) if step.get("run") == scanner_command)
+    assert steps[install]["if"] == "always() && inputs.portion == 'both'"
+    assert all(i > install for i, step in enumerate(steps) if "stage_evidence.py" in step.get("run", ""))
+    upload = next(step for step in steps if step.get("id") == "upload")
     assert upload["with"]["retention-days"] == 14
     assert upload["with"]["path"] == "${{ steps.stage.outputs.directory }}"
     assert not upload["with"].get("include-hidden-files")
-    proof_uses = "./.github/actions/prove-evidence"
     publisher = "./.github/actions/publish-evidence"
-    workflow_docs = {path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+    workflow_docs = {path.name: workflow_doc(path.read_text(encoding="utf-8"))
                      for path in workflows.glob("*.yml")}
-    action_docs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))["runs"]
+    action_docs = {path.parent.name: workflow_doc(path.read_text(encoding="utf-8"))["runs"]
                    for path in action.parents[1].glob("*/action.y*ml")}
     groups = [
         (f"{name}/{key}", {**doc.get("env", {}), **job.get("env", {})}, job.get("steps", []))
@@ -277,12 +303,18 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
         publishers = [step for step in job_steps if step.get("uses") == publisher]
         for step in publishers:
             artifact = step["with"]["artifact"]
-            assert artifact.endswith("attempt-${{ github.run_attempt }}") and "${ " not in artifact, (label, artifact)
+            if label == "lane":
+                assert artifact == "${{ inputs.artifact }}"
+            else:
+                assert step["with"].get("portion", "both") == "both", label
+                assert artifact.endswith("attempt-${{ github.run_attempt }}"), (label, artifact)
+                assert "${ " not in artifact, (label, artifact)
         if not tests:
             continue
-        assert len(publishers) == 1, label
-        if "/" in label:
-            assert publishers[0]["if"] == "failure() || cancelled()", label
+        if any(step.get("uses") != "./.github/actions/lane" for step in tests):
+            assert len(publishers) == 1, label
+            if "/" in label:
+                assert publishers[0]["if"] == "failure() || cancelled()", label
         for step in tests:
             variables = {**inherited, **step.get("env", {})}
             assert not {"GH_TOKEN", "GITHUB_TOKEN"} & variables.keys(), label
@@ -293,15 +325,6 @@ def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_
                        for earlier in job_steps[:job_steps.index(step)]), label
         assert all(step.get("with", {}).get("persist-credentials") is False
                    for step in job_steps if step.get("uses", "").startswith("actions/checkout@")), label
-    proof_steps = action_docs["prove-evidence"]["steps"]
-    pytest_step = next(step for step in proof_steps if " -m pytest" in step.get("run", ""))
-    assert all(flag in pytest_step["run"] for flag in ("--session-deadline ", "--test-timeout ", "--hang-dir="))
-    for workflow, job, condition in (
-        ("ci.yml", "core", "needs.changes.outputs.tier == 'full' && matrix.lane == 'serial' && matrix.shard == 1"),
-        ("nightly.yml", "reference", "matrix.shard == 1"),
-    ):
-        [proof] = [step for step in workflow_docs[workflow]["jobs"][job]["steps"] if step.get("uses") == proof_uses]
-        assert proof["if"] == condition
 
 
 def evidence_hit(path):
@@ -362,7 +385,8 @@ def test_evidence_masks_duplicates_and_token_tails_then_rescans(tmp_path, monkey
         "vertical-summary.txt": "<redacted:planted-rule> <redacted>",
     }
     assert {path: (destination / path).read_text(encoding="utf-8") for path in expected} == expected
-    log = capsys.readouterr().err
+    timing, _, log = capsys.readouterr().err.partition("\n")
+    assert re.fullmatch(r"evidence timing stage \d+\.\d{3}s", timing)
     assert log.splitlines() == [
         "withheld autopsy/copy-of-dirty.txt:1 (planted-rule)",
         "masked autopsy/failure.txt:1 (planted-rule)",
@@ -391,10 +415,10 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     """Structure of .github/workflows/nightly.yml: `reference-plan` sizes the shards (shard_plan.py --reference), every
     OS gets shards 1..N of one N, each under its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance)
     and cutting the plan's one table, and the aggregate (which `report` waits for) requires both platforms."""
-    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
+    jobs = workflow_doc((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     reference, plan = jobs["reference"], jobs["reference-plan"]
     # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
-    assert reference["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["reference"] + DEADLINE_MARGINS_MIN
+    assert reference["timeout-minutes"] == publication_job_minutes(reference)
     assert reference["needs"] == "reference-plan"
     assert reference["strategy"]["matrix"] == "${{ fromJSON(needs.reference-plan.outputs.matrix) }}"
     assert plan["outputs"]["matrix"] == "${{ steps.plan.outputs.reference_matrix }}"
@@ -825,7 +849,7 @@ def test_the_committed_table_gives_every_lane_a_shard_count():
 
 
 def test_the_lanes_job_takes_its_shards_and_durations_from_the_tier_job_and_only_main_adds_to_the_history():
-    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    jobs = workflow_doc((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     tier_steps = jobs["changes"]["steps"]
     assert jobs["changes"]["outputs"]["lanes_matrix"] == "${{ steps.shards.outputs.lanes_matrix }}"
     restore = [s for s in tier_steps if str(s.get("uses", "")).startswith("actions/cache/")]
@@ -1875,7 +1899,7 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     and its summaries (which lead with its unqualified state) are written whatever the outcome."""
     from vertical.ledger import VERTICAL_MODE
 
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    wf = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     job = wf["jobs"]["vertical"]
     assert list(wf["jobs"]) == ["vertical"]
     assert set(wf[True]) == {"workflow_dispatch"}  # PyYAML reads `on:` as True
@@ -1909,7 +1933,7 @@ def test_only_main_saves_the_vertical_series_and_every_run_restores_it_where_it_
     (the job is red by design), and the workflow's permissions stay as they are: no commit from CI."""
     from vertical.scoreboard import MAIN_REF, SERIES
 
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    wf = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     assert wf["permissions"] == {"contents": "read"}
     steps = wf["jobs"]["vertical"]["steps"]
     restores = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore")]
@@ -1959,7 +1983,7 @@ def test_the_vertical_report_is_told_how_the_pytest_step_ended():
     outcome, which only the workflow can pass."""
     from vertical.report import PYTEST_OUTCOME
 
-    steps = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))[
+    steps = workflow_doc((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))[
         "jobs"]["vertical"]["steps"]
     pytest_step = next(s for s in steps if "--lane vertical" in str(s.get("run", "")))
     report = next(s for s in steps if "python -m vertical.report" in str(s.get("run", "")))
@@ -2108,7 +2132,7 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     nightly_assure = next(s for s in nightly_steps if s.get("id") == "assure")
     assert "check_assurance.py reference-reports" in nightly_assure["run"]
     assert nightly_steps.index(nightly_assure) < nightly_steps.index(nightly_ratchet)
-    reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
+    reference = "\n".join(str(s.get("with", {}).get("command", "")) for s in nightly["jobs"]["reference"]["steps"])
     assert "--lane-report" in reference  # the capture writes beside it
 
 
@@ -2292,7 +2316,9 @@ def test_ci_writes_the_cost_record_after_assurance_and_lanes_print_their_slowest
     # continue-on-error does not cover the job timeout: the step's own timeout keeps a hang from cancelling the gate
     assert cost.get("timeout-minutes") and cost["timeout-minutes"] < workflow["jobs"]["assurance"]["timeout-minutes"]
     assert workflow["jobs"]["assurance"]["permissions"] == {"contents": "read", "actions": "read",
-                                                             "pull-requests": "read"}
+                                                             "pull-requests": "read", "checks": "write"}
+    evidence = next(s for s in steps if "check_evidence_run.py" in s.get("run", ""))
+    assert evidence["env"]["EVIDENCE_HEAD"] == "${{ github.event.pull_request.head.sha || github.sha }}"
     assert any(s.get("with", {}).get("name") == "cost-record" for s in steps)
 
 
@@ -3058,6 +3084,7 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 # decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
 # every timeout with it, or the pin fails.
 PRE_G3A_TIMEOUT_MIN = {
+    "evidence-proof.yml": {"plant": 6},
     # fastbase: 15 before G3a; 16 since its lane runs under xdist, sized from strategy §8 (2 x 7.4 + 0.8 minutes;
     # operator, 2026-10-22, #232)
     "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
@@ -3119,7 +3146,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
     # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
     # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
-    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["run"])
+    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["with"]["command"])
     assert base_flags == fast_flags and "-n" in base_flags, (base_flags, fast_flags)
     assert "--session-deadline 960" in lane["run"] and '"--hang-dir=${{ runner.temp }}/fastbase/hangs"' in lane["run"]
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
@@ -3130,7 +3157,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["core"] + DEADLINE_MARGINS_MIN
+    assert core["timeout-minutes"] == publication_job_minutes(core)
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
@@ -3422,11 +3449,11 @@ def test_every_lane_publishes_its_hang_directory_on_failure_or_cancellation():
             continue
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / lane.workflow).read_text(encoding="utf-8"))
         steps = workflow["jobs"][lane.job]["steps"]
-        covered = [
-            step for step in steps if step.get("uses") == "./.github/actions/publish-evidence"
-            and step.get("if") == "failure() || cancelled()"
-            and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/"))
-        ]
+        sources = [re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/") for step in steps
+                   if step.get("uses") == "./.github/actions/lane" or
+                   (step.get("uses") == "./.github/actions/publish-evidence"
+                    and step.get("if") == "failure() || cancelled()")]
+        covered = any(where == source or where.startswith(source + "/") for source in sources)
         if not covered:
             problems.append(f"{lane.label}: no scanned upload covers {where}")
     assert problems == [], "\n".join(problems)
@@ -3441,10 +3468,9 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
 
 def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     """The runner can end the pytest step before the job expires, with an unconditional evidence upload next."""
-    import bounds
 
     workflow = ROOT / ".github" / "workflows" / "flake-dispatch.yml"
-    doc = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    doc = workflow_doc(workflow.read_text(encoding="utf-8"))
     assert set(doc[True]) == {"workflow_dispatch"}
     assert doc["permissions"] == {"contents": "read"}
     assert set(doc["jobs"]) == {"regression"}
@@ -3452,23 +3478,26 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
-    pytest_step, upload, evidence = steps[-3:]
+    pytest_step, upload = steps[-2:]
+    action = workflow_doc((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    evidence = next(step for step in action if step.get("with", {}).get("portion") == "full")
     lanes = [lane for lane in _workflow_lanes() if lane.workflow == workflow.name]
     assert [lane.repeats for lane in lanes] == [1, 2, 1]
     assert all(lane.step == pytest_step["name"] for lane in lanes)
     step_seconds = pytest_step["timeout-minutes"] * 60
-    assert f"+ {pytest_step['timeout-minutes']} * 60 > AEW_JOB_DEADLINE" in pytest_step["run"]
+    assert "+ 28 * 60 > AEW_JOB_DEADLINE" in pytest_step["run"]
     session_seconds = 0.0
     for lane in lanes:
         assert lane.deadline_s is not None
         session_seconds += lane.repeats * (lane.deadline_s + 2 * lane.margin_s)
-    assert session_seconds <= step_seconds
-    assert step_seconds + bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S < job["timeout-minutes"] * 60
+    assert session_seconds <= 28 * 60 < step_seconds
+    assert job["timeout-minutes"] == publication_job_minutes(job)
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == 14
     assert evidence["uses"] == "./.github/actions/publish-evidence"
-    assert evidence["if"] == "failure() || cancelled()"
+    assert evidence["if"].startswith("always() && ")
+    assert "steps.collect.outcome != 'success'" in evidence["if"]
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():
@@ -3506,111 +3535,3 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
         f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
     source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text
-
-
-def test_the_proof_wires_its_upload_id_and_records_a_bounded_visibility_wait(tmp_path, monkeypatch):
-    from hashlib import sha256
-    from types import SimpleNamespace
-    from zipfile import ZipFile
-
-    actions = ROOT / ".github/actions"
-    publish = yaml.safe_load((actions / "publish-evidence/action.yml").read_text(encoding="utf-8"))
-    proof = yaml.safe_load((actions / "prove-evidence/action.yml").read_text(encoding="utf-8"))
-    [upload] = [step for step in publish["runs"]["steps"] if step.get("id") == "upload"]
-    assert upload["uses"].startswith("actions/upload-artifact@")
-    assert publish["outputs"]["artifact-id"]["value"] == "${{ steps.upload.outputs.artifact-id }}"
-    [publisher] = [step for step in proof["runs"]["steps"] if step.get("id") == "evidence"]
-    assert publisher["uses"] == "./.github/actions/publish-evidence"
-    [download] = [step for step in proof["runs"]["steps"] if step.get("run") == "python tools/ci/fetch_evidence.py"]
-    assert download["env"]["ARTIFACT_ID"] == "${{ steps.evidence.outputs.artifact-id }}"
-
-    assert download["env"]["ARTIFACT_DIGEST"] == "${{ steps.evidence.outputs.artifact-digest }}"
-    assert publish["outputs"]["artifact-digest"]["value"] == "${{ steps.upload.outputs.artifact-digest }}"
-    callers = []
-    for path in (ROOT / ".github/workflows").glob("*.yml"):
-        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
-        for name, job in workflow["jobs"].items():
-            if any(step.get("uses") == "./.github/actions/prove-evidence" for step in job.get("steps", [])):
-                callers.append((path.name, name))
-                assert job.get("permissions", {}).get("actions") == "read", (path.name, name)
-    assert callers
-
-    fetch_evidence = _load("fetch_evidence")
-    archive = tmp_path / "test.zip"
-    with ZipFile(archive, "w") as bundle:
-        bundle.writestr("report.txt", "synthetic evidence")
-    data = archive.read_bytes()
-    digest = sha256(data).hexdigest()
-    token = "synthetic-token"
-    responses = []
-    waits = []
-    elapsed = 0.0
-    summary = tmp_path / "summary.md"
-    url = "https://example.invalid/repos/org/repo/actions/artifacts/42/zip"
-
-    def request(argv, **kwargs):
-        nonlocal elapsed
-        assert argv[-1] == url
-        assert argv[argv.index("--connect-timeout") + 1] == "5"
-        assert argv[argv.index("--max-time") + 1] == "30"
-        assert all(token not in arg for arg in argv)
-        assert argv[argv.index("--header") + 1] == "@-"
-        assert kwargs["input"] == f"Authorization: Bearer {token}\n"
-        status, returncode, body, stderr = responses.pop(0)
-        Path(argv[argv.index("--output") + 1]).write_bytes(body)
-        elapsed += 0.125
-        return SimpleNamespace(returncode=returncode, stdout=status, stderr=stderr)
-
-    def pause(seconds):
-        nonlocal elapsed
-        waits.append(seconds)
-        elapsed += seconds
-
-    monkeypatch.setattr(fetch_evidence.subprocess, "run", request)
-    monkeypatch.setattr(fetch_evidence, "sleep", pause)
-    monkeypatch.setattr(fetch_evidence, "monotonic", lambda: elapsed)
-    missing = ("404", 0, b"", "")
-    ready = ("200", 0, data, "")
-
-    def fetch(expected_digest=digest):
-        fetch_evidence.fetch("42", "proof", expected_digest, url, token, tmp_path, summary)
-        assert not responses
-
-    def outcome(details):
-        assert summary.read_text().splitlines()[-1] == f"Evidence visibility for proof (ID 42): {details}"
-
-    responses[:] = [missing, ready]
-    fetch()
-    downloaded = tmp_path / "evidence-proof-download/report.txt"
-    assert downloaded.read_text() == "synthetic evidence"
-    downloaded.unlink()
-    outcome("attempts=2, elapsed=1.25s, outcome=visible")
-    assert waits == [1]
-
-    responses[:] = [missing] * 5
-    waits.clear()
-    with pytest.raises(SystemExit, match=r"proof \(ID 42\).*after 5 attempts in 5\.00s"):
-        fetch()
-    assert not responses
-    assert waits == [1, 1, 1, 1, 0.375]
-    outcome("attempts=5, elapsed=5.00s, outcome=timeout")
-
-    waits.clear()
-    responses[:] = [("403", 0, b"Resource not accessible by integration " + token.encode() + b"!" * 500 + b"tail", "")]
-    with pytest.raises(SystemExit, match="HTTP 403: .*Resource not accessible by integration") as forbidden:
-        fetch()
-    assert token not in str(forbidden.value) and "[redacted]" in str(forbidden.value)
-    assert "tail" not in str(forbidden.value)
-    assert not responses and not waits
-    outcome("attempts=1, elapsed=0.12s, outcome=error")
-
-    responses[:] = [("000", 28, b"", "  Operation timed out  ")]
-    with pytest.raises(SystemExit, match="curl exit 28: .*Operation timed out"):
-        fetch()
-    assert not responses and not waits
-    outcome("attempts=1, elapsed=0.12s, outcome=error")
-
-    responses[:] = [ready]
-    with pytest.raises(SystemExit, match=r"digest mismatch for proof \(ID 42\)"):
-        fetch("0" * 64)
-    assert not downloaded.exists()

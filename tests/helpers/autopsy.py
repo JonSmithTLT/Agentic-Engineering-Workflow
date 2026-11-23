@@ -60,6 +60,10 @@ def _hang_dir(config: pytest.Config) -> Path:
 
 
 def thread_stacks() -> str:
+    from evidence_files import stacks_ablated
+
+    if stacks_ablated():
+        return "stack collection ablated\n"
     names = {t.ident: t.name for t in threading.enumerate()}
     parts = []
     for ident, frame in sys._current_frames().items():
@@ -146,8 +150,9 @@ class AutopsyPlugin:
     def arm(self, timeout: float) -> None:
         """Windows: an ordinary thread that collects just after the watchdog's faulthandler dump is due."""
         self.disarm()
-        timer = threading.Timer(timeout + WATCHER_GRACE_S, self.collect_current,
-                                (f"the hang watchdog fired: the test was still running after {timeout:g}s",))
+        started = time.monotonic()
+        timer = threading.Timer(timeout + WATCHER_GRACE_S,
+                                lambda: self.watchdog_fired(time.monotonic() - started))
         timer.daemon = True
         timer.name = "aew-autopsy-watcher"
         self._timer = timer

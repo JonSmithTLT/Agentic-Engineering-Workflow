@@ -577,7 +577,8 @@ def test_a_child_reparented_as_the_controller_exits_mid_refresh_is_still_ended(t
 def test_a_stuck_controllers_stacks_are_in_the_folder_before_the_set_is_ended(tmp_path, monkeypatch):
     """Review of #392, m3: the ending may hang, or end what's holding the file, so they come first."""
     sentinel = _sentinel(tmp_path, margin=0.01)  # the "controller" is this process, so it never exits in time
-    sentinel.after_finish_file.write_text("the stack of what held it\n", encoding="utf-8")
+    recorded = 'Thread 123:\n  File "tests/unit/test_wait.py", line 1 in test_wait\n'
+    sentinel.after_finish_file.write_text(recorded, encoding="utf-8")
     monkeypatch.setattr(session_deadline.Sentinel, "refresh", lambda self: None)
     seen = []
 
@@ -586,5 +587,5 @@ def test_a_stuck_controllers_stacks_are_in_the_folder_before_the_set_is_ended(tm
 
     monkeypatch.setattr(session_deadline.Sentinel, "end_set", end_set)
     assert sentinel.after_finish() == 0
-    assert seen == [("after-finish", "the stack of what held it\n")]
+    assert seen == [("after-finish", recorded)]
     assert "the session finished, but" in (sentinel.dir / "stuck-after-finish.txt").read_text(encoding="utf-8")

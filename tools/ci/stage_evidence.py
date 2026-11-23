@@ -9,9 +9,14 @@ import re
 import stat
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+from bounds import EVIDENCE_SCAN_S  # noqa: E402
+from evidence_files import owner, state  # noqa: E402
 
 JOB_CAP = 64 * 1024 * 1024
 INDEX_CAP = 64 * 1024
@@ -77,7 +82,7 @@ def scan(candidate: Path, report: Path, staged: set[Path]) -> dict[Path, list[Hi
         ["gitleaks", "dir", "--no-banner", "--ignore-gitleaks-allow", "--report-format", "json",
          "--config", str(CONFIG), "--exit-code", str(FINDINGS_EXIT),
          "--report-path", str(report), str(candidate)],
-        cwd=report.parent, capture_output=True, timeout=60, check=False,
+        cwd=report.parent, capture_output=True, timeout=EVIDENCE_SCAN_S, check=False,
     )
     if result.returncode == 0:
         return {}
@@ -141,6 +146,7 @@ def stage(source: Path, destination: Path) -> str:
         left = JOB_CAP - INDEX_CAP
         kept = omitted = 0
         inventory = bytearray()
+        omissions = []
         staged: set[Path] = set()
 
         def files():
@@ -153,14 +159,21 @@ def stage(source: Path, destination: Path) -> str:
 
         for file in files():
             relative = file.relative_to(source)
+            if owner(relative) is None:
+                omitted += 1
+                anonymous = Path("file-" + hashlib.sha256(relative.as_posix().encode()).hexdigest()[:12])
+                omissions.append((anonymous, "unlisted writer"))
+                continue
             diagnostic = (file.suffix == ".txt"
                           and ({"autopsy", "harness-runs"}.intersection(relative.parts[:-1])
-                               or file.name.startswith("hang-")))
+                               or file.name.startswith(("hang-", "runner-resources-"))
+                               or "snapshots" in relative.parts))
             if not diagnostic and file.name not in EXTRA_TEXT:
                 continue
             try:
                 if any(is_link(p) for p in (file, *file.parents) if p.is_relative_to(source)) or not file.is_file():
                     omitted += 1
+                    omissions.append((relative, "link, non-file, or excluded private workdir file"))
                     continue
                 if "workdir" in relative.parts:
                     original = Path(file.name.removesuffix(".txt"))
@@ -182,9 +195,11 @@ def stage(source: Path, destination: Path) -> str:
                     data = content.encode("utf-8")
             except (OSError, UnicodeError):
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             if len(data) > min(left, 4 * 1024 * 1024) or b"\x00" in data:
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             parts = tuple(visible(part) for part in relative.parts)
             if "workdir" in relative.parts and ".aew" in relative.parts:
@@ -193,17 +208,16 @@ def stage(source: Path, destination: Path) -> str:
             out = candidate.joinpath(*parts)
             if out.exists():
                 omitted += 1
+                omissions.append((relative, "unreadable, non-text, duplicate, or staging size limit"))
                 continue
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(data)
             staged.add(out.relative_to(candidate))
             left -= len(data)
-            line = f"file-{kept:05d} ({len(data)} bytes)\n".encode()
-            if len(inventory) + len(line) < INDEX_CAP - 512:
-                inventory.extend(line)
             kept += 1
 
         report = Path(temporary) / "scan.json"
+        summary = f"{kept} candidate files, {omitted} omitted\nfinding inventory.txt (publisher)\n"
         publish = False
         try:
             initial = scan(candidate, report, staged)
@@ -229,19 +243,37 @@ def stage(source: Path, destination: Path) -> str:
             }
             listing = "".join(f"{action} {path}:{line} ({rule})\n"
                               for path, rule, line, action in sorted(entries)).encode()
-            if len(listing) > INDEX_CAP - 512:
-                raise ValueError("gitleaks findings exceed inventory cap")
             if sum((candidate / path).stat().st_size for path in staged - withheld.keys()) > JOB_CAP - INDEX_CAP:
-                raise ValueError("masked evidence exceeds job cap")
-            if initial:
-                inventory = bytearray(listing)
+                raise OverflowError("job cap exceeded")
             masked_count = sum(bool(notes) for path, notes in masked.items() if path not in withheld)
             status = (f"gitleaks masked {masked_count} files; withheld {len(withheld)} files"
                       if initial else "gitleaks clean")
+            body_limit = INDEX_CAP - len(f"{status}\n{summary}".encode())
+
+            def append_row(row: bytes) -> None:
+                if len(inventory) + len(row) > body_limit:
+                    raise OverflowError("inventory cap exceeded")
+                inventory.extend(row)
+
+            append_row(listing)
+            for path in sorted(staged - withheld.keys()):
+                shown = "<redacted-path>" if any(occurrences(path.as_posix().encode(), secrets)) else path.as_posix()
+                classification = state(path, (candidate / path).read_bytes())
+                writer = owner(path) or "UNKNOWN-WRITER"
+                append_row(f"{classification} {shown} ({writer})\n".encode())
+            for path, reason in omissions:
+                shown = "/".join(visible(part) for part in path.parts)
+                if any(occurrences(shown.encode(), secrets)):
+                    shown = "<redacted-path>"
+                append_row(f"omitted {shown} ({reason})\n".encode())
             publish = True
+        except OverflowError as error:
+            status = f"evidence defect: {error}"
+            inventory.clear()
         except (OSError, ValueError, subprocess.TimeoutExpired):
-            status = "gitleaks scan unavailable"
-        header = f"{status}\n{kept} candidate files, {omitted} omitted\n"
+            status = "gitleaks scan unavailable; evidence defect: scan unavailable"
+            inventory.clear()
+        header = f"{status}\n{summary}"
         if publish:
             candidate.rename(destination)
         else:
@@ -252,7 +284,9 @@ def stage(source: Path, destination: Path) -> str:
 
 def main(argv: list[str]) -> None:
     source, destination = map(Path, argv)
+    started = time.monotonic()
     print(stage(source, destination))
+    print(f"evidence timing stage {time.monotonic() - started:.3f}s", file=sys.stderr)
     for line in (destination / "inventory.txt").read_text(encoding="utf-8").splitlines():
         if line.startswith(("masked ", "withheld ")):
             print(line, file=sys.stderr)

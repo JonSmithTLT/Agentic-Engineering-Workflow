@@ -397,7 +397,7 @@ if IS_WINDOWS:  # pragma: windows-only
             inside = wintypes.BOOL()
             return bool(_k32.IsProcessInJob(h, self.handle, ctypes.byref(inside))) and bool(inside.value)
 
-        def members(self) -> list[Proc]:
+        def members(self, *, command_lines: bool = True) -> list[Proc]:
             """The job's members, each read on one handle that is checked to be in the job: a member that exited after
             the pid list was taken, and whose pid was reused, is never described (or later ended) as one."""
             parents = {pid: ppid for pid, ppid, _ in _toolhelp_rows()}
@@ -408,7 +408,8 @@ if IS_WINDOWS:  # pragma: windows-only
                     continue
                 try:
                     if self._holds(h) and _alive_handle(h):
-                        out.append(Proc(pid, parents.get(pid, 0), _creation(h), _image(h), _cmdline(h)))
+                        out.append(Proc(pid, parents.get(pid, 0), _creation(h), _image(h),
+                                        _cmdline(h) if command_lines else ""))
                 finally:
                     _k32.CloseHandle(h)
             return out

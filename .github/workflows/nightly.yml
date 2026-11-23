@@ -94,9 +94,6 @@ jobs:
           retention-days: 30
 
   reference:
-    permissions:
-      contents: read
-      actions: read  # fetch this job's evidence archive by upload ID
     # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome. The suite is split
     # into duration-balanced shards (tests/helpers/lanes.py, `--shard k/N`), as many as `reference-plan` sized;
     # `reference-assurance` below proves the shards together ran every collected test exactly once.
@@ -106,11 +103,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.reference-plan.outputs.matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 64
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 72
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
@@ -127,13 +123,16 @@ jobs:
           name: reference-durations
           path: ${{ runner.temp }}/reference-durations
       # `--durations-file=`, one word (ci.yml's lanes job: a separate word counts as a test path)
-      - run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
-          --shard ${{ matrix.shard }}/${{ matrix.of }}
-          "--durations-file=${{ runner.temp }}/reference-durations/durations.json"
-          --test-timeout 600 --session-deadline 3600
-          "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
+      - uses: ./.github/actions/lane
+        timeout-minutes: 71
+        with:
+          job-label: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+          source: ${{ runner.temp }}/nightly-reports/
+          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-step-5-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30 --shard ${{ matrix.shard }}/${{ matrix.of }} "--durations-file=${{ runner.temp }}/reference-durations/durations.json" --test-timeout 600 --session-deadline 3600 "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
+        timeout-minutes: 1
         if: always()
         with:
           name: nightly-reference-${{ runner.os }}-${{ matrix.shard }}
@@ -141,13 +140,6 @@ jobs:
             ${{ runner.temp }}/nightly-reports/*.json
           retention-days: 30
 
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
-        with:
-          source: ${{ runner.temp }}/nightly-reports/
-          artifact: evidence-nightly-reference-${{ runner.os }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-      - uses: ./.github/actions/prove-evidence
-        if: matrix.shard == 1
 
   reference-assurance:
     # The unsharded reference run's guarantee, rebuilt from its shards: every shard reported, every collected test
@@ -229,16 +221,15 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 64
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 71
     env:
       AEW_WALK_STEPS: "150"
       AEW_WALK_FAULT_RATE: "0.15"
       AEW_HWALK_STEPS: "250"
       AEW_HWALK_FAULT_RATE: "0.12"
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
@@ -257,15 +248,14 @@ jobs:
           echo "AEW_HWALK_SEEDS=$seeds" >> "$GITHUB_ENV"
           echo "walk seeds (${{ matrix.os }} block ${{ matrix.block }}): $seeds — reproduce with AEW_WALK_SEEDS=<seed> AEW_WALK_STEPS=150 AEW_WALK_FAULT_RATE=0.15 pytest tests/regression/test_composition_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
-      - run: >-
-          python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
-          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+      - uses: ./.github/actions/lane
+        timeout-minutes: 71
         with:
+          job-label: walk block ${{ matrix.block }} (${{ matrix.os }})
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-attempt-${{ github.run_attempt }}
-
+          artifact: evidence-nightly-walk-hangs-${{ runner.os }}-${{ matrix.block }}-step-4-attempt-${{ github.run_attempt }}
+          command: |
+            python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
   race-repeat:
     name: race and kill repetition (${{ matrix.os }})
     strategy:
@@ -275,11 +265,10 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 64
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 71
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
@@ -290,27 +279,32 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: serial lane x10
-        shell: bash
-        run: |
-          for i in $(seq 1 10); do
-            echo "::group::serial lane repetition $i"
-            python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
-              --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
-            echo "::endgroup::"
-          done
-      - name: racing writers with 4x the transactions
-        shell: bash
-        env:
-          AEW_RACE_WRITES: "200"
-        run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
-          --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+        timeout-minutes: 71
+        uses: ./.github/actions/lane
         with:
+          job-label: race and kill repetition (${{ matrix.os }})
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-race-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
-
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
+          shell: bash
+          command: |
+            for i in $(seq 1 10); do
+              echo "::group::serial lane repetition $i"
+              python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
+                --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
+              echo "::endgroup::"
+            done
+      - name: racing writers with 4x the transactions
+        timeout-minutes: 71
+        uses: ./.github/actions/lane
+        env:
+          AEW_RACE_WRITES: 200
+        with:
+          job-label: race and kill repetition (${{ matrix.os }})
+          source: ${{ runner.temp }}/hangs/
+          artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-4-attempt-${{ github.run_attempt }}
+          shell: bash
+          command: |
+            python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
   crash-extended:
     name: randomized store crashes (${{ matrix.os }})
     strategy:
@@ -320,13 +314,12 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 64
+    # The original test budget plus the declared collection and publication bounds.
+    timeout-minutes: 71
     env:
       AEW_CRASH_ITERATIONS: "2000"
     steps:
-      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
-      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      # The original test deadline is preserved. The bounds checker reserves collection and publication.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
@@ -337,17 +330,18 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: 2000 randomized crash iterations with a rotating seed
-        shell: bash
-        run: |
-          echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
-          AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
-            --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
-            "tests/unit/test_store.py::test_randomized_crash_iterations"
-      - uses: ./.github/actions/publish-evidence
-        if: failure() || cancelled()
+        timeout-minutes: 71
+        uses: ./.github/actions/lane
         with:
+          job-label: randomized store crashes (${{ matrix.os }})
           source: ${{ runner.temp }}/hangs/
-          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-attempt-${{ github.run_attempt }}
+          artifact: evidence-nightly-crash-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
+          shell: bash
+          command: |
+            echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
+            AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
+              --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
+              "tests/unit/test_store.py::test_randomized_crash_iterations"
 
   flake-queue:
     if: always() && github.event_name == 'schedule'

@@ -17,6 +17,7 @@ This module imports nothing from AEW: helper children may load it.
 
 from __future__ import annotations
 
+import math
 import re
 import shlex
 import time
@@ -38,6 +39,28 @@ DEADLINE_MARGIN_S = 30.0
 JOB_MARGIN_S = 180.0
 SESSION_END_MARGINS = 5
 UPLOAD_CLEARANCE_S = 60.0
+
+# Publication reserves the scanner's existing 60s bound for initial and residual scans of two bundles, plus a
+# one-minute upload reserve for names, priority files, lane JSON and full evidence. The composite has one timeout.
+EVIDENCE_SCAN_S = 60
+PUBLICATION_BUDGET_S = 4 * EVIDENCE_SCAN_S + 4 * UPLOAD_CLEARANCE_S
+COLLECT_BUDGET_S = 10
+CUTOFF_CLEARANCE_S = 10
+
+
+def publication_lane_minutes(deadline: float) -> int:
+    grace = SESSION_END_MARGINS * DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S + COLLECT_BUDGET_S
+    return math.ceil((deadline + grace + PUBLICATION_BUDGET_S) / 60)
+
+
+def publication_job_minutes(job: dict[str, Any]) -> float:
+    steps = job.get("steps", [])
+    setting = next(JOB_DEADLINE_RE.search(str(step.get("run", ""))) for step in steps
+                   if JOB_DEADLINE_RE.search(str(step.get("run", ""))))
+    deadline = float(setting.group(1))
+    last = max(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/lane")
+    post = sum(float(step.get("timeout-minutes", 0)) for step in steps[last + 1:])
+    return publication_lane_minutes(deadline) + post
 
 
 @dataclass(frozen=True)
@@ -188,6 +211,10 @@ class Lane:
         return f"{self.workflow} {self.job} / {self.step}"
 
 
+def command_text(step: dict[str, Any]) -> str:
+    return str(step.get("run") or step.get("with", {}).get("command") or "")
+
+
 def _commands(run: str) -> list[tuple[str, int]]:
     """The pytest command lines in a step's ``run`` (folded ``>-`` text or a shell script), each with how many times
     a ``for ... in $(seq 1 N)`` loop around it repeats it."""
@@ -225,13 +252,16 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
 
     lanes = []
     for path in sorted(workflows.glob("*.yml")):
+        # Death plants deliberately violate ordinary test bounds. Their hosted verifier checks the death envelope.
+        if path.name == "evidence-proof.yml":
+            continue
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for job_name, job in (doc.get("jobs") or {}).items():
             steps = job.get("steps") or []
             uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
             set_at = next((m for m in (JOB_DEADLINE_RE.search(str(s.get("run") or "")) for s in steps) if m), None)
             for step in steps:
-                for command, repeats in _commands(str(step.get("run") or "")):
+                for command, repeats in _commands(command_text(step)):
                     text = re.sub(r"\$\{\{[^}]*\}\}", "X", command)  # expressions are one word to the parser
                     try:
                         argv = shlex.split(text)
@@ -305,17 +335,31 @@ def job_deadline_problems(workflows: Path) -> list[str]:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, job in (doc.get("jobs") or {}).items():
             steps = job.get("steps") or []
-            pytest_at = [i for i, st in enumerate(steps) if _commands(str(st.get("run") or ""))]
+            pytest_at = [i for i, st in enumerate(steps) if _commands(command_text(st))]
             if not pytest_at:
                 continue
-            found = [(i, JOB_DEADLINE_RE.search(str(st.get("run") or ""))) for i, st in enumerate(steps)]
+            found = [(i, JOB_DEADLINE_RE.search(command_text(st))) for i, st in enumerate(steps)]
             setting = [(i, m) for i, m in found if m]
             label = f"{path.name} {name}"
             if not setting:
                 problems.append(f"{label}: runs pytest but never sets AEW_JOB_DEADLINE")
                 continue
             i, m = setting[0]
-            want = float(job.get("timeout-minutes") or 0) * 60 - JOB_MARGIN_S - 2 * DEADLINE_MARGIN_S
+            consolidated = any(step.get("uses") == "./.github/actions/lane" for step in steps)
+            want = float(m.group(1)) if consolidated else (
+                float(job.get("timeout-minutes") or 0) * 60 - JOB_MARGIN_S - 2 * DEADLINE_MARGIN_S)
+            if consolidated:
+                last = max(index for index, step in enumerate(steps) if step.get("uses") == "./.github/actions/lane")
+                lane_minutes = publication_lane_minutes(want)
+                for step in steps:
+                    if (step.get("uses") == "./.github/actions/lane"
+                            and float(step.get("timeout-minutes", 0)) < lane_minutes):
+                        problems.append(f"{label}: lane step needs {lane_minutes} minutes including publication")
+                if any("timeout-minutes" not in step for step in steps[last + 1:]):
+                    problems.append(f"{label}: post-pytest step has no timeout-minutes")
+                required = publication_job_minutes(job)
+                if float(job.get("timeout-minutes", 0)) < required:
+                    problems.append(f"{label}: post-pytest bounds need {required:g} job minutes")
             if i > min(pytest_at):
                 problems.append(f"{label}: AEW_JOB_DEADLINE is set after a pytest step")
             if steps[i].get("shell") != "bash":
@@ -340,7 +384,7 @@ def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float
     for path in sorted(workflows.glob("*.yml")):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, job in (doc.get("jobs") or {}).items():
-            sets = any(JOB_DEADLINE_RE.search(str(st.get("run") or "")) for st in (job or {}).get("steps") or [])
+            sets = any(JOB_DEADLINE_RE.search(command_text(st)) for st in (job or {}).get("steps") or [])
             present[(path.name, name)] = sets
             if not sets:
                 continue
@@ -348,6 +392,13 @@ def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float
             have = float(job.get("timeout-minutes") or 0)
             if was is None:
                 problems.append(f"{path.name} {name}: sets AEW_JOB_DEADLINE but has no timeout before G3a recorded")
+            elif any(step.get("uses") == "./.github/actions/lane" for step in job.get("steps", [])):
+                deadline = next(JOB_DEADLINE_RE.search(str(step.get("run", ""))) for step in job["steps"]
+                                if JOB_DEADLINE_RE.search(str(step.get("run", ""))))
+                if float(deadline.group(1)) != was * 60:
+                    problems.append(f"{path.name} {name}: the session's test budget changed")
+                if have != publication_job_minutes(job):
+                    problems.append(f"{path.name} {name}: timeout differs from the declared publication bounds")
             elif have != was + clearance:
                 problems.append(f"{path.name} {name}: timeout-minutes {have:g}, not its {was:g} before G3a plus the "
                                 f"session deadline's clearance ({clearance:g}): it would lose test time")

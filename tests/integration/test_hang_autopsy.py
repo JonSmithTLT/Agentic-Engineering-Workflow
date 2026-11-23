@@ -120,7 +120,7 @@ def test_fails(tmp_path):
     (harness / "private.db").write_bytes(b"private database contents")
     assert False, "planted assertion failure"
 """
-    hangs = Path(os.environ["AEW_EVIDENCE_PROOF_DIR"]) if "AEW_EVIDENCE_PROOF_DIR" in os.environ else tmp_path / "hangs"
+    hangs = tmp_path / "hangs"
     proc = inner(project(tmp_path, planted), hangs, "-p", "no:xdist")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     bundle = autopsy_of(hangs, "test_fails")
@@ -320,7 +320,7 @@ def test_outlives_the_session():
 
 
 def test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself(tmp_path):
-    hangs = Path(os.environ["AEW_EVIDENCE_PROOF_DIR"]) if "AEW_EVIDENCE_PROOF_DIR" in os.environ else tmp_path / "hangs"
+    hangs = tmp_path / "hangs"
     # The deadline acts once the test is running (the gate): it counts from configure, and on a loaded Windows runner
     # the 5 s once passed before the test began, which left no test autopsy to judge (#443, 2026-11-11)
     proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "5", "--session-deadline-margin", MARGIN,

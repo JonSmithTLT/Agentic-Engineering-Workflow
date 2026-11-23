@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 55e4d028abdaaec53b2b7628eb3db7c112889202
+          ref: a4b7b9c7b73a51fda1b720a73290e1074d873824
           persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
@@ -35,3 +35,6 @@ jobs:
         shell: pwsh
         run: |
           python -c "import os; from pathlib import Path; base=Path(os.environ['RUNNER_TEMP'],'snap-evidence','autopsy'); records=list(base.glob('*/children/snapshot-timeout.txt')); assert len(records)==3, records; assert all('before cleanup' in p.read_text() for p in records), records"
+      - name: Check the golden cases and retained evidence
+        shell: bash
+        run: python -m pytest -q -p no:xdist -p no:cacheprovider tests/integration/test_messaging_off_outputs.py

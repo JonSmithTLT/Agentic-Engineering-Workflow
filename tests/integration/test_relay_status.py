@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
@@ -221,3 +222,49 @@ def test_credentials_keeps_missing_legacy_provenance_and_transport_unknown(proje
     dest = view["destinations"]["service.example:443"]
     assert (dest["last_request"]["transport"], dest["confirmed_sends"], dest["unconfirmed_sends"]) == ("unknown", 0, 1)
     assert "Partial history" in project.aew("credentials").stdout
+
+
+def test_anonymous_provider_failure_stays_separate_from_a_working_export(project):
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    token, key = relay.sentinel(), "synthetic-working-secret"
+    with provider_endpoint() as (upstream, calls), closing(relay.ProviderRelay(
+            upstream, {token: key}, route="openai", login="key", sources={token: "environment:EXAMPLE_KEY"},
+            record=relay.RequestLog(directory / runlog.RELAY_REQUESTS))) as service:
+        assert request(service, method="POST", path="/v1/responses", headers={}) == 401
+        assert request(service, method="GET", path="/v1/models", headers={"Authorization": f"Bearer {token}"}) == 200
+        assert calls == [("POST", "/v1/responses", None), ("GET", "/v1/models", f"Bearer {key}")]
+    report = project.ok("credentials", "--json")
+    keyed, anonymous = report["credentials"]
+    assert keyed["source"] == "environment:EXAMPLE_KEY" and keyed["recent_failures"] == []
+    assert anonymous["source"] == "no_header_swap" and [f["status"] for f in anonymous["recent_failures"]] == [401]
+    used, unsigned = [next(iter(view["destinations"].values())) for view in (keyed, anonymous)]
+    assert (used["requests"], used["confirmed_sends"]) == (1, 1)
+    assert (unsigned["requests"], unsigned["confirmed_sends"]) == (1, 0)
+    text = project.aew("credentials").stdout
+    keyed_text, anonymous_text = text.split("openai — no credential swapped into request headers")
+    assert "environment export EXAMPLE_KEY" in keyed_text and "HTTP 401" not in keyed_text
+    assert "upstream HTTP 401" in anonymous_text
+
+
+def test_interrupted_outbound_header_write_has_unconfirmed_delivery(project):
+    class Interrupted(socket.socket):
+        def sendall(self, data):
+            assert b"Authorization: Bearer synthetic-interrupted-secret" in data
+            raise BrokenPipeError("synthetic interrupted header write")
+
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    token = relay.sentinel()
+    journal = directory / runlog.RELAY_REQUESTS
+    with closing(relay.ProviderRelay(
+            relay.Upstream("http://provider.example/v1"), {token: "synthetic-interrupted-secret"}, route="openai",
+            login="key", sources={token: "saved_key"}, record=relay.RequestLog(journal),
+            connect=lambda *_: Interrupted())) as service:
+        assert request(service, method="POST", path="/v1/responses",
+                       headers={"Authorization": f"Bearer {token}"}) == 502
+    [row] = [json.loads(line) for line in journal.read_bytes().splitlines()]
+    assert row["upstream_headers_written"] is None and row["swapped_sources"] == ["saved_key"]
+    [source] = project.ok("credentials", "--json")["credentials"]
+    dest = source["destinations"]["provider.example:80"]
+    assert dest["confirmed_sends"] == 0 and dest["unconfirmed_sends"] == 1 and dest["last_confirmed_send"] is None

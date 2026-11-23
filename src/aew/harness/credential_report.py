@@ -17,7 +17,8 @@ from aew.policy import execution
 
 _RECENT_FAILURES = 5
 _SOURCE_NAMES = {"saved_key": "OpenCode saved API key", "saved_oauth": "OpenCode saved OAuth login",
-                 "client_certificate": "client certificate", "unknown": "source unrecorded"}
+                 "client_certificate": "client certificate", "unknown": "source unrecorded",
+                 "no_header_swap": "no credential swapped into request headers"}
 _TRANSPORT = ("http", "tls_verified", "tls_unverified", "not_established")
 
 
@@ -149,10 +150,14 @@ def summary(aew_root: Path, policy: dict[str, Any] | None, *, policy_problem: st
         offered = sources("configured_sources")
         certificate = raw.get("client_certificate_configured") is True or (row["run"], provider) in certified
         chosen = set(swapped)
-        if not chosen and len(offered) == 1:
-            chosen.update(offered)  # a refusal may precede a swap; this source was configured, not necessarily sent
-        if not chosen and (not certificate or offered or row["login"] != "none"):
-            chosen.add("unknown")
+        if not chosen:
+            if len(offered) == 1 and row["reason"] in ("credential_unavailable", "credential_unreadable"):
+                chosen.update(offered)  # the configured grant failed before the relay could swap its credential
+            elif raw.get("swapped_sources") == [] and row["swap"] == "none" and row["outcome"] == "forwarded":
+                if not certificate:
+                    chosen.add("no_header_swap")
+            elif not certificate or offered or row["login"] != "none":
+                chosen.add("unknown")
         if certificate:
             chosen.add("client_certificate")
         transport = raw.get("transport")

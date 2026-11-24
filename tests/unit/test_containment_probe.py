@@ -587,6 +587,8 @@ def test_row_1_on_a_network_without_routes_fails_on_any_route_that_answers(monke
                                               egress=False)["reason"]
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="the probe runs in a Linux sandbox: an error's name is Linux's "
+                                                    "(Windows names it WSAEAFNOSUPPORT)")
 def test_a_host_without_ipv6_records_no_ipv6_route_and_still_passes_row_1(monkeypatch):
     """A kernel without IPv6 refuses the socket itself, whatever ``socket.has_ipv6`` says: the probe records that as
     the route's answer and the judge accepts it, rather than the probe failing and every launch with a network of its

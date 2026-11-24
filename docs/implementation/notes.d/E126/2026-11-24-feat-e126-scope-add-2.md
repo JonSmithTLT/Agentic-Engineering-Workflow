@@ -18,9 +18,11 @@ check.**
   `outside_own_scope`, `scope_pairs`), not by its hold message, which names the whole scope; only a conflict that gains
   a fact refuses it (`scope_ops.widening_meets`).
 - **m-b:** an implementer is told with `harness send` only while its run is STARTING or RUNNING
-  (`runlog.observed_status`; the set has one owner, `harness.contract.LIVE_RUNS`, which `harness_send` uses too); an
-  ended, lost or unreadable run is named the re-dispatch commands. With coordination messaging on, a live implementer
-  is told with `message_send` to its invocation, since `harness send` is then refused.
+  (`runlog.observed_status`; the set has one owner, `harness.contract.LIVE_RUNS`, which `harness send`'s admission and
+  `harness resume`'s running case use too; `stage_intents.LIVE_RUN`, a launching step's custody, keeps its own); an
+  ended, lost or unreadable run is named the re-dispatch commands. With coordination messaging on, `harness send` is
+  refused, so a message is recorded for a live implementer with `message_send` to its invocation, its arguments whole
+  (`expect_rev` is the revision the add commits); its delivery is not built yet.
 - **m-c:** a reviewer's pack shows the lines added and removed in the declared scope beside those in the added paths,
   from `git diff --numstat` against the base commit (`scope_ops.lines_changed`).
 

@@ -15,6 +15,7 @@ from invariants import assert_control_invariants, load_control
 
 from aew.engine import scope_ops as SC
 from aew.engine.api import Engine
+from aew.surface import contract
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
 
@@ -83,7 +84,7 @@ def test_a_test_removed_from_an_added_path_stops_for_a_signoff_after_the_add(run
 @pytest.mark.parametrize(("path", "reason"), [
     ("tests/*.py", "not_exact"),
     ("tests/test_core.py\nT-0009 READY", "unprintable_path"),
-    ("tests/test_\x1b[2J.py", "unprintable_path"),
+    ("tests/test_\x1bcore.py", "unprintable_path"),  # no glob character: rule 1's own refusal (#545 quick check, n2)
     ("../tests/test_core.py", "not_exact"),
     ("calc/other.py", "not_a_test_path"),
     ("calc/core.py", "already_in_scope"),
@@ -342,3 +343,32 @@ def test_a_path_with_a_control_character_is_never_offered_as_an_add(running, mon
     offered = [d["arguments"]["subject"] for d in projection.project(engine, CTX, wid)["decisions_required"]
                if d["decision"] == "ADD_SCOPE"]
     assert offered == [SC.item_id(wid, good)], offered
+
+
+def test_with_messaging_on_a_live_implementer_gets_a_message_send_that_runs_as_printed(running, monkeypatch):
+    """PR #545 quick check, m6: with the project's messaging adopted, `harness send` is refused, so the add names
+    `message_send` to the implementer's invocation, with arguments its schema admits as printed (`expect_rev` is the
+    revision the add commits). The message is recorded; its delivery is not built yet."""
+    import copy
+
+    from test_coordination_store import OPERATOR, set_messaging
+
+    from aew.harness import contract as K
+    from aew.surface.validate import check_call
+
+    p, wid, _ = running
+    set_messaging(p.root, "enabled")
+    Engine.discover(p.root).manifest_adopt(token=p.token, expect_rev=p.rev(), reason="messaging on",
+                                           authorization=OPERATOR)
+    engine = Engine.discover(p.root)
+    state = copy.deepcopy(engine.store.current())
+    assert engine._scope.messaging(state)  # the adopted switch, read through the coordination port
+    inv = state["work"][wid]["implementer_invocation"]
+    state["invocations"][inv].setdefault("runs", []).append({"run": f"R-{inv}-1"})  # its run, launched and working
+    monkeypatch.setattr(engine._scope, "run_status", lambda run: K.RUNNING)
+    args = {"subject": SC.item_id(wid, "tests/test_core.py"), "rationale": WHY}
+    assert engine.guard_query(SC.OP, None, args, state=state)["availability"] == "AVAILABLE"
+    [stale] = args["found"]["stale_invocations"]
+    assert stale["commands"] == ["aew lead tool message_send --arguments -"], stale
+    assert stale["fields"]["expect_rev"] == state["revision"] + 1 and stale["fields"]["to"] == stale["invocation"]
+    check_call("message_send", stale["fields"], "normal", frozenset({contract.MESSAGING}))  # admitted as printed

@@ -59,7 +59,7 @@
           "work_id": {"type": "string"},
           "role": {"type": ["string", "null"]},
           "commands": {"type": "array", "items": {"type": "string"}},
-          "fields": {"type": "object", "additionalProperties": {"type": "string"}}
+          "fields": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}}
         }
       }
     }

@@ -926,7 +926,7 @@ class Harness:
             produced = [e for e in E.scan(self.k.aew_root, inv["work_unit"])[0]  # the store, not the record
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
-            if status in (K.STARTING, K.RUNNING):
+            if status in K.LIVE_RUNS:
                 action = f"{run} is running for {inv_id}: {self._wait_on([run], state)}"
             elif status == K.UNREADABLE:
                 action = f"{run}'s record is unreadable: {K.wait_step([run])}"

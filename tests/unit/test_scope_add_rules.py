@@ -9,6 +9,8 @@ import pytest
 
 from aew.engine import scope_ops as SC
 from aew.harness import contract as K
+from aew.surface import contract
+from aew.surface.validate import check_call
 
 SRC = Path(SC.__file__).resolve().parents[1]
 
@@ -120,7 +122,7 @@ def test_rule_three_never_takes_a_dunder_stem_for_a_module():
 
 def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatched():
     """PR #540 review, m5: the add exists to save the implementer's run, so its result never cancels it."""
-    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}},
+    state = {"revision": 7, "work": {"T-0001": {"kind": "ticket", "mutating": True}},
              "invocations": {"INV-0001": {"status": "active", "work_unit": "T-0001", "role": "implementer",
                                           "runs": [{"run": "R-INV-0001-1"}]},
                              "INV-0002": {"status": "active", "work_unit": "T-0001", "role": "reviewer",
@@ -128,12 +130,15 @@ def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatch
     impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING)
     assert impl["commands"] == ["aew harness send R-INV-0001-1 --fields -"] and "text" in impl["fields"]
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002") and "reason" in reader["fields"]
-    # With coordination messaging on, `harness send` is always refused: the live implementer is told with
-    # `message_send` to its invocation, as the wake advice says (PR #545 review, m2).
+    # With coordination messaging on, `harness send` is always refused: a message is recorded for the live implementer
+    # with `message_send` to its invocation, as the wake advice says, with arguments its schema admits as printed
+    # (PR #545 review, m2; quick check, m6).
     impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING,
                                                          messaging=True)
     assert impl["commands"] == ["aew lead tool message_send --arguments -"], impl
     assert impl["fields"]["to"] == "INV-0001" and "tests/test_a.py" in impl["fields"]["body"], impl
+    assert impl["fields"]["expect_rev"] == 8  # the revision the add commits
+    check_call("message_send", impl["fields"], "normal", frozenset({contract.MESSAGING}))
     assert not any("harness send" in c for c in impl["commands"] + reader["commands"])
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002")
 

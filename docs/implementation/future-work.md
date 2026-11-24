@@ -4152,6 +4152,30 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E360/`, oldest first (`python tools/register.py show E360`).*
 
+### E361
+
+**Work:** Body-level operation scope for the provider relay: a request's body is held to the provider's allowed operations as its path already is, so a field outside them is refused unless the provider's profile opts that field in, per provider and per field, in the policy the relay is started from, never by a request or the sandbox. A refusal names the field, is recorded `refused`, and sends nothing upstream. Inspecting the body before anything is sent means reading it whole within the relay's body bound (`relay.MAX_BODY`), where today it is streamed; that bound times the concurrency bound is the memory the change can cost, and its pull request states how it holds it. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
+
+**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23), "Authorize operations as well as hosts"; the operator, 2026-11-24, filing this as a follow-on; the STG-05 note of #542 (`2026-11-24-fix-relay-bounds-and-outcome.md`) for m6
+
+**When:** **Unscheduled**, after #542 (merged); the operator places it
+
+**Notes:** Filed by the register PR of 2026-11-24. Which fields each provider exposes comes from its pinned API surface, not from today''s online documentation
+
+*Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
+
+### E362
+
+**Work:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch with a network of its own (`proxy_only`, the default, or `isolated`) is refused `CONTAINMENT_UNAVAILABLE` (fail closed); a `shared` network never runs that probe. `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, the true answer (no IPv6 route out), which the host-side judge already accepts for `direct6`; with a test
+
+**Source:** E140's O-CMD triage (#547), 2026-11-24: seen in a container whose kernel lacks IPv6
+
+**When:** **Unscheduled**; the operator places it. It holds a host without IPv6 from contained work with a private network, so before first use on such a host
+
+**Notes:** Filed by the register PR of 2026-11-24
+
+*Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

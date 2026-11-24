@@ -260,6 +260,24 @@ def test_the_relay_presents_the_policys_certificate_and_the_provider_takes_it(pk
     assert relay.describe(service)["provider_client_cert"] == f"{client_cert.FIELD}.{PROVIDER}.cert"
 
 
+def test_each_record_names_the_client_certificate_by_its_leafs_digest_and_never_its_key(pki):
+    """RLY-09's credential version, for a client certificate: the sha256 of the leaf the relay loaded at its start, in
+    every entry; never the key's bytes or path."""
+    import json
+
+    from cryptography.hazmat.primitives import hashes
+
+    found = pki.files()
+    tls, client = netns.relay_tls(PROVIDER, policy_of(found))
+    records: list[dict[str, Any]] = []
+    with provider(pki) as (port, _):
+        ask(port, tls=tls, client=client, record=records.append)
+    [row] = records
+    assert row["client_certificate_sha256"] == pki.client.cert.fingerprint(hashes.SHA256()).hex()
+    text = json.dumps(row).encode()
+    assert _key_body(found.key) not in text and found.key.encode() not in text
+
+
 def test_a_provider_with_no_certificate_configured_gets_none(pki):
     assert netns.relay_tls(PROVIDER, {}) == (None, None)
 

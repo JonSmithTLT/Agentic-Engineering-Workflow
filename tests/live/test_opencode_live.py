@@ -131,3 +131,31 @@ def test_project_opencode_config_written_by_an_agent_changes_no_later_run(tmp_pa
         assert health["projection_loaded_s"] is not None and health["agent_rules"] >= 1
     finally:
         lab.cleanup()
+
+
+def test_every_request_a_real_session_relays_is_in_the_relays_default_operations(tmp_path):
+    """Register STG-05, the operation scope's live confirmation: a real session at the pinned OpenCode, one model turn
+    on its run's relay, sends only operations of the relay's default set (``relay.DEFAULT_OPERATIONS``), and none is
+    refused for scope. A run this host launches with no provider relay has nothing to confirm, and says so."""
+    from harness_conformance import launch_ticket
+
+    from aew.harness import runlog
+    from aew.harness.containment import relay
+
+    driver = OpenCodeDriver()
+    lab = driver.create_lab(tmp_path)
+    try:
+        _, _, run = launch_ticket(lab, driver, tmp_path, [{"do": "model_step"}, {"do": "exit", "code": 0}])
+        lab.wait(run, timeout=300)
+        relayed = (lab.record(run).get("containment") or {}).get("network", {}).get("provider_relay") == "configured"
+        journal = runlog.run_dir(lab.aew_root, run) / runlog.RELAY_REQUESTS
+        rows = [json.loads(line) for line in journal.read_bytes().splitlines()] if journal.exists() else []
+    finally:
+        lab.cleanup()
+    if not relayed:
+        pytest.skip("this host launched the run with no provider relay: nothing to confirm")
+    assert rows, "the run's relay recorded no request, though its model turn goes through it"
+    scope = (relay.OUTSIDE_UPSTREAM_PATH, relay.OPERATION_NOT_PERMITTED)
+    assert [r for r in rows if r.get("reason") in scope] == [], rows
+    assert {r["operation"] for r in rows} <= relay.DEFAULT_OPERATIONS, rows
+    assert any(r["operation"] == "model" for r in rows), rows

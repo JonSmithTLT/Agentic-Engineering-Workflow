@@ -185,7 +185,7 @@ def summary(aew_root: Path, policy: dict[str, Any] | None, *, policy_problem: st
             elif source != "client_certificate" and row["swap"] == "swapped" and written is None:
                 dest["unconfirmed_sends"] += 1
             code = row["status"]
-            if row["outcome"] == "refused" or (code is not None and not 200 <= code < 300):
+            if row["outcome"] in ("refused", "unknown") or (code is not None and not 200 <= code < 300):
                 failure = {k: row[k] for k in ("at", "run", "outcome", "reason", "status", "answered")}
                 failure["destination"] = address
                 recent = view["recent_failures"]
@@ -252,6 +252,8 @@ def render(report: dict[str, Any]) -> str:
         for failure in view["recent_failures"]:
             cause = (f"relay refusal {failure['reason'] or 'unknown'} ({failure['answered'] or 'no HTTP status'})"
                      if failure["outcome"] == "refused" else
+                     f"outcome unknown {failure['reason'] or 'unknown'} (the provider may have accepted it)"
+                     if failure["outcome"] == "unknown" else
                      f"upstream HTTP {failure['status']} {http.client.responses.get(failure['status'], '')}".rstrip())
             lines.append(f"    {failure['at']} ({failure['run']}) {failure['destination']}: {cause}")
     lines.append("Runtime sandbox process-environment count: unmeasured. Launch checks cover only the supplied "

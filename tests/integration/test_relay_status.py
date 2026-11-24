@@ -274,11 +274,30 @@ def test_interrupted_outbound_header_write_has_unconfirmed_delivery(project):
     [row] = [json.loads(line) for line in journal.read_bytes().splitlines()]
     [wire] = writes
     assert b"Authorization: Bearer synthetic-interrupted-secret" in wire
-    assert row["reason"] == "upstream_unreachable"
+    # a write that may have put bytes upstream: the provider may have the request, so never "unreachable"
+    assert row["reason"] == "upstream_outcome_unknown" and row["outcome"] == "unknown"
     assert row["upstream_headers_written"] is None and row["swapped_sources"] == ["saved_key"]
     [source] = project.ok("credentials", "--json")["credentials"]
     dest = source["destinations"]["provider.example:80"]
     assert dest["confirmed_sends"] == 0 and dest["unconfirmed_sends"] == 1 and dest["last_confirmed_send"] is None
+    [failure] = source["recent_failures"]
+    assert failure["outcome"] == "unknown" and failure["reason"] == "upstream_outcome_unknown"
+    assert "outcome unknown upstream_outcome_unknown (the provider may have accepted it)" in project.aew(
+        "credentials").stdout
+
+
+def test_a_request_whose_outcome_is_unknown_is_counted_unknown_and_never_as_relay_refused(project):
+    directory = runlog.run_dir(project.root / ".aew", "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    row = {"at": "2026-01-04T01:02:03Z", "route": "openai", "swap": "none", "login": "none", "operation": "model",
+           "outcome": "unknown", "status": 200, "answered": 200, "reason": "upstream_outcome_unknown"}
+    relay.RequestLog(directory / runlog.RELAY_REQUESTS)(row)
+    report = project.ok("status", "--json")["relay"]
+    assert not report["partial"]
+    openai = report["routes"]["openai"]
+    assert openai["counts"] == {"upstream_2xx": 0, "upstream_non_2xx": 0, "refused": 0, "unknown": 1}
+    assert openai["last_model"]["reason"] == "upstream_outcome_unknown"
+    assert "outcome unknown (upstream_outcome_unknown)" in project.aew("status").stdout
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux strace observes the worker relay's connect syscalls")

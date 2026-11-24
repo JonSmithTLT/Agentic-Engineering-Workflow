@@ -93,13 +93,15 @@ def read_all(sock: socket.socket) -> bytes:
 @contextmanager
 def relayed(seam: Seam, *, upstream: str = UPSTREAM, proxy: Proxy | None = None,
             credentials: dict[str, str] | None = None, resolve: Callable[[], relay.Grant] | None = None,
-            record: Callable[[dict[str, Any]], None] | None = None,
+            record: Callable[[dict[str, Any]], None] | None = None, **bounds: Any,
             ) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
-    """A relay serving one connection; yields it, the client end, and the sentinel that stands for ``SECRET``."""
+    """A relay serving one connection; yields it, the client end, and the sentinel that stands for ``SECRET``.
+    ``bounds`` are the relay's other keywords (its bounds, its policy's sha)."""
     token = relay.sentinel()
     service = ProviderRelay(Upstream(upstream), credentials if credentials is not None else {token: SECRET},
                             proxy=proxy, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
-                            body_timeout=TIMEOUT, resolve=resolve, record=record, route="openai", login="key")
+                            body_timeout=TIMEOUT, resolve=resolve, record=record, route="openai", login="key",
+                            **bounds)
     client, served = socket.socketpair()
     client.settimeout(TIMEOUT)
     thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
@@ -1272,3 +1274,195 @@ def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_p
     for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b"):
         with pytest.raises(ValidationFailed):
             execution.parse(policy([bad]), source="t")
+
+
+# ---------------------------------------------------------------------------------------------- bounds and outcome
+
+MODEL_CALL = b"POST /v1/responses HTTP/1.1\r\n"
+
+
+def test_a_body_over_the_relays_bound_is_refused_413_and_nothing_is_connected():
+    """A ``Content-Length`` over the bound is refused before the credential is resolved or anything connected."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, max_body=1024) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 1025\r\n\r\n" + b"x" * 1025)
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 413 ") and b"X-AEW-Refusal: request_too_large" in answer
+    assert seam.calls == [] and service.counts() == {"request_too_large": 1}
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "request_too_large" and row["answered"] == 413
+    assert row["upstream_headers_written"] is False and row["transport"] == "not_established"
+
+
+def test_a_body_at_the_relays_bound_is_forwarded_whole():
+    seam = Seam()
+    with relayed(seam, max_body=1024) as (_, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 1024\r\n\r\n" + b"x" * 1024)
+        upstream = seam.upstream()
+        _, body = read_head(upstream)
+        while len(body) < 1024:
+            data = upstream.recv(4096)
+            assert data, body
+            body += data
+        upstream.sendall(OK)
+        upstream.close()
+        answer = read_all(client)
+    assert body == b"x" * 1024 and answer.endswith(b"ok")
+
+
+def test_a_chunked_body_over_the_relays_bound_is_refused_and_the_upstream_never_gets_it_whole():
+    """A chunked body is counted as it comes: the chunk that passes the bound is refused at its size line, which is
+    not sent, so the upstream never gets the last chunk (never a request it could accept)."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, max_body=1024) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + b"200\r\n" + b"x" * 512 + b"\r\n"
+                       + b"201\r\n" + b"y" * 513 + b"\r\n0\r\n\r\n")
+        answer = read_all(client)
+        upstream = seam.upstream()
+        got = read_all(upstream)
+    assert answer.startswith(b"HTTP/1.1 413 ") and b"X-AEW-Refusal: request_too_large" in answer
+    assert got.endswith(b"200\r\n" + b"x" * 512 + b"\r\n") and b"201" not in got.partition(b"\r\n\r\n")[2]
+    assert service.counts() == {"request_too_large": 1}
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "request_too_large"
+
+
+def test_a_request_beyond_the_relays_concurrency_bound_gets_503_and_connects_nothing():
+    """With the bound's requests in progress, the next is refused 503 ``relay_busy`` before its head is read, and is
+    not connected; once one ends, a request is served again."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, max_active=1) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)  # the first request is in progress, its answer not yet come
+        second, served = socket.socketpair()
+        second.settimeout(TIMEOUT)
+        with closing(second):
+            thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+            thread.start()
+            second.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+            busy = read_all(second)
+            thread.join(TIMEOUT)
+        assert busy.startswith(b"HTTP/1.1 503 ") and b"X-AEW-Refusal: relay_busy" in busy
+        assert len(seam.calls) == 1
+        upstream.sendall(OK)
+        upstream.close()
+        assert read_all(client).endswith(b"ok")
+    assert service.counts() == {"relay_busy": 1, "allowed": 1}
+    busy_row, done_row = records
+    assert busy_row["outcome"] == "refused" and busy_row["reason"] == "relay_busy" and busy_row["answered"] == 503
+    assert done_row["outcome"] == "forwarded" and done_row["ended"] == "complete"
+    assert service._active == 0  # each request gave its place back
+    seam2 = Seam()
+    _, again, _ = exchange(seam2, MODEL_CALL + b"Content-Length: 0\r\n\r\n", max_active=1)
+    assert again.endswith(b"ok")
+
+
+def test_a_stalled_stream_ends_at_the_relays_time_bound_and_its_outcome_is_unknown():
+    """A response that stops mid-body is ended at the bound: the client's connection closes, and the record says the
+    stream was cut and the outcome is unknown (the provider may have finished the call)."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, stream_timeout=0.5) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nab")
+        answer = read_all(client)  # ends when the relay ends the stream; the upstream never closes
+    assert answer.startswith(b"HTTP/1.1 200 ") and answer.endswith(b"ab")
+    [row] = records
+    assert row["ended"] == "stream_timeout" and row["outcome"] == "unknown" and row["reason"] == "stream_timeout"
+    assert row["status"] == 200 and service.counts()["stream_timeout"] == 1
+
+
+def test_a_response_that_never_starts_is_answered_504_at_the_time_bound_and_its_outcome_is_unknown():
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, stream_timeout=0.5) as (_, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)  # the request went upstream; no answer comes
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 504 ") and b"X-AEW-Refusal: stream_timeout" in answer
+    [row] = records
+    assert row["outcome"] == "unknown" and row["reason"] == "stream_timeout" and row["upstream_headers_written"]
+
+
+def test_a_mid_response_break_records_upstream_outcome_unknown():
+    """The upstream's connection closes before the end its framing names: the client has the head and what came, and
+    the record says the outcome is unknown, never forwarded whole."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial")
+        upstream.close()
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 200 ") and answer.endswith(b"partial")
+    [row] = records
+    assert row["outcome"] == "unknown" and row["reason"] == relay.UPSTREAM_OUTCOME_UNKNOWN
+    assert row["ended"] == "upstream_broken" and row["status"] == 200
+    assert service.counts() == {"allowed": 1, "upstream_outcome_unknown": 1}
+    assert len(seam.calls) == 1  # never retried
+
+
+def test_a_break_after_the_request_went_upstream_is_outcome_unknown_and_never_unreachable():
+    """The upstream reads the request and closes without an answer: the provider may have accepted it, so the client
+    is told ``upstream_outcome_unknown``, not ``upstream_unreachable`` (which says the request was not sent), and the
+    relay does not send it again."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 2\r\n\r\n{}")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.close()
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 502 ") and b"X-AEW-Refusal: upstream_outcome_unknown" in answer
+    assert b"upstream_unreachable" not in answer and len(seam.calls) == 1
+    [row] = records
+    assert row["outcome"] == "unknown" and row["reason"] == "upstream_outcome_unknown"
+    assert row["upstream_headers_written"] is True and service.counts() == {"upstream_outcome_unknown": 1}
+
+
+def test_a_connect_failure_is_recorded_as_not_sent():
+    seam, records = Seam(error=ConnectionRefusedError(111, "synthetic: refused")), []
+    with relayed(seam, record=records.append) as (_, client, _):
+        client.sendall(b"GET /v1/models HTTP/1.1\r\n\r\n")
+        read_all(client)
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "upstream_unreachable"
+    assert row["upstream_headers_written"] is False
+
+
+def test_each_record_names_its_own_request_id_and_the_policys_sha_and_no_certificate_without_one():
+    seam, records = Seam(), []
+    for _ in range(2):
+        exchange(seam, b"GET /v1/models HTTP/1.1\r\n\r\n", record=records.append, policy_sha256="ab" * 32)
+        seam = Seam()
+    first, second = records
+    assert first["request_id"] != second["request_id"]
+    assert all(len(r["request_id"]) == 16 and int(r["request_id"], 16) >= 0 for r in records)
+    assert first["policy_sha256"] == second["policy_sha256"] == "ab" * 32
+    assert first["client_certificate_sha256"] is None and first["ended"] == "complete"
+
+
+def test_the_relays_bounds_are_stated_and_the_run_network_passes_its_policys_sha(tmp_path, monkeypatch):
+    """The defaults are the module's stated bounds; a run's network gives its relay the policy's sha."""
+    service = ProviderRelay(Upstream(UPSTREAM), {})
+    assert (service.max_body, service.max_active, service.stream_timeout) == (
+        relay.MAX_BODY, relay.MAX_ACTIVE, relay.STREAM_TIMEOUT)
+    service.close()
+    seen: list[dict[str, Any]] = []
+    real = relay.ProviderRelay
+
+    def spy(*args: Any, **kw: Any) -> ProviderRelay:
+        seen.append(kw)
+        return real(*args, **kw)
+
+    monkeypatch.setattr(relay, "ProviderRelay", spy)
+    layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir=str(tmp_path), private_network=True)
+    net = netns.RunNetwork.start(layout, provider="openai", provider_env=["OPENAI_API_KEY"], policy=None,
+                                 env={"OPENAI_API_KEY": SECRET}, relay_needed=True, policy_sha256="cd" * 32)
+    try:
+        assert [kw["policy_sha256"] for kw in seen] == ["cd" * 32]
+    finally:
+        net.close()

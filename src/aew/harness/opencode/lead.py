@@ -783,7 +783,7 @@ class ContainedLead(LeadProviders):
         # scan, G3 addendum 7, ruling 2), and its entry there when its label is weaker.
         where = {"kind": "lead_opencode", "ownership": lead_broker.session_ownership(), "project": engine.repo_root,
                  "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
-        policy, _ = engine.execution_policy()
+        policy, policy_sha256 = engine.execution_policy()
         project = str(engine.repo_root)
         layout, label = establish_layout(engine, policy, run_dir, terminal=self.terminal,
                                          bridge_dir=bridge_dir, bridge=child_env.get(lead_broker.ENV_ENDPOINT))
@@ -835,7 +835,8 @@ class ContainedLead(LeadProviders):
                 network = netns.RunNetwork.start_lead(
                     layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
                     refreshing={p: login.StoredLogin(p, self.base) for p in self.refreshing},
-                    keyless=list(self.certified), record=relay.RequestLog(run_dir / runlog.RELAY_REQUESTS))
+                    keyless=list(self.certified), record=relay.RequestLog(run_dir / runlog.RELAY_REQUESTS),
+                    policy_sha256=policy_sha256)
                 label["network"].update(network.describe())
                 self.stages.mark("network")
             from aew.capability import ops as capability

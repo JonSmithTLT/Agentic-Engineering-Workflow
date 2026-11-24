@@ -31,16 +31,33 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
 4. connects to its one fixed upstream, through the operator's HTTP proxy when the provider's environment names one,
    over TLS for ``https``;
 5. sends the request and its body (framed by ``Content-Length`` or chunked), then streams the response back as it
-   comes, until the upstream ends it or the client goes away.
+   comes, until the upstream ends it, the client goes away or the stream's time is up.
+
+**Bounds:** the relay bounds request size, concurrency and stream time, each an implementation bound below, set by the
+host-side code that starts the relay and never by a request or the sandbox. A body over :data:`MAX_BODY` is refused 413
+(:data:`REQUEST_TOO_LARGE`): before anything is connected when its ``Content-Length`` says so, and, for a chunked body,
+at the chunk that passes the bound, so the upstream never gets the request whole. A request that finds
+:data:`MAX_ACTIVE` others in progress on the relay is refused 503 (:data:`RELAY_BUSY`) before its head is read, and
+nothing is connected. A response that has not ended :data:`STREAM_TIMEOUT` after the request was sent is ended
+(:data:`STREAM_TIMEOUT_REASON`), answered 504 if its head had not come.
+
+**Outcome:** the relay never retries. Once any byte of a request may have gone upstream, a broken connection is
+:data:`UPSTREAM_OUTCOME_UNKNOWN` (outcome ``unknown``: the provider may have accepted it), never
+``upstream_unreachable``, which says the request was not sent: a client that retries one must not take it for the
+other. A request refused while its body was still arriving (too large, stalled, malformed) is ``refused`` even after
+its head went upstream, as the upstream never got it whole.
 
 **The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
 request target; only a request refused for its operation, once past the path check, also records its method and its
 endpoint under the prefix, with no query, so the operator can see what to list. Each request, whatever became of it, is
 one entry given to the relay's ``record`` (one per request, when the request ends): when, the provider route, the fixed
 destination, what became of its credential header (:data:`SWAP_OUTCOMES`), the login kind, what the relay answered and,
-for one it forwarded, the upstream's status, with a short excerpt of a failure's body, redacted. Never a credential
-value. A forwarded request is also counted by its upstream status class when that is not 2xx, so a 401 is never counted
-only as ``allowed``.
+for one it forwarded, the upstream's status, with a short excerpt of a failure's body, redacted, and how its stream
+ended (``ended``). Each entry also carries its own ``request_id`` (random, one per request: the relay makes one attempt
+per request), the sha256 of the execution policy the relay was started from (``policy_sha256``) and, where a client
+certificate is used, the sha256 of its leaf as read at the relay's start (``client_certificate_sha256``; never key
+material). Never a credential value. A forwarded request is also counted by its upstream status class when that is
+not 2xx, so a 401 is never counted only as ``allowed``.
 
 One request per connection: each answer says ``Connection: close``. The upstream is fixed, so the relay never judges
 a destination: ruling R-6 is the egress proxy's (``egress.py``), and this module does not use it. A host-local upstream
@@ -78,7 +95,18 @@ if TYPE_CHECKING:
 MAX_HEAD = 32 * 1024
 HEAD_TIMEOUT = 30.0     # the whole request head, from when the relay starts reading it
 CONNECT_TIMEOUT = 10.0  # a SYN nobody answers, and the TLS handshake
-BODY_TIMEOUT = 60.0     # a pause inside the request body; the response stream itself has no idle bound (see above)
+BODY_TIMEOUT = 60.0     # a pause inside the request body
+# Implementation bound: a request's body. Above the largest request a provider documents taking (Anthropic's Messages
+# API: 32 MB; OpenAI's image inputs: 50 MB in all), so no model call OpenCode makes reaches it.
+MAX_BODY = 64 * 1024 * 1024
+# Implementation bound: the requests one relay serves at once (one thread each). OpenCode runs a session's subagents in
+# parallel, each with one model call open at a time, besides a title request: 32 is far above what a session holds
+# open (not measured), and bounds the threads and sockets a sandbox can make its relay hold.
+MAX_ACTIVE = 32
+# Implementation bound: a response, from the request's end to the response's end, its head included. A provider's own
+# SDK gives up on a request after 10 minutes by default (OpenAI's and Anthropic's); an hour is no model call's stream,
+# and bounds one the provider never ends.
+STREAM_TIMEOUT = 3600.0
 TLS_MINIMUM = ssl.TLSVersion.TLSv1_2  # every upstream context's floor, a client certificate's included
 SENTINEL_PREFIX = "aew-relay-"
 STALE_PLACEHOLDER = "stale_placeholder"
@@ -90,6 +118,17 @@ SWAP_OUTCOMES = ("swapped", "none", "refused_unknown_placeholder")
 # prefix, or spelled so an upstream might read it as another one; and an operation the relay's policy does not allow.
 OUTSIDE_UPSTREAM_PATH = "outside_upstream_path"
 OPERATION_NOT_PERMITTED = "operation_not_permitted"
+# The refusals and ends of the relay's bounds (module docstring, "Bounds"), and the outcome of a request that may have
+# reached the upstream when its connection broke ("Outcome").
+REQUEST_TOO_LARGE = "request_too_large"
+RELAY_BUSY = "relay_busy"
+STREAM_TIMEOUT_REASON = "stream_timeout"
+UPSTREAM_OUTCOME_UNKNOWN = "upstream_outcome_unknown"
+# What became of a request, in its entry: answered by the upstream; refused, with nothing (or, for a body refused as it
+# arrived, never the whole request) sent; or unknown, once any byte went upstream and the exchange did not end whole.
+OUTCOMES = ("forwarded", "refused", "unknown")
+# How a forwarded request's stream ended, in its entry's ``ended``.
+STREAM_ENDS = ("complete", "client_gone", "upstream_broken", "stream_timeout", "relay_closed")
 # The operations every relay forwards (:func:`_operation`'s labels): a model call and the model list. Anything else
 # goes upstream only when the operator's adopted policy names it (:func:`listed_operations`). That these cover
 # OpenCode's calls through the relay is derived, not measured in a session of the pinned version
@@ -116,8 +155,8 @@ _KEYED_PATH = re.compile(r"/[A-Za-z0-9._~/:\-]*")
 # What the policy may name in ``relay_operations``: a method and an exact path under the upstream's prefix.
 _POLICY_ENTRY = re.compile(r"(GET|POST|PUT|PATCH|DELETE) (/[A-Za-z0-9._~/:\-]*)")
 _PHRASES = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 408: "Request Timeout",
-            431: "Request Header Fields Too Large", 501: "Not Implemented",
-            502: "Bad Gateway", 503: "Service Unavailable"}
+            413: "Content Too Large", 431: "Request Header Fields Too Large", 501: "Not Implemented",
+            502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout"}
 
 Connector = Callable[[str, int, float], socket.socket]
 # What a resolver gives one request: each sentinel's value, and the headers the relay sets (replacing any of the same
@@ -279,9 +318,12 @@ def _operation(method: str, target: str, base: str, listed: Collection[tuple[str
 
 
 class _Refused(Exception):
-    def __init__(self, status: int, reason: str, message: str) -> None:
+    """An answer the relay gives itself. ``outcome`` is the entry's: ``refused``, or ``unknown`` for an answer given
+    once the request may have reached the upstream (:data:`OUTCOMES`)."""
+
+    def __init__(self, status: int, reason: str, message: str, *, outcome: str = "refused") -> None:
         super().__init__(message)
-        self.status, self.reason, self.message = status, reason, message
+        self.status, self.reason, self.message, self.outcome = status, reason, message, outcome
 
     def response(self) -> bytes:
         body = self.message.encode()
@@ -299,7 +341,10 @@ class ProviderRelay(Service):
     tests (a plain connect to the upstream's name). ``record`` takes each request's entry (see the module's "The
     record"), with ``route`` (the provider) and ``login`` (``key``, ``oauth`` or ``none``) in it; a record that fails
     is counted (``record_failed``) and never fails the request. ``operations`` are the operations the operator's
-    adopted policy adds for this provider (:func:`listed_operations`'s entries); the relay forwards no other."""
+    adopted policy adds for this provider (:func:`listed_operations`'s entries); the relay forwards no other.
+    ``max_body``, ``max_active`` and ``stream_timeout`` are the relay's bounds (:data:`MAX_BODY`, :data:`MAX_ACTIVE`,
+    :data:`STREAM_TIMEOUT`), the host's to set; ``policy_sha256`` is the sha256 of the execution policy the relay was
+    started from, for its record."""
 
     name = "aew-relay"
 
@@ -310,7 +355,8 @@ class ProviderRelay(Service):
                  client: ClientCert | None = None, record: Callable[[dict[str, Any]], None] | None = None,
                  route: str | None = None, login: str = "none", login_headers: Collection[str] = (),
                  issued: Collection[str] = (), sources: Mapping[str, str] | None = None,
-                 operations: Collection[str] = ()) -> None:
+                 operations: Collection[str] = (), max_body: int = MAX_BODY, max_active: int = MAX_ACTIVE,
+                 stream_timeout: float = STREAM_TIMEOUT, policy_sha256: str | None = None) -> None:
         listed = listed_operations(operations, resolved=resolve is not None)  # refused before anything is served
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
@@ -328,6 +374,14 @@ class ProviderRelay(Service):
         self._connect, self._tls = connect, tls
         self.client = client
         self.head_timeout, self.connect_timeout, self.body_timeout = head_timeout, connect_timeout, body_timeout
+        self.max_body, self.max_active, self.stream_timeout = max_body, max_active, stream_timeout
+        self._active = 0  # the requests in progress (:meth:`_admit`)
+        self.policy_sha256 = policy_sha256
+        self.client_sha256: str | None = None
+        if client is not None:  # the leaf the context was loaded from, read once: its digest only, never the key
+            from aew.harness.containment import client_cert
+
+            self.client_sha256 = client_cert.public_snapshot(client)["sha256"]
 
     def start(self) -> ProviderRelay:
         super().start()
@@ -355,6 +409,22 @@ class ProviderRelay(Service):
             if exc.cause == "unreadable" and exc.retryable:
                 raise _Refused(503, "credential_unreadable", str(exc)) from None
             raise _Refused(401, "credential_unavailable", str(exc)) from None
+
+    def _admit(self) -> bool:
+        """Take one of the relay's :data:`MAX_ACTIVE` places, or say there is none."""
+        with self._lock:
+            if self._active >= self.max_active:
+                return False
+            self._active += 1
+            return True
+
+    def _leave(self) -> None:
+        with self._lock:
+            self._active -= 1
+
+    def _too_large(self) -> _Refused:
+        return _Refused(413, REQUEST_TOO_LARGE, f"the request's body exceeds the provider relay's bound of "
+                        f"{self.max_body} bytes, so it was not sent to the provider whole. Send a smaller request")
 
     def retryable_pending(self) -> bool:
         with self._lock:
@@ -389,6 +459,7 @@ class ProviderRelay(Service):
         if not self._track(conn):
             conn.close()
             return
+        admitted = self._admit()
         upstream: socket.socket | None = None
         answered = False  # once the response's head has gone to the client, nothing else may be sent it
         entry: dict[str, Any] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "route": self.route,
@@ -397,10 +468,15 @@ class ProviderRelay(Service):
                                  "status": None, "answered": None}
         entry.update(configured_sources=sorted(set(self.sources.values())), swapped_sources=[],
                      client_certificate_configured=self.client is not None,
-                     upstream_headers_written=False, transport="not_established")
+                     upstream_headers_written=False, transport="not_established", ended=None,
+                     request_id=secrets.token_hex(8), policy_sha256=self.policy_sha256,
+                     client_certificate_sha256=self.client_sha256)
         held: list[str] = []  # this request's credential values, kept out of the record's excerpt
         excerpt: _Excerpt | None = None
         try:
+            if not admitted:  # before its head is read: a sandbox cannot make the relay hold more than its bound
+                raise _Refused(503, RELAY_BUSY, f"the provider relay is serving {self.max_active} requests, its bound, "
+                               "so this request was not sent to the provider. Send it again once one of them has ended")
             head, early = _read_head(conn, self.head_timeout)
             method, target, headers = self._request(head)
             entry["operation"] = _operation(method, target, self.upstream.path, self.listed)
@@ -410,6 +486,8 @@ class ProviderRelay(Service):
                 entry.update(method=method, endpoint=target.partition("?")[0][len(self.upstream.path):])
             self._check_operation(method, entry["operation"])  # before the grant and the connect: nothing connected
             framing = _framing(headers)
+            if framing[0] == "length" and framing[1] > self.max_body:
+                raise self._too_large()  # nothing connected; a chunked body is counted as it comes (_send_body)
             credentials, extra = self._grant()  # before anything is connected: a refusal connects nothing
             held = [*credentials.values(), *extra.values()]
             try:
@@ -437,7 +515,8 @@ class ProviderRelay(Service):
             upstream.sendall(wire_head)
             entry["upstream_headers_written"] = True
             self._send_body(conn, upstream, framing, early)
-            reader, response = self._relay_head(conn, upstream)
+            deadline = time.monotonic() + self.stream_timeout
+            reader, response = self._relay_head(conn, upstream, deadline)
             answered = True
             self._count("allowed")
             status = _status_code(response)
@@ -445,29 +524,48 @@ class ProviderRelay(Service):
             if status is None or not 200 <= status < 300:  # "allowed" means only not blocked; this is how it went
                 self._count(f"upstream_status:{status}")
                 excerpt = _Excerpt(response)
-            self._stream(conn, upstream, reader, _Body(response, method), excerpt)
+            entry["ended"] = self._stream(conn, upstream, reader, _Body(response, method), excerpt, deadline)
+            if entry["ended"] in ("upstream_broken", "stream_timeout"):  # the provider may have done the whole call
+                reason = UPSTREAM_OUTCOME_UNKNOWN if entry["ended"] == "upstream_broken" else STREAM_TIMEOUT_REASON
+                entry.update(outcome="unknown", reason=reason)
+                self._count(reason)
         except _Refused as refused:
             if not answered:
                 self._answer(conn, refused, entry)
         except ssl.SSLError as exc:  # the upstream's TLS: in the handshake, or (TLS 1.3) an alert on the first read
             if not answered:
-                self._answer(conn, _tls_refused(exc, self.upstream, self.client), entry)
+                refused = _tls_refused(exc, self.upstream, self.client)
+                if refused.reason == "tls_failed" and entry["upstream_headers_written"] is not False:
+                    refused = self._unknown()  # not a refused handshake: the request may have been read
+                self._answer(conn, refused, entry)
         except OSError:
-            if not answered:
+            if answered:  # only the client is written to unguarded once the response's head has gone
+                entry["ended"] = "client_gone"
+            elif entry["upstream_headers_written"] is False:  # not one byte of the request went upstream
                 self._answer(conn, _Refused(502, "upstream_unreachable", "the provider relay could not reach "
-                                            f"{self.upstream.url}, the run's fixed provider upstream"), entry)
+                                            f"{self.upstream.url}, the run's fixed provider upstream: this request "
+                                            "was not sent"), entry)
+            else:
+                self._answer(conn, self._unknown(), entry)
         except Exception:  # anything else is counted, and answered with a fixed 502 when nothing was relayed yet
             self._count("relay_error")
             if not answered:
                 self._answer(conn, _Refused(502, "relay_error", "the provider relay could not serve this request"),
                              entry)
         finally:
+            if admitted:
+                self._leave()
             if upstream is not None:
                 self._untrack(upstream)
             self._untrack(conn)
             if excerpt is not None:
                 entry["excerpt"] = excerpt.text(held)
             self._write(entry)
+
+    def _unknown(self) -> _Refused:
+        return _Refused(502, UPSTREAM_OUTCOME_UNKNOWN, f"the connection to {self.upstream.url} broke after the request "
+                        "was sent, or as it was: the provider may have accepted it, and the relay does not send it "
+                        "again. Check the provider before repeating it", outcome="unknown")
 
     def _write(self, entry: dict[str, Any]) -> None:
         if self._record is None:
@@ -479,7 +577,7 @@ class ProviderRelay(Service):
 
     def _answer(self, conn: socket.socket, refused: _Refused, entry: dict[str, Any] | None = None) -> None:
         if entry is not None:
-            entry.update(outcome="refused", reason=refused.reason, answered=refused.status)
+            entry.update(outcome=refused.outcome, reason=refused.reason, answered=refused.status)
         self._count(refused.reason)
         try:
             conn.settimeout(self.head_timeout)
@@ -585,9 +683,12 @@ class ProviderRelay(Service):
     def _send_body(self, conn: socket.socket, upstream: socket.socket, framing: tuple[str, int],
                    early: bytes) -> None:
         """The request body, as its head frames it: ``Content-Length`` bytes, or chunks to the last one and its
-        trailer. What the client sends beyond it is not relayed (one request per connection)."""
+        trailer. What the client sends beyond it is not relayed (one request per connection). A chunked body whose
+        chunks pass :attr:`max_body` is refused at that chunk's size line, which is not sent: the upstream never gets
+        the request whole."""
         kind, length = framing
         reader = _Reader(conn, early, self.body_timeout)
+        total = 0
         if kind == "length":
             left = length
             while left:
@@ -597,10 +698,13 @@ class ProviderRelay(Service):
         elif kind == "chunked":
             while True:
                 line = reader.line()
-                upstream.sendall(line)
                 size = _chunk_size(line)
                 if size is None:
                     raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed")
+                total += size
+                if total > self.max_body:
+                    raise self._too_large()
+                upstream.sendall(line)
                 if size == 0:
                     while True:  # the trailer section, to its empty line
                         trailer = reader.line()
@@ -613,12 +717,14 @@ class ProviderRelay(Service):
                     upstream.sendall(data)
                     left -= len(data)
 
-    def _relay_head(self, conn: socket.socket, upstream: socket.socket) -> tuple[_Reader, bytes]:
+    def _relay_head(self, conn: socket.socket, upstream: socket.socket,
+                    deadline: float | None = None) -> tuple[_Reader, bytes]:
         """The response's head, with ``Connection: close``; interim 1xx heads first, as they come. Returns the reader
-        and the final head as the upstream sent it."""
+        and the final head as the upstream sent it. One that has not come by ``deadline`` is answered 504
+        (:data:`STREAM_TIMEOUT_REASON`, outcome ``unknown``: the request was sent)."""
         reader = _Reader(upstream, b"", None)
         while True:
-            head = reader.head()
+            head = reader.head(deadline)
             status = head.split(b"\r\n", 1)[0].split(b" ")
             interim = len(status) > 1 and status[1].startswith(b"1") and status[1] != b"101"
             conn.sendall(head if interim else _close_head(head))
@@ -626,39 +732,65 @@ class ProviderRelay(Service):
                 return reader, head
 
     def _stream(self, conn: socket.socket, upstream: socket.socket, reader: _Reader, body: _Body,
-                excerpt: _Excerpt | None = None) -> None:
+                excerpt: _Excerpt | None = None, deadline: float | None = None) -> str:
         """The response's body as it streams, until the upstream ends it. A client that goes away ends it at once,
-        and so does :meth:`close`. ``excerpt`` sees the body's first bytes as they pass (a failed answer's)."""
-        conn.settimeout(None)
+        and so do :meth:`close` and ``deadline`` (:data:`STREAM_TIMEOUT`). ``excerpt`` sees the body's first bytes as
+        they pass (a failed answer's). Returns how it ended (:data:`STREAM_ENDS`): ``upstream_broken`` when the
+        upstream's connection failed, or closed before the end its framing names."""
+        if deadline is None:
+            deadline = time.monotonic() + self.stream_timeout
         if reader.buffer:
             data = reader.take()
             body.feed(data)
             if excerpt is not None:
                 excerpt.feed(data)
-            conn.sendall(data)
+            if not _send_by(conn, data, deadline):
+                return "complete" if body.done else "stream_timeout"
         with selectors.DefaultSelector() as selector:
             selector.register(upstream, selectors.EVENT_READ)
             selector.register(conn, selectors.EVENT_READ)
             selector.register(self._wake_r, selectors.EVENT_READ)
             while True:
+                left = deadline - time.monotonic()
+                if left <= 0:  # a response the upstream keeps open after its end is complete, not cut
+                    return "complete" if body.done else "stream_timeout"
                 pending = isinstance(upstream, ssl.SSLSocket) and upstream.pending() > 0
-                ready = set() if pending else {key.fileobj for key, _ in selector.select()}
+                ready = set() if pending else {key.fileobj for key, _ in selector.select(left)}
                 if self._wake_r in ready:
-                    return
+                    return "relay_closed"
                 if conn in ready and _gone(conn):
-                    if not body.done:  # it went before the response's end: a cancelled turn
-                        self._count("cancelled")
-                        if excerpt is not None:  # the record still gets the failure's body, whoever stopped reading
-                            excerpt.drain(upstream, body)
-                    return
+                    if body.done:
+                        return "complete"
+                    self._count("cancelled")  # it went before the response's end: a cancelled turn
+                    if excerpt is not None:  # the record still gets the failure's body, whoever stopped reading
+                        excerpt.drain(upstream, body)
+                    return "client_gone"
                 if pending or upstream in ready:
-                    data = upstream.recv(CHUNK)
+                    try:
+                        upstream.settimeout(max(deadline - time.monotonic(), 0.001))
+                        data = upstream.recv(CHUNK)
+                    except TimeoutError:  # a TLS record that never completed
+                        return "complete" if body.done else "stream_timeout"
+                    except OSError:
+                        return "complete" if body.done else "upstream_broken"
                     if not data:
-                        return
+                        return "complete" if body.done or body.kind == "close" else "upstream_broken"
                     body.feed(data)
                     if excerpt is not None:
                         excerpt.feed(data)
-                    conn.sendall(data)
+                    if not _send_by(conn, data, deadline):
+                        return "complete" if body.done else "stream_timeout"
+
+
+def _send_by(conn: socket.socket, data: bytes, deadline: float) -> bool:
+    """Send ``data`` to the client by ``deadline`` (a client that does not read holds the stream: the backpressure),
+    or say it did not go."""
+    conn.settimeout(max(deadline - time.monotonic(), 0.001))
+    try:
+        conn.sendall(data)
+    except TimeoutError:
+        return False
+    return True
 
 
 class _Body:
@@ -904,11 +1036,21 @@ class _Reader:
         out, self.buffer = self.buffer[:end], self.buffer[end:]
         return out
 
-    def head(self) -> bytes:
+    def head(self, deadline: float | None = None) -> bytes:
+        """A response head, by ``deadline`` if one is given (else :attr:`timeout` for each read)."""
         while b"\r\n\r\n" not in self.buffer:
             if len(self.buffer) > MAX_HEAD:
                 raise OSError(f"the upstream's response head exceeds {MAX_HEAD} bytes")
-            data = self.sock.recv(CHUNK)
+            if deadline is not None:
+                self.sock.settimeout(max(deadline - time.monotonic(), 0.001))
+            try:
+                data = self.sock.recv(CHUNK)
+            except TimeoutError:
+                if deadline is None:
+                    raise
+                raise _Refused(504, STREAM_TIMEOUT_REASON, "the provider did not answer within the provider relay's "
+                               "time bound for a response; it may still have accepted the request, which the relay "
+                               "does not send again", outcome="unknown") from None
             if not data:
                 raise OSError("the upstream closed before its response head was complete")
             self.buffer += data

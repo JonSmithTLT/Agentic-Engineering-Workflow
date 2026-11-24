@@ -1166,6 +1166,7 @@ None.
 - `aew.engine.queue_ops`
 - `aew.engine.scope_ops`
 - `aew.engine.seams`
+- `aew.engine.transitions`
 - `aew.engine.validation_ops`
 - `aew.errors`
 - `aew.harness.contract`

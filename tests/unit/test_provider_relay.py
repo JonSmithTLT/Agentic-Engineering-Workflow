@@ -1459,6 +1459,10 @@ def test_the_relays_bounds_are_stated_and_the_run_network_passes_its_policys_sha
         return real(*args, **kw)
 
     monkeypatch.setattr(relay, "ProviderRelay", spy)
+    # No socket file and no serving thread: this asserts only what the start hands the relay, so it runs on every
+    # platform (Windows has no AF_UNIX), as the relay_operations start test above does.
+    monkeypatch.setattr(netns, "listen", lambda _: None)
+    monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
     layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir=str(tmp_path), private_network=True)
     net = netns.RunNetwork.start(layout, provider="openai", provider_env=["OPENAI_API_KEY"], policy=None,
                                  env={"OPENAI_API_KEY": SECRET}, relay_needed=True, policy_sha256="cd" * 32)

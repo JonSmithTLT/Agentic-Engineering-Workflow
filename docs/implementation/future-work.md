@@ -1734,7 +1734,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator, 2026-11-04: "enforce those two"; a measurement over 22 full-tier runs, where the flip alone turned every PR and `main` red
 
-**When:** **Now.** Item 21 of the Now list. The tooling merged as #332 (`abfa0727`) and the rules as #335 (`a16f8a60`); the flip is next
+**When:** **Now.** Item 21 of the Now list. The tooling merged as #332 (`abfa0727`), the rules as #335 (`a16f8a60`), and the flip of both rules is in (O-SECRET on 2026-11-19, O-CMD after its triage). What is left: each pull request open at the flip runs once on the flipped base before it merges, and the first nightly on the flipped base
 
 **Notes:** Filed by the Lead, and already being built. After the merge, each open PR needs a run on the flipped base before it merges. `aew-reviewer` reviews each
 

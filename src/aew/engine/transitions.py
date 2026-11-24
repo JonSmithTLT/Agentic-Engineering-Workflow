@@ -181,8 +181,8 @@ def dispatch_command(work_id: str, role: str | None = None, *, card: str | None 
     """The command that dispatches and launches a fresh invocation for ``work_id``: of ``role`` (which may be the
     alternatives a reader picks from, ``reviewer|verifier``), or of the named ``card`` (#547 quick check n2: a re-verify
     with a card, printed without `--launch`, made an invocation with no run)."""
-    if (role is None) == (card is None):
-        raise ValueError("a dispatch names a role or a card, not both")
+    if bool(role) == bool(card):  # an empty name is no name (#555 review n1): never `--card None`
+        raise ValueError("a dispatch names one role or one card")
     return _DISPATCH.format(w=work_id, who=f"--role {role}" if role else f"--card {card}")
 
 

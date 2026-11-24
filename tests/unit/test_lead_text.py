@@ -9,8 +9,10 @@ text with no other edit. What is still hand-written is the prose, listed in the 
 
 from __future__ import annotations
 
+import argparse
 import ast
 import re
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -788,6 +790,42 @@ def test_a_parents_re_verification_with_its_card_is_launched():
     assert ns.launch and ns.card == "verifier" and ns.role is None and ns.work_id == "S-0007", ns
     with pytest.raises(ValueError):
         T.dispatch_command("S-0007", "verifier", card="verifier")  # one or the other: never both
+    with pytest.raises(ValueError):
+        T.dispatch_command("S-0007", "")  # an empty role is no role (#555 review n1): never `--card None`
+
+
+def launched_redispatch(text: str, work_id: str = "T-0007") -> argparse.Namespace:
+    """The one `aew work redispatch` that ``text`` prints, parsed by the real parser with its revision filled."""
+    import printed_commands as P
+
+    from aew.cli.main import build_parser
+
+    [command] = [c for c, _ in P.commands(text) if c.startswith("aew work redispatch")]
+    assert command == T.operation_command("work.redispatch", work_id), text
+    argv = shlex.split(command.replace(f" {T.EXPECT_REV}", " --expect-rev 3"))[1:]
+    return build_parser().parse_args(argv)
+
+
+def test_every_printed_redispatch_launches_the_new_attempt(monkeypatch):
+    """#555 review m1: a redispatch printed without `--launch` makes an attempt with no run, as #547's M1 found for a
+    dispatch. The owner's command, the refusal of an executor dispatch, and a stale record's action each parse on the
+    real parser with `--launch`."""
+    from aew.engine import nonmutating_ops
+    from aew.engine.nonmutating_ops import NonMutating
+
+    ns = launched_redispatch(f"`{T.operation_command('work.redispatch', 'T-0007')}`")
+    assert ns.launch and ns.work_id == "T-0007" and ns.reason == "<reason>", ns
+    engine = NonMutating.__new__(NonMutating)
+    unit = {"kind": "ticket", "mutating": False, "state": "RUNNING"}
+    blocker = engine._g_invoke({"work": {"T-0007": unit}}, "T-0007", {})
+    assert blocker is not None and launched_redispatch(blocker.message).launch, blocker
+    monkeypatch.setattr(nonmutating_ops.F, "record_freshness", lambda root, ev, commit: {"source_bound": True,
+                                                                                       "status": "STALE"})
+    engine.k = SimpleNamespace(repo_root=None)  # type: ignore[assignment]
+    record = {"_sha256": "s", "kind": "investigation", "attempt": 1, "result": "pass", "plan_revision": None}
+    unit = {"execution": {"record": {"id": "EV-1", "sha256": "s"}, "expected_kind": "investigation", "attempt": 1}}
+    status = engine.execute_record_status({"work": {"T-0007": unit}}, "T-0007", {"EV-1": record}, "c")
+    assert status["status"] == G.STALE and launched_redispatch(status["action"]).launch, status
 
 
 def test_the_project_and_non_mutating_next_actions_name_each_command_whole(monkeypatch):

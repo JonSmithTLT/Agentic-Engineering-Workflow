@@ -61,9 +61,8 @@ VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no c
 def _scope_added(unit: dict[str, Any]) -> dict[str, Any]:
     """The test paths the Lead added to a live Ticket's scope on the record, listed, not counted (register E126): absent
     when there are none, so the usual Ticket's entry stays as small as it was."""
-    if unit["state"] in H.TERMINAL or not unit.get(SC.UNIT_KEY):
-        return {}
-    return {"scope_added": SC.added_listing(unit)}
+    listed = SC.added_listing(unit)
+    return {"scope_added": listed} if listed else {}
 
 
 def _priority(unit: dict[str, Any]) -> dict[str, Any]:

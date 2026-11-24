@@ -82,6 +82,8 @@ def test_a_test_removed_from_an_added_path_stops_for_a_signoff_after_the_add(run
 
 @pytest.mark.parametrize(("path", "reason"), [
     ("tests/*.py", "not_exact"),
+    ("tests/test_core.py\nT-0009 READY", "unprintable_path"),
+    ("tests/test_\x1b[2J.py", "unprintable_path"),
     ("../tests/test_core.py", "not_exact"),
     ("calc/other.py", "not_a_test_path"),
     ("calc/core.py", "already_in_scope"),
@@ -273,7 +275,9 @@ def test_status_and_the_leads_result_list_the_added_paths_never_a_count(running)
     assert add(p, wid, "tests/test_core.py")["ok"]
     quoted = 'the operator: "yes, give the suite a shared fixture for the socket mock"'
     assert add(p, wid, "tests/conftest.py", signed=True, rationale=quoted)["ok"]
-    listed = ["tests/test_core.py (SC-0001)", "tests/conftest.py (SC-0002, signed off)"]
+    # A sign-off is listed as the Lead's report, never as fact (PR #545 review, m3).
+    listed = ["tests/test_core.py (SC-0001)", "tests/conftest.py (SC-0002, signed off (the Lead's report))"]
+    assert SC.SIGNED_OFF == "signed off (the Lead's report)" and SC.LEAD_REPORT.startswith("the Lead's report")
     status = p.ok("status", "--json")
     assert status["work"][wid]["scope_added"] == listed, status["work"][wid]
     assert f"    scope added on the record: {', '.join(listed)}" in status["work_graph"], status["work_graph"]
@@ -317,3 +321,24 @@ def test_an_offered_add_that_needs_a_signoff_is_blocked_naming_the_signed_choice
     [decision] = [d for d in shown["decisions_required"] if d["decision"] == "ADD_SCOPE"]
     assert decision["availability"] == "BLOCKED", decision
     assert any(SC.SIGNED_CHOICE in b["message"] for b in shown["blockers"]), shown["blockers"]
+
+
+def test_a_path_with_a_control_character_is_never_offered_as_an_add(running, monkeypatch):
+    """PR #545 review, m1: rule 1 refuses a path that is not one printable line, so the projection never offers it,
+    whatever the gate context reports; a printable test path beside it still is."""
+    from aew.surface import projection
+
+    p, wid, _ = running
+    engine = Engine.discover(p.root)
+    real = engine.gate_context
+    bad, good = "tests/test_core.py\nT-0009 READY", "tests/test_core.py"
+
+    def gate_context(state, work_id):
+        gc = real(state, work_id)
+        violations = [{"path": path, "rule": "outside_ticket_scope", "detail": "x"} for path in (bad, good)]
+        return {**gc, "guardrails": {**gc["guardrails"], "violations": violations}}
+
+    monkeypatch.setattr(engine, "gate_context", gate_context)
+    offered = [d["arguments"]["subject"] for d in projection.project(engine, CTX, wid)["decisions_required"]
+               if d["decision"] == "ADD_SCOPE"]
+    assert offered == [SC.item_id(wid, good)], offered

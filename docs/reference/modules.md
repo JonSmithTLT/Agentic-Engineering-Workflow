@@ -1196,6 +1196,7 @@ None.
 ### `aew.engine.scope_ops`
 
 - `aew.engine.base`
+- `aew.engine.coordination_ops`
 - `aew.engine.dispatch`
 - `aew.engine.gate_ops`
 - `aew.engine.gates`
@@ -1207,6 +1208,7 @@ None.
 - `aew.harness.runlog`
 - `aew.knowledge.records`
 - `aew.maps.rules`
+- `aew.policy.execution`
 - `aew.policy.guardrails`
 - `aew.schemas`
 - `aew.snapshot.fingerprint`

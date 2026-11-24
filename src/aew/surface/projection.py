@@ -46,7 +46,7 @@ from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, eff
 from aew.surface.context import SurfaceContext
 from aew.util import utc_now
 
-LIVE = (K.STARTING, K.RUNNING)
+LIVE = K.LIVE_RUNS
 CACHE_SIZE = 64
 __all__ = ["GUARD_NOT_QUERYABLE", "clear_cache", "control_key", "project"]  # the reason code of an unqueryable guard
 
@@ -129,7 +129,7 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                     "validated_report": (entry.get("validated") or {}).get("report")}
     if unit.get("parent") is not None:
         part["unit"]["parent"] = unit["parent"]
-    if unit.get(SC.UNIT_KEY) and unit.get("state") not in H.TERMINAL:  # listed, never counted (E126)
+    if SC.added_listing(unit):  # a live Ticket's adds, listed, never counted (E126)
         part["unit"]["scope_added"] = SC.added_listing(unit)
     if entry:
         part["unit"]["queue_state"] = entry["state"]
@@ -503,8 +503,8 @@ def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
     E126; the designer's decisions of 2026-11-03, §2, "The door"): one decision per such path, while the gate context
     reports it, with the add's own query for its availability. Its rationale is the Lead's, so it has no default; a
     path the add would refuse, one that needs a sign-off included, is BLOCKED and adds the refusal to ``blockers``.
-    Read now: it reads the workspace. A path that is not test code is not offered: the guardrail's refusal says what
-    to do with it."""
+    Read now: it reads the workspace. A path that is not test code, or not one exact printable path (rule 1), is not
+    offered: the guardrail's refusal says what to do with it."""
     unit = part["unit"]
     if unit is None or unit["kind"] != "ticket" or not unit["mutating"] or part["state"] in H.TERMINAL:
         return []
@@ -517,7 +517,7 @@ def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
         return []
     out = []
     for path in sorted({v["path"] for v in violations if v["rule"] == "outside_ticket_scope"}):
-        if not SC.test_code(path):
+        if not SC.test_code(path) or SC.exact_path_problem(path) is not None:  # rule 1, a newline included
             continue
         args = {"expect_rev": part["revision"], "subject": SC.item_id(subject, path), "choice": SC.CHOICE}
         found = engine.guard_query(SC.OP, None, {"subject": args["subject"], "rationale": "(the Lead's reason)"},

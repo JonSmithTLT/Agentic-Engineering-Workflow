@@ -62,7 +62,10 @@ def test_the_accessor_adds_the_recorded_paths_after_the_declared_ones_and_leaves
 @pytest.mark.parametrize(("path", "exact"), [
     ("tests/test_a.py", True), ("tests/*.py", False), ("tests/test_[ab].py", False), ("/tests/test_a.py", False),
     ("../x/test_a.py", False), ("tests//test_a.py", False), ("tests\\test_a.py", False), ("tests/", False),
-    (" tests/test_a.py", False), ("", False)])
+    (" tests/test_a.py", False), ("", False),
+    # One printable line (PR #545 review, m1): a newline, a carriage return, another C0 control or DEL is refused.
+    ("tests/test_a\n.py", False), ("tests/test_a.py\nx", False), ("tests/test_\r.py", False),
+    ("tests/test_\x1b.py", False), ("tests/test_\x7f.py", False)])
 def test_only_one_exact_repository_relative_path_is_added(path, exact):
     assert (SC.exact_path_problem(path) is None) == exact
 
@@ -125,6 +128,25 @@ def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatch
     impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING)
     assert impl["commands"] == ["aew harness send R-INV-0001-1 --fields -"] and "text" in impl["fields"]
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002") and "reason" in reader["fields"]
+    # With coordination messaging on, `harness send` is always refused: the live implementer is told with
+    # `message_send` to its invocation, as the wake advice says (PR #545 review, m2).
+    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING,
+                                                         messaging=True)
+    assert impl["commands"] == ["aew lead tool message_send --arguments -"], impl
+    assert impl["fields"]["to"] == "INV-0001" and "tests/test_a.py" in impl["fields"]["body"], impl
+    assert not any("harness send" in c for c in impl["commands"] + reader["commands"])
+    assert reader["commands"][0].startswith("aew invoke cancel INV-0002")
+
+
+def test_the_live_runs_harness_send_takes_have_one_owner():
+    """PR #545 review, m2: the add names `harness send` for exactly the runs `harness_send` admits."""
+    import inspect
+
+    from aew.engine import harness_ops
+
+    assert K.LIVE_RUNS == (K.STARTING, K.RUNNING)
+    assert "K.LIVE_RUNS" in inspect.getsource(harness_ops.Harness._lead_request)
+    assert "K.LIVE_RUNS" in inspect.getsource(SC.ScopeCorrections.stale_invocations)
 
 
 @pytest.mark.parametrize("status", [K.ENDED_WITH_EVIDENCE, K.ENDED_WITHOUT_EVIDENCE, K.CRASHED, K.LOST, K.UNREADABLE,

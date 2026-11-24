@@ -812,7 +812,7 @@ class Harness:
                 status, _ = runlog.observed_status(directory)
                 if status == K.UNREADABLE:
                     raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
-                if status not in (K.STARTING, K.RUNNING):
+                if status not in K.LIVE_RUNS:
                     raise IllegalTransition(
                         f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
                         "its invocation")

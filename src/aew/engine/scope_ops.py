@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine.coordination_ops import messaging_switch
 from aew.engine.dispatch import Blocker, checked
 from aew.engine.gate_ops import redispatch_commands
 from aew.engine.guards import require
@@ -47,6 +48,7 @@ from aew.harness import runlog
 from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import format_id
 from aew.maps import rules as map_rules
+from aew.policy import execution as X
 from aew.policy import guardrails as GR
 from aew.schemas import validate
 from aew.snapshot.fingerprint import changed_paths
@@ -67,8 +69,8 @@ OBLIGATION = "SCOPE_CORRECTION_ADDED"  # recorded on every add, in ACCEPTANCE_IN
 SIGNOFF = "test_signoff_needed"  # the violation: a stop that needs a sign-off
 MAX_TEXT = 2000
 LEAD_REPORT = "the Lead's report: nothing proves a sign-off before the wire"
+SIGNED_OFF = f"signed off ({LEAD_REPORT.split(':')[0]})"  # how a listing names a sign-off: claimed, never proved
 _GLOB = set("*?[]{}")
-LIVE_RUN = (K.STARTING, K.RUNNING)  # the runs `harness send` takes (``harness_ops.harness_send``)
 DEFINITION_LIMIT = ("test definitions are counted by pattern, line by line: a commented-out test can still count, and "
                     "a path whose extension the table lacks, or whose tests it does not recognize (it counts 0 at the "
                     "base commit), is listed unchecked and raises no stop")
@@ -111,15 +113,19 @@ def unsigned_paths(unit: dict[str, Any]) -> list[str]:
 
 
 def added_listing(unit: dict[str, Any]) -> list[str]:
-    """The added paths as status and the Lead's results list them, never as a count, so growth stays visible
-    (``WIS-02.f``; the designer's decisions of 2026-11-03, §2, "Seeing it"): each path once, with the correction that
-    added it and the one that signed it off, if any."""
+    """The added paths as status, the work graph and the Lead's results list them, never as a count, so growth stays
+    visible (``WIS-02.f``; the designer's decisions of 2026-11-03, §2, "Seeing it"): each path once, with the
+    correction that added it and the one that signed it off, if any, labelled as the Lead's report. Only a live
+    Ticket's: a finished Ticket's adds are in its history, and this is the one place that says so (PR #545 review,
+    m4)."""
+    if unit.get("state") in H.TERMINAL:
+        return []
     out: dict[str, str] = {}
     for c in unit.get(UNIT_KEY) or []:
         if c["added"] not in out:
-            out[c["added"]] = f"{c['added']} ({c['id']}" + (", signed off" if c.get("signed_off") else "")
+            out[c["added"]] = f"{c['added']} ({c['id']}" + (f", {SIGNED_OFF}" if c.get("signed_off") else "")
         elif c.get("signed_off"):
-            out[c["added"]] += f", signed off by {c['id']}"
+            out[c["added"]] += f", {SIGNED_OFF} by {c['id']}"
     return [f"{v})" for v in out.values()]
 
 
@@ -239,7 +245,10 @@ def test_code(path: str) -> bool:
 
 
 def exact_path_problem(path: str) -> str | None:
-    """Why ``path`` is not one exact repository-relative path (rule 1), or None."""
+    """Why ``path`` is not one exact repository-relative path (rule 1), or None. A path is one printable line: it is
+    written into records, packs and listings (PR #545 review, m1)."""
+    if not path.isprintable():
+        return "it holds a control or other unprintable character"
     if not path or path != path.strip():
         return "it is blank or has surrounding spaces"
     if set(path) & _GLOB:
@@ -425,8 +434,8 @@ class ScopeCorrections:
         self._admit(state, work_id, unit)
         problem = exact_path_problem(path)
         if problem:
-            raise ValidationFailed(f"`{path}` cannot be added to {work_id}'s scope: {problem}", work_id=work_id,
-                                   path=path, reason="not_exact")
+            raise ValidationFailed(f"{path!r} cannot be added to {work_id}'s scope: {problem}", work_id=work_id,
+                                   path=path, reason="not_exact" if path.isprintable() else "unprintable_path")
         meta = self.gates.record_meta(unit)
         scope = list((meta.get("scope") or {}).get("paths") or [])
         # A path added without a sign-off is signed off later by the signed choice: a second correction that records
@@ -491,7 +500,8 @@ class ScopeCorrections:
         return {"work_id": work_id, "path": path, "signs": signs, "at_base": at_base, "created_by_ticket": created,
                 "names_module": named, "base_commit": base, "signoff": signoff, "stops": stops,
                 "unchecked": unchecked, "obligations": obligations,
-                "stale_invocations": self.stale_invocations(state, work_id, path, self.run_status)}
+                "stale_invocations": self.stale_invocations(state, work_id, path, self.run_status,
+                                                            self.messaging(state))}
 
     def _record(self, unit: dict[str, Any], correction: str) -> dict[str, Any]:
         ptr = next(c for c in unit.get(UNIT_KEY) or [] if c["id"] == correction)
@@ -585,22 +595,33 @@ class ScopeCorrections:
         """What the run's local evidence says it is now (``runlog.observed_status``)."""
         return runlog.observed_status(runlog.run_dir(self.k.aew_root, run))[0]
 
+    def messaging(self, state: dict[str, Any]) -> bool:
+        """Whether the project's adopted coordination messaging is on: then `harness send` is refused, and a live
+        worker is told with `message_send` (``harness.contract.wake_advice``; PR #545 review, m2)."""
+        return messaging_switch(self.k.aew_root, state)[0] == X.MESSAGING_ENABLED
+
     @staticmethod
-    def stale_invocations(state: dict[str, Any], work_id: str, path: str,
-                          run_status: Callable[[str], str]) -> list[dict[str, Any]]:
+    def stale_invocations(state: dict[str, Any], work_id: str, path: str, run_status: Callable[[str], str],
+                          messaging: bool = False) -> list[dict[str, Any]]:
         """The active invocations on the Ticket, whose context pack renders its scope. An add alone stales no evidence:
         a live implementer is told with `harness send` and continues, since cancelling it would discard the run the add
         exists to save (its next launch is refused by the existing pack guard); a reader is re-dispatched with its
         card, as a gate replacement's result names it (ITEMS 55 addendum 3; PR #540 review, m5). ``harness send``
         takes only a STARTING or RUNNING run, so an implementer whose run has ended, or whose status cannot be read,
-        is re-dispatched too: a fresh invocation on the kept workspace (``run_status``; PR #540 quick check, m-b)."""
+        is re-dispatched too: a fresh invocation on the kept workspace (``run_status``; PR #540 quick check, m-b).
+        With coordination ``messaging`` on, `harness send` is always refused, so a live implementer is told with
+        `message_send` to its invocation instead (PR #545 review, m2)."""
         why = f"`{path}` was added to {work_id}'s scope on the record, so this invocation's context pack changed"
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv.get("status") != "active" or inv.get("work_unit") != work_id:
                 continue
             runs = inv.get("runs") or []
-            if inv.get("role") == "implementer" and runs and run_status(runs[-1]["run"]) in LIVE_RUN:
+            live = inv.get("role") == "implementer" and runs and run_status(runs[-1]["run"]) in K.LIVE_RUNS
+            if live and messaging:
+                commands = ["aew lead tool message_send --arguments -"]
+                fields = {"to": inv_id, "body": f"{why}: you may now change `{path}`"}
+            elif live:
                 commands = [f"aew harness send {runs[-1]['run']} --fields -"]
                 fields = {"text": f"{why}: you may now change `{path}`"}
             else:

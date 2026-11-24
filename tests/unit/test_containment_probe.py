@@ -587,6 +587,25 @@ def test_row_1_on_a_network_without_routes_fails_on_any_route_that_answers(monke
                                               egress=False)["reason"]
 
 
+def test_a_host_without_ipv6_records_no_ipv6_route_and_still_passes_row_1(monkeypatch):
+    """A kernel without IPv6 refuses the socket itself, whatever ``socket.has_ipv6`` says: the probe records that as
+    the route's answer and the judge accepts it, rather than the probe failing and every launch with a network of its
+    own being refused (register E362). Any other family still gets its socket."""
+    real = socket.socket
+
+    def no_ipv6(family=socket.AF_INET, *args, **kwargs):
+        if family == socket.AF_INET6:
+            raise OSError(errno.EAFNOSUPPORT, os.strerror(errno.EAFNOSUPPORT))
+        return real(family, *args, **kwargs)
+
+    attempt = payload()["attempt"]
+    monkeypatch.setattr(socket, "socket", no_ipv6)
+    direct6 = attempt(socket.AF_INET6, (probe.OUTSIDE6, 9))
+    assert direct6 == "EAFNOSUPPORT"
+    assert attempt(socket.AF_UNIX, "\0aew-probe-e362-unbound") == "ECONNREFUSED"  # other families: as before
+    assert row1(monkeypatch, {**INSIDE, "direct6": direct6})["ok"] is True
+
+
 def test_row_1_on_the_hosts_network_claims_nothing():
     row = probe._row1(L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=()), {},
                       None)

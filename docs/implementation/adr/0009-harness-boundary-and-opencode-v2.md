@@ -2146,3 +2146,39 @@ A dispatch the login cannot outlive is refused. An expiry, a changed kind or an 
 relay with its cause and connects nothing. No other credential is tried, and the run's end names the cause. Plan
 workers share the plan's usage limits. Doctor and the launch record name the pot. The same upstream and path rule
 applies to the Lead's relayed login. Adopted as the operator's choice, 2026-11-11.
+
+## Amendment 2026-11-24 — AEW's own code lies outside every writable bind (STG-05; the relay handoff's RLY-05)
+
+Every supervisor and provider relay is a host process that imports AEW afresh, so AEW's own code is trusted code and
+must lie outside every writable bind of a contained context. The interpreter's prefix was already re-bound read-only;
+the rest of AEW's import path, such as an editable install's source tree, was not.
+
+- **What is AEW's code** (`layout.trusted_code`, read from the filesystem at each launch):
+  - the `aew` package, and its parent: the import path of every Python process the engine starts with a credential
+    (`procs.engine_imports`);
+  - every symbolic link in the package's tree;
+  - every directory on the launching process's import path, named by where it comes from (`PYTHONPATH`, or a `.pth`
+    file or the site configuration). The first entry (the script's directory, or the working directory under
+    `python -m`) counts unless `-P` removed it, because the contained Lead's provider relays are served in the
+    launching process. An installed `aew` command's directory needs no exception: it lies outside every writable bind,
+    or under the interpreter's prefix, which is re-bound read-only.
+- **The predicate** (`layout.trusted_code_exposed`) is the store's (CB-07), applied to every path the piece's
+  resolution looks up, one component and one symbolic link at a time (`layout._resolution`), its final target
+  included: no writable bind `W` reaches one, unless the first directory below `W` on its path is re-bound read-only
+  after `W`. A symbolic link inside `W` follows the same rule only when it lies strictly below that re-bound directory
+  (a virtual environment's `lib64` link); otherwise it is refused whatever it leads to. `W` itself, passed through on
+  the way, is a mount point.
+- **On failure:** `CONTAINMENT_UNAVAILABLE`, reason `trusted_code_writable` or `trusted_code_symlink`, naming the bind,
+  the code and what clears it for that kind of code (`layout.trusted_code_remedy`): reinstall outside the writable
+  tree, start AEW with `aew` or `python -P -m aew`, or take the directory out of `PYTHONPATH`. Under `required` the
+  launch is refused; under `allow_weaker` it runs labelled weaker and enters the register of weaker contexts, as every
+  other failed containment does (G3 addendum 7).
+- The package and its parent are on the launch self-test's protected list. `aew doctor` has a `trusted-code` line in
+  a project on Linux, decided by the same binds as the Lead's layout (`layout.lead_trusted_code_exposed`).
+- **Known limits.** Not checked; keep these outside writable binds:
+  - import paths reached only through meta-path finders, such as editable installs of dependencies;
+  - `.pth` directories created after the launch;
+  - adapter files named by `AEW_HARNESS_ADAPTERS`;
+  - a writable bind nested inside an import-path directory other than the interpreter's prefix;
+  - third-party modules linked from elsewhere by symbolic links;
+  - paths on case-insensitive filesystems, which are compared by their spelling.

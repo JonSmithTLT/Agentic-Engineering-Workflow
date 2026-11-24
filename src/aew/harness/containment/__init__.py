@@ -231,15 +231,39 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
     return status, detail
 
 
-def doctor_checks(policy: dict[str, Any] | None, note_unsupported: str) -> list[tuple[str, str, str]]:
-    """``aew doctor``'s containment line, ``(check, status, detail)``. Its sandbox's self-test also runs the register's
-    health checks, in the shape a run gets, and records them, so the capability lines ``aew capability list`` and
-    doctor show come from inside (CAPR-03, CAPR-13; ``aew.doctor.run`` reads them after this)."""
+def doctor_checks(policy: dict[str, Any] | None, note_unsupported: str,
+                  project: str | Path | None = None) -> list[tuple[str, str, str]]:
+    """``aew doctor``'s containment line, ``(check, status, detail)``, and, in a project on Linux, its ``trusted-code``
+    line (:func:`trusted_code_doctor`). The containment line's sandbox's self-test also runs the register's health
+    checks, in the shape a run gets, and records them, so the capability lines ``aew capability list`` and doctor show
+    come from inside (CAPR-03, CAPR-13; ``aew.doctor.run`` reads them after this)."""
     from aew.capability import ops as capability
 
     status, detail, test = _doctor(policy, note_unsupported)
     capability.record_contained(test.get("tools"))
-    return [("containment", status, detail)]
+    out = [("containment", status, detail)]
+    if project is not None and supported():
+        out.append(("trusted-code", *trusted_code_doctor(policy, project)))
+    return out
+
+
+def trusted_code_doctor(policy: dict[str, Any] | None, project: str | Path) -> tuple[str, str]:
+    """``(status, detail)``: whether AEW's own code lies outside what the project's Lead writes and every writable root
+    the policy adds (``layout.lead_trusted_code_exposed``, from the binds ``layout.for_run`` uses). Where it does not,
+    every launch whose layout reaches it is refused under ``required`` and runs labelled weaker under
+    ``allow_weaker``."""
+    from aew.harness.containment import layout as L
+
+    found = L.lead_trusted_code_exposed(project, (policy or {}).get("containment"))
+    if not found:
+        return "PASS", ("AEW's own code lies outside the project and every writable root the policy adds, so no "
+                        "contained run can change what its supervisors and relays import")
+    first = found[0]
+    where = f"{first['what']} ({first['path']}) lies in {first['bind']}, which a contained run writes"
+    remedy = L.trusted_code_remedy(first["what"])
+    if mode(policy) == REQUIRED:
+        return "FAIL", f"{where}: launches whose sandbox writes it are refused (containment.mode: required); {remedy}"
+    return "WARN", f"{where}: launches whose sandbox writes it run labelled weaker; {remedy}"
 
 
 def tool_checks(tools: tuple[Any, ...]) -> dict[str, Any] | None:

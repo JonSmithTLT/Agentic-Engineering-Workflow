@@ -6,6 +6,8 @@ import pytest
 from aewflow import assign, create_planned_ticket, implement, sample_project
 from conftest import Project, make_git_repo
 
+from aew.harness.contract import EXPECT_REV
+
 
 def test_fresh_project_resume_is_honest_about_what_is_missing(repo):
     p = Project(repo)
@@ -43,7 +45,8 @@ def test_next_actions_surface_unignested_evidence(tmp_path):
 
     ev = review(p, wid)
     actions = p.ok("resume", "--json")["next_actions"]
-    assert f"{wid}: ingest review {ev}: `ticket_request_verification` (`aew review ingest`)" in actions
+    command = f"aew review ingest {wid} --evidence {ev} {EXPECT_REV}"
+    assert f"{wid}: ingest review {ev}: `ticket_request_verification` (`{command}`)" in actions
 
 
 @pytest.mark.acceptance("KC-existing-authority")

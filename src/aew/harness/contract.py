@@ -518,6 +518,14 @@ def wake_line(key: str, messaging: bool = False) -> str:
     return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}. Tell the operator in a line {wake.tell}."
 
 
+def steer_commands(text: str, run: str) -> str:
+    """``text`` with its steering commands written whole for ``run``. The wake guide names them bare, as mentions in
+    the Lead's system text; a returned next step offers them to be run as given, so there each must parse (D2's O-CMD:
+    a bare `aew harness send` lacks its run and its message; E140's triage)."""
+    return (text.replace("`aew harness send`", f"`aew harness send {run} --text <message>`")
+            .replace("`aew harness interrupt`", f"`aew harness interrupt {run}`"))
+
+
 def wait_step(runs: list[str], *, again: bool = False, messaging: bool = False) -> str:
     """The next step while ``runs`` work: wait on them, with the call and its command; ``again`` when a wait's own time
     ran out with them still working. The rule comes before the command, so a reader that shortens the line keeps it."""
@@ -526,7 +534,8 @@ def wait_step(runs: list[str], *, again: bool = False, messaging: bool = False) 
     command = f"(`aew harness wait {' '.join(runs)}{' --any' if several else ''}`)"
     if not again:
         return f"wait on {named} with `harness_wait`: {wait_rule(messaging)} {command}"
-    otherwise = WAIT_OR_ELSE.replace("`aew harness send`", "`message_send`") if messaging else WAIT_OR_ELSE
+    otherwise = steer_commands(WAIT_OR_ELSE.replace("`aew harness send`", "`message_send`") if messaging
+                               else WAIT_OR_ELSE, runs[0] if not several else "<run>")
     return (f"{named} {'are' if several else 'is'} still working ({TIMED_OUT}): {NOT_POLLING}. "
             f"{WAIT_AGAIN[0].upper()}{WAIT_AGAIN[1:]} {command}. {otherwise[0].upper()}{otherwise[1:]}. "
             f"Tell the operator in a line {WAIT_TIMED_OUT.tell}")
@@ -556,7 +565,7 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
                  messaging: bool = False) -> str:
     """A trigger as a next step: each ``why``'s action in the enum's order, then how to follow the run (and the others
     still working), which is ``then`` or else the wait, then the line for the operator."""
-    acts = "; then ".join(f"{wake_advice(w, messaging).act} ({w})" for w in WHY if w in whys)
+    acts = "; then ".join(f"{steer_commands(wake_advice(w, messaging).act, run)} ({w})" for w in WHY if w in whys)
     tells = "; and ".join(wake_advice(w, messaging).tell for w in WHY if w in whys)
     follow = then or wait_step([run, *others], messaging=messaging)
     return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"

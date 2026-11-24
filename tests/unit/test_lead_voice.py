@@ -76,3 +76,26 @@ def test_a_wait_s_returned_steps_take_their_text_from_the_wake_guide():
     assert timed_out.act == f"{K.WAIT_AGAIN}; {K.WAIT_OR_ELSE}" and timed_out.tell in again
     assert K.run_ended_step("ingest it") == f"ingest it. Tell the operator in a line {ended.tell}"
     assert K.WAIT_RULE in K.wait_step(["R-1"]) and "still working" not in K.wait_step(["R-1"])
+
+
+def test_a_returned_next_step_names_every_steering_command_whole_so_it_parses():
+    """A wait's ``next_action`` is offered to be run as given, so each command in it must parse on the live parser
+    (D2's O-CMD, E140's triage): the wake guide's bare `aew harness send` and `aew harness interrupt` are mentions in
+    the Lead's system text, and a returned step writes them with their run. Judged by D2's own rule, over every kind
+    of wake and both timed-out shapes, with messaging off and on."""
+    from discovery import rules
+
+    def o_cmd(step: str) -> list[str]:
+        return [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_action": step}))
+                if f.rule == "O-CMD"]
+
+    for messaging in (False, True):
+        steps = [K.trigger_step([why], "R-1", others, messaging=messaging)
+                 for why in K.waited_on(messaging) for others in ([], ["R-2"])]
+        steps += [K.wait_step(runs, again=True, messaging=messaging) for runs in (["R-1"], ["R-1", "R-2"])]
+        for step in steps:
+            assert not o_cmd(step), (step, o_cmd(step))
+    stepped = K.trigger_step([K.OUT_OF_SCOPE], "R-1", [])
+    assert "`aew harness send R-1 --text <message>`" in stepped and "`aew harness interrupt R-1`" in stepped
+    # The planted defect: the guide's own bare text, returned as a step, is what the rule catches.
+    assert o_cmd(K.WAKE_GUIDE[K.OUT_OF_SCOPE].act)

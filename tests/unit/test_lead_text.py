@@ -664,8 +664,53 @@ def test_a_validated_candidates_hint_leads_with_the_publish_stage_and_names_the_
     unit = {"state": "COMMIT_READY", "invocations": [], "integration": {"status": "validated", "candidate": "C-1"}}
     state = {"invocations": {}, "work": {"T-0007": unit}}
     [hint] = resume._ticket_actions(state, "T-0007", unit)
-    assert hint.index("`integration_publish`") < hint.index("`aew integrate publish`")
+    assert hint.index("`integration_publish`") < hint.index("`aew integrate publish T-0007 ")
     assert "C-1 as `prepared_candidate`" in hint and stray_arguments(hint) == []
+
+
+INTEGRATION_STATUSES = (None, "discarded", "stale_candidate", "conflict", "validation_unavailable",
+                        "validation_inconclusive", "validated", "publishing")
+
+
+def every_ticket_hint(monkeypatch: Any) -> list[str]:
+    """What a Ticket's next actions say in every state the hints branch on: each state, with and without a report
+    waiting, each integration status of a COMMIT_READY Ticket, and a prepared candidate in each validation mode."""
+    out: list[str] = []
+    for fit in (FULL, None):
+        for state in ("READY", "ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED",
+                      "VERIFY_PENDING", "VERIFIED", "VERIFICATION_INCONCLUSIVE", "INTERRUPTED", "REPLAN_REQUIRED",
+                      "ESCALATED"):
+            for submitted in ((), ("EV-1",)):
+                out += actions(state, submitted=submitted, fit=fit)
+    for mode in ("checks", "verifier"):
+        monkeypatch.setattr(resume_ops.V, "obligation", lambda *a, mode=mode: {"mode": mode})
+        for status in (*INTEGRATION_STATUSES, "prepared"):
+            for fit in (FULL, None):
+                resume = resume_with(fit)
+                resume.k = SimpleNamespace(policy=lambda name: {})
+                resume._queue_wait = lambda state, wid: None  # type: ignore[method-assign]
+                unit = {"state": "COMMIT_READY", "invocations": [],
+                        "integration": {"status": status, "candidate": "C-1"}}
+                state = {"invocations": {}, "work": {"T-0007": unit}, "queue": {"entries": {}, "lease": None}}
+                out += resume._ticket_actions(state, "T-0007", unit)
+    return out
+
+
+def test_every_ticket_hint_names_each_command_whole_so_it_parses(monkeypatch):
+    """A hint is a structured next action, offered to be run as given: each command in it must parse on the live
+    parser (D2's O-CMD, E140's triage). A bare `aew integrate publish` or `aew review ingest` did not, and stage tools
+    carry these hints in their results and refusals. Judged by D2's own rule over every branch the hints take."""
+    from discovery import rules
+
+    hints = every_ticket_hint(monkeypatch)
+    assert any("`aew integrate publish T-0007 " in h for h in hints)  # the walk reaches the publish
+    assert any("`aew review ingest T-0007 --evidence EV-1 " in h for h in hints)
+    found = [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_actions": hints}))
+             if f.rule == "O-CMD"]
+    assert found == [], found
+    # Planted: the same rule catches a bare command in a hint.
+    assert [f for f in rules.check(rules.Output(site="unit", payload={"next_actions": ["`aew integrate publish`"]}))
+            if f.rule == "O-CMD"]
 
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:

@@ -224,6 +224,8 @@ def invocation_of_run(run: str) -> str | None:
 # `N` named nothing). Every printed `--expect-rev` is `EXPECT_REV`; tests/helpers/printed_commands.py fills it.
 REVISION = "<revision from aew status>"
 EXPECT_REV = f"--expect-rev {REVISION}"
+# A steering step for several runs names one of them: the reader picks the run the step lists (#547 review m1).
+NAMED_RUN = "<run named here>"
 
 
 def fields_command(command: str, key: str, value: str) -> str:
@@ -535,7 +537,7 @@ def wait_step(runs: list[str], *, again: bool = False, messaging: bool = False) 
     if not again:
         return f"wait on {named} with `harness_wait`: {wait_rule(messaging)} {command}"
     otherwise = steer_commands(WAIT_OR_ELSE.replace("`aew harness send`", "`message_send`") if messaging
-                               else WAIT_OR_ELSE, runs[0] if not several else "<run>")
+                               else WAIT_OR_ELSE, runs[0] if not several else NAMED_RUN)
     return (f"{named} {'are' if several else 'is'} still working ({TIMED_OUT}): {NOT_POLLING}. "
             f"{WAIT_AGAIN[0].upper()}{WAIT_AGAIN[1:]} {command}. {otherwise[0].upper()}{otherwise[1:]}. "
             f"Tell the operator in a line {WAIT_TIMED_OUT.tell}")

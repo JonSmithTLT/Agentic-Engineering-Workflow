@@ -72,7 +72,7 @@ DEFERRED_FILES = frozenset(path for path, _ in DEFERRED)  # B3's: the one-owner 
 
 # Sites whose command the finder cannot judge from the source, each with why and the test that checks it instead.
 EXEMPT = {
-    "src/aew/harness/contract.py:246": "the frame's owner (fields_block): its command and keys are each caller's, "
+    "src/aew/harness/contract.py:248": "the frame's owner (fields_block): its command and keys are each caller's, "
                                        "checked at each call",
     "src/aew/engine/custody_ops.py:158": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
@@ -349,8 +349,11 @@ def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     [(relaunch, fenced)] = P.commands(str(mismatch.value))
     [args] = P.parse(relaunch, fenced=fenced)
     assert args.invocation == "INV-0012" and args.expect_rev == 17
+    # So is the run a steering step over several runs names (#547 review m1): a value the step passes in.
+    steer = [c for c, _ in P.commands(K.wait_step(["R-1", "R-2"], again=True)) if c.startswith("aew harness send")]
+    assert [a.run for c in steer for a in P.parse(c, fenced=False)] == ["R-0003"]
     printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
-                         relaunch])
+                         relaunch, *steer])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 

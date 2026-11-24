@@ -20,6 +20,7 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
 from aew.engine import scope_ops as SC
+from aew.engine import transitions as T
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -272,7 +273,7 @@ class Resume:
                 pass
             elif unmet:
                 out.append(f"all children are DONE/CANCELLED; satisfy parent gates {unmet} "
-                           f"(`aew invoke create {wid} --role reviewer|verifier {EXPECT_REV}`, ingest)")
+                           f"(`{T.dispatch_command(wid, 'reviewer|verifier')}`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
             elif u["kind"] == "epic" and self.history.audit_backlog(state):
@@ -328,16 +329,16 @@ class Resume:
                     return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
-            return [f"dispatch a fresh implementer (`aew invoke create {wid} --role implementer {EXPECT_REV}`)"]
+            return [f"dispatch a fresh implementer (`{T.dispatch_command(wid, 'implementer')}`)"]
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
                 return [f"ingest review {e}: " + self._led(state, wid, "REVIEW_PENDING", "REVIEW_PASSED",
-                                                           f"aew review ingest {wid} --evidence {e} {EXPECT_REV}")
+                                                           T.operation_command("review.ingest", wid, e))
                         for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
-            return [f"dispatch the next planned reviewer card (`aew invoke create {wid} --role reviewer {EXPECT_REV}`)"]
+            return [f"dispatch the next planned reviewer card (`{T.dispatch_command(wid, 'reviewer')}`)"]
         if st == "REVIEW_FAILED":
             return ["return to RUNNING and dispatch an implementer with the findings"]
         if st == "REVIEW_PASSED":
@@ -346,11 +347,11 @@ class Resume:
             pending = self._submitted(state, wid, u, "verification")
             if pending:
                 return [f"ingest verification {e}: " + self._led(state, wid, "VERIFY_PENDING", "VERIFIED",
-                                                                 f"aew verify ingest {wid} --evidence {e} {EXPECT_REV}")
+                                                                 T.operation_command("verify.ingest", wid, e))
                         for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
-            return [f"dispatch the next planned verifier card (`aew invoke create {wid} --role verifier {EXPECT_REV}`)"]
+            return [f"dispatch the next planned verifier card (`{T.dispatch_command(wid, 'verifier')}`)"]
         if st == "VERIFICATION_FAILED":
             failure = (u.get("last_verification") or {}).get("evidence")
             classification = _bound_command(f"aew verify classify {wid} --as <CLASS> --reason <reason> "
@@ -408,7 +409,7 @@ class Resume:
         in verifier mode, the integration verifier's report (#331 review F6: a Lead told only the report is refused
         once, or reads `work_show` first). The command is written whole: a bare `aew integrate publish` does not parse
         (D2's O-CMD; E140's triage)."""
-        command = f"aew integrate publish {wid} {EXPECT_REV}"
+        command = T.operation_command("integrate.publish", wid)
         stage = self.gates.stage_for(state, wid, "COMMIT_READY", "DONE")
         if stage is None:
             return f"`{command}`"

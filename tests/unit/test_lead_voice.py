@@ -82,19 +82,27 @@ def test_a_returned_next_step_names_every_steering_command_whole_so_it_parses():
     """A wait's ``next_action`` is offered to be run as given, so each command in it must parse on the live parser
     (D2's O-CMD, E140's triage): the wake guide's bare `aew harness send` and `aew harness interrupt` are mentions in
     the Lead's system text, and a returned step writes them with their run. Judged by D2's own rule, over every kind
-    of wake and both timed-out shapes, with messaging off and on."""
+    of wake and both timed-out shapes, with messaging off and on. Each command is also run through the printed-command
+    check, which holds every placeholder to its table (#547 review m1: a step over several runs named `<run>`)."""
+    import printed_commands as P
     from discovery import rules
 
     def o_cmd(step: str) -> list[str]:
         return [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_action": step}))
                 if f.rule == "O-CMD"]
 
+    parsed = 0
     for messaging in (False, True):
         steps = [K.trigger_step([why], "R-1", others, messaging=messaging)
                  for why in K.waited_on(messaging) for others in ([], ["R-2"])]
         steps += [K.wait_step(runs, again=True, messaging=messaging) for runs in (["R-1"], ["R-1", "R-2"])]
         for step in steps:
             assert not o_cmd(step), (step, o_cmd(step))
+            for command, fenced in P.commands(step):
+                if command.startswith("aew "):
+                    P.parse(command, fenced=fenced)  # raises PrintedCommandError, saying why, if it does not run
+                    parsed += 1
+    assert parsed and f"`aew harness send {K.NAMED_RUN} --text <message>`" in K.wait_step(["R-1", "R-2"], again=True)
     stepped = K.trigger_step([K.OUT_OF_SCOPE], "R-1", [])
     assert "`aew harness send R-1 --text <message>`" in stepped and "`aew harness interrupt R-1`" in stepped
     # The planted defect: the guide's own bare text, returned as a step, is what the rule catches.

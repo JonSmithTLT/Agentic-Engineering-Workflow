@@ -713,6 +713,24 @@ def test_every_ticket_hint_names_each_command_whole_so_it_parses(monkeypatch):
             if f.rule == "O-CMD"]
 
 
+@pytest.mark.parametrize(("state", "role"), [("RUNNING", "implementer"), ("REVIEW_PENDING", "reviewer"),
+                                             ("VERIFY_PENDING", "verifier")])
+def test_a_dispatch_hint_is_the_guides_own_launched_move(state, role):
+    """#547 review M1: written whole without `--launch`, a dispatch hint made an invocation with no run, and `resume`
+    then said "in progress" while nothing ran. Each hint is the guide's own move for its role, launched."""
+    from aew.cli.main import build_parser
+
+    [hint] = actions(state)  # no live invocation and no report waiting: the dispatch is the next step
+    command = T.dispatch_command("T-0007", role)
+    assert f"`{command}`" in hint, hint
+    moves = {m.qualifier: m.shell for m in guide.PATH if m.primitive == "invoke.create.mutating"}
+    if role in moves:
+        assert moves[role] == f"`{T.dispatch_command('<T>', role)}`"
+    argv = command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:]
+    ns = build_parser().parse_args(argv)
+    assert ns.launch and ns.role == role and ns.work_id == "T-0007", ns
+
+
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
     harness = Harness.__new__(Harness)
     harness.gates = gates_with(  # type: ignore[assignment]

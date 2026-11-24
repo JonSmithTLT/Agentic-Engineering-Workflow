@@ -485,9 +485,11 @@ def _field_options(argv: list[str], body: str) -> list[str]:
 
 
 def known_tools() -> dict[str, Any]:
-    """Every typed tool an output may name: the catalog with every switch on (``contract.catalog``, its owner). A tool
-    behind a switch (``message_send``, behind messaging) is named only where its switch is on, so judging names against
-    the off catalog alone (``contract.TOOLS``) called every such output a violation (E140's O-CMD triage)."""
+    """Every typed tool an output may name: the catalog with every switch on (``contract.catalog``, its owner). Judged
+    against the off catalog alone (``contract.TOOLS``), a tool behind a switch (``message_send``, behind messaging) was
+    a violation in its own results (E140's O-CMD triage). An output carries no switch state, so the limit: a switched
+    tool named where its switch is off is no O-CMD finding. The product's off-text tests own that
+    (``tests/unit/test_messaging_guidance.py``)."""
     from aew.surface import contract
 
     return contract.catalog(contract.ALL_SWITCHES)

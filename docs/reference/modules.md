@@ -1429,6 +1429,7 @@ None.
 
 ### `aew.harness.containment.layout`
 
+- `aew`
 - `aew.capability.bind`
 - `aew.capability.status`
 - `aew.capability.store`

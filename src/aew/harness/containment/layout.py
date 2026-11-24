@@ -1072,6 +1072,112 @@ def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str
                 reason="store_path_writable")
 
 
+# AEW's own code must lie outside every writable bind (register STG-05; the relay handoff's RLY-05): every supervisor
+# and relay is a host process that imports it afresh, outside any sandbox, so code a contained run could change would
+# run with the operator's authority and the run's credentials at the next launch. The interpreter's prefix is re-bound
+# read-only (``for_run``); an editable install's source tree is not, and may lie in a tree a run writes (AEW worked on
+# with AEW).
+TRUSTED_CODE_WRITABLE, TRUSTED_CODE_SYMLINK = "trusted_code_writable", "trusted_code_symlink"
+TRUSTED_CODE_REMEDY = ("run AEW from an installation outside every directory a contained run writes (a regular "
+                       "install, or an editable install of a checkout no run writes), and start it with the `aew` "
+                       "command, whose import path holds no working directory")
+HELD_TRUSTED = 5  # how many exposed pieces a refusal names: enough to see the shape, bounded
+
+
+def _aew_package() -> str:
+    """The directory of the ``aew`` package this process runs, as it imports it."""
+    import aew
+
+    return os.path.dirname(os.path.abspath(aew.__file__))
+
+
+def trusted_code() -> list[tuple[str, str]]:
+    """(what, path) for AEW's own code, in the spelling this process imports it by: its package; the package's parent,
+    which is the import path of every Python process the engine starts with a credential (``procs.engine_imports``);
+    every symbolic link in the package's tree (an editable install's tree of links, a linked module), whose target is
+    what is imported; and every directory on this process's import path, the one the next ``aew`` command has too.
+    Read from the filesystem at each launch: never a list of modules to keep in step."""
+    package = _aew_package()
+    out = [("AEW's own package", package),
+           ("the import path of AEW's supervisors and relays", os.path.dirname(package))]
+    stack = [package]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for entry in it:
+                    if entry.is_symlink():
+                        out.append(("a link in AEW's package", entry.path))
+                    elif entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+        except OSError:
+            continue  # an unreadable directory imports nothing either
+    for entry in sys.path:
+        path = os.path.abspath(entry or os.curdir)  # "" is the working directory
+        if os.path.exists(path):
+            out.append(("a directory on AEW's import path", path))
+    return list(dict.fromkeys(out))
+
+
+def _links_on(path: str) -> list[str]:
+    """Every symbolic link on ``path``'s spelling, ``path`` included: what a write could replace to change where it
+    leads."""
+    out, at = [], os.path.abspath(path)
+    while True:
+        if os.path.islink(at):
+            out.append(at)
+        parent = os.path.dirname(at)
+        if parent == at:
+            return out
+        at = parent
+
+
+def trusted_code_exposed(steps: list[tuple[str, str]],
+                         trusted: list[tuple[str, str]] | None = None) -> list[dict[str, str]]:
+    """Every piece of ``trusted`` code (default :func:`trusted_code`) that a writable bind in ``steps``
+    (:func:`bind_order`'s) could change, with the bind and the reason. As for the store (``_refuse_store_binds``), a
+    path under a writable bind ``W`` is safe only when the first directory below ``W`` on its path is re-bound read-only
+    after ``W`` (the prefix of a virtual environment in the project, for one), and the path is checked as it is spelled
+    and where it leads: a symbolic link on the spelling inside ``W`` could be replaced, which no re-bind prevents."""
+    trusted = trusted_code() if trusted is None else trusted
+    found: list[dict[str, str]] = []
+    for i, (flag, w) in enumerate(steps):
+        if flag != "--bind":
+            continue
+        after = {p for f, p in steps[i + 1:] if f == "--ro-bind"}
+        for what, walked in trusted:
+            link = next((p for p in _links_on(walked) if _within(p, w)), None)
+            if link is not None:
+                found.append({"what": what, "path": walked, "bind": w, "symlink": link,
+                              "reason": TRUSTED_CODE_SYMLINK})
+                continue
+            for spelled in dict.fromkeys((walked, _real(walked))):
+                if not _within(spelled, w):
+                    continue
+                below = os.path.join(w, os.path.relpath(spelled, w).split(os.sep)[0]) if spelled != w else w
+                if below == w or below not in after:
+                    found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
+                break
+    return found
+
+
+def _refuse_trusted_code(role: str, steps: list[tuple[str, str]]) -> None:
+    """A layout that could change AEW's own code (:func:`trusted_code_exposed`) is refused, naming the first piece and
+    the bind: under ``required`` the launch is refused, and under ``allow_weaker`` it runs labelled weaker
+    (``containment.establish``) and enters the register of weaker contexts like every other."""
+    found = trusted_code_exposed(steps)
+    if not found:
+        return
+    first = found[0]
+    how = (f"through {first['symlink']}, a symbolic link a contained process could replace"
+           if first["reason"] == TRUSTED_CODE_SYMLINK else "so a contained process could change it")
+    raise ContainmentUnavailable(
+        f"AEW's own code must lie outside every writable bind: the {role} layout's writable bind {first['bind']} "
+        f"reaches {first['what']} ({first['path']}) {how}, and AEW's next supervisor or relay would import it; the "
+        f"launch is refused. To launch, {TRUSTED_CODE_REMEDY}", role=role, bind=first["bind"], path=first["path"],
+        exposes=[{k: v for k, v in f.items() if k != "reason"} for f in found[:HELD_TRUSTED]],
+        reason=first["reason"])
+
+
 def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> None:
     """The operator's ruling of 2026-10-23 on R-1 (:data:`RUN_BIND_BACK`): a project under ``/run`` is bound back into
     the mask on the designer's five conditions, and a layout that would bind anything else back is refused. This
@@ -1245,6 +1351,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
         if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
             readonly.append(_real(prefix))
+    # AEW's own package and its import path: unwritable wherever they live, and the self-test checks it (the layout is
+    # refused below where a writable bind reaches them)
+    package = _aew_package()
+    protected += [p for p in dict.fromkeys((_real(package), _real(os.path.dirname(package)))) if p not in protected]
     tool_fields = _tool_fields(run, tools, hide_host, readonly, protected)
     skills_binds = (_real(skills_dir),) if skills_dir is not None and os.path.isdir(skills_dir) else ()
     readonly += [p for p in skills_binds if p not in readonly]
@@ -1262,7 +1372,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,
                     net_dir=net_dir, skills_binds=skills_binds, **tool_fields)
-    _refuse_store_binds(role, project, order(layout))
+    steps = order(layout)
+    _refuse_store_binds(role, project, steps)
+    _refuse_trusted_code(role, steps)
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     bwrap_argv(layout, [], cwd=ws)  # the layout's own arguments, counted before any bubblewrap starts (addendum 9)
     return layout

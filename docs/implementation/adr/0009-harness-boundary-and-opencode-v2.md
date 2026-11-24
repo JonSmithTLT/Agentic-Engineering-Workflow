@@ -2146,3 +2146,22 @@ A dispatch the login cannot outlive is refused. An expiry, a changed kind or an 
 relay with its cause and connects nothing. No other credential is tried, and the run's end names the cause. Plan
 workers share the plan's usage limits. Doctor and the launch record name the pot. The same upstream and path rule
 applies to the Lead's relayed login. Adopted as the operator's choice, 2026-11-11.
+
+## Amendment 2026-11-24 — AEW's own code lies outside every writable bind (STG-05; the relay handoff's RLY-05)
+
+Every supervisor and provider relay is a host process that imports AEW afresh, so AEW's own code is trusted code and
+must lie outside every writable bind of a contained context. The interpreter's prefix was already re-bound read-only;
+the rest of AEW's import path, such as an editable install's source tree, was not.
+
+- **What is AEW's code** (`layout.trusted_code`, read from the filesystem at each launch): the `aew` package; its
+  parent, the import path of every Python process the engine starts with a credential (`procs.engine_imports`);
+  every symbolic link in the package's tree; and every directory on the launching process's import path, the working
+  directory included.
+- **The predicate** (`layout.trusted_code_exposed`) is the store's (CB-07), applied to each piece as spelled and
+  where it leads: no writable bind `W` reaches it, unless the first directory below `W` on its path is re-bound
+  read-only after `W`. A symbolic link on its spelling inside `W` is refused whatever it leads to.
+- **On failure:** `CONTAINMENT_UNAVAILABLE`, reason `trusted_code_writable` or `trusted_code_symlink`, naming the bind
+  and the code. Under `required` the launch is refused; under `allow_weaker` it runs labelled weaker and enters the
+  register of weaker contexts, as every other failed containment does (G3 addendum 7).
+- The package and its parent are on the launch self-test's protected list, and `aew doctor` has a `trusted-code`
+  line in a project on Linux.

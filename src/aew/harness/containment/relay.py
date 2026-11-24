@@ -34,11 +34,13 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    comes, until the upstream ends it or the client goes away.
 
 **The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
-request target. Each request, whatever became of it, is one entry given to the relay's ``record`` (one per request,
-when the request ends): when, the provider route, the fixed destination, what became of its credential header
-(:data:`SWAP_OUTCOMES`), the login kind, what the relay answered and, for one it forwarded, the upstream's status, with
-a short excerpt of a failure's body, redacted. Never a credential value. A forwarded request is also counted by its
-upstream status class when that is not 2xx, so a 401 is never counted only as ``allowed``.
+request target; only a request refused for its operation, once past the path check, also records its method and its
+endpoint under the prefix, with no query, so the operator can see what to list. Each request, whatever became of it, is
+one entry given to the relay's ``record`` (one per request, when the request ends): when, the provider route, the fixed
+destination, what became of its credential header (:data:`SWAP_OUTCOMES`), the login kind, what the relay answered and,
+for one it forwarded, the upstream's status, with a short excerpt of a failure's body, redacted. Never a credential
+value. A forwarded request is also counted by its upstream status class when that is not 2xx, so a 401 is never counted
+only as ``allowed``.
 
 One request per connection: each answer says ``Connection: close``. The upstream is fixed, so the relay never judges
 a destination: ruling R-6 is the egress proxy's (``egress.py``), and this module does not use it. A host-local upstream

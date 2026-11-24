@@ -85,25 +85,40 @@ def test_each_shipped_skill_names_itself_by_its_folder_states_its_version_and_sa
         assert description and re.search(r"\b(skip|not)\b", description.group(1), re.I), name
 
 
+# Code is not prose: a fenced block or an inline code span holds no link (E136: an example's
+# ``HANDLERS[path](record)``). A backtick fence's info string holds no backtick, so a line that opens with three
+# backticks and holds another is not a fence (CommonMark; E136's review, m2).
+CODE = re.compile(r"^ {0,3}(```(?![^\n]*`)|~~~).*?^ {0,3}\1[^\n]*$|`[^`\n]+`", re.M | re.S)
+INLINE = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
+
+
+def link_targets(text: str) -> list[str]:
+    """Every link a Markdown file's prose holds, inline or reference-style, raw (fragment and all); an inline ``](``
+    the pattern cannot read fails rather than being skipped."""
+    prose = CODE.sub("", text)
+    found = INLINE.findall(prose)
+    assert len(found) == prose.count("]("), "an inline link the pattern cannot read"
+    return found + DEFINITION.findall(prose)
+
+
 def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links_every_one():
     """The pointer rule (E142): a step moved to ``references/`` or ``examples/`` is read only through its link, so a
     broken link loses the step silently. ``specification.md``: each runtime resource has an explicit link from the
     entrypoint. Every link form is read: inline with a ``#fragment``, a ``"title"`` or ``<angle brackets>``, and a
     reference-style definition; an inline ``](`` the pattern cannot read fails rather than being skipped (E142's
-    review). A link to a fragment of the same file names no file and is left out. Code is not prose: a fenced block
-    or an inline code span holds no link (E136: an example's ``HANDLERS[path](record)``)."""
-    code = re.compile(r"^ {0,3}(```|~~~).*?^ {0,3}\1[^\n]*$|`[^`\n]+`", re.M | re.S)
-    inline = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
-    definition = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
+    review). A link to a fragment of the same file names no file and is left out. Code holds no link
+    (:data:`CODE`).
+
+    Known limits, none met by a shipped file: an indented (four-space) code block is read as prose; a code span of
+    two or more backticks, or one that crosses a line, is not recognised; a fence of four or more backticks or tildes
+    closes at the first three; HTML anchors and ``<autolinks>`` are not read."""
     for name, entry in skills.entries().items():
         listed = set(entry["files"])
         linked_from_skill_md: set[str] = set()
         for rel in listed:
             here = PurePosixPath(rel).parent
-            text = code.sub("", (SHIPPED / name / rel).read_text(encoding="utf-8"))
-            found = inline.findall(text)
-            assert len(found) == text.count("]("), (name, rel, "an inline link the pattern cannot read")
-            for raw in found + definition.findall(text):
+            for raw in link_targets((SHIPPED / name / rel).read_text(encoding="utf-8")):
                 target = raw.split("#", 1)[0]
                 if not target and raw.startswith("#"):
                     continue
@@ -113,6 +128,14 @@ def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links
                 if rel == skills.SKILL_FILE:
                     linked_from_skill_md.add(resolved)
         assert linked_from_skill_md == listed - {skills.SKILL_FILE}, name
+
+
+def test_a_line_opening_with_backticks_that_holds_another_is_no_fence_so_the_link_after_it_is_read():
+    """E136's review (m2): taken as a fence, the line would hide every link up to the next fence, so a broken link
+    after it would pass."""
+    planted = "```not`a fence\nSee [the step](references/missing.md).\n\n```\ncode\n```\n"
+    assert "references/missing.md" in link_targets(planted)
+    assert link_targets("```text\nSee [x](hidden.md).\n```\n") == []  # a real fence still hides its contents
 
 
 def test_the_package_data_ships_every_file_the_manifest_lists():
@@ -597,7 +620,23 @@ def test_the_lead_is_told_to_staff_by_language_from_the_cards_and_the_install(mo
     for card in ("python_engineer", "c_engineer"):
         meta = roles.builtin_cards()[card].meta
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text
-    assert "Otherwise the default, `engineer`, whose run may load `python-development` or `c-development`" in text
+    assert ("Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its "
+            "task matches.") in text
+
+
+def test_the_staffing_line_names_what_every_implementer_card_offers_apart_from_the_language(monkeypatch):
+    """E136's review (m1): a skill every implementer card offers is not about the language, so the default's clause
+    names only what a language card requests, and one more sentence names the rest: the intersection of the
+    implementer cards' ``optional_skills``, derived, never restated."""
+    text = guide.staffing_text()
+    every = "Every implementer card's run may also load `debugging-root-cause-analysis` when its task matches."
+    assert text.endswith(every) and text.count("debugging-root-cause-analysis") == 1
+    cards = dict(roles.builtin_cards())
+    c = cards["c_engineer"]
+    cards["c_engineer"] = roles.Card(c.id, {**c.meta, "optional_skills": []}, c.source, c.path, c.sha256)
+    monkeypatch.setattr(roles, "builtin_cards", lambda: cards)
+    fewer = guide.staffing_text()
+    assert "Every implementer card" not in fewer and "debugging-root-cause-analysis" not in fewer
     monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
     fewer = guide.staffing_text()
     assert "c_engineer" not in fewer and "`c-development`" not in fewer

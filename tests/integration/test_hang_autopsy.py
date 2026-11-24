@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import bounds
@@ -98,6 +99,35 @@ def autopsy_of(hangs: Path, test: str) -> Path:
     found = [d for d in (hangs / "autopsy").iterdir() if d.is_dir() and d.name.startswith(prefix)]
     assert len(found) == 1, sorted(p.name for p in (hangs / "autopsy").iterdir())
     return found[0]
+
+
+def test_xdist_collection_and_execution_have_distinct_live_worker_receipts(tmp_path):
+    import worker_evidence
+
+    hangs = tmp_path / "out"
+    held = """
+import bounds
+from pathlib import Path
+
+def hold(stage):
+    Path(stage + "-ready").touch()
+    bounds.bounded_wait("inner.worker_phase", Path(stage + "-release").exists, seconds=60)
+"""
+    proj = project(tmp_path, held + "\ndef test_running():\n    hold('call')\n",
+                   conftest_extra=held + "\ndef pytest_collection_modifyitems():\n    hold('collect')\n")
+    proc = start_inner(proj, hangs, "-n", "1", "--session-deadline", "120")
+    try:
+        for gate, phase in (("collect", "collecting"), ("call", "execution-started")):
+            bounds.bounded_wait("test.inner_started", (proj / f"{gate}-ready").exists,
+                                gone=lambda: proc.poll() is not None)
+            [worker] = worker_evidence.phases_at_signal(hangs, time.monotonic_ns())
+            assert worker["worker"] == "worker-gw0" and worker["phase"] == phase
+            (proj / f"{gate}-release").touch()
+        assert proc.wait(timeout=60) == 0
+    finally:
+        for gate in ("collect", "call"):
+            (proj / f"{gate}-release").touch()
+        proc.wait(timeout=60)
 
 
 def test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle(tmp_path):

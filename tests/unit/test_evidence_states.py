@@ -598,6 +598,35 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     assert not lane.marker(tmp_path, "cutoff").exists()
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
+    observation = record["xdist_at_first_signal"]
+    assert observation["monotonic_ns"] > 0 and observation["registered_workers"] == []
+
+
+@pytest.mark.parametrize("history,identity,expected", [
+    (None, True, "indeterminate"), ("", True, "indeterminate"),
+    ("10 collecting\n", True, "collecting"),
+    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting"),
+    ("10 collecting\n15 collection-ended\n", True, "collection-ended"),
+    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started"),
+    ("21 collecting\n", True, "indeterminate"), ("20 collecting\n", True, "indeterminate"),
+    ("10 collecting\n", False, "indeterminate"), ("10 collecting", True, "indeterminate"),
+    ("15 collecting\n12 collection-ended\n", True, "indeterminate"),
+    ("10 collecting\n15 execution-started\n", True, "indeterminate"),
+])
+def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(tmp_path, monkeypatch,
+                                                                                   history, identity, expected):
+    import worker_evidence as ev
+
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text("123")
+    (directory / "worker-gw0-start.txt").write_text("456")
+    (directory / "worker-123-455-lifecycle.txt").write_text("10 collecting\n")
+    if history is not None:
+        (directory / "worker-123-456-lifecycle.txt").write_text(history)
+    monkeypatch.setattr(ev.proctree, "same", lambda pair: pair == (123, 456) and identity)
+    assert ev.phases_at_signal(tmp_path, 20) == [
+        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected}]
 
 
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):

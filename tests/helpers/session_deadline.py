@@ -129,6 +129,7 @@ STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
+WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -684,9 +685,26 @@ class Worker:
     def start(self) -> None:
         worker = self.config.workerinput.get("workerid", "?")
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
-        _write(self.dir, f"worker-{worker}-start", f"{proctree.start_time(os.getpid())}\n")
+        birth = proctree.start_time(os.getpid())
+        _write(self.dir, f"worker-{worker}-start", f"{birth}\n")
+        self.lifecycle = f"worker-{os.getpid()}-{birth}-lifecycle"
+        self.execution_started = False
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
+
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_collection(self):
+        _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[0]}\n")
+        try:
+            return (yield)
+        finally:
+            _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[1]}\n", append=True)
+
+    def pytest_runtest_logstart(self) -> None:
+        # The first item has entered pytest's protocol. Later active items still use the watchdog.
+        if not self.execution_started:
+            _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[2]}\n", append=True)
+            self.execution_started = True
 
     def _watch(self) -> None:
         while not self._done.wait(max(0.0, min(self.mono - time.monotonic(), 60.0))):

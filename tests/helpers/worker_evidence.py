@@ -39,6 +39,38 @@ class Worker:
         return self.pid, self.start
 
 
+def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
+    """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
+    from session_deadline import WORKER_PHASES, session_directories
+
+    rows = []
+    for directory in session_directories(root):
+        for path in sorted(directory.glob("worker-gw*-pid.txt")):
+            row = {"session": directory.name, "worker": path.stem.removesuffix("-pid"), "phase": "indeterminate"}
+            rows.append(row)
+            try:
+                pid = int(path.read_text())
+                birth = int(path.with_name(path.name.replace("-pid.", "-start.")).read_text())
+                row.update(pid=pid, start=birth)
+                with open_observation(directory / f"worker-{pid}-{birth}-lifecycle.txt") as stream:
+                    data = stream.read(257)
+                lines = data.splitlines()
+                if len(data) > 256 or not data.endswith("\n") or len(lines) > len(WORKER_PHASES):
+                    continue
+                transitions = [(int(stamp), phase) for stamp, phase in (line.split() for line in lines)]
+                stamps = [stamp for stamp, _ in transitions]
+                if (tuple(phase for _, phase in transitions) != WORKER_PHASES[:len(lines)]
+                        or stamps != sorted(set(stamps)) or any(stamp <= 0 or stamp == at_ns for stamp in stamps)
+                        or not proctree.same((pid, birth))):
+                    continue
+                prior = [phase for stamp, phase in transitions if stamp <= at_ns]
+                if prior:
+                    row["phase"] = prior[-1]
+            except (OSError, ValueError):
+                continue
+    return rows
+
+
 def workers(root: Path):
     from session_deadline import marker, session_directories
 

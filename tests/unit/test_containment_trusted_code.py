@@ -102,18 +102,18 @@ def test_an_implementer_whose_worktree_holds_aews_package_is_refused_and_a_regul
     assert refused.value.details["bind"] == real(ws)
 
 
-def test_a_directory_on_the_import_path_inside_a_writable_bind_is_refused_the_working_directory_included(
+def test_a_directory_on_the_import_path_inside_a_writable_bind_is_refused_and_the_script_directory_is_not_counted(
         tmp_path, monkeypatch):
-    """``python -m aew`` started in the project puts the working directory on the import path ("" spells it)."""
+    """A directory on the import path is checked like the package. The first entry (the script's directory, or the
+    working directory under ``python -m``) is not: no process the engine starts has it (``-P``)."""
     w = tmp_path / "w"
     (w / "lib").mkdir(parents=True)
     steps = L.bind_order([real(w)], [])
     monkeypatch.setattr(sys, "path", [*sys.path, str(w / "lib")])
     assert [(f["path"], f["reason"]) for f in L.trusted_code_exposed(steps)] == [
         (real(w / "lib"), L.TRUSTED_CODE_WRITABLE)]
-    monkeypatch.setattr(sys, "path", [*sys.path, ""])
-    monkeypatch.chdir(w)
-    assert real(w) in {f["path"] for f in L.trusted_code_exposed(steps)}
+    monkeypatch.setattr(sys, "path", [str(w), *sys.path[:-1]])
+    assert not sys.flags.safe_path and L.trusted_code_exposed(steps) == []
 
 
 def test_trusted_code_under_a_writable_bind_passes_only_with_the_next_directory_re_bound_read_only_after_it():

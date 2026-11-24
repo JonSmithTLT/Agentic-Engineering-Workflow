@@ -2155,8 +2155,8 @@ the rest of AEW's import path, such as an editable install's source tree, was no
 
 - **What is AEW's code** (`layout.trusted_code`, read from the filesystem at each launch): the `aew` package; its
   parent, the import path of every Python process the engine starts with a credential (`procs.engine_imports`);
-  every symbolic link in the package's tree; and every directory on the launching process's import path, the working
-  directory included.
+  every symbolic link in the package's tree; and every directory on the launching process's import path but its
+  first (the script's directory, which `-P` removes from every process the engine starts).
 - **The predicate** (`layout.trusted_code_exposed`) is the store's (CB-07), applied to each piece as spelled and
   where it leads: no writable bind `W` reaches it, unless the first directory below `W` on its path is re-bound
   read-only after `W`. A symbolic link on its spelling inside `W` is refused whatever it leads to.

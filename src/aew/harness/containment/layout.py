@@ -1078,9 +1078,8 @@ def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str
 # read-only (``for_run``); an editable install's source tree is not, and may lie in a tree a run writes (AEW worked on
 # with AEW).
 TRUSTED_CODE_WRITABLE, TRUSTED_CODE_SYMLINK = "trusted_code_writable", "trusted_code_symlink"
-TRUSTED_CODE_REMEDY = ("run AEW from an installation outside every directory a contained run writes (a regular "
-                       "install, or an editable install of a checkout no run writes), and start it with the `aew` "
-                       "command, whose import path holds no working directory")
+TRUSTED_CODE_REMEDY = ("run AEW from an installation outside every directory a contained run writes: a regular "
+                       "install, or an editable install of a checkout no run writes")
 HELD_TRUSTED = 5  # how many exposed pieces a refusal names: enough to see the shape, bounded
 
 
@@ -1095,8 +1094,10 @@ def trusted_code() -> list[tuple[str, str]]:
     """(what, path) for AEW's own code, in the spelling this process imports it by: its package; the package's parent,
     which is the import path of every Python process the engine starts with a credential (``procs.engine_imports``);
     every symbolic link in the package's tree (an editable install's tree of links, a linked module), whose target is
-    what is imported; and every directory on this process's import path, the one the next ``aew`` command has too.
-    Read from the filesystem at each launch: never a list of modules to keep in step."""
+    what is imported; and every directory on this process's import path but its first, the script's directory or the
+    working directory, which no process the engine starts has (``-P``, ``procs.ENGINE_PYTHON_FLAGS``) and the ``aew``
+    command holds no working directory in. Read from the filesystem at each launch: never a list of modules to keep in
+    step."""
     package = _aew_package()
     out = [("AEW's own package", package),
            ("the import path of AEW's supervisors and relays", os.path.dirname(package))]
@@ -1111,7 +1112,7 @@ def trusted_code() -> list[tuple[str, str]]:
                         stack.append(entry.path)
         except OSError:
             continue  # an unreadable directory imports nothing either
-    for entry in sys.path:
+    for entry in sys.path if sys.flags.safe_path else sys.path[1:]:
         path = os.path.abspath(entry or os.curdir)  # "" is the working directory
         if os.path.exists(path):
             out.append(("a directory on AEW's import path", path))

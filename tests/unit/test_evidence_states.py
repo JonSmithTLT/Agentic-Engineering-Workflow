@@ -738,7 +738,7 @@ def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("fault", [None, "unavailable", "prior-unavailable", "changed-node", "support-frame",
-                                   "partial-first", "lost-record"])
+                                   "empty-then-error", "support-then-error", "partial-first", "lost-record"])
 def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):
     import signal
     import sys
@@ -770,6 +770,14 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
         if calls[pid] == 1:
             together.wait(timeout=2)
         if pid == pids[0]:
+            if fault in {"empty-then-error", "support-then-error"}:
+                if calls[pid] == 1:
+                    dump = "Process 101: private argv"
+                    if fault == "support-then-error":
+                        dump += "\n    support (tests/helpers/support.py:4)"
+                    return "unelevated", dump
+                failures.append("sudo -n: exit 1 (os error 3)")
+                return None
             if fault in {"unavailable", "prior-unavailable"}:
                 failures.append("sudo -n: exit 1 (os error 3)")
                 return None
@@ -810,13 +818,14 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     failures = verify.observe_cancel(tmp_path, "Linux", [])
     if fault == "lost-record":
         assert failures == ["Linux: cancellation did not observe all four registered workers alive"]
-    elif fault in {"unavailable", "prior-unavailable", "changed-node", "support-frame"}:
+    elif fault in {"unavailable", "prior-unavailable", "changed-node", "support-frame",
+                  "empty-then-error", "support-then-error"}:
         assert failures == ["Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]"]
     else:
         assert failures == []
     if fault == "partial-first":
         assert calls == {101: 2, 102: 1, 103: 1, 104: 1}
-    assert first.exists() == (fault in {"unavailable", "prior-unavailable"})
+    assert first.exists() == (fault in {"unavailable", "prior-unavailable", "empty-then-error"})
     if fault in {"unavailable", "prior-unavailable"}:
         if fault == "prior-unavailable":
             assert first.read_text() == "prior timeout snapshot failure\n"
@@ -824,6 +833,14 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
         note = first.read_text()
         assert note.count("sudo -n: exit 1 (os error 3)") == calls[101]
         assert len(note.splitlines()) == 1
+    if fault in {"empty-then-error", "support-then-error"}:
+        if fault == "support-then-error":
+            [first] = first.parent.glob("101-*-warning-attach.txt")
+            assert "support.py:4" in (first.parent / "101.txt").read_text()
+        note = first.read_text()
+        assert "private argv" not in note
+        assert ("dump has no Python frames" if fault == "empty-then-error" else "dump has no active test frame") in note
+        assert note.count("sudo -n: exit 1 (os error 3)") == 2
 
 
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):

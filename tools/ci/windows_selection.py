@@ -35,8 +35,6 @@ def selected_modules(sources: Mapping[str, str], changed_lines: Mapping[str, Ite
     selected = modules & (set(changed_lines) | registered)
     sensitive = {p for p, lines in changed_lines.items()
                  if p in sources and any(WINDOWS_LINE.search(line) for line in lines)}
-    if not sensitive:
-        return selected
 
     paths = set(sources)
     edges: dict[str, set[str] | None] = {}

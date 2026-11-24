@@ -484,7 +484,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
-          --require linux,win32 --tier "$TIER" --event "$EVENT" --windows-pr "$PR"
+          --require linux,win32 --tier "$TIER" --event "$EVENT" --windows-pr "$PR" --github-output "$GITHUB_OUTPUT"
           --summary "$GITHUB_STEP_SUMMARY"
       # The shard-durations history (register E44; tools/ci/shard_plan.py sizes every run's lanes from it). Only a
       # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
@@ -573,11 +573,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TIER: ${{ steps.tier.outputs.tier }}
           ASSURANCE: ${{ steps.assure.outcome }}
+          WINDOWS_PARTIAL: ${{ steps.assure.outputs.windows_partial }}
         run: |
           base=()
+          if [ "$WINDOWS_PARTIAL" = true ]; then base+=(--windows-partial); fi
           if [ "$EVENT" = pull_request ]; then
             if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
-              base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
+              base+=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
             fi
             git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py" \
               || rm -f "$RUNNER_TEMP/modes-base.py"  # the ratchet fails on a base it cannot read

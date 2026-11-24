@@ -213,7 +213,7 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             elif outcomes.get(nid) not in (None, "skipped"):
                 problems.append(f"{platform}: pinned skip now {outcomes[nid]}: {nid} "
                                 "(remove it from platform-skips.yaml)")
-        facts[platform] = {"collected": len(collected), "ran": sum(runs.values()),
+        facts[platform] = {"collected": len(everything), "required": len(collected), "ran": sum(runs.values()),
                            "outcomes": Counter(outcomes.values()), "jobs": group,
                            "scoped_out": len(everything - collected - set(runs)) if scoped else 0}
     return problems, facts
@@ -228,7 +228,7 @@ def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> s
     for platform, f in sorted(facts.items()):
         if f.get("scoped_out"):
             lines.append(f"Windows PR selection omitted {f['scoped_out']} collected integration/regression tests.")
-        lines += ["", f"### {platform}: {f['collected']} collected, {f['ran']} run, "
+        lines += ["", f"### {platform}: {f['collected']} collected, {f['required']} required, {f['ran']} run, "
                       + ", ".join(f"{n} {o}" for o, n in sorted(f["outcomes"].items())), "",
                   "| lane | shard | tests | test time (s) | session wall (s) | xdist | python |",
                   "|---|---|---|---|---|---|---|"]
@@ -255,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--tier", default="full", choices=tiers.TIERS, help="the change's tier (tools/ci/tier.py)")
     ap.add_argument("--event", default="", help="the GitHub event: a reduced tier is accepted only for pull_request")
+    ap.add_argument("--github-output", type=Path, help="record whether any Windows lane tests were omitted")
     ap.add_argument("--windows-pr", default="", help="independently recompute this PR's Windows selection")
     args = ap.parse_args(argv)
     required = [p for p in args.require.split(",") if p]
@@ -266,6 +267,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
         problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
                            "reduced tier; a push to main and a merge group are always full")
+    if args.github_output:
+        partial = bool(facts.get("win32", {}).get("scoped_out"))
+        with args.github_output.open("a", encoding="utf-8") as fh:
+            fh.write(f"windows_partial={str(partial).lower()}\n")
     text = summary(problems, facts, args.tier)
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
@@ -274,7 +279,8 @@ def main(argv: list[str] | None = None) -> int:
     if os.environ.get("GITHUB_ACTIONS") == "true":
         # Annotations show on the pull request's checks page (GitHub keeps at most 10 errors per step).
         for platform, f in sorted(facts.items()):
-            print(f"::notice title=assurance {platform}::{f['collected']} collected, {f['ran']} run, "
+            print(f"::notice title=assurance {platform}::{f['collected']} collected, "
+                  f"{f['required']} required, {f['ran']} run, "
                   + ", ".join(f"{n} {o}" for o, n in sorted(f["outcomes"].items())))
         for p in problems[:9]:
             print(f"::error title=assurance::{p}")

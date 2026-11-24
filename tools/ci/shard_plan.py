@@ -596,7 +596,7 @@ def main(argv: list[str] | None = None) -> int:
     update_durations.write_json(args.durations_out, durations_table)
     text, warnings = summary([*core_sizings, *sizings], source, [*core_warnings, *warnings],
                              other_jobs(args.workflows))
-    if omitted:
+    if args.windows_pr and args.tier == "full":
         text += f"\nWindows PR omitted {len(omitted)} integration/regression modules.\n\n"
         text += "\n".join(f"- `{path}`" for path in sorted(omitted)) + "\n"
     if args.github_output:

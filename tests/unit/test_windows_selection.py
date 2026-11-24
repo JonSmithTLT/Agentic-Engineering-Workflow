@@ -36,9 +36,10 @@ def test_changed_modules_and_registered_modules_are_selected_without_platform_li
     "from missing import thing", "if:", "__import__(name)",
     "from importlib import import_module as resolve; resolve(name)", "from ...broken import x",
 ])
-def test_a_module_with_an_unknown_dependency_is_selected(source):
+@pytest.mark.parametrize("changed", ["os.replace(source, dest)", "answer = 42"])
+def test_a_module_with_an_unknown_dependency_is_selected(source, changed):
     sources = {TEST: source, OTHER: "import io", SOURCE: ""}
-    assert selection.selected_modules(sources, {SOURCE: ["os.replace(source, dest)"]}, set()) == {TEST}
+    assert selection.selected_modules(sources, {SOURCE: [changed]}, set()) == {TEST}
 
 
 def test_package_initializers_conftest_and_relative_imports_are_in_the_closure():
@@ -143,6 +144,8 @@ def test_assurance_recomputes_missing_nodes_by_platform_lane_and_module():
         return check_assurance.check(list(reports), {}, ["linux", "win32"], windows_omitted=omitted)[0]
 
     assert not check(linux, windows, omitted={OTHER})
+    _, facts = check_assurance.check([linux, windows], {}, ["linux", "win32"], windows_omitted={OTHER})
+    assert "3 collected, 2 required, 2 run" in check_assurance.summary([], facts)
     assert any(f"win32: never ran: {omit}" in p for p in check(linux, windows))
     assert any(f"linux: never ran: {omit}" in p for p in check(lane_report("linux", [keep, accept]), windows,
                                                                omitted={OTHER}))
@@ -171,3 +174,30 @@ def test_sizing_omits_a_windows_lane_only_when_no_test_module_is_selected(tmp_pa
     table = {"platforms": {"win32": {"tests/integration/test_new.py::test_one": 1.0}}}
     shard_plan.resize_windows(sizings, table, {TEST}, {})
     assert 1 <= sizings[0].shards < 8
+
+
+def test_historical_windows_failures_and_the_import_rule_ablation():
+    from lanes import lane_of
+
+    # #431 and #432 both failed in operator_autostart. Isolate #432's two real import statements from
+    # unrelated dependencies so the conservative unresolved-module fallback cannot make the positive pass.
+    autostart = "tests/integration/test_operator_autostart.py"
+    desktop = "src/aew/harness/desktop_notifier.py"
+    sources = {autostart: "from aew.harness import broker_liveness, notify, operator_client, operator_endpoint, procs",
+               "src/aew/harness/notify.py": "from aew.harness import broker_liveness, desktop_notifier, "
+                                            "event_spool, procs, runlog",
+               desktop: "import ctypes"}
+    for sibling in ("broker_liveness", "operator_client", "operator_endpoint", "procs", "event_spool", "runlog"):
+        sources[f"src/aew/harness/{sibling}.py"] = ""
+    assert selection.selected_modules(sources, {desktop: ["    import ctypes"]}, set()) == {autostart}
+    sources["src/aew/harness/notify.py"] = ""
+    assert not selection.selected_modules(sources, {desktop: ["    import ctypes"]}, set())
+
+    # #431 changed a workflow and the CI-tool tests, with no matching Python diff. Its narrow diff rule
+    # misses the failure. The real tree's unresolved shared loader retains the module anyway.
+    assert not selection.selected_modules(sources, {"tests/unit/test_ci_tools.py": ["def test_dispatch():"]}, set())
+    sources["tests/conftest.py"] = 'importlib.import_module(target)'
+    assert selection.selected_modules(sources, {"tests/unit/test_ci_tools.py": []}, set()) == {autostart}
+
+    # #499's worker-store failure is in the unconditional Windows fast lane.
+    assert lane_of("tests/unit/test_worker_stored_keys.py", []) == "fast"

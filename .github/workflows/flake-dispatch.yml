@@ -1,80 +1,52 @@
 name: flake-dispatch
-
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  regression:
+  observe:
     runs-on: windows-latest
-    timeout-minutes: 53
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [ordinary, override, control, failure]
     steps:
-      - name: Set the job deadline and start the evidence record
-        shell: bash
-        run: |
-          echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/flake-dispatch"
-          printf 'commit=%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/flake-dispatch/dispatch.txt"
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-aew
         with:
-          python-version: "3.13"
-      - name: Run the deadline plants, isolated test and regression shard
-        timeout-minutes: 41
-        uses: ./.github/actions/lane
-        id: lane_3
-        with:
-          job-label: regression
-          source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
-          shell: bash
-          command: |
-            evidence="$RUNNER_TEMP/flake-dispatch"
-            if (( $(date +%s) + 28 * 60 > AEW_JOB_DEADLINE )); then
-              echo "Setup left less than 28 minutes before the session deadline" | tee -a "$evidence/dispatch.txt"
-              exit 1
-            fi
-            base=$(python -c 'import sys; print(sys._base_executable)')
-            failed=0
-
-            echo "deadline plants" | tee -a "$evidence/dispatch.txt"
-            "$base" -m pytest tests/integration/test_hang_autopsy.py -q -p no:cacheprovider -p no:xdist \
-              --test-timeout 180 --session-deadline 240 \
-              "--lane-report=${{ runner.temp }}/flake-dispatch/plants/report.json" --junitxml="$evidence/plants/junit.xml" \
-              -k 'worker_hung_in_native_code or controller_hung_in_native_code or controller_that_cannot_exit or child_left_holding_the_steps_output or child_started_as_the_session_finishes or sentinel_ends_the_session or backstop_moves_with_a_session or marker_an_earlier_session or nothing_hung_so_no_stacks or deadline_thread_that_is_running or after_finish_timer_is_off' \
-              || failed=1
-
-            for attempt in $(seq 1 2); do
-              echo "isolated session $attempt" | tee -a "$evidence/dispatch.txt"
-              "$base" -m pytest tests/regression/test_m4b_review.py::test_the_hostile_repository_runs_its_programs_under_plain_git \
-                -q -p no:cacheprovider --lane regression --test-timeout 150 --session-deadline 180 \
-                "--lane-report=${{ runner.temp }}/flake-dispatch/isolated-$attempt/report.json" \
-                --junitxml="$evidence/isolated-$attempt/junit.xml" || { failed=1; break; }
-            done
-
-            echo "regression shard 2/3" | tee -a "$evidence/dispatch.txt"
-            "$base" -m pytest tests/regression -q -p no:cacheprovider --lane regression --shard 2/3 \
-              -n auto --dist worksteal --test-timeout 600 --session-deadline 780 --max-worker-restart 0 \
-              "--lane-report=${{ runner.temp }}/flake-dispatch/shard/report.json" --junitxml="$evidence/shard/junit.xml" \
-              || failed=1
-            exit "$failed"
-      - name: Recover evidence if the lane action was interrupted
-        if: always() && contains(fromJSON('["failure","cancelled"]'), steps.lane_3.outcome) && steps.lane_3.outputs.finished != 'success'
-        timeout-minutes: 11
-        uses: ./.github/actions/recover-lane
-        with:
-          job-label: regression
-          source: ${{ runner.temp }}/flake-dispatch/
-          artifact: evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
-          outcome: ${{ steps.lane_3.outcome }}
+          python-version: '3.13'
+      - name: Observe Windows fixture boundaries
+        shell: bash
+        env:
+          PROBE_CASE: ${{ matrix.case }}
+          PYTHONPATH: tests/helpers
+        run: |
+          export FIXTURE_PROBE_OUT="$RUNNER_TEMP/fixture-proof"
+          args=(-q -p store_fixture_probe --discovery-out="$RUNNER_TEMP/discovery.json" --lane-report="$RUNNER_TEMP/lanes.json")
+          case "$PROBE_CASE" in
+            control) python -m pytest "${args[@]}" tests/unit/test_store_fixture_probe_controls.py ;;
+            failure)
+              printf '\ndef test_fixture_failure_path(tmp_path):\n    assert False, "fixture qualification plant"\n' >> tests/integration/test_history_store.py
+              code=0
+              python -m pytest "${args[@]}" tests/integration/test_history_store.py::test_fixture_failure_path || code=$?
+              test "$code" -eq 1 ;;
+            *)
+              if [ "$PROBE_CASE" = override ]; then
+                export AEW_HARNESS_ADAPTERS='opencode=missing_fixture_probe_adapter:Adapter'
+              fi
+              python -m pytest "${args[@]}" -n 2 --dist worksteal tests/integration/test_history_store.py tests/regression/test_log_sealing_model.py ;;
+          esac
+      - name: Check qualification observations
+        shell: bash
+        env:
+          PROBE_CASE: ${{ matrix.case }}
+        run: python tests/helpers/check_store_fixture_probe.py
       - uses: actions/upload-artifact@v7
-        timeout-minutes: 1
         if: always()
         with:
-          name: flake-dispatch-evidence
-          path: ${{ runner.temp }}/evidence-flake-dispatch-evidence-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}${{ steps.lane_3.outputs.finished == 'success' && '-reports' || '-recovered-reports' }}
-          retention-days: 14
+          name: windows-fixture-${{ matrix.case }}
+          path: ${{ runner.temp }}/fixture-proof/
+          if-no-files-found: error

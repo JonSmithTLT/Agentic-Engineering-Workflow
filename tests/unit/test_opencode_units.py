@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from aew.errors import HarnessIncompatible, UsageError
+from aew.harness import agentenv
 from aew.harness.contract import LaunchContract
 from aew.harness.opencode import adapter, capabilities, lead, projection
 
@@ -338,7 +339,7 @@ def test_the_server_gets_basics_named_provider_variables_and_private_state(tmp_p
     assert adapter.server_env({**base_env(), "SHELL": "/bin/bash"}, tmp_path, provider_env=[], config={},
                               password="p")["SHELL"] == "/bin/bash"  # OpenCode picks the agent's shell from it
     assert not {"OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_HARNESS_ADAPTERS", "AEW_LEAD_TOKEN"} & set(env)
-    assert env["OPENCODE_PASSWORD"] == "pw2" and env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
+    assert env["OPENCODE_PASSWORD"] == "pw2" and [env[n] for n in capabilities.PROJECT_CONFIG_SWITCHES] == ["1", "1"]
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == {"a": 1}
     for kind in ("CONFIG", "DATA", "STATE", "CACHE"):
         assert Path(env[f"XDG_{kind}_HOME"]).parent == tmp_path
@@ -417,6 +418,49 @@ def test_without_a_proxy_the_harness_environment_gains_no_no_proxy(tmp_path):
 def test_the_lead_refuses_to_pass_aew_variables_missing_ones_or_credentials(name):
     with pytest.raises(UsageError):
         lead.tui_env({**base_env(), "SNEAKY": CREDENTIAL}, provider_env=[name])
+
+
+# Both of the names OpenCode 2.2.6 reads for its project-config switch (register E35): the first, when set at all, is
+# the one it reads, so either left to the operator's environment would decide what loads.
+OVERRIDES = {name: "0" for name in (*capabilities.PROJECT_CONFIG_SWITCHES, "OPENCODE_DISABLE_AUTOUPDATE")}
+
+
+def test_both_project_config_switches_are_1_in_every_opencode_environment_whatever_provider_env_holds(
+        tmp_path, monkeypatch):
+    """The switches are set last: even were the refusal of a harness variable in provider_env gone, a provider
+    variable passed through could not change them. Nor can the operator's environment, which never reaches OpenCode
+    by name."""
+    base = {**base_env(), **OVERRIDES}
+    built = [adapter.server_env(base, tmp_path, provider_env=["ANTHROPIC_API_KEY"], config={}, password="p"),
+             lead.tui_env(base, provider_env=["ANTHROPIC_API_KEY"])]
+    monkeypatch.setattr(agentenv, "provider_env_problem", lambda name, env: None)  # the refusal, bypassed
+    built += [adapter.server_env(base, tmp_path, provider_env=[*OVERRIDES], config={}, password="p"),
+              lead.tui_env(base, provider_env=[*OVERRIDES])]
+    for env in built:
+        assert {n: env[n] for n in OVERRIDES} == capabilities.FIXED_SWITCHES == {n: "1" for n in OVERRIDES}
+
+
+@pytest.mark.parametrize("name", [*capabilities.PROJECT_CONFIG_SWITCHES, "OPENCODE_CONFIG", "opencode_config_dir"])
+def test_an_opencode_variable_in_provider_env_is_refused_naming_it_and_what_to_do(tmp_path, name):
+    base = {**base_env(), name: "0"}
+    assert agentenv.provider_env_problem(name, base) == agentenv.HARNESS_VARIABLE
+    [(named, why)] = agentenv.provider_env_problems([name], base)
+    assert named == name and "remove it from provider_env" in why
+    with pytest.raises(HarnessIncompatible) as refused:
+        adapter.server_env(base, tmp_path, provider_env=[name], config={}, password="p")
+    assert refused.value.details["reason"] == adapter.PROVIDER_ENV_UNUSABLE
+    assert refused.value.details["variables"] == [name]
+    with pytest.raises(UsageError) as usage:
+        lead.tui_env(base, provider_env=[name])
+    assert usage.value.details["variable"] == name
+
+
+def test_a_built_in_providers_opencode_key_is_still_a_provider_variable(tmp_path):
+    # OpenCode's own provider reads its key by an OPENCODE_ name (netns.PROVIDER_KEY_ENV): that one is passed
+    base = {**base_env(), "OPENCODE_API_KEY": "synthetic-not-a-key"}
+    assert agentenv.provider_env_problem("OPENCODE_API_KEY", base) is None
+    env = adapter.server_env(base, tmp_path, provider_env=["OPENCODE_API_KEY"], config={}, password="p")
+    assert env["OPENCODE_API_KEY"] == "synthetic-not-a-key"
 
 
 def test_the_lead_tui_never_attaches_to_another_server(tmp_path):

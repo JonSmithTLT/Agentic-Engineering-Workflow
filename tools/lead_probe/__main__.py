@@ -17,7 +17,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 from harness_qualify.core import aew_revision, private_env, sha256_file  # noqa: E402
 
 import aew  # noqa: E402
-from aew.harness.opencode.capabilities import LEAD_PROBE_LINUX_X64_SHA256, TESTED_VERSIONS  # noqa: E402
+from aew.harness.opencode.capabilities import (  # noqa: E402
+    FIXED_SWITCHES,
+    LEAD_PROBE_LINUX_X64_SHA256,
+    TESTED_VERSIONS,
+)
 from aew.harness.opencode.projection import lead_provider_policies  # noqa: E402
 from lead_probe import network  # noqa: E402
 
@@ -114,7 +118,7 @@ def measure(binary: Path, out: Path, legs: list[str], proof: dict) -> None:
     commit = clean_commit()
     out.mkdir(mode=0o700)
     env = private_env(out / "catalog-private", harness="opencode")
-    env.update(OPENCODE_DISABLE_PROJECT_CONFIG="1", OPENCODE_DISABLE_AUTOUPDATE="1")
+    env.update(FIXED_SWITCHES)
     work = out / "catalog"
     work.mkdir(mode=0o700)
     if legs:

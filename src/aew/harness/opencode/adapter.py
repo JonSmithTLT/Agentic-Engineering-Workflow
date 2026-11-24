@@ -213,9 +213,10 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     """The server's environment: operating-system basics, the provider variables the execution policy names,
     and private OpenCode state. Nothing else from the Lead's environment reaches OpenCode.
 
-    A provider variable that cannot be passed (unset, an AEW variable, or one holding an AEW credential) refuses the
-    start, naming it: it is never dropped silently, which started a run with no key and blamed the provider
-    (``agentenv.provider_env_problems``; the launch refuses the same before anything is committed)."""
+    A provider variable that cannot be passed (unset, an AEW variable, OpenCode's own configuration (an ``OPENCODE_*``
+    name other than a built-in provider's key), or one holding an AEW credential) refuses the start, naming it: it is
+    never dropped silently, which started a run with no key and blamed the provider (``agentenv.provider_env_problems``;
+    the launch refuses the same before anything is committed)."""
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     # SHELL: OpenCode picks the agent's shell from it (else PowerShell on Windows), as for the operator's own use.
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper() in ("PATH", "SHELL")
@@ -236,9 +237,8 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     tmp = state_dir / "tmp"
     tmp.mkdir(exist_ok=True)
     env.update({"TEMP": str(tmp), "TMP": str(tmp), "TMPDIR": str(tmp),
-                "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
-                "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1",
-                "OPENCODE_PASSWORD": password})
+                "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True), "OPENCODE_PASSWORD": password})
+    env.update(capabilities.FIXED_SWITCHES)  # last, after the provider variables (register E35)
     return env
 
 

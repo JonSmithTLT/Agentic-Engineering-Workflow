@@ -101,8 +101,22 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
         targets.append(upstream.base_url)
         return upstream
 
+    # the qualification's direct OpenCode call gets AEW's fixed switches, both project-config names among them
+    # (register E35); the server it starts gets them from `serve`, which the test after this one proves
+    started_envs: list[dict[str, str]] = []
+    real_run = worker_plan.subprocess.run
+
+    def recording_run(argv, *args, **kwargs):
+        if str(binary) in [str(a) for a in argv]:
+            started_envs.append(dict(kwargs["env"]))
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(worker_plan.subprocess, "run", recording_run)
     assert any(c.id == worker_plan.FACT for c in OC.OpenCodePack(FIXTURES).checks())
     outcome = worker_plan.check(ctx, fake_upstream=fake_upstream)
+    assert started_envs and all({k: e.get(k) for k in OC.C.FIXED_SWITCHES} == OC.C.FIXED_SWITCHES
+                                for e in started_envs), [{k: e.get(k) for k in OC.C.FIXED_SWITCHES}
+                                                         for e in started_envs]
     assert len(targets) == 1
     fact = outcome.facts[worker_plan.FACT]
     assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}
@@ -137,6 +151,27 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
     with pytest.raises(ValidationFailed):
         check_policy_bytes("execution", (execution.TEMPLATE + "\nfake_upstream: " + targets[0]).encode(),
                            source="policy")
+
+
+def test_every_server_the_qualification_starts_gets_the_fixed_switches_whatever_it_was_given(tmp_path, monkeypatch):
+    # the server half of the worker plan's guard above (#543 quick check, point 6): `serve` applies AEW's fixed
+    # switches last, so neither the caller's environment nor its extra variables can turn one off (register E35)
+    started: list[dict[str, str]] = []
+
+    class _Stub:
+        def close(self) -> None:
+            pass
+
+    def recording_start(spawn, command, *, env, **kwargs):
+        started.append(dict(env))
+        return _Stub()
+
+    monkeypatch.setattr(OC.Server, "start", recording_start)
+    off = dict.fromkeys(OC.C.FIXED_SWITCHES, "0")
+    with OC.serve(Path(sys.executable), tmp_path / "work", dict(off), extra_env=off):
+        pass
+    assert len(started) == 1
+    assert {k: started[0].get(k) for k in OC.C.FIXED_SWITCHES} == OC.C.FIXED_SWITCHES
 
 
 @pytest.mark.parametrize(("model_fields", "expected"), [

@@ -83,8 +83,7 @@ def serve(binary: Path, work: Path, env: dict[str, str], config: dict[str, Any] 
     work.mkdir(parents=True, exist_ok=True)
     full = {**env, **(extra_env or {}), "OPENCODE_CONFIG_CONTENT": json.dumps(config or server_config(),
                                                                                 sort_keys=True),
-            "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1",
-            "OPENCODE_PASSWORD": secrets.token_hex(16)}
+            "OPENCODE_PASSWORD": secrets.token_hex(16), **C.FIXED_SWITCHES}
     tree = procs.ProcessTree()
     (work / "project").mkdir(exist_ok=True)
     try:

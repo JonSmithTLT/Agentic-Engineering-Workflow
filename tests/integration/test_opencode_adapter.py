@@ -37,7 +37,7 @@ from aew.harness import operator_endpoint, runlog, steering_loop, weaker_registe
 from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode_adapter
 from aew.harness.opencode import projection
-from aew.harness.opencode.capabilities import TESTED_VERSIONS
+from aew.harness.opencode.capabilities import PROJECT_CONFIG_SWITCHES, TESTED_VERSIONS
 from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
@@ -248,7 +248,7 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert not [n for n in started["env_names"] if n.upper().startswith("AEW_") and n != weaker_register.MARKER]
     marker = Path(started["flags"][weaker_register.MARKER])
     assert marker.name == runlog.RECORD and marker.parent.name == run
-    assert started["flags"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
+    assert [started["flags"][n] for n in PROJECT_CONFIG_SWITCHES] == ["1", "1"]  # both names (E35)
     for name in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TEMP"):
         assert Path(started["flags"][name]).resolve().is_relative_to(hdir.resolve())
     workspace = os.path.realpath(lab.ok("invoke", "show", inv)["workspace"])
@@ -1127,6 +1127,7 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
         p.name for p in (harness_dir(lab) / "skills").iterdir())
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
     assert shown["server_env"]["provider_variables"] == ["OPENAI_API_KEY"]
+    assert set(PROJECT_CONFIG_SWITCHES) <= set(shown["server_env"]["private"])  # what the server gets (E35)
     lead = lab.ok("harness", "config", "opencode", "--lead")
     from aew.engine.api import Engine
     from aew.harness.opencode import lead as opencode_lead

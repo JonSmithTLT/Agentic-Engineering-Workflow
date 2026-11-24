@@ -19,6 +19,12 @@ PLAN_LOGIN_QUALIFIED_VERSIONS: tuple[str, ...] = ()
 LEAD_PROBE_LINUX_X64_SHA256 = {
     "2.2.6": "50503d24577fa4117a7c95ee85b2cd679606a87eacf20ca54ed5db5c9e1cf895",
 }
+# The switches every OpenCode AEW starts gets, set last in its environment so nothing merged before them changes them:
+# project configuration off, by both of the names OpenCode reads for it (2.2.6 reads
+# ``OPENCODE_CONFIG_PROJECT_DISABLE`` first, then ``OPENCODE_DISABLE_PROJECT_CONFIG``; register E35), and no
+# self-update. The one owner of these names: the adapter, the Lead and the projection's report derive them from here.
+PROJECT_CONFIG_SWITCHES = ("OPENCODE_CONFIG_PROJECT_DISABLE", "OPENCODE_DISABLE_PROJECT_CONFIG")
+FIXED_SWITCHES = {**dict.fromkeys(PROJECT_CONFIG_SWITCHES, "1"), "OPENCODE_DISABLE_AUTOUPDATE": "1"}
 
 
 def cli_version(stdout: str) -> str:

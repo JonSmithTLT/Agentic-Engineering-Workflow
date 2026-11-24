@@ -87,16 +87,21 @@ def env_fix(name: str, *, secret: bool = True) -> str:
 
 def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:
     """``(name, why)`` for each provider variable (``provider_env``, ``--provider-env``) that a harness could not be
-    given from ``env``: an AEW variable, one that is unset or empty, or one that holds an AEW credential. The caller
-    passes required names only. A built-in worker does not require another built-in provider's key
-    (M4 user acceptance test). The launch refuses up front instead (``require_launchable``), the harness server's
-    environment refuses again (``server_env``), and ``aew doctor`` reports the same text. No value is ever echoed."""
+    given from ``env``: an AEW variable, a harness's own variable (``OPENCODE_*``, a provider key apart), one that is
+    unset or empty, or one that holds an AEW credential. The caller passes required names only. A built-in worker
+    does not require another built-in provider's key (M4 user acceptance test). The launch refuses up front instead
+    (``require_launchable``), the harness server's environment refuses again (``server_env``), and ``aew doctor``
+    reports the same text. No value is ever echoed."""
     out: list[tuple[str, str]] = []
     for name in names:
         code = provider_env_problem(name, env)
         if code == AEW_VARIABLE:
             out.append((name, f"{name} is an AEW variable, and AEW variables never reach a harness: remove it from "
                               "provider_env"))
+        elif code == HARNESS_VARIABLE:
+            out.append((name, f"{name} is OpenCode's own configuration, which AEW controls for every OpenCode it "
+                              "starts, so it is never a provider variable: remove it from provider_env (a provider's "
+                              "key is passed by its own variable, such as OPENCODE_API_KEY)"))
         elif code == UNSET:
             out.append((name, f"{name} is not set in this environment: {env_fix(name)}"))
         elif code == HOLDS_AEW_CREDENTIAL:
@@ -109,17 +114,26 @@ def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tupl
 # configuration projection reports the code, never the prose with its terminal-specific fix). `provider_env_problems`
 # words the same codes.
 AEW_VARIABLE, UNSET, HOLDS_AEW_CREDENTIAL = "aew_variable", "unset", "holds_aew_credential"
-PROVIDER_ENV_PROBLEMS = (UNSET, AEW_VARIABLE, HOLDS_AEW_CREDENTIAL)
+HARNESS_VARIABLE = "harness_variable"
+PROVIDER_ENV_PROBLEMS = (UNSET, AEW_VARIABLE, HARNESS_VARIABLE, HOLDS_AEW_CREDENTIAL)
+# A harness's own variables configure the harness, which AEW configures itself (its projection, its state, both of
+# OpenCode's project-config switches): none is ever a provider variable, apart from a built-in provider's key
+# (``netns.PROVIDER_KEY_ENV``, its owner), which OpenCode reads by an ``OPENCODE_`` name for its own provider.
+HARNESS_PREFIXES = ("OPENCODE_",)
 
 
 def provider_env_problem(name: str, env: Mapping[str, str]) -> str | None:
     """The code of what keeps the provider variable ``name`` from a harness launched from ``env``, or None when it can
     be given. Never reads more than the variable's presence and whether it holds an AEW credential."""
+    from aew.harness.containment.netns import PROVIDER_KEY_ENV
     from aew.harness.contract import CREDENTIAL_RE
 
     value = lookup(env, name)
-    if name.upper().startswith("AEW_"):
+    folded = name.upper()
+    if folded.startswith("AEW_"):
         return AEW_VARIABLE
+    if folded.startswith(HARNESS_PREFIXES) and folded not in {key.upper() for key in PROVIDER_KEY_ENV.values()}:
+        return HARNESS_VARIABLE
     if not value:
         return UNSET
     if CREDENTIAL_RE.search(value):

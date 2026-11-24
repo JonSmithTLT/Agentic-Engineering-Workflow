@@ -757,7 +757,7 @@ components:
                   problem:
                     anyOf:
                     - type: string
-                      x-known-values: [unset, aew_variable, holds_aew_credential]
+                      x-known-values: [unset, aew_variable, harness_variable, holds_aew_credential]
                     - type: 'null'
                     description: Open semantic value; never a value.
                 required: [index, name, present, problem]

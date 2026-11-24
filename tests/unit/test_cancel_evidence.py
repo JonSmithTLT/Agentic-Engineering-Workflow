@@ -374,9 +374,44 @@ def test_missing_candidate_group_requires_an_independent_commit_to_pr_mapping(mo
     assert CANCEL.classify(OLD, {}, NOTES, [CANCEL.with_pull_group("test/repo", raw)])["kind"] == "unresolved"
 
 
-def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_unrelated_loss(tmp_path, monkeypatch):
+@pytest.mark.parametrize("change, expected", [
+    ({}, "runner-lost"),
+    ({"path": "tests/example.py"}, "unclassified"),
+    ({"annotation_level": "warning"}, "unclassified"),
+    ({"message": "The action has timed out."}, "unclassified"),
+    ({"message": "The operation was canceled."}, "unclassified"),
+])
+def test_scorecard_excludes_only_a_proven_mid_job_runner_loss(monkeypatch, change, expected):
+    # Original attempt 1 of CI 45405842359. GitHub finalized the job without finishing the pytest step.
+    step = {"name": "pytest --lane regression --shard 2/3 -n auto", "started_at": "2026-11-24T13:41:30Z",
+            "status": "in_progress", "conclusion": None, "completed_at": None}
+    job = {"id": 138486559048, "name": "regression 2/3 (windows-latest)", "conclusion": "failure",
+           "status": "completed", "steps": [step]}
+    annotation = {"path": ".github", "annotation_level": "failure",
+                  "message": "The hosted runner lost communication with the server. Anything in your workflow that "
+                             "terminates the runner process, starves it for CPU/Memory, or blocks its network access "
+                             "can cause this error.", **change}
+    monkeypatch.setattr(SCORE, "run_jobs", lambda *args: [job])
+    monkeypatch.setattr(SCORE, "_pages", lambda *args: [])
+    monkeypatch.setattr(SCORE, "check_annotations", lambda repo, ident: {job["id"]: [annotation]}[ident])
+    [row] = SCORE.inspect_run("test/repo", OLD)
+    assert row["kind"] == expected
+    assert row["A1"] == row["A2"] == ("n/a" if expected == "runner-lost" else "no")
+    assert row["missing"] == ["job-evidence"]
+    step.update(status="completed", conclusion="failure", completed_at="2026-11-24T14:28:56Z")
+    [row] = SCORE.inspect_run("test/repo", OLD)
+    assert (row["kind"], row["A1"], row["A2"]) == ("unclassified", "no", "no")
+
+
+@pytest.mark.parametrize("lost", [False, True])
+def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_unrelated_loss(monkeypatch, lost):
     name = "integration 2/8 (ubuntu-latest)"
     job = {"id": 7, "name": name, "conclusion": "failure", "steps": []}
+    if lost:
+        job.update(status="completed", steps=[{"name": "pytest --lane integration", "status": "in_progress",
+                                              "started_at": "2026-11-24T13:41:30Z", "conclusion": None}])
+        monkeypatch.setattr(SCORE, "check_annotations", lambda *args: [
+            {"path": ".github", "annotation_level": "failure", "message": SCORE.HOSTED_RUNNER_LOST}])
     docs = {"runner-resources-job.txt": json.dumps({"job_label": name}),
             "inventory.txt": "typed source names\n",
             "report.json": json.dumps({"schema": "aew/lane-report/v1", "exitstatus": 1, "results": {
@@ -394,6 +429,7 @@ def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_u
     monkeypatch.setattr(SCORE, "_pages", lambda *args: artifacts)
     monkeypatch.setattr(SCORE, "_gh_read", lambda url: raw)
     [row] = SCORE.inspect_run("test/repo", OLD, {7})
+    assert row["kind"] == ("runner-lost" if lost else "test_failure")
     assert row["A1"] == "yes" and row["failed_nodes"] == ["test_example.py::test_x"]
     assert row["artifacts"] == [200] and row["unreadable_artifacts"] == []
     assert row["unassigned_artifacts"] == [100]

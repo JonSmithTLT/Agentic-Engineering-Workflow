@@ -22,7 +22,7 @@ from check_evidence_run import bundle_prefix, check_jobs, hosted_step_timeout, j
 from stage_evidence import JOB_CAP
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from flake_register import _api, _gh_read, _pages  # noqa: E402
+from flake_register import _api, _gh_read, _pages, check_annotations  # noqa: E402
 
 # A scorecard consumer bounds untrusted ZIP input separately from the publisher, whose deliberate overflow is uncapped.
 # Exceeding the consumer limit is an explicit gap. Never execute or import a file from an Actions artifact.
@@ -30,6 +30,9 @@ READ_LIMIT = 4 * JOB_CAP
 MAX_FILES = 10_000
 RED = {"cancelled", "failure", "timed_out", "action_required", "startup_failure"}
 BUNDLE_NAME = re.compile(r"(?:lane-report-)?(?:evidence|plant)-[a-zA-Z0-9_.-]+\Z")
+HOSTED_RUNNER_LOST = ("The hosted runner lost communication with the server. Anything in your workflow that "
+                      "terminates the runner process, starves it for CPU/Memory, or blocks its network access "
+                      "can cause this error.")
 
 
 def read_bundle(data, directory, allowance):
@@ -116,6 +119,17 @@ def download_artifacts(repo, run, selected, directory):
     return links, gaps
 
 
+def runner_lost(repo, job):
+    # GitHub finalized the job while its last active step was still running (job 138486559048).
+    if job.get("status") != "completed" or job["conclusion"] != "failure" or not any(
+        step.get("status") == "in_progress" and step.get("started_at") and not step.get("completed_at")
+        and step.get("conclusion") is None for step in job.get("steps", [])
+    ):
+        return False
+    return any(row.get("path") == ".github" and row.get("annotation_level") == "failure"
+               and row.get("message") == HOSTED_RUNNER_LOST for row in check_annotations(repo, job["id"]))
+
+
 def inspect_run(repo, run, selected=None, *, directory=None):
     jobs = run_jobs(repo, run["id"], int(run["run_attempt"]))
     selected = [j for j in jobs if j["conclusion"] in RED and (selected is None or j["id"] in selected)]
@@ -135,6 +149,13 @@ def inspect_run(repo, run, selected=None, *, directory=None):
                 result = [{"job": job["id"], "name": job["name"], "kind": "unclassified", "A1": "no", "A2": "no",
                            "cancel_reason": job.get("cancel_reason"), "failed_nodes": [],
                            "missing": ["evidence defect: [artifact-unreadable] malformed job evidence"]}]
+            for row in result:
+                if row["kind"] in {"before-test", "unclassified", "test_failure"} and runner_lost(repo, job):
+                    # The host loss is outside A5. Preserve any observed test failure and all A3 defects.
+                    row["kind"] = "runner-lost"
+                    row["A2"] = "n/a"
+                    if not row["failed_nodes"]:
+                        row["A1"] = "n/a"
             rows.extend(result)
         for row in rows:
             row["run"] = run["id"]

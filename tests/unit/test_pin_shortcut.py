@@ -365,6 +365,7 @@ def test_nothing_else_reads_the_pins():
         "tests/unit/test_discovery_rules.py",  # its own synthetic file
         "tests/unit/test_pin_shortcut.py",  # this file
         "tests/unit/test_skip_pins.py",  # the same check `static` runs
+        "tests/unit/test_windows_selection.py",  # edits its own synthetic pin file in a temporary repository
     }
 
 

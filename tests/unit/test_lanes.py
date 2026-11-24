@@ -366,3 +366,22 @@ def test_then_exit(): os._exit(73)
     assert doc["complete"] is False and doc["exitstatus"] is None
     [failure] = doc["results"]["tests/unit/test_broken.py::test_first"]["failures"]
     assert "retained before death" in failure["crash"]
+
+
+def test_the_lane_helper_loads_where_aew_is_not_installed():
+    """The nightly's planning jobs (``shard_plan.py --reference``, the flake queue) import this module with PyYAML and
+    pytest alone; an import of ``aew`` at load time stopped every nightly from 2026-11-23 on."""
+    helpers = Path(lanes.__file__).resolve().parent
+    blocker = ("import sys\n"
+               "class _NoAew:\n"
+               "    def find_spec(self, name, path=None, target=None):\n"
+               "        if name == 'aew' or name.startswith('aew.'):\n"
+               "            raise ModuleNotFoundError(\"No module named 'aew'\", name=name)\n"
+               "sys.meta_path.insert(0, _NoAew())\n"
+               f"sys.path.insert(0, {str(helpers)!r})\n"
+               "import lanes\n"
+               "print(len(lanes.LANES))\n")
+    done = subprocess.run([sys.executable, "-c", blocker], capture_output=True, text=True, timeout=60,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == str(len(lanes.LANES))

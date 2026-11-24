@@ -18,6 +18,7 @@ schema: aew/systems/v1
 wip_limit: 12
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
+  E363: the test suite's own hygiene (shared setup and the module heap guard), CI tooling rather than a product system
 systems:
 - id: SYS-01
   name: Evaluation instrument (F19, M4-H)

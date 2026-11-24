@@ -1540,12 +1540,12 @@ def test_a_negator_still_governs_its_own_verb(text):
 # negator kind (recall first, the Lead's call). Generated from Unicode's own classes, not from a list of marks: every
 # character in a punctuation (P*) or symbol (S*) category, and every character Python splits lines at. Only a word
 # character ("_", which joins a name such as AEW_LEAD_TOKEN) and the backtick (a code span is the verb's own object)
-# are not punctuation.
-_EVERY_CHARACTER = [chr(c) for c in range(sys.maxunicode + 1)]
-PUNCTUATION_CHARS = [c for c in _EVERY_CHARACTER if unicodedata.category(c)[0] in "PS"]
+# are not punctuation. Every character is walked, never kept: a list of all of them held 1.1 M memory blocks for the
+# rest of the session in every process that collects this module (register E363's sweep).
+PUNCTUATION_CHARS = [chr(c) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c))[0] in "PS"]
 NOT_PUNCTUATION = {c for c in PUNCTUATION_CHARS if re.fullmatch(r"\w", c)} | {"`"}
 MARKS = [c for c in PUNCTUATION_CHARS if c not in NOT_PUNCTUATION]
-LINE_BREAKS = [c for c in _EVERY_CHARACTER if len(f"a{c}b".splitlines()) == 2]
+LINE_BREAKS = [chr(c) for c in range(sys.maxunicode + 1) if len(f"a{chr(c)}b".splitlines()) == 2]
 NEGATOR_LEADS = {"prohibition": "AEW can't", "plain negator": "The shell has no session",
                  "refusing verb": "Ignore the warning"}
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]

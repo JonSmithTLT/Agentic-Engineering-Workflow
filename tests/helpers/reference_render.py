@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from functools import cache
 from pathlib import Path
 from types import ModuleType
+
+import shared_setup
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -34,7 +35,7 @@ def tool() -> ModuleType:
     return sys.modules["reference_tool"]
 
 
-@cache
+@shared_setup.once
 def _rendered() -> dict[str, bytes]:
     return tool().render_files(ROOT)
 

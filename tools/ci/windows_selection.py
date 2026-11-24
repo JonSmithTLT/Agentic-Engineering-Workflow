@@ -137,7 +137,8 @@ def from_merge(merge: str, *, omit: bool = False) -> set[str]:
     for path in paths:
         if not path.endswith(".py"):
             continue
-        patch = git("diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0", base, head, "--", path).decode()
+        patch = git("diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0",
+                    base, head, "--", path).decode()
         changes[path] = [line[1:] for hunk in patch.split("\n@@ ")[1:] for line in hunk.splitlines()[1:]
                          if line.startswith(("+", "-"))]
 

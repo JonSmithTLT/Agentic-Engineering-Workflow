@@ -65,4 +65,12 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E360
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** adoption
+
+**What:** An amendment to E123's custody ruling of 2026-11-02 and to I-6 that writes the operator's decisions of 2026-11-24 into the contract (managed key custody opt in per provider, today's path custody the default; credential operations operator-only, activation a G3 action), with the persistence a host without a TPM may claim
+
+**Blocks:** -
+
 ## Blocked until then

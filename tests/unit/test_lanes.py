@@ -369,9 +369,11 @@ def test_then_exit(): os._exit(73)
 
 
 def test_the_lane_helper_loads_where_aew_is_not_installed():
-    """The nightly's planning jobs (``shard_plan.py --reference``, the flake queue) import this module with PyYAML and
-    pytest alone; an import of ``aew`` at load time stopped every nightly from 2026-11-23 on."""
+    """The nightly's planning jobs (``shard_plan.py --reference``, the flake queue) import this module, the shard plan
+    and the flake register with PyYAML and pytest alone; an import of ``aew`` at load time stopped every nightly from
+    2026-11-23 on. Each entry point those jobs load is held to it here, since PR CI installs AEW (#550's review)."""
     helpers = Path(lanes.__file__).resolve().parent
+    root = helpers.parent.parent
     blocker = ("import sys\n"
                "class _NoAew:\n"
                "    def find_spec(self, name, path=None, target=None):\n"
@@ -379,7 +381,11 @@ def test_the_lane_helper_loads_where_aew_is_not_installed():
                "            raise ModuleNotFoundError(\"No module named 'aew'\", name=name)\n"
                "sys.meta_path.insert(0, _NoAew())\n"
                f"sys.path.insert(0, {str(helpers)!r})\n"
-               "import lanes\n"
+               f"sys.path.insert(0, {str(root / 'tools' / 'ci')!r})\n"
+               f"sys.path.insert(0, {str(root / 'tools')!r})\n"
+               "import lanes, shard_plan, flake_register\n"
+               "shard_plan._lanes_module()\n"
+               "flake_register.lane_policy()\n"
                "print(len(lanes.LANES))\n")
     done = subprocess.run([sys.executable, "-c", blocker], capture_output=True, text=True, timeout=60,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

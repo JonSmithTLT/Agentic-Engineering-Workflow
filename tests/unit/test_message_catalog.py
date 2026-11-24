@@ -94,9 +94,6 @@ OFF_READERS = {
         "Intent contract metadata; message_send is never journaled.", {"_always": 1, "_contract_now": 1}),
     "src/aew/surface/validate.py": (
         "Explain's stage argument accepts only planner-backed stages, not message_send.", {"_check_explain": 2}),
-    "tests/helpers/discovery/rules.py": (
-        "Off text naming and argument audit; on send has no credential-shaped arguments (CATALOGS proves it).",
-        {"o_cmd": 1, "check": 1, "tool_argument_secrets": 1}),
     "tests/helpers/relayed_opens.py": (
         "Existing read-only argument probes; send is mutating, not a relay-read case.", {"main": 1}),
     "tests/integration/test_stage_resolve.py": (
@@ -117,8 +114,9 @@ OFF_READERS = {
         "Send's primitive is not a capability command; catalog expansion is pinned separately.",
         {"test_no_typed_tool_and_no_worker_bridge_operation_runs_a_register_command": 1}),
     "tests/unit/test_discovery_rules.py": (
-        "Off-text fixtures and planted argument mutations.",
+        "Off-text fixtures and planted argument mutations; the off list is what a switched tool is told apart from.",
         {"test_o_cmd_checks_typed_tool_names_against_the_contract": 1,
+         "test_a_typed_tool_behind_a_switch_is_a_known_tool_name_never_an_o_cmd_finding": 1,
          "test_o_secret_reads_the_typed_tools_arguments": 2}),
     "tests/unit/test_lead_reachability.py": (
         "Send has no operator-only primitive, pinned by the on catalog contract.",

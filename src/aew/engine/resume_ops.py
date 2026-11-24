@@ -20,6 +20,7 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
 from aew.engine import scope_ops as SC
+from aew.engine import transitions as T
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -272,7 +273,7 @@ class Resume:
                 pass
             elif unmet:
                 out.append(f"all children are DONE/CANCELLED; satisfy parent gates {unmet} "
-                           f"(`aew invoke create {wid} --role reviewer|verifier {EXPECT_REV}`, ingest)")
+                           f"(`{T.dispatch_command(wid, 'reviewer|verifier')}`, ingest)")
             elif gc["open_required_findings"]:
                 out.append("resolve parent-level findings before closeout")
             elif u["kind"] == "epic" and self.history.audit_backlog(state):
@@ -328,15 +329,16 @@ class Resume:
                     return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
-            return ["dispatch a fresh implementer (`aew invoke create`)"]
+            return [f"dispatch a fresh implementer (`{T.dispatch_command(wid, 'implementer')}`)"]
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
-                lead = self._led(state, wid, "REVIEW_PENDING", "REVIEW_PASSED", "aew review ingest")
-                return [f"ingest review {e}: {lead}" for e in pending]
+                return [f"ingest review {e}: " + self._led(state, wid, "REVIEW_PENDING", "REVIEW_PASSED",
+                                                           T.operation_command("review.ingest", wid, e))
+                        for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
-            return ["dispatch the next planned reviewer card (`aew invoke create`)"]
+            return [f"dispatch the next planned reviewer card (`{T.dispatch_command(wid, 'reviewer')}`)"]
         if st == "REVIEW_FAILED":
             return ["return to RUNNING and dispatch an implementer with the findings"]
         if st == "REVIEW_PASSED":
@@ -344,11 +346,12 @@ class Resume:
         if st == "VERIFY_PENDING":
             pending = self._submitted(state, wid, u, "verification")
             if pending:
-                lead = self._led(state, wid, "VERIFY_PENDING", "VERIFIED", "aew verify ingest")
-                return [f"ingest verification {e}: {lead}" for e in pending]
+                return [f"ingest verification {e}: " + self._led(state, wid, "VERIFY_PENDING", "VERIFIED",
+                                                                 T.operation_command("verify.ingest", wid, e))
+                        for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
-            return ["dispatch the next planned verifier card (`aew invoke create`)"]
+            return [f"dispatch the next planned verifier card (`{T.dispatch_command(wid, 'verifier')}`)"]
         if st == "VERIFICATION_FAILED":
             failure = (u.get("last_verification") or {}).get("evidence")
             classification = _bound_command(f"aew verify classify {wid} --as <CLASS> --reason <reason> "
@@ -368,20 +371,23 @@ class Resume:
             if waiting and status != "publishing":
                 return [waiting]
             checks_mode = V.obligation(state, wid, self.k.policy("gates"))["mode"] == V.CHECKS
+            # Every command here is offered to be run as given, so each is written whole (D2's O-CMD; E140's triage).
+            prepare = f"`aew integrate prepare {wid} {EXPECT_REV}`"
             return [{
-                None: "integrate: `aew integrate prepare`",
-                "discarded": "integrate: `aew integrate prepare`",
-                "stale_candidate": "the candidate is stale: `aew integrate prepare` again, then revalidate",
+                None: f"integrate: {prepare}",
+                "discarded": f"integrate: {prepare}",
+                "stale_candidate": f"the candidate is stale: {prepare} again, then revalidate",
                 "conflict": "integration conflict: return to RUNNING (rebase) or REPLAN_REQUIRED",
                 # M4-E E6a (plan v3 §2.3): the lease's custodian validates; the Lead never does, save for recovery.
                 "prepared": (self._custodian_validates(state, wid) if checks_mode
                              else self._integration_verifier(state, wid)),
                 "validation_unavailable": "post-integration validation could not run (infrastructure): fix the "
-                                          "environment, then `aew integrate requeue`",
-                "validation_inconclusive": "resolve the post-integration verification blocker, then run `aew integrate "
-                                           "prepare` (a new candidate) and verify it",
-                "validated": f"publish: {self._publish(state, wid, 'aew integrate publish')}",
-                "publishing": "an interrupted publish: `aew integrate reconcile`",
+                                          f"environment, then `aew integrate requeue {wid} --reason <reason> "
+                                          f"{EXPECT_REV}`",
+                "validation_inconclusive": "resolve the post-integration verification blocker, then run "
+                                           f"{prepare} (a new candidate) and verify it",
+                "validated": f"publish: {self._publish(state, wid)}",
+                "publishing": f"an interrupted publish: `aew integrate reconcile {wid} {EXPECT_REV}`",
             }.get(status, f"integration status {status}")]
         if st == "INTERRUPTED":
             return [f"inspect workspace/artifacts and reconcile (interrupted in {u.get('interrupted_from')}); "
@@ -398,10 +404,12 @@ class Resume:
         stage = self.gates.stage_for(state, wid, frm, dst)
         return f"`{stage}` (`{command}`)" if stage else f"`{command}`"
 
-    def _publish(self, state: dict[str, Any], wid: str, command: str, report: str | None = None) -> str:
+    def _publish(self, state: dict[str, Any], wid: str, report: str | None = None) -> str:
         """Publication of a COMMIT_READY Ticket's candidate, with what the stage takes: the candidate it prepared and,
         in verifier mode, the integration verifier's report (#331 review F6: a Lead told only the report is refused
-        once, or reads `work_show` first)."""
+        once, or reads `work_show` first). The command is written whole: a bare `aew integrate publish` does not parse
+        (D2's O-CMD; E140's triage)."""
+        command = T.operation_command("integrate.publish", wid)
         stage = self.gates.stage_for(state, wid, "COMMIT_READY", "DONE")
         if stage is None:
             return f"`{command}`"
@@ -419,7 +427,7 @@ class Resume:
         report = (entry.get("validated") or {}).get("report")
         if report:
             return (f"its integration verifier's report {report} is clean: "
-                    f"{self._publish(state, wid, 'aew integrate publish', report)}")
+                    f"{self._publish(state, wid, report)}")
         custodian = (queue.get("lease") or {}).get("custodian")
         running = [i for i, inv in state["invocations"].items()
                    if custodian and inv.get("custodian") == custodian and inv.get("scope") == "integration"
@@ -427,7 +435,7 @@ class Resume:
         if running:
             # True whether its run is still going or has ended and its report waits to be routed (#331 review F7).
             return (f"integration verifier {running[0]} checks the candidate: once its run has ended (`harness_wait`), "
-                    f"{self._publish(state, wid, 'aew integrate publish', '<its report>')}")
+                    f"{self._publish(state, wid, '<its report>')}")
         return (f"dispatch post-integration verification (`aew invoke create {wid} --scope integration --launch "
                 f"{EXPECT_REV}`)")
 
@@ -439,10 +447,11 @@ class Resume:
         custodian = lease.get("custodian")
         worker = (state["invocations"].get(custodian or "") or {}).get("worker")
         said = (f"the lease's custodian {custodian} validates the candidate with the policy's checks; once its entry "
-                f"is VALIDATED, publish it: {self._publish(state, wid, 'aew integrate publish')}")
+                f"is VALIDATED, publish it: {self._publish(state, wid)}")
         if worker:
             return said
-        return said + (" (recovery, while no custody worker has registered for it: `aew integrate validate`)")
+        return said + (" (recovery, while no custody worker has registered for it: "
+                       f"`aew integrate validate {wid} {EXPECT_REV}`)")
 
     @staticmethod
     def _queue_wait(state: dict[str, Any], wid: str) -> str | None:

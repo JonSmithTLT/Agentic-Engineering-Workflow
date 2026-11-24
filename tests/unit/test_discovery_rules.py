@@ -120,6 +120,19 @@ def test_o_cmd_checks_typed_tool_names_against_the_contract():
     assert found(Output(site="unit", payload={"decisions": [{"tool": "integration_publsh"}]}), "O-CMD")
 
 
+def test_a_typed_tool_behind_a_switch_is_a_known_tool_name_never_an_o_cmd_finding():
+    """A switched tool's own outputs name it (``message_send``'s result carries ``"tool": "message_send"``): judged
+    against the off catalog alone, every one was an O-CMD key (E140's triage). Every switch's tools count."""
+    from aew.surface import contract
+
+    switched = set(contract.catalog(contract.ALL_SWITCHES)) - set(contract.TOOLS)
+    assert "message_send" in switched
+    for name in sorted(switched):
+        assert not found(prose(f"aew lead tool {name}"), "O-CMD"), name
+        assert not found(Output(site="tool:message_send|result", payload={"tool": name}), "O-CMD"), name
+    assert found(Output(site="unit", payload={"tool": "message_sned"}), "O-CMD")
+
+
 def test_text_that_echoes_the_input_inside_a_refusal_is_not_judged():
     message = "unknown command: `aew harness runs`"
     echoed = Output(site="unit", refusal={"code": "USAGE", "message": message}, echo=("harness", "runs"))

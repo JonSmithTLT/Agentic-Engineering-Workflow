@@ -166,6 +166,23 @@ _COMMANDS = {  # each a complete command once its placeholders are filled (ITEMS
     "accept": f"aew work accept {{w}} {EXPECT_REV}",
 }
 _NOTES = {"accept": " (non-mutating Tickets)"}
+# The dispatch of a fresh invocation for a role, launched: the Lead's guide and the engine's hints both name it, and
+# both read it here (#547 review M1: a hint that dropped `--launch` made an invocation with no run).
+_DISPATCH = f"aew invoke create {{w}} --role {{role}} --launch {EXPECT_REV}"
+
+
+def dispatch_command(work_id: str, role: str) -> str:
+    """The command that dispatches and launches a fresh ``role`` invocation for ``work_id`` (``role`` may be the
+    alternatives a reader picks from, ``reviewer|verifier``)."""
+    return _DISPATCH.format(w=work_id, role=role)
+
+
+def operation_command(via: str, work_id: str, evidence: str = "<id>") -> str:
+    """``via``'s command (an ingest, or the publish) for ``work_id``, with the report named where there is one: read
+    from ``_COMMANDS``, never a copy of it (#547 review m2)."""
+    return _COMMANDS[via].format(w=work_id).replace("<id>", evidence)
+
+
 # The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and
 # its hints. The engine never imports the surface, so this mirrors the catalog (`aew.surface.contract`) as that catalog
 # mirrors the primitives, and a test holds it exactly equal, both ways, to what the stages' first steps say

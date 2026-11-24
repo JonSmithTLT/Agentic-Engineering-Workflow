@@ -215,7 +215,7 @@ class NonMutating:
     _MUTATING_INSTEAD = {
         "`aew work dispatch`": f"start a mutating Ticket with `aew work assign {{w}} --launch {EXPECT_REV}`",
         "`aew work redispatch`": "a mutating Ticket gets a new implementer with "
-                                 f"`aew invoke create {{w}} --role implementer --launch {EXPECT_REV}`",
+                                 f"`{transitions.dispatch_command('{w}', 'implementer')}`",
         "`aew evidence ingest`": "a mutating Ticket's implementation report is accepted by its transition, "
                                  f"`aew work transition {{w}} --to REVIEW_PENDING {EXPECT_REV}` (or VERIFY_PENDING "
                                  "or COMMIT_READY, "

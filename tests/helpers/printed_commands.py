@@ -69,6 +69,7 @@ SRC = ROOT / "src" / "aew"
 # from; one not listed here fails the check.
 PLACEHOLDERS: dict[str, str] = {
     K.REVISION: "17",
+    K.NAMED_RUN: "R-0003",  # a steering step over several runs: one of the runs it lists
     "<invocation from aew harness status>": "INV-0012",
     "<message from aew message read>": "MSG-INV-0007-1",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
@@ -92,6 +93,7 @@ PLACEHOLDERS: dict[str, str] = {
     "<STATE>": "REVIEW_PENDING",
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification
     "<reason>": "why",
+    "<message>": "stop",  # a steering message (`harness send --text`)
     "<why>": "why",  # the projection's argv lists
     "<classification>": "LOCAL_IMPLEMENTATION_DEFECT",
     "<phase>": "RUNNING",  # the phase an INTERRUPTED Ticket was interrupted from

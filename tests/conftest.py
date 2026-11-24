@@ -188,6 +188,8 @@ def make_git_repo(path: Path, files: dict[str, str] | None = None) -> Path:
     git("config", "user.name", "AEW Test", cwd=path)
     git("config", "user.email", "aew-test@invalid", cwd=path)
     git("config", "core.autocrlf", "false", cwd=path)
+    # A detached maintenance child can still change .git/objects while a test copies its finished fixture.
+    git("config", "maintenance.auto", "false", cwd=path)
     for rel, content in (files or {"README.md": "# fixture\n"}).items():
         target = path / rel
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -1057,6 +1057,8 @@ class EvidenceCommands:
                                         "changed")
             changed = changed_paths(workspace, base, **self.k.check_cache_inputs())
             verdict = GR.evaluate(changed, self.k.policy("guardrails"), scope_paths, acceptance_inputs)
+            # The check the implementer acts on reports what the gates refuse (register E126; PR #540 review, m4).
+            verdict["violations"] += SC.unit_violations(self.k.repo_root, unit)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
                    "cwd": str(workspace.resolve())}

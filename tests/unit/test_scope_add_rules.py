@@ -34,7 +34,10 @@ def _record_readers() -> dict[tuple[str, str], ast.FunctionDef]:
 
 def test_every_reader_of_a_tickets_scope_reads_the_effective_scope_through_the_one_accessor():
     """Derive, don't restate (the designer's decisions of 2026-11-03, §2): a new function that reads a unit's record
-    fails here until it is listed, and a listed scope reader that stops applying ``effective_meta`` fails too."""
+    fails here until it is listed, and a listed scope reader that stops applying ``effective_meta`` fails too.
+
+    What it cannot see: a reader that parses the record's text itself (``parse_frontmatter``), or takes ``work_show``'s
+    raw ``record`` instead of its ``effective_scope``. Those are found by review (PR #540 review)."""
     readers = _record_readers()
     assert set(readers) == set(RECORD_READERS), sorted(set(readers) ^ set(RECORD_READERS))
     for key, scope_reader in RECORD_READERS.items():
@@ -95,3 +98,29 @@ def test_a_signoff_cites_a_plan_revision_of_the_ticket_or_quotes_the_operator():
 def test_a_module_is_named_only_as_a_whole_word():
     assert SC.names_module("from calc.core import add\n", ["core"]) == "core"
     assert SC.names_module("from calc.coreutils import add\n", ["core"]) is None
+
+
+def test_a_file_whose_tests_the_table_does_not_recognize_is_unchecked_not_counted_as_zero():
+    """PR #540 review, m1: C with Unity style counts 0 at base, so removing every test would raise no stop."""
+    unity = "void test_a(void) {}\nvoid test_b(void) {}\n"
+    stops, unchecked = SC.removal_stops(["tests/test_a.c"], lambda p: unity, lambda p: "")
+    assert stops == [] and unchecked == ["tests/test_a.c"]
+    assert "unchecked" in SC.DEFINITION_LIMIT and "commented-out" in SC.DEFINITION_LIMIT
+
+
+def test_rule_three_never_takes_a_dunder_stem_for_a_module():
+    """PR #540 review, m6: `__init__` names a language hook in any test, not the package."""
+    assert SC.module_stems(["pkg/__init__.py", "pkg/core.py", "pkg/__main__.py"]) == ["core"]
+    assert SC.names_module("class A:\n    def __init__(self): pass\n", SC.module_stems(["pkg/__init__.py"])) is None
+
+
+def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatched():
+    """PR #540 review, m5: the add exists to save the implementer's run, so its result never cancels it."""
+    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}},
+             "invocations": {"INV-0001": {"status": "active", "work_unit": "T-0001", "role": "implementer",
+                                          "runs": [{"run": "R-INV-0001-1"}]},
+                             "INV-0002": {"status": "active", "work_unit": "T-0001", "role": "reviewer",
+                                          "card": {"id": "code_reviewer"}}}}
+    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py")
+    assert impl["commands"] == ["aew harness send R-INV-0001-1 --fields -"] and "text" in impl["fields"]
+    assert reader["commands"][0].startswith("aew invoke cancel INV-0002") and "reason" in reader["fields"]

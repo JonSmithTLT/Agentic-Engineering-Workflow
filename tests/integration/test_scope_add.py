@@ -4,6 +4,7 @@ The Ticket's record never changes; one accessor gives the effective scope; a sto
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -123,3 +124,85 @@ def test_a_runner_config_needs_a_cited_signoff(running):
     assert ptr["signed_off"] and doc["signoff"]["source"] == "operator_quote"
     assert doc["signoff"]["label"] == SC.LEAD_REPORT and doc["stops"][0]["stop"] == "runner_config"
     assert_control_invariants(p)
+
+
+def test_the_signoff_a_stop_names_after_the_add_is_recorded_and_clears_the_gate(running):
+    """PR #540 review, M1: the stop raised after an add names `add_scope_signed`; following it records the sign-off as a
+    second correction that signs the first, and the gate context is clear."""
+    p, wid, impl = running
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    impl.write({"tests/test_core.py": "from calc.core import add\n"})
+    [violation] = Engine.discover(p.root).gate_show(wid)["guardrails"]["violations"]
+    assert SC.SIGNED_CHOICE in violation["detail"] and SC.ITEM in violation["detail"], violation
+    again = refusal(add(p, wid, "tests/test_core.py"))  # the unsigned choice names the signed one
+    assert again["details"]["reason"] == "already_in_scope" and SC.SIGNED_CHOICE in again["message"], again
+    quoted = 'the operator: "yes, remove the obsolete addition test"'
+    out = add(p, wid, "tests/test_core.py", signed=True, rationale=quoted)
+    assert out["ok"], out
+    first, second = load_control(p.root)["work"][wid][SC.UNIT_KEY]
+    assert not first["signed_off"] and second["signed_off"] and second["signs"] == first["id"]
+    assert Engine.discover(p.root).gate_show(wid)["guardrails"]["violations"] == []
+    assert p.ok("work", "show", wid)["effective_scope"] == ["calc/core.py", "tests/test_core.py"]
+    # A path is signed off once: a second signed choice is refused.
+    assert refusal(add(p, wid, "tests/test_core.py", signed=True, rationale=quoted))["details"]["reason"] == \
+        "already_in_scope"
+    assert_control_invariants(p)
+
+
+def test_the_pack_lists_added_paths_apart_labelled_as_the_leads_with_their_correction_in_its_sources(running):
+    """PR #540 review, M2: a reviewer sees the widening for what it is, not as declared scope."""
+    from aew.knowledge import context as ctxmod
+
+    p, wid, _ = running
+    engine = Engine.discover(p.root)
+    inv = load_control(p.root)["work"][wid]["implementer_invocation"]
+    before = ctxmod.render(engine._packs.pack_inputs(engine.store.current(), inv)[0])
+    assert "Ticket scope (allowed change paths): calc/core.py" in before and "SCOPE_CORRECTION_ADDED" not in before
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    engine = Engine.discover(p.root)
+    inputs, sources = engine._packs.pack_inputs(engine.store.current(), inv)
+    text = ctxmod.render(inputs)
+    assert "Ticket scope (allowed change paths), as declared: calc/core.py\n" in text, text
+    assert f"- `tests/test_core.py` (SC-0001, added by the Lead on the record): {WHY}" in text, text
+    assert "SCOPE_CORRECTION_ADDED" in text
+    [source] = [s for s in sources if s["name"].startswith("scope_correction:")]
+    assert source["name"] == "scope_correction:SC-0001" and source["path"].endswith("SC-0001.yaml")
+
+
+def test_the_builtin_guardrails_check_reports_the_stop_the_gates_refuse(running):
+    """PR #540 review, m4: the check the implementer acts on says what the gate context refuses."""
+    p, wid, impl = running
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    impl.write({"tests/test_core.py": "from calc.core import add\n"})
+    res = impl.aew("check", "run", "guardrails")
+    assert res.returncode == 0, res.stderr
+    assert res.json["result"] == "fail" and SC.SIGNOFF in json.dumps(res.json), res.json
+
+
+def test_a_base_that_cannot_be_listed_refuses_the_add(running, monkeypatch):
+    """PR #540 review, m2: an unreadable base never reads as "every path is new"."""
+    from aew.errors import GitError
+
+    p, wid, _ = running
+    real = SC.git.out
+
+    def out(*args, **kw):
+        if args[:1] == ("ls-tree",):
+            raise GitError("planted: the base cannot be listed")
+        return real(*args, **kw)
+
+    monkeypatch.setattr(SC.git, "out", out)
+    assert refusal(add(p, wid, "tests/test_core.py"))["details"]["reason"] == "base_unreadable"
+    assert SC.UNIT_KEY not in load_control(p.root)["work"][wid]
+
+
+def test_an_add_that_would_make_two_live_tickets_meet_is_refused(tmp_path):
+    """PR #540 review, m3: the widened scope meets another live Ticket's (E151), which only the add creates."""
+    p = sample_project(tmp_path)
+    first = create_planned_ticket(p, tmp_path, title="core", scope=("calc/core.py",))
+    other = create_planned_ticket(p, tmp_path, title="tests", scope=("tests/test_core.py",))
+    assign(p, first)
+    assign(p, other)
+    error = refusal(add(p, first, "tests/test_core.py"))
+    assert error["details"]["reason"] == "files_conflict", error
+    assert SC.UNIT_KEY not in load_control(p.root)["work"][first]

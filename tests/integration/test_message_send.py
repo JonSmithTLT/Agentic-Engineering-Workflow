@@ -197,7 +197,8 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
         "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
                     "Requests grant nothing.",
-        "resolve": "Continue or abandon a stage, dispose, or replace a gate.",
+        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and its description names it.
+        "resolve": "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

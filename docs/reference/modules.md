@@ -1305,6 +1305,7 @@ None.
 - `aew.engine.outbox`
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
+- `aew.engine.scope_ops`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.containment`

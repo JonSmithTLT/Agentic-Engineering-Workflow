@@ -300,8 +300,9 @@ def control_violations(root: Path) -> list[str]:
 
 def scope_correction_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
     """62. Every scope-correction pointer, hot or archived, is a mutating Ticket's and names an immutable record that
-    hashes to it and is its own (id, Ticket, path, sign-off), issued by the counter, for one exact path; the effective
-    scope adds each path once (register E126)."""
+    hashes to it and is its own (id, Ticket, path, sign-off, the correction it signs), issued by the counter, for one
+    exact path; a path is added once, and named again only by one later correction that signs off that add (register
+    E126; PR #540 review, M1)."""
     import hashlib
 
     from aew.engine import scope_ops as SC
@@ -313,8 +314,17 @@ def scope_correction_violations(root: Path, hot: dict[str, Any], full: dict[str,
         pointers = unit.get(SC.UNIT_KEY) or []
         if pointers and (unit["kind"] != "ticket" or not unit.get("mutating")):
             problems.append(f"62: {wid} has scope corrections and is not a mutating Ticket")
-        if len(SC.added_paths(unit)) != len(set(SC.added_paths(unit))):
-            problems.append(f"62: {wid} adds a path to its scope twice")
+        first: dict[str, dict[str, Any]] = {}
+        for ptr in pointers:
+            earlier = first.get(ptr["added"])
+            if earlier is None and ptr.get("signs") is None:
+                first[ptr["added"]] = ptr
+            elif (earlier is None or ptr.get("signs") != earlier["id"] or earlier["signed_off"]
+                  or not ptr["signed_off"]):
+                problems.append(f"62: {wid} names `{ptr['added']}` again in {ptr['id']} without signing off its "
+                                "unsigned add")
+            else:
+                first[ptr["added"]] = {**earlier, "signed_off": True}
         for ptr in pointers:
             path = Path(root) / ".aew" / ptr["record"]
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != ptr["sha256"]:
@@ -322,8 +332,9 @@ def scope_correction_violations(root: Path, hot: dict[str, Any], full: dict[str,
                 continue
             doc = yaml.safe_load(path.read_text(encoding="utf-8"))
             validate("scope-correction", doc, source=ptr["record"])
-            if (doc["id"], doc["work_unit"], doc["path"], doc["signoff"] is not None) != (
-                    ptr["id"], wid, ptr["added"], ptr["signed_off"]) or int(ptr["id"].split("-")[1]) > issued:
+            mine = (ptr["id"], wid, ptr["added"], ptr["signed_off"], ptr.get("signs"))
+            if (doc["id"], doc["work_unit"], doc["path"], doc["signoff"] is not None, doc["signs"]) != mine or int(
+                    ptr["id"].split("-")[1]) > issued:
                 problems.append(f"62: {wid}'s pointer {ptr['id']} is not its record's, or was never issued")
             if SC.exact_path_problem(ptr["added"]) is not None:
                 problems.append(f"62: {wid}'s scope correction {ptr['id']} adds `{ptr['added']}`, not an exact path")

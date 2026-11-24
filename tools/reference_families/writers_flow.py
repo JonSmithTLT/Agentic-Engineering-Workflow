@@ -57,8 +57,9 @@ CALLERS = 64
 # Distinct values one expression may take before it is UNK, so a set that grows toward the cap is a decision and not a
 # record silently lost. 64 since CAP-1 (STG-15): its schema made the largest set the file names of `SCHEMAS`
 # (src/aew/schemas/__init__.py), 31 (docs/reference/writers.md, "The largest in this render"), and the tree test holds
-# the cap to at least twice that.
-VALUES = 64
+# the cap to at least twice that. 128 since E126: its `scope-correction` schema made that set 33, past half of 64, and
+# the doubled-cap tree test then read a set the cap had cut (PR #540 CI).
+VALUES = 128
 PLACEHOLDER = "{}"
 # Receivers typed through receivers (`self.a.b.run()`, `Class().m().n()`): a call edge past it would be dropped as if
 # the receiver were unknown, so the reading fails instead (addendum 7). A receiver whose typing needs itself is a cycle

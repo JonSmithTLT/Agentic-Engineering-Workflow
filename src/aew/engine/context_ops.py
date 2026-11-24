@@ -289,7 +289,7 @@ class ContextPacks:
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             failure_evidence=failure,
             card=(card or {}).get("content"),
-            history=history, codebase_map=map_lines,
+            history=history, codebase_map=map_lines, scope_added=SC.pack_entries(self.k.aew_root, unit),
             **{k: v for k, v in self._m2_pack_extras(state, inv, unit).items() if k in {"hierarchy", "inherited",
                                                                                         "inputs"}},
         )
@@ -299,6 +299,7 @@ class ContextPacks:
             *[{"name": f"evidence:{e['id']}", "path": e["_path"], "sha256": e["_sha256"]} for e in on_snapshot],
             *self._history_sources(history),
             *([dict(map_source)] if map_source is not None else []),
+            *SC.pack_sources(unit),  # register E126: each correction the pack lists
         ]
         return inputs, sources
 

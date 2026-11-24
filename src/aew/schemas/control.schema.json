@@ -897,6 +897,7 @@
               "id": {"type": "string", "pattern": "^SC-[0-9]{4,}$"},
               "added": {"type": "string", "minLength": 1},
               "signed_off": {"type": "boolean"},
+              "signs": {"description": "A correction that only records a sign-off names the one it signs.", "type": "string", "pattern": "^SC-[0-9]{4,}$"},
               "record": {"type": "string", "pattern": "^work/[^/]+/scope-corrections/SC-[0-9]{4,}\\.yaml$"},
               "sha256": {"$ref": "#/$defs/sha256"},
               "rev": {"type": "integer", "minimum": 1}

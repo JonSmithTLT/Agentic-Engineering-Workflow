@@ -30,6 +30,9 @@
 | The project and sample-repository templates | `conftest.copy_test_repository` | 1 per variant per worker | one build | Beneficial | Unchanged |
 | The hostile repository | `tests/regression/test_m4b_review.py` | 1 per test | per test | Required: each test mutates it | Unchanged |
 
+The `serial` lane, run as CI runs it (`-p no:xdist`), passes the guard too (96 tests; its 3 failures are the G3
+service's refusal to run as root, which fail the same way on a clean `main` here).
+
 **Not measured here.** The integration, regression and acceptance lanes' modules after their tests in serial (only the
-reference families' and the serial lane's were run serially); the nightly `reference` run is the first to measure them
-all, and its failure names any module over budget.
+reference families' modules and the `serial` lane were run serially); the nightly `reference` run is the first to
+measure them all, and its failure names any module over budget.

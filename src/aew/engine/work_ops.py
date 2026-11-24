@@ -12,6 +12,7 @@ from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
+from aew.engine import scope_ops as SC
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
 from aew.engine.dispatch import Blocker
@@ -29,7 +30,7 @@ from aew.errors import (
 )
 from aew.harness.contract import EXPECT_REV, fields_block
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
-from aew.util import glob_any, sha256_file, sha256_text, utc_now
+from aew.util import glob_any, parse_frontmatter, sha256_file, sha256_text, utc_now
 from aew.workspace import git
 
 if TYPE_CHECKING:
@@ -879,6 +880,10 @@ class WorkCommands:
                "children": children,
                "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" and work_id in state["work"]
                else None}
+        if unit["kind"] == "ticket" and out["record"] is not None:
+            # The record is shown as written; the scope a reader acts on is the effective one (register E126).
+            meta, _ = parse_frontmatter(out["record"], source=unit["record"])
+            out["effective_scope"] = SC.effective_scope(meta, unit)
         # F9-A (plan D-24, D-31): the unit's coordination threads, only while the switch is on or a thread exists, so
         # a project that never enabled messaging shows exactly what it showed before. Display only: nothing here is
         # read by a gate or a transition.

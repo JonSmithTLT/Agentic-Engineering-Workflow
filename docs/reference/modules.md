@@ -594,6 +594,7 @@ None.
 - `aew.engine.readiness`
 - `aew.engine.resume_ops`
 - `aew.engine.role_ops`
+- `aew.engine.scope_ops`
 - `aew.engine.seams`
 - `aew.engine.stage_intents`
 - `aew.engine.status_ops`
@@ -722,6 +723,7 @@ None.
 - `aew.engine.gates`
 - `aew.engine.hierarchy`
 - `aew.engine.ports`
+- `aew.engine.scope_ops`
 - `aew.errors`
 - `aew.knowledge.context`
 - `aew.knowledge.evidence`
@@ -820,6 +822,7 @@ None.
 - `aew.engine.guards`
 - `aew.engine.ports`
 - `aew.engine.request_ids`
+- `aew.engine.scope_ops`
 - `aew.engine.seams`
 - `aew.engine.transitions`
 - `aew.engine.work_ops`
@@ -1189,6 +1192,25 @@ None.
 - `aew.skills`
 - `aew.util`
 
+### `aew.engine.scope_ops`
+
+- `aew.engine.base`
+- `aew.engine.dispatch`
+- `aew.engine.gate_ops`
+- `aew.engine.gates`
+- `aew.engine.guards`
+- `aew.engine.hierarchy`
+- `aew.engine.ports`
+- `aew.errors`
+- `aew.harness.contract`
+- `aew.knowledge.records`
+- `aew.maps.rules`
+- `aew.policy.guardrails`
+- `aew.schemas`
+- `aew.snapshot.fingerprint`
+- `aew.util`
+- `aew.workspace.git`
+
 ### `aew.engine.seams`
 
 - `aew.engine.base`
@@ -1308,6 +1330,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.priority`
 - `aew.engine.request_ids`
+- `aew.engine.scope_ops`
 - `aew.engine.seams`
 - `aew.engine.transitions`
 - `aew.errors`

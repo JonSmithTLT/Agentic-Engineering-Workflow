@@ -22,6 +22,7 @@ from aew.engine import approval, transitions
 from aew.engine import coverage as CV
 from aew.engine import disposition_ops as DO
 from aew.engine import gates as G
+from aew.engine import scope_ops as SC
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
 from aew.engine.dispatch import Blocker, blocker_from, checked
@@ -158,7 +159,9 @@ class Gates:
         self.archive = archive
 
     def record_meta(self, unit: dict[str, Any]) -> dict[str, Any]:
-        return read_record(self.k.aew_root / unit["record"], "work-unit").meta
+        """The unit's record meta, with its effective scope: the paths added on the record join the declared ones
+        (register E126; ``scope_ops.effective_meta``, the one accessor every scope reader goes through)."""
+        return SC.effective_meta(read_record(self.k.aew_root / unit["record"], "work-unit").meta, unit)
 
     @staticmethod
     def _paths_between(workspace: Path, fingerprint_a: str | None, fingerprint_b: str | None) -> list[str]:
@@ -247,10 +250,11 @@ class Gates:
         integ = unit.get("integration") or {}
         ws = unit.get("workspace") or {}
         changed = git_changed_between(self.k.repo_root, ws["base_commit"], integ["ticket_commit"])
-        return self._gates_at(state, work_id, unit.get("commit_ready_snapshot"), changed)
+        return self._gates_at(state, work_id, unit.get("commit_ready_snapshot"), changed,
+                              after=integ["ticket_commit"])
 
     def _gates_at(self, state: dict[str, Any], work_id: str, snapshot: dict[str, Any] | None,
-                  changed: list[str] | None) -> dict[str, Any]:
+                  changed: list[str] | None, *, after: str | None = None) -> dict[str, Any]:
         unit = self.units.unit(state, work_id)
         gates_policy = self.k.policy("gates")
         guard = {"violations": [], "triggered_gates": [], "changed_paths": []}
@@ -259,6 +263,8 @@ class Gates:
         if changed is not None:
             guard = GR.evaluate(changed, self.k.policy("guardrails"), (meta.get("scope") or {}).get("paths", []),
                                 acceptance.get("inputs"))
+            # A path added to the scope without a sign-off holds its stop after the add as at it (register E126).
+            guard["violations"] += SC.unit_violations(self.k.repo_root, unit, after=after)
         declared = list(acceptance.get("checks") or [])
         obligations = G.with_acceptance_checks(
             G.effective_obligations(state, work_id, gates_policy, guard["triggered_gates"],
@@ -320,7 +326,8 @@ class Gates:
             violations = gc["guardrails"]["violations"]
             message = f"{what}: guardrail violations: {GR.describe(violations)}"
             if any(v["rule"] == "outside_ticket_scope" for v in violations):  # M3 dogfood report §6.6 (E9)
-                message += ". " + GR.scope_remedy(gc.get("work_id") or "<T>")
+                wid = gc.get("work_id") or "<T>"
+                message += ". " + GR.scope_remedy(wid, add=SC.remedy(wid))
             raise GateUnsatisfied(message, violations=violations)
         if gc.get("plan_binding"):
             # An accepted plan stays bound to its ancestors' plans whatever the risk path lists: a class 0 path

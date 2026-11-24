@@ -441,7 +441,7 @@ def test_every_staged_primitive_is_declared(catalog):
 
 # The engine methods the `resolve` runner calls first, by the primitive it runs (aew.surface.stage.resolve_stage).
 _FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve",
-               "work_gate_replace": "work.gate_replace"}
+               "work_gate_replace": "work.gate_replace", "work_scope_add": "work.scope_add"}
 
 
 class _Called(Exception):
@@ -500,7 +500,7 @@ def test_resolve_choice_primitive_pairs():
     assert resolve_pair_problems(mapping) == []
     assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {
         "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"],
-        "work.gate_replace": ["replace_gate"]}
+        "work.gate_replace": ["replace_gate"], "work.scope_add": ["add_scope", "add_scope_signed"]}
     # Differential: a pair that disagrees with the runner, or a choice the mapping loses, is named.
     swapped = {**mapping, ("accept_risk", "finding"): "stage.resolve"}
     assert any("(accept_risk, finding) maps to 'stage.resolve', but the resolve runner runs 'work.dispose'" in p

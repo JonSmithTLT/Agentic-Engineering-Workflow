@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/scope-correction/v1",
+  "title": "AEW scope correction",
+  "description": "Register E126 (the operator's order of 2026-11-03; the designer's decisions of 2026-11-03, §2): one exact test path added to one mutating Ticket's scope on the record, with a reason (the typed `resolve` tool, choice `add_scope` or `add_scope_signed`). Written once, immutable, beside the Ticket (`work/<T>/scope-corrections/<SC>.yaml`) and pointed to from its control state (`scope_corrections`). The Ticket's own record is never rewritten.",
+  "type": "object",
+  "required": ["schema", "id", "work_unit", "path", "names_module", "at_base", "created_by_ticket", "base_commit",
+               "rationale", "signoff", "stops", "unchecked", "obligations", "by", "generation", "expected_revision",
+               "rev", "at", "decision", "stale_invocations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/scope-correction/v1"},
+    "id": {"type": "string", "pattern": "^SC-[0-9]{4,}$"},
+    "work_unit": {"description": "The mutating Ticket whose scope was widened.", "type": "string", "minLength": 1},
+    "path": {"description": "The exact test path added.", "type": "string", "minLength": 1},
+    "names_module": {"description": "For a file at the base commit, the stem of the in-scope module its text names there (rule 3); null for a new file.", "type": ["string", "null"]},
+    "at_base": {"description": "Whether the path exists at the Ticket's base commit.", "type": "boolean"},
+    "created_by_ticket": {"description": "Whether the file is new in the Ticket's workspace: not at the base commit, present there at the add.", "type": "boolean"},
+    "base_commit": {"type": ["string", "null"]},
+    "rationale": {"description": "The Lead's reason, Lead-authored.", "type": "string", "minLength": 1, "maxLength": 2000},
+    "signoff": {
+      "description": "A sign-off the stops asked for, as the Lead reported it: cited from a plan revision or quoting the operator. Nothing proves it before the wire.",
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "required": ["source", "text", "label"], "additionalProperties": false,
+         "properties": {"source": {"enum": ["plan", "operator_quote"]},
+                        "plan_revision": {"type": "integer", "minimum": 1},
+                        "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+                        "label": {"type": "string", "minLength": 1}}}
+      ]
+    },
+    "stops": {
+      "description": "The stops (`test_signoff_needed`) the add met: each needs the sign-off.",
+      "type": "array",
+      "items": {"type": "object", "required": ["path", "stop", "detail"], "additionalProperties": false,
+                "properties": {"path": {"type": "string"},
+                               "stop": {"enum": ["runner_config", "shared_test_file", "test_removed",
+                                                 "fewer_test_definitions"]},
+                               "detail": {"type": "string"}}}
+    },
+    "unchecked": {"description": "Added paths whose extension the test-definition table does not count.", "type": "array", "items": {"type": "string"}},
+    "obligations": {"description": "Dispatch's hard triggers on the widened scope, and the add's own obligation naming the path.", "type": "array", "items": {"type": "object", "required": ["code"]}},
+    "by": {"description": "The actor: the Lead, or the operator through the Lead seat.", "type": "object"},
+    "generation": {"description": "The Lead generation that added it.", "type": "integer", "minimum": 1},
+    "expected_revision": {"description": "The control revision the write expected.", "type": "integer", "minimum": 0},
+    "rev": {"description": "The control revision the add committed.", "type": "integer", "minimum": 1},
+    "at": {"type": "string"},
+    "decision": {"description": "The decision record of the add.", "type": "string", "pattern": "^D-[0-9]{4,}$"},
+    "stale_invocations": {
+      "description": "Every active invocation on the Ticket whose context pack the add changed, with the commands that re-dispatch it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invocation", "work_id", "role", "commands", "fields"],
+        "additionalProperties": false,
+        "properties": {
+          "invocation": {"type": "string"},
+          "work_id": {"type": "string"},
+          "role": {"type": ["string", "null"]},
+          "commands": {"type": "array", "items": {"type": "string"}},
+          "fields": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

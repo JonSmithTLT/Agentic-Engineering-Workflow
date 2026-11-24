@@ -255,7 +255,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
+- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`
   - Written by
     - `aew.capability.bind:place`
     - `aew.harness.containment:establish`
@@ -287,7 +287,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`; `aew.workspace.git`: `git`
+- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`
   - Written by
     - None
 - `local/harness/runs/lead-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`
@@ -566,6 +566,9 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `work/{}/gate-corrections` (kept in git); read by none
   - Written by
     - `aew.engine.gate_ops:GateRepair._write`
+- `work/{}/scope-corrections` (kept in git); read by none
+  - Written by
+    - `aew.engine.scope_ops:ScopeCorrections._write`
 - `work/{}/stage-intents` (kept in git); read by none
   - Written by
     - `aew.engine.stage_intents:StageIntents._end`
@@ -612,6 +615,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.recall`: `_evidence` (Path.read_bytes), `search_enabled` (Path.read_bytes)
 - `aew.engine.resume_ops`: `Resume._freshness` (Path.exists), `Resume._freshness` (Path.read_text), `Resume._plan_brief` (Path.read_text), `Resume.resume` (Path.exists), `Resume.resume` (Path.read_text)
 - `aew.engine.role_ops`: `Roles.role_validate` (Path.read_bytes)
+- `aew.engine.scope_ops`: `ScopeCorrections._check` (Path.is_file), `_file_text` (Path.read_text)
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)

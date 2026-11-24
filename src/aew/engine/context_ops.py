@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import process_kind, roles
+from aew.engine import scope_ops as SC
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
 from aew.errors import IntegrityError, NotFound
@@ -201,6 +203,7 @@ class ContextPacks:
         """The inputs both pack builders read first, with the policy files as adopted."""
         card = inv.get("card") or None
         record = read_record(self.k.aew_root / unit["record"], "work-unit")
+        record = dataclasses.replace(record, meta=SC.effective_meta(record.meta, unit))  # the effective scope (E126)
         plan = unit.get("plan")
         plan_text = ""
         if plan:

@@ -207,15 +207,11 @@ def test_receipt_filters_planted_ticket_paths_after_scope_comparison(tmp_path, m
     monkeypatch.setattr("aew.kit.receipt.socket.gethostname", lambda: "synthetic-host")
     event = {"kind": "work.state", "unit": "ticket", "to": "CANCELLED", "id": "T-0001"}
     monkeypatch.setattr("aew.kit.receipt._records", lambda _engine: [{"op": "work.transition", "events": [event]}])
-    record = """---
-scope:
-  paths:
-  - ledger/has space.py
----
-"""
     changed = ["ledger/has space.py", "outside.py", "/private/absolute.py", "../parent.py", "synthetic-host/file.py"]
+    # The receipt reads the effective scope work show derives, never the record's own paths (register E126).
     monkeypatch.setattr(engine, "work_show", lambda _: {
-        "record": record, "control": {"integration": {"changed_paths": changed}},
+        "record": "---\nscope:\n  paths: []\n---\n", "effective_scope": ["ledger/has space.py"],
+        "control": {"integration": {"changed_paths": changed}},
     })
     text = write_receipt(tmp_path).read_text(encoding="utf-8")
     scope = json.loads(text)["scope"]

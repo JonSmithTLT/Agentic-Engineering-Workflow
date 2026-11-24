@@ -147,7 +147,7 @@ def _static_entries():
 def test_control_op_specs_match_static_entry_sites():
     entries = _static_entries()
     assert entries == P.CONTROL_OP_SPECS.keys()
-    assert len(entries) == 66
+    assert len(entries) == 67
 
 
 def test_the_request_index_accepts_exactly_the_create_ops_that_declare_request_ids():
@@ -189,7 +189,7 @@ def test_control_op_specs_leave_primitive_lookups_at_the_base():
     # 8a3810b6. Include the keys and every PrimitiveSpec field in the snapshot.
     declared = {name: P.spec_for(name) for name in P.SPECS}
     digest = hashlib.sha256(json.dumps(declared, sort_keys=True).encode()).hexdigest()
-    assert digest == "711b072ff6661795e9b556916ed3676bbd8fab3213c879072f54c0831b8f08f1"
+    assert digest == "20f3bba49624608fee53c63c3d09276b9dcb766e8fec1bbd38ac6ed14c192658"
     assert declared == P.SPECS
     for name in (P.CONTROL_OP_SPECS.keys() - declared.keys()) | {"unknown.write"}:
         assert P.spec_for(name) == P.PrimitiveSpec(
@@ -207,6 +207,7 @@ TRANSACTION_HANDLERS = {
         "_classify_ticket_verification waive"
     ),
     ("gate_ops", "GateRepair"): "gate_replace",
+    ("scope_ops", "ScopeCorrections"): "scope_add",
     ("harness_ops", "Harness"): "harness_launch",
     ("hierarchy_ops", "Hierarchy"): (
         "invoke_evidence_unit ingest_evidence_unit_report classify_parent_verification "

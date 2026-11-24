@@ -746,6 +746,18 @@ def replace_gate(c: Call) -> dict[str, Any]:
     return out
 
 
+def add_scope(c: Call) -> dict[str, Any]:
+    """The ``resolve`` tool for a Ticket's scope (register E126): one exact test path added on the record, signed when
+    the choice is ``add_scope_signed``. One transaction, so no stage intent (like a disposition)."""
+    a = c.a
+    out = c.engine.work_scope_add(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"],
+                                  rationale=a["rationale"], signed=a["choice"] == "add_scope_signed")
+    c.subject = out.get("work_id")
+    c.committed("work.scope_add", out, f"{out['work_id']} scope: `{out['path']}` added ({out['correction']})",
+                [str(out["correction"])])
+    return out
+
+
 def resolve_stage(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a stage: the current Lead's explicit continue or abandon (rule 8).
 
@@ -765,6 +777,8 @@ def resolve_stage(c: Call) -> dict[str, Any]:
         return dispose(c)
     if a["choice"] in contract.GATE_CHOICES:
         return replace_gate(c)
+    if a["choice"] in contract.SCOPE_CHOICES:
+        return add_scope(c)
     sid = a["subject"]
     si = c.engine.stage_intent(sid)
     c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])

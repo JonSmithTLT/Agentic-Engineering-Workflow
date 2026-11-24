@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
-from aew.engine.coordination_ops import messaging_switch
 from aew.engine.dispatch import Blocker, checked
 from aew.engine.gate_ops import redispatch_commands
 from aew.engine.guards import require
@@ -57,7 +56,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
-    from aew.engine.ports import GatesPort, WorkUnitsPort
+    from aew.engine.ports import CoordinationPort, GatesPort, WorkUnitsPort
 
 SCHEMA = "aew/scope-correction/v1"
 UNIT_KEY = "scope_corrections"  # in a Ticket's control state: the pointers to its correction records
@@ -405,8 +404,12 @@ class ScopeCorrections:
     """The recorded scope add (register E126): its guard query, the transaction, and the effective scope's
     sign-off violations for the gate context."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort, gates: GatesPort, assurance: Any) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, gates: GatesPort, assurance: Any,
+                 coordination: CoordinationPort) -> None:
         self.k = k
+        # the adopted messaging switch comes through the port, so this module never imports coordination (F9
+        # invariant 1, `test_legality_modules_never_import_coordination`)
+        self.coordination = coordination
         self.units = units
         self.gates = gates
         self.assurance = assurance  # the dispatch predicates re-run on the widened scope
@@ -598,7 +601,7 @@ class ScopeCorrections:
     def messaging(self, state: dict[str, Any]) -> bool:
         """Whether the project's adopted coordination messaging is on: then `harness send` is refused, and a live
         worker is told with `message_send` (``harness.contract.wake_advice``; PR #545 review, m2)."""
-        return messaging_switch(self.k.aew_root, state)[0] == X.MESSAGING_ENABLED
+        return self.coordination.project_switch(state) == X.MESSAGING_ENABLED
 
     @staticmethod
     def stale_invocations(state: dict[str, Any], work_id: str, path: str, run_status: Callable[[str], str],

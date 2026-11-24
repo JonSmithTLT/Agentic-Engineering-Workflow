@@ -1196,7 +1196,6 @@ None.
 ### `aew.engine.scope_ops`
 
 - `aew.engine.base`
-- `aew.engine.coordination_ops`
 - `aew.engine.dispatch`
 - `aew.engine.gate_ops`
 - `aew.engine.gates`

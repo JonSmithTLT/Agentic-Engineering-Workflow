@@ -397,7 +397,10 @@ The lane cleanup records what it can observe before upload. Assurance reads the 
 again. A concurrency cancellation names the replacement run, commit and event when GitHub's group and run history
 establish a unique successor. A manual/API cancellation records GitHub's message and a cancellation actor only
 where one is available. A canceled job with a failed phase in its partial report counts as a test failure. Queued
-supersessions retain their job IDs and do not count as failed test runs.
+supersessions retain their job IDs and do not count as failed test runs. A verified run-wide cancellation also
+covers sibling jobs with no annotation of their own, such as the matrix jobs GitHub creates unrendered after the job
+that defines their matrix was cancelled, both in the completed run and in assurance, which reads its run before it
+concludes.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The

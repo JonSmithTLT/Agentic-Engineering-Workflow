@@ -279,6 +279,36 @@ def test_queued_jobs_can_inherit_only_a_confirmed_whole_run_replacement(monkeypa
     assert [j["cancel_reason"] for j in jobs] == outcomes
 
 
+def test_a_superseded_runs_unstarted_matrix_jobs_resolve_to_the_superseding_run_while_assurance_runs(monkeypatch):
+    # Run 45339635974: the newer push cancelled `tier` and `static`, whose annotations name ci-480's next run. GitHub
+    # then created the lane matrix with its names unrendered and no runner, steps or annotation, and assurance read
+    # the run while it was itself still running (no conclusion yet).
+    check = _load("check_evidence_run")
+    started = [{"id": n, "name": name, "conclusion": "cancelled", "completed_at": "2026-11-15T19:29:05Z",
+                "steps": [{"name": "Set up job", "started_at": OLD["created_at"], "conclusion": "success"}]}
+               for n, name in ((1, "static"), (2, "tier"))]
+    placeholder = "${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})"
+    unstarted = [{"id": n, "name": placeholder, "conclusion": "cancelled", "completed_at": "2026-11-15T19:29:05Z",
+                  "steps": []} for n in (3, 4)]
+    jobs = started + unstarted
+    monkeypatch.setattr(CANCEL, "check_annotations", lambda repo, ident: NOTES if ident in (1, 2) else [])
+    monkeypatch.setattr(CANCEL, "candidates", lambda *args: [NEW])
+    running = {**OLD, "pull_requests": [{"number": 480}], "status": "in_progress", "conclusion": None,
+               "updated_at": NEW["created_at"]}
+    CANCEL.attach_reasons("test/repo", running, jobs)
+    superseded = {"kind": "superseded", "run": NEW["id"], "head_sha": NEW["head_sha"], "event": "pull_request"}
+    assert [job["cancel_reason"] for job in jobs] == [superseded] * 4
+    rows = []
+    assert check.check_jobs(Path("missing"), jobs, score_rows=rows) == []
+    assert [row["kind"] for row in rows[2:]] == ["superseded-before-start"] * 2
+    # A run that completed without being cancelled was never cancelled whole: its siblings inherit nothing.
+    for job in jobs:
+        job.pop("cancel_reason")
+    CANCEL.attach_reasons("test/repo", {**running, "status": "completed", "conclusion": "failure"}, jobs)
+    assert [job["cancel_reason"]["kind"] for job in jobs] == ["superseded", "superseded", "unresolved", "unresolved"]
+    assert any("[cancel-reason]" in defect for defect in check.check_jobs(Path("missing"), jobs))
+
+
 def test_collector_reason_must_agree_with_the_completed_run(tmp_path):
     checker = _load("evidence_problems")
     superseded = CANCEL.classify(OLD, {}, NOTES, [NEW])

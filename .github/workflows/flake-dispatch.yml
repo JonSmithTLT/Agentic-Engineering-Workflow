@@ -31,7 +31,7 @@ jobs:
             failure)
               printf '\ndef test_fixture_failure_path(tmp_path):\n    assert False, "fixture qualification plant"\n' >> tests/integration/test_history_store.py
               code=0
-              python -m pytest "${args[@]}" tests/integration/test_history_store.py::test_fixture_failure_path || code=$?
+              python -m pytest "${args[@]}" --lane integration --shard 1/1 -k test_fixture_failure_path || code=$?
               test "$code" -eq 1 ;;
             *)
               if [ "$PROBE_CASE" = override ]; then

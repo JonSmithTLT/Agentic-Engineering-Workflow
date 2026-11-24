@@ -21,4 +21,6 @@ if case == 'control':
 elif case == 'failure':
     assert len(nodes) == 1
 else:
-    assert len(nodes) >= 78
+    assert len(nodes) == 78
+    assert {node.partition('::')[0] for node in nodes} == {
+        'tests/integration/test_history_store.py', 'tests/regression/test_log_sealing_model.py'}

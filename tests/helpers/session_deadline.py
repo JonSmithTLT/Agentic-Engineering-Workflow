@@ -119,6 +119,7 @@ from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
 SUPERVISOR_CUTOFF_EXIT = 71  # the Windows regression step's outer cutoff
+HOST_RESOURCES_EXIT = 72  # the lane step stopped early for the Windows host's resources (register E3)
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere

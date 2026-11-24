@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import ctypes
 import json
 import os
 import re
@@ -22,11 +23,12 @@ sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
 import worker_evidence  # noqa: E402
+from evidence_files import HOST_STOP_FILE, open_observation, stacks_ablated  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
-from evidence_files import open_observation, stacks_ablated  # noqa: E402
-from session_deadline import SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
+from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
 from session_deadline import collect_leftovers as collect  # noqa: E402
 from session_deadline import recorded_processes as identities  # noqa: E402
+from watchdog import SOURCE_TEST  # noqa: E402
 
 CUTOFF_CLEARANCE_S = bounds.CUTOFF_CLEARANCE_S
 CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
@@ -34,6 +36,26 @@ POLL_S = 0.25
 SPY_TIMEOUT_S = 3  # one bounded request per live worker; the cutoff reserves this per worker
 HEARTBEAT = re.compile(rb"evidence-heartbeat ([0-9]+) ([0-9.]+)")
 GIL_ENTER = re.compile(rb"evidence-gil-enter ([0-9.]+)")
+# The Windows host's resources (register E3). Windows regression jobs have been lost with every in-VM timer silent;
+# the leading suspect is the host running out of something the lane's tests use. Each limit stops the lane while the
+# runner can still publish, and is set well past a loaded runner's normal reading so that only a runaway trips it.
+# The exit record and the step log carry every lane's peaks, which is how a limit is recalibrated.
+HOST_POLL_S = 1.0  # GetPerformanceInfo walks the process list: once a second, as the cgroup monitor polls
+HOST_COMMIT_FRACTION = 0.92  # at the commit limit, process creation and heap growth fail with no Python trace;
+# 8% of the limit (well over a GiB on a hosted runner) is left for the capture and the publication steps
+HOST_HANDLES = 1_000_000  # system-wide; about ten times a loaded runner's count. Handles come from paged pool
+HOST_PROCESSES = 1_000  # each CREATE_NO_WINDOW child also gets a conhost, and every process in the service session
+# takes desktop heap, whose exhaustion fails a new process at start (0xc0000142, as M4-B saw); about four times a
+# loaded runner's count
+HOST_FREE_DISK = 2 * 1024 ** 3  # the scanned bundles are staged and zipped on this drive before upload
+
+
+class _PerformanceInformation(ctypes.Structure):
+    # PERFORMANCE_INFORMATION (psapi.h): the sizes are in pages, the counts are whole numbers.
+    _fields_ = [("cb", ctypes.c_uint32), *((name, ctypes.c_size_t) for name in (
+        "CommitTotal", "CommitLimit", "CommitPeak", "PhysicalTotal", "PhysicalAvailable", "SystemCache",
+        "KernelTotal", "KernelPaged", "KernelNonpaged", "PageSize")),
+        ("HandleCount", ctypes.c_uint32), ("ProcessCount", ctypes.c_uint32), ("ThreadCount", ctypes.c_uint32)]
 
 
 def note(directory: Path, name: str, text: str) -> None:
@@ -122,6 +144,74 @@ def memory_used() -> int | None:
         return None
 
 
+def _performance_info(call=None) -> _PerformanceInformation | None:
+    info = _PerformanceInformation()
+    info.cb = ctypes.sizeof(info)
+    try:
+        if call is None:
+            call = ctypes.WinDLL("psapi", use_last_error=True).GetPerformanceInfo
+        return info if call(ctypes.pointer(info), info.cb) else None
+    except (OSError, AttributeError):
+        return None
+
+
+def host_reading(call=None) -> dict | None:
+    """The Windows host's commit charge, handles, processes and free scratch space, or None off Windows."""
+    if os.name != "nt":
+        return None
+    info = _performance_info(call)
+    if info is None:
+        return None
+    page = info.PageSize
+    reading = {"commit_bytes": info.CommitTotal * page, "commit_limit_bytes": info.CommitLimit * page,
+               "physical_available_bytes": info.PhysicalAvailable * page, "kernel_paged_bytes": info.KernelPaged * page,
+               "kernel_nonpaged_bytes": info.KernelNonpaged * page, "handles": info.HandleCount,
+               "processes": info.ProcessCount, "threads": info.ThreadCount}
+    with contextlib.suppress(OSError, KeyError):
+        reading["free_disk_bytes"] = shutil.disk_usage(os.environ["RUNNER_TEMP"]).free
+    return reading
+
+
+def host_crossed(reading: dict) -> list[dict]:
+    """Each stated limit the reading has reached, named with its value."""
+    crossed = []
+    limit = reading["commit_limit_bytes"] * HOST_COMMIT_FRACTION
+    if reading["commit_limit_bytes"] and reading["commit_bytes"] >= limit:
+        crossed.append({"resource": "commit_bytes", "value": reading["commit_bytes"], "limit": int(limit)})
+    for resource, bound in (("handles", HOST_HANDLES), ("processes", HOST_PROCESSES)):
+        if reading[resource] >= bound:
+            crossed.append({"resource": resource, "value": reading[resource], "limit": bound})
+    if reading.get("free_disk_bytes", HOST_FREE_DISK) < HOST_FREE_DISK:
+        crossed.append({"resource": "free_disk_bytes", "value": reading["free_disk_bytes"], "limit": HOST_FREE_DISK})
+    return crossed
+
+
+def host_peak(peak: dict | None, reading: dict) -> dict:
+    """The high-water mark of each reading, the low-water mark of free disk."""
+    if peak is None:
+        return dict(reading)
+    worst = {key: (min if key in {"free_disk_bytes", "physical_available_bytes"} else max)(peak.get(key, value), value)
+             for key, value in reading.items()}
+    return {**peak, **worst}
+
+
+def running_tests(root: Path) -> list[str]:
+    """The tests the watchdog says are running, as the running-names publication reads them."""
+    names = set()
+    for path in Path(os.environ.get("AEW_RUNNING_TESTS_DIR") or root).glob("running-*.txt"):
+        with contextlib.suppress(OSError):
+            node = path.read_text(encoding="utf-8", errors="replace").strip()
+            names.add(node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>")
+    return sorted(names)
+
+
+def record_host_stop(root: Path, reading: dict, crossed: list[dict], peak: dict | None) -> None:
+    facts = {"at": time.time(), "crossed": crossed, "reading": reading, "peak": peak,
+             "running_tests": running_tests(root), "exit": HOST_RESOURCES_EXIT}
+    (root / HOST_STOP_FILE).write_text(json.dumps(facts, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"lane step: stopped for the host's resources: {json.dumps(crossed)}", flush=True)
+
+
 def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
     """Forward stderr while retaining only the hang plant's numeric handshake."""
     with stream:
@@ -156,13 +246,17 @@ def interrupt_phases(root: Path, at_ns: int) -> dict:
 
 
 def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str], *,
-                lane_exit: int | None, heartbeat: dict | None, worker_phases: dict | None = None) -> None:
+                lane_exit: int | None, heartbeat: dict | None, worker_phases: dict | None = None,
+                host: dict | None = None) -> None:
     scope = "MemTotal minus MemAvailable, whole runner" if sys.platform == "linux" else "unavailable on Windows"
     facts = {"command_exit": code, "lane_exit": lane_exit, "step_signal": interrupted,
              "runner_memory_peak_bytes": peak, "memory_scope": scope,
              "ablation": os.environ.get("AEW_EVIDENCE_ABLATE")}
     if worker_phases is not None:
         facts["xdist_at_first_signal"] = worker_phases
+    if host is not None:
+        facts["host_resources_peak"] = host
+        print(f"lane step: host resources peak {json.dumps(host, sort_keys=True)}", flush=True)
     if heartbeat is not None:
         facts["heartbeat"] = {**heartbeat, "observed_until": time.time()}
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("AEW_LANE_STEP", "step"))
@@ -199,6 +293,8 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     status = root / "runner-resources-step.txt"
     interrupted = []
     peak = memory_used()
+    host: dict | None = None
+    next_host = 0.
     snapshots_seen: set[tuple[int, str]] = set()
     lane_exit = None
 
@@ -227,10 +323,18 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 peak = max(used, peak or 0)
             if not interrupted:
                 snapshot(root, seen=snapshots_seen)
+            crossed = []
+            if time.monotonic() >= next_host:
+                next_host = time.monotonic() + HOST_POLL_S
+                if (reading := host_reading()) is not None:
+                    host = host_peak(host, reading)
+                    crossed = [] if interrupted else host_crossed(reading)
+                    if crossed:
+                        record_host_stop(root, reading, crossed, host)
             cutoff_reached = time.time() >= cutoff
-            if not interrupted and not cutoff_reached:
+            if not interrupted and not cutoff_reached and not crossed:
                 monitor.poll()
-            if interrupted or cutoff_reached:
+            if interrupted or cutoff_reached or crossed:
                 before_signal = interrupted and sys.platform == "linux" and os.name != "nt"
                 if interrupted:
                     at = time.time()
@@ -249,11 +353,12 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                         child.send_signal(signal.Signals[interrupted[0]])
                 if not before_signal:
                     snapshot(root, all_workers=True)
-                exit_code = 128 + signal.Signals[interrupted[0]] if interrupted else SUPERVISOR_CUTOFF_EXIT
-                if not interrupted:
+                exit_code = (128 + signal.Signals[interrupted[0]] if interrupted
+                             else HOST_RESOURCES_EXIT if crossed else SUPERVISOR_CUTOFF_EXIT)
+                if not interrupted and not crossed:
                     for directory, _ in identities(root):
                         note(directory, "cutoff", f"step cutoff at {time.time():.6f}\n")
-                else:
+                elif interrupted:
                     worker_phases = interrupt_phases(root, signal_at)
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
@@ -284,7 +389,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
         if observed_signals and worker_phases is None:
             worker_phases = {"monotonic_ns": signal_at, "status": "unavailable"}
         record_exit(root, code, peak, observed_signals, lane_exit=lane_exit, heartbeat=heartbeat,
-                    worker_phases=worker_phases)
+                    worker_phases=worker_phases, host=host)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 

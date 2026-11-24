@@ -17,6 +17,7 @@ from cancel_evidence import attach_reasons, valid
 from evidence_problems import evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from evidence_files import HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
 from flake_register import _api, _gh_read, _pages, _started_pytest, check_annotations  # noqa: E402
 
 
@@ -242,6 +243,9 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
                 # The xdist down hook is an independent observation even if the attribution marker was lost.
                 kind = "worker-killed"
+            elif kind is None and Path(HOST_STOP_FILE).stem in markers:
+                # The lane step stopped the lane for the Windows host's resources and named them (register E3).
+                kind = "host-resources"
             elif kind is None and "abnormal-exit" in markers and 137 in command_exits:
                 kind = "sigkill"
             elif kind is None and any(re.fullmatch(r"(?:interrupted|cancelled)-\d+", name) for name in markers):

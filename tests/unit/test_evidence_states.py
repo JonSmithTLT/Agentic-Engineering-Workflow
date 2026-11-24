@@ -1146,8 +1146,11 @@ def test_a_signal_received_with_a_crossed_host_limit_is_an_interruption_and_no_h
     assert record["host_resources_peak"]["processes"] == 5_000  # the reading is still kept, as a peak
 
 
-def test_the_running_names_have_one_reader_that_drops_odd_names_and_links(tmp_path):
+def test_the_running_names_have_one_reader_that_drops_odd_names_and_links(tmp_path, monkeypatch):
     import os
+
+    # a lane under the lane step publishes its own running directory, which running_tests would read instead
+    monkeypatch.delenv("AEW_RUNNING_TESTS_DIR", raising=False)
 
     import watchdog
 

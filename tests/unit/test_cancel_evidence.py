@@ -404,19 +404,23 @@ def test_scorecard_excludes_only_a_proven_mid_job_runner_loss(monkeypatch, chang
 
 
 @pytest.mark.parametrize("lost", [False, True])
-def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_unrelated_loss(monkeypatch, lost):
+@pytest.mark.parametrize("phase_record", [False, True])
+def test_scorecard_preserves_a_surviving_failure_report_and_its_registered_sighting(
+    monkeypatch, tmp_path, lost, phase_record
+):
     name = "integration 2/8 (ubuntu-latest)"
-    job = {"id": 7, "name": name, "conclusion": "failure", "steps": []}
+    job = {"id": 7, "name": name, "conclusion": "failure", "steps": [], "started_at": "2026-11-24T13:41:30Z"}
     if lost:
         job.update(status="completed", steps=[{"name": "pytest --lane integration", "status": "in_progress",
                                               "started_at": "2026-11-24T13:41:30Z", "conclusion": None}])
         monkeypatch.setattr(SCORE, "check_annotations", lambda *args: [
             {"path": ".github", "annotation_level": "failure", "message": SCORE.HOSTED_RUNNER_LOST}])
+    node = "test_example.py::test_x"
+    failures = [{"phase": "call", "crash": "case.py:2: ValueError: x", "longrepr": "E   ValueError: x"}]
     docs = {"runner-resources-job.txt": json.dumps({"job_label": name}),
             "inventory.txt": "typed source names\n",
             "report.json": json.dumps({"schema": "aew/lane-report/v1", "exitstatus": 1, "results": {
-                "test_example.py::test_x": {"outcome": "failed", "failures": [
-                    {"phase": "call", "crash": "case.py:2: ValueError: x", "longrepr": "E   ValueError: x"}]}}})}
+                node: {"outcome": "failed", "failures": failures if phase_record else []}}})}
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
         for path, data in docs.items():
@@ -429,10 +433,21 @@ def test_scorecard_reads_surviving_report_without_a_running_index_and_isolates_u
     monkeypatch.setattr(SCORE, "_pages", lambda *args: artifacts)
     monkeypatch.setattr(SCORE, "_gh_read", lambda url: raw)
     [row] = SCORE.inspect_run("test/repo", OLD, {7})
-    assert row["kind"] == ("runner-lost" if lost else "test_failure")
-    assert row["A1"] == "yes" and row["failed_nodes"] == ["test_example.py::test_x"]
+    assert row["kind"] == ("runner-lost" if lost else "test_failure" if phase_record else "unclassified")
+    assert row["A1"] == ("yes" if phase_record else "no")
+    assert row["failed_nodes"] == ([node] if phase_record else [])
+    assert ("failure-text" in row["missing"]) == (not phase_record)
     assert row["artifacts"] == [200] and row["unreadable_artifacts"] == []
     assert row["unassigned_artifacts"] == [100]
+
+    record = _load("record_cancel_evidence")
+    register = tmp_path / "register.yml"
+    register.write_text(yaml.safe_dump({"entries": [
+        {"id": "known", "scope": "test", "status": "open", "lane": "integration", "platforms": ["linux"], "test": node}
+    ]}))
+    monkeypatch.setattr(record, "REGISTER_PATH", register)
+    record.record_test_sightings(tmp_path, OLD, [row])
+    assert (tmp_path / record.INDEX_MEMBER).exists() == phase_record
 
 
 @pytest.mark.parametrize("trusted", [True, False])

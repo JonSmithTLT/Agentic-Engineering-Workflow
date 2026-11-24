@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile
 
 from cancel_evidence import attach_reasons, run_jobs
-from check_evidence_run import bundle_prefix, check_jobs, hosted_step_timeout, job_digest
+from check_evidence_run import bundle_prefix, check_jobs, hosted_step_timeout, incomplete_failure_evidence, job_digest
 from stage_evidence import JOB_CAP
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -154,7 +154,7 @@ def inspect_run(repo, run, selected=None, *, directory=None):
                     # The host loss is outside A5. Preserve any observed test failure and all A3 defects.
                     row["kind"] = "runner-lost"
                     row["A2"] = "n/a"
-                    if not row["failed_nodes"]:
+                    if not row["failed_nodes"] and not incomplete_failure_evidence(row["missing"]):
                         row["A1"] = "n/a"
             rows.extend(result)
         for row in rows:

@@ -99,6 +99,11 @@ def finished_tests(bundles, complete_report, *, report_exits=(), steps_passed=Fa
     return True
 
 
+def incomplete_failure_evidence(problems):
+    return any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]", "[artifact-unreadable]"))
+               for problem in problems)
+
+
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
                score_rows: list | None = None) -> list[str]:
     defects = []
@@ -265,9 +270,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":
-                incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))
-                                 for problem in missing)
-                row["A1"] = "yes" if nodes and not incomplete else "no"
+                row["A1"] = "yes" if nodes and not incomplete_failure_evidence(missing) else "no"
             if (kind or died) and kind != "cancel-after-tests":
                 row["A2"] = "no" if any("[failure-" not in p for p in missing) else "yes"
             row["missing"] = missing

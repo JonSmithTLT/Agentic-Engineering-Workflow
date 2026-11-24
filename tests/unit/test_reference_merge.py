@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import reference_render
 
 ROOT = Path(__file__).resolve().parents[2]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -28,7 +29,7 @@ from reference_families import writers as W  # noqa: E402
 from reference_families import writers_flow as F  # noqa: E402
 
 PAGE = "modules.md"
-MODS = M.scan(common.Context(ROOT))
+MODS = M.scan(reference_render.context())
 BY_NAME = {m.name: m for m in MODS}
 ENGINE = [m.name for m in sorted(MODS, key=lambda m: m.name) if m.name.startswith("aew.engine.")]
 BUSY = max(MODS, key=lambda m: len(m.imports)).name

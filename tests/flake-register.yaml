@@ -232,6 +232,12 @@ entries:
     note: >-
       regression 2/3 (windows-latest), PR 545. Ended failure after 48 minutes with its pytest step in progress,
       no log, no recovery step and no evidence.
+  - run: 44769864900
+    job: 136404550082
+    at: '2026-11-20T17:20:02Z'
+    note: >-
+      full suite 1/8 (windows-latest, py3.11), the nightly's extra matrix entry, not the regression lane (its full
+      suite shards are read as regression). The runner was lost: the job ended cancelled after 69 minutes.
 - id: windows-integration-no-response
   scope: session
   lane: integration
@@ -1421,6 +1427,23 @@ entries:
       Windows integration 8/14 on main 188eab22. The first drain and its receipt assertions
       passed. The ten-second drain after a deliberate second read returned false at line 435.
       On 61847d98 the first drain failed at line 370.
+- id: run-progress-digest-wake-reason
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: test failure
+  cause: The poster received a wake for loop_waiting where out_of_scope was expected. Cause unestablished.
+  owner: CI flake triage
+  row: E3
+  test: tests/integration/test_run_progress_digest.py::test_a_real_dispatch_under_a_real_broker_says_end_your_turn_and_the_wake_comes
+  evidence:
+  - run: 44918522356
+    job: 136889331212
+    at: '2026-11-21T15:52:08Z'
+    note: >-
+      full suite 1/8 (windows-latest, py3.11): assert [['loop_waiting']] == [['out_of_scope']]. One sighting.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

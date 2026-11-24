@@ -3027,3 +3027,27 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
         f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
     source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text
+
+
+def test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_problem(tmp_path, capsys):
+    """The nightly's reference shards, 2026-11-17 to 11-22 (register E3): every lane report was complete and green, and
+    the assurance read only `reference=failure`. A ``stuck-after-finish`` marker anywhere under an autopsy is a problem
+    named for what it is, with the session folder that holds its stacks."""
+    import session_deadline
+
+    assert check_assurance.STUCK_MARKER == session_deadline.marker(Path(), session_deadline.STUCK).name
+    reports = tmp_path / "reports"
+    for i, r in enumerate(good_run()):
+        (reports / f"job{i}").mkdir(parents=True)
+        (reports / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    args = [str(reports), "--skips", str(tmp_path / "skips.yaml")]
+    session = reports / "job1" / "autopsy" / "session-2405-439565f5"
+    session.mkdir(parents=True)
+    (session / "session-finished.txt").write_text("the session finished (exit 0)\n", encoding="utf-8")
+    assert check_assurance.main(args) == 0  # finished and exited: nothing to name
+    (session / check_assurance.STUCK_MARKER).write_text("ended\n", encoding="utf-8")
+    capsys.readouterr()
+    assert check_assurance.main(args) == 1
+    assert "job1/autopsy/session-2405-439565f5: the session finished, but its controller had not exited" in \
+        capsys.readouterr().out

@@ -873,6 +873,46 @@ def test_a_controller_that_cannot_exit_after_its_session_finished_is_ended_and_n
     assert "keeps_the_interpreter_from_exiting" in texts(session, "controller-after-finish-stacks*"), why
 
 
+LARGE_HEAP = '''
+
+HEAP = [[] for _ in range(200_000)]  # what a serial session keeps: containers the collector tracks
+
+
+def pytest_sessionstart(session):
+    import atexit
+
+    atexit.register(at_exit)  # registered before the controller finishes, so run after its own (last in, first out)
+
+
+def at_exit():
+    import gc, os
+
+    with open(os.environ["HEAP_AT_EXIT"], "w", encoding="utf-8") as fh:
+        fh.write(f"{gc.get_freeze_count()} {len(gc.get_objects())}")
+'''
+
+
+def test_a_controller_never_collects_its_sessions_heap_at_exit_so_a_large_one_exits_within_the_margin(tmp_path):
+    """The nightly's Linux reference shards, 2026-11-17 to 11-22 (register E3): each session had finished, and a
+    margin after ``session-finished`` the controller was still in interpreter finalization's collection
+    (``Garbage-collecting``, no Python frame), so the sentinel ended it. Measured locally on a shard's collection alone
+    (5.1 M tracked objects), the time from the last ``atexit`` callback to the process's end fell from 10.5 s to 0.6 s
+    with the heap frozen; the time itself is load-bound, so this holds the mechanism: what is left for finalization to
+    collect is not the session's heap."""
+    hangs, at_exit = tmp_path / "hangs", tmp_path / "heap-at-exit"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=LARGE_HEAP), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", MARGIN, "-p", "no:xdist",
+                 extra_env={"HEAP_AT_EXIT": str(at_exit)})
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == 0, why
+    assert not (session / "stuck-after-finish.txt").exists(), why
+    frozen, collectable = (int(n) for n in at_exit.read_text(encoding="utf-8").split())
+    assert frozen >= 200_000, why  # the session's heap, planted lists and all
+    assert collectable < 20_000, f"{collectable} objects left to collect at exit; {why}"
+
+
 def real_interpreter() -> tuple[str, dict[str, str]]:
     """This Python as CI runs it. On Windows a venv's python.exe is a launcher that keeps its child in a kill-on-close
     job, which ends any leftover child as the session exits, so through it the test below could not fail. So the base

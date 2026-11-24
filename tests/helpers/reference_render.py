@@ -9,6 +9,9 @@ render for themselves and compare against this one.
 
 The bytes are returned as the generator gives them; callers must not mutate the mapping (it is a fresh ``dict`` per
 call, over the same immutable ``bytes``).
+
+The parsed source tree is shared the same way (:func:`context`): every module that builds or reads a family holds it
+for the whole session, as a module global does.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import sys
 from functools import cache
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,3 +46,17 @@ def _rendered() -> dict[str, bytes]:
 def rendered() -> dict[str, bytes]:
     """Every file ``docs/reference/`` holds, by name, as this checkout's code renders it (the index included)."""
     return dict(_rendered())
+
+
+@cache
+def context() -> Any:
+    """This checkout's source tree, parsed once per process (``reference_families.common.Context``), for every test
+    module that builds or reads a family. Its analyses built once (``Context.once``: the parsed program, the writers'
+    analysis) are shared as one render shares them.
+
+    Each of those modules used to hold a ``Context`` of its own in a module global, so for the rest of the session: a
+    serial session that ran them all kept twelve parses of the package (about a million objects each), and its
+    interpreter's collections at exit then outlasted the session deadline's margin (the nightly's reference shards,
+    2026-11-17 to 11-22, register E3). Callers must not mutate what it holds."""
+    common, _pages, _families = tool()._families()
+    return common.Context(ROOT)

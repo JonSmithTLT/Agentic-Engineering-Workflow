@@ -30,7 +30,7 @@ _spec.loader.exec_module(reference)
 C, _PAGES, FAMILIES = reference._families()
 M = next(f for f in FAMILIES if f.__name__.endswith("machines"))
 W = sys.modules["reference_families.machines_writes"]
-CTX = C.Context(ROOT)  # the sources are parsed once for every test that builds the family
+CTX = reference_render.context()  # the sources, parsed once per process for every module that reads a family
 
 
 @cache

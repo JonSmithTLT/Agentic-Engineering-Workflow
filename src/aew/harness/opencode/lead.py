@@ -118,8 +118,8 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
     config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake,
                                     switches=switches)
-    env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
-                "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
+    env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, sort_keys=True)
+    env.update(capabilities.FIXED_SWITCHES)  # last, after the provider variables (register E35)
     return env
 
 
@@ -804,7 +804,8 @@ class ContainedLead(LeadProviders):
                 _unrelayed(engine)
             self._record(run_dir, label)
             entry = weaker_register.enter(label=label, **where)
-            env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}})
+            env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env},
+                              **capabilities.FIXED_SWITCHES})
             password = secrets.token_urlsafe(32)
             spec = serve_spec(state / "server")
             return lead_broker.Harness(argv=netns.shim_argv({"in": [], "out": [], "serve": spec}, self.argv),
@@ -909,7 +910,8 @@ class ContainedLead(LeadProviders):
             env[process_kind.LEAD_MASKS_ENV] = json.dumps([list(m) for m in layout.tree_masks])
         if self.preferences is not None:  # merged over the session's own cli.json by OpenCode (addendum 1, item 2)
             env["OPENCODE_CLI_CONFIG_CONTENT"] = json.dumps(self.preferences, sort_keys=True)
-        return network.harness_env(env) if network is not None else env
+        env = network.harness_env(env) if network is not None else env
+        return {**env, **capabilities.FIXED_SWITCHES}  # last, after the sentinels (register E35)
 
     def _seed_models(self, state_home: Path) -> None:
         """The Lead's recent and favourite models, once, as its state is created: a copy of the operator's

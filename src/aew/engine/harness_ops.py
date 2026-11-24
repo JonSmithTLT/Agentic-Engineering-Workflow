@@ -878,7 +878,7 @@ class Harness:
         describes the whole Engine (``aew opencode``), so the facade supplies it as ``lead_projection``."""
         if harness != "opencode":
             raise UsageError(f"no projection for harness {harness!r}; known: opencode")
-        from aew.harness.opencode import projection
+        from aew.harness.opencode import capabilities, projection
 
         if lead == bool(invocation):
             raise UsageError("name an invocation, or pass --lead")
@@ -903,8 +903,8 @@ class Harness:
                 "prompt": {"bytes": len(contract.prompt.encode("utf-8")), "pack_sha256": contract.pack_sha256},
                 "server_env": {"provider_variables": contract.extra.get("provider_env") or [],
                                "private": ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
-                                           "OPENCODE_CONFIG_CONTENT", "OPENCODE_DISABLE_PROJECT_CONFIG",
-                                           "OPENCODE_DISABLE_AUTOUPDATE", "OPENCODE_PASSWORD (random, per run)"]},
+                                           "OPENCODE_CONFIG_CONTENT", *capabilities.FIXED_SWITCHES,
+                                           "OPENCODE_PASSWORD (random, per run)"]},
                 "agent_env": ["operating-system basics", "PATH (aew first)", "PYTHONUTF8", "AEW_INVOCATION", "AEW_RUN",
                               "AEW_WORK_UNIT", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY"]}
 

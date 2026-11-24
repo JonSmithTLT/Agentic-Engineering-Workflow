@@ -236,9 +236,8 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     tmp = state_dir / "tmp"
     tmp.mkdir(exist_ok=True)
     env.update({"TEMP": str(tmp), "TMP": str(tmp), "TMPDIR": str(tmp),
-                "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
-                "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1",
-                "OPENCODE_PASSWORD": password})
+                "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True), "OPENCODE_PASSWORD": password})
+    env.update(capabilities.FIXED_SWITCHES)  # last, after the provider variables (register E35)
     return env
 
 

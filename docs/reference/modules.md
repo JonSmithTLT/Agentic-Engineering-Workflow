@@ -915,6 +915,7 @@ None.
 - `aew.harness.containment`
 - `aew.harness.contract`
 - `aew.harness.delivery`
+- `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.projection`
 - `aew.harness.procs`
 - `aew.harness.progress`
@@ -1369,6 +1370,7 @@ None.
 ### `aew.harness.agentenv`
 
 - `aew.harness.bridge`
+- `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.lead_credential`
 

@@ -205,7 +205,8 @@ class FakeOpenCode:
         # What the server was started with, for tests: variable NAMES (never values), the projection, the flags.
         started = {"env_names": sorted(os.environ), "config": json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT")
                                                                         or "null"),
-                   "flags": {k: os.environ.get(k) for k in ("OPENCODE_DISABLE_PROJECT_CONFIG",
+                   "flags": {k: os.environ.get(k) for k in ("OPENCODE_CONFIG_PROJECT_DISABLE",
+                                                             "OPENCODE_DISABLE_PROJECT_CONFIG",
                                                              "OPENCODE_DISABLE_AUTOUPDATE", "XDG_CONFIG_HOME",
                                                              "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                                                              "TEMP", "AEW_CONTEXT")},

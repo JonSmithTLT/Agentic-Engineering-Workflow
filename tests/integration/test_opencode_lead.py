@@ -24,7 +24,7 @@ from racing_read import read_text_or_none
 from aew.harness import procs
 from aew.harness.containment import shim
 from aew.harness.opencode import lead, projection
-from aew.harness.opencode.capabilities import TESTED_VERSIONS
+from aew.harness.opencode.capabilities import PROJECT_CONFIG_SWITCHES, TESTED_VERSIONS
 
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
 LAUNCHER = """import json, pathlib, sys
@@ -122,7 +122,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
         guide_of(lab), tools={"placed": False, "tools": []})  # and no tool of AEW's placed: it is not contained
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
-    assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
+    assert [env[n] for n in PROJECT_CONFIG_SWITCHES] == ["1", "1"]  # both names (E35)
     assert steps[2]["exit"] == 0, steps[2]  # a Lead mutation, carried out by the broker
     assert code(steps[3]) == "USAGE"        # a credential-emitting command is refused in the session
     assert steps[4]["stdout_json"]["lead_note"] == "dispatch T-0001 with --launch"

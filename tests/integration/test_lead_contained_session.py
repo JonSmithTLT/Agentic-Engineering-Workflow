@@ -27,7 +27,7 @@ from aew.capability import ops as capability
 from aew.harness import procs, wake_queue
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
-from aew.harness.opencode.capabilities import TESTED_VERSIONS
+from aew.harness.opencode.capabilities import PROJECT_CONFIG_SWITCHES, TESTED_VERSIONS
 
 # Every Lead's provider deny, written out: the designer's ruling of 2026-11-06 (both of OpenCode's own providers)
 DENY = [{"action": "provider.use", "resource": "opencode", "effect": "deny"},
@@ -93,6 +93,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
                                                             "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}  # none the operator's
         egress = f"http://127.0.0.1:{netns.EGRESS_PORT}"
         assert env["HTTPS_PROXY"] == env["HTTP_PROXY"] == egress and "127.0.0.1" in env["NO_PROXY"]
+        assert [env[n] for n in PROJECT_CONFIG_SWITCHES] == ["1", "1"]  # both names (E35)
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         relays = {p: v["settings"]["baseURL"] for p, v in (config.get("providers") or {}).items()}
         # E180 came from a contained Lead: what its start hands over is this interpreter's server on this `aew`'s

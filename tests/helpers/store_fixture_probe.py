@@ -29,7 +29,8 @@ PHASE = 'collection'
 def record(code, offset):
     label = LOOKUP.get((os.path.normcase(code.co_filename), code.co_name))
     if label is None and code.co_name != '<module>':
-        reporters = {'check_evidence_run.py', 'evidence_problems.py', 'evidence_scorecard.py', 'record_cancel_evidence.py'}
+        reporters = {'check_evidence_run.py', 'evidence_problems.py',
+                     'evidence_scorecard.py', 'record_cancel_evidence.py'}
         if Path(code.co_filename).name in reporters and Path(code.co_filename).parent == ROOT / 'tools/ci':
             label = 'post-run-reporter'
     if label is None:

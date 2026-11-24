@@ -217,8 +217,9 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     at = time.time()
                     for worker in worker_evidence.workers(root):
                         worker_evidence.record(root, worker, "interrupted", at)
-                    worker_phases = {"monotonic_ns": signal_at,
-                                     "registered_workers": worker_evidence.phases_at_signal(root, signal_at)}
+                    with contextlib.suppress(OSError):
+                        worker_phases = {"monotonic_ns": signal_at,
+                                         "registered_workers": worker_evidence.phases_at_signal(root, signal_at)}
                     with contextlib.suppress(OSError):
                         child.send_signal(signal.Signals[interrupted[0]])
                 snapshot(root, all_workers=True)

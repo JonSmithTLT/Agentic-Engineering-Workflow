@@ -8,7 +8,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import PurePosixPath
 
 import tier
@@ -32,7 +32,7 @@ def test_modules(sources: Mapping[str, str]) -> set[str]:
 
 
 def selected_modules(sources: Mapping[str, str], changed_lines: Mapping[str, Iterable[str]],
-                     registered: set[str]) -> set[str]:
+                     registered: set[str], *, fixture_independent: frozenset[str] = frozenset()) -> set[str]:
     """Return selected modules in this tree. Resolve old and new trees independently for a two-revision diff."""
     modules = test_modules(sources)
     selected = modules & (set(changed_lines) | registered)
@@ -93,8 +93,10 @@ def selected_modules(sources: Mapping[str, str], changed_lines: Mapping[str, Ite
         return imports
 
     for module in sorted(modules - selected):
-        pending = [module, *(str(p / "conftest.py") for p in PurePosixPath(module).parents
-                             if str(p / "conftest.py") in sources)]
+        pending = [module]
+        if module not in fixture_independent:
+            pending.extend(str(p / "conftest.py") for p in PurePosixPath(module).parents
+                           if str(p / "conftest.py") in sources)
         seen: set[str] = set()
         while pending:
             path = pending.pop()
@@ -113,9 +115,71 @@ def selected_modules(sources: Mapping[str, str], changed_lines: Mapping[str, Ite
 
 
 def select_change(base: Mapping[str, str], head: Mapping[str, str], changes: Mapping[str, Iterable[str]],
-                  registered: set[str]) -> set[str]:
+                  registered: set[str], *, fixture_independent: frozenset[str] = frozenset()) -> set[str]:
     """Keep each surviving module affected through either version of the graph, including a removed dependency."""
-    return (selected_modules(base, changes, registered) | selected_modules(head, changes, registered)) & head.keys()
+    return (selected_modules(base, changes, registered, fixture_independent=fixture_independent)
+            | selected_modules(head, changes, registered, fixture_independent=fixture_independent)) & head.keys()
+
+
+STORE_SUITES = frozenset({'tests/integration/test_history_store.py', 'tests/regression/test_log_sealing_model.py'})
+# Public native qualification binds the ordinary suite, its local fixtures and the shared pytest configuration.
+# A changed dependency needs new Windows evidence. A readme edit does not change these inputs.
+QUALIFIED = ('d97f7bb42614019b581096e8a71c05805fed8fb2',)
+
+
+def _driver(path: str) -> bool:
+    name = PurePosixPath(path)
+    return name.parent.as_posix() == 'tools/ci' and name.suffix == '.py' and name.stem.isidentifier()
+
+
+def _unreferenced_driver(git: Callable[..., bytes], base: str, path: str) -> bool:
+    source = ast.parse(git('show', f'{base}:{path}'))
+    if not any(isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'" for node in source.body):
+        return False
+    try:
+        references = git('grep', '-ilzF', '-e', PurePosixPath(path).stem, base, '--').split(b'\0')
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode == 1:
+            return True
+        raise
+    return all(hit == f'{base}:{path}'.encode() for hit in references if hit)
+
+
+def _fixture_context_changes(git: Callable[..., bytes], base: str, head: str) -> dict[str, str]:
+    fields = git('diff', '--name-status', '--no-renames', '-z', base, head).decode().split('\0')[:-1]
+    return dict(zip(fields[1::2], fields[::2], strict=True))
+
+
+def _qualified_context(git: Callable[..., bytes], head: str, reference: str) -> bool:
+    for path, status in _fixture_context_changes(git, reference, head).items():
+        if path == 'tools/ci/windows_selection.py':  # the reviewed certificate and planner do not execute store tests
+            continue
+        if path == 'README.md' or (path.startswith('docs/') and path.endswith('.md')):
+            continue
+        if status != 'D' or not _driver(path) or not _unreferenced_driver(git, reference, path):
+            return False
+    return True
+
+
+def qualified_modules(git: Callable[..., bytes], base: str, head: str, paths: list[str]) -> frozenset[str]:
+    if not paths or not all(map(_driver, paths)) or any(os.environ.get(name) for name in
+            ('AEW_HARNESS_ADAPTERS', 'PYTEST_PLUGINS', 'PYTEST_ADDOPTS')):
+        return frozenset()
+    try:
+        changes = _fixture_context_changes(git, base, head)
+        if set(changes) != set(paths) or any(kind != 'D' for kind in changes.values()):
+            return frozenset()
+        if not all(_unreferenced_driver(git, base, path) for path in paths):
+            return frozenset()
+        for reference in QUALIFIED:
+            try:
+                if _qualified_context(git, head, reference):
+                    return STORE_SUITES
+            except subprocess.CalledProcessError:
+                continue  # a checkout without the qualifying revision uses the ordinary conservative walk
+    except (OSError, UnicodeError, SyntaxError, ValueError, subprocess.SubprocessError):
+        pass
+    return frozenset()
 
 
 def from_merge(merge: str, *, omit: bool = False) -> set[str]:
@@ -180,7 +244,8 @@ def from_merge(merge: str, *, omit: bool = False) -> set[str]:
             nodes.extend(evidence.get("nodes", []))
     registered = {node.split("::", 1)[0] for node in nodes}
     after = sources(head)
-    picked = select_change(sources(base), after, changes, registered)
+    independent = qualified_modules(git, base, head, paths)
+    picked = select_change(sources(base), after, changes, registered, fixture_independent=independent)
     return test_modules(after) - picked if omit else picked
 
 

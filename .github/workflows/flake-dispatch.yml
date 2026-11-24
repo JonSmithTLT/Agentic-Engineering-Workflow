@@ -1,11 +1,17 @@
 name: flake-dispatch
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [receipts, replay]
+        default: receipts
 permissions:
   contents: read
   actions: read
 jobs:
   verify:
+    if: inputs.mode == 'receipts'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -22,3 +28,19 @@ jobs:
           path: observations
       - name: Check all native worker node IDs and planted controls
         run: python tests/helpers/check_store_fixture_probe.py observations
+  replay:
+    if: inputs.mode == 'replay'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'PyYAML>=6.0' 'pytest>=8'
+      - name: Replay real two-parent trees and the required Windows defects
+        env:
+          PYTHONPATH: tools/ci:tests/helpers:src
+        run: python tests/helpers/replay_store_selection_proof.py

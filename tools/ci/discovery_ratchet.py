@@ -204,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("reports", type=Path, nargs="?", default=None, help="the run's lane reports (not with --remove)")
     ap.add_argument("--event", default="pull_request")
     ap.add_argument("--tier", default=None, help="the run's tier (tools/ci/tier.py): only full can decide stale")
+    ap.add_argument("--windows-partial", action="store_true", help="Windows PR execution omitted collected tests")
     ap.add_argument("--assurance", default=None, metavar="OUTCOME",
                     help="the outcome of check_assurance.py's step: only success can decide stale")
     ap.add_argument("--allowlist", type=Path, default=allowed.PATH)
@@ -249,6 +250,13 @@ def main(argv: list[str] | None = None) -> int:
                      if args.base_allowlist is not None and args.base_allowlist.is_file() else None)
         base = allowed.parse(base_text, known_rules=False)[0] if base_text is not None else None
     undecided = stale_undecided(args.tier, args.assurance, sources, errors)
+    missing = []
+    if args.windows_partial:
+        if not on_pr:
+            ap.error("--windows-partial is valid only for pull requests")
+        undecided = "the Windows PR run omitted tests"
+        missing = sorted(k for k in runtime_allowed - runtime_observed
+                         if modes.MODES[k.split(" ", 1)[0]] == modes.ENFORCE)
     verdict = allowed.decide(runtime_observed, runtime_allowed, stale_scope=None if undecided else "runtime")
     signed: list[str] = []
     grown = sorted(current - base) if base is not None else []  # the whole list, static keys included, may only shrink
@@ -278,6 +286,10 @@ def main(argv: list[str] | None = None) -> int:
         lines += [f"  {n} x {name}" for name, n in sorted(errors.items())[:20]]
         if len(errors) > 20:
             lines.append(f"  ... and {len(errors) - 20} more kinds")
+    if missing:
+        lines.append("FAIL full Windows execution is required to check these enforced runtime keys. "
+                     "Add the full-ci label and re-run all jobs:")
+        lines.extend(f"  {key}" for key in missing)
     if unreadable_modes:
         lines.append(f"FAIL the base's modes.py cannot be read, so a lowered mode cannot be ruled out: "
                      f"{unreadable_modes}")
@@ -300,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write("## D2: output and text rules\n\n```\n" + "\n".join(lines) + "\n```\n")
-    return 0 if verdict.ok and not errors and not unreadable_modes else 1
+    return 0 if verdict.ok and not missing and not errors and not unreadable_modes else 1
 
 
 def live_labels(repo: str | None, pr: str | None) -> list[str] | None:

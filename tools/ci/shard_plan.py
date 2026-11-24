@@ -495,6 +495,39 @@ def summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], ext
     return "\n".join(lines) + "\n", out
 
 
+def resize_windows(sizings: Sequence[Sizing], table: dict[str, Any], omitted: set[str],
+                   history: Mapping[str, Any] | None) -> None:
+    """Size a subset on the existing Windows measurements. An unmeasured module keeps the original shard count."""
+    import windows_selection
+
+    durations = table["platforms"].get("win32", {})
+    timed_files = {node.split("::", 1)[0] for node in durations}
+    history = history or {}
+    for sizing in sizings:
+        lane = sizing.lane
+        prefix = f"tests/{lane}/"
+        if sizing.platform != "win32" or lane not in {"integration", "regression"} or not any(
+                path.startswith(prefix) for path in omitted):
+            continue
+        modules = windows_selection.test_modules({p.relative_to(ROOT).as_posix(): "" for p in
+                                                 (ROOT / "tests" / lane).rglob("*.py")}) - omitted
+        if not modules:
+            sizing.shards = 0
+            sizing.tests = 0
+            continue
+        if modules - timed_files:
+            continue
+        sizing_history = history if sizing.need is not None else {}
+        lanes = (sizing_history.get("lanes") or {}).get("win32") or {}
+        tests = [node for node in durations if node.split("::", 1)[0] in modules and lanes.get(node, lane) == lane]
+        outside = ((sizing_history.get("overhead") or {}).get("win32") or {}).get(lane) or [DEFAULT_OUTSIDE_S]
+        workers = int((sizing_history.get("workers") or {}).get("win32") or 4)
+        estimate = size_lane("win32", lane, tests, durations, workers, statistics.median(outside), sizing.budget_s)
+        count = estimate.shards if sizing.need is not None else fallback_shards(estimate.shards)
+        sizing.shards = min(sizing.shards, count)
+        sizing.tests, sizing.slowest_s = len(tests), estimate.slowest_s
+
+
 def reference_main(args: argparse.Namespace, seed: Mapping[str, Any]) -> int:
     runners = runners_of(args.runner)
     history, why = update_durations.read_history(args.history, of="the nightly's reference shards")
@@ -502,6 +535,12 @@ def reference_main(args: argparse.Namespace, seed: Mapping[str, Any]) -> int:
     beside = starting_jobs(workflow, besides="reference-plan")
     sizings, durations_table, source, warnings = reference_plan(history, seed, runners, REFERENCE_TARGET_S, why,
                                                                 jobs=max(len(runners), CONCURRENT_JOBS - beside))
+    import windows_selection
+
+    omitted = windows_selection.omitted_for_workflow(args.windows_pr, args.tier)
+    if omitted:
+        resize_windows(sizings, durations_table, omitted, history)
+        durations_table["windows_omitted"] = sorted(omitted)
     update_durations.write_json(args.durations_out, durations_table)
     text, warnings = reference_summary(sizings, source, warnings, REFERENCE_TARGET_S, beside)
     if args.github_output:
@@ -528,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--github-output", type=Path, metavar="FILE",
                     help="append core_matrix=<json> and lanes_matrix=<json> here")
     ap.add_argument("--summary", type=Path, metavar="FILE", help="append the Markdown summary here")
+    ap.add_argument("--windows-pr", default="", help="scope only eligible Windows PR lanes")
+    ap.add_argument("--tier", default="full", choices=tier.TIERS)
     ap.add_argument("--reference", action="store_true",
                     help="size the nightly's reference lane (nightly.yml `reference`) from its own history")
     ap.add_argument("--runner", action="append", default=[], metavar="OS:PYTHON",
@@ -546,9 +587,18 @@ def main(argv: list[str] | None = None) -> int:
     sizings, durations_table, source, warnings = plan(history, seed, lanes_deadlines(args.workflows), jobs, why)
     for platform, counts in core_table["shards"].items():  # one table: every shard of every lane balances on it
         durations_table["shards"].setdefault(platform, {}).update(counts)
+    import windows_selection
+
+    omitted = windows_selection.omitted_for_workflow(args.windows_pr, args.tier)
+    if omitted:
+        resize_windows(sizings, durations_table, omitted, history)
+        durations_table["windows_omitted"] = sorted(omitted)
     update_durations.write_json(args.durations_out, durations_table)
     text, warnings = summary([*core_sizings, *sizings], source, [*core_warnings, *warnings],
                              other_jobs(args.workflows))
+    if args.windows_pr and args.tier == "full":
+        text += f"\nWindows PR omitted {len(omitted)} integration/regression modules.\n\n"
+        text += "\n".join(f"- `{path}`" for path in sorted(omitted)) + "\n"
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as fh:
             fh.write(f"core_matrix={json.dumps(matrix(core_sizings, core_jobs), separators=(',', ':'))}\n")

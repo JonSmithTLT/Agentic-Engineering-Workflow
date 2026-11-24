@@ -2033,3 +2033,19 @@ def test_a_mode_is_compared_only_on_a_pull_request(tmp_path, monkeypatch):
     head.write_text(allowed.render(set()), encoding="utf-8")
     assert ratchet.main([str(_reports(tmp_path)), "--event", "push", "--allowlist", str(head),
                          "--base-modes", str(_base_modes(tmp_path, '"O-CMD": ENFORCE'))]) == 0
+
+
+def test_scoped_windows_requires_full_run_to_resolve_missing_enforced_output(tmp_path, capsys):
+    key = "O-SECRET cli:aew trial|result"
+    pins = tmp_path / "allowed.yaml"
+    pins.write_text(allowed.render([key]), encoding="utf-8")
+    reports = _with_findings(tmp_path, [])
+    args = [str(reports), "--event", "pull_request", "--tier", "full", "--assurance", "success",
+            "--allowlist", str(pins), "--base-allowlist", str(pins)]
+    assert _ratchet().main([*args, "--windows-partial"]) == 1
+    output = capsys.readouterr().out
+    assert key in output and "full-ci" in output and "--remove" not in output
+    assert _ratchet().main(args) == 1
+    assert "--remove" in capsys.readouterr().out
+    present = _with_findings(tmp_path / "present", [key])
+    assert _ratchet().main([str(present), *args[1:], "--windows-partial"]) == 0

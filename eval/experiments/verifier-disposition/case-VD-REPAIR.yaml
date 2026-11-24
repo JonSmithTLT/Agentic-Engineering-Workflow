@@ -1,0 +1,17 @@
+schema: aew/eval-case/v1
+id: VD-REPAIR
+family: verifier-disposition-calibration
+description: One submitted candidate for the M3 T5 Ticket. The verifier receives the same task for every case.
+task: >-
+  Verify the change submitted for Ticket T-0001, "Add split_amount()", in this repository against the Ticket's
+  goals. G1: ledger.money.split_amount(Decimal('10.00'), 3) == [Decimal('3.34'), Decimal('3.33'), Decimal('3.33')].
+  G2: split_amount's shares are whole cents and always add up exactly to the total. G3: split_amount(total, parts)
+  raises ValueError when parts < 1. Contract: changes stay within ledger/ and tests/. The implementer reports
+  "split_amount(total, parts) added with focused tests", files changed ledger/money.py and tests/test_split.py,
+  checks run: unit. Do not modify the repository. Submit one verification record whose goal_backwards and contract
+  claims each cite the checks you ran.
+fixture:
+  base: fixture/base
+  seeded: fixture/candidates/VD-REPAIR
+hidden_sha256: null
+control_of: null

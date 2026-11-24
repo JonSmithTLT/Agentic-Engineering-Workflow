@@ -1,0 +1,7 @@
+# Evaluator-only: the expected first disposition of each case and the Ticket goals its candidate violates.
+# calibrate.py re-derives both from the M3 T5 hidden checks; plan.yaml commits to these bytes (scoring.rubric_sha256).
+schema: aew/verifier-disposition-expected/v1
+cases:
+  VD-CLEAN: {disposition: accept, violated: []}
+  VD-T5: {disposition: rework, violated: [G1, G2]}
+  VD-REPAIR: {disposition: rework, violated: [G1]}

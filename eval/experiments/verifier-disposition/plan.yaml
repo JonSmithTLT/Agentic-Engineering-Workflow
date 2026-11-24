@@ -1,0 +1,41 @@
+schema: aew/eval-prereg/v1
+experiment: verifier-disposition-offline-1
+purpose: qualification
+question: Does each arm present the same candidate to a fresh verifier with its preregistered skill exposure, and does
+  the blinded grader turn the verifier's first emitted verification into the expected disposition grade?
+profiles:
+  roles: {verifier: none}
+  budget_usd: 0
+runs_per_cell: 1
+assignment: {method: randomized_blocked, seed: 19}
+primary_measure: The grade of each run's first verification disposition (correct accept, justified rework, false
+  accept, false rework or no disposition), blinded to the arm.
+secondary_measures: [unsupported claims per run, authority violations per run, cost per run (null when unmeasured)]
+metrics: [{name: first-disposition, version: '1'}, {name: unsupported-claims, version: '1'}]
+validity_rules:
+  infrastructure_invalid: [observed skill exposure differs from the arm's, disposition bound to another snapshot,
+    changed fixture]
+  counted_failures: [no verification record, false accept, false rework]
+  retry_policy: {max_retries: 0, allowed_for: []}
+  missing_result_policy: Rehearsal incomplete.
+stopping_rule: One scripted attempt per case and arm.
+held_out: []
+scoring:
+  hidden_channel: evaluator/grade.py
+  who_scores: automated
+  blinding: arm_hidden
+  adjudication_policy: Grade only the first verification record, after every attempt has ended, with the arm and its
+    exposure removed. Unsupported claims are recorded beside the grade and never change it.
+  rubric_sha256: d1a12d8dafb8effb140685ee3f0b9a4b7cee54b89e1fd4bebaca751f6ad3a164
+exposure_policy: Public synthetic cases. Only the fixture's base and the case's candidate enter the verifier's
+  repository, with the case task; evaluator/ and the case ids never do.
+amendment_policy: A material change requires a new experiment id.
+arms:
+- id: inaccessible
+  kind: scripted
+  description: the verifier card with acceptance-verification withheld
+  config: {seeded: true, steps: [], skills: [], probe: probe.py}
+- id: exposed
+  kind: scripted
+  description: the shipped verifier card, acceptance-verification exposed
+  config: {seeded: true, steps: [], skills: [acceptance-verification], probe: probe.py}

@@ -8,6 +8,8 @@ evidence_proof_skips:
     oom: Linux cgroup v2 supplies an isolated, swap-free memory limit and an oom_kill counter.
 skipped:
   win32:
+    tests/unit/test_evidence_states.py::test_hosted_warning_attach_records_only_process_outcomes: >-
+      The hosted Linux sampler retries py-spy through sudo. Linux exercises both routes with real subprocesses.
     tests/integration/test_relay_status.py::test_direct_relay_connect_destinations_match_the_receiver_and_report: >-
       Linux strace observes all connect attempts of the test's worker relay and its threads. Covered on Linux.
     tests/integration/test_seat_resume.py::test_v2_driver_answers_and_counts_the_resume_prompt: >-

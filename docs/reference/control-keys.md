@@ -34,7 +34,7 @@ The top-level properties of the control schema, which is closed and which the st
 - `tokens` (required, initial): `aew.engine.api:Engine.initialize`
 - `work` (required, initial): `aew.engine.api:Engine.initialize`
 
-## Unit keys (67)
+## Unit keys (68)
 
 The keys a unit in `work` carries: the properties of the schema's unit definition (open) joined with the Ticket field registry's inputs and engine bookkeeping. A lower bound: the control schema's unit definition is open and the registry's inventory is checked by the oracle's `ticket_field_violations` over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it.
 
@@ -98,6 +98,7 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 - `revisions` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `risk_class` (input:gate_set, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `role_plan` (input:staffing): `aew.engine.ticket_fields:load_registry`
+- `scope_corrections` (input:scope, in the schema): `aew.engine.scope_ops:UNIT_KEY`
 - `stage_intents` (bookkeeping, in the schema): `aew.engine.ticket_fields:load_registry`
 - `state` (bookkeeping, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `state_reason` (bookkeeping): `aew.engine.ticket_fields:load_registry`

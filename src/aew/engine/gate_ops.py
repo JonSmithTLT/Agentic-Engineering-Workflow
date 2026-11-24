@@ -136,24 +136,25 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
     cancelled and dispatched again with its card (addendum 3)."""
     under = set(H.descendants(state, work_id))
     why = f"{work_id}'s mandatory gate `{gate}` was replaced on the record, so this invocation's context pack changed"
+    return [{"invocation": inv_id, "work_id": inv["work_unit"], "role": inv.get("role"),
+             "commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
+            for inv_id, inv in sorted(state["invocations"].items())
+            if inv.get("status") == "active" and inv.get("work_unit") in under]
+
+
+def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any]) -> list[str]:
+    """The commands that re-dispatch an active invocation whose context pack changed, complete and parser-valid: a
+    non-mutating executor's attempt is superseded; any other invocation is cancelled and dispatched again with its card
+    (addendum 3; the scope add's result names them the same way, register E126)."""
     rev = EXPECT_REV
-    out = []
-    for inv_id, inv in sorted(state["invocations"].items()):
-        if inv.get("status") != "active" or inv.get("work_unit") not in under:
-            continue
-        wid = inv["work_unit"]
-        unit = state["work"][wid]
-        if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
-            commands = [f"aew work redispatch {wid} --launch {rev} --fields -"]
-        else:
-            card = (inv.get("card") or {}).get("id")
-            pick = f"--card {card}" if card else f"--role {inv['role']}"
-            scope = " --scope integration" if inv.get("scope") == "integration" else ""
-            commands = [f"aew invoke cancel {inv_id} {rev} --fields -",
-                        f"aew invoke create {wid} {pick}{scope} --launch {rev}"]
-        out.append({"invocation": inv_id, "work_id": wid, "role": inv.get("role"), "commands": commands,
-                    "fields": {"reason": why}})
-    return out
+    wid = inv["work_unit"]
+    unit = state["work"][wid]
+    if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
+        return [f"aew work redispatch {wid} --launch {rev} --fields -"]
+    card = (inv.get("card") or {}).get("id")
+    pick = f"--card {card}" if card else f"--role {inv['role']}"
+    scope = " --scope integration" if inv.get("scope") == "integration" else ""
+    return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew invoke create {wid} {pick}{scope} --launch {rev}"]
 
 
 def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, Any]]:

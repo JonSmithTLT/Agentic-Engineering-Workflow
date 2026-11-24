@@ -57,7 +57,8 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str],
 
 _RULE_TEXT = {"outside_ticket_scope": "is outside the Ticket's scope", "protected_path": "is a protected path",
               "acceptance_input": "is an acceptance input of this Ticket",
-              "generated_path": "is a generated file (change its source instead)"}
+              "generated_path": "is a generated file (change its source instead)",
+              "test_signoff_needed": "removes tests from a path added to the scope, which needs a sign-off"}
 
 
 def describe(violations: list[dict[str, str]], limit: int = 3) -> str:
@@ -67,10 +68,12 @@ def describe(violations: list[dict[str, str]], limit: int = 3) -> str:
     return "; ".join(words) + (f"; and {more} more" if more > 0 else "")
 
 
-def scope_remedy(work_id: str) -> str:
-    """What a Lead can do about a change outside its Ticket's scope (M3 dogfood report §6.6, E9)."""
+def scope_remedy(work_id: str, add: str | None = None) -> str:
+    """What a Lead can do about a change outside its Ticket's scope (M3 dogfood report §6.6, E9). ``add``: how a test
+    path the change needs is added on the record instead (register E126; ``engine.scope_ops.remedy`` owns it)."""
     cancel = fields_command(f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason",
                             "its scope is wrong")
+    exception = f" A test path the change needs is the one exception: {add}." if add else ""
     return ("A Ticket's scope is fixed when it is created: if the change strayed outside it, have the implementer undo "
-            "that part; if the scope is wrong, create a Ticket with the scope the change needs and cancel this one "
-            f"with:\n\n{cancel}")
+            f"that part.{exception} If the scope is otherwise wrong, create a Ticket with the scope the change needs "
+            f"and cancel this one with:\n\n{cancel}")

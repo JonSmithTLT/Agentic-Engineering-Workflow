@@ -139,11 +139,15 @@ DISPOSITION_SUBJECTS = ("finding", "claim", "anomaly")
 # A parent's stuck gate, `<parent>#gate:<gate>` (ITEMS 55, designer addendum 4): only `replace_gate` takes it, and that
 # choice alone takes, and needs, the `replacement` gate (checked by the adapter).
 GATE_SUBJECTS = ("gate",)
+# A Ticket's scope, `<T>#scope:<path>` (register E126): `add_scope` adds one exact test path on the record, and
+# `add_scope_signed` does when the rationale carries the sign-off a stop asks for.
+SCOPE_SUBJECTS = ("scope",)
 RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
     **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
     **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
        for kind in DISPOSITION_SUBJECTS},
     **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
+    **{(choice, kind): "work.scope_add" for choice in ("add_scope", "add_scope_signed") for kind in SCOPE_SUBJECTS},
 }
 
 
@@ -155,6 +159,7 @@ def _choices_running(*primitives: str) -> tuple[str, ...]:
 STAGE_CHOICES = _choices_running("stage.resolve")
 DISPOSITION_CHOICES = _choices_running("work.dispose")
 GATE_CHOICES = _choices_running("work.gate_replace")
+SCOPE_CHOICES = _choices_running("work.scope_add")
 RESOLVE_CHOICES = _choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
@@ -260,7 +265,7 @@ TOOLS: dict[str, Tool] = _catalog(
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Continue or abandon a stage, dispose, or replace a gate.",
+         "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
          _obj({"expect_rev": EXPECT_REV,
                "subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
@@ -273,7 +278,7 @@ TOOLS: dict[str, Tool] = _catalog(
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
          expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
-         required_judgments=("stage_resolution", "disposition", "gate_replacement"),
+         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction"),
          mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,

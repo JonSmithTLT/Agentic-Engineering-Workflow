@@ -888,6 +888,22 @@
             }
           }
         },
+        "scope_corrections": {
+          "description": "Register E126: the test paths the Lead added to this mutating Ticket's scope on the record, each with its immutable correction record at `record`. The effective scope is the record's paths and these (aew.engine.scope_ops.effective_meta); archival carries the list into the unit's bundle, which pins each record.",
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "added", "signed_off", "record", "sha256", "rev"], "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SC-[0-9]{4,}$"},
+              "added": {"type": "string", "minLength": 1},
+              "signed_off": {"type": "boolean"},
+              "signs": {"description": "A correction that only records a sign-off names the one it signs.", "type": "string", "pattern": "^SC-[0-9]{4,}$"},
+              "record": {"type": "string", "pattern": "^work/[^/]+/scope-corrections/SC-[0-9]{4,}\\.yaml$"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
         "dispositions": {
           "description": "M4-E E5b (plan v3 §2.4): the Lead's dispositions concerning this unit, each written immutably at `path` (a finding or claim it marks, or an anomaly about it); the hot index while the unit is live. Archival carries the list into the unit's bundle, which pins each record.",
           "type": "array",

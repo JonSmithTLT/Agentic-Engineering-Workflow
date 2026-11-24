@@ -566,6 +566,9 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `work/{}/gate-corrections` (kept in git); read by none
   - Written by
     - `aew.engine.gate_ops:GateRepair._write`
+- `work/{}/scope-corrections` (kept in git); read by none
+  - Written by
+    - `aew.engine.scope_ops:ScopeCorrections._write`
 - `work/{}/stage-intents` (kept in git); read by none
   - Written by
     - `aew.engine.stage_intents:StageIntents._end`
@@ -612,6 +615,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.recall`: `_evidence` (Path.read_bytes), `search_enabled` (Path.read_bytes)
 - `aew.engine.resume_ops`: `Resume._freshness` (Path.exists), `Resume._freshness` (Path.read_text), `Resume._plan_brief` (Path.read_text), `Resume.resume` (Path.exists), `Resume.resume` (Path.read_text)
 - `aew.engine.role_ops`: `Roles.role_validate` (Path.read_bytes)
+- `aew.engine.scope_ops`: `ScopeCorrections._check` (Path.is_file), `ScopeCorrections._record` (Path.read_text), `_file_text` (Path.read_text), `pack_entries` (Path.read_text)
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)

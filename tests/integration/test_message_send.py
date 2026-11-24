@@ -19,10 +19,11 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-# Full catalogs with messaging off, including E328's optional bindings.
-OFF_LIST_SHA = {"normal": "d2009268a54e858619770acca38765ef9eb2dfd25044d4edef2fbf3bcc44d9d2",
-                "recovery": "08cf7d83a540476ed23ad2f105d040ea19981fdbffc67c5e9b7e7a388b1d771b"}
-OFF_CLI_SHA = "ccb3d02ab365ad45ffd7c16341fc0a052fdb5a64f14d52a5adf4d58a18edbe25"
+# Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
+# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved).
+OFF_LIST_SHA = {"normal": "1cbf05fd48612ec63c0d8970a29353cbe94f7743a9834878f677c7324d5c2cd9",
+                "recovery": "5cda7fe4022141324922406bad1ef39ce3403911d4d170f13aab43288bbd0b79"}
+OFF_CLI_SHA = "23ffb31e822a53f8e058aa909136de7b50d9a0891611b0ee5a66537a02e78004"
 
 
 def digest(value):
@@ -196,7 +197,8 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
         "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
                     "Requests grant nothing.",
-        "resolve": "Continue or abandon a stage, dispose, or replace a gate.",
+        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and its description names it.
+        "resolve": "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

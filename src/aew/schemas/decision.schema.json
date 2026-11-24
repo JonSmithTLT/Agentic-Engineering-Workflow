@@ -42,7 +42,8 @@
         "plan_reconfirmation",
         "input_acknowledgement",
         "attempt_supersession",
-        "reclassification"
+        "reclassification",
+        "scope_correction"
       ]
     },
     "work_unit": {

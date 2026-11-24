@@ -45,7 +45,8 @@
     {"field": "promoted_from", "group": "parent", "rule": "exact"},
     {"field": "title", "group": "card", "rule": "text"},
     {"field": "role_plan", "group": "staffing", "rule": "exact"},
-    {"field": "priority", "group": "scheduling", "rule": "exact", "note": "set at the draft only (the operator, 2026-11-10)"}
+    {"field": "priority", "group": "scheduling", "rule": "exact", "note": "set at the draft only (the operator, 2026-11-10)"},
+    {"field": "scope_corrections", "group": "scope", "rule": "exact", "note": "the test paths added to the scope on the record (register E126): with scope.paths, the effective scope"}
   ],
   "derived": [
     {"field": "effective_class", "group": "gate_set", "rule": "exact"},

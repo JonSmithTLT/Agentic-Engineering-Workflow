@@ -293,6 +293,53 @@ def control_violations(root: Path) -> list[str]:
     problems += coordination_violations(root, hot, state)
     # 59-61. M4-E E5b: the anomaly record and the dispositions.
     problems += disposition_violations(root, hot, state)
+    # 62. Register E126: the scope corrections.
+    problems += scope_correction_violations(root, hot, state)
+    return problems
+
+
+def scope_correction_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
+    """62. Every scope-correction pointer, hot or archived, is a mutating Ticket's and names an immutable record that
+    hashes to it and is its own (id, Ticket, path, sign-off, the correction it signs), issued by the counter, for one
+    exact path; a path is added once, and named again only by one later correction that signs off that add (register
+    E126; PR #540 review, M1)."""
+    import hashlib
+
+    from aew.engine import scope_ops as SC
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    issued = int((hot.get("counters") or {}).get("scope_correction", 0))
+    for wid, unit in sorted(full["work"].items()):
+        pointers = unit.get(SC.UNIT_KEY) or []
+        if pointers and (unit["kind"] != "ticket" or not unit.get("mutating")):
+            problems.append(f"62: {wid} has scope corrections and is not a mutating Ticket")
+        first: dict[str, dict[str, Any]] = {}
+        for ptr in pointers:
+            earlier = first.get(ptr["added"])
+            if earlier is None and ptr.get("signs") is None:
+                first[ptr["added"]] = ptr
+            elif (earlier is None or ptr.get("signs") != earlier["id"] or earlier["signed_off"]
+                  or not ptr["signed_off"]):
+                problems.append(f"62: {wid} names `{ptr['added']}` again in {ptr['id']} without signing off its "
+                                "unsigned add")
+            else:
+                first[ptr["added"]] = {**earlier, "signed_off": True}
+        for ptr in pointers:
+            path = Path(root) / ".aew" / ptr["record"]
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != ptr["sha256"]:
+                problems.append(f"62: {wid}'s scope correction {ptr['id']} does not match its record {ptr['record']}")
+                continue
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            validate("scope-correction", doc, source=ptr["record"])
+            mine = (ptr["id"], wid, ptr["added"], ptr["signed_off"], ptr.get("signs"))
+            if (doc["id"], doc["work_unit"], doc["path"], doc["signoff"] is not None, doc["signs"]) != mine or int(
+                    ptr["id"].split("-")[1]) > issued:
+                problems.append(f"62: {wid}'s pointer {ptr['id']} is not its record's, or was never issued")
+            if SC.exact_path_problem(ptr["added"]) is not None:
+                problems.append(f"62: {wid}'s scope correction {ptr['id']} adds `{ptr['added']}`, not an exact path")
+            if doc["stops"] and doc["signoff"] is None:
+                problems.append(f"62: {wid}'s scope correction {ptr['id']} met a stop and records no sign-off")
     return problems
 
 

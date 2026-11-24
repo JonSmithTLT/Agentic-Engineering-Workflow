@@ -111,6 +111,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.migrate_ops:Migration.discard_unreachable`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.scope_ops:ScopeCorrections._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._remove_temp_files`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed

@@ -28,7 +28,7 @@ from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.kit import KIT_RECORD, git
 from aew.maps.slices import HEADING
 from aew.policy.execution import push_wake
-from aew.util import atomic_write, glob_any, parse_frontmatter
+from aew.util import atomic_write, glob_any
 
 SCHEMA = "aew/alpha-receipt/v1"
 FIELDS = ("no_wake", "validation_width", "scope", "dead_end_gates", "readability", "containment")
@@ -291,8 +291,7 @@ def write_receipt(dest: Path, *, readable: str | None = None) -> Path:
     widths, scopes = {}, {}
     for ticket in tickets:
         shown = engine.work_show(ticket)
-        meta = parse_frontmatter(shown["record"])[0] if shown.get("record") else {}
-        scope = (meta.get("scope") or {}).get("paths") or []
+        scope = shown.get("effective_scope") or []  # the declared scope and the paths added on the record (E126)
         widths[ticket], changed = _coverage(aew_root, shown["control"])
         missing_paths = _missing("no changed paths")
         scopes[ticket] = {

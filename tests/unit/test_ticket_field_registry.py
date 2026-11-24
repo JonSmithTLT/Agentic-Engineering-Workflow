@@ -172,7 +172,7 @@ def test_a_dotted_frontmatter_key_is_never_the_nested_field(tmp_path: Path):
     a, b = TF.live_digests(narrow, "T-0001", narrow_text), TF.live_digests(wide, "T-0001", wide_text)
     assert TF.changed_groups(a, b) == {"scope"}
     payloads = TF.group_payloads(narrow, "T-0001", narrow_text)
-    assert payloads["scope"] == {"record:scope.paths": ["src/calc/*.py"]}
+    assert payloads["scope"] == {"record:scope.paths": ["src/calc/*.py"], "control:scope_corrections": None}
     assert payloads["acceptance"]['record:?["scope.paths"]'] == ["docs/**"]
     # Alone or beside its nested twin, the dotted key is reported unclassified, and it changes acceptance only.
     base_state, base_text = ticket()

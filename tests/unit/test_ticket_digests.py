@@ -223,7 +223,8 @@ VECTOR_DIGESTS = {
     # register E227: the non-material group a Ticket's priority hashes into, added to v1 in place before S3 binds
     # evidence (ADR-0016 §1.5); every other vector is unchanged
     "scheduling": "f8d5eff18e1e8c8805e03fa43f2aef746f13419551ac6587e3eb843b2e8c67e9",
-    "scope": "7f2b361a63a9543352dbb25321390b5dcde6a38b768687769ed13a3c2c529f5d",
+    # register E126: the scope corrections join the scope group, added to v1 in place before S3 binds evidence
+    "scope": "51af9b2ca88e69d8c7f03ed6a675c8c0ff4d695685b353352e7c480f3fcbd08c",
     "staffing": "6592665325b0cfe477769e8065061312dddda4aacd4d9e2c65090b7dd26ab391",
 }
 

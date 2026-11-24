@@ -45,6 +45,7 @@ from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
+from aew.engine.scope_ops import ScopeCorrections
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
@@ -574,6 +575,7 @@ class Engine:
                                     archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
+        self._scope = scope = ScopeCorrections(k, units=units, gates=gates, assurance=assurance)  # register E126
         self._gate_repair = gate_repair = GateRepair(k, units=units, roles=roles)  # ITEMS 55
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,
                                          coordination=coordination)
@@ -638,6 +640,7 @@ class Engine:
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
         queries.register("work.gate_replace", gate_repair.replace_query)
+        queries.register("work.scope_add", scope.add_query)
         queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
         queries.register("integrate.prepare", integration.prepare_query)
         queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
@@ -1682,6 +1685,13 @@ class Engine:
         `resolve` tool's `replace_gate`."""
         return self._gate_repair.gate_replace(token=token, expect_rev=expect_rev, subject=subject,
                                               replacement=replacement, rationale=rationale, binding=binding)
+
+    def work_scope_add(self, *, token: str, expect_rev: int, subject: str, rationale: str,
+                       signed: bool = False) -> dict[str, Any]:
+        """Add one exact test path to one Ticket's scope, on the record (register E126): the `resolve` tool's
+        `add_scope`, or `add_scope_signed` with a sign-off cited in the rationale."""
+        return self._scope.scope_add(token=token, expect_rev=expect_rev, subject=subject, rationale=rationale,
+                                     signed=signed)
 
     def gate_items(self, subject: str | None = None, *, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open stuck-gate items (ITEMS 55): resume, status and doctor name them; `resolve` settles them."""

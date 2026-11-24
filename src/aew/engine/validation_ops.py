@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from aew.engine import approval, faults, transitions
 from aew.engine import coverage as CV
 from aew.engine import queue_ops as Q
+from aew.engine import scope_ops as SC
 from aew.errors import (
     AEWError,
     ContainmentUnavailable,
@@ -492,7 +493,9 @@ class Validation:
         unit = self.k.store.current()["work"][work_id]
         integ = unit["integration"]
         meta = self.gates.record_meta(unit)
-        scope = (list((meta.get("scope") or {}).get("paths") or []), (meta.get("acceptance") or {}).get("inputs"))
+        # The scope, the acceptance inputs, and the added paths' sign-off stops at the candidate (register E126).
+        scope = (list((meta.get("scope") or {}).get("paths") or []), (meta.get("acceptance") or {}).get("inputs"),
+                 SC.unit_violations(self.k.repo_root, unit, after=integ["candidate"]))
         workspace = integ["workspace"]
         directory = self._staging(run["id"])
         directory.mkdir(parents=True, exist_ok=True)
@@ -561,14 +564,15 @@ class Validation:
         return C.allowlist_env(layout)
 
     def _one_check(self, run: dict[str, Any], check_id: str, entry: dict[str, Any], workspace: Path,
-                   integ: dict[str, Any], scope: tuple[list[str], Any], env: dict[str, str], layout: Any,
-                   trees: Any) -> dict[str, Any]:
+                   integ: dict[str, Any], scope: tuple[list[str], Any, list[dict[str, str]]], env: dict[str, str],
+                   layout: Any, trees: Any) -> dict[str, Any]:
         directory = self._staging(run["id"])
         pinned = run["_definitions"][check_id]  # the definition transaction 1 resolved, never live policy
         cfg = pinned["cfg"]
         if cfg.get("builtin"):  # the guardrails, over what the candidate changes against its base
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
                                   pinned["guardrails"], scope[0], scope[1])
+            verdict["violations"] += scope[2]
             out = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None,
                    "cwd": str(workspace.resolve())}

@@ -92,6 +92,12 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # Its guard is the queryable one: the predicate on the new gate, and the operator's five conditions.
     PrimitiveSpec("work.gate_replace", JUDGMENT_BEARING, ("gate_replacement",), ("gates", "checks", "roles"), (),
                   "control_state", "expected_revision", "work.gate_replace"),
+    # One exact test path added to one Ticket's scope, on the record (register E126; the designer's decisions of
+    # 2026-11-03, §2): through `resolve`'s `add_scope` or `add_scope_signed`, one transaction under the caller's
+    # expected revision. Its guard is the queryable one: the Ticket's admission, the path rules, the stops for a
+    # sign-off and dispatch's assurance predicates on the widened scope.
+    PrimitiveSpec("work.scope_add", JUDGMENT_BEARING, ("scope_correction",), ("gates", "guardrails"), (),
+                  "control_state", "expected_revision", "work.scope_add"),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease. The
     # grant mints the custodian's custody credential (M4-E E6a: `credential`), whose worker the granting process then
@@ -178,6 +184,7 @@ NOT_STEPS: dict[str, str] = {
     "stage.resolve": "it resolves another stage's journal; a stage never runs inside one",
     "work.dispose": "a disposition is one judgment in one transaction, made through `resolve`: never a stage step",
     "work.gate_replace": "a replacement is one judgment in one transaction, made through `resolve`: never a stage step",
+    "work.scope_add": "a scope add is one judgment in one transaction, made through `resolve`: never a stage step",
 }
 # Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
 # says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).
@@ -270,6 +277,7 @@ CONTROL_OP_SPECS: dict[str, tuple[ControlOpSpec, ...]] = {
     "work.dispatch": (ControlOpSpec("A", "in-lock dispatch decision"),),
     "work.dispose": (ControlOpSpec("C", "anomaly subject record digest"),),
     "work.gate_replace": (ControlOpSpec("C", "gate context and replacement definition"),),
+    "work.scope_add": (ControlOpSpec("A", "append an immutable scope correction under the path rules"),),
     "work.move": (ControlOpSpec("B", "current parent"),),
     "work.promote": (ControlOpSpec("B", "current kind and parent", request_id=True),),
     "work.reclassify": (ControlOpSpec("A", "raise-only risk class"),),

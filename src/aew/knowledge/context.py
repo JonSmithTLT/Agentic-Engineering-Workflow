@@ -170,6 +170,9 @@ class PackInputs:
     # Register F22.1 (plan §5.4): the structural-map slice, rendered (``aew.maps.slices``); None when the switch is off
     # or the role's context does not name codebase_map, and then the pack is exactly what it was without maps.
     codebase_map: list[str] | None = None
+    # Register E126: the test paths the Lead added to a Ticket's scope on the record, listed apart from its declared
+    # scope (``scope_ops.pack_entries``); empty when there is none, and then the pack is exactly what it was.
+    scope_added: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _bullets(items: list[str]) -> list[str]:
@@ -362,9 +365,27 @@ def _requirement(p: PackInputs) -> list[str]:
         "Contract criteria:",
         *_bullets(acceptance.get("contract", [])),
         "",
-        "Ticket scope (allowed change paths): " + (", ".join((p.record_meta.get("scope") or {}).get("paths", []))
-                                                   or "not restricted"),
+        *_scope_lines(p),
     ]
+
+
+def _scope_lines(p: PackInputs) -> list[str]:
+    """The Ticket's scope; with an add, its declared paths and the added ones apart, each added one labelled as the
+    Lead's, so a reviewer reads the widening for what it is (register E126; PR #540 review, M2)."""
+    paths = list((p.record_meta.get("scope") or {}).get("paths", []))
+    if not p.scope_added:
+        return ["Ticket scope (allowed change paths): " + (", ".join(paths) or "not restricted")]
+    added = {a["path"] for a in p.scope_added}
+    lines = ["Ticket scope (allowed change paths), as declared: " + ", ".join(x for x in paths if x not in added),
+             "Test paths added to the scope by the Lead on the record (Lead-authored, not the declared scope; "
+             "obligation SCOPE_CORRECTION_ADDED: a reviewer reads each as a labelled widening, and judges whether the "
+             "change is proportionate and keeps the suite's tests):"]
+    for a in p.scope_added:
+        line = f"- `{a['path']}` ({a['correction']}, added by the Lead on the record): {a['rationale']}"
+        if a.get("signoff"):
+            line += f" Sign-off ({a['signoff']['correction']}, {a['signoff']['label']}): {a['signoff']['text']}"
+        lines.append(line)
+    return lines
 
 
 def _authority(p: PackInputs) -> list[str]:

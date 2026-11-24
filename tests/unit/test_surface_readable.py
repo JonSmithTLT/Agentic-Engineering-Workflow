@@ -331,7 +331,8 @@ def full_result(shape: str) -> dict[str, Any]:
     projection = {"actions": [action(arguments={"expect_rev": 15, "note": "n"}, callable=shape != "command",
                                      cli_fallback=["work", "assign", "T-0001"])],
                   "decisions_required": [decision], "blockers": [{"code": "B1", "message": "m1"}],
-                  "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run]}
+                  "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run],
+                  "unit": {"scope_added": ["tests/test_a.py (SC-0001)"]}}  # the Lead's adds, listed (E126)
     if shape == "project":
         projection["subject"] = "project"
     if shape == "hint":

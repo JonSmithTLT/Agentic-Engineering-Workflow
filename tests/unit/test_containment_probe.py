@@ -559,6 +559,10 @@ def test_row_1_passes_on_a_network_of_the_runs_own_and_records_what_it_checked(m
     ({"direct": "connected"}, "direct TCP connection"),
     ({"direct_udp": "sent"}, "direct UDP connection"),
     ({"direct6": "connected"}, "direct IPv6 TCP connection"),
+    # a socket the probe could not create is recorded by its errno name; only EAFNOSUPPORT on direct6 is "no route"
+    ({"direct6": "EMFILE"}, "direct IPv6 TCP connection"),
+    ({"direct": "EPERM"}, "direct TCP connection"),
+    ({"direct_udp": "ENOBUFS"}, "direct UDP connection"),
     ({"host_port": "connected"}, "a loopback port the host holds is reachable inside"),
     ({"host_abstract": "connected"}, "an abstract socket the host holds is reachable inside"),
     ({"abstract": ["@aew-probe-0011"]}, "an abstract socket the host holds is reachable inside"),

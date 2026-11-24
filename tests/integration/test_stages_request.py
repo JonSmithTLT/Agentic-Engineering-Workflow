@@ -268,7 +268,7 @@ def test_a_non_mutating_tickets_hints_and_refusals_name_no_stage(lab_project, tm
     reviewer.submit("review", {"claim": "facts are supported", "review": {
         "independence": "R1", "disposition": "pass", "findings": [], "resolved_findings": []}})
     [hint] = [h for h in hints(p, wid) if h.startswith("ingest review")]
-    assert "`aew review ingest`" in hint and not stages_named(hint), hint
+    assert f"`aew review ingest {wid} --evidence " in hint and not stages_named(hint), hint
 
 
 @pytest.mark.parametrize("verification", [True, False])
@@ -291,9 +291,9 @@ def test_the_review_hint_names_its_stage_only_where_the_class_requires_verificat
     review(p, wid)
     [hint] = [h for h in hints(p, wid) if h.startswith("ingest review")]
     if verification:
-        assert hint.index("`ticket_request_verification`") < hint.index("`aew review ingest`")
+        assert hint.index("`ticket_request_verification`") < hint.index(f"`aew review ingest {wid} ")
     else:
-        assert "`aew review ingest`" in hint and not stages_named(hint), hint
+        assert f"`aew review ingest {wid} " in hint and not stages_named(hint), hint
 
 
 # ---------------------------------------------------------------------------------------------- equivalence (§10)

@@ -1431,12 +1431,8 @@ systems:
     gaps closed. The other four rules stay in shadow until the operator decides. No product surface: it is done when CI
     fails on a new violation of an enforced rule.'
   remaining:
-  - slice: The O-CMD fix PR for the two keys that block the flip (cli harness status|result, tool integration_publish|result),
-      before E140 PR 3 (as of main 01380632)
-    row: E140
-    estimate: 1 PR (estimate)
-  - slice: 'E140 PR 3, its O-CMD half: the flip of O-CMD to enforce, after a triage of its keys new against the allow-list
-      (O-SECRET was flipped alone on 2026-11-19)'
+  - slice: 'E140 PR 3, its O-CMD half: the flip of O-CMD to enforce, once a full-tier run with the triage''s fixes shows
+      no O-CMD key new, with the keys that run shows stale removed first (O-SECRET was flipped alone on 2026-11-19)'
     row: E140
     estimate: 1 PR (estimate)
   - slice: 'E141: scan the worker preamble, role cards, MCP text and readable.py, and judge a bare command named in a sentence'
@@ -1468,7 +1464,8 @@ systems:
     allow-list only shrinks": the ratchet on every run; .github/workflows/discovery.yml:3-7: the static-text
     lane, collected by no required job'
   - 'tests/conftest.py:27,38,49: the capture plugin'
-  - 'tests/helpers/discovery/allowed.yaml:199-227: 28 O-CMD keys; no O-SECRET section (was 55 and 4 at 5625b8e1)'
+  - 'tests/helpers/discovery/allowed.yaml:199-217: 18 O-CMD keys, after the triage removed the 10 that nine full-tier
+    main runs no longer observed; no O-SECRET section (was 55 and 4 at 5625b8e1)'
   - docs/implementation/future-work.yaml (row E140, at c11a61ea) (E140); its Notes still say the tooling is open, which
     merged as abfa0727 (stale, BOARD v2 §6); row E141; the Now list names E140
   - 'docs/implementation/future-work.yaml (row F47.6, at c11a61ea): F47.6 closed 2026-10-24, held in HOLD-02; :375 lists

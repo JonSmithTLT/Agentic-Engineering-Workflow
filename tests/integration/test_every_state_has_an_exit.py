@@ -46,13 +46,13 @@ DEAD_ENDS = {
         "hint": "launch the implementer from its pack (INV-0001), then move to RUNNING"},
     "REVIEW_PENDING, no report and no live run": {
         "why": "the reviewer's report or run is what offers something; a lost run leaves nothing",
-        "hint": "dispatch the next planned reviewer card (`aew invoke create`)"},
+        "hint": "dispatch the next planned reviewer card (`aew invoke create T-"},
     "REVIEW_FAILED": {
         "why": "rework has no typed home: `ticket_start` does not fit it (`work.assign` starts from READY)",
         "hint": "return to RUNNING and dispatch an implementer with the findings"},
     "VERIFY_PENDING, no report and no live run": {
         "why": "the verifier's report or run is what offers something; a lost run leaves nothing",
-        "hint": "dispatch the next planned verifier card (`aew invoke create`)"},
+        "hint": "dispatch the next planned verifier card (`aew invoke create T-"},
     "VERIFICATION_INCONCLUSIVE": {
         "why": "the return to VERIFY_PENDING needs a reason and the Lead's judgment; nothing offers it",
         "hint": "resolve the environment/evidence blocker, then return to VERIFY_PENDING"},

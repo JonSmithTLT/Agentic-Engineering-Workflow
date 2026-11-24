@@ -153,13 +153,13 @@ PATH = (
         f"by transition**, not by ingesting it: where the class requires no review, {TRANSITION} to VERIFY_PENDING if "
         "it requires only verification, or to COMMIT_READY if it requires neither. (`aew evidence ingest` is for "
         "non-mutating Tickets only.)")),
-    Move("invoke.create.mutating", "reviewer", f"`aew invoke create <T> --role reviewer --launch {EXPECT_REV}`",
+    Move("invoke.create.mutating", "reviewer", f"`{T.dispatch_command('<T>', 'reviewer')}`",
          label="Dispatch the reviewer"),
     Move("review.ingest", None, _command("review.ingest"), label="Accept the review",
          note="Name the report `status` lists, not a run. Where the class requires no verification, `ticket_prepare` "
               "takes it from here, with no report."),
     _transition("VERIFY_PENDING"),
-    Move("invoke.create.mutating", "verifier", f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`",
+    Move("invoke.create.mutating", "verifier", f"`{T.dispatch_command('<T>', 'verifier')}`",
          label="Dispatch the verifier"),
     Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
@@ -456,7 +456,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "- **`resolve`** settles only what `resume` or a decision lists. A partial stale stage whose result names "
         "`resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.",
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
-        f"`aew invoke create <T> --role implementer --launch {EXPECT_REV}`. The open findings reach it through its "
+        f"`{T.dispatch_command('<T>', 'implementer')}`. The open findings reach it through its "
         "pack.",
         f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
@@ -484,7 +484,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its "
         "children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and "
-        f"verify it (`aew invoke create <S> --role reviewer|verifier --launch {EXPECT_REV}`, then ingest), then "
+        f"verify it (`{T.dispatch_command('<S>', 'reviewer|verifier')}`, then ingest), then "
         f"`aew work close <S> --reason <reason> {EXPECT_REV}`. A parent's mandatory gates and minimum descendant class "
         "bind its children. An Epic closes only once the history is audited through the current root: "
         f"`aew history audit {EXPECT_REV}` first.",

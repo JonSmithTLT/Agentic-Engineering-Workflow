@@ -1,10 +1,11 @@
 """D2's rules over one output (discovery-layer spec v3.4, §2.2; docs/implementation/vertical-uat.md §8).
 
 Every input a rule judges by is read from the product itself: the live ``aew`` argparse parser (O-CMD, and O-IDS's
-positions), ``aew.surface.contract.TOOLS`` (typed-tool names and arguments), ``aew.errors`` (the code registry),
-``aew.harness.contract.CREDENTIAL_ENV`` (O-SECRET's credentials), the id formats the engine writes (``INVOCATION_RE``,
-``run_id``, the stage-intent schema) and ``aew.harness.agentenv`` (O-ENV). The vocabulary the spec itself fixes (the
-id kinds of O-IDS, the refusal schema's fields) is named once here, with the spec's section.
+positions), the typed catalog with every switch on (``known_tools``: typed-tool names and arguments), ``aew.errors``
+(the code registry), ``aew.harness.contract.CREDENTIAL_ENV`` (O-SECRET's credentials), the id formats the engine
+writes (``INVOCATION_RE``, ``run_id``, the stage-intent schema) and ``aew.harness.agentenv`` (O-ENV). The vocabulary
+the spec itself fixes (the id kinds of O-IDS, the refusal schema's fields) is named once here, with the spec's
+section.
 
 A finding is a ``(rule, site)`` pair: the site is the output-site key the capture plugin or the static scan gives
 the output, never message text (messages carry temporary paths and live ids; the key goes into a committed file).
@@ -483,6 +484,17 @@ def _field_options(argv: list[str], body: str) -> list[str]:
     return fields.expand([*argv, fields.OPTION, "-"], _parser(), read=lambda _: body)[len(argv):]
 
 
+def known_tools() -> dict[str, Any]:
+    """Every typed tool an output may name: the catalog with every switch on (``contract.catalog``, its owner). Judged
+    against the off catalog alone (``contract.TOOLS``), a tool behind a switch (``message_send``, behind messaging) was
+    a violation in its own results (E140's O-CMD triage). An output carries no switch state, so the limit: a switched
+    tool named where its switch is off is no O-CMD finding. The product's off-text tests own that
+    (``tests/unit/test_messaging_guidance.py``)."""
+    from aew.surface import contract
+
+    return contract.catalog(contract.ALL_SWITCHES)
+
+
 def o_cmd(s: Suggestion) -> str | None:
     """Why ``s`` does not parse (parse-only, placeholders as values), or ``None``. A ``--fields`` body goes through the
     real expansion, so what it gives counts as given and what it gets wrong is reported; a line naming ``--fields`` with
@@ -508,11 +520,8 @@ def o_cmd(s: Suggestion) -> str | None:
             return f"{' '.join(variant)}: {exc}"
         if command_words(variant)[:2] == ("lead", "tool"):
             name = getattr(ns, "name", None)
-            if isinstance(name, str) and not is_placeholder(name):
-                from aew.surface.contract import TOOLS
-
-                if name not in TOOLS:
-                    return f"typed tool {name!r} is not in contract.TOOLS"
+            if isinstance(name, str) and not is_placeholder(name) and name not in known_tools():
+                return f"typed tool {name!r} is not in the contract's catalog"
     return None
 
 
@@ -932,10 +941,8 @@ def check(output: Output, registry: dict[str, frozenset[str]] | None = None) -> 
             continue
         findings.extend(Finding(rule, site, why) for rule, why in judge(s))
     for tool in _tool_names(output.payload):
-        from aew.surface.contract import TOOLS
-
-        if tool not in TOOLS:
-            findings.append(Finding("O-CMD", site, f"typed tool {tool!r} is not in contract.TOOLS"))
+        if tool not in known_tools():
+            findings.append(Finding("O-CMD", site, f"typed tool {tool!r} is not in the contract's catalog"))
     texts = [output.text, *_strings(output.payload)]
     if output.refusal:
         texts.append(str(output.refusal.get("message") or ""))
@@ -986,12 +993,10 @@ def dedupe(findings: Iterable[Finding]) -> list[Finding]:
 
 def tool_argument_secrets() -> list[Finding]:
     """O-SECRET over the typed surface itself: a typed tool whose arguments ask for a PIN, a code or a credential
-    (§2.2: "asking for either ... as a typed-tool argument is always a violation"). Read from contract.TOOLS."""
-    from aew.surface.contract import TOOLS
-
+    (§2.2: "asking for either ... as a typed-tool argument is always a violation"). Read from ``known_tools``."""
     asks = re.compile(r"^(pin|code|one_time_code|token|credential|secret|password)$", re.IGNORECASE)
     out = []
-    for name, t in sorted(TOOLS.items()):
+    for name, t in sorted(known_tools().items()):
         for prop in sorted(t.input_schema.get("properties") or {}):
             if asks.match(prop):
                 out.append(Finding("O-SECRET", f"tool-arguments:{name}", f"argument {prop}"))

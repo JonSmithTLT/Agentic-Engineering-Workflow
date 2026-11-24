@@ -570,6 +570,15 @@ HELD_OPEN = '''import threading
 from pathlib import Path
 
 RELEASED = Path(__file__).with_name("released")
+MEASURED = Path(__file__).with_name("measured")
+
+
+def measured():
+    try:
+        import coverage
+    except ImportError:
+        return False
+    return coverage.Coverage.current() is not None
 
 
 def hold():
@@ -578,6 +587,7 @@ def hold():
 
 
 def test_leaves_a_thread_that_holds_its_worker_open():
+    MEASURED.write_text(str(measured()))  # the worker's own view: was coverage started in it at all?
     # Non-daemon, so the worker cannot exit when its session ends: past xdist's 10 s exit wait, teardown kills it.
     threading.Thread(target=hold, name="holder").start()
 '''
@@ -614,6 +624,12 @@ def test_a_worker_killed_at_teardown_keeps_its_coverage_and_names_what_held_it(t
     why = proc.stdout + proc.stderr
     assert "1 passed" in proc.stdout, why
     assert not (proj / "tests" / "integration" / "released").exists(), "the worker was not killed: nothing was tested"
+    # Coverage starts in a subprocess only from the .pth file it installs into site-packages (`patch = subprocess`). A
+    # coverage reached only through PYTHONPATH (as `pip install --target` leaves it) never starts in the worker, which
+    # then has nothing to save: name that, not a lost save (a local run of 2026-11-24 read as a flaky loss).
+    assert (proj / "tests" / "integration" / "measured").read_text(encoding="utf-8") == "True", (
+        "the worker was never measured, so nothing was tested: coverage must be installed into site-packages "
+        "(as `pip install -e .[coverage]` does), not reached through PYTHONPATH")
     session = session_dir(hangs)
     pid = (session / "worker-gw0-pid.txt").read_text(encoding="utf-8").strip()
     assert "holder" in (session / "worker-gw0-exit.txt").read_text(encoding="utf-8"), why

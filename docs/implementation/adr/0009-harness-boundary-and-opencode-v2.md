@@ -2162,11 +2162,12 @@ the rest of AEW's import path, such as an editable install's source tree, was no
     `python -m`) counts unless `-P` removed it, because the contained Lead's provider relays are served in the
     launching process. An installed `aew` command's directory needs no exception: it lies outside every writable bind,
     or under the interpreter's prefix, which is re-bound read-only.
-- **The predicate** (`layout.trusted_code_exposed`) is the store's (CB-07), applied to each piece as spelled and
-  where it leads: no writable bind `W` reaches it, unless the first directory below `W` on its path is re-bound
-  read-only after `W`. A symbolic link on its spelling inside `W` follows the same rule only when it lies strictly
-  below that re-bound directory (a virtual environment's `lib64` link); otherwise it is refused whatever it leads to.
-  Both spellings are always checked, so a held link whose target lies elsewhere under `W` is refused too.
+- **The predicate** (`layout.trusted_code_exposed`) is the store's (CB-07), applied to every path the piece's
+  resolution looks up, one component and one symbolic link at a time (`layout._resolution`), its final target
+  included: no writable bind `W` reaches one, unless the first directory below `W` on its path is re-bound read-only
+  after `W`. A symbolic link inside `W` follows the same rule only when it lies strictly below that re-bound directory
+  (a virtual environment's `lib64` link); otherwise it is refused whatever it leads to. `W` itself, passed through on
+  the way, is a mount point.
 - **On failure:** `CONTAINMENT_UNAVAILABLE`, reason `trusted_code_writable` or `trusted_code_symlink`, naming the bind,
   the code and what clears it for that kind of code (`layout.trusted_code_remedy`): reinstall outside the writable
   tree, start AEW with `aew` or `python -P -m aew`, or take the directory out of `PYTHONPATH`. Under `required` the

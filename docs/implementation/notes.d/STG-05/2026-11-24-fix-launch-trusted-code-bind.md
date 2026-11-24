@@ -9,10 +9,10 @@ bind holds a symbolic link on the code's spelling that is not below a read-only 
   entry (the script's directory, or the working directory under `python -m`) counts unless `-P` removed it, because
   the contained Lead's relays are served in the launching process. An installed `aew` command's directory needs no
   exception: it lies outside every writable bind or under the re-bound interpreter prefix.
-- **The rule** is the store's (CB-07), checked as spelled and where it leads: under a writable bind a piece is safe
-  only when the first directory below the bind on its path is re-bound read-only after it, as a project's virtual
-  environment is (its prefix is re-bound), and a link is safe only strictly below that directory (its `lib64` link).
-  Both spellings are always checked, so a held link whose target lies elsewhere under the bind is refused too.
+- **The rule** is the store's (CB-07), applied to every path the piece's resolution looks up, link by link, to its
+  final target (`layout._resolution`): under a writable bind a path is safe only when the first directory below the
+  bind on its path is re-bound read-only after it, as a project's virtual environment is (its prefix is re-bound), and
+  a link is safe only strictly below that directory (its `lib64` link).
 - **Outcome:** under `required` the launch is refused, with the remedy for that kind of code
   (`layout.trusted_code_remedy`); under `allow_weaker` it runs labelled weaker and enters the register of weaker
   contexts (E112's pattern, through `containment.establish`). The package and its parent are on the self-test's

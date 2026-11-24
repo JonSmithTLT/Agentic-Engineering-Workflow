@@ -1118,8 +1118,9 @@ def trusted_code() -> list[tuple[str, str]]:
     * every directory on this process's import path, named by where it comes from (PYTHONPATH, or a .pth file or the
       site configuration). That includes the first entry, the script's directory or the working directory under
       ``python -m``, when ``-P`` did not remove it: the contained Lead's relays run in the launching process
-      (review of #539, m1). An installed ``aew`` command's directory lies under the interpreter's prefix, which every
-      layout re-binds read-only, so it passes without an exception of its own.
+      (review of #539, m1). An installed ``aew`` command's directory needs no exception of its own: it lies outside
+      every writable bind (``pip install --user`` puts it in the home directory's own), or under the interpreter's
+      prefix, which every layout re-binds read-only.
 
     Read from the filesystem at each launch: never a list of modules to keep in step. What it does not cover is listed
     as the known limits in ADR-0009's amendment of 2026-11-24."""
@@ -1149,17 +1150,45 @@ def trusted_code() -> list[tuple[str, str]]:
     return list(dict.fromkeys(out))
 
 
-def _links_on(path: str) -> list[str]:
-    """Every symbolic link on ``path``'s spelling, ``path`` included: what a write could replace to change where it
-    leads."""
-    out, at = [], os.path.abspath(path)
-    while True:
-        if os.path.islink(at):
-            out.append(at)
-        parent = os.path.dirname(at)
-        if parent == at:
-            return out
-        at = parent
+# The most symbolic links a resolution follows, as the kernel's own limit on Linux (MAXSYMLINKS): a path that needs
+# more does not resolve, so nothing is imported through it.
+MAX_HOPS = 40
+
+
+def _resolution(path: str) -> tuple[list[tuple[str, bool]], str]:
+    """Every path the kernel looks up to resolve ``path``, one component and one link at a time, with whether it is a
+    symbolic link, and where it leads. Each is what a write could replace to change what ``path`` imports: the links on
+    its spelling, the links their targets pass through, and the directories in between (#539 quick check: a link met
+    during the resolution counts as much as one on the spelling). Stops after :data:`MAX_HOPS` links."""
+    parts = list(Path(os.path.abspath(path)).parts)
+    current, queue = parts[0], parts[1:]
+    seen: list[tuple[str, bool]] = []
+    hops = 0
+    while queue:
+        name = queue.pop(0)
+        if name in ("", os.curdir):
+            continue
+        if name == os.pardir:
+            current = os.path.dirname(current)
+            continue
+        candidate = os.path.join(current, name)
+        if not os.path.islink(candidate):
+            seen.append((candidate, False))
+            current = candidate
+            continue
+        seen.append((candidate, True))
+        hops += 1
+        try:
+            target = os.readlink(candidate)
+        except OSError:
+            break
+        if hops > MAX_HOPS:
+            break
+        more = list(Path(target).parts)
+        if os.path.isabs(target):
+            current, more = more[0], more[1:]
+        queue = more + queue
+    return list(dict.fromkeys(seen)), current
 
 
 def _held_read_only(path: str, w: str, after: set[str]) -> bool:
@@ -1175,28 +1204,34 @@ def trusted_code_exposed(steps: list[tuple[str, str]],
     """Every piece of ``trusted`` code (default :func:`trusted_code`) that a writable bind in ``steps``
     (:func:`bind_order`'s) could change, with the bind and the reason. As for the store (``_refuse_store_binds``), a
     path under a writable bind ``W`` is safe only when the first directory below ``W`` on its path is re-bound read-only
-    after ``W`` (the prefix of a virtual environment in the project, for one), and the path is checked as it is spelled
-    and where it leads. A symbolic link on the spelling inside ``W`` is safe on the same rule only when it lies strictly
-    below that re-bound directory (a virtual environment's ``lib64`` link: review of #539, M1); the re-bound directory
-    itself, or a link above it, could be replaced."""
+    after ``W`` (the prefix of a virtual environment in the project, for one). The rule applies to every path the
+    piece's resolution looks up (:func:`_resolution`), its target included, and not only to its spelling. A symbolic
+    link inside ``W`` is safe on the same rule only when it lies strictly below that re-bound directory (a virtual
+    environment's ``lib64`` link: review of #539, M1); the re-bound directory itself, or a link above it, could be
+    replaced. ``W`` itself, passed through on the way, is a mount point: only a piece that resolves to it is exposed."""
     trusted = trusted_code() if trusted is None else trusted
+    resolved = {walked: _resolution(walked) for _, walked in trusted}
     found: list[dict[str, str]] = []
     for i, (flag, w) in enumerate(steps):
         if flag != "--bind":
             continue
         after = {p for f, p in steps[i + 1:] if f == "--ro-bind"}
         for what, walked in trusted:
-            link = next((p for p in _links_on(walked) if _within(p, w) and not (
-                _held_read_only(p, w, after) and p not in after)), None)
-            if link is not None:
-                found.append({"what": what, "path": walked, "bind": w, "symlink": link,
-                              "reason": TRUSTED_CODE_SYMLINK})
-                continue
-            # Both spellings, always: a link held read-only may still lead to a path the bind writes (#539 quick check)
-            spelled = next((p for p in dict.fromkeys((walked, _real(walked)))
-                            if _within(p, w) and not _held_read_only(p, w, after)), None)
-            if spelled is not None:
-                found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
+            seen, final = resolved[walked]
+            shown = walked if _within(walked, w) else final
+            for p, link in seen:
+                if not _within(p, w) or p == w:
+                    continue
+                if link and (p in after or not _held_read_only(p, w, after)):
+                    found.append({"what": what, "path": shown, "bind": w, "symlink": p,
+                                  "reason": TRUSTED_CODE_SYMLINK})
+                    break
+                if not link and not _held_read_only(p, w, after):
+                    found.append({"what": what, "path": shown, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
+                    break
+            else:
+                if final == w:
+                    found.append({"what": what, "path": shown, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
     return found
 
 

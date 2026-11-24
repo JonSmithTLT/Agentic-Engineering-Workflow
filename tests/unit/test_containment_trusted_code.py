@@ -202,7 +202,7 @@ def test_a_virtual_environments_lib64_link_inside_its_re_bound_prefix_is_not_ref
     site = [(L.IMPORT_DIR, str(venv / "lib64" / "python3" / "site-packages"))]
     assert L.trusted_code_exposed(L.bind_order([real(w)], [real(venv)]), site) == []
     assert [f["reason"] for f in L.trusted_code_exposed(L.bind_order([real(w)], []), site)] == [
-        L.TRUSTED_CODE_SYMLINK]
+        L.TRUSTED_CODE_WRITABLE]  # without the re-bind, the prefix itself is the first thing exposed
     (tmp_path / "elsewhere").mkdir()
     (w / "env").symlink_to(tmp_path / "elsewhere")
     linked = [(L.IMPORT_DIR, str(w / "env"))]
@@ -221,8 +221,32 @@ def test_a_link_below_a_re_bound_directory_is_checked_where_it_leads_too(tmp_pat
     (venv / "lib64").symlink_to(os.path.join("..", "other"))
     site = [(L.IMPORT_DIR, str(venv / "lib64" / "python3" / "site-packages"))]
     exposed = L.trusted_code_exposed(L.bind_order([real(w)], [real(venv)]), site)
-    assert [(f["path"], f["reason"]) for f in exposed] == [
-        (real(w / "other" / "python3" / "site-packages"), L.TRUSTED_CODE_WRITABLE)]
+    assert [(f["path"], f["reason"]) for f in exposed] == [(site[0][1], L.TRUSTED_CODE_WRITABLE)]
+
+
+@needs_symlinks
+def test_every_link_the_resolution_passes_through_is_held_to_the_same_rule(tmp_path):
+    """#539 quick check: a link met while resolving a piece counts as much as one on its spelling. A held link whose
+    target is a link the bind writes is refused, and so is a link outside every bind that leads through one; a chain
+    that stays inside the re-bound directory passes."""
+    w, outside, safe = tmp_path / "w", tmp_path / "outside", tmp_path / "safe"
+    venv = w / ".venv"
+    for d in (venv / "lib" / "python3" / "site-packages", outside, safe / "python3" / "site-packages"):
+        d.mkdir(parents=True)
+    (w / "hop").symlink_to(safe)
+    steps = L.bind_order([real(w)], [real(venv)])
+    (venv / "lib64").symlink_to(os.path.join("..", "hop"))
+    through_bind = [(L.IMPORT_DIR, str(venv / "lib64" / "python3" / "site-packages"))]
+    assert [(f["reason"], f["symlink"]) for f in L.trusted_code_exposed(steps, through_bind)] == [
+        (L.TRUSTED_CODE_SYMLINK, str(w / "hop"))]
+    (outside / "lnk").symlink_to(w / "hop")
+    from_outside = [(L.IMPORT_DIR, str(outside / "lnk" / "python3" / "site-packages"))]
+    assert [(f["reason"], f["symlink"]) for f in L.trusted_code_exposed(steps, from_outside)] == [
+        (L.TRUSTED_CODE_SYMLINK, str(w / "hop"))]
+    (venv / "lib32").symlink_to("lib")
+    (venv / "lib128").symlink_to("lib32")
+    within = [(L.IMPORT_DIR, str(venv / "lib128" / "python3" / "site-packages"))]
+    assert L.trusted_code_exposed(steps, within) == []
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="containment is Linux's (bubblewrap)")

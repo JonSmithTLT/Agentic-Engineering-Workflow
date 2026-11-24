@@ -267,9 +267,11 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
         monitor.poll(final=True)
         worker_evidence.record_oom(root)
-        if signal_at is not None and worker_phases is None:
+        code = child.poll()
+        observed_signals = interrupted.copy()
+        if observed_signals and worker_phases is None:
             worker_phases = {"monotonic_ns": signal_at, "status": "unavailable"}
-        record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat,
+        record_exit(root, code, peak, observed_signals, lane_exit=lane_exit, heartbeat=heartbeat,
                     worker_phases=worker_phases)
         for sig, handler in previous.items():
             signal.signal(sig, handler)

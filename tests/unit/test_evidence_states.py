@@ -572,7 +572,7 @@ def test_a_successful_death_plant_still_requires_published_evidence(tmp_path):
     assert _load("verify_evidence").rule_ids(check(tmp_path, [job], include_success=True)) == {"job-evidence"}
 
 
-@pytest.mark.parametrize("late", [False, True])
+@pytest.mark.parametrize("late", [None, "monitor", "final-poll"])
 def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker(tmp_path, monkeypatch, late):
     import json
     import signal
@@ -580,8 +580,14 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     lane = _load("lane_step")
     handlers = {}
     signals = []
-    process = SimpleNamespace(poll=lambda: 0 if late else None, send_signal=signals.append,
-                              kill=lambda: None, wait=lambda **_kw: None)
+    final_poll = False
+
+    def child_status():
+        if late == "final-poll" and final_poll:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+        return 0 if late else None
+
+    process = SimpleNamespace(poll=child_status, send_signal=signals.append, kill=lambda: None, wait=lambda **_kw: None)
 
     def snapshot(_root, *, all_workers=False, **_kw):
         if not all_workers and not late:
@@ -593,7 +599,9 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     monkeypatch.setattr(lane, "snapshot", snapshot)
 
     def poll(*, final=False):
-        if final and late:
+        nonlocal final_poll
+        final_poll = final
+        if final and late == "monitor":
             handlers[signal.SIGTERM](signal.SIGTERM, None)
 
     monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=poll))

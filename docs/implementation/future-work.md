@@ -4140,6 +4140,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E359/`, oldest first (`python tools/register.py show E359`).*
 
+### E360
+
+**Work:** Managed custody for a relay client key, opt in per provider: the operator imports an encrypted key once, entering its passphrase at a hidden prompt; AEW validates it against its certificate and keeps an independently protected, versioned copy, so moving, re-encrypting or deleting the source changes nothing until an explicit replace. Status, expiry warnings and staged renewal; import, activate or replace, re-enable and remove are operator-only and activating a version is a G3 action, while disabling needs no consent. A provider that does not opt in keeps today's custody: AEW reads the key from its path at start and never copies it. The protection backend is the host's: a TPM where the host has one, otherwise a host key no sandbox can see, and the doctor says which
+
+**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23) and its Increment 1 map (2026-11-24); the operator, 2026-11-24: managed custody opt in, "with current behavior as a default"; credential operations as G3 actions, "yup making those g3 actions makes sense"
+
+**When:** **Unscheduled**, after the designer's amendment to E123's custody ruling of 2026-11-02 and to I-6 (STG-14) for the credential operations
+
+**Notes:** Filed by the register PR of 2026-11-24. It amends, not replaces, E123''s custody for providers that opt in
+
+*Later notes: `notes.d/E360/`, oldest first (`python tools/register.py show E360`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

@@ -240,14 +240,21 @@ class LanePlugin:
 
     # ------------------------------------------------------------------ selection
 
-    def _load_durations(self) -> dict[str, float]:
+    def _shard_table(self) -> dict[str, Any]:
         path = Path(self.config.getoption("aew_durations_file") or self.root / "tests" / "durations.json")
         if not path.exists():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("schema") != DURATIONS_SCHEMA:
             raise pytest.UsageError(f"{path}: expected schema {DURATIONS_SCHEMA}")
-        return durations_for(sys.platform, data)
+        return data
+
+    def _windows_omitted(self, table: Mapping[str, Any]) -> set[str]:
+        if (sys.platform == "win32" and self.lane in {"integration", "regression"}
+                and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+                and self.config.getoption("aew_durations_file")):
+            return set(table.get("windows_omitted", []))
+        return set()
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_collection_modifyitems(self, config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -268,7 +275,11 @@ class LanePlugin:
         keep = [i for i in items if self.lane is None or lanes[i.nodeid] == self.lane]
         if self.shard:
             k, n = self.shard
-            mine = set(partition([i.nodeid for i in keep], self._load_durations(), n)[k - 1])
+            table = self._shard_table()
+            omitted = self._windows_omitted(table)
+            if omitted:
+                keep = [item for item in keep if item.nodeid.split("::", 1)[0] not in omitted]
+            mine = set(partition([i.nodeid for i in keep], durations_for(sys.platform, table), n)[k - 1])
             keep = [i for i in keep if i.nodeid in mine]
         for item in items:
             item.stash[LANE_KEY] = lanes[item.nodeid]
@@ -375,6 +386,12 @@ class LanePlugin:
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
         if _is_worker(self.config):
             return
+        if (session.exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED and sys.platform == "win32"
+                and self.shard and self.lane in {"integration", "regression"} and self.collected):
+            # A selected subset can leave an empty shard. Assurance checks all required node IDs across the run.
+            omitted = self._windows_omitted(self._shard_table())
+            if any(lane == self.lane and nid.split("::", 1)[0] in omitted for nid, lane in self.lanes.items()):
+                session.exitstatus = pytest.ExitCode.OK
         if self.guard_before is not None:
             changes = describe_change(self.guard_before, _checkout_state(self.root, self._own_outputs()))
             if changes:

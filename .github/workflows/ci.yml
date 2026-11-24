@@ -130,10 +130,15 @@ jobs:
       # AppStream and SPT wheelhouse target), Windows on 3.13 (the developer workstation).
       - id: shards
         name: Each lane's shard count, and the durations its shards balance on (tools/ci/shard_plan.py)
+        env:
+          PYTHONPATH: src
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.reuse.outputs.reuse_run == '' && github.event.pull_request.number || '' }}
+          TIER: ${{ steps.tier.outputs.tier }}
         run: >-
           python tools/ci/shard_plan.py --history shard-history/history.json
           --seed tests/durations.json --durations-out "$RUNNER_TEMP/shard-durations/durations.json"
-          --runner ubuntu-latest:3.11 --runner windows-latest:3.13
+          --runner ubuntu-latest:3.11 --runner windows-latest:3.13 --windows-pr "$PR" --tier "$TIER"
           --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
       # One table for the whole run: every shard of a lane must cut the same partition (assurance proves it ran each
       # test once).
@@ -470,13 +475,16 @@ jobs:
           path: shard-durations
           merge-multiple: true
       - id: assure
-        name: Every collected test of the tier's lanes ran exactly once and passed (pinned platform skips excepted)
+        name: Every required test ran exactly once and passed (pinned platform skips excepted)
         env:
+          PYTHONPATH: src
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.changes.outputs.reuse_run == '' && github.event.pull_request.number || '' }}
           TIER: ${{ steps.tier.outputs.tier }}
           EVENT: ${{ github.event_name }}
         run: >-
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
-          --require linux,win32 --tier "$TIER" --event "$EVENT"
+          --require linux,win32 --tier "$TIER" --event "$EVENT" --windows-pr "$PR" --github-output "$GITHUB_OUTPUT"
           --summary "$GITHUB_STEP_SUMMARY"
       # The shard-durations history (register E44; tools/ci/shard_plan.py sizes every run's lanes from it). Only a
       # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
@@ -565,11 +573,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TIER: ${{ steps.tier.outputs.tier }}
           ASSURANCE: ${{ steps.assure.outcome }}
+          WINDOWS_PARTIAL: ${{ steps.assure.outputs.windows_partial }}
         run: |
           base=()
+          if [ "$WINDOWS_PARTIAL" = true ]; then base+=(--windows-partial); fi
           if [ "$EVENT" = pull_request ]; then
             if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
-              base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
+              base+=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
             fi
             git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py" \
               || rm -f "$RUNNER_TEMP/modes-base.py"  # the ratchet fails on a base it cannot read

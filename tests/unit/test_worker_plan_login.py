@@ -192,7 +192,7 @@ def test_plan_relay_sends_only_the_resolved_login_and_does_not_fall_back(store, 
         assert "OPENAI_API_KEY" not in network.harness_env({})
         assert network.leaks(ACCESS, EXPORT) == ["OPENAI_API_KEY", "openai login"]
         assert network.describe()["provider_key_source"] == "plan login"
-        client.sendall(f"POST /backend-api/codex/probe HTTP/1.1\r\nHost: localhost\r\n"
+        client.sendall(f"POST /backend-api/codex/responses HTTP/1.1\r\nHost: localhost\r\n"
                        f"Authorization: Bearer {sentinel}\r\nContent-Length: 0\r\n\r\n".encode())
         upstream = seam.upstream()
         head, _ = read_head(upstream)

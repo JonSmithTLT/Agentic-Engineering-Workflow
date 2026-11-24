@@ -1,0 +1,8 @@
+# Evaluator-only: the expected first disposition of each case and the Ticket goals its candidate violates.
+# VD-1 is the M3 T5 reference, VD-2 the M3 T5 seeded defect, VD-3 a repair with the leftover on the last shares.
+# calibrate.py re-derives both from the M3 T5 hidden checks; plan.yaml commits to these bytes (scoring.rubric_sha256).
+schema: aew/verifier-disposition-expected/v1
+cases:
+  VD-1: {disposition: accept, violated: []}
+  VD-2: {disposition: rework, violated: [G1, G2]}
+  VD-3: {disposition: rework, violated: [G1]}

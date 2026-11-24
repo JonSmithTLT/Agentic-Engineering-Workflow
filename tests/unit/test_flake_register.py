@@ -6,9 +6,10 @@ import copy
 import io
 import json
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import ZipFile, ZipInfo
 
 import pytest
 import yaml
@@ -182,7 +183,8 @@ def test_records_recent_evidence_once_without_reopening_a_closed_entry():
 def _index(rows, *, member="sightings.json"):
     data = io.BytesIO()
     with ZipFile(data, "w") as archive:
-        archive.writestr(member, json.dumps(rows))
+        # A fixed member time: these bytes are a parametrize id, and xdist workers must collect the same ids.
+        archive.writestr(ZipInfo(member, date_time=(1980, 1, 1, 0, 0, 0)), json.dumps(rows))
     return data.getvalue()
 
 
@@ -274,10 +276,19 @@ def test_run_listing_uses_a_fixed_seven_day_interval_for_every_page(monkeypatch)
     assert flake._workflow_runs("o/r", "ci.yml", NOW) == [{"id": 1}, {"id": 2}]
 
 
-@pytest.mark.parametrize("data", [b"bad zip", _index([], member="../sightings.json"), _index([{"entry": "a"}])])
+@pytest.mark.parametrize("data", [b"bad zip", _index([], member="../sightings.json"), _index([{"entry": "a"}])],
+                         ids=["not a zip", "member outside the archive", "row without its fields"])
 def test_index_reader_refuses_bad_archives_and_rows(data):
     with pytest.raises(flake.InvalidRegister, match="invalid flake sighting index"):
         list(flake.index_sightings(data, 123))
+
+
+def test_the_index_fixture_is_the_same_bytes_whenever_it_is_built(monkeypatch):
+    """xdist workers collect at different times; ids built from these bytes must not carry the clock."""
+    first = _index([{"entry": "a"}])
+    monkeypatch.setattr(time, "localtime", lambda *_: time.struct_time((2001, 2, 3, 4, 5, 6, 0, 0, 0)))
+    monkeypatch.setattr(time, "time", lambda: 981_173_106.0)
+    assert _index([{"entry": "a"}]) == first
 
 
 def test_session_sightings_use_annotations_and_a_live_cancel_not_setup_or_a_quick_cancel():

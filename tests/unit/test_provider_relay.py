@@ -1139,7 +1139,21 @@ def test_an_operation_outside_the_relays_scope_is_refused_typed_and_journalled_a
     [entry] = entries
     assert (entry["outcome"], entry["reason"], entry["answered"]) == ("refused", reason, 403)
     assert entry["transport"] == "not_established" and entry["upstream_headers_written"] is False
-    assert "/v1" not in json.dumps(entry) and "admin" not in json.dumps(entry)  # the record never holds the target
+    if reason == relay.OUTSIDE_UPSTREAM_PATH:  # a path that failed the check is never recorded
+        assert "method" not in entry and "endpoint" not in entry
+        assert "/v1" not in json.dumps(entry) and "admin" not in json.dumps(entry)
+
+
+def test_a_refused_operations_record_names_what_the_operator_would_list_and_never_its_query_or_prefix():
+    """An ``operation_not_permitted`` entry carries the request's method and its endpoint under the upstream's prefix,
+    the form a ``relay_operations`` entry takes, without the query (which may carry a key)."""
+    _, _, _, entries = scoped(b"POST /v1/files?key=TOKEN&purpose=x HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+    [entry] = entries
+    assert (entry["reason"], entry["method"], entry["endpoint"]) == (relay.OPERATION_NOT_PERMITTED, "POST", "/files")
+    assert "purpose" not in json.dumps(entry) and relay.SENTINEL_PREFIX not in json.dumps(entry)
+    assert "/v1" not in json.dumps(entry)
+    _, _, _, [allowed] = scoped(b"POST /v1/responses HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+    assert "method" not in allowed and "endpoint" not in allowed  # an operation in scope keeps no target
 
 
 def test_an_operation_the_relays_scope_refuses_names_where_the_operator_allows_it():
@@ -1223,6 +1237,25 @@ def test_only_the_adopted_policy_widens_a_runs_relay_and_a_bad_entry_refuses_its
     with pytest.raises(netns.ContainmentUnavailable) as caught:
         network(bad)
     assert caught.value.details["reason"] == "bad_relay_operation"
+
+
+def test_a_policy_operation_applies_to_the_stored_login_relay_too_and_one_it_could_never_match_refuses_its_start():
+    """``relay_operations.<provider>`` applies to whichever upstream the provider's relay uses. An entry with ``:``
+    suits an API-key relay but no stored-login path holds one, so a stored-login relay refuses it at its start rather
+    than holding an entry that can never match."""
+    assert ProviderRelay(Upstream(UPSTREAM), {}, operations=("POST /models/x:embed",)).listed == {
+        ("POST", "/models/x:embed")}
+    with pytest.raises(ValidationFailed) as caught:
+        ProviderRelay(Upstream("http://provider.example/backend-api/codex"), {}, resolve=lambda: ({}, {}),
+                      operations=("POST /models/x:embed",))
+    assert caught.value.details["reason"] == "bad_relay_operation"
+    policy = {"containment": {"network": {"relay_operations": {"openai": ["POST /models/x:embed"]}}}}
+    assert netns.relay_operations("openai", policy) == ("POST /models/x:embed",)
+    with pytest.raises(netns.ContainmentUnavailable) as refused:
+        netns.relay_operations("openai", policy, resolved=True)
+    assert refused.value.details["reason"] == "bad_relay_operation"
+    plain = {"containment": {"network": {"relay_operations": {"openai": ["POST /embeddings"]}}}}
+    assert netns.relay_operations("openai", plain, resolved=True) == ("POST /embeddings",)
 
 
 def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_path():

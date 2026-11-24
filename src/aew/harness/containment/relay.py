@@ -9,7 +9,9 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    (:data:`OUTSIDE_UPSTREAM_PATH`), and name an operation the relay's policy allows (:data:`OPERATION_NOT_PERMITTED`):
    the provider's model calls and its model list (:data:`DEFAULT_OPERATIONS`), and any other the operator's adopted
    execution policy names for the provider (``containment.network.relay_operations``, read on the host at the relay's
-   start: never the request's or the sandbox's to widen). Either refusal is answered 403 before anything is connected;
+   start: never the request's or the sandbox's to widen). Either refusal is answered 403 before anything is connected.
+   The scope is the method and the path alone: the request's body is not inspected (what a model call's body may ask
+   of the provider is scope that register STG-05 decides);
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
@@ -87,8 +89,9 @@ SWAP_OUTCOMES = ("swapped", "none", "refused_unknown_placeholder")
 OUTSIDE_UPSTREAM_PATH = "outside_upstream_path"
 OPERATION_NOT_PERMITTED = "operation_not_permitted"
 # The operations every relay forwards (:func:`_operation`'s labels): a model call and the model list. Anything else
-# goes upstream only when the operator's adopted policy names it (:func:`listed_operations`). OpenCode's calls
-# through the relay are these alone (tests/fixtures/opencode/relay-operations-2.2.6.json).
+# goes upstream only when the operator's adopted policy names it (:func:`listed_operations`). That these cover
+# OpenCode's calls through the relay is derived, not measured in a session of the pinned version
+# (tests/fixtures/opencode/relay-operations-2.2.6.json says from what).
 DEFAULT_OPERATIONS = frozenset({"model", "models_list"})
 # The label of a request allowed only by an entry of the policy's ``relay_operations``.
 POLICY_OPERATION = "policy_listed"
@@ -234,10 +237,12 @@ def _unambiguous(path: str) -> bool:
     return "//" not in path and not {".", ".."}.intersection(path.split("/"))
 
 
-def listed_operations(entries: Collection[str]) -> frozenset[tuple[str, str]]:
+def listed_operations(entries: Collection[str], *, resolved: bool = False) -> frozenset[tuple[str, str]]:
     """The operations a provider's ``containment.network.relay_operations`` entries add to :data:`DEFAULT_OPERATIONS`:
-    each ``METHOD /path``, the path exact and relative to the upstream's prefix (``POST /embeddings`` under
-    ``https://api.openai.com/v1``). Raises ``ValidationFailed`` (reason ``bad_relay_operation``) on any other form."""
+    each ``METHOD /path``, the path exact and relative to the prefix of whichever upstream the provider's relay uses
+    (``POST /embeddings`` under ``https://api.openai.com/v1``; the same entry applies under a stored login's
+    upstream). Raises ``ValidationFailed`` (reason ``bad_relay_operation``) on any other form, and for a stored-login
+    relay (``resolved``) on a path it could never match (one with ``:``, which its paths never hold)."""
     out = set()
     for entry in entries:
         found = _POLICY_ENTRY.fullmatch(entry) if isinstance(entry, str) else None
@@ -245,6 +250,11 @@ def listed_operations(entries: Collection[str]) -> frozenset[tuple[str, str]]:
             raise ValidationFailed(f"relay operation {entry!r} is not METHOD /path (GET, POST, PUT, PATCH or DELETE, "
                                    "and a path under the provider's upstream, such as POST /embeddings)",
                                    entry=str(entry), reason="bad_relay_operation")
+        if resolved and not _RESOLVED_PATH.fullmatch(found[2]):
+            raise ValidationFailed(f"relay operation {entry!r} names a path the stored login's relay never forwards "
+                                   "(its paths hold no ':'), and the entry applies to that relay too: take it out, "
+                                   "or use the API-key route for this provider", entry=str(entry),
+                                   reason="bad_relay_operation")
         out.add((found[1], found[2]))
     return frozenset(out)
 
@@ -299,7 +309,7 @@ class ProviderRelay(Service):
                  route: str | None = None, login: str = "none", login_headers: Collection[str] = (),
                  issued: Collection[str] = (), sources: Mapping[str, str] | None = None,
                  operations: Collection[str] = ()) -> None:
-        listed = listed_operations(operations)  # a bad entry is refused before anything is served
+        listed = listed_operations(operations, resolved=resolve is not None)  # refused before anything is served
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
         self.listed = listed
@@ -392,6 +402,10 @@ class ProviderRelay(Service):
             head, early = _read_head(conn, self.head_timeout)
             method, target, headers = self._request(head)
             entry["operation"] = _operation(method, target, self.upstream.path, self.listed)
+            if entry["operation"] not in DEFAULT_OPERATIONS and entry["operation"] != POLICY_OPERATION:
+                # What the operator would list to allow it (the path check has passed): the method, and the endpoint
+                # relative to the upstream's prefix, without its query
+                entry.update(method=method, endpoint=target.partition("?")[0][len(self.upstream.path):])
             self._check_operation(method, entry["operation"])  # before the grant and the connect: nothing connected
             framing = _framing(headers)
             credentials, extra = self._grant()  # before anything is connected: a refusal connects nothing

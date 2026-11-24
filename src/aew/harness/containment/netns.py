@@ -368,16 +368,18 @@ def upstream(provider: str | None, policy: Mapping[str, Any] | None,
                                      reason="bad_upstream") from None
 
 
-def relay_operations(provider: str | None, policy: Mapping[str, Any] | None) -> tuple[str, ...]:
+def relay_operations(provider: str | None, policy: Mapping[str, Any] | None, *,
+                     resolved: bool = False) -> tuple[str, ...]:
     """The operations the policy's ``relay_operations.<provider>`` adds to those every relay forwards (a model call and
-    the model list: ``relay.DEFAULT_OPERATIONS``). Only the operator's adopted execution policy, read here on the host
-    at the relay's start, can name one (register STG-05). Raises ``ContainmentUnavailable`` on an entry the relay
-    cannot use."""
+    the model list: ``relay.DEFAULT_OPERATIONS``), for whichever upstream the provider's relay uses: its API key's or,
+    ``resolved``, its stored login's. Only the operator's adopted execution policy, read here on the host at the
+    relay's start, can name one (register STG-05). Raises ``ContainmentUnavailable`` on an entry the relay cannot
+    use."""
     configured = settings(policy).get("relay_operations") or {}
     entries = configured.get(provider or "") if isinstance(configured, dict) else None
     entries = tuple(entries) if isinstance(entries, list) else ()
     try:
-        relay.listed_operations(entries)
+        relay.listed_operations(entries, resolved=resolved)
     except AEWError as exc:
         raise ContainmentUnavailable(f"containment.network.relay_operations.{provider}: {exc.message}",
                                      provider=provider, reason="bad_relay_operation") from None
@@ -514,7 +516,7 @@ class RunNetwork:
             if plan is not None:
                 resolver, initial = plan
                 target = relay.Upstream(REFRESHING_UPSTREAMS[resolver.integration])
-                allowed = relay_operations(resolver.integration, policy)
+                allowed = relay_operations(resolver.integration, policy, resolved=True)
                 token = relay.sentinel()
                 net._values[f"{resolver.integration} login"] = initial.secret
                 net.login_sentinels[resolver.integration] = token
@@ -591,7 +593,7 @@ class RunNetwork:
             for i, provider in enumerate(sorted({*keys, *resolvers, *keyless})):
                 resolve = resolvers.get(provider)
                 target = relay.Upstream(REFRESHING_UPSTREAMS[provider]) if resolve else upstream(provider, policy)
-                allowed = relay_operations(provider, policy)
+                allowed = relay_operations(provider, policy, resolved=resolve is not None)
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:

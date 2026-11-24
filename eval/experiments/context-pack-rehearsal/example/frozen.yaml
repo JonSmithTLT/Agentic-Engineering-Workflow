@@ -1,0 +1,100 @@
+schema: aew/eval-prereg/v1
+experiment: context-pack-offline-2-isolated
+purpose: qualification
+question: Does each intended implementer input reach a fresh scripted session through the current adapter?
+profiles:
+  roles:
+    implementer: none
+  budget_usd: 0
+runs_per_cell: 1
+assignment:
+  method: fixed
+  seed: 1
+  order:
+  - order_index: 0
+    cell: REPORT-1/a/1
+    case: REPORT-1
+    arm: a
+    repetition: 1
+  - order_index: 1
+    cell: REPORT-1/b/1
+    case: REPORT-1
+    arm: b
+    repetition: 1
+  - order_index: 2
+    cell: REPORT-1/c/1
+    case: REPORT-1
+    arm: c
+    repetition: 1
+primary_measure: Exact match of captured initial prompt to preregistered bytes.
+metrics:
+- name: prompt-sha256
+  version: '1'
+validity_rules:
+  infrastructure_invalid:
+  - delivery mismatch
+  - changed fixture or oracle
+  counted_failures:
+  - any failed product criterion
+  retry_policy:
+    max_retries: 0
+    allowed_for: []
+  missing_result_policy: Rehearsal incomplete.
+stopping_rule: One scripted attempt per delivery variant.
+held_out: []
+scoring:
+  hidden_channel: aew_eval.hidden
+  who_scores: automated
+  blinding: arm_hidden
+  adjudication_policy: Grade only the exported tree after every attempt has ended.
+exposure_policy: Public synthetic case. Only the fixture subtree enters the worker repository.
+amendment_policy: A material change requires a new experiment id.
+cases:
+- id: REPORT-1
+  family: report-export-calibration
+  sha256: f3cb717a78bd1e768d9bae513f940b75377fc49037e26c2408647694f57f5ecf
+  hidden_sha256: 738233393a8aaa1381ea3dfd576e7e9170752d45a0465832a45387a8cf4b8e76
+  control_of: null
+arms:
+- id: a
+  kind: scripted
+  description: common ticket and role
+  config:
+    variant: A
+    steps: []
+    pack_sha256: ec5bf7ac054d839a655d6a747bc50aefe89d54fbdf1043894906d3ef42a8d889
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 2cd100b9d8d5c78effe993a0dc87f1096172b5d99b9ac76cbfad89f833e2c3e0
+- id: b
+  kind: scripted
+  description: current dispatch
+  config:
+    variant: B
+    steps: []
+    pack_sha256: f268277543a1dab97db1653a45a01de51f45a44f13d872e427d7afbbac7de608
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 513186fe2105871ca2ada6ad5bd828c352dc4bc377d6b45f5b9270eb6a27cb6f
+- id: c
+  kind: scripted
+  description: common and reference sources
+  config:
+    variant: C
+    steps: []
+    pack_sha256: 4236520b78b31f98b439b76a72b0157f928802707d2e06accbdb9be4144605fc
+    isolated: true
+    projection_sha256: b5c77a3d3b388846a3f47343f3c03a8fea303f0e6a49c7cca6ae42d02302ce89
+    receipt_suffix: '# F19 delivery receipt.
+
+      '
+    prompt_sha256: 7993947d39859c03fc784f44c96c5287cb38509237977ebdf9003712fd423dbb
+frozen_at: '2026-11-23T23:32:46Z'
+frozen_by: offline rehearsal
+canonical_sha256: c95b3ad77a55d94daeeab5cdb844e3f8bc2b6d589a4f101f33d9cb00996a3718

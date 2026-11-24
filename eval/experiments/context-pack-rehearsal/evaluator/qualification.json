@@ -1,0 +1,62 @@
+{
+  "case": "REPORT-1",
+  "instrument": "F19 score_child on fixed trusted scripts",
+  "contained": false,
+  "oracle_sha256": "738233393a8aaa1381ea3dfd576e7e9170752d45a0465832a45387a8cf4b8e76",
+  "controls": {
+    "good": {
+      "exporter_sha256": "a4ef66aa17ed48daa20e8b6515fd4f67b0ca962dc28b49aa2e30c8455e966ddf",
+      "checks": {
+        "json-field": true,
+        "current-spelling": true,
+        "legacy-default": true,
+        "csv-exact": true
+      }
+    },
+    "json-field": {
+      "exporter_sha256": "66246467971477b6a78f88d89e6fea73b201683ae457a22a7037ecbf189a16c8",
+      "checks": {
+        "json-field": false,
+        "current-spelling": true,
+        "legacy-default": true,
+        "csv-exact": true
+      }
+    },
+    "stale-spelling": {
+      "exporter_sha256": "86ddaca960360b87f4f1c018e201ca4208be38c4e67ebc57ed2064d42b90b943",
+      "checks": {
+        "json-field": true,
+        "current-spelling": false,
+        "legacy-default": true,
+        "csv-exact": true
+      }
+    },
+    "legacy-default": {
+      "exporter_sha256": "b430ca7b48de8c3ca9680fda6da12d731ba3726432897f7c34002b7e68b0777a",
+      "checks": {
+        "json-field": true,
+        "current-spelling": true,
+        "legacy-default": false,
+        "csv-exact": true
+      }
+    },
+    "csv-regression": {
+      "exporter_sha256": "a57a079b32fd03bf2b5f68bab3de2156add8843c156e4b0fcc46ad8cee942a76",
+      "checks": {
+        "json-field": true,
+        "current-spelling": true,
+        "legacy-default": true,
+        "csv-exact": false
+      }
+    },
+    "batch-last-phase": {
+      "exporter_sha256": "98706fd863a6a14b2ed0e4177931a207d98f718482e971a4249ac6515861747f",
+      "checks": {
+        "json-field": true,
+        "current-spelling": false,
+        "legacy-default": false,
+        "csv-exact": true
+      }
+    }
+  }
+}

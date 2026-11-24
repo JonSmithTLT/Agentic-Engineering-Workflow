@@ -73,6 +73,19 @@ def result(f: dict, line: dict, *, validity: str = "valid") -> dict:
 
 # ------------------------------------------------------------------------------------------------ preregistration
 
+def test_only_scripted_arms_can_freeze_a_zero_budget():
+    offline = plan(arms=[{"id": "rehearsal", "kind": "scripted", "description": "offline", "config": {}}],
+                   profiles={"roles": {"implementer": "none"}, "budget_usd": 0})
+    prereg.freeze(offline, by="tester")
+    with pytest.raises(Invalid, match="budget_usd"):
+        prereg.check({**offline, "profiles": {**offline["profiles"], "budget_usd": -1}})
+    for model_arm in plan()["arms"]:
+        mixed = {**offline, "arms": [*offline["arms"], model_arm]}
+        with pytest.raises(Invalid, match="budget_usd"):
+            prereg.check(mixed)
+        prereg.check({**mixed, "profiles": {**mixed["profiles"], "budget_usd": 1}})
+
+
 def test_freezing_materializes_the_schedule_from_the_seed_and_hashes_everything():
     f = frozen()
     order = f["assignment"]["order"]

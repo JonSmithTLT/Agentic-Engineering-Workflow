@@ -1,0 +1,65 @@
+{
+  "path": "local/packs/INV-0001/pack.md",
+  "sha256": "f268277543a1dab97db1653a45a01de51f45a44f13d872e427d7afbbac7de608",
+  "sources": [
+    {
+      "name": "archetype:implementer",
+      "path": "aew/roles/archetypes/implementer.yaml",
+      "sha256": null
+    },
+    {
+      "name": "role_card:engineer",
+      "path": "aew/roles/cards/engineer.yaml",
+      "sha256": "11af5995e7f1cdef0e0e74b88811c322eebc6a8943de8289b7c2152bb4a43702",
+      "version": 2
+    },
+    {
+      "name": "current_ticket",
+      "path": "work/T-0001/ticket.md",
+      "sha256": "9bd64533b3ddf2987734ab19bcc7852cd5ba029df8b594a5687b1cd3070c2401"
+    },
+    {
+      "name": "accepted_plan",
+      "path": "work/T-0001/plan-v1.md",
+      "sha256": "0f6130eb85cb15db0829a98b2e5841df947d50e8b5fffc10b83b5493f33a20db"
+    },
+    {
+      "name": "guardrails",
+      "path": "policy/guardrails.yaml",
+      "sha256": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0"
+    },
+    {
+      "name": "checks",
+      "path": "policy/checks.yaml",
+      "sha256": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2"
+    },
+    {
+      "name": "snapshot",
+      "path": null,
+      "sha256": null,
+      "base": "d5db041a3f277d44687036fdc6960739e3547413",
+      "tree": "git-tree:af540f2c401c55a2478f6b5628072a767b2ef95c"
+    },
+    {
+      "name": "codebase_map",
+      "path": "local/maps/structural/1dbf80c7dece78a9e393d8e206398f3fce49b8075d0a4da2e7aa64a17023c30d.json",
+      "sha256": "1dbf80c7dece78a9e393d8e206398f3fce49b8075d0a4da2e7aa64a17023c30d",
+      "source_tree": "af540f2c401c55a2478f6b5628072a767b2ef95c",
+      "source_revision": "d5db041a3f277d44687036fdc6960739e3547413",
+      "freshness": {
+        "status": "CURRENT",
+        "reasons": [],
+        "reason": null,
+        "against_commit": "d5db041a3f277d44687036fdc6960739e3547413"
+      },
+      "slice": [
+        "map 1dbf80c7dece of commit d5db041a3f27 (generator structural v2)",
+        "freshness against the work's base d5db041a3f27: CURRENT",
+        "directories in scope (path | files | label | languages): 1 of 1 shown, of 2 directories at depth <= 3",
+        "- . | 5 | root | Markdown, Python",
+        "generated and vendor hints in scope (navigation hints, never policy): 0 of 0 shown",
+        "limits and omissions: 5 tracked paths; 0 caps hit; 0 parse failures; 0 unsupported inputs; 0 LFS pointers; 0 metadata inputs not read; 0 non-UTF-8 names; 0 symlinks; 0 submodules"
+      ]
+    }
+  ]
+}

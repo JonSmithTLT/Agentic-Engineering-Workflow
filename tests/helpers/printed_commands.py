@@ -92,6 +92,7 @@ PLACEHOLDERS: dict[str, str] = {
     "<STATE>": "REVIEW_PENDING",
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification
     "<reason>": "why",
+    "<message>": "stop",  # a steering message (`harness send --text`)
     "<why>": "why",  # the projection's argv lists
     "<classification>": "LOCAL_IMPLEMENTATION_DEFECT",
     "<phase>": "RUNNING",  # the phase an INTERRUPTED Ticket was interrupted from

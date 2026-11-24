@@ -18,6 +18,23 @@ def files(root: Path) -> dict[str, bytes]:
     return {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*") if path.is_file()}
 
 
+def test_fixture_commits_start_no_automatic_git_maintenance(tmp_path, monkeypatch):
+    monkeypatch.delenv("AEW_TEST_FRESH_WORLDS", raising=False)
+    monkeypatch.setattr(conftest, "_template_cache", {})
+    config = tmp_path / "gitconfig"
+    config.write_text("[maintenance]\n\tauto = true\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    trace = tmp_path / "git-events.jsonl"
+    monkeypatch.setenv("GIT_TRACE2_EVENT", str(trace))
+
+    repo = conftest.fixture_repository(tmp_path / "repo", initialized=False)
+    conftest.git("commit", "--allow-empty", "-m", "later fixture setup", cwd=repo)
+    events = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    assert sum(event.get("event") == "cmd_name" and event["name"] == "commit" for event in events) == 2
+    children = [event["argv"] for event in events if event["event"] == "child_start"]
+    assert not [argv for argv in children if "maintenance" in argv and "--auto" in argv]
+
+
 def without_init_metadata(contents: dict[str, bytes]) -> dict[str, bytes]:
     """Ignore the index stat cache and values generated anew at init, keeping the rest of each file."""
     contents = contents.copy()

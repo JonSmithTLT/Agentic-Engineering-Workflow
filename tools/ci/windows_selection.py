@@ -125,10 +125,12 @@ def from_merge(merge: str, *, omit: bool = False) -> set[str]:
         raise ValueError("expected a two-parent tested merge")
     head, base, _ = parents
     paths = git("diff", "--name-only", "-z", "--no-renames", base, head).decode().split("\0")[:-1]
-    # A changed platform expectation needs the live outcome of every pinned test.
+    # Changes to expected skips and discovery outputs require the complete Windows evidence.
     if not paths:
         raise ValueError("empty PR diff")
-    if omit and ("tests/platform-skips.yaml" in paths or
+    expectations = {"tests/platform-skips.yaml", "tests/helpers/discovery/allowed.yaml",
+                    "tests/helpers/discovery/modes.py"}
+    if omit and (expectations.intersection(paths) or
                  tier.FLAKE_REGISTER in paths and not tier.verified_register_edit(merge)):
         return set()
     changes = {}

@@ -58,7 +58,9 @@ def test_deleted_dependency_and_removed_import_still_select_surviving_test():
     assert selection.select_change(base, head, changes, {OTHER}) == {TEST}
 
 
-def test_nested_observed_nodes_remain_selected_in_a_real_merge(tmp_path, monkeypatch):
+@pytest.mark.parametrize("changed", ["readme.md", "tests/platform-skips.yaml",
+                                     "tests/helpers/discovery/allowed.yaml", "tests/helpers/discovery/modes.py"])
+def test_nested_registered_nodes_and_edited_expectations_in_a_real_merge(tmp_path, monkeypatch, changed):
     import subprocess
 
     def git(*args):
@@ -70,18 +72,24 @@ def test_nested_observed_nodes_remain_selected_in_a_real_merge(tmp_path, monkeyp
     module = tmp_path / OTHER
     module.parent.mkdir(parents=True)
     module.write_text("def test_check(): pass\n", encoding="utf-8")
+    neighbour = tmp_path / TEST
+    neighbour.parent.mkdir(parents=True)
+    neighbour.write_text("def test_neighbour(): pass\n", encoding="utf-8")
     register = tmp_path / "tests/flake-register.yaml"
     register.write_text("schema: aew/flake-register/v1\nentries:\n- evidence:\n  - nodes:\n    - " + OTHER
                         + "::test_check\n", encoding="utf-8")
     git("add", ".")
     git("commit", "-qm", "base")
     git("checkout", "-qb", "pr")
-    (tmp_path / "readme.md").write_text("update", encoding="utf-8")
+    edit = tmp_path / changed
+    edit.parent.mkdir(parents=True, exist_ok=True)
+    edit.write_text("update", encoding="utf-8")
     git("add", ".")
     git("commit", "-qm", "documentation")
     git("checkout", "-q", "main")
     git("merge", "-q", "--no-ff", "pr", "-m", "merge")
     assert selection.from_merge("HEAD") == {OTHER}
+    assert selection.from_merge("HEAD", omit=True) == ({TEST} if changed == "readme.md" else set())
 
 
 @pytest.mark.parametrize(("event", "base", "run_tier", "label", "trailer", "scoped"), [

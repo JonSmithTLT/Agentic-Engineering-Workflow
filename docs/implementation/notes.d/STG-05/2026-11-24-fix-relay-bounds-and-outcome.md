@@ -29,3 +29,8 @@ named as this pull request's.
 Known limits, each with its owner: no rate, allowance or reservation (E97, after STG-14); the bounds are not policy
 settings (a provider that needs another value is a change here); a relay's bound is its own, not the run's or the
 host's.
+
+Follow-on (this pull request's quick check, m6): a client that resets its connection mid-body is recorded `unknown`
+(`upstream_outcome_unknown`), though the upstream never got the request whole; a clean close is `refused`
+(`incomplete`). Conservative, but it contradicts the outcome rule above. Treating an `OSError` from the client side of
+the body read as `refused` (`incomplete`), with its test, is owned by the next relay pull request (T4, body fields).

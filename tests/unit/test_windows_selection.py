@@ -64,8 +64,11 @@ def test_nested_registered_nodes_and_edited_expectations_in_a_real_merge(tmp_pat
     import subprocess
 
     def git(*args):
-        return subprocess.check_output(["git", "-c", "user.name=fixture", "-c", "user.email=f@example.invalid",
-                                        *args], text=True).strip()
+        # A test identity from git_isolation's closed list, which test_git_isolation pins.
+        return subprocess.check_output(["git", "-c", "user.name=fixture", "-c", "user.email=t@example.invalid",
+                                        *args], text=True,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                                       ).strip()
 
     monkeypatch.chdir(tmp_path)
     git("init", "-q", "-b", "main")

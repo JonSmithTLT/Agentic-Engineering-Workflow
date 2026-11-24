@@ -67,10 +67,13 @@ def failure_problems(path: Path, report: dict) -> list[str]:
                 continue
             phase = failure.get("phase") or "unknown phase"
             detail = f"{node} ({phase})"
-            if phase not in FAILURE_PHASES:
-                defect("failure-report", f"{detail}: missing or unrecognized failure phase")
             text = failure.get("longrepr") or ""
             crash = failure.get("crash") or ""
+            # xdist's controller emits a synthetic TestReport with when="???" for a crashed worker.
+            worker_crash = phase == "???" and re.fullmatch(r"worker 'gw[0-9]+' crashed while running "
+                                                          + re.escape(repr(node)), crash)
+            if phase not in FAILURE_PHASES and not worker_crash:
+                defect("failure-report", f"{detail}: missing or unrecognized failure phase")
             location = failure.get("overflow")
             if location:
                 relative = Path(location)

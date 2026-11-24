@@ -113,11 +113,19 @@ def hold(stage):
     Path(stage + "-ready").touch()
     bounds.bounded_wait("inner.worker_phase", Path(stage + "-release").exists, seconds=60)
 """
-    proj = project(tmp_path, held + "\ndef test_running():\n    hold('call')\n",
-                   conftest_extra=held + "\ndef pytest_collection_modifyitems():\n    hold('collect')\n")
+    hooks = """
+def pytest_collection_modifyitems():
+    hold('collect')
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol():
+    hold('protocol')
+"""
+    proj = project(tmp_path, held + "\ndef test_running():\n    hold('call')\n", conftest_extra=held + hooks)
     proc = start_inner(proj, hangs, "-n", "1", "--session-deadline", "120")
     try:
-        for gate, phase in (("collect", "collecting"), ("call", "execution-started")):
+        checkpoints = (("collect", "collecting"), ("protocol", "execution-started"), ("call", "execution-started"))
+        for gate, phase in checkpoints:
             bounds.bounded_wait("test.inner_started", (proj / f"{gate}-ready").exists,
                                 gone=lambda: proc.poll() is not None)
             [worker] = worker_evidence.phases_at_signal(hangs, time.monotonic_ns())
@@ -125,9 +133,24 @@ def hold(stage):
             (proj / f"{gate}-release").touch()
         assert proc.wait(timeout=60) == 0
     finally:
-        for gate in ("collect", "call"):
+        for gate in ("collect", "protocol", "call"):
             (proj / f"{gate}-release").touch()
         proc.wait(timeout=60)
+
+
+def test_an_unwritable_phase_receipt_preserves_a_real_xdist_test_failure(tmp_path):
+    output = tmp_path / "out"
+    # An existing directory at the receipt path prevents creation on either OS.
+    hook = """
+def pytest_sessionstart(session):
+    if hasattr(session.config, "workerinput"):
+        plugin = session.config.pluginmanager.get_plugin(session_deadline.PLUGIN_NAME)
+        plugin.lifecycle.mkdir()
+"""
+    proj = project(tmp_path, "from pathlib import Path\ndef test_fails():\n    Path('ran').touch()\n    assert False\n",
+                   conftest_extra=hook)
+    result = inner(proj, output, "-n", "1", "--session-deadline", "120")
+    assert result.returncode == 1 and (proj / "ran").exists(), result.stdout + result.stderr
 
 
 def test_an_unmarked_failure_keeps_hidden_harness_stdout_in_a_visible_bundle(tmp_path):

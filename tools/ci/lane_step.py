@@ -138,6 +138,23 @@ def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
                 sys.stderr.buffer.flush()
 
 
+def interrupt_phases(root: Path, at_ns: int) -> dict:
+    result = {"monotonic_ns": at_ns, "status": "unavailable"}
+
+    def read():
+        with contextlib.suppress(OSError):
+            rows = worker_evidence.phases_at_signal(root, at_ns)
+            result.update(status="observed", registered_workers=rows)
+
+    reader = Thread(target=read, daemon=True)
+    try:
+        reader.start()
+    except RuntimeError:
+        return result
+    reader.join(timeout=POLL_S)  # at most one normal supervisor polling interval before cleanup
+    return result.copy()
+
+
 def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str], *,
                 lane_exit: int | None, heartbeat: dict | None, worker_phases: dict | None = None) -> None:
     scope = "MemTotal minus MemAvailable, whole runner" if sys.platform == "linux" else "unavailable on Windows"
@@ -218,15 +235,14 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     for worker in worker_evidence.workers(root):
                         worker_evidence.record(root, worker, "interrupted", at)
                     with contextlib.suppress(OSError):
-                        worker_phases = {"monotonic_ns": signal_at,
-                                         "registered_workers": worker_evidence.phases_at_signal(root, signal_at)}
-                    with contextlib.suppress(OSError):
                         child.send_signal(signal.Signals[interrupted[0]])
                 snapshot(root, all_workers=True)
                 exit_code = 128 + signal.Signals[interrupted[0]] if interrupted else SUPERVISOR_CUTOFF_EXIT
                 if not interrupted:
                     for directory, _ in identities(root):
                         note(directory, "cutoff", f"step cutoff at {time.time():.6f}\n")
+                else:
+                    worker_phases = interrupt_phases(root, signal_at)
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
                                   else f"Lane command had exited with code {code}")
@@ -251,6 +267,8 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
         monitor.poll(final=True)
         worker_evidence.record_oom(root)
+        if signal_at is not None and worker_phases is None:
+            worker_phases = {"monotonic_ns": signal_at, "status": "unavailable"}
         record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat,
                     worker_phases=worker_phases)
         for sig, handler in previous.items():

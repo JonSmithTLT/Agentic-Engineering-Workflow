@@ -678,6 +678,8 @@ class Worker:
         self.mono = time.monotonic() + (wall - time.time())
         self.dir = Path(directory)
         self._done = threading.Event()
+        self.phase_stream = None
+        self.execution_started = False
         worker = config.workerinput.get("workerid", "?")
         # Half way from its own exit, at the deadline, to the controller's ending it, a margin on (the docstring's end)
         self.stacks = Stacks(marker(self.dir, f"worker-{worker}-deadline-stacks"), self.mono + margin / 2)
@@ -687,24 +689,43 @@ class Worker:
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
         birth = proctree.start_time(os.getpid())
         _write(self.dir, f"worker-{worker}-start", f"{birth}\n")
-        self.lifecycle = f"worker-{os.getpid()}-{birth}-lifecycle"
-        self.execution_started = False
+        self.lifecycle = marker(self.dir, f"worker-{os.getpid()}-{birth}-lifecycle")
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
+    def _record_phase(self, phase: str) -> None:
+        # A held descriptor authenticates a live writer. On failure its last line cannot stand for the current phase.
+        try:
+            if phase == WORKER_PHASES[0]:
+                self.phase_stream = self.lifecycle.open("xb", buffering=0)
+            if self.phase_stream is not None:
+                line = f"{time.monotonic_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
+                if self.phase_stream.write(line) != len(line):
+                    raise OSError("incomplete worker phase")
+        except OSError:
+            self._close_phase()
+
+    def _close_phase(self) -> None:
+        if self.phase_stream is not None:
+            with contextlib.suppress(OSError):
+                self.phase_stream.close()
+            self.phase_stream = None
+
     @pytest.hookimpl(wrapper=True, tryfirst=True)
     def pytest_collection(self):
-        _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[0]}\n")
+        self._record_phase(WORKER_PHASES[0])
         try:
             return (yield)
         finally:
-            _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[1]}\n", append=True)
+            self._record_phase(WORKER_PHASES[1])
 
-    def pytest_runtest_logstart(self) -> None:
-        # The first item has entered pytest's protocol. Later active items still use the watchdog.
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_runtest_protocol(self):
+        # Enter the first item's protocol before ordinary hooks may block or suppress logstart.
         if not self.execution_started:
-            _write(self.dir, self.lifecycle, f"{time.monotonic_ns()} {WORKER_PHASES[2]}\n", append=True)
+            self._record_phase(WORKER_PHASES[2])
             self.execution_started = True
+        return (yield)
 
     def _watch(self) -> None:
         while not self._done.wait(max(0.0, min(self.mono - time.monotonic(), 60.0))):
@@ -750,6 +771,7 @@ class Worker:
             pass  # the hang directory cannot be written: there is nowhere to say so
 
     def pytest_unconfigure(self, config: Any) -> None:
+        self._close_phase()
         self._done.set()
         self.stacks.drop()
 

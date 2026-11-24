@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 from cancel_evidence import attach_reasons, valid
-from evidence_problems import evidence_problems, report_json
+from evidence_problems import FAILURE_PHASES, evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_files import HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
@@ -199,7 +199,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                               and result.get("outcome") in ("failed", "error")
                               and isinstance(result.get("failures"), list) for record in result["failures"]
                               if isinstance(record, dict)
-                              and record.get("phase") in ("collect", "setup", "call", "teardown")}
+                              and record.get("phase") in FAILURE_PHASES}
                     recorded.update(phases)
                     # Serial pytest returns INTERRUPTED (2) for an ordinary collection error.
                     if (doc["exitstatus"] == 2 and doc.get("complete") is True

@@ -404,9 +404,9 @@ def test_scorecard_excludes_only_a_proven_mid_job_runner_loss(monkeypatch, chang
 
 
 @pytest.mark.parametrize("lost", [False, True])
-@pytest.mark.parametrize("phase_record", [False, True])
+@pytest.mark.parametrize("failure_case", ["empty", "absent-phase", "unknown-phase", "valid-phase"])
 def test_scorecard_preserves_a_surviving_failure_report_and_its_registered_sighting(
-    monkeypatch, tmp_path, lost, phase_record
+    monkeypatch, tmp_path, lost, failure_case
 ):
     name = "integration 2/8 (ubuntu-latest)"
     job = {"id": 7, "name": name, "conclusion": "failure", "steps": [], "started_at": "2026-11-24T13:41:30Z"}
@@ -416,11 +416,14 @@ def test_scorecard_preserves_a_surviving_failure_report_and_its_registered_sight
         monkeypatch.setattr(SCORE, "check_annotations", lambda *args: [
             {"path": ".github", "annotation_level": "failure", "message": SCORE.HOSTED_RUNNER_LOST}])
     node = "test_example.py::test_x"
-    failures = [{"phase": "call", "crash": "case.py:2: ValueError: x", "longrepr": "E   ValueError: x"}]
+    failure = {"crash": "case.py:2: ValueError: x", "longrepr": "E   ValueError: x"}
+    if failure_case in {"valid-phase", "unknown-phase"}:
+        failure["phase"] = "call" if failure_case == "valid-phase" else "unknown"
+    phase_record = failure_case == "valid-phase"
     docs = {"runner-resources-job.txt": json.dumps({"job_label": name}),
             "inventory.txt": "typed source names\n",
             "report.json": json.dumps({"schema": "aew/lane-report/v1", "exitstatus": 1, "results": {
-                node: {"outcome": "failed", "failures": failures if phase_record else []}}})}
+                node: {"outcome": "failed", "failures": [] if failure_case == "empty" else [failure]}}})}
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
         for path, data in docs.items():
@@ -436,7 +439,8 @@ def test_scorecard_preserves_a_surviving_failure_report_and_its_registered_sight
     assert row["kind"] == ("runner-lost" if lost else "test_failure" if phase_record else "unclassified")
     assert row["A1"] == ("yes" if phase_record else "no")
     assert row["failed_nodes"] == ([node] if phase_record else [])
-    assert ("failure-text" in row["missing"]) == (not phase_record)
+    assert ("failure-report" in row["missing"]) == (not phase_record)
+    assert ("failure-text" in row["missing"]) == (failure_case == "empty")
     assert row["artifacts"] == [200] and row["unreadable_artifacts"] == []
     assert row["unassigned_artifacts"] == [100]
 

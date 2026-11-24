@@ -73,7 +73,7 @@ def test_test_definitions_are_counted_by_extension_and_an_unknown_one_is_named_u
     assert SC.test_definitions("t/test_a.c", "TEST(a, b) {}\nTEST_F(c, d) {}\n") == 2
     assert SC.test_definitions("t/a.feature", "Scenario: a\n") is None
     texts = {"a.py": ("def test_a(): pass\ndef test_b(): pass\n", "def test_a(): pass\n"),
-             "b.py": ("", "def test_b(): pass\n"), "c.feature": ("x", "y")}
+             "b.py": (None, "def test_b(): pass\n"), "c.feature": ("x", "y")}  # b.py is new: it counts 0 before
     stops, unchecked = SC.removal_stops(list(texts), lambda p: texts[p][0], lambda p: texts[p][1])
     assert stops == [] and unchecked == ["c.feature"]  # a test moved between added paths is neutral
     stops, _ = SC.removal_stops(["a.py"], lambda p: texts[p][0], lambda p: None)

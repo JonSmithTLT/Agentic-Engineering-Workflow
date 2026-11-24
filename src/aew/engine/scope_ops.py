@@ -309,7 +309,10 @@ def _git_text(repo: Path, commit: str | None, path: str) -> str | None:
     if not commit:
         return None
     try:
-        return git.git("show", f"{commit}:{path}", cwd=repo).stdout.decode("utf-8", "replace")
+        # Through `git.out`, not `git.git`: the reference's value flow follows at most 64 call sites of one function,
+        # and `git.git` is at that cap (tools/reference_families/writers_flow.py, CALLERS; PR #540 CI). The text is
+        # read for its words and test definitions, so `out`'s trimmed ends change nothing.
+        return git.out("show", f"{commit}:{path}", cwd=repo)
     except GitError:
         return None
 

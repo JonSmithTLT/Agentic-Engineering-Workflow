@@ -17,7 +17,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import proctree
-from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, is_link, open_observation
+from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, is_link, open_observation, test_frame
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
 DROPPED = "older snapshots dropped\n"
@@ -199,14 +199,43 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
     def sample(worker: Worker):
         if time.monotonic() >= until or worker.identity not in allowed or not proctree.same(worker.identity):
             return None
-        at = time.time()
-        elapsed = time.monotonic() - worker.began
-        result = attach(worker.pid)
-        if result is None:
+        warning = reason == "warning"
+        last = None
+        for attempt in range(3 if warning else 1):
+            if warning and (worker not in workers(root) or not proctree.same(worker.identity)):
+                return None
+            remaining = until - time.monotonic()
+            if remaining <= 0:
+                if attempt == 0:
+                    return None
+                break
+            at = time.time()
+            elapsed = time.monotonic() - worker.began
+            result = attach(worker.pid, timeout=remaining) if warning else attach(worker.pid)
+            # A stack straddling a test boundary has no trustworthy node label.
+            if worker not in workers(root) or not proctree.same(worker.identity):
+                return None
+            if result:
+                last = (at, elapsed, result)
+                # Nonblocking dumps may omit a live Python frame. Retry only
+                # this invocation inside the original shared pre-signal budget.
+                if not warning or test_frame(worker.node, result[1]):
+                    break
+        if last is None:
+            if not warning:
+                return None
+            path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
+            with contextlib.suppress(OSError):
+                if is_link(root):
+                    return None
+                path.parent.mkdir(exist_ok=True)
+                if not is_link(path.parent):
+                    with path.open("x", encoding="utf-8") as stream:
+                        stream.write(f"evidence defect: py-spy unavailable for {worker.node}\n")
             return None
-        # A sample straddling a test boundary has no trustworthy node label.
-        if worker not in workers(root) or not proctree.same(worker.identity):
-            return None
+        # Retain a support-only stack as evidence of what was actually running.
+        # The normal checker still reports a missing live test frame.
+        at, elapsed, result = last
         with contextlib.suppress(OSError):
             if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
                 return worker.identity

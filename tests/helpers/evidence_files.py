@@ -66,6 +66,17 @@ FRESH_S = 60
 PREFIX = "worker snapshot "
 
 
+def test_frame(node: str, frames: str) -> bool:
+    source, _, test = node.partition("::")
+    function = test.split("[", 1)[0].split("::")[-1]
+    for frame in FRAME.finditer(frames):
+        file = frame.group("file") or frame.group("spy_file")
+        called = frame.group("function") or frame.group("spy_function")
+        if ("/" + file.replace("\\", "/")).endswith("/" + source.replace("\\", "/")) and called == function:
+            return True
+    return False
+
+
 def entries(text: str):
     """Only complete, labelled samples. Each frame block ends at the next header."""
     for block in re.split(r"(?m)^" + re.escape(PREFIX), text)[1:]:

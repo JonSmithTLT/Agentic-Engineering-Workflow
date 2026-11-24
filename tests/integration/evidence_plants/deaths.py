@@ -82,7 +82,11 @@ def end_this_worker() -> None:
     raise AssertionError("plant misfired: signalled worker continued")
 
 
-@pytest.mark.parametrize("step", range(180 if KIND == "cancel" else 90) if KIND in CHAIN else [0])
+# Keep the cancellation workload live for the full six-minute plant deadline on either runner.
+CANCEL_CASES = 720 if sys.platform == "linux" else 180
+
+
+@pytest.mark.parametrize("step", range(CANCEL_CASES if KIND == "cancel" else 90) if KIND in CHAIN else [0])
 @pytest.mark.parametrize("kind", [KIND])
 def test_death(kind, step, request):
     if kind in CHAIN:

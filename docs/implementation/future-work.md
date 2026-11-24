@@ -4152,6 +4152,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E360/`, oldest first (`python tools/register.py show E360`).*
 
+### E361
+
+**Work:** The relay refuses request body fields that would reach provider-side state or tools by default (T4): hosted-tool fields and stored-object references (for example a stored response, file or vector-store id) in a request body are refused before the credential is resolved, unless the provider's profile opts that field in. A refusal names the field and is recorded `refused`; nothing is sent. The opt-in is per provider and per field, stated in the policy the relay is started from, never by a request or the sandbox. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
+
+**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23), T4, and its Increment 1 map (2026-11-24); the operator, 2026-11-24: "file T4 as a follow-on ticket"; the STG-05 note of #542 (`2026-11-24-fix-relay-bounds-and-outcome.md`) for m6
+
+**When:** **Unscheduled**, after T2 (#542, merged); the operator places it
+
+**Notes:** Filed by the register PR of 2026-11-24 (T4). The fields each provider exposes come from its pinned API surface, not from today''s online documentation
+
+*Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

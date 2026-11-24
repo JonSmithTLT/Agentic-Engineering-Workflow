@@ -4154,25 +4154,25 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E361
 
-**Work:** The relay refuses request body fields that would reach provider-side state or tools by default (T4): hosted-tool fields and stored-object references (for example a stored response, file or vector-store id) in a request body are refused before the credential is resolved, unless the provider's profile opts that field in. A refusal names the field and is recorded `refused`; nothing is sent. The opt-in is per provider and per field, stated in the policy the relay is started from, never by a request or the sandbox. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
+**Work:** Body-level operation scope for the provider relay: a request's body is held to the provider's allowed operations as its path already is, so a field outside them is refused unless the provider's profile opts that field in, per provider and per field, in the policy the relay is started from, never by a request or the sandbox. A refusal names the field, is recorded `refused`, and sends nothing upstream. Inspecting the body before anything is sent means reading it whole within the relay's body bound (`relay.MAX_BODY`), where today it is streamed; that bound times the concurrency bound is the memory the change can cost, and its pull request states how it holds it. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
 
-**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23), T4, and its Increment 1 map (2026-11-24); the operator, 2026-11-24: "file T4 as a follow-on ticket"; the STG-05 note of #542 (`2026-11-24-fix-relay-bounds-and-outcome.md`) for m6
+**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23), "Authorize operations as well as hosts"; the operator, 2026-11-24, filing this as a follow-on; the STG-05 note of #542 (`2026-11-24-fix-relay-bounds-and-outcome.md`) for m6
 
-**When:** **Unscheduled**, after T2 (#542, merged); the operator places it
+**When:** **Unscheduled**, after #542 (merged); the operator places it
 
-**Notes:** Filed by the register PR of 2026-11-24 (T4). The fields each provider exposes come from its pinned API surface, not from today''s online documentation
+**Notes:** Filed by the register PR of 2026-11-24. Which fields each provider exposes comes from its pinned API surface, not from today''s online documentation
 
 *Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
 
 ### E362
 
-**Work:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch is refused `CONTAINMENT_UNAVAILABLE` (fail closed). `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, which is the true answer (no IPv6 route out), with a test
+**Work:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch with a network of its own (`proxy_only`, the default, or `isolated`) is refused `CONTAINMENT_UNAVAILABLE` (fail closed); a `shared` network never runs that probe. `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, the true answer (no IPv6 route out), which the host-side judge already accepts for `direct6`; with a test
 
 **Source:** E140's O-CMD triage (#547), 2026-11-24: seen in a container whose kernel lacks IPv6
 
-**When:** **Unscheduled**; the operator places it. It holds a host without IPv6 from any contained work, so before first use on such a host
+**When:** **Unscheduled**; the operator places it. It holds a host without IPv6 from contained work with a private network, so before first use on such a host
 
-**Notes:** Filed by the register PR of 2026-11-24 (T4)
+**Notes:** Filed by the register PR of 2026-11-24
 
 *Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
 

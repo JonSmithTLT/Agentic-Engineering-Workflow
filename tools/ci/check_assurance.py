@@ -141,7 +141,8 @@ def shard_gaps(group: list[dict[str, Any]]) -> list[str]:
 
 
 def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
-          required: list[str], tier: str = "full") -> tuple[list[str], dict[str, Any]]:
+          required: list[str], tier: str = "full", windows_omitted: set[str] | None = None
+          ) -> tuple[list[str], dict[str, Any]]:
     """Return (problems, per-platform facts). No problems means the platform's assurance envelope is complete for
     ``tier``: every collected test of the tier's lanes ran exactly once and passed."""
     problems: list[str] = []
@@ -162,7 +163,8 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             sizes = ", ".join(f"{_label(r)}={len(r['collected'])}" for r in group)
             problems.append(f"{platform}: jobs collected different test sets ({sizes})")
         collected = everything = set().union(*(r["collected"] for r in group))
-        if lanes is not None:
+        scoped = platform == "win32" and bool(windows_omitted)
+        if lanes is not None or scoped:
             lane_of: dict[str, str] = {}
             for r in group:
                 lane_of.update(r.get("lanes") or {})
@@ -170,7 +172,13 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
             if unknown:
                 problems.append(f"{platform}: tier {tier} needs each test's lane, but the reports do not record it for "
                                 f"{len(unknown)} collected test(s) (e.g. {unknown[0]})")
-            collected = {nid for nid in collected if lane_of.get(nid) in lanes}
+            if lanes is not None:
+                collected = {nid for nid in collected if lane_of.get(nid) in lanes}
+            if scoped:
+                if any(r.get("lanes") != lane_of for r in group):
+                    problems.append(f"{platform}: reports disagree on the lane of a collected test")
+                collected = {nid for nid in collected if lane_of.get(nid) not in {"integration", "regression"}
+                             or nid.split("::", 1)[0] not in windows_omitted}
         runs = Counter(nid for r in group for nid in r["results"])
         for r in group:
             if not r.get("complete", True):
@@ -206,16 +214,20 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
                 problems.append(f"{platform}: pinned skip now {outcomes[nid]}: {nid} "
                                 "(remove it from platform-skips.yaml)")
         facts[platform] = {"collected": len(collected), "ran": sum(runs.values()),
-                           "outcomes": Counter(outcomes.values()), "jobs": group}
+                           "outcomes": Counter(outcomes.values()), "jobs": group,
+                           "scoped_out": len(everything - collected - set(runs)) if scoped else 0}
     return problems, facts
 
 
 def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> str:
     lines = ["## Test assurance", ""]
     scope = "" if tier == "full" else f" in the {tier} tier's lanes ({', '.join(tiers.LANES[tier])})"
-    lines.append(f"**PASS**: every collected test{scope} ran exactly once and passed (pinned platform skips excepted)."
+    subject = "required" if any(f.get("scoped_out") for f in facts.values()) else "collected"
+    lines.append(f"**PASS**: every {subject} test{scope} ran exactly once and passed (pinned platform skips excepted)."
                  if not problems else f"**FAIL**: {len(problems)} problem(s).")
     for platform, f in sorted(facts.items()):
+        if f.get("scoped_out"):
+            lines.append(f"Windows PR selection omitted {f['scoped_out']} collected integration/regression tests.")
         lines += ["", f"### {platform}: {f['collected']} collected, {f['ran']} run, "
                       + ", ".join(f"{n} {o}" for o, n in sorted(f["outcomes"].items())), "",
                   "| lane | shard | tests | test time (s) | session wall (s) | xdist | python |",
@@ -243,10 +255,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--tier", default="full", choices=tiers.TIERS, help="the change's tier (tools/ci/tier.py)")
     ap.add_argument("--event", default="", help="the GitHub event: a reduced tier is accepted only for pull_request")
+    ap.add_argument("--windows-pr", default="", help="independently recompute this PR's Windows selection")
     args = ap.parse_args(argv)
     required = [p for p in args.require.split(",") if p]
     reports = load_reports(args.reports)
-    problems, facts = check(reports, load_expectations(args.skips), required, args.tier)
+    import windows_selection
+
+    omitted = windows_selection.omitted_for_workflow(args.windows_pr, args.tier)
+    problems, facts = check(reports, load_expectations(args.skips), required, args.tier, omitted)
     if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
         problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
                            "reduced tier; a push to main and a merge group are always full")

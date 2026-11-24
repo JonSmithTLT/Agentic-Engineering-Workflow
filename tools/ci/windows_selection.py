@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import ast
 import io
+import os
 import re
 import subprocess
 import sys
-import tarfile
 from collections.abc import Iterable, Mapping
 from pathlib import PurePosixPath
 
@@ -23,10 +23,15 @@ EXTERNAL = sys.stdlib_module_names | {"yaml", "pytest", "xdist", "coverage", "js
                                       "psutil", "cryptography", "packaging", "clang", "pygments", "setuptools"}
 
 
+def test_modules(sources: Mapping[str, str]) -> set[str]:
+    return {p for p in sources if p.startswith(SCOPED_DIRS)
+            and (PurePosixPath(p).match("test_*.py") or PurePosixPath(p).match("*_test.py"))}
+
+
 def selected_modules(sources: Mapping[str, str], changed_lines: Mapping[str, Iterable[str]],
                      registered: set[str]) -> set[str]:
     """Return selected modules in this tree. Resolve old and new trees independently for a two-revision diff."""
-    modules = {p for p in sources if p.startswith(SCOPED_DIRS) and PurePosixPath(p).match("test_*.py")}
+    modules = test_modules(sources)
     selected = modules & (set(changed_lines) | registered)
     sensitive = {p for p, lines in changed_lines.items()
                  if p in sources and any(WINDOWS_LINE.search(line) for line in lines)}
@@ -112,7 +117,7 @@ def select_change(base: Mapping[str, str], head: Mapping[str, str], changes: Map
     return (selected_modules(base, changes, registered) | selected_modules(head, changes, registered)) & head.keys()
 
 
-def from_merge(merge: str) -> set[str]:
+def from_merge(merge: str, *, omit: bool = False) -> set[str]:
     """Read exact Git objects so removed imports and files participate in the same decision as additions."""
     def git(*args: str) -> bytes:
         return subprocess.check_output(["git", "--literal-pathspecs", *args])
@@ -122,24 +127,40 @@ def from_merge(merge: str) -> set[str]:
         raise ValueError("expected a two-parent tested merge")
     head, base, _ = parents
     paths = git("diff", "--name-only", "-z", "--no-renames", base, head).decode().split("\0")[:-1]
+    # A changed platform expectation needs the live outcome of every pinned test.
+    if not paths:
+        raise ValueError("empty PR diff")
+    if omit and ("tests/platform-skips.yaml" in paths or
+                 tier.FLAKE_REGISTER in paths and not tier.verified_register_edit(merge)):
+        return set()
     changes = {}
     for path in paths:
         if not path.endswith(".py"):
             continue
-        patch = git("diff", "--no-renames", "--no-ext-diff", "--no-textconv", "-U0", base, head, "--", path).decode()
+        patch = git("diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0", base, head, "--", path).decode()
         changes[path] = [line[1:] for hunk in patch.split("\n@@ ")[1:] for line in hunk.splitlines()[1:]
                          if line.startswith(("+", "-"))]
 
     def sources(rev: str) -> dict[str, str]:
-        data = subprocess.check_output(["git", "archive", "--format=tar", rev, "--", "*.py"])
-        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
-            result = {}
-            for entry in archive:
-                if entry.isfile() and entry.name.endswith(".py"):
-                    stream = archive.extractfile(entry)
-                    assert stream is not None
-                    result[entry.name] = stream.read().decode("utf-8-sig")
-            return result
+        files = {}
+        for entry in git("ls-tree", "-r", "-z", rev).split(b"\0"):
+            if entry.endswith(b".py"):
+                header, path = entry.split(b"\t", 1)
+                mode, kind, oid = header.split()
+                if kind != b"blob" or mode not in {b"100644", b"100755"}:
+                    raise ValueError("unresolved Python source")
+                files[path.decode()] = oid
+        data = subprocess.check_output(["git", "cat-file", "--batch"], input=b"\n".join(files.values()) + b"\n")
+        stream = io.BytesIO(data)
+        result = {}
+        for path, oid in files.items():
+            identity, kind, size = stream.readline().split()
+            if identity != oid or kind != b"blob":
+                raise ValueError("unresolved Git object")
+            result[path] = stream.read(int(size)).decode("utf-8-sig")
+            if stream.read(1) != b"\n":
+                raise ValueError("incomplete Git object")
+        return result
 
     registry = yaml.safe_load(git("show", f"{head}:tests/flake-register.yaml"))
     if registry["schema"] != "aew/flake-register/v1" or not isinstance(registry["entries"], list):
@@ -153,10 +174,13 @@ def from_merge(merge: str) -> set[str]:
         for evidence in row["evidence"]:
             nodes.extend(evidence.get("nodes", []))
     registered = {node.split("::", 1)[0] for node in nodes}
-    return select_change(sources(base), sources(head), changes, registered)
+    after = sources(head)
+    picked = select_change(sources(base), after, changes, registered)
+    return test_modules(after) - picked if omit else picked
 
 
-def for_pull_request(event: str, base_ref: str, merge: str, run_tier: str, repo: str, pr: str) -> set[str] | None:
+def for_pull_request(event: str, base_ref: str, merge: str, run_tier: str, repo: str, pr: str,
+                     *, omit: bool = False) -> set[str] | None:
     """None means all Windows tests. Only a full-tier PR with known, unforced inputs can narrow its heavy lanes."""
     if event != "pull_request" or base_ref != "main" or run_tier != "full":
         return None
@@ -165,7 +189,16 @@ def for_pull_request(event: str, base_ref: str, merge: str, run_tier: str, repo:
     if trailer is not False or labels is None or tier.FORCE_LABEL in labels:
         return None
     try:
-        return from_merge(merge)
-    except (OSError, subprocess.SubprocessError, LookupError, ValueError, TypeError, yaml.YAMLError) as exc:
+        return from_merge(merge, omit=omit)
+    except (OSError, subprocess.SubprocessError, LookupError, ValueError, TypeError, AttributeError,
+            yaml.YAMLError) as exc:
         print(f"Windows selection could not be resolved ({type(exc).__name__}); running all modules", file=sys.stderr)
         return None
+
+
+def omitted_for_workflow(pr: str, run_tier: str) -> set[str]:
+    if not pr:
+        return set()
+    return for_pull_request(os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("GITHUB_BASE_REF", ""),
+                            os.environ.get("GITHUB_SHA", ""), run_tier, os.environ.get("GITHUB_REPOSITORY", ""),
+                            pr, omit=True) or set()

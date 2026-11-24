@@ -45,7 +45,7 @@ def checks(*, goal=True, unit=True, scope=True, snapshot=REVISION):
             {"id": "scope", "snapshot": snapshot, "ok": scope, "observations": []}]
 
 
-def observe(emitted, observed=None, *, case="VD-CLEAN", arm="exposed", intended=(SKILL,), exposure=None,
+def observe(emitted, observed=None, *, case="VD-1", arm="exposed", intended=(SKILL,), exposure=None,
             changed=(), cost=None, revision=REVISION):
     if exposure is None:
         exposure = adapter.projection(list(intended))["skills"]
@@ -113,11 +113,30 @@ def test_an_exposure_other_than_the_preregistered_one_is_invalid_and_never_grade
     tampered = {**exposed, "delivered": [{**exposed["delivered"][0], "sha256": "0" * 64}]}
     for intended, observed in (([], exposed), ([SKILL], adapter.projection([])["skills"]), ([SKILL], tampered),
                                ([SKILL], None)):
-        seen = adapter.observe(run_id="x/r1", case="VD-CLEAN", arm="a", emitted=[scripted.record(checks(), REVISION)],
+        seen = adapter.observe(run_id="x/r1", case="VD-1", arm="a", emitted=[scripted.record(checks(), REVISION)],
                                checks=checks(), candidate_revision=REVISION, intended_skills=intended,
                                exposure=observed, changed_paths=[], cost=None)
         assert seen["validity"]["status"] == "invalid" and seen["validity"]["reason"].startswith("EXPOSURE_MISMATCH")
         assert seen["disposition"] is None and graded(seen)["grade"] == "invalid"
+        # Blinded, an invalid run still says nothing of its arm: the reason is a code, the detail under exposure.
+        assert seen["validity"]["reason"] == "EXPOSURE_MISMATCH" and seen["exposure"]["problem"]
+        assert SKILL not in json.dumps(grader.blind(seen))
+
+
+def test_a_record_the_ticket_verification_gate_would_not_consider_is_no_disposition():
+    passing = scripted.record(checks(), REVISION)
+    for scope in ("parent", "integration"):
+        other = copy.deepcopy(passing)
+        other["verification"]["scope"] = scope
+        seen = observe([other])
+        assert seen["disposition"] is None and "not considered" in seen["malformed"]
+        assert graded(seen)["grade"] == "no_disposition"
+    for role in ("implementer", None):
+        other = copy.deepcopy(passing)
+        other["producer"] = {k: v for k, v in other["producer"].items() if k != "role"}
+        if role:
+            other["producer"]["role"] = role
+        assert graded(observe([other]))["grade"] == "no_disposition"
 
 
 def test_a_disposition_bound_to_another_snapshot_is_invalid():
@@ -139,8 +158,8 @@ def test_absent_cost_is_unmeasured_never_zero():
 
 def test_the_grader_tells_the_four_outcomes_apart():
     accept, rework = scripted.record(checks(), REVISION), scripted.record(checks(goal=False), REVISION)
-    table = [("VD-CLEAN", accept, "correct_accept"), ("VD-REPAIR", rework, "justified_rework"),
-             ("VD-REPAIR", accept, "false_accept"), ("VD-CLEAN", rework, "false_rework")]
+    table = [("VD-1", accept, "correct_accept"), ("VD-3", rework, "justified_rework"),
+             ("VD-3", accept, "false_accept"), ("VD-1", rework, "false_rework")]
     for case, record, want in table:
         observed = checks(goal=record["result"] == "pass")
         assert graded(observe([record], observed, case=case))["grade"] == want
@@ -172,6 +191,9 @@ def test_the_preregistered_arms_differ_only_in_skill_exposure_and_commit_to_the_
     assert withheld["skills"]["exposed"] == [] and withheld["skills"]["unavailable"] == []
     assert [d["sha256"] for d in exposed["skills"]["delivered"]] == [skills.entries()[SKILL]["sha256"]]
     assert plan["scoring"]["rubric_sha256"] == grader.expected_sha256()
+    assert (EXPERIMENT / plan["scoring"]["hidden_channel"]).is_file()
+    probe = hashlib.sha256((EXPERIMENT / "probe.py").read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    assert all(config["probe"] == "probe.py" and config["probe_sha256"] == probe for config in arms.values())
     assert plan["profiles"]["budget_usd"] == 0 and {a["kind"] for a in plan["arms"]} == {"scripted"}
 
 
@@ -181,10 +203,10 @@ def test_the_cases_reuse_the_m3_t5_material_byte_for_byte():
 
     fixture = EXPERIMENT / "fixture"
     assert tree(fixture / "base") == tree(M3 / "base")
-    assert tree(fixture / "candidates" / "VD-T5") == tree(M3 / "seeded" / "T5")
-    assert (fixture / "candidates/VD-CLEAN/ledger/money.py").read_bytes() == \
+    assert tree(fixture / "candidates" / "VD-2") == tree(M3 / "seeded" / "T5")
+    assert (fixture / "candidates/VD-1/ledger/money.py").read_bytes() == \
         (M3 / "reference/T5/ledger/money.py").read_bytes()
-    for case in ("VD-CLEAN", "VD-T5", "VD-REPAIR"):
+    for case in ("VD-1", "VD-2", "VD-3"):
         manifest = yaml.safe_load((EXPERIMENT / f"case-{case}.yaml").read_text(encoding="utf-8"))
         assert manifest["fixture"] == {"base": "fixture/base", "seeded": f"fixture/candidates/{case}"}
         assert manifest["hidden_sha256"] is None  # both arms get the same tree: the grade is the disposition's

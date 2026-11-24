@@ -1,5 +1,5 @@
 """A deliberately incomplete probe: it checks only that shares add up in whole cents and that parts < 1 raises, and
-never the leftover order G1 states. Run over VD-REPAIR it yields a plausible false accept the grader must reject."""
+never the leftover order G1 states. Run over VD-3 it yields a plausible false accept the grader must reject."""
 
 import json
 from decimal import Decimal as D

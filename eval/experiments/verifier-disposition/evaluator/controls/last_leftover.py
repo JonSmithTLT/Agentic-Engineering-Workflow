@@ -1,5 +1,5 @@
 """A deliberately misread probe: it expects the leftover cents on the last shares, the opposite of G1. Run over
-VD-CLEAN it yields a plausible false rework, a supported failing claim against a correct change, that the grader must
+VD-1 it yields a plausible false rework, a supported failing claim against a correct change, that the grader must
 reject."""
 
 import json

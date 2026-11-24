@@ -85,8 +85,8 @@ def record(observed: list[dict[str, Any]], revision: str) -> dict[str, Any]:
             "claims": [
                 {"type": "goal_backwards", "claim": "every Ticket goal the probe derives holds", "result": goal,
                  "checks": ["goal-probe"]},
-                {"type": "contract", "claim": "the change stays within ledger/ and tests/ and the project's tests "
-                 "pass", "result": contract, "checks": ["scope", "unit"]},
+                {"type": "contract", "claim": "the files the implementer reports lie within ledger/ and tests/, and "
+                 "the project's tests pass", "result": contract, "checks": ["scope", "unit"]},
             ],
             "suspected_cause": "; ".join(failed) or None,
         },

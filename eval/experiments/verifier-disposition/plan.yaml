@@ -21,21 +21,24 @@ validity_rules:
 stopping_rule: One scripted attempt per case and arm.
 held_out: []
 scoring:
-  hidden_channel: evaluator/grade.py
+  hidden_channel: evaluator/disposition_grader.py
   who_scores: automated
   blinding: arm_hidden
   adjudication_policy: Grade only the first verification record, after every attempt has ended, with the arm and its
     exposure removed. Unsupported claims are recorded beside the grade and never change it.
-  rubric_sha256: d1a12d8dafb8effb140685ee3f0b9a4b7cee54b89e1fd4bebaca751f6ad3a164
+  rubric_sha256: eca959804cbb3897bc26b0b52e5efb24676b3fd096a5d7ae5ffa597fb5a72648
 exposure_policy: Public synthetic cases. Only the fixture's base and the case's candidate enter the verifier's
-  repository, with the case task; evaluator/ and the case ids never do.
+  repository, with the case task; evaluator/ never does. Case ids are neutral (VD-1 to VD-3) and carry no decision,
+  since the starting commit's subject names the case id.
 amendment_policy: A material change requires a new experiment id.
 arms:
 - id: inaccessible
   kind: scripted
   description: the verifier card with acceptance-verification withheld
-  config: {seeded: true, steps: [], skills: [], probe: probe.py}
+  config: {seeded: true, steps: [], skills: [], probe: probe.py,
+    probe_sha256: c020363e4dcc4bb5c55c9b8f38996b1e4e303a0df6fb7cfd41c69de4a1956e54}
 - id: exposed
   kind: scripted
   description: the shipped verifier card, acceptance-verification exposed
-  config: {seeded: true, steps: [], skills: [acceptance-verification], probe: probe.py}
+  config: {seeded: true, steps: [], skills: [acceptance-verification], probe: probe.py,
+    probe_sha256: c020363e4dcc4bb5c55c9b8f38996b1e4e303a0df6fb7cfd41c69de4a1956e54}

@@ -4,16 +4,20 @@ Public and answer-free: it reads what a verifier emitted and what the harness ob
 (those are the evaluator's, in ``evaluator/``). It runs no model and calls no provider.
 
 * **The first disposition.** The first ``kind: verification`` record a run emitted is its disposition, before anyone
-  repairs the candidate; later records are only counted. ``accept`` is exactly what AEW's verification gate passes
-  (``aew.engine.gates._verification_passes``: a ``pass`` with passing ``goal_backwards`` and ``contract`` claims), and
-  everything else, a fail, an inconclusive or a blocked result included, is ``rework``. No record, or one that is not a
-  valid ``aew/evidence/v1`` verification, is ``no_disposition``: a counted outcome, never a retry.
+  repairs the candidate; later records are only counted. ``accept`` is exactly what AEW's Ticket verification gate
+  passes: the gate considers only a ``ticket``-scope record from a verifier, and passes it by its own predicate
+  (``aew.engine.gates._verification_passes``: a ``pass`` with passing ``goal_backwards`` and ``contract`` claims).
+  Everything else the gate considers, a fail, an inconclusive or a blocked result included, is ``rework``. No record,
+  one that is not a valid ``aew/evidence/v1`` verification, or one the gate would not consider (another scope, another
+  producer role), is ``no_disposition``: a counted outcome, never a retry. Offline, the producer's role is the
+  record's own ``producer.role``; in AEW the engine binds it from the invocation.
 * **Unsupported claims** are recorded beside the disposition and never change it. A claim that asserts ``pass`` or
   ``fail`` is unsupported when it cites no check, cites a check the harness never observed, cites one observed on
   another snapshot, or contradicts what its checks observed (a pass over a failing check, a fail over passing ones).
   A claim's own words are never evidence (skill evaluation guide §6, "Evidence quality / freshness").
 * **Validity is delivery, not behaviour.** An exposure other than the arm's preregistered one, or a record bound to a
   snapshot other than the candidate's, is ``invalid``: the cell did not measure what it was registered to measure.
+  ``validity.reason`` is a code alone; what the exposure was is kept under ``exposure``, which blinding removes.
   A verifier that edits the candidate is a counted authority violation (the verifier archetype edits nothing).
 * **Cost** is carried as the attempt recorded it. Absent is unmeasured (``None``), never zero.
 """
@@ -32,6 +36,7 @@ SCHEMA = "aew/verifier-disposition/v1"
 CARD = "verifier"
 SKILL = "acceptance-verification"
 ASSERTING = ("pass", "fail")  # inconclusive and blocked claims assert nothing to support
+GATE_SCOPE, GATE_ROLE = "ticket", "verifier"  # the records the Ticket verification gates consider (gates.py)
 
 
 def projection(applied_skills: list[str]) -> dict[str, Any]:
@@ -93,17 +98,18 @@ def observe(*, run_id: str, case: str, arm: str, emitted: list[dict[str, Any]], 
     record, later = first_verification(emitted)
     out: dict[str, Any] = {
         "schema": SCHEMA, "run_id": run_id, "case": case, "arm": arm,
-        "validity": {"status": "valid", "reason": None},
+        "validity": {"status": "valid", "reason": None, "detail": None},
         "disposition": None, "verification_result": None, "malformed": None, "later_verifications": later,
         "claims": 0, "unsupported_claims": [], "supported_failure": False,
         "authority_violations": [f"edited {p}" for p in changed_paths],
         "exposure": {"intended": sorted(intended_skills), "observed": exposure,
-                     "loaded": (exposure or {}).get("loaded")},
+                     "loaded": (exposure or {}).get("loaded"), "problem": None},
         "cost": cost or None,
     }
     problem = exposure_problem(intended_skills, exposure)
     if problem:
-        out["validity"] = {"status": "invalid", "reason": f"EXPOSURE_MISMATCH: {problem}"}
+        out["validity"] = {"status": "invalid", "reason": "EXPOSURE_MISMATCH", "detail": None}
+        out["exposure"]["problem"] = problem
         return out
     if record is None:
         return out
@@ -111,9 +117,13 @@ def observe(*, run_id: str, case: str, arm: str, emitted: list[dict[str, Any]], 
     if errors or "verification" not in record:
         out["malformed"] = "not a valid aew/evidence/v1 verification record"
         return out
+    scope, role = record["verification"]["scope"], record["producer"].get("role")
+    if scope != GATE_SCOPE or role != GATE_ROLE:
+        out["malformed"] = f"not considered by the Ticket verification gate (scope {scope!r}, producer role {role!r})"
+        return out
     bound = record["evaluated_snapshot"]["base_revision"]
     if bound != candidate_revision:
-        out["validity"] = {"status": "invalid", "reason": f"SNAPSHOT_MISMATCH: bound to {bound!r}"}
+        out["validity"] = {"status": "invalid", "reason": "SNAPSHOT_MISMATCH", "detail": f"bound to {bound!r}"}
         return out
     unsupported = unsupported_claims(record, checks, candidate_revision)
     failed = {n for n, c in enumerate(record["verification"]["claims"]) if c["result"] == "fail"}

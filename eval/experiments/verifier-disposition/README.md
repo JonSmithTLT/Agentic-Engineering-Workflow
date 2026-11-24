@@ -21,15 +21,15 @@ Each case is the M3 ledger project (`fixture/base`, a byte-for-byte copy of `eva
 
 | Case | Candidate |
 | --- | --- |
-| `VD-CLEAN` | the M3 T5 reference with focused tests |
-| `VD-T5` | the M3 T5 seeded first attempt: equal rounded shares that do not add up |
-| `VD-REPAIR` | a plausible repair: the shares now add up, but the leftover cents go to the last shares instead of the first |
+| `VD-1` | the M3 T5 reference with focused tests |
+| `VD-2` | the M3 T5 seeded first attempt: equal rounded shares that do not add up |
+| `VD-3` | a plausible repair: the shares now add up, but the leftover cents go to the last shares instead of the first |
 
-Only the base, the case's candidate and the task enter the verifier's repository. Case ids and `evaluator/` never do. T5 is a calibration control. In M3, review caught it in four of four runs, and the raw comparison fixed it four of four times, so it cannot by itself show an incremental benefit.
+Only the base, the case's candidate and the task enter the verifier's repository; `evaluator/` never does. The case ids are neutral (`VD-1` to `VD-3`) because the instrument writes the id into the repository's one commit subject (`VD-2: starting point (seeded)`); an id says which case this is, never what its answer is. The descriptive names above stay in this README and in `evaluator/`. T5 is a calibration control. In M3, review caught it in four of four runs, and the raw comparison fixed it four of four times, so it cannot by itself show an incremental benefit.
 
 ## The adapter and the grader
 
-`disposition_adapter.py` is public and holds no answers. It takes the first `kind: verification` record a run emitted, before anyone repairs the candidate. `accept` is exactly what AEW's verification gate passes; everything else is `rework`. A missing or malformed record is a counted `no_disposition`. It records separately each claim the observed checks do not support: no check cited, a check never observed, one observed on another snapshot, or one that contradicts the claim. It also records edits to the candidate (an authority violation) and the attempt's cost, where absent means unmeasured, never zero. An exposure other than the arm's, or a record bound to another snapshot, makes the run `invalid`.
+`disposition_adapter.py` is public and holds no answers. It takes the first `kind: verification` record a run emitted, before anyone repairs the candidate. `accept` is exactly what AEW's Ticket verification gate passes: it considers only a `ticket`-scope record from a verifier, and passes it by its own predicate. Everything else it considers is `rework`. A missing or malformed record, or one the gate would not consider, is a counted `no_disposition`. It records separately each claim the observed checks do not support: no check cited, a check never observed, one observed on another snapshot, or one that contradicts the claim. It also records edits to the candidate (an authority violation) and the attempt's cost, where absent means unmeasured, never zero. An exposure other than the arm's, or a record bound to another snapshot, makes the run `invalid`.
 
 `evaluator/disposition_grader.py` is evaluator-only. It grades an observation only after `blind()` has removed the arm and its exposure: `correct_accept`, `justified_rework`, `false_accept` or `false_rework`. Unsupported claims and cost are carried beside the grade and never change it. Runs use neutral names, so the run id does not name the arm either.
 

@@ -6,12 +6,15 @@ delivery and grading only: its decisions ignore the skill, so they say nothing a
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import re
 import runpy
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from aew import skills
 
@@ -21,7 +24,7 @@ EXPERIMENT = EVAL / "experiments" / "verifier-disposition"
 sys.path.insert(0, str(EVAL))
 from aew_eval import arms, fixture, prereg, runner  # noqa: E402
 
-CASES = {case: EXPERIMENT / f"case-{case}.yaml" for case in ("VD-CLEAN", "VD-T5", "VD-REPAIR")}
+CASES = {case: EXPERIMENT / f"case-{case}.yaml" for case in ("VD-1", "VD-2", "VD-3")}
 SKILL = "acceptance-verification"
 
 
@@ -29,16 +32,19 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def load(path: Path):
+    """A module from its file, private to this test: nothing enters ``sys.modules``."""
+    spec = importlib.util.spec_from_file_location(f"vd_rehearsal_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.fixture
-def experiment(monkeypatch):
+def experiment():
     """The experiment's public adapter, scripted verifier and evaluator-side grader, loaded from their files."""
-    monkeypatch.setattr(sys, "path", [str(EXPERIMENT), str(EXPERIMENT / "evaluator"), *sys.path])
-    for name in ("disposition_adapter", "disposition_grader", "scripted_verifier"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
-    import disposition_adapter
-    import disposition_grader
-    import scripted_verifier
-    return disposition_adapter, disposition_grader, scripted_verifier
+    return (load(EXPERIMENT / "disposition_adapter.py"), load(EXPERIMENT / "evaluator" / "disposition_grader.py"),
+            load(EXPERIMENT / "scripted_verifier.py"))
 
 
 class VerifierArm(arms.ScriptedArm):
@@ -69,9 +75,7 @@ class VerifierArm(arms.ScriptedArm):
 
 def test_the_calibration_reproduces_its_committed_qualification(monkeypatch):
     """The expected decisions agree with the M3 T5 hidden checks, and the grader rejects every wrong control."""
-    monkeypatch.setattr(sys, "path", list(sys.path))
-    for name in ("disposition_adapter", "disposition_grader", "scripted_verifier"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))  # calibrate.py puts the experiment on the path
     found = runpy.run_path(str(EXPERIMENT / "evaluator" / "calibrate.py"))["calibrate"]()
     committed = json.loads((EXPERIMENT / "evaluator" / "qualification.json").read_text(encoding="utf-8"))
     assert found == committed
@@ -79,6 +83,26 @@ def test_the_calibration_reproduces_its_committed_qualification(monkeypatch):
     assert grades["false-accept"] == "false_accept" and grades["false-rework"] == "false_rework"
     assert found["controls"]["fabricated-accept"]["unsupported_claims"] == ["check_not_observed"] * 2
     assert all(truth["project_tests"] for truth in found["truth"].values())  # every candidate passes its own tests
+
+
+def test_the_verifiers_repository_names_no_case_and_no_expected_decision(tmp_path):
+    """Built exactly as the runner builds a cell, a candidate's repository holds no descriptive case name, no word of
+    the expected decisions and no other case's id; its own neutral id appears only in the instrument's commit subject
+    (PR #534 review, finding 1)."""
+    expected = yaml.safe_load((EXPERIMENT / "evaluator" / "expected.yaml").read_text(encoding="utf-8"))
+    rows = expected["cases"].values()
+    forbidden = ({"clean", "repair", "t5", "disposition", "violated", "expected"}
+                 | {row["disposition"] for row in rows} | {g.lower() for row in rows for g in row["violated"]})
+    for case_id, path in CASES.items():
+        repo = tmp_path / case_id
+        fixture.build(fixture.snapshot(fixture.load(path)), repo, seeded=True)
+        log = fixture.git(repo, "log", "--format=%B")
+        assert log == f"{case_id}: starting point (seeded)"
+        files = "\n".join(data.decode("utf-8", "replace") for data in fixture.files_of(repo).files.values())
+        words = set(re.findall(r"[a-z0-9]+", (files + "\n" + log).lower()))
+        assert not words & forbidden, (case_id, sorted(words & forbidden))
+        assert not any(other in files + log for other in CASES if other != case_id)
+        assert case_id not in files
 
 
 def test_the_case_task_is_the_m3_t5_ticket(monkeypatch):
@@ -95,9 +119,6 @@ def test_both_arms_see_the_same_candidate_with_their_own_exposure_and_are_graded
                                                                                        monkeypatch):
     adapter, grader, verifier = experiment
     plan = prereg.load(EXPERIMENT / "plan.yaml")
-    probe_sha = digest((EXPERIMENT / "probe.py").read_bytes().replace(b"\r\n", b"\n"))
-    for arm in plan["arms"]:
-        arm["config"]["probe_sha256"] = probe_sha
     plan["cases"] = []
     for case_id, path in CASES.items():
         case = fixture.load(path)
@@ -143,4 +164,4 @@ def test_both_arms_see_the_same_candidate_with_their_own_exposure_and_are_graded
             assert graded["disposition"] == expected["cases"][case_id]["disposition"]
             assert graded["unsupported_claims"] == [] and graded["authority_violations"] == 0
             grades.append(graded["grade"])
-        assert grades[0] == grades[1] == ("correct_accept" if case_id == "VD-CLEAN" else "justified_rework")
+        assert grades[0] == grades[1] == ("correct_accept" if case_id == "VD-1" else "justified_rework")

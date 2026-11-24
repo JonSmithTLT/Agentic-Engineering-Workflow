@@ -4,9 +4,9 @@
    (``eval/m3/dogfood/hidden.py``). The goals it violates and its expected disposition (accept only when none is
    violated) must be ``expected.yaml``'s.
 2. **Decision controls.** The scripted verifier runs on each case with the honest probe, and three deliberately wrong
-   decisions are made: a plausible false accept (a probe that never checks the leftover order, on VD-REPAIR), a
-   plausible false rework (a probe that expects the leftover on the last shares, on VD-CLEAN) and a fabricated accept
-   (a passing record citing checks nobody ran, on VD-T5). Each goes through the public adapter, is blinded and graded,
+   decisions are made: a plausible false accept (a probe that never checks the leftover order, on VD-3), a
+   plausible false rework (a probe that expects the leftover on the last shares, on VD-1) and a fabricated accept
+   (a passing record citing checks nobody ran, on VD-2). Each goes through the public adapter, is blinded and graded,
    and must get its named grade.
 
 Prints JSON that reproduces ``qualification.json``; a mismatch with any expected result exits with an error. Execution
@@ -34,18 +34,18 @@ import disposition_grader as grade  # noqa: E402
 import scripted_verifier  # noqa: E402
 from aew_eval import fixture  # noqa: E402
 
-CASES = ("VD-CLEAN", "VD-T5", "VD-REPAIR")
+CASES = ("VD-1", "VD-2", "VD-3")
 HIDDEN = EVAL / "m3" / "dogfood" / "hidden.py"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROBE = EXPERIMENT / "probe.py"
 # name: (case, probe or None for the fabricated record, the grade the grader must give)
 CONTROLS = {
-    "honest-clean": ("VD-CLEAN", PROBE, "correct_accept"),
-    "honest-t5": ("VD-T5", PROBE, "justified_rework"),
-    "honest-repair": ("VD-REPAIR", PROBE, "justified_rework"),
-    "false-accept": ("VD-REPAIR", HERE / "controls" / "sum_only.py", "false_accept"),
-    "false-rework": ("VD-CLEAN", HERE / "controls" / "last_leftover.py", "false_rework"),
-    "fabricated-accept": ("VD-T5", None, "false_accept"),
+    "honest-clean": ("VD-1", PROBE, "correct_accept"),
+    "honest-t5": ("VD-2", PROBE, "justified_rework"),
+    "honest-repair": ("VD-3", PROBE, "justified_rework"),
+    "false-accept": ("VD-3", HERE / "controls" / "sum_only.py", "false_accept"),
+    "false-rework": ("VD-1", HERE / "controls" / "last_leftover.py", "false_rework"),
+    "fabricated-accept": ("VD-2", None, "false_accept"),
 }
 
 

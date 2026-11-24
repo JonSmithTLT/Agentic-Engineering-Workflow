@@ -358,6 +358,16 @@ starts:
   classes: [not_agent_context]
   reason: the fixture's own upstream suite on a fresh copy of its starting files, before any model has written
     anything (test_eval_lbq_lane.py::test_the_upstream_suite_runs_only_on_a_fresh_copy_of_the_fixtures_starting_files)
+- site: eval/experiments/verifier-disposition/evaluator/calibrate.py::truth
+  call: run
+  classes: [not_agent_context]
+  reason: the M3 T5 hidden checks on a committed public candidate, rebuilt from the fixture; no model has written
+    anything
+- site: eval/experiments/verifier-disposition/scripted_verifier.py::_run
+  call: run
+  classes: [not_agent_context]
+  reason: the scripted verifier's fixed checks (the project's tests, the goal probe) on a committed public candidate,
+    rebuilt from the fixture; no model acts and no model-written tree is accepted
 - site: eval/m3/dogfood/dogfood.py::aew
   call: run
   classes: [not_agent_context]

@@ -1,5 +1,5 @@
 schema: aew/eval-case/v1
-id: VD-T5
+id: VD-1
 family: verifier-disposition-calibration
 description: One submitted candidate for the M3 T5 Ticket. The verifier receives the same task for every case.
 task: >-
@@ -12,6 +12,6 @@ task: >-
   claims each cite the checks you ran.
 fixture:
   base: fixture/base
-  seeded: fixture/candidates/VD-T5
+  seeded: fixture/candidates/VD-1
 hidden_sha256: null
 control_of: null

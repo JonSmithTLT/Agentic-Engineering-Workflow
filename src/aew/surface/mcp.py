@@ -253,8 +253,10 @@ class Server:
 _NOT_JSON = object()
 
 
-# A JSON string (escapes included), or one bracket outside a string. The unrolled form never backtracks.
-_TOKEN = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"|[\[\]{}]', re.DOTALL)
+# A JSON string (escapes included), or one bracket outside a string. The closing quote is optional: an unterminated
+# string runs to the end of the line, so no later quote restarts a scan to the end and the whole scan stays linear in
+# the line's length (PR #556 review, F1).
+_TOKEN = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.DOTALL)
 
 
 def _parse(line: str) -> Any:
@@ -269,7 +271,8 @@ def _parse(line: str) -> Any:
 
 def _too_deep(line: str) -> bool:
     """Whether ``line`` opens more than :data:`MAX_DEPTH` arrays or objects at once, brackets in strings not counted.
-    A line that is not JSON may be counted wrongly here; json.loads refuses it either way."""
+    A line that is not JSON may be counted wrongly here (an unterminated string hides the brackets after it); json.loads
+    refuses it either way, before it nests deeper than counted."""
     if line.count("[") + line.count("{") <= MAX_DEPTH:
         return False  # it cannot nest deeper than it opens: an ordinary line is never scanned
     depth = 0

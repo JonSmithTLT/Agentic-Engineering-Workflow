@@ -526,3 +526,21 @@ def test_brackets_inside_a_string_never_count_toward_the_bound():
     text = '[{\\"' * 1000  # escaped quotes too: the string never ends early
     line = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "ping", "params": {"note": text}})
     assert mcp.Server(Spy()).handle_line(line) == [{"jsonrpc": "2.0", "id": 3, "result": {}}]
+
+
+def test_a_malformed_line_is_answered_in_time_linear_in_its_length():
+    # An unterminated string of escaped quotes, then more brackets than the bound: the depth scan must pass over it
+    # once, not once per quote (PR #556 review, F1). A quadratic scan takes minutes here; a linear one milliseconds.
+    import io
+    import time
+
+    line = b'"' + b'\\"' * 100_000 + b"[" * (mcp.MAX_DEPTH + 1) + b"\n"
+    ping = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+    stdout = io.BytesIO()
+    started = time.monotonic()
+
+    assert mcp.Server(Spy()).serve(io.BytesIO(line + ping), stdout) == 0
+    assert time.monotonic() - started < 5
+    error, reply = map(json.loads, stdout.getvalue().splitlines())
+    assert error["id"] is None and error["error"]["code"] == mcp.PARSE_ERROR
+    assert reply == {"jsonrpc": "2.0", "id": 1, "result": {}}

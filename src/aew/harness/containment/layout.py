@@ -1108,18 +1108,6 @@ def _aew_package() -> str:
     return os.path.dirname(os.path.abspath(aew.__file__))
 
 
-def _console_script_dirs() -> set[str]:
-    """The directory of the running console script, when it is one of AEW's (its installed ``console_scripts`` entry
-    points into ``aew``): its directory is first on the import path, and it is the installation's own."""
-    import importlib.metadata
-
-    script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
-    stem = os.path.basename(script).removesuffix(".exe").removesuffix("-script.py")
-    ours = {e.name for e in importlib.metadata.entry_points(group="console_scripts")
-            if e.value.split(":")[0].split(".")[0] == "aew"}
-    return {_real(os.path.dirname(script))} if script and stem in ours else set()
-
-
 def trusted_code() -> list[tuple[str, str]]:
     """(what, path) for AEW's own code, in the spelling this process imports it by:
 
@@ -1130,7 +1118,8 @@ def trusted_code() -> list[tuple[str, str]]:
     * every directory on this process's import path, named by where it comes from (PYTHONPATH, or a .pth file or the
       site configuration). That includes the first entry, the script's directory or the working directory under
       ``python -m``, when ``-P`` did not remove it: the contained Lead's relays run in the launching process
-      (review of #539, m1). The one first entry left out is the directory of AEW's own console script.
+      (review of #539, m1). An installed ``aew`` command's directory lies under the interpreter's prefix, which every
+      layout re-binds read-only, so it passes without an exception of its own.
 
     Read from the filesystem at each launch: never a list of modules to keep in step. What it does not cover is listed
     as the known limits in ADR-0009's amendment of 2026-11-24."""
@@ -1151,7 +1140,7 @@ def trusted_code() -> list[tuple[str, str]]:
     entries = list(sys.path)
     if entries and not sys.flags.safe_path:
         first = os.path.abspath(entries.pop(0) or os.curdir)  # "" is the working directory
-        if _real(first) not in _console_script_dirs() and os.path.exists(first):
+        if os.path.exists(first):
             out.append((SCRIPT_DIR, first))
     for entry in entries:
         path = os.path.abspath(entry or os.curdir)
@@ -1203,11 +1192,11 @@ def trusted_code_exposed(steps: list[tuple[str, str]],
                 found.append({"what": what, "path": walked, "bind": w, "symlink": link,
                               "reason": TRUSTED_CODE_SYMLINK})
                 continue
-            for spelled in dict.fromkeys((walked, _real(walked))):
-                if _within(spelled, w):
-                    if not _held_read_only(spelled, w, after):
-                        found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
-                    break
+            # Both spellings, always: a link held read-only may still lead to a path the bind writes (#539 quick check)
+            spelled = next((p for p in dict.fromkeys((walked, _real(walked)))
+                            if _within(p, w) and not _held_read_only(p, w, after)), None)
+            if spelled is not None:
+                found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
     return found
 
 

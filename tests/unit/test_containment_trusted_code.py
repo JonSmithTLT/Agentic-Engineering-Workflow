@@ -123,10 +123,9 @@ def test_a_directory_on_the_import_path_inside_a_writable_bind_is_refused_with_t
     assert L.trusted_code_remedy(L.FROM_PYTHONPATH) in refused.value.message
 
 
-def test_the_launching_directory_first_on_the_import_path_counts_unless_it_is_aews_console_script(
-        tmp_path, monkeypatch):
+def test_the_launching_directory_first_on_the_import_path_counts_whatever_the_script_is_named(tmp_path, monkeypatch):
     """Review of #539, m1: ``python -m aew`` started in a writable tree puts it first on the import path of the process
-    that serves the contained Lead's relays. The directory of AEW's own console script does not count."""
+    that serves the contained Lead's relays, and so does a script there, named ``aew`` or not (#539 quick check)."""
     w = tmp_path / "w"
     (w / "bin").mkdir(parents=True)
     steps = L.bind_order([real(w)], [])
@@ -136,16 +135,9 @@ def test_the_launching_directory_first_on_the_import_path_counts_unless_it_is_ae
     exposed = L.trusted_code_exposed(steps)
     assert [(f["path"], f["what"]) for f in exposed] == [(real(w), L.SCRIPT_DIR)]
     assert "`python -P -m aew`" in L.trusted_code_remedy(L.SCRIPT_DIR)
-
-    class Entry:
-        name, value = "aew", "aew.cli.main:main"
-
-    monkeypatch.setattr("importlib.metadata.entry_points", lambda group: [Entry()])
     monkeypatch.setattr(sys, "path", [str(w / "bin"), *sys.path[1:]])
     monkeypatch.setattr(sys, "argv", [str(w / "bin" / "aew")])
-    assert L._console_script_dirs() == {real(w / "bin")} and L.trusted_code_exposed(steps) == []
-    monkeypatch.setattr(sys, "argv", [str(w / "bin" / "other-tool")])  # not AEW's script: its directory counts
-    assert [f["what"] for f in L.trusted_code_exposed(steps)] == [L.SCRIPT_DIR]
+    assert [(f["path"], f["what"]) for f in L.trusted_code_exposed(steps)] == [(real(w / "bin"), L.SCRIPT_DIR)]
 
 
 def test_trusted_code_under_a_writable_bind_passes_only_with_the_next_directory_re_bound_read_only_after_it():
@@ -216,6 +208,21 @@ def test_a_virtual_environments_lib64_link_inside_its_re_bound_prefix_is_not_ref
     linked = [(L.IMPORT_DIR, str(w / "env"))]
     assert [f["symlink"] for f in L.trusted_code_exposed(L.bind_order([real(w)], [str(w / "env")]), linked)] == [
         str(w / "env")]
+
+
+@needs_symlinks
+def test_a_link_below_a_re_bound_directory_is_checked_where_it_leads_too(tmp_path):
+    """#539 quick check: the link itself cannot be replaced, but its target is checked like any other path, so one
+    leading back into the writable bind outside the re-bound directory is refused."""
+    w = tmp_path / "w"
+    venv = w / ".venv"
+    venv.mkdir(parents=True)
+    (w / "other" / "python3" / "site-packages").mkdir(parents=True)
+    (venv / "lib64").symlink_to(os.path.join("..", "other"))
+    site = [(L.IMPORT_DIR, str(venv / "lib64" / "python3" / "site-packages"))]
+    exposed = L.trusted_code_exposed(L.bind_order([real(w)], [real(venv)]), site)
+    assert [(f["path"], f["reason"]) for f in exposed] == [
+        (real(w / "other" / "python3" / "site-packages"), L.TRUSTED_CODE_WRITABLE)]
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="containment is Linux's (bubblewrap)")

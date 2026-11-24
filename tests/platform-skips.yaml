@@ -479,6 +479,9 @@ skipped:
     tests/unit/test_containment_trusted_code.py::test_a_virtual_environments_lib64_link_inside_its_re_bound_prefix_is_not_refused: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
+    tests/unit/test_containment_trusted_code.py::test_a_link_below_a_re_bound_directory_is_checked_where_it_leads_too: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
     tests/unit/test_containment_trusted_code.py::test_aew_doctor_in_a_project_shows_the_trusted_code_line: >-
       containment is Linux's (bubblewrap): Windows has no contained launch to refuse or label, and no trusted-code
       doctor line. Covered on Linux.

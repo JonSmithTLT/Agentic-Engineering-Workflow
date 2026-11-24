@@ -138,12 +138,31 @@ def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
                 sys.stderr.buffer.flush()
 
 
+def interrupt_phases(root: Path, at_ns: int) -> dict:
+    result = {"monotonic_ns": at_ns, "status": "unavailable"}
+
+    def read():
+        with contextlib.suppress(OSError):
+            rows = worker_evidence.phases_at_signal(root, at_ns)
+            result.update(status="observed", registered_workers=rows)
+
+    reader = Thread(target=read, daemon=True)
+    try:
+        reader.start()
+    except RuntimeError:
+        return result
+    reader.join(timeout=POLL_S)  # at most one normal supervisor polling interval before cleanup
+    return result.copy()
+
+
 def record_exit(root: Path, code: int | None, peak: int | None, interrupted: list[str], *,
-                lane_exit: int | None, heartbeat: dict | None) -> None:
+                lane_exit: int | None, heartbeat: dict | None, worker_phases: dict | None = None) -> None:
     scope = "MemTotal minus MemAvailable, whole runner" if sys.platform == "linux" else "unavailable on Windows"
     facts = {"command_exit": code, "lane_exit": lane_exit, "step_signal": interrupted,
              "runner_memory_peak_bytes": peak, "memory_scope": scope,
              "ablation": os.environ.get("AEW_EVIDENCE_ABLATE")}
+    if worker_phases is not None:
+        facts["xdist_at_first_signal"] = worker_phases
     if heartbeat is not None:
         facts["heartbeat"] = {**heartbeat, "observed_until": time.time()}
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("AEW_LANE_STEP", "step"))
@@ -191,7 +210,13 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
 
     monitor = worker_evidence.Monitor(root, attach, scope)
 
+    signal_at = None
+    worker_phases = None
+
     def forward(signum, frame):
+        nonlocal signal_at
+        if signal_at is None:
+            signal_at = time.monotonic_ns()
         interrupted.append(signal.Signals(signum).name)
 
     previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -228,6 +253,8 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                 if not interrupted:
                     for directory, _ in identities(root):
                         note(directory, "cutoff", f"step cutoff at {time.time():.6f}\n")
+                else:
+                    worker_phases = interrupt_phases(root, signal_at)
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
                                   else f"Lane command had exited with code {code}")
@@ -252,7 +279,12 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             relay.join(timeout=1)  # the process ended; give the final buffered lines one heartbeat window
         monitor.poll(final=True)
         worker_evidence.record_oom(root)
-        record_exit(root, child.poll(), peak, interrupted, lane_exit=lane_exit, heartbeat=heartbeat)
+        code = child.poll()
+        observed_signals = interrupted.copy()
+        if observed_signals and worker_phases is None:
+            worker_phases = {"monotonic_ns": signal_at, "status": "unavailable"}
+        record_exit(root, code, peak, observed_signals, lane_exit=lane_exit, heartbeat=heartbeat,
+                    worker_phases=worker_phases)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 

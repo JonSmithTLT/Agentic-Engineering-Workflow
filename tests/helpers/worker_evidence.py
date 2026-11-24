@@ -39,6 +39,60 @@ class Worker:
         return self.pid, self.start
 
 
+def _phase_file(path: Path) -> str:
+    # These receipts have at most three short lines. A malformed evidence file must not stall signal cleanup.
+    if is_link(path) or not path.is_file():
+        raise ValueError("invalid worker receipt")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    with os.fdopen(os.open(path, flags), "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("invalid worker receipt")
+        data = stream.read(257)
+    if len(data) > 256 or not data.endswith(b"\n"):
+        raise ValueError("incomplete worker receipt")
+    return data.decode("ascii")
+
+
+def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
+    if not proctree.same((pid, birth)):
+        return False
+    if sys.platform == "linux":
+        return path.samefile(f"/proc/{pid}/fd/{fd}")
+    return any(p.identity == (pid, birth) for p in proctree.holders([str(path)]).get(str(path), []))
+
+
+def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
+    """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
+    from session_deadline import WORKER_PHASES, session_directories
+
+    rows = []
+    for directory in session_directories(root):
+        for path in sorted(directory.glob("worker-gw*-pid.txt")):
+            row = {"session": directory.name, "worker": path.stem.removesuffix("-pid"), "phase": "indeterminate"}
+            rows.append(row)
+            try:
+                pid = int(_phase_file(path))
+                birth = int(_phase_file(path.with_name(path.name.replace("-pid.", "-start."))))
+                row.update(pid=pid, start=birth)
+                receipt = directory / f"worker-{pid}-{birth}-lifecycle.txt"
+                lines = _phase_file(receipt).splitlines()
+                if len(lines) > len(WORKER_PHASES):
+                    continue
+                transitions = [(int(stamp), phase, int(fd)) for stamp, phase, fd in (line.split() for line in lines)]
+                stamps = [stamp for stamp, _, _ in transitions]
+                descriptors = {fd for _, _, fd in transitions}
+                if (tuple(phase for _, phase, _ in transitions) != WORKER_PHASES[:len(lines)]
+                        or stamps != sorted(set(stamps)) or any(stamp <= 0 or stamp == at_ns for stamp in stamps)
+                        or len(descriptors) != 1 or not _live_phase_writer(receipt, pid, birth, descriptors.pop())):
+                    continue
+                prior = [phase for stamp, phase, _ in transitions if stamp <= at_ns]
+                if prior:
+                    row["phase"] = prior[-1]
+            except (OSError, ValueError):
+                continue
+    return rows
+
+
 def workers(root: Path):
     from session_deadline import marker, session_directories
 

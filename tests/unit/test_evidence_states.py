@@ -572,32 +572,140 @@ def test_a_successful_death_plant_still_requires_published_evidence(tmp_path):
     assert _load("verify_evidence").rule_ids(check(tmp_path, [job], include_success=True)) == {"job-evidence"}
 
 
-def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker(tmp_path, monkeypatch):
+@pytest.mark.parametrize("late", [None, "monitor", "final-poll"])
+def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker(tmp_path, monkeypatch, late):
     import json
     import signal
 
     lane = _load("lane_step")
     handlers = {}
     signals = []
-    process = SimpleNamespace(poll=lambda: None, send_signal=signals.append,
-                              kill=lambda: None, wait=lambda **_kw: None)
+    final_poll = False
+
+    def child_status():
+        if late == "final-poll" and final_poll:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+        return 0 if late else None
+
+    process = SimpleNamespace(poll=child_status, send_signal=signals.append, kill=lambda: None, wait=lambda **_kw: None)
 
     def snapshot(_root, *, all_workers=False, **_kw):
-        if not all_workers:
+        if not all_workers and not late:
             handlers[signal.SIGTERM](signal.SIGTERM, None)
 
     monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}))
     monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
     monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
     monkeypatch.setattr(lane, "snapshot", snapshot)
+
+    def poll(*, final=False):
+        nonlocal final_poll
+        final_poll = final
+        if final and late == "monitor":
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=poll))
+
+    def read_phases(_root, _at):
+        assert signals == [signal.SIGTERM]
+        return []
+
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", read_phases)
     monkeypatch.setattr(lane, "collect", lambda _root: None)
     monkeypatch.setattr(lane, "identities", lambda _root: [(tmp_path, (123, 456))])
 
-    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 143
-    assert signals == [signal.SIGTERM]
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == (0 if late else 143)
+    assert signals == ([] if late else [signal.SIGTERM])
     assert not lane.marker(tmp_path, "cutoff").exists()
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
+    observation = record["xdist_at_first_signal"]
+    assert observation["monotonic_ns"] > 0
+    if late:
+        assert observation["status"] == "unavailable"
+    else:
+        assert observation["status"] == "observed" and observation["registered_workers"] == []
+
+
+def test_a_phase_read_can_outlast_its_budget_without_delaying_cleanup(tmp_path, monkeypatch):
+    import threading
+
+    lane = _load("lane_step")
+    release, done = threading.Event(), threading.Event()
+
+    def slow(*_):
+        release.wait(5)
+        done.set()
+        return []
+
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", slow)
+    monkeypatch.setattr(lane, "POLL_S", 0)
+    try:
+        result = lane.interrupt_phases(tmp_path, 42)
+        assert result == {"monotonic_ns": 42, "status": "unavailable"} and not done.is_set()
+    finally:
+        release.set()
+    assert done.wait(5) and result["status"] == "unavailable"
+
+
+@pytest.mark.parametrize("history,identity,expected", [
+    (None, True, "indeterminate"), ("", True, "indeterminate"),
+    ("10 collecting\n", True, "collecting"),
+    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting"),
+    ("10 collecting\n15 collection-ended\n", True, "collection-ended"),
+    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started"),
+    ("21 collecting\n", True, "indeterminate"), ("20 collecting\n", True, "indeterminate"),
+    ("10 collecting\n", False, "indeterminate"), ("10 collecting", True, "indeterminate"),
+    ("15 collecting\n12 collection-ended\n", True, "indeterminate"),
+    ("10 collecting\n15 execution-started\n", True, "indeterminate"),
+])
+def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(tmp_path, monkeypatch,
+                                                                                   history, identity, expected):
+    import worker_evidence as ev
+
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text("123\n")
+    (directory / "worker-gw0-start.txt").write_text("456\n")
+    (directory / "worker-123-455-lifecycle.txt").write_text("10 collecting\n")
+    if history is not None:
+        for phase in session_deadline.WORKER_PHASES:
+            history = history.replace(phase, phase + " 7")
+        (directory / "worker-123-456-lifecycle.txt").write_text(history)
+    monkeypatch.setattr(ev, "_live_phase_writer", lambda path, pid, birth, fd: (pid, birth, fd) == (123, 456, 7)
+                        and identity)
+    assert ev.phases_at_signal(tmp_path, 20) == [
+        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected}]
+
+
+@pytest.mark.parametrize("failed_phase", session_deadline.WORKER_PHASES)
+def test_an_incomplete_phase_write_revokes_the_worker_receipt(tmp_path, failed_phase):
+    import os
+
+    import proctree
+    import worker_evidence as ev
+
+    pid, birth = proctree.identity(os.getpid())
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text(f"{pid}\n")
+    (directory / "worker-gw0-start.txt").write_text(f"{birth}\n")
+    path = directory / f"worker-{pid}-{birth}-lifecycle.txt"
+    stream = path.open("xb", buffering=0)
+
+    def write(data):
+        if failed_phase.encode() in data:
+            raise OSError("receipt unavailable")
+        return stream.write(data)
+
+    worker = object.__new__(session_deadline.Worker)
+    worker.phase_stream = None
+    worker.lifecycle = SimpleNamespace(open=lambda *args, **kwargs: SimpleNamespace(
+        write=write, fileno=stream.fileno, close=stream.close))
+    for phase in session_deadline.WORKER_PHASES:
+        worker._record_phase(phase)
+    assert stream.closed
+    assert ev.phases_at_signal(tmp_path, session_deadline.time.monotonic_ns())[0]["phase"] == "indeterminate"
 
 
 @pytest.mark.parametrize("fault", [None, "unavailable", "changed-node", "support-frame",

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 from cancel_evidence import attach_reasons, valid
-from evidence_problems import evidence_problems, report_json
+from evidence_problems import FAILURE_PHASES, evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_files import HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
@@ -97,6 +97,11 @@ def finished_tests(bundles, complete_report, *, report_exits=(), steps_passed=Fa
     except (OSError, ValueError):
         return False
     return True
+
+
+def incomplete_failure_evidence(problems):
+    return any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]", "[artifact-unreadable]"))
+               for problem in problems)
 
 
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
@@ -194,7 +199,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                               and result.get("outcome") in ("failed", "error")
                               and isinstance(result.get("failures"), list) for record in result["failures"]
                               if isinstance(record, dict)
-                              and record.get("phase") in ("collect", "setup", "call", "teardown")}
+                              and record.get("phase") in FAILURE_PHASES}
                     recorded.update(phases)
                     # Serial pytest returns INTERRUPTED (2) for an ordinary collection error.
                     if (doc["exitstatus"] == 2 and doc.get("complete") is True
@@ -265,9 +270,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":
-                incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))
-                                 for problem in missing)
-                row["A1"] = "yes" if nodes and not incomplete else "no"
+                row["A1"] = "yes" if nodes and not incomplete_failure_evidence(missing) else "no"
             if (kind or died) and kind != "cancel-after-tests":
                 row["A2"] = "no" if any("[failure-" not in p for p in missing) else "yes"
             row["missing"] = missing

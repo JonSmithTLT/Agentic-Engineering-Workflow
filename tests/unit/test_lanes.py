@@ -353,6 +353,23 @@ def test_case(first, second): pass
     assert any("[failure-text]" in defect for defect in check(path, doc))
 
 
+def test_xdist_worker_crash_is_a_synthetic_report_for_the_specific_node(tmp_path):
+    from test_ci_tools import _load
+
+    root = scratch(tmp_path, {"tests/unit/test_crash.py": "import os\ndef test_crash(): os._exit(73)\n"})
+    path = tmp_path / "report.json"
+    node = "tests/unit/test_crash.py::test_crash"
+    run = inner_pytest(root, "-n", "1", "--max-worker-restart=0", node, f"--lane-report={path}")
+    assert run.returncode == 1, run.stdout + run.stderr
+    doc = json.loads(path.read_text())
+    [failure] = doc["results"][node]["failures"]
+    assert failure["phase"] == "???"
+    check = _load("evidence_problems").failure_problems
+    assert check(path, doc) == []
+    doc["results"]["tests/unit/test_crash.py::test_other"] = doc["results"].pop(node)
+    assert any("[failure-report]" in problem for problem in check(path, doc))
+
+
 def test_partial_lane_report_survives_controller_exit_after_a_failed_phase(tmp_path):
     root = scratch(tmp_path, {"tests/unit/test_broken.py": """
 import os

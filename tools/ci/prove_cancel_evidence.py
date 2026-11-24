@@ -23,12 +23,18 @@ from verify_evidence import observe_cancel
 
 def poll(find, seconds, purpose):
     until = time.monotonic() + seconds
+    failed = None
     while time.monotonic() < until:
-        result = find()
+        try:
+            result = find()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            # One failed read, such as of a run seconds old whose attempt is not yet readable, is not the answer:
+            # only the deadline ends the wait (#546, job 138579044835). A finding that raises otherwise still ends it.
+            failed, result = exc, None
         if result:
             return result
         time.sleep(5)
-    raise RuntimeError(f"timed out waiting for {purpose}")
+    raise RuntimeError(f"timed out waiting for {purpose}" + (f"; the last read failed: {failed}" if failed else ""))
 
 
 def dispatch(repo, workflow, ref, origin, scenario, role):

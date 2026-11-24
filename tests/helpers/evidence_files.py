@@ -64,6 +64,9 @@ FRAME = re.compile(
 
 FRESH_S = 60
 PREFIX = "worker snapshot "
+# lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
+# death by it (register E3).
+HOST_STOP_FILE = "runner-resources-host-high-water.txt"
 
 
 def test_frame(node: str, frames: str) -> bool:

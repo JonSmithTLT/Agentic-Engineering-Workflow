@@ -220,6 +220,18 @@ entries:
     at: '2026-11-11T16:02:42Z'
     kind: diagnostic
     note: Diagnostic passed and uploaded evidence. A clean run establishes no cause.
+  - run: 45358974748
+    job: 138324120351
+    at: '2026-11-24T08:51:02Z'
+    note: >-
+      regression 2/3 (windows-latest), PR 540. Ended failure after 49 minutes with its pytest step in progress,
+      no log, no recovery step and no evidence.
+  - run: 45405842359
+    job: 138486559048
+    at: '2026-11-24T13:40:55Z'
+    note: >-
+      regression 2/3 (windows-latest), PR 545. Ended failure after 48 minutes with its pytest step in progress,
+      no log, no recovery step and no evidence.
 - id: windows-integration-no-response
   scope: session
   lane: integration

@@ -542,3 +542,50 @@ def test_parent_observer_records_and_reads_back_both_sources_but_premerge_probe_
     assert logged == [101, 102] and persisted == []
     record.record_proof_children("test/repo", OLD, tmp_path)
     assert persisted == [101, 102]
+
+
+def test_a_failed_read_does_not_end_the_cancel_controls_wait_before_its_deadline(monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+
+    import flake_register
+
+    prove = _load("prove_cancel_evidence")
+    waits = []
+    monkeypatch.setattr(prove, "time", SimpleNamespace(monotonic=lambda: sum(waits), sleep=waits.append))
+    answers = iter([subprocess.CalledProcessError(1, ["gh", "api"]), subprocess.TimeoutExpired(["gh", "api"], 45),
+                    None, {"id": 42}])
+
+    def find():
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    assert prove.poll(find, 60, "the target run") == {"id": 42} and len(waits) == 3
+
+    def failing():
+        raise flake_register.GhReadError(1, ["gh", "api"], b"", b"gh: Not Found (HTTP 404)\n")
+
+    with pytest.raises(RuntimeError, match=r"the target run; the last read failed: .*HTTP 404"):
+        prove.poll(failing, 60, "the target run")
+
+    def wrong():
+        raise RuntimeError("controlled pytest lane has no active execution window")
+
+    with pytest.raises(RuntimeError, match="no active execution window"):  # a finding still ends the wait at once
+        prove.poll(wrong, 60, "the lanes")
+
+
+def test_a_failed_gh_read_names_gh_s_own_error(monkeypatch):
+    import subprocess
+
+    import flake_register
+
+    def run(argv, **_kw):
+        raise subprocess.CalledProcessError(1, argv, b"", b"gh: Server Error (HTTP 502)\n")
+
+    monkeypatch.setattr(flake_register.subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError, match=r"exit status 1: gh: Server Error \(HTTP 502\)") as raised:
+        flake_register._gh_read("repos/o/r/actions/runs/1/attempts/1/jobs")
+    assert raised.value.stderr == b"gh: Server Error (HTTP 502)\n"  # _pages still reads the raw text

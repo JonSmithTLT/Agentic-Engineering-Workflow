@@ -1006,3 +1006,183 @@ def test_republishing_the_same_report_keeps_one_observation_while_different_repo
     assert len(reader.load_reports(tmp_path)) == 2
     first.unlink()
     assert reader.load_reports(tmp_path)[0]["exitstatus"] == 2
+
+
+# ------------------------------------------------------------- the Windows host-resource stop (register E3). The
+# Windows API is stubbed, so these run on every platform.
+
+def _host(**changes):
+    reading = {"commit_bytes": 10 * 1024 ** 3, "commit_limit_bytes": 24 * 1024 ** 3,
+               "physical_available_bytes": 6 * 1024 ** 3, "kernel_paged_bytes": 1, "kernel_nonpaged_bytes": 1,
+               "handles": 90_000, "processes": 250, "threads": 3_000, "free_disk_bytes": 12 * 1024 ** 3}
+    return {**reading, **changes}
+
+
+def test_a_windows_host_reading_reports_bytes_and_counts_from_the_performance_counters(monkeypatch):
+    import ctypes
+    import struct
+
+    lane = _load("lane_step")
+    # PERFORMANCE_INFORMATION as psapi.h lays it out, written as raw bytes, so a wrong field order or width in the
+    # structure misreads them: DWORD cb; ten SIZE_T (CommitTotal ... PageSize); three DWORD counts. 104 bytes on
+    # 64-bit Windows, 56 on 32-bit.
+    wide = ctypes.sizeof(ctypes.c_void_p) == 8
+    layout = "<I4x10Q3I4x" if wide else "<I10I3I"
+    assert struct.calcsize(layout) == (104 if wide else 56)
+    # cb, CommitTotal, CommitLimit, CommitPeak, PhysicalTotal, PhysicalAvailable, SystemCache, KernelTotal,
+    # KernelPaged, KernelNonpaged, PageSize, HandleCount, ProcessCount, ThreadCount
+    fields = (struct.calcsize(layout), 3, 8, 9, 16, 2, 5, 6, 1, 1, 4096, 70_000, 210, 2_400)
+
+    def performance_info(pointer, size):
+        assert size == struct.calcsize(layout)
+        ctypes.memmove(pointer, struct.pack(layout, *fields), size)
+        return 1
+
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="nt", environ={"RUNNER_TEMP": "D:/a/_temp"}))
+    monkeypatch.setattr(lane.shutil, "disk_usage", lambda path: SimpleNamespace(free=5 * 1024 ** 3)
+                        if path == "D:/a/_temp" else pytest.fail(path))
+    assert lane.host_reading(performance_info) == {
+        "commit_bytes": 3 * 4096, "commit_limit_bytes": 8 * 4096, "physical_available_bytes": 2 * 4096,
+        "kernel_paged_bytes": 4096, "kernel_nonpaged_bytes": 4096, "handles": 70_000, "processes": 210,
+        "threads": 2_400, "free_disk_bytes": 5 * 1024 ** 3}
+
+
+def test_a_failed_performance_query_or_a_host_other_than_windows_gives_no_reading(monkeypatch):
+    lane = _load("lane_step")
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}))
+    assert lane.host_reading(lambda *_: pytest.fail("queried off Windows")) is None
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="nt", environ={}))
+    assert lane.host_reading(lambda *_: 0) is None
+    assert "free_disk_bytes" not in lane.host_reading(lambda *_: 1)  # no RUNNER_TEMP: the other limits still hold
+
+
+@pytest.mark.parametrize("resource,below,at", [
+    ("commit_bytes", 22 * 1024 ** 3, 23 * 1024 ** 3),
+    ("handles", 999_999, 1_000_000),
+    ("processes", 999, 1_000),
+    ("free_disk_bytes", 2 * 1024 ** 3, 2 * 1024 ** 3 - 1),
+])
+def test_each_host_limit_names_its_resource_only_once_reached(resource, below, at):
+    lane = _load("lane_step")
+    assert lane.host_crossed(_host()) == []
+    assert lane.host_crossed(_host(**{resource: below})) == []
+    assert [row["resource"] for row in lane.host_crossed(_host(**{resource: at}))] == [resource]
+    assert lane.host_crossed(_host(**{resource: at}))[0]["value"] == at
+
+
+def test_the_host_peak_keeps_each_high_water_mark_and_the_least_free_disk():
+    lane = _load("lane_step")
+    peak = lane.host_peak(None, _host(handles=5, free_disk_bytes=9))
+    peak = lane.host_peak(peak, _host(handles=3, free_disk_bytes=4, processes=900))
+    peak = lane.host_peak(peak, _host(handles=4, free_disk_bytes=7))
+    assert (peak["handles"], peak["free_disk_bytes"], peak["processes"]) == (5, 4, 900)
+
+
+def test_a_crossed_host_limit_stops_the_lane_early_with_its_own_exit_and_names_the_running_tests(tmp_path,
+                                                                                                 monkeypatch, capsys):
+    import json
+    import sys
+
+    lane = _load("lane_step")
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    (tmp_path / "running-321.txt").write_text("tests/regression/test_a.py::test_case\n")
+    readings = iter([_host(processes=400), _host(processes=1_200)])
+    snapshots, collected, killed = [], [], []
+    process = SimpleNamespace(poll=lambda: None, send_signal=pytest.fail, kill=lambda: killed.append(True),
+                              wait=lambda **_: None)
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane, "sys", SimpleNamespace(platform="win32", stdout=sys.stdout, stderr=sys.stderr))
+    monkeypatch.setattr(lane, "POLL_S", 0)
+    monkeypatch.setattr(lane, "HOST_POLL_S", 0)
+    monkeypatch.setattr(lane, "host_reading", lambda: next(readings))
+    monkeypatch.setattr(lane, "memory_used", lambda: None)
+    monkeypatch.setattr(lane.signal, "signal", lambda *_: None)
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", lambda _root, *, all_workers=False, **_kw: snapshots.append(all_workers))
+    monkeypatch.setattr(lane, "collect", collected.append)
+    monkeypatch.setattr(lane, "identities", lambda _root: [(session, (123, 456))])
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 600) == 72
+    assert lane.HOST_RESOURCES_EXIT == 72 != lane.SUPERVISOR_CUTOFF_EXIT
+    assert snapshots[-1] is True and collected == [tmp_path] and killed  # the cutoff's capture and cleanup
+    assert not lane.marker(session, "cutoff").exists()  # not a time limit: the evidence check must not say so
+    stop = json.loads((tmp_path / lane.HOST_STOP_FILE).read_text())
+    assert stop["crossed"] == [{"resource": "processes", "value": 1_200, "limit": lane.HOST_PROCESSES}]
+    assert stop["running_tests"] == ["tests/regression/test_a.py::test_case"] and stop["exit"] == 72
+    record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
+    assert record["lane_exit"] == 72 and record["host_resources_peak"]["processes"] == 1_200
+    assert record["step_signal"] == [] and "xdist_at_first_signal" not in record  # no signal was received
+    assert "stopped for the host's resources" in capsys.readouterr().out
+
+
+def test_a_signal_received_with_a_crossed_host_limit_is_an_interruption_and_no_host_stop(tmp_path, monkeypatch):
+    import json
+    import signal
+    import sys
+
+    lane = _load("lane_step")
+    handlers, signals = {}, []
+    process = SimpleNamespace(poll=lambda: None, send_signal=signals.append, kill=lambda: None, wait=lambda **_: None)
+
+    def snapshot(_root, *, all_workers=False, **_kw):
+        if not all_workers:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)  # the signal lands before this pass's host reading
+
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane, "sys", SimpleNamespace(platform="win32", stdout=sys.stdout, stderr=sys.stderr))
+    monkeypatch.setattr(lane, "host_reading", lambda: _host(processes=5_000, handles=5_000_000))
+    monkeypatch.setattr(lane, "memory_used", lambda: None)
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", snapshot)
+    monkeypatch.setattr(lane, "collect", lambda _root: None)
+    monkeypatch.setattr(lane, "identities", lambda _root: [])
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 600) == 128 + signal.SIGTERM
+    assert signals == [signal.SIGTERM] and not (tmp_path / lane.HOST_STOP_FILE).exists()
+    record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
+    assert record["lane_exit"] == 128 + signal.SIGTERM and record["step_signal"] == ["SIGTERM"]
+    assert record["host_resources_peak"]["processes"] == 5_000  # the reading is still kept, as a peak
+
+
+def test_the_running_names_have_one_reader_that_drops_odd_names_and_links(tmp_path, monkeypatch):
+    import os
+
+    # a lane under the lane step publishes its own running directory, which running_tests would read instead
+    monkeypatch.delenv("AEW_RUNNING_TESTS_DIR", raising=False)
+
+    import watchdog
+
+    (tmp_path / "running-11.txt").write_text("tests/regression/test_a.py::test_case\n")
+    (tmp_path / "running-12.txt").write_text("tests/regression/test_a.py::test_case[secret-param]\n")
+    (tmp_path / "running-x.txt").write_text("tests/regression/test_a.py::test_other\n")
+    try:
+        os.symlink(tmp_path / "running-11.txt", tmp_path / "running-13.txt")
+    except OSError:  # a Windows account without the symlink privilege: the name and content cases still hold
+        pass
+    assert watchdog.running_names(tmp_path) == {"running-11.txt": "tests/regression/test_a.py::test_case",
+                                                "running-12.txt": "<unrecognized test>"}
+    lane = _load("lane_step")
+    assert lane.running_tests(tmp_path) == ["<unrecognized test>", "tests/regression/test_a.py::test_case"]
+    names = tmp_path / "out-names"
+    _load("evidence_inputs").prepare(tmp_path, tmp_path / "out-watchdog-input", copy_priority=False)
+    assert sorted(path.name for path in names.glob("running-*.txt")) == ["running-11.txt", "running-12.txt"]
+
+
+def test_a_lane_stopped_for_host_resources_is_its_own_death_kind_not_an_unclassified_one(tmp_path):
+    import json
+
+    check = _load("check_evidence_run")
+    job = {"id": 7, "name": "regression 2/3 (windows-latest)", "conclusion": "failure"}
+    full = tmp_path / "evidence-one-attempt-1"
+    full.mkdir()
+    (full / "runner-resources-job.txt").write_text(json.dumps({"job_label": job["name"]}))
+    (full / "runner-resources-lane-exit.txt").write_text(json.dumps({"lane_exit": 72}))
+    rows = []
+    check.check_jobs(tmp_path, [job], score_rows=rows)
+    assert rows[0]["kind"] == "unclassified" and any("[job-kind]" in d for d in rows[0]["missing"])
+    (full / _load("lane_step").HOST_STOP_FILE).write_text(json.dumps({"crossed": [{"resource": "processes"}]}))
+    rows = []
+    check.check_jobs(tmp_path, [job], score_rows=rows)
+    assert rows[0]["kind"] == "host-resources" and not any("[job-kind]" in d for d in rows[0]["missing"])

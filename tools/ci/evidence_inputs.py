@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shutil
 import sys
 import time
@@ -37,18 +36,11 @@ def prepare(source: Path, target: Path, *, job: str = "", collection: str = "suc
         (names / "runner-resources-attachment.txt").write_text(attachment + "\n", encoding="utf-8")
         name_index.append("finding runner-resources-attachment.txt (lane_step)\n")
     has_source = source.is_dir() and not is_link(source)
-    from watchdog import SOURCE_TEST
+    from watchdog import running_names
 
-    for path in source.glob("running-*.txt") if has_source else ():
-        if not re.fullmatch(r"running-\d+\.txt", path.name) or is_link(path):
-            continue
-        try:
-            node = path.read_text(encoding="utf-8", errors="replace").strip()
-        except OSError:
-            continue  # a live writer moved or locked it
-        safe = node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>"
-        (names / path.name).write_text(safe + "\n", encoding="utf-8")
-        name_index.append(f"finding {path.name} (watchdog)\n")
+    for name, safe in (running_names(source) if has_source else {}).items():
+        (names / name).write_text(safe + "\n", encoding="utf-8")
+        name_index.append(f"finding {name} (watchdog)\n")
     (names / "inventory.txt").write_text(header + "".join(name_index), encoding="utf-8")
     present = copied = False
     if not has_source or not copy_priority:

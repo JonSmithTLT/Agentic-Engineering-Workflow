@@ -1163,6 +1163,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.priority`
 - `aew.engine.queue_ops`
+- `aew.engine.scope_ops`
 - `aew.engine.seams`
 - `aew.engine.validation_ops`
 - `aew.errors`
@@ -1203,6 +1204,7 @@ None.
 - `aew.engine.ports`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.runlog`
 - `aew.knowledge.records`
 - `aew.maps.rules`
 - `aew.policy.guardrails`
@@ -2092,6 +2094,7 @@ None.
 ### `aew.knowledge.render`
 
 - `aew.engine.priority`
+- `aew.engine.scope_ops`
 
 ## `aew.maps`
 
@@ -2417,8 +2420,10 @@ None.
 
 - `aew.engine.approval`
 - `aew.engine.guards`
+- `aew.engine.hierarchy`
 - `aew.engine.primitives`
 - `aew.engine.queue_ops`
+- `aew.engine.scope_ops`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`

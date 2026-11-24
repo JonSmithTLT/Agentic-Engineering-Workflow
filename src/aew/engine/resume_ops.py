@@ -19,6 +19,7 @@ from aew.engine import coverage as CV
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
+from aew.engine import scope_ops as SC
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -55,6 +56,14 @@ RESUME_ORDER = [
 # The ways onto a vacant seat: one text, for `aew status` and `aew resume` both (review of #329, F3).
 VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no credential shown, or `aew lead acquire "
                f"{EXPECT_REV}` shows one for the edit-and-adopt route. {HELD_SEAT}")
+
+
+def _scope_added(unit: dict[str, Any]) -> dict[str, Any]:
+    """The test paths the Lead added to a live Ticket's scope on the record, listed, not counted (register E126): absent
+    when there are none, so the usual Ticket's entry stays as small as it was."""
+    if unit["state"] in H.TERMINAL or not unit.get(SC.UNIT_KEY):
+        return {}
+    return {"scope_added": SC.added_listing(unit)}
 
 
 def _priority(unit: dict[str, Any]) -> dict[str, Any]:
@@ -751,7 +760,7 @@ class Resume:
             "hierarchy": (self.hierarchy.work_tree()["lines"]
                           if any(u["kind"] != "ticket" for u in state["work"].values()) else []),
             "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
-                           "blocked_by": u.get("blocked_by", []), **_priority(u)}
+                           "blocked_by": u.get("blocked_by", []), **_priority(u), **_scope_added(u)}
                      for wid, u in sorted(state["work"].items())},
             "validation_coverage": {wid: CV.for_unit(self.k.aew_root, u) for wid, u in sorted(state["work"].items())
                                     if u["kind"] == "ticket" and u.get("mutating")},

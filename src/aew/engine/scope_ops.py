@@ -42,6 +42,8 @@ from aew.engine.dispatch import Blocker, checked
 from aew.engine.gate_ops import redispatch_commands
 from aew.engine.guards import require
 from aew.errors import AEWError, GateUnsatisfied, GitError, IllegalTransition, UsageError, ValidationFailed
+from aew.harness import contract as K
+from aew.harness import runlog
 from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import format_id
 from aew.maps import rules as map_rules
@@ -66,6 +68,7 @@ SIGNOFF = "test_signoff_needed"  # the violation: a stop that needs a sign-off
 MAX_TEXT = 2000
 LEAD_REPORT = "the Lead's report: nothing proves a sign-off before the wire"
 _GLOB = set("*?[]{}")
+LIVE_RUN = (K.STARTING, K.RUNNING)  # the runs `harness send` takes (``harness_ops.harness_send``)
 DEFINITION_LIMIT = ("test definitions are counted by pattern, line by line: a commented-out test can still count, and "
                     "a path whose extension the table lacks, or whose tests it does not recognize (it counts 0 at the "
                     "base commit), is listed unchecked and raises no stop")
@@ -107,10 +110,29 @@ def unsigned_paths(unit: dict[str, Any]) -> list[str]:
     return [p for p in added_paths(unit) if p not in signed]
 
 
+def added_listing(unit: dict[str, Any]) -> list[str]:
+    """The added paths as status and the Lead's results list them, never as a count, so growth stays visible
+    (``WIS-02.f``; the designer's decisions of 2026-11-03, §2, "Seeing it"): each path once, with the correction that
+    added it and the one that signed it off, if any."""
+    out: dict[str, str] = {}
+    for c in unit.get(UNIT_KEY) or []:
+        if c["added"] not in out:
+            out[c["added"]] = f"{c['added']} ({c['id']}" + (", signed off" if c.get("signed_off") else "")
+        elif c.get("signed_off"):
+            out[c["added"]] += f", signed off by {c['id']}"
+    return [f"{v})" for v in out.values()]
+
+
 def effective_scope(meta: dict[str, Any], unit: dict[str, Any]) -> list[str]:
     """The Ticket's effective scope: its record's declared paths, then the paths added on the record."""
     declared = list((meta.get("scope") or {}).get("paths") or [])
     return declared + [p for p in added_paths(unit) if p not in declared]
+
+
+def declared_scope(meta: dict[str, Any], unit: dict[str, Any]) -> list[str]:
+    """The Ticket's declared scope from ``meta``, effective or not: its paths without the ones added on the record."""
+    added = set(added_paths(unit))
+    return [p for p in (meta.get("scope") or {}).get("paths") or [] if p not in added]
 
 
 def effective_meta(meta: dict[str, Any], unit: dict[str, Any]) -> dict[str, Any]:
@@ -137,6 +159,27 @@ def pack_entries(aew_root: Path, unit: dict[str, Any]) -> list[dict[str, Any]]:
             entry["signoff"] = {"correction": ptr["id"], "text": doc["signoff"]["text"],
                                 "label": doc["signoff"]["label"]}
     return list(out.values())
+
+
+def lines_changed(numstat: str, declared: list[str], added: list[str]) -> dict[str, dict[str, int]]:
+    """The lines added and removed in the declared scope and in the added paths, from ``git diff --numstat -z``: what a
+    reviewer judges an add's proportion by, since there is no size limit (the designer's decisions of 2026-11-03, §2,
+    "No size limit and no ratio"; PR #540 quick check, m-c). An added path counts as added even when a declared glob
+    also matches it; a path in neither is left out (the guardrails name it). A binary file counts as a file, with no
+    lines."""
+    out = {part: {"files": 0, "added": 0, "removed": 0} for part in ("declared", "added")}
+    for row in numstat.split("\0"):
+        fields = row.strip("\n").split("\t", 2)
+        if len(fields) != 3:
+            continue
+        plus, minus, path = fields
+        part = "added" if path in added else "declared" if glob_any(path, declared) else None
+        if part is None:
+            continue
+        out[part]["files"] += 1
+        out[part]["added"] += int(plus) if plus.isdigit() else 0
+        out[part]["removed"] += int(minus) if minus.isdigit() else 0
+    return out
 
 
 def pack_sources(unit: dict[str, Any]) -> list[dict[str, Any]]:
@@ -186,6 +229,13 @@ def under_test_directory(path: str, rules: dict[str, Any]) -> bool:
 
 def is_runner_config(path: str, rules: dict[str, Any]) -> bool:
     return _name(path) in rules["test_runner_configs"]
+
+
+def test_code(path: str) -> bool:
+    """Whether rule 2 could take ``path`` by its kind: a test file by name, or a file under a test directory (whether
+    it is new is read from the base commit, by the add)."""
+    rules = _rules()
+    return is_test_file(path, rules) or under_test_directory(path, rules)
 
 
 def exact_path_problem(path: str) -> str | None:
@@ -276,6 +326,22 @@ def signoff_violations(unit: dict[str, Any], base_text: Callable[[str], str | No
     return [{"path": s["path"], "rule": SIGNOFF, "detail": f"{s['detail']}; that needs a sign-off on the record: "
              f"`resolve` with the subject `<Ticket>{ITEM}<path>` for each path named, the choice `{SIGNED_CHOICE}`, "
              "and the plan revision cited or the operator quoted in the rationale"} for s in stops]
+
+
+# The facts a launch conflict (``conflicts.find_conflict``) is made of, with its ``scope_pairs``. Its hold message is
+# not one of them: it names the Ticket's whole scope, so it differs after any widening (PR #540 quick check, m-a).
+CONFLICT_FACTS = ("reasons", "touched_in_scope", "outside_own_scope")
+
+
+def widening_meets(before: dict[str, Any] | None, after: dict[str, Any]) -> bool:
+    """Whether the conflict ``after`` with another live Ticket, found on the widened scope, holds a fact that
+    ``before`` (the conflict with that Ticket on the scope as it stands, or None) does not: a reason, a changed path
+    inside the scope, a stray write or a pair of scopes that can meet. Only such a conflict is the widening's own."""
+    if before is None:
+        return True
+    pairs = {tuple(p) for p in before.get("scope_pairs") or []}
+    return (any(not set(after.get(f) or []) <= set(before.get(f) or []) for f in CONFLICT_FACTS)
+            or any(tuple(p) not in pairs for p in after.get("scope_pairs") or []))
 
 
 def signoff_source(rationale: str, plan_revisions: set[int]) -> dict[str, Any] | None:
@@ -425,7 +491,7 @@ class ScopeCorrections:
         return {"work_id": work_id, "path": path, "signs": signs, "at_base": at_base, "created_by_ticket": created,
                 "names_module": named, "base_commit": base, "signoff": signoff, "stops": stops,
                 "unchecked": unchecked, "obligations": obligations,
-                "stale_invocations": self.stale_invocations(state, work_id, path)}
+                "stale_invocations": self.stale_invocations(state, work_id, path, self.run_status)}
 
     def _record(self, unit: dict[str, Any], correction: str) -> dict[str, Any]:
         ptr = next(c for c in unit.get(UNIT_KEY) or [] if c["id"] == correction)
@@ -443,10 +509,10 @@ class ScopeCorrections:
                 f"({', '.join(rules['test_directories'])}). Any other path stays out of this route: the Ticket's "
                 "scope is otherwise fixed when it is created", work_id=work_id, path=path, reason="not_a_test_path")
         # Rule 3: an existing file names a module in the Ticket's declared scope, read from the base commit (the
-        # implementer can write the workspace copy).
+        # implementer can write the workspace copy); never a test a previous add brought in.
         named = None
         if at_base:
-            declared = [f for f in sorted(base_files | set(new_files)) if glob_any(f, self._declared(unit, meta))]
+            declared = [f for f in sorted(base_files | set(new_files)) if glob_any(f, declared_scope(meta, unit))]
             named = names_module(_git_text(self.k.repo_root, base, path) or "", module_stems(declared))
             if named is None:
                 raise ValidationFailed(
@@ -480,10 +546,10 @@ class ScopeCorrections:
         widened["work"][work_id].setdefault(UNIT_KEY, []).append({"added": path, "signed_off": False})
         facts: dict[str, Any] = {"archetype": "implementer", "obligations": [], "digests": {}}
         blockers = list(self.assurance.guard_protected(widened, work_id, facts) or [])
-        held_now = {b.message for b in self.assurance.guard_conflict(
+        held_now = {b.details.get("work_id"): b.details for b in self.assurance.guard_conflict(
             state, work_id, {"archetype": "implementer", "obligations": [], "digests": {}}) or []}
         conflicts = [b for b in self.assurance.guard_conflict(widened, work_id, facts) or []
-                     if b.message not in held_now]
+                     if widening_meets(held_now.get(b.details.get("work_id")), b.details)]
         if blockers or conflicts:
             raise GateUnsatisfied(f"adding `{path}` to {work_id}'s scope is refused as a dispatch would be: "
                                   + "; ".join(b.message for b in blockers + conflicts), work_id=work_id, path=path,
@@ -493,13 +559,6 @@ class ScopeCorrections:
         return [*facts["obligations"], {"code": OBLIGATION, "paths": [path],
                                         "obligation": "a test path the Lead added to the scope: the review reads it "
                                                       "as a labelled widening"}]
-
-    @staticmethod
-    def _declared(unit: dict[str, Any], meta: dict[str, Any]) -> list[str]:
-        """The Ticket's declared scope, without the paths added to it (rule 3 reads the modules the Ticket set out to
-        change, never a test a previous add brought in)."""
-        added = set(added_paths(unit))
-        return [p for p in (meta.get("scope") or {}).get("paths") or [] if p not in added]
 
     def _admit(self, state: dict[str, Any], work_id: str, unit: dict[str, Any]) -> None:
         """Only a live mutating Ticket with a bounded scope and a reader independent of its implementer."""
@@ -522,19 +581,26 @@ class ScopeCorrections:
                 f"widened diff: raise its class first with `aew work reclassify {work_id} --class <0-4> --reason "
                 f"<reason> {EXPECT_REV}`", work_id=work_id, reason="no_independent_reader")
 
+    def run_status(self, run: str) -> str:
+        """What the run's local evidence says it is now (``runlog.observed_status``)."""
+        return runlog.observed_status(runlog.run_dir(self.k.aew_root, run))[0]
+
     @staticmethod
-    def stale_invocations(state: dict[str, Any], work_id: str, path: str) -> list[dict[str, Any]]:
+    def stale_invocations(state: dict[str, Any], work_id: str, path: str,
+                          run_status: Callable[[str], str]) -> list[dict[str, Any]]:
         """The active invocations on the Ticket, whose context pack renders its scope. An add alone stales no evidence:
         a live implementer is told with `harness send` and continues, since cancelling it would discard the run the add
         exists to save (its next launch is refused by the existing pack guard); a reader is re-dispatched with its
-        card, as a gate replacement's result names it (ITEMS 55 addendum 3; PR #540 review, m5)."""
+        card, as a gate replacement's result names it (ITEMS 55 addendum 3; PR #540 review, m5). ``harness send``
+        takes only a STARTING or RUNNING run, so an implementer whose run has ended, or whose status cannot be read,
+        is re-dispatched too: a fresh invocation on the kept workspace (``run_status``; PR #540 quick check, m-b)."""
         why = f"`{path}` was added to {work_id}'s scope on the record, so this invocation's context pack changed"
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):
             if inv.get("status") != "active" or inv.get("work_unit") != work_id:
                 continue
             runs = inv.get("runs") or []
-            if inv.get("role") == "implementer" and runs:
+            if inv.get("role") == "implementer" and runs and run_status(runs[-1]["run"]) in LIVE_RUN:
                 commands = [f"aew harness send {runs[-1]['run']} --fields -"]
                 fields = {"text": f"{why}: you may now change `{path}`"}
             else:

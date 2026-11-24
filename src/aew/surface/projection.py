@@ -31,7 +31,9 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine import approval
+from aew.engine import hierarchy as H
 from aew.engine import queue_ops as Q
+from aew.engine import scope_ops as SC
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import spec_for
@@ -127,6 +129,8 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                     "validated_report": (entry.get("validated") or {}).get("report")}
     if unit.get("parent") is not None:
         part["unit"]["parent"] = unit["parent"]
+    if unit.get(SC.UNIT_KEY) and unit.get("state") not in H.TERMINAL:  # listed, never counted (E126)
+        part["unit"]["scope_added"] = SC.added_listing(unit)
     if entry:
         part["unit"]["queue_state"] = entry["state"]
     for b in unit.get("blocked_by") or []:
@@ -493,6 +497,38 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     return out
 
 
+def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
+                     blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A test path the Ticket's change touches outside its scope can be added to the scope on the record (register
+    E126; the designer's decisions of 2026-11-03, §2, "The door"): one decision per such path, while the gate context
+    reports it, with the add's own query for its availability. Its rationale is the Lead's, so it has no default; a
+    path the add would refuse, one that needs a sign-off included, is BLOCKED and adds the refusal to ``blockers``.
+    Read now: it reads the workspace. A path that is not test code is not offered: the guardrail's refusal says what
+    to do with it."""
+    unit = part["unit"]
+    if unit is None or unit["kind"] != "ticket" or not unit["mutating"] or part["state"] in H.TERMINAL:
+        return []
+    state = engine.store.current()
+    if not (state["work"].get(subject) or {}).get("workspace"):
+        return []
+    try:
+        violations = engine.gate_context(state, subject)["guardrails"]["violations"]
+    except AEWError:  # the gate context cannot be read now: the stage's own blockers say so
+        return []
+    out = []
+    for path in sorted({v["path"] for v in violations if v["rule"] == "outside_ticket_scope"}):
+        if not SC.test_code(path):
+            continue
+        args = {"expect_rev": part["revision"], "subject": SC.item_id(subject, path), "choice": SC.CHOICE}
+        found = engine.guard_query(SC.OP, None, {"subject": args["subject"], "rationale": "(the Lead's reason)"},
+                                   state=state)
+        blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in found["blocking_conditions"])
+        out.append(_decision("ADD_SCOPE", subject, tool="resolve", arguments=args, evidence=[args["subject"]],
+                             cli_fallback=["lead", "tool", "resolve", "--arguments", "-"],
+                             availability=found["availability"]))
+    return out
+
+
 # ---------------------------------------------------------------------------------------------- assembly
 
 def project(engine: Any, ctx: SurfaceContext, subject: str | None = None) -> dict[str, Any]:
@@ -529,10 +565,11 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
             a["auto_runnable"] = False
     out = {"revision": part["revision"], "generation": part["generation"], "subject": subject,
              "state": part["state"], "actions": actions,
-             "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
+             "decisions_required": [*_decisions(engine, part, subject, runs, blockers),
+                                    *_scope_decisions(engine, part, subject, blockers)], "blockers": blockers,
              "anomalies": [_anomaly(a) for a in part["anomalies"]], "hints": hints, "runs": runs}
     if part["unit"]:
-        bindings = {key: part["unit"][key] for key in ("parent", "queue_state") if key in part["unit"]}
+        bindings = {key: part["unit"][key] for key in ("parent", "queue_state", "scope_added") if key in part["unit"]}
         if bindings:
             out["unit"] = bindings
         fallback = {}

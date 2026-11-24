@@ -107,14 +107,25 @@ class Move(NamedTuple):
 SCOPE_RULE = "<scope rule>"
 
 
+# The one exception to a fixed scope (register E126): the engine's own refusal (`policy.guardrails.scope_remedy`) says
+# how, so the guide names only the door.
+_TEST_ADD = " (but for a test path the change needs, which `resolve`'s `add_scope` adds on the record)"
+# What test work needs a sign-off for, whatever the scope (the designer's decisions of 2026-11-03, §2, from the
+# operator's words of 2026-11-03): the same three as the review card's, `roles/cards/code_reviewer.yaml`.
+TEST_WORK = ("test work needs a sign-off first, cited from a plan revision or quoted from the operator, to remove "
+             "tests, to change a suite's flow or shared setup (a runner config, conftest, shared helper or mock, skip "
+             "list), or to change its overall mocking or refactor it wholesale; otherwise tests may grow in proportion "
+             "to the work, with no size limit")
+
+
 def _scope_rule(cap: int) -> str:
     """What a Ticket's scope decides. Above a cap of 1 it also decides what runs beside the Ticket (E151's launch
     conflict check compares scopes), so a Lead that gives every Ticket the whole tree runs them one at a time."""
     if cap <= 1:
-        return ("Its scope is fixed once the Ticket exists, so give every path the change may touch; one mutating "
-                "Ticket works at a time here.")
-    return (f"Its scope is fixed once the Ticket exists, and up to {cap} mutating Tickets work at once here when their "
-            "scopes cannot name the same file: name every path this change needs, and no more.")
+        return (f"Its scope is fixed once the Ticket exists{_TEST_ADD}, so give every path the change may touch; one "
+                "mutating Ticket works at a time here.")
+    return (f"Its scope is fixed once the Ticket exists{_TEST_ADD}, and up to {cap} mutating Tickets work at once here "
+            "when their scopes cannot name the same file: name every path this change needs, and no more.")
 
 
 def _transition(to: str, note: str = "") -> Move:
@@ -377,6 +388,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
     every = [
         "every Ticket needs an accepted plan before it becomes READY (for a Class 0 Ticket a short plan is enough)",
         "guardrails apply to every class: a change outside the Ticket's scope or on a protected path blocks it",
+        TEST_WORK,
         "gates and guardrails are checked on the exact snapshot being accepted: evidence for an earlier state of the "
         "work is STALE and satisfies nothing",
     ]

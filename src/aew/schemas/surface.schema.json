@@ -200,7 +200,9 @@
         "state": {"type": ["string", "null"]},
         "unit": {
           "type": "object", "additionalProperties": false, "minProperties": 1,
-          "properties": {"parent": {"type": "string"}, "queue_state": {"type": "string"}}
+          "properties": {"parent": {"type": "string"}, "queue_state": {"type": "string"},
+                         "scope_added": {"description": "the test paths the Lead added to the Ticket's scope on the record, each with its correction",
+                                         "type": "array", "minItems": 1, "items": {"type": "string"}}}
         },
         "cli_fallback": {"type": "object", "additionalProperties": {"$ref": "#/$defs/argv"}},
         "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},

@@ -276,6 +276,11 @@ class ContextPacks:
         if base and role == "verifier":
             diffstat = git.out("diff", "--stat", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
                                cwd=self.k.repo_root)
+        lines_changed = None
+        if base and role == "reviewer" and SC.added_paths(unit):  # the add's proportion, for the review (m-c)
+            numstat = git.out("diff", "--numstat", "-z", "--no-renames", base, tree, "--", ".", AEW_EXCLUDE,
+                              cwd=self.k.repo_root)
+            lines_changed = SC.lines_changed(numstat, SC.declared_scope(record.meta, unit), SC.added_paths(unit))
         inputs = ctxmod.PackInputs(
             invocation_id=inv_id, role=role, role_def=role_def, work_id=wid, title=unit["title"],
             scope=inv.get("scope", "ticket"), specialty=inv.get("specialty"), workspace=inv["workspace"],
@@ -290,6 +295,7 @@ class ContextPacks:
             failure_evidence=failure,
             card=(card or {}).get("content"),
             history=history, codebase_map=map_lines, scope_added=SC.pack_entries(self.k.aew_root, unit),
+            scope_lines_changed=lines_changed,
             **{k: v for k, v in self._m2_pack_extras(state, inv, unit).items() if k in {"hierarchy", "inherited",
                                                                                         "inputs"}},
         )

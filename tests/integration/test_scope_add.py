@@ -5,6 +5,7 @@ The Ticket's record never changes; one accessor gives the effective scope; a sto
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -206,3 +207,113 @@ def test_an_add_that_would_make_two_live_tickets_meet_is_refused(tmp_path):
     error = refusal(add(p, first, "tests/test_core.py"))
     assert error["details"]["reason"] == "files_conflict", error
     assert SC.UNIT_KEY not in load_control(p.root)["work"][first]
+
+
+def test_a_conflict_the_ticket_already_had_never_refuses_the_add(tmp_path):
+    """PR #540 quick check, m-a: the conflict is compared by its facts, not by its hold message, which names the whole
+    scope and so differs after any widening. T-0002 has already written into T-0001's scope; adding a test path that
+    T-0002 has not touched adds no fact to that conflict, and the add goes through."""
+    p = sample_project(tmp_path)
+    first = create_planned_ticket(p, tmp_path, title="core", scope=("calc/core.py",))
+    other = create_planned_ticket(p, tmp_path, title="other", scope=("calc/other.py",))
+    assign(p, first)
+    stray = assign(p, other)
+    stray.write({"calc/core.py": "def add(a, b):\n    return a + b + 0\n"})
+    engine = Engine.discover(p.root)
+    facts = {"archetype": "implementer", "obligations": [], "digests": {}}
+    [held] = engine._assurance.guard_conflict(engine.store.current(), first, facts)  # the conflict it already had
+    assert held.code == "FILES_CONFLICT" and held.details["touched_in_scope"] == ["calc/core.py"], held
+    out = add(p, first, "tests/test_core.py")
+    assert out["ok"], out
+    assert load_control(p.root)["work"][first][SC.UNIT_KEY][0]["added"] == "tests/test_core.py"
+
+
+def test_the_reviewers_pack_shows_the_lines_changed_in_the_declared_scope_beside_the_added_paths(running):
+    """PR #540 quick check, m-c: there is no size limit, so the reviewer judges the add's proportion from the lines
+    added and removed in the added paths beside those in the Ticket's declared scope."""
+    import copy
+
+    from aew.knowledge import context as ctxmod
+
+    p, wid, impl = running
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    impl.write({"calc/core.py": "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n",
+                "tests/test_core.py": "from calc.core import add, sub\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
+                                      "\n\ndef test_sub():\n    assert sub(3, 2) == 1\n"})
+    engine = Engine.discover(p.root)
+    state = copy.deepcopy(engine.store.current())
+    inv = state["work"][wid]["implementer_invocation"]
+    inputs, _ = engine._packs.pack_inputs(state, inv)
+    assert inputs.scope_lines_changed is None  # the implementer's pack: no count
+    # The reviewer's pack, on the implemented tree: the snapshot a reviewer is dispatched on.
+    workspace = state["work"][wid]["workspace"]["path"]
+    SC.git.out("add", "-A", cwd=Path(workspace))
+    tree = SC.git.out("write-tree", cwd=Path(workspace))
+    reviewer = state["invocations"][inv]
+    reviewer.update(role="reviewer", snapshot={**reviewer["snapshot"], "relevant_inputs_fingerprint": f"tree:{tree}"})
+    inputs, _ = engine._packs.pack_inputs(state, inv)
+    base = SC.git.out("diff", "--numstat", state["work"][wid]["workspace"]["base_commit"], tree, cwd=p.root)
+    counted = {line.split("\t")[2]: line.split("\t")[:2] for line in base.splitlines()}
+    assert inputs.scope_lines_changed == {
+        "declared": {"files": 1, "added": int(counted["calc/core.py"][0]), "removed": int(counted["calc/core.py"][1])},
+        "added": {"files": 1, "added": int(counted["tests/test_core.py"][0]),
+                  "removed": int(counted["tests/test_core.py"][1])}}, (inputs.scope_lines_changed, counted)
+    text = ctxmod.render(inputs)
+    added = inputs.scope_lines_changed["added"]
+    assert (f"the added test paths +{added['added']} -{added['removed']} in 1 file(s)") in text, text
+    assert "Lines changed against the base commit, for proportion: the declared scope +" in text, text
+
+
+def test_status_and_the_leads_result_list_the_added_paths_never_a_count(running):
+    """The designer's decisions of 2026-11-03, §2, "Seeing it": status and the Lead's result (E121) name each added
+    path with its correction, so the scope's growth is visible before a push."""
+    from aew.surface import projection, readable
+
+    p, wid, _ = running
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    quoted = 'the operator: "yes, give the suite a shared fixture for the socket mock"'
+    assert add(p, wid, "tests/conftest.py", signed=True, rationale=quoted)["ok"]
+    listed = ["tests/test_core.py (SC-0001)", "tests/conftest.py (SC-0002, signed off)"]
+    status = p.ok("status", "--json")
+    assert status["work"][wid]["scope_added"] == listed, status["work"][wid]
+    assert f"    scope added on the record: {', '.join(listed)}" in status["work_graph"], status["work_graph"]
+    engine = Engine.discover(p.root)
+    shown = projection.project(engine, CTX, wid)
+    assert shown["unit"]["scope_added"] == listed, shown
+    text = readable.render({"ok": True, "tool": "resume", "projection": shown, "result": {}})
+    assert all(f"scope added: {entry}" in text for entry in listed), text
+    # A Ticket with no add shows nothing new: its status entry and projection are as they were.
+    other = create_planned_ticket(p, p.root.parent, title="plain", scope=("calc/other.py",))
+    assert "scope_added" not in p.ok("status", "--json")["work"][other]
+    assert "unit" not in projection.project(Engine.discover(p.root), CTX, other)
+
+
+def test_a_test_path_changed_outside_the_scope_is_offered_as_an_add_with_no_default(running):
+    """The designer's decisions of 2026-11-03, §2, "The door": the projection lists the add when the out-of-scope
+    violation exists, with the add's own query for its availability; a path that is not test code is not offered."""
+    from aew.surface import projection
+
+    p, wid, impl = running
+    impl.write({"tests/test_core.py": "from calc.core import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n\n\n"
+                                      "def test_add_zero():\n    assert add(0, 0) == 0\n",
+                "calc/other.py": "X = 1\n"})
+    shown = projection.project(Engine.discover(p.root), CTX, wid)
+    [decision] = [d for d in shown["decisions_required"] if d["decision"] == "ADD_SCOPE"]
+    assert decision["arguments"] == {"expect_rev": p.rev(), "subject": SC.item_id(wid, "tests/test_core.py"),
+                                     "choice": SC.CHOICE}, decision
+    assert decision["availability"] == "AVAILABLE" and decision["default"] == "NONE", decision
+    # Taking it, with the Lead's reason, clears the violation; the decision is no longer offered.
+    assert add(p, wid, "tests/test_core.py")["ok"]
+    shown = projection.project(Engine.discover(p.root), CTX, wid)
+    assert not [d for d in shown["decisions_required"] if d["decision"] == "ADD_SCOPE"], shown
+
+
+def test_an_offered_add_that_needs_a_signoff_is_blocked_naming_the_signed_choice(running):
+    from aew.surface import projection
+
+    p, wid, impl = running
+    impl.write({"tests/conftest.py": "import pytest\n"})
+    shown = projection.project(Engine.discover(p.root), CTX, wid)
+    [decision] = [d for d in shown["decisions_required"] if d["decision"] == "ADD_SCOPE"]
+    assert decision["availability"] == "BLOCKED", decision
+    assert any(SC.SIGNED_CHOICE in b["message"] for b in shown["blockers"]), shown["blockers"]

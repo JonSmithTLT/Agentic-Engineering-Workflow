@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from aew.engine import scope_ops as SC
+from aew.harness import contract as K
 
 SRC = Path(SC.__file__).resolve().parents[1]
 
@@ -121,6 +122,47 @@ def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatch
                                           "runs": [{"run": "R-INV-0001-1"}]},
                              "INV-0002": {"status": "active", "work_unit": "T-0001", "role": "reviewer",
                                           "card": {"id": "code_reviewer"}}}}
-    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py")
+    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING)
     assert impl["commands"] == ["aew harness send R-INV-0001-1 --fields -"] and "text" in impl["fields"]
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002") and "reason" in reader["fields"]
+
+
+@pytest.mark.parametrize("status", [K.ENDED_WITH_EVIDENCE, K.ENDED_WITHOUT_EVIDENCE, K.CRASHED, K.LOST, K.UNREADABLE,
+                                    K.UNCONFIRMED])
+def test_an_implementer_whose_run_is_not_live_is_redispatched_never_told_with_harness_send(status):
+    """PR #540 quick check, m-b: `harness send` refuses a run that is not STARTING or RUNNING, so an ended run's
+    implementer is named the re-dispatch commands: a fresh invocation on the kept workspace."""
+    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}},
+             "invocations": {"INV-0001": {"status": "active", "work_unit": "T-0001", "role": "implementer",
+                                          "card": {"id": "engineer"}, "runs": [{"run": "R-INV-0001-1"}]}}}
+    [impl] = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: status)
+    assert not any("harness send" in c for c in impl["commands"]), impl
+    assert impl["commands"][0].startswith("aew invoke cancel INV-0001") and "reason" in impl["fields"], impl
+
+
+def test_the_lines_changed_are_split_by_declared_scope_and_added_paths():
+    """PR #540 quick check, m-c: an added path counts as added even where a declared glob matches it; a path in neither
+    is left out; a binary file is a file with no lines."""
+    numstat = ("3\t1\tcalc/core.py\0" "12\t0\ttests/test_core.py\0" "-\t-\tcalc/logo.png\0"
+               "5\t5\tdocs/other.md\0")
+    assert SC.lines_changed(numstat, ["calc/**", "tests/test_core.py"], ["tests/test_core.py"]) == {
+        "declared": {"files": 2, "added": 3, "removed": 1}, "added": {"files": 1, "added": 12, "removed": 0}}
+
+
+def test_the_lead_guide_and_the_review_card_carry_the_same_three_lines_on_test_work():
+    """The designer's decisions of 2026-11-03, §2: removing tests, a suite's flow or shared setup, and its overall
+    mocking or a wholesale refactor need a sign-off, for all test work; the guide and the review card both say so, and
+    the guide no longer reads as if a scope could never change."""
+    from aew import roles
+    from aew.engine import guide
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
+
+    text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert guide.TEST_WORK in text and f"`{SC.CHOICE}`" in text
+    card = " ".join(roles.builtin_cards()["code_reviewer"].meta["responsibilities"])
+    for words in ("removed tests", "flow or shared setup", "overall mocking", "wholesale refactor", "sign-off",
+                  "proportion"):
+        assert words in card, words
+    for words in ("remove tests", "flow or shared setup", "overall mocking", "wholesale", "sign-off", "proportion"):
+        assert words in guide.TEST_WORK, words

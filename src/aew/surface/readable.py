@@ -319,4 +319,11 @@ def _validation(result: dict[str, Any]) -> list[str]:
             for wid, summary in values[:MAX_LISTED] for line in summary.get("lines") or []]
 
 
-_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_validation, _capabilities, _stopped, _waiting)
+def _scope_added(result: dict[str, Any]) -> list[str]:
+    """The test paths the Lead added to the subject Ticket's scope on the record, each named, never counted, so a
+    person sees the scope grow (register E126; ``WIS-02.f``). The projection lists them; status lists every Ticket's."""
+    return _listed("scope added", (_projection(result).get("unit") or {}).get("scope_added") or [])
+
+
+_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_validation, _capabilities, _stopped, _waiting,
+                                                                _scope_added)

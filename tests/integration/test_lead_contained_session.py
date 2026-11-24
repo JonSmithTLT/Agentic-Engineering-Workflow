@@ -190,7 +190,7 @@ def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_ho
                 assert sentinel.startswith("aew-relay-")
                 assert inside["calls"][provider][0] == 200, inside["calls"]
                 want = fed if provider == "google" else KEYS[provider]
-                assert upstream.seen == [("/v1/probe", f"Bearer {want}")], (provider, upstream.seen)
+                assert upstream.seen == [("/v1/responses", f"Bearer {want}")], (provider, upstream.seen)
             assert "OPENCODE_API_KEY" not in inside["env"] and "opencode" not in inside["calls"]
             # empty under the mask, or absent where the home is under /tmp, private inside (the mask itself:
             # tests/integration/test_lead_containment.py, whose home is not)
@@ -262,7 +262,7 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
             assert body.startswith("AEW: your stored openai login has expired") and "`opencode auth list`" in body
             assert "the Lead's next request then works, with no restart" in body
             assert [r["openai"][0] for r in inside["later"]] == [200, 200], inside["later"]
-            assert up.seen == [("/backend-api/codex/probe", f"Bearer synthetic-access-fresh-{n}") for n in (1, 2)]
+            assert up.seen == [("/backend-api/codex/responses", f"Bearer synthetic-access-fresh-{n}") for n in (1, 2)]
             assert up.accounts == ["synthetic-account-0007"] * 2
             [row] = inside["logins"]
             assert row["integration"] == "openai" and row["access"].startswith("aew-relay-"), row
@@ -299,7 +299,7 @@ def test_an_api_key_session_after_a_chatgpt_login_session_sends_its_own_key_and_
             assert first["code"] == 0, first["stderr"][-3000:]
             [row] = json.loads((tui / "inside.json").read_text())["logins"]
             assert row["access"].startswith("aew-relay-")  # the first session's own row, with its sentinel
-            assert login_up.seen == [("/backend-api/codex/probe", "Bearer synthetic-access-first")]
+            assert login_up.seen == [("/backend-api/codex/responses", "Bearer synthetic-access-first")]
 
             (tui / "variables.json").write_text('{"openai": "OPENAI_API_KEY"}')
             second = at_the_terminal(lab, home, "--provider-env", "OPENAI_API_KEY", key_upstream=key_up.url)
@@ -308,7 +308,7 @@ def test_an_api_key_session_after_a_chatgpt_login_session_sends_its_own_key_and_
             inside = json.loads((tui / "inside.json").read_text())
             assert inside["logins"] == []  # no active login row: the first session's is gone
             assert inside["calls"]["openai"][0] == 200, inside["calls"]
-            assert key_up.seen == [("/v1/probe", f"Bearer {SECRET}")]  # the key, by its own sentinel
+            assert key_up.seen == [("/v1/responses", f"Bearer {SECRET}")]  # the key, by its own sentinel
             assert len(login_up.seen) == 1  # nothing more went the login's way
 
             runs = lab.aew_root / runlog.RUNS_REL

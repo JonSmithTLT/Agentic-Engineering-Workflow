@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -283,7 +284,8 @@ def test_a_refusal_survives_a_delayed_body_without_a_connection_reset(status, re
     target = "/v1/responses"
     if status == 403:
         target = "/outside/responses"
-        message = "the provider relay takes only unambiguous paths under the stored login's upstream path"
+        message = ("the provider relay takes only unambiguous paths under the stored login's upstream path: this "
+                   "request was not sent. Address the provider's API at the base URL AEW gave the harness")
 
     def resolve():
         assert status != 403, "an outside-path request must be refused before resolving credentials"
@@ -401,7 +403,7 @@ def test_a_resolve_mode_target_outside_the_prefix_or_ambiguous_connects_nothing(
 
 
 def test_resolve_mode_forwards_a_codex_path_and_its_query_as_received():
-    request = b"GET /backend-api/codex/responses?include=a%2Fb HTTP/1.1\r\n\r\n"
+    request = b"POST /backend-api/codex/responses?include=a%2Fb HTTP/1.1\r\n\r\n"
     sent, answer, _ = exchange(Seam(), request, upstream="http://provider.example/backend-api/codex",
                                resolve=lambda: ({}, {}))
     assert answer.startswith(b"HTTP/1.1 200 OK")
@@ -440,7 +442,7 @@ def test_a_busy_store_returns_503_and_counts_the_cause_after_the_bounded_retry(t
         patch.setattr(login, "time", SimpleNamespace(sleep=pauses.append))
         with relayed(seam, upstream="http://provider.example/backend-api/codex",
                      resolve=lambda: netns._grant("synthetic-sentinel", stored)) as (service, client, _):
-            client.sendall(b"GET /backend-api/codex/responses HTTP/1.1\r\n\r\n")
+            client.sendall(b"POST /backend-api/codex/responses HTTP/1.1\r\n\r\n")
             answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 503 Service Unavailable\r\n")
     assert b"X-AEW-Refusal: credential_unreadable\r\n" in answer
@@ -469,7 +471,7 @@ def test_a_nonbusy_store_fault_refuses_without_retry_and_names_how_to_recover(tm
         patch.setattr(login, "time", SimpleNamespace(sleep=pauses.append))
         with relayed(seam, upstream="http://provider.example/backend-api/codex",
                      resolve=lambda: netns._grant("synthetic-sentinel", stored)) as (service, client, _):
-            client.sendall(b"GET /backend-api/codex/responses HTTP/1.1\r\n\r\n")
+            client.sendall(b"POST /backend-api/codex/responses HTTP/1.1\r\n\r\n")
             answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 401 Unauthorized\r\n")
     assert b"X-AEW-Refusal: credential_unavailable\r\n" in answer
@@ -1043,3 +1045,230 @@ def test_a_failed_answers_body_is_recorded_even_when_its_client_stops_reading_at
 ])
 def test_operation_names_only_recognized_provider_api_requests(method, path, base, kind):
     assert relay._operation(method, path, base) == kind
+
+
+# The relay's operation scope (register STG-05): the provider operations its policy allows, and nothing else.
+OPERATIONS = json.loads((Path(__file__).parents[1] / "fixtures" / "opencode" / "relay-operations-2.2.6.json")
+                        .read_text(encoding="utf-8"))
+
+
+def scoped(request: bytes, *, upstream: str = UPSTREAM, credentials: dict[str, str] | None = None,
+           resolve: Callable[[], relay.Grant] | None = None,
+           operations: tuple[str, ...] = ()) -> tuple[bytes, Seam, ProviderRelay, list[dict[str, Any]]]:
+    """``request`` (with ``TOKEN`` for the relay's sentinel) through a relay whose connect fails the test: what the
+    client got, the seam, the relay and its record."""
+    seam = Seam(OSError("a refused request must connect nothing"))
+    entries: list[dict[str, Any]] = []
+    token = relay.sentinel()
+    service = ProviderRelay(Upstream(upstream), credentials if credentials is not None else {token: SECRET},
+                            connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT, body_timeout=TIMEOUT,
+                            resolve=resolve, record=entries.append, route="openai", login="key",
+                            operations=operations)
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(request.replace(b"TOKEN", token.encode()))
+        answer = read_all(client)
+    finally:
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+    assert not thread.is_alive(), "the relay's handler did not end"
+    return answer, seam, service, entries
+
+
+@pytest.mark.parametrize("call", OPERATIONS["calls"], ids=[
+    f"{c['provider']}-{c.get('login', 'key')}-{c['method']}-{c['path'].partition('?')[0]}"
+    for c in OPERATIONS["calls"]])
+def test_every_call_opencode_makes_through_the_relay_is_forwarded_with_its_key(call):
+    """Each provider call the fixture records for the pinned OpenCode passes the default scope end to end, its key
+    swapped in, the path and query as sent."""
+    upstream = f"http://provider.example{call['base']}"
+    target = call["base"] + call["path"]
+    assert relay._operation(call["method"], target, call["base"]) == call["operation"]
+    assert call["operation"] in relay.DEFAULT_OPERATIONS
+    seam = Seam()
+    with relayed(seam, upstream=upstream) as (_, client, token):
+        client.sendall(f"{call['method']} {target} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        far = seam.upstream()
+        head, _ = read_head(far)
+        far.sendall(OK)
+        far.close()
+        answer = read_all(client)
+    assert head.split(b"\r\n", 1)[0] == f"{call['method']} {target} HTTP/1.1".encode()
+    assert ("authorization", f"Bearer {SECRET}") in headers(head)
+    assert answer.startswith(b"HTTP/1.1 200 OK")
+
+
+@pytest.mark.parametrize(("request_line", "reason"), [
+    pytest.param("DELETE /v1/files/file-x", relay.OPERATION_NOT_PERMITTED, id="delete"),
+    pytest.param("PUT /v1/responses", relay.OPERATION_NOT_PERMITTED, id="other-method-on-a-model-path"),
+    pytest.param("PATCH /v1/models", relay.OPERATION_NOT_PERMITTED, id="other-method-on-the-model-list"),
+    pytest.param("GET /v1/responses/resp-x", relay.OPERATION_NOT_PERMITTED, id="stored-response"),
+    pytest.param("POST /v1/files", relay.OPERATION_NOT_PERMITTED, id="files"),
+    pytest.param("GET /v1/files/file-x/content", relay.OPERATION_NOT_PERMITTED, id="file-content"),
+    pytest.param("POST /v1/batches", relay.OPERATION_NOT_PERMITTED, id="batches"),
+    pytest.param("POST /v1/fine_tuning/jobs", relay.OPERATION_NOT_PERMITTED, id="fine-tuning"),
+    pytest.param("GET /v1/organization/admin_api_keys", relay.OPERATION_NOT_PERMITTED, id="admin-in-prefix"),
+    pytest.param("POST /v1/messages/count_tokens", relay.OPERATION_NOT_PERMITTED, id="unlisted-subpath"),
+    pytest.param("GET /organization/admin_api_keys", relay.OUTSIDE_UPSTREAM_PATH, id="admin-off-prefix"),
+    pytest.param("POST /responses", relay.OUTSIDE_UPSTREAM_PATH, id="off-prefix"),
+    pytest.param("POST /v1", relay.OUTSIDE_UPSTREAM_PATH, id="the-prefix-alone"),
+    pytest.param("POST /v1/../organization/responses", relay.OUTSIDE_UPSTREAM_PATH, id="dot-dot"),
+    pytest.param("POST /v1/./responses", relay.OUTSIDE_UPSTREAM_PATH, id="dot"),
+    pytest.param("POST /v1//responses", relay.OUTSIDE_UPSTREAM_PATH, id="empty-segment"),
+    pytest.param("POST /v1/%2e%2e/organization/responses", relay.OUTSIDE_UPSTREAM_PATH, id="percent-escape"),
+    pytest.param("POST /v1/responses#x", relay.OUTSIDE_UPSTREAM_PATH, id="fragment"),
+])
+@pytest.mark.parametrize("credentials", [None, {}], ids=["key", "client-certificate-only"])
+def test_an_operation_outside_the_relays_scope_is_refused_typed_and_journalled_and_nothing_is_connected(
+        request_line, reason, credentials):
+    """A request for an operation the relay's policy does not allow, or a path outside (or ambiguously spelled under)
+    the upstream's prefix, is answered 403 with its own reason, counted and recorded, and nothing is connected: the
+    key is never sent, and neither is a client certificate (a relay with no key presents one)."""
+    answer, seam, service, entries = scoped(
+        f"{request_line} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer TOKEN\r\nContent-Length: 0\r\n\r\n".encode(),
+        credentials=credentials)
+    assert seam.calls == [], "a refused request connected to the upstream"
+    assert answer.startswith(b"HTTP/1.1 403 Forbidden\r\n") and f"X-AEW-Refusal: {reason}".encode() in answer
+    assert SECRET.encode() not in answer and b"was not sent" in answer  # what was refused, and what to do instead
+    assert service.counts().get(reason) == 1 and "allowed" not in service.counts()
+    [entry] = entries
+    assert (entry["outcome"], entry["reason"], entry["answered"]) == ("refused", reason, 403)
+    assert entry["transport"] == "not_established" and entry["upstream_headers_written"] is False
+    if reason == relay.OUTSIDE_UPSTREAM_PATH:  # a path that failed the check is never recorded
+        assert "method" not in entry and "endpoint" not in entry
+        assert "/v1" not in json.dumps(entry) and "admin" not in json.dumps(entry)
+
+
+def test_a_refused_operations_record_names_what_the_operator_would_list_and_never_its_query_or_prefix():
+    """An ``operation_not_permitted`` entry carries the request's method and its endpoint under the upstream's prefix,
+    the form a ``relay_operations`` entry takes, without the query (which may carry a key)."""
+    _, _, _, entries = scoped(b"POST /v1/files?key=TOKEN&purpose=x HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+    [entry] = entries
+    assert (entry["reason"], entry["method"], entry["endpoint"]) == (relay.OPERATION_NOT_PERMITTED, "POST", "/files")
+    assert "purpose" not in json.dumps(entry) and relay.SENTINEL_PREFIX not in json.dumps(entry)
+    assert "/v1" not in json.dumps(entry)
+    _, _, _, [allowed] = scoped(b"POST /v1/responses HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+    assert "method" not in allowed and "endpoint" not in allowed  # an operation in scope keeps no target
+
+
+def test_an_operation_the_relays_scope_refuses_names_where_the_operator_allows_it():
+    answer, _, _, _ = scoped(b"POST /v1/files HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+    assert b"containment.network.relay_operations.openai" in answer and b"POST request was not sent" in answer
+
+
+def test_a_stored_login_relay_refuses_an_operation_outside_its_scope_before_resolving_it():
+    def resolve() -> relay.Grant:
+        raise AssertionError("a refused operation must be refused before its credential is resolved")
+
+    answer, seam, service, _ = scoped(b"DELETE /backend-api/codex/files/x HTTP/1.1\r\nHost: x\r\n\r\n",
+                                      upstream="http://provider.example/backend-api/codex", resolve=resolve)
+    assert seam.calls == [] and b"X-AEW-Refusal: operation_not_permitted" in answer
+    assert service.counts().get(relay.OPERATION_NOT_PERMITTED) == 1
+
+
+def test_an_operation_the_policy_lists_is_forwarded_and_labelled_and_nothing_else_is():
+    """The policy adds an exact operation, by method and path under the prefix; the same path by another method, and a
+    path below it, stay refused."""
+    entries: list[dict[str, Any]] = []
+    seam = Seam()
+    token = relay.sentinel()
+    service = ProviderRelay(Upstream(UPSTREAM), {token: SECRET}, connect=seam, head_timeout=TIMEOUT,
+                            connect_timeout=TIMEOUT, body_timeout=TIMEOUT, record=entries.append, route="openai",
+                            login="key", operations=("POST /embeddings",))
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(f"POST /v1/embeddings HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        far = seam.upstream()
+        head, _ = read_head(far)
+        far.sendall(OK)
+        far.close()
+        assert read_all(client).startswith(b"HTTP/1.1 200 OK")
+    finally:
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+    assert head.startswith(b"POST /v1/embeddings ") and ("authorization", f"Bearer {SECRET}") in headers(head)
+    assert entries[0]["operation"] == relay.POLICY_OPERATION and entries[0]["outcome"] == "forwarded"
+    for line in ("GET /v1/embeddings", "POST /v1/embeddings/x", "POST /v1/files"):
+        answer, seam, _, _ = scoped(f"{line} HTTP/1.1\r\nHost: x\r\n\r\n".encode(), operations=("POST /embeddings",))
+        assert seam.calls == [] and b"X-AEW-Refusal: operation_not_permitted" in answer, line
+
+
+@pytest.mark.parametrize("entry", ["DELETE", "/embeddings", "post /embeddings", "CONNECT /x", "POST /",
+                                   "POST /a/../b", "POST //b", "POST /a?b=1", "POST /a%2Fb", "POST https://x/a"])
+def test_a_policy_operation_the_relay_cannot_match_exactly_is_refused_before_it_serves(entry):
+    with pytest.raises(ValidationFailed) as caught:
+        ProviderRelay(Upstream(UPSTREAM), {}, operations=(entry,))
+    assert caught.value.details["reason"] == "bad_relay_operation"
+
+
+def test_only_the_adopted_policy_widens_a_runs_relay_and_a_bad_entry_refuses_its_start(tmp_path, monkeypatch):
+    """``RunNetwork.start`` reads the provider's ``relay_operations`` from the execution policy on the host, at the
+    relay's start; the run's request has no say (the relay takes no other input), and an entry the relay cannot use
+    refuses the start, typed."""
+    monkeypatch.setattr(netns, "listen", lambda _: None)
+    monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
+    layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir=str(tmp_path / "net"))
+
+    def network(policy: dict[str, Any] | None) -> netns.RunNetwork:
+        return netns.RunNetwork.start(layout, provider="openai", provider_env=["OPENAI_API_KEY"], policy=policy,
+                                      env={"OPENAI_API_KEY": SECRET}, relay_needed=True)
+
+    listed = {"containment": {"network": {"relay_operations": {"openai": ["POST /embeddings"],
+                                                               "anthropic": ["POST /files"]}}}}
+    widened, plain = network(listed), network(None)
+    try:
+        assert widened.relay is not None and plain.relay is not None
+        assert widened.relay.listed == {("POST", "/embeddings")}  # its own provider's entries alone
+        assert plain.relay.listed == frozenset()
+    finally:
+        widened.close()
+        plain.close()
+    bad = {"containment": {"network": {"relay_operations": {"openai": ["POST /a/../b"]}}}}
+    with pytest.raises(netns.ContainmentUnavailable) as caught:
+        network(bad)
+    assert caught.value.details["reason"] == "bad_relay_operation"
+
+
+def test_a_policy_operation_applies_to_the_stored_login_relay_too_and_one_it_could_never_match_refuses_its_start():
+    """``relay_operations.<provider>`` applies to whichever upstream the provider's relay uses. An entry with ``:``
+    suits an API-key relay but no stored-login path holds one, so a stored-login relay refuses it at its start rather
+    than holding an entry that can never match."""
+    assert ProviderRelay(Upstream(UPSTREAM), {}, operations=("POST /models/x:embed",)).listed == {
+        ("POST", "/models/x:embed")}
+    with pytest.raises(ValidationFailed) as caught:
+        ProviderRelay(Upstream("http://provider.example/backend-api/codex"), {}, resolve=lambda: ({}, {}),
+                      operations=("POST /models/x:embed",))
+    assert caught.value.details["reason"] == "bad_relay_operation"
+    policy = {"containment": {"network": {"relay_operations": {"openai": ["POST /models/x:embed"]}}}}
+    assert netns.relay_operations("openai", policy) == ("POST /models/x:embed",)
+    with pytest.raises(netns.ContainmentUnavailable) as refused:
+        netns.relay_operations("openai", policy, resolved=True)
+    assert refused.value.details["reason"] == "bad_relay_operation"
+    plain = {"containment": {"network": {"relay_operations": {"openai": ["POST /embeddings"]}}}}
+    assert netns.relay_operations("openai", plain, resolved=True) == ("POST /embeddings",)
+
+
+def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_path():
+    import yaml
+
+    from aew.policy import execution
+
+    def policy(entries: list[str]) -> bytes:
+        data = yaml.safe_load(execution.TEMPLATE)
+        data.setdefault("containment", {}).setdefault("network", {})["relay_operations"] = {"openai": entries}
+        return json.dumps(data).encode()
+
+    assert execution.parse(policy(["POST /embeddings"]), source="t")["containment"]["network"]["relay_operations"]
+    for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b"):
+        with pytest.raises(ValidationFailed):
+            execution.parse(policy([bad]), source="t")

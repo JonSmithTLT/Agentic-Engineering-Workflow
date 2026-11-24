@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sys
 from collections import Counter
 from pathlib import Path
@@ -27,6 +28,10 @@ PHASE = 'collection'
 
 def record(code, offset):
     label = LOOKUP.get((os.path.normcase(code.co_filename), code.co_name))
+    if label is None and code.co_name != '<module>':
+        reporters = {'check_evidence_run.py', 'evidence_problems.py', 'evidence_scorecard.py', 'record_cancel_evidence.py'}
+        if Path(code.co_filename).name in reporters and Path(code.co_filename).parent == ROOT / 'tools/ci':
+            label = 'post-run-reporter'
     if label is None:
         return sys.monitoring.DISABLE
     COUNTS[PHASE, label] += 1
@@ -36,7 +41,18 @@ def record(code, offset):
 def process(event, args):
     if event in {'subprocess.Popen', 'os.system', 'os.spawn', 'os.posix_spawn'}:
         # Only executable basenames are persisted. Command arguments and environment are never recorded.
-        name = Path(os.fsdecode(args[0])).name.lower() if event == 'subprocess.Popen' and args[0] else 'unknown'
+        executable = None
+        if event == 'subprocess.Popen':
+            executable = args[0]
+            if not executable and isinstance(args[1], str):
+                try:
+                    executable = shlex.split(args[1], posix=False)[0].strip('"')
+                except (IndexError, ValueError):
+                    pass
+        name = Path(os.fsdecode(executable)).name.lower() if executable else 'unknown'
+        # Restrict output to recognized executable kinds even when the command has unconventional quoting.
+        if name not in {'git', 'git.exe', 'python', 'python.exe', 'python3', 'cmd.exe', 'powershell.exe'}:
+            name = 'other'
         COUNTS[PHASE, 'process:' + name] += 1
 
 

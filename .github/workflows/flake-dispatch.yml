@@ -37,7 +37,10 @@ jobs:
               if [ "$PROBE_CASE" = override ]; then
                 export AEW_HARNESS_ADAPTERS='opencode=missing_fixture_probe_adapter:Adapter'
               fi
-              python -m pytest "${args[@]}" -n 2 --dist worksteal tests/integration/test_history_store.py tests/regression/test_log_sealing_model.py ;;
+              for pair in 'integration test_history_store' 'regression test_log_sealing_model'; do
+                read -r lane module <<< "$pair"
+                python -m pytest "${args[@]}" -n 2 --dist worksteal --lane "$lane" --shard 1/1 -k "$module"
+              done ;;
           esac
       - name: Check qualification observations
         shell: bash

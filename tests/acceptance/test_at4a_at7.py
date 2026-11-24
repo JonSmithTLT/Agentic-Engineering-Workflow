@@ -47,6 +47,8 @@ def test_ticket_cannot_write_aew_state_through_its_workspace(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     impl = assign(p, wid)
+    authority = p.root / ".aew/state/control.yaml"
+    committed = authority.read_bytes()
     implement(impl, {**SUBTRACT_PATCH, ".aew/state/control.yaml": "revision: 999\n"})
     res = p.aew("work", "transition", wid, "--to", "REVIEW_PENDING",
                 "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
@@ -54,5 +56,5 @@ def test_ticket_cannot_write_aew_state_through_its_workspace(tmp_path):
     assert any(v["path"] == ".aew/state/control.yaml" and v["rule"] == "protected_path"
                for v in res.error["details"]["violations"])
     # The authoritative control state is untouched by the workspace copy.
-    assert "revision: 999" not in (p.root / ".aew/state/control.yaml").read_text()
+    assert authority.read_bytes() == committed
     assert Path(impl.workspace, ".aew/state/control.yaml").exists()

@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 import yaml
@@ -57,6 +58,46 @@ def job_digest(directory):
     return None
 
 
+def finished_tests(bundles, complete_report, *, report_exits=(), steps_passed=False):
+    if len(report_exits) > 1 or any(code not in (None, 0, 1) for code in report_exits):
+        return False
+    if steps_passed and complete_report:
+        return True
+    # The early watchdog upload can survive without the full one. Combine only
+    # matching session directories, and reject conflicting copies of a receipt.
+    sessions = [(bundle, path.parent) for bundle in bundles for path in bundle.rglob("session-started.txt")]
+    if len({directory.relative_to(bundle) for bundle, directory in sessions}) != 1:
+        return False
+
+    def receipt(name):
+        values = {path.read_text(encoding="utf-8").strip() for _, directory in sessions
+                  if (path := directory / name).is_file()}
+        if len(values) != 1:
+            raise ValueError(name)
+        return values.pop()
+
+    try:
+        if complete_report and any((directory / "session-finished.txt").is_file() for _, directory in sessions):
+            pid = int(receipt("controller-pid.txt"))
+            if re.search(rf"\bpid {pid}: the session finished \(exit (?:None|0|1)\);", receipt("session-finished.txt")):
+                return True
+        # An interrupted controller may not have written its report. Every configured
+        # worker must have finished its pytest session with its own matching PID.
+        count = int(receipt("worker-count.txt"))
+        pids = {path.name for _, directory in sessions for path in directory.glob("worker-gw*-pid.txt")}
+        if not pids or count != len(pids):
+            return False
+        for index in range(count):
+            worker = f"worker-gw{index}"
+            pid = int(receipt(f"{worker}-pid.txt"))
+            exit_note = receipt(f"{worker}-exit.txt")
+            if not re.search(rf"\bpid {pid}: worker gw{index} finished its session \(exit [01]\);", exit_note):
+                return False
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, timeout_observation=None,
                score_rows: list | None = None) -> list[str]:
     defects = []
@@ -87,13 +128,11 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
         digest = hashlib.sha256(job["name"].encode()).hexdigest()
         prefixes = {bundle_prefix(path.name) for path in archives if job_digest(path) == digest}
         found = [path for path in archives if bundle_prefix(path.name) in prefixes]
-        started = bool(found) or any(
-            step.get("started_at") and step.get("conclusion") != "skipped"
-            and any(pattern.fullmatch(step["name"]) for pattern in patterns)
-            for step in job.get("steps", []))
         steps = job.get("steps", [])
-        executed = [s for s in steps if s.get("conclusion") != "skipped"]
-        started |= bool(executed) and _started_pytest(executed)
+        lane_steps = [s for s in steps if s.get("started_at") and s.get("conclusion") != "skipped"
+                      and not s["name"].startswith("Post ")
+                      and (any(pattern.fullmatch(s["name"]) for pattern in patterns) or _started_pytest([s]))]
+        started = bool(found or lane_steps)
         superseded = valid(reason) and reason["kind"] == "superseded"
         cancelled_as = (f"superseded (by run {reason['run']})" if superseded
                         else "manual/API cancel" if valid(reason) else "cancel")
@@ -131,6 +170,8 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     observed.add((invocation(breadcrumb), node, phase))
             recorded = set()
             collection_exits = set()
+            completed = set()
+            reports_by_prefix = defaultdict(list)
             report_exits = []
             for name in prefixes:
                 lane_report = root / ("lane-report-" + name)
@@ -143,6 +184,9 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                         continue
                     if not isinstance(doc, dict) or "exitstatus" not in doc:
                         continue
+                    if (doc.get("schema") == "aew/lane-report/v1" and doc.get("complete") is True
+                            and doc["exitstatus"] in (0, 1)):
+                        completed.add(name)
                     results = doc.get("results")
                     phases = {(name, node, record["phase"]) for node, result in
                               (results.items() if isinstance(results, dict) else ()) if isinstance(result, dict)
@@ -158,6 +202,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                         report_exits.append(1)
                     else:
                         report_exits.append(doc["exitstatus"])
+                    reports_by_prefix[name].append(report_exits[-1])
             for _, node, phase in sorted(observed - recorded):
                 report("failure-report", f"{node} ({phase}): observed failure missing from lane report")
             command_exits = []
@@ -181,7 +226,17 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if conclusion == "cancelled":
-                kind = "cancel"
+                death_marker = any(re.fullmatch(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+"
+                                                r"|worker-gw[0-9]+-down|session-deadline|cutoff|abnormal-exit"
+                                                r"|(?:running|hang)-.+", name) for name in markers)
+                all_steps_passed = (len(lane_steps) == len(prefixes)
+                                    and all(s["conclusion"] == "success" for s in lane_steps))
+
+                after_tests = not death_marker and not abnormal_command and all(
+                    finished_tests([path for path in found if bundle_prefix(path.name) == name], name in completed,
+                                   report_exits=reports_by_prefix[name], steps_passed=all_steps_passed)
+                    for name in prefixes)
+                kind = "cancel-after-tests" if after_tests else "cancel"
             elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
                 kind = "oom"
             elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
@@ -202,13 +257,14 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             missing = defects[first_defect:]
             nodes = sorted({node for _, node, _ in recorded | observed})
             row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
+                           else f"{cancelled_as} after tests" if kind == "cancel-after-tests"
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":
                 incomplete = any(any(tag in problem for tag in ("[failure-", "[omission]", "[scan-unavailable]"))
                                  for problem in missing)
                 row["A1"] = "yes" if nodes and not incomplete else "no"
-            if kind or died:
+            if (kind or died) and kind != "cancel-after-tests":
                 row["A2"] = "no" if any("[failure-" not in p for p in missing) else "yes"
             row["missing"] = missing
     return defects

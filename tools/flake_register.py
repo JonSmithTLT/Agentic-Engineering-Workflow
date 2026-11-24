@@ -66,7 +66,8 @@ MAX_INDEX_BYTES = 1024 * 1024
 TEST_NAME = re.compile(r"test_\w+\Z")
 NO_RESPONSE = re.compile(r"stopped hearing from|not responding|has exceeded the maximum execution time", re.I)
 PYTEST_STEP = re.compile(
-    r"pytest|(?:fast|serial) lane|racing writers|randomized crash iterations|deadline plants", re.I,
+    r"(?:^(?:Run )?|-m )pytest(?:\s|$)|(?:fast|serial) lane|racing writers|randomized crash iterations|deadline plants",
+    re.I,
 )
 
 

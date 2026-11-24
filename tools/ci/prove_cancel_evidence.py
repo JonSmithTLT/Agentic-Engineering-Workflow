@@ -50,6 +50,44 @@ def target_run(repo, workflow, parent, head, branch, title):
     return found[0] if found else None
 
 
+# Both controlled plants get 360 s from their first deadline step, and run at
+# least that long if uninterrupted (180 serially scheduled cases of 2-5 s).
+# Leave time for dispatch and delivery before pytest switches to collection.
+CANCEL_PLANT_SECONDS = 360
+TRIGGER_RESERVE_SECONDS = 60
+
+
+def wait_for_workers(repo, ident):
+    labels = [f"plant ({runner}, cancel, none)" for runner in ("ubuntu-24.04", "windows-latest")]
+
+    def jobs():
+        return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
+
+    # GitHub can accept the dispatch while neither child has a runner. Start the
+    # existing nine-minute readiness clock only once the first target actually starts.
+    def assigned():
+        return any(job["name"] in labels and (job.get("runner_id") or job.get("conclusion"))
+                   for job in jobs())
+
+    poll(assigned, 20 * 60, "a hosted runner to be assigned to a controlled lane")
+
+    def live():
+        attempt = jobs()
+        active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]
+        for job in filter(None, active):
+            steps = {step["name"]: step for step in job["steps"]}
+            lane = steps["Real planted lane"]
+            deadline_step = steps.get("The job's deadline", {})
+            if not deadline_step.get("started_at") or lane.get("status") != "in_progress":
+                raise RuntimeError("controlled pytest lane has no active execution window")
+            opened = datetime.fromisoformat(deadline_step["started_at"]).timestamp()
+            if time.time() >= opened + CANCEL_PLANT_SECONDS - TRIGGER_RESERVE_SECONDS:
+                raise RuntimeError("controlled pytest lanes have no overlapping time before collection")
+        return active if all(active) else None
+
+    return poll(live, 9 * 60, "both controlled pytest lanes to enter their worker sessions")
+
+
 def verify_pretrigger(directory, attempt, trigger_at):
     windows = directory / f"plant-Windows-cancel-none-attempt-{attempt}"
     problems = observe_cancel(windows, "Windows", [], trigger_at=trigger_at)
@@ -91,13 +129,7 @@ def main(scenario):
     target = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-target"), 90, "the target run")
     ident = target["id"]
 
-    def live():
-        jobs = _api(repo, f"actions/runs/{ident}/jobs?per_page=100")["jobs"]
-        active = [ready_job(f"plant ({runner}, cancel, none)", jobs, SENTINEL_READY_S)
-                  for runner in ("ubuntu-24.04", "windows-latest")]
-        return active if all(active) else None
-
-    targets = poll(live, 540, "both controlled pytest lanes to enter their worker sessions")
+    targets = wait_for_workers(repo, ident)
     if scenario == "manual":
         # A server timestamp taken before requesting cancellation is a conservative, independent lower bound.
         response = _gh_read("--include", "--silent", f"repos/{repo}/actions/runs/{ident}")

@@ -76,6 +76,141 @@ def test_queued_cancel_does_not_mask_a_real_failure_in_a_partial_report(tmp_path
     assert "test_failure (superseded by run 43752657105)" in summary and "death-record" in summary
     assert any("[cancel-reason]" in d for d in check.check_jobs(out, [{**job, "cancel_reason": None}]))
 
+    # The controller snapshot during shutdown retains the failed phase and its
+    # partial report (null exit status), even though all planned workers finished.
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    for filename, value in {"session-started": "started", "worker-count": "1", "worker-gw0-pid": "43",
+                            "worker-gw0-exit": "pid 43: worker gw0 finished its session (exit 1);"}.items():
+        (session / f"{filename}.txt").write_text(value)
+    priority = tmp_path / "priority-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=name)
+    stage.stage(priority, out / "evidence-selected-attempt-1-watchdog")
+    rows = []
+    assert not check.check_jobs(out, [job], score_rows=rows)
+    assert (rows[0]["A1"], rows[0]["A2"]) == ("yes", "n/a")
+
+
+def test_an_assurance_dependency_install_does_not_start_pytest(tmp_path):
+    check = _load("check_evidence_run")
+    step = {"name": 'Run python -m pip install "PyYAML>=6.0" "pytest>=8"', "started_at": "2026-11-23",
+            "conclusion": "success"}
+    job = {"id": 7, "name": "assurance", "conclusion": "failure", "steps": [step]}
+    rows = []
+    assert check.check_jobs(tmp_path, [job], score_rows=rows) == []
+    assert (rows[0]["A1"], rows[0]["A2"]) == ("n/a", "n/a")
+    step["name"] = "Run python -m pytest tests"
+    assert any("[job-evidence]" in p for p in check.check_jobs(tmp_path, [job]))
+
+
+def test_cancel_after_pytest_needs_a_completed_report_and_matching_session(tmp_path, monkeypatch):
+    check = _load("check_evidence_run")
+    stage = _load("stage_evidence")
+    raw = tmp_path / "raw"
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    job = {"id": 7, "name": "integration 1/1 (windows-latest)", "conclusion": "cancelled", "steps": [],
+           "cancel_reason": CANCEL.classify(OLD, {"id": 7}, NOTES, [NEW])}
+    (raw / "runner-resources-job.txt").write_text(json.dumps({"job_label": job["name"]}))
+    (session / "controller-pid.txt").write_text("42")
+    (session / "session-started.txt").write_text("started")
+    (session / "session-finished.txt").write_text("2026-11-23 10:20:12 pid 42: the session finished (exit None);")
+    (raw / "report.json").write_text(json.dumps({"schema": "aew/lane-report/v1", "complete": True,
+                                                  "exitstatus": 0, "results": {}}))
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    root = tmp_path / "published"
+    root.mkdir()
+    stage.stage(raw, root / "evidence-attempt-1")
+    stage.stage(raw, root / "lane-report-evidence-attempt-1", reports_only=True)
+    rows = []
+    assert check.check_jobs(root, [job], score_rows=rows) == []
+    assert rows[0]["kind"].endswith("after tests") and rows[0]["A2"] == "n/a"
+    assert any("[cancel-reason]" in p for p in check.check_jobs(root, [{**job, "cancel_reason": None}]))
+    # The full upload can be lost after the priority upload. A fully successful
+    # lane can also have published only the report and names when a later step is canceled.
+    (root / "evidence-attempt-1").rename(tmp_path / "withheld-full-upload")
+    priority = tmp_path / "priority-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=job["name"])
+    saved = root / "evidence-attempt-1-watchdog"
+    stage.stage(priority, saved)
+    assert not check.check_jobs(root, [job])
+    published = saved / "autopsy/session-42-abc"
+    (published / "controller-pid.txt").write_text("77")
+    assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
+    successful = {"name": "Run python -m pytest tests", "conclusion": "success", "started_at": OLD["created_at"]}
+    later = {"name": "Publish coverage", "conclusion": "cancelled", "started_at": OLD["created_at"]}
+    post = {**successful, "name": "Post pytest --lane integration"}
+    assert not check.check_jobs(root, [{**job, "steps": [successful, later, post]}])
+    (published / "controller-pid.txt").write_text("42")
+    (published / "cancelled-43.txt").write_text("{}")
+    assert any("[death-record]" in p for p in check.check_jobs(root, [job]))
+
+
+def test_all_planned_workers_must_have_finished_before_cancellation(tmp_path):
+    from types import SimpleNamespace
+
+    from session_deadline import Controller
+
+    check = _load("check_evidence_run")
+    (tmp_path / "session-started.txt").write_text("started")
+    Controller.pytest_xdist_setupnodes(SimpleNamespace(dir=tmp_path), None, [object(), object()])
+    for index, pid in enumerate((31, 55)):
+        (tmp_path / f"worker-gw{index}-pid.txt").write_text(str(pid))
+        assert not check.finished_tests([tmp_path], False)
+        (tmp_path / f"worker-gw{index}-exit.txt").write_text(
+            f"2026-11-23 10:20:12 pid {pid}: worker gw{index} finished its session (exit 0);")
+    assert check.finished_tests([tmp_path], False)
+    (tmp_path / "worker-gw1-pid.txt").write_text("56")
+    assert not check.finished_tests([tmp_path], False)
+
+
+@pytest.mark.parametrize("queue_seconds,outcome", [(660, "ready"), (1300, "allocation"), (660, "finished"),
+                                                     (660, "staggered"), (660, "collected")])
+def test_cancel_control_times_runner_allocation_separately_from_running_workers(monkeypatch, queue_seconds, outcome):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    import cancel_evidence_plant
+
+    prove = _load("prove_cancel_evidence")
+    workflow = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())
+    deadline_step = next(step for step in workflow["jobs"]["cancel-plant"]["steps"]
+                         if step.get("name") == "The job's deadline")
+    assert f"+ {prove.CANCEL_PLANT_SECONDS} " in deadline_step["run"]
+    waits = []
+
+    def now():
+        return sum(waits)
+
+    clock = SimpleNamespace(monotonic=now, time=now, sleep=waits.append)
+    monkeypatch.setattr(prove, "time", clock)
+    monkeypatch.setattr(cancel_evidence_plant, "time", clock)
+
+    def jobs(repo, endpoint):
+        assert endpoint == "actions/runs/42/attempts/1/jobs?per_page=100"
+        rows = [{"name": "unrelated", "runner_id": 7, "conclusion": "success"}]
+        for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
+            offset = index * (305 if outcome == "staggered" else 10)
+            running = now() >= queue_seconds + offset
+            start = datetime.fromtimestamp(queue_seconds + offset, UTC).isoformat()
+            rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel, none)",
+                         "runner_id": 7 if running else 0,
+                         "conclusion": "failure" if running and outcome == "finished" else None,
+                         "steps": [{"name": "The job's deadline", "started_at": start}, {
+                             "name": "Real planted lane", "started_at": start,
+                             "status": "completed" if outcome == "collected" else "in_progress"}] if running else []})
+        return {"jobs": rows}
+
+    monkeypatch.setattr(prove, "_api", jobs)
+    if outcome == "ready":
+        assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
+        assert now() == queue_seconds + 10 + prove.SENTINEL_READY_S
+    else:
+        expected = {"allocation": "runner to be assigned", "finished": "target finished",
+                    "staggered": "no overlapping time", "collected": "no active execution window"}[outcome]
+        with pytest.raises(RuntimeError, match=expected):
+            prove.wait_for_workers("x/y", 42)
+
 
 def test_archive_reader_confines_artifact_data_and_accounts_for_the_expanded_size(tmp_path):
     def archive(name):

@@ -4164,6 +4164,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
 
+### E362
+
+**Work:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch is refused `CONTAINMENT_UNAVAILABLE` (fail closed). `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, which is the true answer (no IPv6 route out), with a test
+
+**Source:** E140's O-CMD triage (#547), 2026-11-24: seen in a container whose kernel lacks IPv6
+
+**When:** **Unscheduled**; the operator places it. It holds a host without IPv6 from any contained work, so before first use on such a host
+
+**Notes:** Filed by the register PR of 2026-11-24 (T4)
+
+*Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

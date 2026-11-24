@@ -5622,6 +5622,17 @@ sections:
     Notes: Filed by the register PR of 2026-11-24 (T4). The fields each provider exposes come from its pinned API surface,
       not from today''s online documentation
 
+  - '#': E362
+    Work: 'The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py`
+      creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the
+      probe, the self-test fails, and every contained launch is refused `CONTAINMENT_UNAVAILABLE` (fail closed). `socket.has_ipv6`
+      is a build flag, not the kernel''s. The probe should record EAFNOSUPPORT for that route, which is the true answer
+      (no IPv6 route out), with a test'
+    Source: 'E140''s O-CMD triage (#547), 2026-11-24: seen in a container whose kernel lacks IPv6'
+    When: '**Unscheduled**; the operator places it. It holds a host without IPv6 from any contained work, so before first
+      use on such a host'
+    Notes: Filed by the register PR of 2026-11-24 (T4)
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

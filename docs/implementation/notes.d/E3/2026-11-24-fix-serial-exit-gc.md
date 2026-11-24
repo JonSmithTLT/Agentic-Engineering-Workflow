@@ -20,10 +20,14 @@ Never on Windows, never under xdist.
   after `session-finished`; a shard's collection with the heap frozen exits in 0.6 s rather than 10.5 s. The margin is
   unchanged. Proof: `test_a_controller_never_collects_its_sessions_heap_at_exit_so_a_large_one_exits_within_the_margin`
   (`tests/integration/test_hang_autopsy.py`), which fails without the freeze.
-- **The assurance names it.** `tools/ci/check_assurance.py` reports a `stuck-after-finish` marker under any uploaded
-  autopsy as its own problem, with the session folder that holds its stacks, rather than only `reference=failure`
-  (`test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_problem`).
+- **The assurance names it.** The assurance jobs download only the reports-only bundles (`lane-report-*`,
+  `nightly-reference-*`), which carried no autopsy. The reports-only staging now carries exactly one autopsy file,
+  `autopsy/session-*/stuck-after-finish.txt` (`evidence_files.stuck_marker`), scanned like the rest, and
+  `tools/ci/check_assurance.py` reports each one as its own problem, with the session folder whose stacks are in the
+  full evidence bundle, rather than only `reference=failure`. The test stages planted raw folders through the real
+  staging and runs the assurance over the staged bundles
+  (`test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_problem`; review of #553, M1).
 - **Not this cause.** Shard 2/5 of run 45037238066 also had one failed test,
   `tests/unit/test_yaml_depth.py::test_a_deep_control_state_resealed_by_another_writer_is_refused_in_process`
-  (`KeyError: 'reason'`: the refusal carried no reason code), seconds before the session finished. It is not explained
-  here.
+  (`KeyError: 'reason'`: the refusal carried no reason code), seconds before the session finished. That was the libyaml
+  depth error fixed by #511: the run's head, `172b5c80`, precedes #511's merge, `ec5aae96`.

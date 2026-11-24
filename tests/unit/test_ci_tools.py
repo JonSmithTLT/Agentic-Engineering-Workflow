@@ -3029,25 +3029,43 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text
 
 
-def test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_problem(tmp_path, capsys):
-    """The nightly's reference shards, 2026-11-17 to 11-22 (register E3): every lane report was complete and green, and
-    the assurance read only `reference=failure`. A ``stuck-after-finish`` marker anywhere under an autopsy is a problem
-    named for what it is, with the session folder that holds its stacks."""
+def test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_problem(tmp_path, monkeypatch, capsys):
+    """The nightly's reference shards, 2026-11-17 to 11-22 (register E3): every lane report was complete, and the
+    assurance read only `reference=failure`. Through the path CI takes (review of #553, M1): each job's raw folder is
+    staged reports-only, as the lane action uploads it for the assurance jobs, and the assurance reads the staged
+    bundles. The ``stuck-after-finish`` marker is the one autopsy file that travels, and it is named as a problem of its
+    own, with the session folder that holds its stacks."""
     import session_deadline
 
     assert check_assurance.STUCK_MARKER == session_deadline.marker(Path(), session_deadline.STUCK).name
-    reports = tmp_path / "reports"
-    for i, r in enumerate(good_run()):
-        (reports / f"job{i}").mkdir(parents=True)
-        (reports / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
     (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
-    args = [str(reports), "--skips", str(tmp_path / "skips.yaml")]
-    session = reports / "job1" / "autopsy" / "session-2405-439565f5"
-    session.mkdir(parents=True)
-    (session / "session-finished.txt").write_text("the session finished (exit 0)\n", encoding="utf-8")
-    assert check_assurance.main(args) == 0  # finished and exited: nothing to name
-    (session / check_assurance.STUCK_MARKER).write_text("ended\n", encoding="utf-8")
-    capsys.readouterr()
-    assert check_assurance.main(args) == 1
-    assert "job1/autopsy/session-2405-439565f5: the session finished, but its controller had not exited" in \
-        capsys.readouterr().out
+
+    def assurance(stuck: bool) -> tuple[int, str, Path]:
+        downloaded = tmp_path / f"downloaded-{stuck}"
+        downloaded.mkdir()
+        for i, r in enumerate(good_run()):
+            raw = tmp_path / f"raw-{stuck}-{i}"
+            raw.mkdir()
+            (raw / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+            session = raw / "autopsy" / "session-2405-439565f5"
+            session.mkdir(parents=True)
+            (session / "session-finished.txt").write_text("the session finished (exit 0)\n", encoding="utf-8")
+            (session / "controller-after-finish-stacks.txt").write_text("Garbage-collecting\n", encoding="utf-8")
+            if stuck and i == 1:
+                (session / check_assurance.STUCK_MARKER).write_text("ended\n", encoding="utf-8")
+            stage.stage(raw, downloaded / f"nightly-reference-Linux-{i}", reports_only=True)
+        capsys.readouterr()
+        code = check_assurance.main([str(downloaded), "--skips", str(tmp_path / "skips.yaml")])
+        return code, capsys.readouterr().out, downloaded
+
+    code, _out, downloaded = assurance(stuck=False)
+    assert code == 0  # finished and exited: nothing to name
+    assert not list(downloaded.rglob("autopsy"))  # the rest of the autopsy stays in the full evidence bundle
+    code, out, downloaded = assurance(stuck=True)
+    assert code == 1, out
+    assert [p.relative_to(downloaded).as_posix() for p in downloaded.rglob("autopsy/**/*") if p.is_file()] == [
+        "nightly-reference-Linux-1/autopsy/session-2405-439565f5/stuck-after-finish.txt"]
+    assert ("nightly-reference-Linux-1/autopsy/session-2405-439565f5: the session finished, but its controller had "
+            "not exited") in out

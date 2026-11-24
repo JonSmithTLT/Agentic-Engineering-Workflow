@@ -41,13 +41,15 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tier as tiers  # noqa: E402  (tools/ci/tier.py: the tiers and the lanes each requires)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+# The marker the session deadline's sentinel writes when a controller outlived ``session-finished`` by a margin, and the
+# one autopsy file the reports-only staging carries to this job (``evidence_files.stuck_marker``).
+from evidence_files import STUCK_MARKER  # noqa: E402  (importable once the line above has set the path)
+
 REPORT_SCHEMA = "aew/lane-report/v1"
 # A hang's autopsy (tests/helpers/autopsy.py) lives in the report directory, which CI uploads. Its files never end in
 # `.json`, and the readers skip its directory too: two independent protections against reading one as a report.
 AUTOPSY_DIR = "autopsy"
-# The session deadline's sentinel writes this when the controller outlived ``session-finished`` by a margin
-# (tests/helpers/session_deadline.py's STUCK, which this tool cannot import: it runs without tests/helpers).
-STUCK_MARKER = "stuck-after-finish.txt"
 SKIPS_SCHEMA = "aew/platform-skips/v1"
 REQUIRED_PLATFORMS = ("linux", "win32")
 

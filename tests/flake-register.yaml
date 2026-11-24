@@ -237,7 +237,8 @@ entries:
     at: '2026-11-20T17:20:02Z'
     note: >-
       full suite 1/8 (windows-latest, py3.11), the nightly's extra matrix entry, not the regression lane (its full
-      suite shards are read as regression). The runner was lost: the job ended cancelled after 69 minutes.
+      suite shards are read as regression). Ended cancelled after 69 minutes (timeout-minutes 64 at ca376e88) with
+      its pytest step in progress, no log and no evidence. Cause unestablished.
 - id: windows-integration-no-response
   scope: session
   lane: integration

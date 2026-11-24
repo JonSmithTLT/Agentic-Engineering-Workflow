@@ -17,6 +17,7 @@ import fake_opencode as fake
 import pytest
 from conftest import Project, acquire_test_lead
 from fake_harness import POLICY
+from host_env import GUARDED, clean_launching_env
 
 from aew.engine.api import Engine
 from aew.harness.contract import preamble
@@ -30,10 +31,17 @@ EVAL = Path(__file__).resolve().parents[2] / "eval"
 sys.path.insert(0, str(EVAL))
 from aew_eval import arms, fixture, hidden, prereg, runner  # noqa: E402
 
+pytestmark = GUARDED
+
 EXPERIMENT = EVAL / "experiments/context-pack-rehearsal"
 CASE = EXPERIMENT / "case.yaml"
 COMMON = {"contract", "role-card", "requirement", "guardrails", "authority", "checks", "open-findings"}
 LIMIT = 32_000
+
+
+@pytest.fixture(autouse=True)
+def synthetic_home(tmp_path_factory, monkeypatch):
+    clean_launching_env(monkeypatch, tmp_path_factory.mktemp("home"))
 
 
 def digest(text):

@@ -153,7 +153,8 @@ def summary(aew_root: Path, policy: dict[str, Any] | None, *, policy_problem: st
         if not chosen:
             if len(offered) == 1 and row["reason"] in ("credential_unavailable", "credential_unreadable"):
                 chosen.update(offered)  # the configured grant failed before the relay could swap its credential
-            elif raw.get("swapped_sources") == [] and row["swap"] == "none" and row["outcome"] == "forwarded":
+            elif (raw.get("swapped_sources") == [] and row["swap"] == "none"
+                  and row["outcome"] in ("forwarded", "unknown")):  # sent upstream, whatever became of it
                 if not certificate:
                     chosen.add("no_header_swap")
             elif not certificate or offered or row["login"] != "none":

@@ -62,6 +62,36 @@ def test_a_weaker_model_list_read_is_live_in_the_register_while_it_runs_and_its_
     assert not given["run_dir"].exists()
 
 
+def test_a_model_list_reads_relay_records_the_policy_sha_its_pin_was_resolved_from(tmp_path, monkeypatch):
+    """The read's containment gets the pin's ``policy_sha256``, the sha of the policy read that resolved it, for its
+    relay's record (review of #542, m3)."""
+    from aew.harness import supervisor
+
+    given: list[str | None] = []
+    real = supervisor.contain_launch
+
+    def spy(*args: Any, **kw: Any) -> Any:
+        given.append(kw.get("policy_sha256"))
+        return real(*args, **kw)
+
+    class Adapter(A.OpenCodeAdapter):
+        def __init__(self, *_: Any) -> None:
+            pass
+
+        def read_model_list(self, contract: Any, agent_env: dict[str, str], *, until: float) -> dict[str, Any]:
+            return {"version": "stand-in", "complete": True, "empty": False, "models": []}
+
+    monkeypatch.setattr(supervisor, "contain_launch", spy)
+    monkeypatch.setattr(containment, "establish", lambda **kw: (None, containment.label(contained=False, reason="x")))
+    monkeypatch.setattr(W, "ownership_of", lambda label: "subreaper")
+    monkeypatch.setattr(netns, "provider_key_missing", lambda *a, **kw: None)
+    monkeypatch.setattr(procs, "ProcessTree", _Tree)
+    engine = SimpleNamespace(aew_root=tmp_path / ".aew", repo_root=tmp_path)
+    pin = {"harness": "opencode", "provider": "fakeprov", "model": "fake-model", "policy_sha256": "ef" * 32}
+    model_list.read(engine, {}, pin, Adapter)
+    assert given == ["ef" * 32]
+
+
 def test_a_server_that_fails_to_start_is_waited_for_once_across_profiles(tmp_path, monkeypatch):
     """Review of E137, F3: a harness that cannot start is the same answer for every profile of its provider."""
     tries: list[str] = []

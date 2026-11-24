@@ -298,7 +298,8 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
                 policy, adapter_cls, provider=pin.get("provider"), provider_env=contract.extra["provider_env"],
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=run_dir,
                 scratch=contract.scratch, bridge_dir=None, bridge=None, project=engine.repo_root,
-                aew_root=engine.aew_root, kind="doctor_model_list", marker=marker, execution_profile=pin)
+                aew_root=engine.aew_root, kind="doctor_model_list", marker=marker, execution_profile=pin,
+                policy_sha256=pin.get("policy_sha256"))  # the pin's: the policy read it was resolved from
         except HarnessIncompatible as exc:  # a launch is refused for it, so the row is red (#367, F4)
             reason = exc.details.get("reason")
             weaker_allowed = (policy.get("containment") or {}).get("mode") == "allow_weaker"

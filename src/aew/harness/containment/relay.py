@@ -36,7 +36,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
 **Bounds:** the relay bounds request size, concurrency and stream time, each an implementation bound below, set by the
 host-side code that starts the relay and never by a request or the sandbox. A body over :data:`MAX_BODY` is refused 413
 (:data:`REQUEST_TOO_LARGE`): before anything is connected when its ``Content-Length`` says so, and, for a chunked body,
-at the chunk that passes the bound, so the upstream never gets the request whole. A request that finds
+whose every byte is counted as it goes (its framing and trailer included), at the chunk or trailer line that would pass
+the bound, so the upstream never gets the request whole. A request that finds
 :data:`MAX_ACTIVE` others in progress on the relay is refused 503 (:data:`RELAY_BUSY`) before its head is read, and
 nothing is connected. A response that has not ended :data:`STREAM_TIMEOUT` after the request was sent is ended
 (:data:`STREAM_TIMEOUT_REASON`), answered 504 if its head had not come.
@@ -45,7 +46,9 @@ nothing is connected. A response that has not ended :data:`STREAM_TIMEOUT` after
 :data:`UPSTREAM_OUTCOME_UNKNOWN` (outcome ``unknown``: the provider may have accepted it), never
 ``upstream_unreachable``, which says the request was not sent: a client that retries one must not take it for the
 other. A request refused while its body was still arriving (too large, stalled, malformed) is ``refused`` even after
-its head went upstream, as the upstream never got it whole.
+its head went upstream, as the upstream never got it whole. A non-2xx answer whose body then breaks stays
+``forwarded``: the provider had settled the call. A stream the relay itself ends, as the run ends or its client goes,
+stays ``forwarded`` too.
 
 **The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
 request target; only a request refused for its operation, once past the path check, also records its method and its
@@ -127,7 +130,10 @@ UPSTREAM_OUTCOME_UNKNOWN = "upstream_outcome_unknown"
 # What became of a request, in its entry: answered by the upstream; refused, with nothing (or, for a body refused as it
 # arrived, never the whole request) sent; or unknown, once any byte went upstream and the exchange did not end whole.
 OUTCOMES = ("forwarded", "refused", "unknown")
-# How a forwarded request's stream ended, in its entry's ``ended``.
+# How a forwarded request's stream ended, in its entry's ``ended`` (and ``stream_timeout`` for a request whose response
+# head never came). A stream cut by the run's end (``relay_closed``) or by its client (``client_gone``) stays
+# ``forwarded``: the relay ended it, not the provider; so does a non-2xx answer whose body broke, which the provider had
+# already settled.
 STREAM_ENDS = ("complete", "client_gone", "upstream_broken", "stream_timeout", "relay_closed")
 # The operations every relay forwards (:func:`_operation`'s labels): a model call and the model list. Anything else
 # goes upstream only when the operator's adopted policy names it (:func:`listed_operations`). That these cover
@@ -459,7 +465,7 @@ class ProviderRelay(Service):
         if not self._track(conn):
             conn.close()
             return
-        admitted = self._admit()
+        admitted = False
         upstream: socket.socket | None = None
         answered = False  # once the response's head has gone to the client, nothing else may be sent it
         entry: dict[str, Any] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "route": self.route,
@@ -474,6 +480,7 @@ class ProviderRelay(Service):
         held: list[str] = []  # this request's credential values, kept out of the record's excerpt
         excerpt: _Excerpt | None = None
         try:
+            admitted = self._admit()
             if not admitted:  # before its head is read: a sandbox cannot make the relay hold more than its bound
                 raise _Refused(503, RELAY_BUSY, f"the provider relay is serving {self.max_active} requests, its bound, "
                                "so this request was not sent to the provider. Send it again once one of them has ended")
@@ -525,11 +532,14 @@ class ProviderRelay(Service):
                 self._count(f"upstream_status:{status}")
                 excerpt = _Excerpt(response)
             entry["ended"] = self._stream(conn, upstream, reader, _Body(response, method), excerpt, deadline)
-            if entry["ended"] in ("upstream_broken", "stream_timeout"):  # the provider may have done the whole call
+            settled = status is not None and status >= 300  # the provider answered no: a cut body changes nothing
+            if entry["ended"] in ("upstream_broken", "stream_timeout") and not settled:  # it may have done the call
                 reason = UPSTREAM_OUTCOME_UNKNOWN if entry["ended"] == "upstream_broken" else STREAM_TIMEOUT_REASON
                 entry.update(outcome="unknown", reason=reason)
                 self._count(reason)
         except _Refused as refused:
+            if refused.reason == STREAM_TIMEOUT_REASON:  # no response head by the bound (_relay_head)
+                entry["ended"] = "stream_timeout"
             if not answered:
                 self._answer(conn, refused, entry)
         except ssl.SSLError as exc:  # the upstream's TLS: in the handshake, or (TLS 1.3) an alert on the first read
@@ -550,8 +560,8 @@ class ProviderRelay(Service):
         except Exception:  # anything else is counted, and answered with a fixed 502 when nothing was relayed yet
             self._count("relay_error")
             if not answered:
-                self._answer(conn, _Refused(502, "relay_error", "the provider relay could not serve this request"),
-                             entry)
+                self._answer(conn, _Refused(502, "relay_error", "the provider relay could not serve this request")
+                             if entry["upstream_headers_written"] is False else self._unknown(), entry)
         finally:
             if admitted:
                 self._leave()
@@ -683,12 +693,13 @@ class ProviderRelay(Service):
     def _send_body(self, conn: socket.socket, upstream: socket.socket, framing: tuple[str, int],
                    early: bytes) -> None:
         """The request body, as its head frames it: ``Content-Length`` bytes, or chunks to the last one and its
-        trailer. What the client sends beyond it is not relayed (one request per connection). A chunked body whose
-        chunks pass :attr:`max_body` is refused at that chunk's size line, which is not sent: the upstream never gets
-        the request whole."""
+        trailer. What the client sends beyond it is not relayed (one request per connection). :attr:`max_body` bounds
+        every byte of a chunked body as it goes upstream: its size lines with any extension, its data, each chunk's
+        CRLF and its trailer section. A chunk that would pass it is refused at its size line, and a trailer line at
+        that line, neither of them sent: the upstream never gets the request whole. A chunk's data not followed by
+        exactly CRLF is refused as malformed."""
         kind, length = framing
         reader = _Reader(conn, early, self.body_timeout)
-        total = 0
         if kind == "length":
             left = length
             while left:
@@ -696,26 +707,39 @@ class ProviderRelay(Service):
                 upstream.sendall(data)
                 left -= len(data)
         elif kind == "chunked":
+            total = 0
+
+            def counted(n: int) -> None:  # before the bytes go: one that would pass the bound is never sent
+                nonlocal total
+                total += n
+                if total > self.max_body:
+                    raise self._too_large()
+
             while True:
                 line = reader.line()
                 size = _chunk_size(line)
                 if size is None:
                     raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed")
-                total += size
-                if total > self.max_body:
-                    raise self._too_large()
+                counted(len(line) + (size + 2 if size else 0))  # the whole chunk, as its size line declares it
                 upstream.sendall(line)
                 if size == 0:
                     while True:  # the trailer section, to its empty line
                         trailer = reader.line()
+                        counted(len(trailer))
                         upstream.sendall(trailer)
                         if trailer == b"\r\n":
                             return
-                left = size + 2  # the chunk and its CRLF
+                left = size
                 while left:
                     data = reader.read(min(left, CHUNK))
                     upstream.sendall(data)
                     left -= len(data)
+                end = reader.read(2)
+                if len(end) < 2:
+                    end += reader.read(1)
+                if end != b"\r\n":
+                    raise _Refused(400, "bad_chunk", "a chunk's data is not followed by CRLF")
+                upstream.sendall(end)
 
     def _relay_head(self, conn: socket.socket, upstream: socket.socket,
                     deadline: float | None = None) -> tuple[_Reader, bytes]:

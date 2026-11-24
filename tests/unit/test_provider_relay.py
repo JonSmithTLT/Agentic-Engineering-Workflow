@@ -1384,6 +1384,7 @@ def test_a_response_that_never_starts_is_answered_504_at_the_time_bound_and_its_
     assert answer.startswith(b"HTTP/1.1 504 ") and b"X-AEW-Refusal: stream_timeout" in answer
     [row] = records
     assert row["outcome"] == "unknown" and row["reason"] == "stream_timeout" and row["upstream_headers_written"]
+    assert row["ended"] == "stream_timeout"
 
 
 def test_a_mid_response_break_records_upstream_outcome_unknown():
@@ -1470,3 +1471,94 @@ def test_the_relays_bounds_are_stated_and_the_run_network_passes_its_policys_sha
         assert [kw["policy_sha256"] for kw in seen] == ["cd" * 32]
     finally:
         net.close()
+
+
+def _chunked_refused(body: bytes, max_body: int) -> tuple[bytes, bytes, list[dict[str, Any]]]:
+    """A chunked request ``body`` through a relay bounded at ``max_body``: what the client got, what the upstream got
+    after the request head, and the records."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, max_body=max_body) as (_, client, _):
+        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
+        answer = read_all(client)
+        upstream = seam.upstream()
+        got = read_all(upstream).partition(b"\r\n\r\n")[2]
+    return answer, got, records
+
+
+def test_a_trailer_section_counts_against_the_body_bound_and_never_goes_upstream_past_it():
+    """Review of #542, B1: the trailer lines after the last chunk are body bytes too."""
+    line = b"X-T: " + b"a" * 600 + b"\r\n"
+    answer, got, records = _chunked_refused(b"0\r\n" + line * 3 + b"\r\n", 1024)
+    assert answer.startswith(b"HTTP/1.1 413 ") and b"X-AEW-Refusal: request_too_large" in answer
+    assert got == b"0\r\n" + line and not got.endswith(b"\r\n\r\n")  # the end of the request never went
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "request_too_large"
+
+
+def test_a_chunk_extension_counts_against_the_body_bound():
+    """Review of #542, B1: a size line's extension is counted as it is sent, so a 1-byte chunk with a long extension
+    is refused at its size line, and nothing of it goes upstream."""
+    answer, got, records = _chunked_refused(b"1;" + b"e" * 2000 + b"\r\nX\r\n0\r\n\r\n", 1024)
+    assert answer.startswith(b"HTTP/1.1 413 ") and got == b""
+    assert records[0]["reason"] == "request_too_large"
+
+
+def test_each_chunks_crlf_counts_against_the_body_bound():
+    """Review of #542, B1: the bound is on the body as it goes upstream, its framing included: 15 bytes of chunked
+    body that carry 5 of data pass a 15-byte bound and not a 14-byte one."""
+    body = b"5\r\nhello\r\n0\r\n\r\n"
+    answer, got, _ = _chunked_refused(body, 14)
+    assert answer.startswith(b"HTTP/1.1 413 ") and got == body[:-2]  # all but the line that ends the request
+    seam = Seam()
+    with relayed(seam, max_body=15) as (_, client, _):
+        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
+        upstream = seam.upstream()
+        _, rest = read_head(upstream)
+        while not rest.endswith(b"0\r\n\r\n"):
+            data = upstream.recv(4096)
+            assert data, rest
+            rest += data
+        upstream.sendall(OK)
+        upstream.close()
+        assert read_all(client).endswith(b"ok")
+    assert rest == body
+
+
+def test_a_chunk_not_followed_by_crlf_is_refused_as_malformed():
+    """Review of #542, B1: a chunk's two bytes after its data are CRLF exactly, never two other bytes passed on."""
+    answer, got, records = _chunked_refused(b"5\r\nhelloXY0\r\n\r\n", 1024)
+    assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: bad_chunk" in answer
+    assert b"XY" not in got and records[0]["outcome"] == "refused"
+
+
+def test_a_failed_answer_whose_body_breaks_stays_forwarded():
+    """Review of #542, m1: a 4xx or 5xx the provider sent has settled the call; a body cut after it changes nothing,
+    so the record keeps outcome ``forwarded`` and says how the stream ended."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\n\r\npartial")
+        upstream.close()
+        read_all(client)
+    [row] = records
+    assert row["outcome"] == "forwarded" and row["reason"] is None and row["status"] == 500
+    assert row["ended"] == "upstream_broken" and "upstream_outcome_unknown" not in service.counts()
+
+
+def test_an_unexpected_error_after_the_request_went_upstream_is_outcome_unknown():
+    """Review of #542, m2: whatever failed, once the request's head went upstream the provider may have it."""
+    seam, records = Seam(), []
+
+    def boom(*_: Any) -> None:
+        raise ValueError("synthetic: an unexpected fault in the body relay")
+
+    with relayed(seam, record=records.append) as (service, client, _):
+        service._send_body = boom  # type: ignore[method-assign]
+        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 502 ") and b"X-AEW-Refusal: upstream_outcome_unknown" in answer
+    [row] = records
+    assert row["outcome"] == "unknown" and row["upstream_headers_written"] is True
+    assert service.counts()["relay_error"] == 1

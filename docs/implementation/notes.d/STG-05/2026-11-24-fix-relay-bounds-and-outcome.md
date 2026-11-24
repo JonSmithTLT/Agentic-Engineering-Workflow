@@ -2,8 +2,10 @@
 and records an honest outcome.** Each bound is an implementation bound stated in `relay.py`, set by the host-side code
 that starts the relay, never by a request or the sandbox:
 - **Request body:** `relay.MAX_BODY` (64 MiB). A `Content-Length` over it is refused 413, `request_too_large`, before
-  the credential is resolved or anything is connected; a chunked body is counted as it comes and refused at the chunk
-  that passes it, whose size line is not sent, so the upstream never gets the request whole.
+  the credential is resolved or anything is connected; a chunked body is counted as it goes upstream, every byte
+  of it (size lines with any extension, data, each chunk's CRLF, which must be exactly CRLF, and the trailer section),
+  and refused at the size line or trailer line that would pass the bound, which is not sent, so the upstream never gets
+  the request whole.
 - **Concurrency:** `relay.MAX_ACTIVE` (32) requests in progress per relay. The next is refused 503, `relay_busy`,
   before its head is read, and nothing is connected.
 - **Stream time:** `relay.STREAM_TIMEOUT` (an hour), from the request's end to the response's end, its head included.
@@ -12,7 +14,8 @@ that starts the relay, never by a request or the sandbox:
 **Outcome.** The relay never retries. A request any byte of which may have gone upstream, whose connection then
 broke, is `upstream_outcome_unknown` (502 when no head had come; entry outcome `unknown`), never
 `upstream_unreachable`, which now says the request was not sent. A stream cut by the time bound is outcome `unknown`
-too, as the provider may have done the call. A body refused as it arrived (too large, stalled, malformed) stays
+too, as the provider may have done the call; a non-2xx answer whose body breaks stays `forwarded` (the provider had
+settled it), as does a stream the relay ends as its run ends or its client goes. A body refused as it arrived (too large, stalled, malformed) stays
 `refused`: the upstream never got it whole. Each entry also records `ended` (`complete`, `client_gone`,
 `upstream_broken`, `stream_timeout`, `relay_closed`), a per-request `request_id`, the `policy_sha256` of the execution
 policy the relay was started from, and, with a client certificate, `client_certificate_sha256` (its leaf's digest as

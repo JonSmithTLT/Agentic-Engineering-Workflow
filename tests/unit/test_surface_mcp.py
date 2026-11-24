@@ -479,3 +479,50 @@ def test_a_malformed_line_never_ends_the_lead_mcp_server():
     assert deep_error["id"] is None and deep_error["error"]["code"] == mcp.PARSE_ERROR
     assert encoding_error["id"] is None and encoding_error["error"]["code"] == mcp.PARSE_ERROR
     assert reply == {"jsonrpc": "2.0", "id": 1, "result": {}}
+
+
+def _deep(depth: int) -> bytes:
+    return b"[" * depth + b"]" * depth + b"\n"
+
+
+def test_a_line_nested_past_the_bound_is_one_parse_error_whatever_the_interpreters_limit(monkeypatch):
+    # json's own refusal comes at a depth that varies with the interpreter (about 1,000 on 3.11, 10,000 on Linux 3.13):
+    # a decoder that would parse every depth stands in for the most permissive one, and no deep line ever reaches it.
+    import io
+
+    decoded: list[str] = []
+    loads = json.loads
+
+    def permissive(line: str, *args: Any, **kwargs: Any) -> Any:
+        decoded.append(line)
+        return loads(line, *args, **kwargs)
+
+    monkeypatch.setattr(mcp.json, "loads", permissive)
+    ping = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+    lines = [_deep(mcp.MAX_DEPTH + 1), _deep(5000), _deep(9000), b'{"a":' * 200 + b"1" + b"}" * 200 + b"\n"]
+    stdout = io.BytesIO()
+
+    assert mcp.Server(Spy()).serve(io.BytesIO(b"".join(lines) + ping), stdout) == 0
+    *errors, reply = [loads(out) for out in stdout.getvalue().splitlines()]
+    assert len(errors) == len(lines)
+    assert all(e["id"] is None and e["error"]["code"] == mcp.PARSE_ERROR for e in errors)
+    assert reply == {"jsonrpc": "2.0", "id": 1, "result": {}}
+    assert ping.decode() in decoded and not any(line.decode() in decoded for line in lines)
+
+
+def test_a_line_nested_at_the_bound_still_parses():
+    at_bound = _deep(mcp.MAX_DEPTH).decode()
+    value = mcp._parse(at_bound)
+    depth = 0
+    while isinstance(value, list):
+        value, depth = value[0] if value else None, depth + 1
+    assert depth == mcp.MAX_DEPTH
+    # As a batch it is answered as one: one array, and no parse error.
+    [replies] = mcp.Server(Spy()).handle_line(at_bound)
+    assert isinstance(replies, list) and replies[0]["error"]["code"] == mcp.INVALID_REQUEST
+
+
+def test_brackets_inside_a_string_never_count_toward_the_bound():
+    text = '[{\\"' * 1000  # escaped quotes too: the string never ends early
+    line = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "ping", "params": {"note": text}})
+    assert mcp.Server(Spy()).handle_line(line) == [{"jsonrpc": "2.0", "id": 3, "result": {}}]

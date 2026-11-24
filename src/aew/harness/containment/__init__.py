@@ -248,31 +248,22 @@ def doctor_checks(policy: dict[str, Any] | None, note_unsupported: str,
 
 
 def trusted_code_doctor(policy: dict[str, Any] | None, project: str | Path) -> tuple[str, str]:
-    """``(status, detail)``: whether AEW's own code lies outside what the project's Lead writes (its working tree, with
-    the interpreter's prefix re-bound read-only, as ``layout.for_run`` builds it) and every writable root the policy
-    adds. Where it does not, every launch whose layout reaches it is refused under ``required`` and runs labelled weaker
-    under ``allow_weaker`` (``layout.trusted_code_exposed``, the launch's own check)."""
-    import os
-    import sys
-
+    """``(status, detail)``: whether AEW's own code lies outside what the project's Lead writes and every writable root
+    the policy adds (``layout.lead_trusted_code_exposed``, from the binds ``layout.for_run`` uses). Where it does not,
+    every launch whose layout reaches it is refused under ``required`` and runs labelled weaker under
+    ``allow_weaker``."""
     from aew.harness.containment import layout as L
 
-    writable = [L._real(project)]
-    for raw in ((policy or {}).get("containment") or {}).get("writable") or []:
-        path = L._real(os.path.expanduser(raw))
-        if os.path.isdir(path):
-            writable.append(path)
-    readonly = [L._real(p) for p in {sys.prefix, sys.base_prefix} if p and os.path.isdir(p)]
-    found = L.trusted_code_exposed(L.bind_order(writable, readonly))
+    found = L.lead_trusted_code_exposed(project, (policy or {}).get("containment"))
     if not found:
         return "PASS", ("AEW's own code lies outside the project and every writable root the policy adds, so no "
                         "contained run can change what its supervisors and relays import")
     first = found[0]
     where = f"{first['what']} ({first['path']}) lies in {first['bind']}, which a contained run writes"
+    remedy = L.trusted_code_remedy(first["what"])
     if mode(policy) == REQUIRED:
-        return "FAIL", (f"{where}: launches whose sandbox writes it are refused (containment.mode: required); "
-                        f"{L.TRUSTED_CODE_REMEDY}")
-    return "WARN", f"{where}: launches whose sandbox writes it run labelled weaker; {L.TRUSTED_CODE_REMEDY}"
+        return "FAIL", f"{where}: launches whose sandbox writes it are refused (containment.mode: required); {remedy}"
+    return "WARN", f"{where}: launches whose sandbox writes it run labelled weaker; {remedy}"
 
 
 def tool_checks(tools: tuple[Any, ...]) -> dict[str, Any] | None:

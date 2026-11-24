@@ -1072,15 +1072,33 @@ def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str
                 reason="store_path_writable")
 
 
-# AEW's own code must lie outside every writable bind (register STG-05; the relay handoff's RLY-05): every supervisor
-# and relay is a host process that imports it afresh, outside any sandbox, so code a contained run could change would
-# run with the operator's authority and the run's credentials at the next launch. The interpreter's prefix is re-bound
-# read-only (``for_run``); an editable install's source tree is not, and may lie in a tree a run writes (AEW worked on
-# with AEW).
+# AEW's own code must lie outside every writable bind (register STG-05; the relay handoff's RLY-05): it is trusted code,
+# since every supervisor and relay is a host process that imports it afresh, outside any sandbox. The interpreter's
+# prefix is re-bound read-only (:func:`interpreter_binds`); the rest of AEW's import path, an editable install's source
+# tree among it, is checked here.
 TRUSTED_CODE_WRITABLE, TRUSTED_CODE_SYMLINK = "trusted_code_writable", "trusted_code_symlink"
-TRUSTED_CODE_REMEDY = ("run AEW from an installation outside every directory a contained run writes: a regular "
-                       "install, or an editable install of a checkout no run writes")
 HELD_TRUSTED = 5  # how many exposed pieces a refusal names: enough to see the shape, bounded
+# What each piece of AEW's code is (:func:`trusted_code`), and what the operator does where a writable bind reaches it
+# (review of #539, m2): each kind is cleared its own way.
+PACKAGE, IMPORT_ROOT, PACKAGE_LINK = ("AEW's own package", "the import path of AEW's supervisors and relays",
+                                      "a link in AEW's package")
+SCRIPT_DIR = "the launching command's own directory, first on AEW's import path"
+FROM_PYTHONPATH, IMPORT_DIR = "a directory PYTHONPATH puts on AEW's import path", "a directory on AEW's import path"
+_REINSTALL = ("run AEW from an installation outside every directory a contained run writes: a regular install, or an "
+              "editable install of a checkout no run writes")
+TRUSTED_CODE_REMEDIES = {
+    PACKAGE: _REINSTALL, IMPORT_ROOT: _REINSTALL, PACKAGE_LINK: _REINSTALL,
+    SCRIPT_DIR: "start AEW with the `aew` command, or with `python -P -m aew`, so the launching directory is not on "
+                "its import path",
+    FROM_PYTHONPATH: "remove that directory from PYTHONPATH in the environment AEW is started from",
+    IMPORT_DIR: "keep that directory outside every directory a contained run writes, or remove the .pth file or site "
+                "setting that puts it on the import path",
+}
+
+
+def trusted_code_remedy(what: str) -> str:
+    """What clears an exposed piece of AEW's code of kind ``what`` (:data:`TRUSTED_CODE_REMEDIES`)."""
+    return TRUSTED_CODE_REMEDIES.get(what, _REINSTALL)
 
 
 def _aew_package() -> str:
@@ -1090,32 +1108,55 @@ def _aew_package() -> str:
     return os.path.dirname(os.path.abspath(aew.__file__))
 
 
+def _console_script_dirs() -> set[str]:
+    """The directory of the running console script, when it is one of AEW's (its installed ``console_scripts`` entry
+    points into ``aew``): its directory is first on the import path, and it is the installation's own."""
+    import importlib.metadata
+
+    script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    stem = os.path.basename(script).removesuffix(".exe").removesuffix("-script.py")
+    ours = {e.name for e in importlib.metadata.entry_points(group="console_scripts")
+            if e.value.split(":")[0].split(".")[0] == "aew"}
+    return {_real(os.path.dirname(script))} if script and stem in ours else set()
+
+
 def trusted_code() -> list[tuple[str, str]]:
-    """(what, path) for AEW's own code, in the spelling this process imports it by: its package; the package's parent,
-    which is the import path of every Python process the engine starts with a credential (``procs.engine_imports``);
-    every symbolic link in the package's tree (an editable install's tree of links, a linked module), whose target is
-    what is imported; and every directory on this process's import path but its first, the script's directory or the
-    working directory, which no process the engine starts has (``-P``, ``procs.ENGINE_PYTHON_FLAGS``) and the ``aew``
-    command holds no working directory in. Read from the filesystem at each launch: never a list of modules to keep in
-    step."""
+    """(what, path) for AEW's own code, in the spelling this process imports it by:
+
+    * its package, and the package's parent, which is the import path of every Python process the engine starts with a
+      credential (``procs.engine_imports``);
+    * every symbolic link in the package's tree (an editable install's tree of links, a linked module), whose target is
+      what is imported;
+    * every directory on this process's import path, named by where it comes from (PYTHONPATH, or a .pth file or the
+      site configuration). That includes the first entry, the script's directory or the working directory under
+      ``python -m``, when ``-P`` did not remove it: the contained Lead's relays run in the launching process
+      (review of #539, m1). The one first entry left out is the directory of AEW's own console script.
+
+    Read from the filesystem at each launch: never a list of modules to keep in step. What it does not cover is listed
+    as the known limits in ADR-0009's amendment of 2026-11-24."""
     package = _aew_package()
-    out = [("AEW's own package", package),
-           ("the import path of AEW's supervisors and relays", os.path.dirname(package))]
+    out = [(PACKAGE, package), (IMPORT_ROOT, os.path.dirname(package))]
     stack = [package]
     while stack:
         try:
             with os.scandir(stack.pop()) as it:
                 for entry in it:
                     if entry.is_symlink():
-                        out.append(("a link in AEW's package", entry.path))
+                        out.append((PACKAGE_LINK, entry.path))
                     elif entry.is_dir(follow_symlinks=False):
                         stack.append(entry.path)
         except OSError:
             continue  # an unreadable directory imports nothing either
-    for entry in sys.path if sys.flags.safe_path else sys.path[1:]:
-        path = os.path.abspath(entry or os.curdir)  # "" is the working directory
+    from_env = {os.path.abspath(p) for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p}
+    entries = list(sys.path)
+    if entries and not sys.flags.safe_path:
+        first = os.path.abspath(entries.pop(0) or os.curdir)  # "" is the working directory
+        if _real(first) not in _console_script_dirs() and os.path.exists(first):
+            out.append((SCRIPT_DIR, first))
+    for entry in entries:
+        path = os.path.abspath(entry or os.curdir)
         if os.path.exists(path):
-            out.append(("a directory on AEW's import path", path))
+            out.append((FROM_PYTHONPATH if path in from_env else IMPORT_DIR, path))
     return list(dict.fromkeys(out))
 
 
@@ -1132,13 +1173,23 @@ def _links_on(path: str) -> list[str]:
         at = parent
 
 
+def _held_read_only(path: str, w: str, after: set[str]) -> bool:
+    """CB-07's rule for ``path`` under the writable bind ``w``: the first directory below ``w`` on its path is re-bound
+    read-only after ``w`` (``after``), so nothing on the path from there down can be renamed, replaced or removed."""
+    if path == w:
+        return False
+    return os.path.join(w, os.path.relpath(path, w).split(os.sep)[0]) in after
+
+
 def trusted_code_exposed(steps: list[tuple[str, str]],
                          trusted: list[tuple[str, str]] | None = None) -> list[dict[str, str]]:
     """Every piece of ``trusted`` code (default :func:`trusted_code`) that a writable bind in ``steps``
     (:func:`bind_order`'s) could change, with the bind and the reason. As for the store (``_refuse_store_binds``), a
     path under a writable bind ``W`` is safe only when the first directory below ``W`` on its path is re-bound read-only
     after ``W`` (the prefix of a virtual environment in the project, for one), and the path is checked as it is spelled
-    and where it leads: a symbolic link on the spelling inside ``W`` could be replaced, which no re-bind prevents."""
+    and where it leads. A symbolic link on the spelling inside ``W`` is safe on the same rule only when it lies strictly
+    below that re-bound directory (a virtual environment's ``lib64`` link: review of #539, M1); the re-bound directory
+    itself, or a link above it, could be replaced."""
     trusted = trusted_code() if trusted is None else trusted
     found: list[dict[str, str]] = []
     for i, (flag, w) in enumerate(steps):
@@ -1146,37 +1197,58 @@ def trusted_code_exposed(steps: list[tuple[str, str]],
             continue
         after = {p for f, p in steps[i + 1:] if f == "--ro-bind"}
         for what, walked in trusted:
-            link = next((p for p in _links_on(walked) if _within(p, w)), None)
+            link = next((p for p in _links_on(walked) if _within(p, w) and not (
+                _held_read_only(p, w, after) and p not in after)), None)
             if link is not None:
                 found.append({"what": what, "path": walked, "bind": w, "symlink": link,
                               "reason": TRUSTED_CODE_SYMLINK})
                 continue
             for spelled in dict.fromkeys((walked, _real(walked))):
-                if not _within(spelled, w):
-                    continue
-                below = os.path.join(w, os.path.relpath(spelled, w).split(os.sep)[0]) if spelled != w else w
-                if below == w or below not in after:
-                    found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
-                break
+                if _within(spelled, w):
+                    if not _held_read_only(spelled, w, after):
+                        found.append({"what": what, "path": spelled, "bind": w, "reason": TRUSTED_CODE_WRITABLE})
+                    break
     return found
 
 
 def _refuse_trusted_code(role: str, steps: list[tuple[str, str]]) -> None:
-    """A layout that could change AEW's own code (:func:`trusted_code_exposed`) is refused, naming the first piece and
-    the bind: under ``required`` the launch is refused, and under ``allow_weaker`` it runs labelled weaker
-    (``containment.establish``) and enters the register of weaker contexts like every other."""
+    """A layout that could change AEW's own code (:func:`trusted_code_exposed`) is refused, naming the first piece, the
+    bind and what clears it: under ``required`` the launch is refused, and under ``allow_weaker`` it runs labelled
+    weaker (``containment.establish``) and enters the register of weaker contexts like every other."""
     found = trusted_code_exposed(steps)
     if not found:
         return
     first = found[0]
-    how = (f"through {first['symlink']}, a symbolic link a contained process could replace"
-           if first["reason"] == TRUSTED_CODE_SYMLINK else "so a contained process could change it")
+    how = (f"through {first['symlink']}, a symbolic link inside it that is not re-bound read-only"
+           if first["reason"] == TRUSTED_CODE_SYMLINK else "and it is not re-bound read-only")
     raise ContainmentUnavailable(
         f"AEW's own code must lie outside every writable bind: the {role} layout's writable bind {first['bind']} "
-        f"reaches {first['what']} ({first['path']}) {how}, and AEW's next supervisor or relay would import it; the "
-        f"launch is refused. To launch, {TRUSTED_CODE_REMEDY}", role=role, bind=first["bind"], path=first["path"],
-        exposes=[{k: v for k, v in f.items() if k != "reason"} for f in found[:HELD_TRUSTED]],
+        f"reaches {first['what']} ({first['path']}) {how}, and AEW's supervisors and relays import it; the launch is "
+        f"refused. To launch, {trusted_code_remedy(first['what'])}", role=role, bind=first["bind"],
+        path=first["path"], exposes=[{k: v for k, v in f.items() if k != "reason"} for f in found[:HELD_TRUSTED]],
         reason=first["reason"])
+
+
+def interpreter_binds() -> list[str]:
+    """The interpreter's prefixes behind ``aew``, wherever they live: re-bound read-only in every layout
+    (:func:`for_run`), which is what keeps a virtual environment in a writable tree out of reach."""
+    return list(dict.fromkeys(_real(p) for p in (sys.prefix, sys.base_prefix) if p and os.path.isdir(p)))
+
+
+def operator_roots(cfg: Mapping[str, Any] | None) -> list[tuple[str, str]]:
+    """``(as written, real path)`` for each writable root the policy's ``containment.writable`` adds; :func:`for_run`
+    refuses one that is not an existing directory."""
+    return [(raw, _real(os.path.expanduser(raw))) for raw in (cfg or {}).get("writable") or []]
+
+
+def lead_trusted_code_exposed(project: str | os.PathLike[str],
+                              cfg: Mapping[str, Any] | None) -> list[dict[str, str]]:
+    """:func:`trusted_code_exposed` for what decides it in the Lead's layout of ``project`` (``aew opencode``'s, whose
+    workspace is the project: ``opencode.lead.establish_layout``), without building it: the project and the policy's
+    writable roots, with the interpreter's prefixes re-bound read-only as :func:`for_run` re-binds them. For
+    ``aew doctor``, which writes nothing into the project."""
+    writable = [_real(project), *(p for _, p in operator_roots(cfg) if os.path.isdir(p))]
+    return trusted_code_exposed(bind_order(writable, interpreter_binds()))
 
 
 def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> None:
@@ -1315,8 +1387,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     needed += [(w, p) for w, p in _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(), host=(),
                                            net_dir=net_dir) if w != _SHARED_TMP]
     roots = []
-    for raw in cfg.get("writable") or []:
-        path = _real(os.path.expanduser(raw))
+    for raw, path in operator_roots(cfg):
         if not os.path.isdir(path):
             raise ContainmentUnavailable(f"policy containment.writable path {raw!r} is not an existing directory")
         roots.append((raw, path))
@@ -1349,9 +1420,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         protected.append(aew_dir)
     if bridge_dir:
         readonly.append(_real(bridge_dir))
-    for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
-        if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
-            readonly.append(_real(prefix))
+    readonly += [p for p in interpreter_binds() if p not in readonly]  # the interpreter behind `aew`
     # AEW's own package and its import path: unwritable wherever they live, and the self-test checks it (the layout is
     # refused below where a writable bind reaches them)
     package = _aew_package()

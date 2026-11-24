@@ -39,6 +39,7 @@ def rows_named(texts: dict, name: str):
 
 
 ELISION = re.compile(r"Use -v+ to (?:get more diff|show)|Omitting \d+ identical items|Skipping \d+ identical leading")
+FAILURE_PHASES = ("collect", "setup", "call", "teardown")
 
 
 def failure_problems(path: Path, report: dict) -> list[str]:
@@ -66,6 +67,8 @@ def failure_problems(path: Path, report: dict) -> list[str]:
                 continue
             phase = failure.get("phase") or "unknown phase"
             detail = f"{node} ({phase})"
+            if phase not in FAILURE_PHASES:
+                defect("failure-report", f"{detail}: missing or unrecognized failure phase")
             text = failure.get("longrepr") or ""
             crash = failure.get("crash") or ""
             location = failure.get("overflow")

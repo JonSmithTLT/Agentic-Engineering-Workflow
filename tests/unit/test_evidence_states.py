@@ -605,6 +605,7 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
             handlers[signal.SIGTERM](signal.SIGTERM, None)
 
     monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=poll))
+
     def read_phases(_root, _at):
         assert signals == [signal.SIGTERM]
         return []

@@ -494,12 +494,14 @@ class RunNetwork:
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
               allow: egress.Allowlist | None = None, stored: login.WorkerKey | None = None,
               plan: tuple[login.StoredLogin, login.Login] | None = None,
-              record: Callable[[dict[str, Any]], None] | None = None) -> RunNetwork:
+              record: Callable[[dict[str, Any]], None] | None = None,
+              policy_sha256: str | None = None) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
         ``relay_needed``) and the egress proxy with ``allow``, the run's allowlist (``egress_policy``), when there is
         one. The caller builds that allowlist once and gives the same one to the run's self-test, so the self-test
         checks the proxy the run gets (register E143). Raises ``ContainmentUnavailable`` when the relay has no
-        upstream, or a socket cannot be made. ``record`` takes each relayed request's entry (``relay.RequestLog``)."""
+        upstream, or a socket cannot be made. ``record`` takes each relayed request's entry (``relay.RequestLog``),
+        which names ``policy_sha256``, the sha256 of the execution policy file ``policy`` was read from."""
         names = [str(n) for n in provider_env]
         secret = [n for n in names if n.upper() not in PROXY_NAMES]
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
@@ -530,7 +532,7 @@ class RunNetwork:
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record,
                     route=resolver.integration, login="oauth", issued=(token,), sources={token: "saved_oauth"},
                     login_headers=tuple(login.LOGIN_HEADERS.get(resolver.integration, {})),
-                    operations=allowed).start()
+                    operations=allowed, policy_sha256=policy_sha256).start()
             elif relay_needed:
                 target = upstream(provider, policy)
                 allowed = relay_operations(provider, policy)
@@ -550,7 +552,8 @@ class RunNetwork:
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record, route=provider,
                     login="key" if keyed else "none",
                     sources={sentinels[n]: "saved_key" if n == net.stored_key_variable else export_source(n)
-                             for n in relayed_names if values[n]}, operations=allowed).start()
+                             for n in relayed_names if values[n]}, operations=allowed,
+                    policy_sha256=policy_sha256).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
                 if net.key_relayed:
                     net.key_source = "stored OpenCode login" if net.stored_key_variable else "environment"
@@ -569,7 +572,8 @@ class RunNetwork:
     def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
                    policy: Mapping[str, Any] | None, env: Mapping[str, str],
                    refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None,
-                   keyless: Iterable[str] = (), record: Callable[[dict[str, Any]], None] | None = None) -> RunNetwork:
+                   keyless: Iterable[str] = (), record: Callable[[dict[str, Any]], None] | None = None,
+                   policy_sha256: str | None = None) -> RunNetwork:
         """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
         ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
         own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
@@ -580,8 +584,8 @@ class RunNetwork:
         2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
         the relays' own route to their upstreams, as a worker's are. ``keyless`` names providers of their own id whose
         relay presents a client certificate and carries no key (register E123): their upstream is the policy's
-        ``containment.network.upstreams``. ``record`` takes each relayed request's entry, as :meth:`start`'s does.
-        Raises ``ContainmentUnavailable`` as :meth:`start` does."""
+        ``containment.network.upstreams``. ``record`` takes each relayed request's entry, with ``policy_sha256`` in
+        it, as :meth:`start`'s does. Raises ``ContainmentUnavailable`` as :meth:`start` does."""
         names = [str(n) for n in provider_env]
         net = cls(layout)
         net.lead, net.http_proxy = True, True
@@ -603,7 +607,8 @@ class RunNetwork:
                 listener = listen(os.path.join(layout.net_dir, _relay_sock(provider)))
                 if resolve is None and provider not in keys:  # a client certificate alone: nothing to swap in
                     served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
-                                                 record=record, route=provider, login="none", operations=allowed)
+                                                 record=record, route=provider, login="none", operations=allowed,
+                                                 policy_sha256=policy_sha256)
                 elif resolve is None:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
@@ -611,7 +616,7 @@ class RunNetwork:
                                                  tls=tls, client=client, record=record, route=provider, login="key",
                                                  sources={token: export_source(PROVIDER_KEY_ENV[provider])
                                                           if PROVIDER_KEY_ENV[provider] in names else "saved_key"},
-                                                 operations=allowed)
+                                                 operations=allowed, policy_sha256=policy_sha256)
                 else:
                     net.login_sentinels[provider] = token
                     try:  # what the login holds now, for the leak check; one already expired has nothing to leak
@@ -623,7 +628,7 @@ class RunNetwork:
                                                  route=provider, login="oauth", issued=(token,),
                                                  sources={token: "saved_oauth"},
                                                  login_headers=tuple(login.LOGIN_HEADERS.get(provider, {})),
-                                                 operations=allowed)
+                                                 operations=allowed, policy_sha256=policy_sha256)
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
                                             listener=listen(os.path.join(layout.net_dir, EGRESS))).start()

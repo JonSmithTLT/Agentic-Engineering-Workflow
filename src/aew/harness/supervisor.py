@@ -96,11 +96,13 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
                    bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
                    marker: Path | None = None, skills_dir: str | None = None,
                    key_admission: dict[str, Any] | None = None,
-                   execution_profile: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
+                   execution_profile: dict[str, Any] | None = None,
+                   policy_sha256: str | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
     """A harness launch's containment: the provider key's check, the sandbox, self-tested, its label, the entry in the
     register of weaker contexts when the label is weaker, and the network of its own (the provider relay when the
     harness calls a provider, and the egress proxy when its allowlist names something). Returns ``(layout, label,
-    network, weaker entry)``; ``marker`` is the file the register entry names (default: the run's record). The caller
+    network, weaker entry)``; ``marker`` is the file the register entry names (default: the run's record);
+    ``policy_sha256`` is the sha256 of ``policy``'s file, for each relayed request's record. The caller
     owns the network (closed with its process tree) and the entry. One owner for a run's supervisor and ``aew
     doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
     Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
@@ -171,7 +173,7 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         if layout is not None and layout.private_network:
             network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
                                               env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow,
-                                              stored=stored, plan=plan,
+                                              stored=stored, plan=plan, policy_sha256=policy_sha256,
                                               record=relay.RequestLog(run_dir / runlog.RELAY_REQUESTS))
             label["network"].update(network.describe())
             if changed:
@@ -509,7 +511,7 @@ class Supervisor:
         outside it (F28, STG-05 CS-3b): :func:`contain_launch`, which ``aew doctor``'s read of the harness's model list
         shares. Under the default policy a sandbox or a network that cannot be established refuses the launch; the
         label records what the run has."""
-        policy, _ = self.engine.execution_policy()
+        policy, policy_sha256 = self.engine.execution_policy()
         assert self.bridge is not None
         pin = self.record.get("execution_profile") or {}
         try:
@@ -519,7 +521,7 @@ class Supervisor:
                 scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
                 bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
                  aew_root=self.engine.aew_root, kind="worker_run", key_admission=key_admission,
-                execution_profile=pin,
+                execution_profile=pin, policy_sha256=policy_sha256,
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             self.layout = None

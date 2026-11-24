@@ -104,3 +104,17 @@ def test_partial_launch_preserves_older_request_and_scopes_a_refused_grant(tmp_p
     text = credential_report.render(report)
     assert "Partial history" in text and "Configuration unavailable (VALIDATION_FAILED)" in text
     assert "relay refusal credential_unavailable (401)" in text and "upstream HTTP 401" in text
+
+
+def test_a_request_sent_with_no_header_swap_whose_outcome_is_unknown_is_still_named_no_header_swap(tmp_path):
+    """Review of #542, m4: an unknown outcome went upstream as a forwarded one did, so its source is the same."""
+    directory = runlog.run_dir(tmp_path, "R-INV-0001-1")
+    directory.mkdir(parents=True)
+    relay.RequestLog(directory / runlog.RELAY_REQUESTS)({
+        "at": "2026-01-01T00:00:00Z", "route": "example", "destination": "api.example:443", "login": "none",
+        "swap": "none", "swapped_sources": [], "configured_sources": [], "upstream_headers_written": True,
+        "outcome": "unknown", "reason": relay.UPSTREAM_OUTCOME_UNKNOWN, "status": None, "transport": "tls_verified"})
+    [view] = credential_report.summary(tmp_path, None)["credentials"]
+    assert view["source"] == "no_header_swap"
+    [failure] = view["recent_failures"]
+    assert failure["outcome"] == "unknown"

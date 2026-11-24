@@ -50,7 +50,7 @@ def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any], dict[str, A
     login, swap, outcome = row.get("login"), row.get("swap"), row.get("outcome")
     if login not in ("key", "oauth", "none") or swap not in relay.SWAP_OUTCOMES:
         return None
-    if outcome not in ("refused", "forwarded", None):
+    if outcome not in (*relay.OUTCOMES, None):
         return None
     reason = row.get("reason")
     reason = reason if isinstance(reason, str) and re.fullmatch(r"[a-z_]{1,64}", reason) else None
@@ -58,14 +58,15 @@ def _observation(raw: bytes, run: str) -> tuple[str, dict[str, Any], dict[str, A
     return route, {"at": at, "run": run, "role": "lead" if run.startswith("lead-") else "worker",
                    "login": login, "swap": swap, "outcome": outcome or "unknown",
                    "operation": operation if operation in ("model", "models_list") else "unknown",
-                   "status": _code(row.get("status")) if outcome == "forwarded" else None,
-                   "answered": _code(row.get("answered")), "reason": reason if outcome == "refused" else None}, row
+                   "status": _code(row.get("status")) if outcome in ("forwarded", "unknown") else None,
+                   "answered": _code(row.get("answered")),
+                   "reason": reason if outcome in ("refused", "unknown") else None}, row
 
 
 def _count(row: dict[str, Any]) -> str:
     if row["outcome"] == "refused":
         return "refused"
-    if row["status"] is None:
+    if row["status"] is None or row["outcome"] == "unknown":  # the provider may have done it, whatever its status
         return "unknown"
     return "upstream_2xx" if 200 <= row["status"] < 300 else "upstream_non_2xx"
 
@@ -138,6 +139,8 @@ def _result(row: dict[str, Any]) -> str:
     if row["outcome"] == "refused":
         code = f" HTTP {row['answered']}" if row["answered"] is not None else ""
         result = f"relay refused{code} ({row['reason'] or 'unknown reason'})"
+    elif row["outcome"] == "unknown":  # the request may have reached the provider: never "not sent"
+        result = f"outcome unknown ({row['reason'] or 'unknown reason'})"
     elif row["status"] is not None:
         result = f"upstream HTTP {row['status']}"
     else:

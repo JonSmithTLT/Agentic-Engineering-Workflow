@@ -14,6 +14,9 @@ from pathlib import PurePosixPath
 import tier
 import yaml
 
+# Never open a console window on Windows (the repository rule); 0 elsewhere, as tools/ci/tier.py does.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 WINDOWS_LINE = re.compile(r"sys\.platform|os\.name|win32|\bnt\b|msvcrt|ctypes|creationflags|os\.replace|lock|"
                          r"PermissionError|WinError", re.IGNORECASE)
 SCOPED_DIRS = ("tests/integration/", "tests/regression/")
@@ -118,7 +121,7 @@ def select_change(base: Mapping[str, str], head: Mapping[str, str], changes: Map
 def from_merge(merge: str, *, omit: bool = False) -> set[str]:
     """Read exact Git objects so removed imports and files participate in the same decision as additions."""
     def git(*args: str) -> bytes:
-        return subprocess.check_output(["git", "--literal-pathspecs", *args])
+        return subprocess.check_output(["git", "--literal-pathspecs", *args], creationflags=_NO_WINDOW)
 
     parents = git("rev-list", "--parents", "-n", "1", merge).decode().split()
     if len(parents) != 3:
@@ -151,7 +154,8 @@ def from_merge(merge: str, *, omit: bool = False) -> set[str]:
                 if kind != b"blob" or mode not in {b"100644", b"100755"}:
                     raise ValueError("unresolved Python source")
                 files[path.decode()] = oid
-        data = subprocess.check_output(["git", "cat-file", "--batch"], input=b"\n".join(files.values()) + b"\n")
+        data = subprocess.check_output(["git", "cat-file", "--batch"], input=b"\n".join(files.values()) + b"\n",
+                                       creationflags=_NO_WINDOW)
         stream = io.BytesIO(data)
         result = {}
         for path, oid in files.items():

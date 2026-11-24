@@ -21,7 +21,15 @@ from typing import Any
 
 import pytest
 
-from aew.util import atomic_write
+
+def _atomic_write(path: Path, data: str | bytes) -> None:
+    """``aew.util.atomic_write``, imported when a report is written, not when this module loads: the nightly's planning
+    jobs (``tools/ci/shard_plan.py --reference``, the flake queue) import this module with PyYAML and pytest alone, and
+    AEW is not installed there (nightly runs 2026-11-23, ``ModuleNotFoundError: No module named 'aew'``)."""
+    from aew.util import atomic_write
+
+    atomic_write(path, data)
+
 
 LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical", "discovery")
 LIVE_DIR = "tests/live/"
@@ -344,7 +352,7 @@ class LanePlugin:
             overflow = Path("failures", f"{digest}.txt")
             target = Path(self.report_path).parent / overflow
             target.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(target, raw)
+            _atomic_write(target, raw)
             cut = "\n[full failure in " + overflow.as_posix() + "]\n"
             half = (CHEAP_FILE - len(cut)) // 2
             failure.update(longrepr=raw[:half].decode("utf-8", "ignore") + cut + raw[-half:].decode("utf-8", "ignore"),
@@ -434,7 +442,7 @@ class LanePlugin:
         }
         path = Path(self.report_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(path, json.dumps(report, indent=1) + "\n")
+        _atomic_write(path, json.dumps(report, indent=1) + "\n")
 
 
 @pytest.fixture(autouse=True)

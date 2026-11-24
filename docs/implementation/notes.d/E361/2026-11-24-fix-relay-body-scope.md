@@ -3,9 +3,11 @@ allowed operations, as it holds the path.** For a model call (`relay.DEFAULT_OPE
 the body whole before anything is connected and:
 - **refuses a field outside the policy:** a body that uses one of `relay.BODY_FIELDS` (fields that name an object
   stored with the provider, or a server of its own), or declares a tool other than a function the client runs
-  (`tools.<type>`), is refused 403, `body_field_not_permitted`, naming each field in the answer and in the record's
-  `body_fields`, recorded `refused`, with nothing connected. A key is matched as an upstream might read it: without
-  its case, `_` or `-`. A tool call's own arguments and a function's parameters are never read for one;
+  (`tools.<type>`; every key an upstream might read as a tool's type counts), is refused 403,
+  `body_field_not_permitted`, naming each field in the answer and in the record's `body_fields`, recorded `refused`,
+  with nothing connected. A key is matched as an upstream might read it: without
+  its case, `_` or `-`. A tool call's own arguments and a function's parameters are never read for one. A model call
+  is recognized as one whatever `relay_operations` lists, and an entry there naming one refuses the start;
 - **opts a field in only from the adopted policy:** `containment.network.relay_body_fields.<provider>` (each entry
   one of `relay.BODY_FIELDS` or `tools.<type>`), read on the host at the relay's start, as `relay_operations` is; per
   provider, for its API-key and stored-login relays alike. An entry the relay does not know refuses the start
@@ -16,11 +18,14 @@ the body whole before anything is connected and:
 - **sends it framed by its length:** the body as read, with `Content-Length`; a chunked model call is not passed on
   chunked. Any other operation's body (a policy-listed one's) is streamed as before.
 
-**Memory.** Reading a body whole could cost `MAX_BODY` times `MAX_ACTIVE` (64 MiB x 32 = 2 GiB) per relay. Only model
-calls are read whole, and a relay holds at most `relay.MAX_HELD` (128 MiB) of their bodies at once: reserved by a
-`Content-Length` before the body is read, and by a chunked body chunk by chunk; one that would pass it is refused 503,
-`relay_busy`, with nothing connected, and what a request held is released at its end. Parsing adds about twice the
-body for as long as it is checked, released before it is sent.
+**Memory.** Reading a body whole could cost `MAX_BODY` times `MAX_ACTIVE` (64 MiB x 32 = 2 GiB) per relay, and parsing
+it many times its size for many small values (#551's review, m3). Only model calls are read whole, and a relay holds
+at most `relay.MAX_HELD` (256 MiB) for them at once: each body from its first byte until it has gone upstream (by its
+`Content-Length` before it is read and before a `100 Continue`, a chunked body chunk by chunk), and, while it is
+checked, an upper estimate of its parse (`relay._parse_cost`: its text and its strings at the width Python stores
+them, and `relay.PARSE_VALUE_BYTES` for each value, measured with tracemalloc). One that would pass the bound beside
+the others is refused 503, `relay_busy`, and one that would pass it alone 413, `request_too_large`, with nothing
+connected. One body at `MAX_BODY` whose bulk is its strings fits.
 
 **Client reset (#542's quick check, m6).** A client that resets its connection before its request is whole, in its
 head or its body, is recorded `refused` (`incomplete`) as a close is, never `unknown`.

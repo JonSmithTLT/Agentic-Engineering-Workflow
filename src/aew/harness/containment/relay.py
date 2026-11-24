@@ -44,11 +44,12 @@ implementation bound below, set by the host-side code that starts the relay and 
 body over :data:`MAX_BODY` is refused 413 (:data:`REQUEST_TOO_LARGE`): before anything is connected when its
 ``Content-Length`` says so, and, for a chunked body, whose every byte is counted as it goes (its framing and trailer
 included), at the chunk or trailer line that would pass the bound, so the upstream never gets the request whole. A
-model call's body, read whole for its scope, is held within :data:`MAX_HELD` across the relay: one that would pass it
-is refused 503 (:data:`RELAY_BUSY`), and nothing is connected. A request that finds :data:`MAX_ACTIVE` others in
-progress on the relay is refused 503 (:data:`RELAY_BUSY`) before its head is read, and nothing is connected. A
-response that has not ended :data:`STREAM_TIMEOUT` after the request was sent is ended (:data:`STREAM_TIMEOUT_REASON`),
-answered 504 if its head had not come.
+model call's body, read whole for its scope, is held within :data:`MAX_HELD` across the relay, with an estimate of
+its parse while it is checked, until it has gone upstream: one that would pass it beside the others is refused 503
+(:data:`RELAY_BUSY`), one that would pass it alone 413 (:data:`REQUEST_TOO_LARGE`), and nothing is connected. A
+request that finds :data:`MAX_ACTIVE` others in progress on the relay is refused 503 (:data:`RELAY_BUSY`) before its
+head is read, and nothing is connected. A response that has not ended :data:`STREAM_TIMEOUT` after the request was sent
+is ended (:data:`STREAM_TIMEOUT_REASON`), answered 504 if its head had not come.
 
 **Outcome:** the relay never retries. Once any byte of a request may have gone upstream, a broken connection is
 :data:`UPSTREAM_OUTCOME_UNKNOWN` (outcome ``unknown``: the provider may have accepted it), never
@@ -111,11 +112,18 @@ BODY_TIMEOUT = 60.0     # a pause inside the request body
 # Implementation bound: a request's body. Above the largest request a provider documents taking (Anthropic's Messages
 # API: 32 MB; OpenAI's image inputs: 50 MB in all), so no model call OpenCode makes reaches it.
 MAX_BODY = 64 * 1024 * 1024
-# Implementation bound: the model-call bodies one relay holds at once, read whole for their scope before anything is
-# sent (register E361). Without it the worst case would be MAX_BODY times MAX_ACTIVE (2 GiB); with it, two bodies at
-# MAX_BODY, or many of the sizes model calls take (a turn's context is a few MiB at most), fit. Parsing one costs about
-# twice its size again while it is checked (its text, then its JSON), and that is released before it is sent.
-MAX_HELD = 128 * 1024 * 1024
+# Implementation bound: what one relay holds at once for the model-call bodies it reads whole for their scope before
+# anything is sent (register E361): each body, from its first byte until it has gone upstream, and the estimated cost of
+# parsing it (:func:`_parse_cost`) while it is checked. Without it the worst case would be MAX_BODY times MAX_ACTIVE
+# (2 GiB) of bodies, and their parse many times that; with it, one body at MAX_BODY whose bulk is its strings (images,
+# documents) fits, and so do many of the sizes model calls take (a turn's context is a few MiB at most).
+MAX_HELD = 256 * 1024 * 1024
+# Implementation bound: what parsing one JSON value of a body costs at most, beyond its text and its strings' text
+# (:func:`_parse_cost`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3): 28-62 bytes per
+# value across arrays of empty objects, empty arrays, small objects, numbers, keys and strings; 96 leaves a margin.
+PARSE_VALUE_BYTES = 96
+# What any parse holds besides (its objects' headers, the parser's state): 1-2 KiB measured alike; 16 KiB margin.
+PARSE_BASE_BYTES = 16 * 1024
 # Implementation bound: the requests one relay serves at once (one thread each). OpenCode runs a session's subagents in
 # parallel, each with one model call open at a time, besides a title request: 32 is far above what a session holds
 # open (not measured), and bounds the threads and sockets a sandbox can make its relay hold.
@@ -323,24 +331,30 @@ def listed_operations(entries: Collection[str], *, resolved: bool = False) -> fr
                                    "(its paths hold no ':'), and the entry applies to that relay too: take it out, "
                                    "or use the API-key route for this provider", entry=str(entry),
                                    reason="bad_relay_operation")
+        if _operation(found[1], found[2], "") in DEFAULT_OPERATIONS:
+            raise ValidationFailed(f"relay operation {entry!r} is a model call or the model list, which every relay "
+                                   "forwards already, a model call's body held to its scope: take it out (to allow a "
+                                   "field of a model call's body, name it in containment.network.relay_body_fields)",
+                                   entry=str(entry), reason="bad_relay_operation")
         out.add((found[1], found[2]))
     return frozenset(out)
 
 
 def _operation(method: str, target: str, base: str, listed: Collection[tuple[str, str]] = ()) -> str:
     """Recognize API operations relative to the exact configured base, without retaining the path or query: a model
-    call, the model list, one the policy lists (:data:`POLICY_OPERATION`), else ``unknown``."""
+    call, the model list, one the policy lists (:data:`POLICY_OPERATION`), else ``unknown``. A model call is one
+    whatever the policy lists, so its body is held to its scope (#551's review, m6)."""
     path = target.partition("?")[0]
     if not path.startswith(base + "/"):
         return "unknown"
     endpoint = path[len(base):]
-    if (method, endpoint) in listed:
-        return POLICY_OPERATION
     if method == "GET" and endpoint == "/models":
         return "models_list"
     if method == "POST" and (endpoint in ("/responses", "/chat/completions", "/completions", "/messages")
                              or re.fullmatch(r"/models/[^/:]+:(?:generateContent|streamGenerateContent)", endpoint)):
         return "model"
+    if (method, endpoint) in listed:
+        return POLICY_OPERATION
     return "unknown"
 
 
@@ -377,8 +391,8 @@ _ROUTES: dict[str, tuple[dict[str, str], tuple[str, ...], frozenset[str], dict[s
              {"fileid": "file_id"}),
     "messages": ({"mcpservers": "mcp_servers", "container": "container"}, ("messages", "system"),
                  frozenset({"content", "source"}), {"fileid": "file_id"}),
-    "gemini": ({"cachedcontent": "cached_content"}, ("contents", "systeminstruction"), frozenset({"parts"}),
-               {"filedata": "file_data"}),
+    "gemini": ({"cachedcontent": "cached_content"}, ("contents", "systeminstruction"),
+               frozenset({"parts", "functionresponse"}), {"filedata": "file_data"}),
 }
 
 
@@ -395,29 +409,35 @@ def _route(endpoint: str) -> str | None:
 
 def _tool_label(route: str, tool: Any) -> list[str]:
     """The labels of a tool the client does not run itself: none for a function (OpenAI's ``function`` or ``custom``,
-    Anthropic's untyped or ``custom``, Google's ``functionDeclarations``). Raises ``ValueError`` on a tool that is not
-    an object."""
+    Anthropic's untyped or ``custom``, Google's ``functionDeclarations``). Every key an upstream might read as the
+    tool's type counts, so a tool is a function only when each says so (#551's review, m2). Raises ``ValueError`` on a
+    tool that is not an object."""
     if not isinstance(tool, dict):
         raise ValueError("a tool is not an object")
     if route == "gemini":
         return [_label(k) for k in tool if _key(k) != "functiondeclarations"]
-    kind = next((v for k, v in tool.items() if _key(k) == "type"), None)
-    if (route == "messages" and kind is None) or kind in ("function", "custom"):
-        return []
-    return [_label(kind) if isinstance(kind, str) else "tools.untyped"]
+    kinds = [v for k, v in tool.items() if _key(k) == "type"]
+    if not kinds:
+        return [] if route == "messages" else ["tools.untyped"]
+    return [_label(kind) if isinstance(kind, str) else "tools.untyped" for kind in kinds
+            if kind not in ("function", "custom")]
 
 
 def _walk(node: Any, descend: frozenset[str], named: Mapping[str, str], found: set[str]) -> None:
-    if isinstance(node, list):
-        for item in node:
-            _walk(item, descend, named, found)
-    elif isinstance(node, dict):
-        for name, value in node.items():
-            key = _key(name)
-            if key in named:
-                found.add(named[key])
-            if key in descend:
-                _walk(value, descend, named, found)
+    """Add to ``found`` the label of each key of ``named`` in ``node``, through lists and the keys of ``descend``.
+    Iterative: a body nested as deep as the parser takes is walked whole (#551's review, m4)."""
+    stack = [node]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(item)
+        elif isinstance(item, dict):
+            for name, value in item.items():
+                key = _key(name)
+                if key in named:
+                    found.add(named[key])
+                if key in descend:
+                    stack.append(value)
 
 
 def body_fields(endpoint: str, document: Mapping[str, Any]) -> set[str]:
@@ -464,6 +484,25 @@ def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _constant(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
+
+
+# A JSON string, to count a body's values without what its strings hold (a string's own ``,`` or ``{``)
+_JSON_STRING = re.compile(rb'"[^"\\]*(?:\\.[^"\\]*)*"')
+
+
+def _parse_cost(body: bytes | bytearray) -> int:
+    """An upper estimate of what parsing ``body`` holds (#551's review, m3): its text, at the width Python stores it
+    at (one byte a character, two from U+0100, four from U+10000), its strings' text again at the width they may take
+    (a ``\\u`` escape may widen one), :data:`PARSE_VALUE_BYTES` for each value, counted from its ``[``, ``{``, ``,``
+    and ``:`` outside strings, and :data:`PARSE_BASE_BYTES`. Counting makes a copy of the body without its strings'
+    contents, at most its size."""
+    size = len(body)
+    text = 4 if re.search(rb"[\xf0-\xf4]", body) else 2 if re.search(rb"[\xc4-\xef]", body) else 1
+    strings = 4 if text == 4 or re.search(rb"\\u[dD][89abAB]", body) else \
+        2 if text == 2 or re.search(rb"\\u(?!00)", body) else 1
+    bare = _JSON_STRING.sub(b'""', body)
+    values = sum(bare.count(c) for c in (b"[", b"{", b",", b":")) + 1
+    return size * (text + strings) + values * PARSE_VALUE_BYTES + PARSE_BASE_BYTES
 
 
 def _document(body: bytes | bytearray) -> dict[str, Any]:
@@ -634,18 +673,27 @@ class ProviderRelay(Service):
                        "sent to the provider. If the run needs it, the operator names it there as METHOD /path (the "
                        "path under the provider's upstream), adopts the policy and starts the run again")
 
-    def _check_body(self, endpoint: str, body: bytearray, entry: dict[str, Any]) -> None:
+    def _check_body(self, endpoint: str, body: bytearray, entry: dict[str, Any], reserve: Callable[[int], None],
+                    release: Callable[[int], None]) -> None:
         """Refuse a model call's body the relay cannot hold to its scope (:data:`BODY_UNREADABLE`), or one that uses a
-        field the policy does not opt in for the provider (:data:`BODY_FIELD_NOT_PERMITTED`, naming each). An empty
-        body has no field, and goes as it came."""
+        field the policy does not opt in for the provider (:data:`BODY_FIELD_NOT_PERMITTED`, naming each). Its parse
+        is held within :attr:`max_held` (:func:`_parse_cost`) while it is checked. An empty body has no field, and
+        goes as it came."""
         if not body:
             return
+        reserve(len(body))  # the copy :func:`_parse_cost` makes to count the body's values
+        held = len(body)
         try:
+            cost = _parse_cost(body)
+            reserve(max(cost - held, 0))
+            held = max(cost, held)
             fields = body_fields(endpoint, _document(body))
-        except ValueError as exc:
+        except (ValueError, RecursionError) as exc:
             raise _Refused(400, BODY_UNREADABLE, f"the provider relay holds a model call's body to the operations "
                            f"its policy allows, so reads it as one JSON object (UTF-8, each key once), and could not "
                            f"read this one ({exc}): it was not sent to the provider") from None
+        finally:  # the parse is over: what it held is free again
+            release(held)
         refused = sorted(fields - self.opted)
         if not refused:
             return
@@ -676,12 +724,23 @@ class ProviderRelay(Service):
                      client_certificate_sha256=self.client_sha256)
         held: list[str] = []  # this request's credential values, kept out of the record's excerpt
         excerpt: _Excerpt | None = None
-        reserved = 0  # the bytes of this request's body held within max_held (_reserve), released at its end
+        # What this request holds within max_held (_reserve): its body until it has gone upstream, and the estimate of
+        # its parse while it is checked (#551's review, m5)
+        reserved = 0
 
         def reserve(n: int) -> None:
             nonlocal reserved
+            if reserved + n > self.max_held:  # more than the relay holds for all its requests: it never would
+                raise _Refused(413, REQUEST_TOO_LARGE, f"the request's body is too large for the provider relay to "
+                               f"hold to its scope within its bound of {self.max_held} bytes, so it was not sent to "
+                               "the provider. Send a smaller request")
             self._reserve(n)
             reserved += n
+
+        def release(n: int) -> None:
+            nonlocal reserved
+            self._release(n)
+            reserved -= n
 
         try:
             admitted = self._admit()
@@ -717,12 +776,14 @@ class ProviderRelay(Service):
                     raise _Refused(400, BODY_UNREADABLE, "the provider relay holds a model call's body to the "
                                    "operations its policy allows, so reads it, and takes it only without a "
                                    "Content-Encoding: it was not sent to the provider")
+                if framing[0] == "length":  # held before a 100 Continue asks the client for it
+                    reserve(framing[1])
             if any(k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             if entry["operation"] == "model":
                 body = self._read_whole(conn, framing, early, reserve)
                 endpoint = target.partition("?")[0][len(self.upstream.path):]
-                self._check_body(endpoint, body, entry)
+                self._check_body(endpoint, body, entry, reserve, release)
                 # Sent as it was read, framed by its length: the request's own framing is not sent on
                 rewritten = [(k, v) for k, v in rewritten if k.lower() not in ("content-length", "transfer-encoding")]
                 rewritten.insert(-1, ("Content-Length", str(len(body))))
@@ -741,9 +802,11 @@ class ProviderRelay(Service):
             entry["upstream_headers_written"] = True
             if body is None:
                 self._send_body(conn, upstream, framing, early)
-            elif body:
-                upstream.sendall(body)
-            body = None  # the held body is not kept while its response streams
+            else:
+                if body:
+                    upstream.sendall(body)
+                body = None  # the held body is not kept while its response streams, nor held within max_held
+                release(reserved)
             deadline = time.monotonic() + self.stream_timeout
             reader, response = self._relay_head(conn, upstream, deadline)
             answered = True
@@ -927,11 +990,9 @@ class ProviderRelay(Service):
     def _read_whole(self, conn: socket.socket, framing: tuple[str, int], early: bytes,
                     reserve: Callable[[int], None]) -> bytearray:
         """A model call's body, read whole and unframed (its data alone), within :attr:`max_body` as
-        :meth:`_send_body` bounds it, each byte held within :attr:`max_held` (``reserve``) before it is read: a
-        ``Content-Length`` at once, a chunked body as its size lines declare it."""
+        :meth:`_send_body` bounds it, each byte held within :attr:`max_held` before it is read: a chunked body's
+        through ``reserve`` as its size lines declare them (a ``Content-Length`` is held before, by :meth:`handle`)."""
         out = bytearray()
-        if framing[0] == "length":
-            reserve(framing[1])
         self._body(conn, framing, early, out.extend, framed=False, reserve=reserve)
         return out
 

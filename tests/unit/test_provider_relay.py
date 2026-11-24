@@ -1576,7 +1576,8 @@ def test_an_unexpected_error_after_the_request_went_upstream_is_outcome_unknown(
 # the live lane (tests/live/test_opencode_live.py) confirms that no request a real session relays is refused for its
 # body.
 TINY_PNG = "data:image/png;base64,iVBORw0KGgo="
-FUNCTION_PARAMETERS = {"type": "object", "properties": {"file_id": {"type": "string"}, "container": {"type": "string"}}}
+FUNCTION_PARAMETERS = {"type": "object", "properties": {"file_id": {"type": "string"}, "container": {"type": "string"},
+                                                       "user_id": {"type": "string"}, "userId": {"type": "string"}}}
 ROUTE_BODIES: dict[str, dict[str, Any]] = {
     "responses": {
         "model": "gpt-5", "stream": True, "store": False, "include": ["reasoning.encrypted_content"],
@@ -1717,6 +1718,12 @@ OUTSIDE_FIELDS = [
     ("gemini", _with("gemini", cachedContent="cachedContents/1"), "cached_content"),
     ("gemini", _user_part("gemini", {"fileData": {"fileUri": "files/1", "mimeType": "text/plain"}}), "file_data"),
     ("gemini", _tools("gemini", {"googleSearch": {}}), "tools.google_search"),
+    ("gemini", _user_part("gemini", {"functionResponse": {"name": "r", "response": {}, "parts": [
+        {"fileData": {"fileUri": "files/1", "mimeType": "text/plain"}}]}}), "file_data"),
+    ("responses", _tools("responses", {"name": "read"}), "tools.untyped"),
+    ("responses", _tools("responses", {"type": "function", "name": "x", "Type": "web_search"}), "tools.web_search"),
+    ("messages", _tools("messages", {"type": "custom", "name": "x", "Type": "web_search_20250305"}),
+     "tools.web_search"),
 ]
 
 
@@ -1818,31 +1825,75 @@ def test_a_compressed_model_call_body_is_refused_and_an_empty_one_goes_as_it_cam
 
 
 def test_the_model_call_bodies_a_relay_holds_at_once_are_bounded_and_released():
-    """Register E361: reading model-call bodies whole costs memory, so the relay holds at most ``max_held`` bytes of
-    them at once. A body that would pass it is refused 503 ``relay_busy`` with nothing connected, by its
-    ``Content-Length`` before it is read and, chunked, at the chunk that would pass it; what a request held is
-    released at its end."""
+    """Register E361: reading model-call bodies whole costs memory, so the relay holds at most ``max_held`` bytes for
+    them at once. A body that would pass it beside the others is refused 503 ``relay_busy``, and one that would pass
+    it alone 413 ``request_too_large``, with nothing connected: by its ``Content-Length`` before it is read (before a
+    ``100 Continue``) and, chunked, at the chunk that would pass it. What a request held is released once its body has
+    gone upstream, before its response (#551's review, m5)."""
     big = json.dumps({"model": "m", "input": "x" * 2000}).encode()
-    answer, seam, records = refused_call(model_call("responses", big), max_held=1024)
-    assert answer.startswith(b"HTTP/1.1 503 ") and b"X-AEW-Refusal: relay_busy" in answer and seam.calls == []
+    answer, seam, _ = refused_call(model_call("responses", big, extra_headers=b"Expect: 100-continue\r\n"),
+                                   max_held=1024)
+    assert answer.startswith(b"HTTP/1.1 413 ") and b"X-AEW-Refusal: request_too_large" in answer
+    assert b"100 Continue" not in answer and seam.calls == []
     chunked = b"".join(f"{len(big[i:i + 500]):x}\r\n".encode() + big[i:i + 500] + b"\r\n"
                        for i in range(0, len(big), 500)) + b"0\r\n\r\n"
-    seam, records = Seam(), []
-    with relayed(seam, record=records.append, max_held=1024) as (service, client, _):
+    seam = Seam()
+    with relayed(seam, max_held=1024) as (service, client, _):
         client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + chunked)
         answer = read_all(client)
-    assert b"X-AEW-Refusal: relay_busy" in answer and seam.calls == [] and service._held == 0
+    assert b"X-AEW-Refusal: request_too_large" in answer and seam.calls == [] and service._held == 0
+    seam = Seam()
+    with relayed(seam, max_held=1000) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 600\r\n\r\n{")  # held while its body arrives
+        deadline = time.monotonic() + TIMEOUT
+        while service._held < 600 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        second, served = socket.socketpair()
+        second.settimeout(TIMEOUT)
+        with closing(second):
+            thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+            thread.start()
+            second.sendall(model_call("responses", b"{" + b" " * 498 + b"}"))
+            busy = read_all(second)
+            thread.join(TIMEOUT)
+        assert busy.startswith(b"HTTP/1.1 503 ") and b"X-AEW-Refusal: relay_busy" in busy and seam.calls == []
     small = json.dumps(ROUTE_BODIES["chat"]).encode()
     seam = Seam()
-    with relayed(seam, max_held=len(small)) as (service, client, _):
+    with relayed(seam) as (service, client, _):
         client.sendall(model_call("chat", small))
         upstream = seam.upstream()
-        read_head(upstream)
-        assert service._held == len(small)
+        _, got = read_head(upstream)
+        while len(got) < len(small):
+            got += upstream.recv(65536)
+        deadline = time.monotonic() + TIMEOUT
+        while service._held and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert service._held == 0  # sent, its response not yet come
         upstream.sendall(OK)
         upstream.close()
         read_all(client)
     assert service._held == 0
+
+
+def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_parsed():
+    """#551's review, m3: parsing a body holds more than the body, most of all for many small values. The relay holds
+    its estimate (``relay._parse_cost``) within ``max_held`` before it parses, so a body that is small but would
+    parse large is refused 413 with nothing connected, and the estimate is above what a parse holds."""
+    import tracemalloc
+
+    dense = json.dumps({"model": "m", "input": [{}] * 2000}).encode()
+    answer, seam, _ = refused_call(model_call("responses", dense), max_held=64 * 1024)
+    assert b"X-AEW-Refusal: request_too_large" in answer and seam.calls == []
+    shapes = [dense, json.dumps({"input": [[]] * 5000}).encode(), json.dumps({"a": "x" * 50_000}).encode(),
+              json.dumps({"a": "\U0001F600" * 5000}, ensure_ascii=False).encode(),
+              json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode()]
+    for body in shapes:
+        held = bytearray(body)  # as the relay holds it, before the parse starts
+        tracemalloc.start()
+        relay._document(held)
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        assert peak <= relay._parse_cost(body), (body[:40], peak, relay._parse_cost(body))
 
 
 def _reset_mid_body(request: bytes, **kw: Any) -> tuple[Seam, list[dict[str, Any]]]:
@@ -1936,3 +1987,21 @@ def test_the_adopted_policy_opts_body_fields_in_per_provider_and_a_bad_entry_ref
     data.setdefault("containment", {}).setdefault("network", {})["relay_body_fields"] = {"openai": ["tools.mcp"]}
     parsed = execution.parse(json.dumps(data).encode(), source="t")
     assert parsed["containment"]["network"]["relay_body_fields"] == {"openai": ["tools.mcp"]}
+
+
+def test_a_body_nested_as_deep_as_the_parser_takes_is_walked_and_never_a_relay_error():
+    """#551's review, m4: the walk is iterative, so a body nested deeper than Python's recursion limit under a content
+    root is held to its scope (here, forwarded: it uses no held field) and never answered as a relay error."""
+    deep = b'{"model": "m", "input": ' + b"[" * 2000 + b"]" * 2000 + b"}"
+    _, rest, answer, records = forwarded(model_call("responses", deep))
+    assert answer.endswith(b"ok") and rest == deep and records[0]["outcome"] == "forwarded"
+
+
+def test_a_policy_cannot_list_a_model_call_and_so_take_its_body_out_of_scope():
+    """#551's review, m6: a model call or the model list in ``relay_operations`` refuses the relay's start, and a
+    model call is recognized as one whatever the policy lists, so its body is always held to its scope."""
+    for entry in ("POST /responses", "POST /messages", "POST /models/g:generateContent", "GET /models"):
+        with pytest.raises(ValidationFailed) as caught:
+            ProviderRelay(Upstream(UPSTREAM), {}, operations=(entry,))
+        assert caught.value.details["reason"] == "bad_relay_operation"
+    assert relay._operation("POST", "/v1/responses", "/v1", {("POST", "/responses")}) == "model"

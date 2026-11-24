@@ -110,7 +110,7 @@ def stuck_after_finish(root: Path) -> list[str]:
     register E3)."""
     return [f"{path.parent.relative_to(root).as_posix()}: the session finished, but its controller had not exited a "
             "margin later and the sentinel ended it (stuck-after-finish; its stacks are in "
-            "controller-after-finish-stacks.txt there)"
+            "controller-after-finish-stacks.txt in the job's evidence-* bundle)"
             for path in sorted(root.rglob(STUCK_MARKER)) if AUTOPSY_DIR in path.relative_to(root).parts]
 
 

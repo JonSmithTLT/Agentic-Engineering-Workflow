@@ -31,3 +31,10 @@ Never on Windows, never under xdist.
   `tests/unit/test_yaml_depth.py::test_a_deep_control_state_resealed_by_another_writer_is_refused_in_process`
   (`KeyError: 'reason'`: the refusal carried no reason code), seconds before the session finished. That was the libyaml
   depth error fixed by #511: the run's head, `172b5c80`, precedes #511's merge, `ec5aae96`.
+- **Follow-on from #553's quick check, m2 (minor, tracked here).** `check_assurance.stuck_after_finish` reads every
+  `stuck-after-finish` marker under the download root, without the attempt rule (`latest_attempts`) and the
+  `-recovered` deduplication that `load_reports` applies. So a shard ended stuck-after-finish in one attempt keeps
+  `assurance` red after a green re-run, and a recovered bundle names the session twice. It fails closed and never
+  hides a failure. **The fix:** keep a marker only when its bundle holds a report that `latest_attempts` keeps, and skip
+  a `-recovered` duplicate. A test stages two attempts through the real reports-only staging. It is owned by the next
+  E3 pull request.

@@ -476,7 +476,7 @@ class Hierarchy:
             if not retry["current"]:
                 card = retry["card"]
                 return (f"{failed} was classified {cls}. Re-verify with {card} on the current parent snapshot. "
-                        f"Run `aew invoke create {work_id} --card {card} {EXPECT_REV}` and ingest its passing report.")
+                        f"Run `{transitions.dispatch_command(work_id, card=card)}` and ingest its passing report.")
         return None
 
     def _end_parent_invocations(self, state: dict[str, Any], unit: dict[str, Any], status: str) -> None:

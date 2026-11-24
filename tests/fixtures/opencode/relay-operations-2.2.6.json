@@ -1,0 +1,38 @@
+{
+  "harness": "opencode",
+  "version": "2.2.6",
+  "subject": "the provider operations OpenCode calls through AEW's provider relay, by provider: what the relay's default operations (relay.DEFAULT_OPERATIONS) must keep forwarding",
+  "source": {
+    "measured": null,
+    "how": "derived, not measured in this pull request: the pinned 2.2.6 binary was not installable from the package registry where this fixture was made, so no live session was driven. Each call is taken from evidence already in the repository, named per call",
+    "evidence": [
+      "tests/fixtures/opencode/usage-2.2.6-openai.json and usage-2.2.6-opencode-responses.json: live turns through the relay on the Responses route",
+      "tools/harness_qualify/worker_plan.py: the keyless plan-login qualification records the paths OpenCode sent through the relay (POST /backend-api/codex/responses alone)",
+      "tools/harness_qualify/model.py: the qualification's scripted upstream serves POST <base>/responses and counts a WebSocket upgrade, which the relay answers 501 before its operation scope",
+      "src/aew/harness/containment/relay.py _operation: the model-call routes of each provider SDK the projection relays",
+      "src/aew/harness/containment/netns.py UPSTREAMS: OpenCode 2.0.18's Anthropic /v1/messages and Google /v1beta/models/... requests, each measured through a relay at its provider-level baseURL (2026-10-25)",
+      "tests/integration/test_init_provider_relay.py: aew init's and aew doctor's live check of a relayed login, GET <base>/models"
+    ],
+    "limit": "this records which method and path each call uses; the rows not measured on 2.2.6 rest on the 2.0.18 measurements above. A live session at the pinned version that records each relayed request's operation and asserts none was refused is the tracked confirmation (register STG-05)"
+  },
+  "calls": [
+    {"provider": "openai", "base": "/v1", "method": "POST", "path": "/responses", "operation": "model",
+     "evidence": "usage-2.2.6-openai.json; tests/helpers/fake_opencode.py call_provider"},
+    {"provider": "openai", "login": "plan", "base": "/backend-api/codex", "method": "POST", "path": "/responses",
+     "operation": "model", "evidence": "tools/harness_qualify/worker_plan.py, fact paths"},
+    {"provider": "opencode", "base": "/inference/openai/v1", "method": "POST", "path": "/responses",
+     "operation": "model", "evidence": "usage-2.2.6-opencode-responses.json, route @opencode/ai/providers/openai/responses"},
+    {"provider": "openai-compatible", "base": "/v1", "method": "POST", "path": "/chat/completions",
+     "operation": "model", "evidence": "the chat-completions route of an OpenAI-compatible provider (relay._operation)"},
+    {"provider": "anthropic", "base": "/v1", "method": "POST", "path": "/messages", "operation": "model",
+     "evidence": "measured on 2.0.18 through a relay (netns.py UPSTREAMS, 2026-10-25); not measured on 2.2.6"},
+    {"provider": "google", "base": "/v1beta", "method": "POST", "path": "/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
+     "operation": "model", "evidence": "measured on 2.0.18 through a relay (netns.py UPSTREAMS, 2026-10-25); its streaming query is passed as sent; not measured on 2.2.6"},
+    {"provider": "openai", "base": "/v1", "method": "GET", "path": "/models", "operation": "models_list",
+     "evidence": "AEW's own live check of a relayed login in aew init and aew doctor (tests/integration/test_init_provider_relay.py); OpenCode reads its model catalog through the egress proxy instead"}
+  ],
+  "not_relay_operations": [
+    {"method": "GET", "path": "/responses", "with": "Upgrade: websocket",
+     "why": "answered 501 (upgrade) by the relay before its operation scope; AEW's projection sets the provider's transport to http (tools/harness_qualify/model.py counts any upgrade)"}
+  ]
+}

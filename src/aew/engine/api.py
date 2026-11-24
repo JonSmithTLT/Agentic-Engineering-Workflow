@@ -575,7 +575,8 @@ class Engine:
                                     archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
-        self._scope = scope = ScopeCorrections(k, units=units, gates=gates, assurance=assurance)  # register E126
+        self._scope = scope = ScopeCorrections(k, units=units, gates=gates, assurance=assurance,
+                                                coordination=coordination)  # register E126
         self._gate_repair = gate_repair = GateRepair(k, units=units, roles=roles)  # ITEMS 55
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,
                                          coordination=coordination)

@@ -31,6 +31,7 @@ CONTAINMENT_NOTE = ("workdir separation only: each run has its own workspace or 
 
 # Run status, as recorded in the local run record (telemetry, never read by a gate).
 STARTING, RUNNING = "starting", "running"
+LIVE_RUNS = (STARTING, RUNNING)  # a run that still works: the only one `harness send` takes
 LAUNCH_FAILED = "launch_failed"            # custody or harness start failed; the harness never worked
 ENDED_WITH_EVIDENCE = "ended_with_evidence"        # exited after recording its expected output (not yet ingested)
 ENDED_WITHOUT_EVIDENCE = "ended_without_evidence"  # exited without its expected output; AEW state did not move

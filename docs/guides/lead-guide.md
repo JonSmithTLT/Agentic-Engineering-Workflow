@@ -35,6 +35,7 @@ For every class:
 
 - every Ticket needs an accepted plan before it becomes READY (for a Class 0 Ticket a short plan is enough);
 - guardrails apply to every class: a change outside the Ticket's scope or on a protected path blocks it;
+- test work needs a sign-off first, cited from a plan revision or quoted from the operator, to remove tests, to change a suite's flow or shared setup (a runner config, conftest, shared helper or mock, skip list), or to change its overall mocking or refactor it wholesale; otherwise tests may grow in proportion to the work, with no size limit;
 - gates and guardrails are checked on the exact snapshot being accepted: evidence for an earlier state of the work is STALE and satisfies nothing;
 - after the candidate is prepared, a post-integration verifier checks the integrated result and checks `unit` pass on it, before it is published.
 
@@ -53,7 +54,7 @@ Where a step names a tool, use it: it does the whole step, and returns the revis
 
 Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each card's `use_when` and skills): `c_engineer` when the Ticket's change surface is C/C++ source, so its run loads `c-development`; `python_engineer` when the Ticket's change surface is primarily Python, so its run loads `python-development`. Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its task matches.
 
-1. `ticket_draft`: Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted). Its scope is fixed once the Ticket exists, and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more. Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance check take the shell command. Every plan declares its assurance: none, or the review and verification cards (in the shell `--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond the class path. Accepting the plan makes them required gates; a review promised only in the plan's text binds nothing. Shell fallback:
+1. `ticket_draft`: Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted). Its scope is fixed once the Ticket exists (but for a test path the change needs, which `resolve`'s `add_scope` adds on the record), and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more. Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance check take the shell command. Every plan declares its assurance: none, or the review and verification cards (in the shell `--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond the class path. Accepting the plan makes them required gates; a review promised only in the plan's text binds nothing. Shell fallback:
 
 ```sh
 aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'

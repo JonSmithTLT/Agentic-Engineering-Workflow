@@ -49,6 +49,14 @@ def _priority_text(unit: dict[str, Any], now: dt.datetime | None) -> str:
     return f"  [{head}: {found['reason']}]" if found["reason"] else f"  [{head}]"
 
 
+def _scope_added(unit: dict[str, Any]) -> str:
+    """The test paths the Lead added to a live Ticket's scope, listed (register E126), on one line: rule 1 refuses a
+    path with a control character, and the line keeps none either way."""
+    from aew.engine import scope_ops  # the engine's owner of the listing; imported here, as the engine imports this
+
+    return "".join(c if c.isprintable() else " " for c in ", ".join(scope_ops.added_listing(unit)))
+
+
 def work_graph_lines(state: dict[str, Any], now: dt.datetime | None = None) -> list[str]:
     tickets = {k: v for k, v in state["work"].items() if v["kind"] == "ticket"}
     lines: list[str] = []
@@ -68,6 +76,9 @@ def work_graph_lines(state: dict[str, Any], now: dt.datetime | None = None) -> l
             label = unit["state"] if title not in {"READY", "BLOCKED", "DONE"} else ""
             lines.append(f"  {wid} {label}{extra}  {unit['title']}".replace("  ", " ", 1).rstrip()
                           + _priority_text(unit, now))
+            added = _scope_added(unit)
+            if added:
+                lines.append(f"    scope added on the record: {added}")
     return lines or ["(no Tickets)"]
 
 

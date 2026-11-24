@@ -220,8 +220,9 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     assert cards["code_reviewer"].meta["skills"] == ["adversarial-review"]
     assert cards["verifier"].meta["skills"] == ["acceptance-verification"]
     assert cards["engineer"].meta["optional_skills"] == ["python-development", "c-development"]
+    # code_reviewer is at 3: register E126 gave it the guide's three lines on test work, after the skills moved it to 2.
     assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer")} == {
-        "code_reviewer": 2, "verifier": 2, "engineer": 2}
+        "code_reviewer": 3, "verifier": 2, "engineer": 2}
 
 
 # ---------------------------------------------------------------------------------------------- the copy

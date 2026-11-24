@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from aew.engine import scope_ops as SC
+from aew.harness import contract as K
+from aew.surface import contract
+from aew.surface.validate import check_call
 
 SRC = Path(SC.__file__).resolve().parents[1]
 
@@ -61,7 +64,10 @@ def test_the_accessor_adds_the_recorded_paths_after_the_declared_ones_and_leaves
 @pytest.mark.parametrize(("path", "exact"), [
     ("tests/test_a.py", True), ("tests/*.py", False), ("tests/test_[ab].py", False), ("/tests/test_a.py", False),
     ("../x/test_a.py", False), ("tests//test_a.py", False), ("tests\\test_a.py", False), ("tests/", False),
-    (" tests/test_a.py", False), ("", False)])
+    (" tests/test_a.py", False), ("", False),
+    # One printable line (PR #545 review, m1): a newline, a carriage return, another C0 control or DEL is refused.
+    ("tests/test_a\n.py", False), ("tests/test_a.py\nx", False), ("tests/test_\r.py", False),
+    ("tests/test_\x1b.py", False), ("tests/test_\x7f.py", False)])
 def test_only_one_exact_repository_relative_path_is_added(path, exact):
     assert (SC.exact_path_problem(path) is None) == exact
 
@@ -116,11 +122,74 @@ def test_rule_three_never_takes_a_dunder_stem_for_a_module():
 
 def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatched():
     """PR #540 review, m5: the add exists to save the implementer's run, so its result never cancels it."""
-    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}},
+    state = {"revision": 7, "work": {"T-0001": {"kind": "ticket", "mutating": True}},
              "invocations": {"INV-0001": {"status": "active", "work_unit": "T-0001", "role": "implementer",
                                           "runs": [{"run": "R-INV-0001-1"}]},
                              "INV-0002": {"status": "active", "work_unit": "T-0001", "role": "reviewer",
                                           "card": {"id": "code_reviewer"}}}}
-    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py")
+    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING)
     assert impl["commands"] == ["aew harness send R-INV-0001-1 --fields -"] and "text" in impl["fields"]
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002") and "reason" in reader["fields"]
+    # With coordination messaging on, `harness send` is always refused: a message is recorded for the live implementer
+    # with `message_send` to its invocation, as the wake advice says, with arguments its schema admits as printed
+    # (PR #545 review, m2; quick check, m6).
+    impl, reader = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: K.RUNNING,
+                                                         messaging=True)
+    assert impl["commands"] == ["aew lead tool message_send --arguments -"], impl
+    assert impl["fields"]["to"] == "INV-0001" and "tests/test_a.py" in impl["fields"]["body"], impl
+    assert impl["fields"]["expect_rev"] == 8  # the revision the add commits
+    check_call("message_send", impl["fields"], "normal", frozenset({contract.MESSAGING}))
+    assert not any("harness send" in c for c in impl["commands"] + reader["commands"])
+    assert reader["commands"][0].startswith("aew invoke cancel INV-0002")
+
+
+def test_the_live_runs_harness_send_takes_have_one_owner():
+    """PR #545 review, m2: the add names `harness send` for exactly the runs `harness_send` admits."""
+    import inspect
+
+    from aew.engine import harness_ops
+
+    assert K.LIVE_RUNS == (K.STARTING, K.RUNNING)
+    assert "K.LIVE_RUNS" in inspect.getsource(harness_ops.Harness._lead_request)
+    assert "K.LIVE_RUNS" in inspect.getsource(SC.ScopeCorrections.stale_invocations)
+
+
+@pytest.mark.parametrize("status", [K.ENDED_WITH_EVIDENCE, K.ENDED_WITHOUT_EVIDENCE, K.CRASHED, K.LOST, K.UNREADABLE,
+                                    K.UNCONFIRMED])
+def test_an_implementer_whose_run_is_not_live_is_redispatched_never_told_with_harness_send(status):
+    """PR #540 quick check, m-b: `harness send` refuses a run that is not STARTING or RUNNING, so an ended run's
+    implementer is named the re-dispatch commands: a fresh invocation on the kept workspace."""
+    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}},
+             "invocations": {"INV-0001": {"status": "active", "work_unit": "T-0001", "role": "implementer",
+                                          "card": {"id": "engineer"}, "runs": [{"run": "R-INV-0001-1"}]}}}
+    [impl] = SC.ScopeCorrections.stale_invocations(state, "T-0001", "tests/test_a.py", lambda run: status)
+    assert not any("harness send" in c for c in impl["commands"]), impl
+    assert impl["commands"][0].startswith("aew invoke cancel INV-0001") and "reason" in impl["fields"], impl
+
+
+def test_the_lines_changed_are_split_by_declared_scope_and_added_paths():
+    """PR #540 quick check, m-c: an added path counts as added even where a declared glob matches it; a path in neither
+    is left out; a binary file is a file with no lines."""
+    numstat = ("3\t1\tcalc/core.py\0" "12\t0\ttests/test_core.py\0" "-\t-\tcalc/logo.png\0"
+               "5\t5\tdocs/other.md\0")
+    assert SC.lines_changed(numstat, ["calc/**", "tests/test_core.py"], ["tests/test_core.py"]) == {
+        "declared": {"files": 2, "added": 3, "removed": 1}, "added": {"files": 1, "added": 12, "removed": 0}}
+
+
+def test_the_lead_guide_and_the_review_card_carry_the_same_three_lines_on_test_work():
+    """The designer's decisions of 2026-11-03, §2: removing tests, a suite's flow or shared setup, and its overall
+    mocking or a wholesale refactor need a sign-off, for all test work; the guide and the review card both say so, and
+    the guide no longer reads as if a scope could never change."""
+    from aew import roles
+    from aew.engine import guide
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
+
+    text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert guide.TEST_WORK in text and f"`{SC.CHOICE}`" in text
+    card = " ".join(roles.builtin_cards()["code_reviewer"].meta["responsibilities"])
+    for words in ("removed tests", "flow or shared setup", "overall mocking", "wholesale refactor", "sign-off",
+                  "proportion"):
+        assert words in card, words
+    for words in ("remove tests", "flow or shared setup", "overall mocking", "wholesale", "sign-off", "proportion"):
+        assert words in guide.TEST_WORK, words

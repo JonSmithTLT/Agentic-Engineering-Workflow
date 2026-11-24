@@ -173,6 +173,9 @@ class PackInputs:
     # Register E126: the test paths the Lead added to a Ticket's scope on the record, listed apart from its declared
     # scope (``scope_ops.pack_entries``); empty when there is none, and then the pack is exactly what it was.
     scope_added: list[dict[str, Any]] = field(default_factory=list)
+    # The lines added and removed in the declared scope and in the added paths (``scope_ops.lines_changed``): a
+    # reviewer's pack only, when the Ticket has an add (E126; PR #540 quick check, m-c).
+    scope_lines_changed: dict[str, dict[str, int]] | None = None
 
 
 def _bullets(items: list[str]) -> list[str]:
@@ -385,6 +388,11 @@ def _scope_lines(p: PackInputs) -> list[str]:
         if a.get("signoff"):
             line += f" Sign-off ({a['signoff']['correction']}, {a['signoff']['label']}): {a['signoff']['text']}"
         lines.append(line)
+    if p.scope_lines_changed is not None:
+        lines.append("Lines changed against the base commit, for proportion: "
+                     + "; ".join(f"{label} +{c['added']} -{c['removed']} in {c['files']} file(s)" for label, c in
+                                 (("the declared scope", p.scope_lines_changed["declared"]),
+                                  ("the added test paths", p.scope_lines_changed["added"]))))
     return lines
 
 

@@ -88,10 +88,10 @@ def env_fix(name: str, *, secret: bool = True) -> str:
 def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:
     """``(name, why)`` for each provider variable (``provider_env``, ``--provider-env``) that a harness could not be
     given from ``env``: an AEW variable, a harness's own variable (``OPENCODE_*``, a provider key apart), one that is
-    unset or empty, or one that holds an AEW credential. The caller
-    passes required names only. A built-in worker does not require another built-in provider's key
-    (M4 user acceptance test). The launch refuses up front instead (``require_launchable``), the harness server's
-    environment refuses again (``server_env``), and ``aew doctor`` reports the same text. No value is ever echoed."""
+    unset or empty, or one that holds an AEW credential. The caller passes required names only. A built-in worker
+    does not require another built-in provider's key (M4 user acceptance test). The launch refuses up front instead
+    (``require_launchable``), the harness server's environment refuses again (``server_env``), and ``aew doctor``
+    reports the same text. No value is ever echoed."""
     out: list[tuple[str, str]] = []
     for name in names:
         code = provider_env_problem(name, env)
@@ -99,8 +99,8 @@ def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tupl
             out.append((name, f"{name} is an AEW variable, and AEW variables never reach a harness: remove it from "
                               "provider_env"))
         elif code == HARNESS_VARIABLE:
-            out.append((name, f"{name} is a variable of the harness's own, which configures OpenCode and which AEW "
-                              "sets itself for every OpenCode it starts: remove it from provider_env (a provider's "
+            out.append((name, f"{name} is OpenCode's own configuration, which AEW controls for every OpenCode it "
+                              "starts, so it is never a provider variable: remove it from provider_env (a provider's "
                               "key is passed by its own variable, such as OPENCODE_API_KEY)"))
         elif code == UNSET:
             out.append((name, f"{name} is not set in this environment: {env_fix(name)}"))

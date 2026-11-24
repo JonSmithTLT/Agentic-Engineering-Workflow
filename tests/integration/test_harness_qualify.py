@@ -101,8 +101,27 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
         targets.append(upstream.base_url)
         return upstream
 
+    # every OpenCode process the qualification starts, directly or through its server, gets AEW's fixed switches,
+    # both project-config names among them (register E35)
+    started_envs: list[dict[str, str]] = []
+    real_run, real_start = worker_plan.subprocess.run, OC.Server.start
+
+    def recording_run(argv, *args, **kwargs):
+        if str(binary) in [str(a) for a in argv]:
+            started_envs.append(dict(kwargs["env"]))
+        return real_run(argv, *args, **kwargs)
+
+    def recording_start(spawn, command, *, env, **kwargs):
+        started_envs.append(dict(env))
+        return real_start(spawn, command, env=env, **kwargs)
+
+    monkeypatch.setattr(worker_plan.subprocess, "run", recording_run)
+    monkeypatch.setattr(OC.Server, "start", recording_start)
     assert any(c.id == worker_plan.FACT for c in OC.OpenCodePack(FIXTURES).checks())
     outcome = worker_plan.check(ctx, fake_upstream=fake_upstream)
+    assert started_envs and all({k: e.get(k) for k in OC.C.FIXED_SWITCHES} == OC.C.FIXED_SWITCHES
+                                for e in started_envs), [{k: e.get(k) for k in OC.C.FIXED_SWITCHES}
+                                                         for e in started_envs]
     assert len(targets) == 1
     fact = outcome.facts[worker_plan.FACT]
     assert fact["one_minute_expiry"] == {"status": 401, "expired": True, "connected": False}

@@ -215,7 +215,7 @@ def check_version() -> str:
     """The CLI's version, refusing a non-V2 OpenCode before anything starts."""
     kwargs: dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
     out = subprocess.run([*binary_command(), "--version"], capture_output=True, text=True, timeout=60,
-                         stdin=subprocess.DEVNULL, **kwargs)
+                         stdin=subprocess.DEVNULL, env={**os.environ, **capabilities.FIXED_SWITCHES}, **kwargs)
     version = capabilities.cli_version(out.stdout)
     gaps = capabilities.version_problems(version)
     if out.returncode != 0 or gaps:

@@ -66,6 +66,7 @@ def check(ctx: Context, *, fake_upstream: Callable[..., model.ResponsesModel] = 
     if not login.db_path(env).resolve().is_relative_to(ctx.work.resolve()):
         return Outcome(FAIL, notes=["the synthetic worker database must be inside the private probe directory"])
     seed = _seed_catalog(ctx, env)
+    env.update(capabilities.FIXED_SWITCHES)  # as every OpenCode AEW starts gets them (register E35)
     subprocess.run([*oc.command(ctx.binary), "session", "list"], cwd=ctx.work, env=env, check=True,
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
     worker_db = login.db_path(env)

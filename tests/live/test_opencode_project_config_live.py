@@ -107,15 +107,21 @@ def get(client: Client, path: str, where: dict[str, str]) -> Any:
 
 
 def started(tmp_path: Path, name: str, project: Path, config: dict[str, Any], *, flag: bool,
-            base: dict[str, str] | None = None):
+            base: dict[str, str] | None = None, switches: dict[str, str | None] | None = None):
     """A private server on AEW's own server environment (built from ``base``, by default this process's), with the
-    flag as AEW sets it, or both switches removed (the control)."""
+    flag as AEW sets it, or both switches removed (the control). ``switches`` then sets (or, with None, removes)
+    single switches in the server's own environment, after AEW built it: the read-order measurements."""
     env = adapter.server_env(dict(os.environ) if base is None else base, tmp_path / f"state-{name}", provider_env=[],
                              config=config, password=os.urandom(16).hex())
     if not flag:
         for switch in FLAG:
             env.pop(switch)
     assert [env.get(switch, "") for switch in FLAG] == ["1" if flag else ""] * len(FLAG)
+    for switch, value in (switches or {}).items():
+        if value is None:
+            env.pop(switch)
+        else:
+            env[switch] = value
     tree = procs.ProcessTree()
     server = Server.start(tree.spawn, adapter.binary_command(), env=env, cwd=str(project),
                           log_path=tmp_path / f"server-{name}.log")
@@ -141,8 +147,8 @@ def record(result: dict[str, Any], tmp_path: Path) -> None:
             fh.write(json.dumps(result, sort_keys=True) + "\n")
 
 
-def measure_project(tmp_path: Path, *, flag: bool, run: str = "", base: dict[str, str] | None = None
-                    ) -> dict[str, Any]:
+def measure_project(tmp_path: Path, *, flag: bool, run: str = "", base: dict[str, str] | None = None,
+                    switches: dict[str, str | None] | None = None) -> dict[str, Any]:
     run = run or ("flag" if flag else "control")
     project, sentinel = tmp_path / f"project-{run}", tmp_path / f"sentinel-{run}"
     project.mkdir()
@@ -150,7 +156,8 @@ def measure_project(tmp_path: Path, *, flag: bool, run: str = "", base: dict[str
     plant_project(project, sentinel)
     (tmp_path / run).mkdir()
     where = location(os.path.realpath(project))
-    tree, server = started(tmp_path, run, project, control_config(tmp_path / run, sentinel), flag=flag, base=base)
+    tree, server = started(tmp_path, run, project, control_config(tmp_path / run, sentinel), flag=flag, base=base,
+                           switches=switches)
     try:
         version = gate(server, sentinel, where)
         documents = get(server.client, "/api/config", where) or []
@@ -177,8 +184,12 @@ def test_a_run_loads_nothing_from_the_projects_opencode_directory(tmp_path):
     flag removed (the same procedure), every one of those channels shows the project: its config files and
     ``.opencode/`` directory are read, its agents, commands, skills, plugins and MCP server are listed, and its
     plugins' code and its MCP command run. A project tool module is not imported at start even in the control, so the
-    tool directories are planted but not asserted on. Then AEW's environment with the first switch's name already set,
-    at a value that would turn project configuration on, is measured the same way: nothing loads."""
+    tool directories are planted but not asserted on.
+
+    Then the read order that makes AEW set both names, in the server's own environment: with only the second name
+    set to 1, nothing loads; with the first set to 0 beside it, the project loads as in the control, so the first name
+    is the one read. Last, a keep-list case: the environment AEW builds from already holds the first name, and AEW's
+    server environment still gives the server both switches at 1, so nothing loads."""
     control = measure_project(tmp_path, flag=False)
     root = os.path.realpath(tmp_path / "project-control")
     assert control["project_layers"] == sorted([f"{root}/opencode.json", f"{root}/opencode.jsonc",
@@ -199,13 +210,24 @@ def test_a_run_loads_nothing_from_the_projects_opencode_directory(tmp_path):
     assert all(items == [] for items in flagged["listed"].values()), flagged
     assert flagged["sentinels"] == [], flagged
 
-    # The first name present at any value in the environment AEW starts from changes nothing: AEW's own switches
-    # are what the server gets (register E35). Measured against the same control.
+    def nothing(result: dict[str, Any]) -> bool:
+        return (result["project_layers"] == [] and result["sentinels"] == []
+                and all(items == [] for items in result["listed"].values()))
+
+    # The read order (register E35): the second name alone keeps the project out ...
+    second_only = measure_project(tmp_path, flag=True, run="second-name-only", switches={FLAG[0]: None})
+    assert nothing(second_only), second_only
+    # ... and the first, set at all, is the one read: at 0 beside the second at 1, the project loads as in the control
+    first_wins = measure_project(tmp_path, flag=True, run="first-name-0", switches={FLAG[0]: "0"})
+    first_root = os.path.realpath(tmp_path / "project-first-name-0")
+    assert [p.replace(first_root, root) for p in first_wins["project_layers"]] == control["project_layers"], first_wins
+    assert first_wins["listed"] == control["listed"] and first_wins["sentinels"] == control["sentinels"], first_wins
+
+    # A keep-list case: the first name in the environment AEW builds from never reaches the server, which gets both
+    # switches at 1 from AEW.
     for i, value in enumerate(("0", "false", "")):
-        base = {**os.environ, FLAG[0]: value}
-        planted = measure_project(tmp_path, flag=True, run=f"first-name-{i}", base=base)
-        assert planted["project_layers"] == [] and planted["sentinels"] == [], (value, planted)
-        assert all(items == [] for items in planted["listed"].values()), (value, planted)
+        planted = measure_project(tmp_path, flag=True, run=f"keep-list-{i}", base={**os.environ, FLAG[0]: value})
+        assert nothing(planted), (value, planted)
 
 
 class WellKnown(http.server.BaseHTTPRequestHandler):

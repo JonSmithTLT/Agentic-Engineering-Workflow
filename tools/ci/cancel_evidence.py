@@ -148,6 +148,16 @@ def observe(repo, run, job, jobs):
     return classify(run, job, notes, newer, jobs)
 
 
+def may_inherit_run_wide(run):
+    """Whether a run-wide origin may still cover this run: it concluded cancelled, or it has not concluded yet.
+
+    Assurance observes its own run, which is still in progress while that job runs, and GitHub creates the matrix
+    jobs of a cancelled `needs` job after the cancellation, with no annotation of their own. A completed run that
+    concluded otherwise was never cancelled whole.
+    """
+    return run.get("conclusion") == "cancelled" or (run.get("status") != "completed" and run.get("conclusion") is None)
+
+
 def attach_reasons(repo, run, jobs):
     """A verified run-wide cancellation also covers queued siblings with no annotation of their own."""
     cancelled = [j for j in jobs if j.get("conclusion") == "cancelled"]
@@ -163,7 +173,7 @@ def attach_reasons(repo, run, jobs):
             elif reason.get("scope") == "run" and reason.get("actor"):
                 origins[("manual-or-api", reason["actor"])] = reason
     for job, reason in zip(cancelled, reasons, strict=True):
-        if (run.get("conclusion") == "cancelled" and len(origins) == 1
+        if (may_inherit_run_wide(run) and len(origins) == 1
                 and reason["kind"] in {"unresolved", "manual-or-api"} and not reason.get("actor")
                 and not reason.get("detail", "").startswith("priority")):
             reason = next(iter(origins.values()))

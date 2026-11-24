@@ -1877,8 +1877,8 @@ def test_the_model_call_bodies_a_relay_holds_at_once_are_bounded_and_released():
 
 def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_parsed():
     """#551's review, m3: parsing a body holds more than the body, most of all for many small values. The relay holds
-    its estimate (``relay._parse_cost``) within ``max_held`` before it parses, so a body that is small but would
-    parse large is refused 413 with nothing connected, and the estimate is above what a parse holds."""
+    its estimate (``relay._scan``) within ``max_held`` before it parses, so a body that is small but would parse
+    large is refused 413 with nothing connected, and the estimate is above what the scan and the parse hold."""
     import tracemalloc
 
     dense = json.dumps({"model": "m", "input": [{}] * 2000}).encode()
@@ -1886,14 +1886,16 @@ def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_
     assert b"X-AEW-Refusal: request_too_large" in answer and seam.calls == []
     shapes = [dense, json.dumps({"input": [[]] * 5000}).encode(), json.dumps({"a": "x" * 50_000}).encode(),
               json.dumps({"a": "\U0001F600" * 5000}, ensure_ascii=False).encode(),
-              json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode()]
+              json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode(),
+              json.dumps(["ab"] * 5000).encode().replace(b"[", b'{"a": [', 1) + b"}"]
     for body in shapes:
-        held = bytearray(body)  # as the relay holds it, before the parse starts
+        held = bytearray(body)  # as the relay holds it, before the scan starts
         tracemalloc.start()
+        cost, _ = relay._scan(held)
         relay._document(held)
         peak = tracemalloc.get_traced_memory()[1]
         tracemalloc.stop()
-        assert peak <= relay._parse_cost(body), (body[:40], peak, relay._parse_cost(body))
+        assert peak <= cost, (body[:40], peak, cost)
 
 
 def _reset_mid_body(request: bytes, **kw: Any) -> tuple[Seam, list[dict[str, Any]]]:
@@ -1989,12 +1991,38 @@ def test_the_adopted_policy_opts_body_fields_in_per_provider_and_a_bad_entry_ref
     assert parsed["containment"]["network"]["relay_body_fields"] == {"openai": ["tools.mcp"]}
 
 
-def test_a_body_nested_as_deep_as_the_parser_takes_is_walked_and_never_a_relay_error():
-    """#551's review, m4: the walk is iterative, so a body nested deeper than Python's recursion limit under a content
-    root is held to its scope (here, forwarded: it uses no held field) and never answered as a relay error."""
-    deep = b'{"model": "m", "input": ' + b"[" * 2000 + b"]" * 2000 + b"}"
-    _, rest, answer, records = forwarded(model_call("responses", deep))
-    assert answer.endswith(b"ok") and rest == deep and records[0]["outcome"] == "forwarded"
+def _nested(depth: int) -> bytes:
+    """A Responses body nested ``depth`` levels deep, its top-level object the first, ``[`` and ``]`` in a string
+    besides (a string's brackets are not nesting)."""
+    inner = depth - 1
+    return b'{"model": "m[[[", "input": ' + b"[" * inner + b"]" * inner + b"}"
+
+
+def test_a_body_at_the_relays_nesting_bound_is_walked_and_one_past_it_refused_on_every_interpreter():
+    """#551's review, m4, and its CI at 04c50cce: the relay bounds a body's nesting itself (``relay.MAX_NESTING``),
+    before parsing it, so a deep body is answered the same on every interpreter, never by the parser's own recursion
+    limit (CPython 3.11's is about 1000 levels, 3.12's far deeper). A body at the bound is forwarded; one past it is
+    refused 400 ``body_unreadable``, naming the bound, with nothing connected; and the walk over a document at the
+    bound is iterative, so it holds under a recursion limit far below the bound."""
+    import sys
+    import traceback
+
+    at_bound = _nested(relay.MAX_NESTING)
+    assert relay._scan(at_bound)[1] == relay.MAX_NESTING
+    _, rest, answer, records = forwarded(model_call("responses", at_bound))
+    assert answer.endswith(b"ok") and rest == at_bound and records[0]["outcome"] == "forwarded"
+    for past in (_nested(relay.MAX_NESTING + 1), _nested(2000), _nested(20_000)):
+        answer, seam, records = refused_call(model_call("responses", past))
+        assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: body_unreadable" in answer
+        assert f"deeper than {relay.MAX_NESTING}".encode() in answer and seam.calls == []
+    document = json.loads(at_bound)
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(len(traceback.extract_stack()) + 30)  # far below the bound's depth
+    try:
+        found = relay.body_fields("/responses", document)
+    finally:
+        sys.setrecursionlimit(limit)
+    assert found == set()
 
 
 def test_a_policy_cannot_list_a_model_call_and_so_take_its_body_out_of_scope():

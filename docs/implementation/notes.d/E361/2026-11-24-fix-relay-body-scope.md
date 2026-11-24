@@ -13,8 +13,9 @@ the body whole before anything is connected and:
   provider, for its API-key and stored-login relays alike. An entry the relay does not know refuses the start
   (`bad_relay_body_field`). No request, header, query or body opts itself in;
 - **refuses a body it cannot read as one JSON object:** 400, `body_unreadable`, nothing connected: not UTF-8, a
-  byte-order mark, a key given twice, NaN or Infinity, nesting too deep, anything but one object, or a
-  `Content-Encoding`. An empty body has no field, and goes as it came;
+  byte-order mark, a key given twice, NaN or Infinity, nesting deeper than `relay.MAX_NESTING` (128, checked before
+  the parser, whose own limit differs between interpreters), anything but one object, or a `Content-Encoding`. An
+  empty body has no field, and goes as it came;
 - **sends it framed by its length:** the body as read, with `Content-Length`; a chunked model call is not passed on
   chunked. Any other operation's body (a policy-listed one's) is streamed as before.
 
@@ -22,7 +23,7 @@ the body whole before anything is connected and:
 it many times its size for many small values (#551's review, m3). Only model calls are read whole, and a relay holds
 at most `relay.MAX_HELD` (256 MiB) for them at once: each body from its first byte until it has gone upstream (by its
 `Content-Length` before it is read and before a `100 Continue`, a chunked body chunk by chunk), and, while it is
-checked, an upper estimate of its parse (`relay._parse_cost`: its text and its strings at the width Python stores
+checked, an upper estimate of its parse (`relay._scan`: its text and its strings at the width Python stores
 them, and `relay.PARSE_VALUE_BYTES` for each value, measured with tracemalloc). One that would pass the bound beside
 the others is refused 503, `relay_busy`, and one that would pass it alone 413, `request_too_large`, with nothing
 connected. One body at `MAX_BODY` whose bulk is its strings fits.

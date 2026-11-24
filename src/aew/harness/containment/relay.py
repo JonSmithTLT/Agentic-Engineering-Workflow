@@ -85,6 +85,7 @@ close arrives (seen in the live lane, 2026-10-24), and that is no cancelled turn
 from __future__ import annotations
 
 import base64
+import itertools
 import json
 import re
 import secrets
@@ -114,16 +115,21 @@ BODY_TIMEOUT = 60.0     # a pause inside the request body
 MAX_BODY = 64 * 1024 * 1024
 # Implementation bound: what one relay holds at once for the model-call bodies it reads whole for their scope before
 # anything is sent (register E361): each body, from its first byte until it has gone upstream, and the estimated cost of
-# parsing it (:func:`_parse_cost`) while it is checked. Without it the worst case would be MAX_BODY times MAX_ACTIVE
+# parsing it (:func:`_scan`) while it is checked. Without it the worst case would be MAX_BODY times MAX_ACTIVE
 # (2 GiB) of bodies, and their parse many times that; with it, one body at MAX_BODY whose bulk is its strings (images,
 # documents) fits, and so do many of the sizes model calls take (a turn's context is a few MiB at most).
 MAX_HELD = 256 * 1024 * 1024
 # Implementation bound: what parsing one JSON value of a body costs at most, beyond its text and its strings' text
-# (:func:`_parse_cost`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3): 28-62 bytes per
+# (:func:`_scan`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3): 28-62 bytes per
 # value across arrays of empty objects, empty arrays, small objects, numbers, keys and strings; 96 leaves a margin.
 PARSE_VALUE_BYTES = 96
 # What any parse holds besides (its objects' headers, the parser's state): 1-2 KiB measured alike; 16 KiB margin.
 PARSE_BASE_BYTES = 16 * 1024
+# Implementation bound: how deep a model call's body may nest its arrays and objects (its top-level object is 1). It is
+# checked before the body is parsed, so the relay answers a deep body the same on every interpreter: CPython 3.11's
+# decoder refuses one past its recursion limit (about 1000), and 3.12's takes far deeper (#551, CI at 04c50cce). A
+# model call's body nests a few levels, and a tool's parameter schema some more; 128 leaves a wide margin below both.
+MAX_NESTING = 128
 # Implementation bound: the requests one relay serves at once (one thread each). OpenCode runs a session's subagents in
 # parallel, each with one model call open at a time, besides a title request: 32 is far above what a session holds
 # open (not measured), and bounds the threads and sockets a sandbox can make its relay hold.
@@ -486,28 +492,57 @@ def _constant(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
 
 
-# A JSON string, to count a body's values without what its strings hold (a string's own ``,`` or ``{``)
-_JSON_STRING = re.compile(rb'"[^"\\]*(?:\\.[^"\\]*)*"')
+# A byte's step in nesting depth: +1 for ``[`` and ``{``, -1 for ``]`` and ``}``; every other byte is dropped first
+_NESTING_STEP = [0] * 256
+_NESTING_STEP[ord("[")] = _NESTING_STEP[ord("{")] = 1
+_NESTING_STEP[ord("]")] = _NESTING_STEP[ord("}")] = -1
+_NOT_BRACKET = bytes(b for b in range(256) if not _NESTING_STEP[b])
+# Every byte but a quote and the JSON structure, dropped to leave a body's skeleton (:func:`_scan`)
+_NOT_SKELETON = bytes(b for b in range(256) if b not in b'"[]{},:')
+# Implementation bound: how much of a skeleton :func:`_scan` splits at once, so what the scan holds beyond its copies is
+# bounded by a constant, never by the body's number of strings; and what it holds for each byte of a piece at most
+# (its pieces, their list, and the join's view of each; the nesting levels: measured about 50, 2026-11-24)
+SCAN_CHUNK = 64 * 1024
+SCAN_CHUNK_BYTES = 64
 
 
-def _parse_cost(body: bytes | bytearray) -> int:
-    """An upper estimate of what parsing ``body`` holds (#551's review, m3): its text, at the width Python stores it
-    at (one byte a character, two from U+0100, four from U+10000), its strings' text again at the width they may take
-    (a ``\\u`` escape may widen one), :data:`PARSE_VALUE_BYTES` for each value, counted from its ``[``, ``{``, ``,``
-    and ``:`` outside strings, and :data:`PARSE_BASE_BYTES`. Counting makes a copy of the body without its strings'
-    contents, at most its size."""
+def _scan(body: bytes | bytearray) -> tuple[int, int]:
+    """What a body's parse would hold, as an upper estimate, and how deep its arrays and objects nest, read without
+    parsing it and without recursion, so the relay checks both before it parses (#551's review, m3 and m4).
+
+    The estimate (m3): its text, at the width Python stores it at (one byte a character, two from U+0100, four from
+    U+10000), its strings' text again at the width they may take (a ``\\u`` escape may widen one),
+    :data:`PARSE_VALUE_BYTES` for each value, counted from its ``[``, ``{``, ``,`` and ``:`` outside strings, and
+    :data:`PARSE_BASE_BYTES`. The scan itself holds at most two copies of the body beside it, each at most its size
+    (its caller holds them first), and what one :data:`SCAN_CHUNK` of its skeleton splits into (counted in the
+    estimate, as :data:`SCAN_CHUNK_BYTES` for each byte of it)."""
     size = len(body)
+    # A string's escapes out first: each escaped backslash (left to right, so a run of them pairs as a parser reads
+    # it), then each escaped quote; then all but its quotes and structure. Each copy is at most the body's size, and
+    # at most two are held at once. The skeleton is bytes, so a piece of one byte or none is a shared object when it
+    # is split out (a regex over strings would hold state or a new piece for each, as many as the body has)
+    skeleton = bytes(body.replace(b"\\\\", b"").replace(b'\\"', b"").translate(None, _NOT_SKELETON))
     text = 4 if re.search(rb"[\xf0-\xf4]", body) else 2 if re.search(rb"[\xc4-\xef]", body) else 1
     strings = 4 if text == 4 or re.search(rb"\\u[dD][89abAB]", body) else \
         2 if text == 2 or re.search(rb"\\u(?!00)", body) else 1
-    bare = _JSON_STRING.sub(b'""', body)
-    values = sum(bare.count(c) for c in (b"[", b"{", b",", b":")) + 1
-    return size * (text + strings) + values * PARSE_VALUE_BYTES + PARSE_BASE_BYTES
+    values, depth, level, inside = 1, 0, 0, False
+    for at in range(0, len(skeleton), SCAN_CHUNK):  # once escapes are out, every other piece lies outside a string
+        pieces = skeleton[at:at + SCAN_CHUNK].split(b'"')
+        outside = b"".join(pieces[1 if inside else 0::2])
+        inside ^= len(pieces) % 2 == 0  # an odd number of quotes in this chunk
+        del pieces
+        values += sum(outside.count(c) for c in b"[{,:")
+        levels = list(itertools.accumulate(map(_NESTING_STEP.__getitem__, outside.translate(None, _NOT_BRACKET)),
+                                           initial=level))
+        depth, level = max(depth, *levels), levels[-1]
+    del skeleton
+    scan = SCAN_CHUNK_BYTES * min(size, SCAN_CHUNK)
+    return size * (text + strings) + values * PARSE_VALUE_BYTES + PARSE_BASE_BYTES + scan, depth
 
 
 def _document(body: bytes | bytearray) -> dict[str, Any]:
     """A model call's body as one JSON object, strictly: UTF-8 with no byte-order mark, no repeated key, no NaN or
-    Infinity. Raises ``ValueError`` on anything else."""
+    Infinity (its nesting is checked before, by :func:`_scan`). Raises ``ValueError`` on anything else."""
     try:
         document = json.loads(body.decode("utf-8"), object_pairs_hook=_unique, parse_constant=_constant)
     except RecursionError:
@@ -677,16 +712,18 @@ class ProviderRelay(Service):
                     release: Callable[[int], None]) -> None:
         """Refuse a model call's body the relay cannot hold to its scope (:data:`BODY_UNREADABLE`), or one that uses a
         field the policy does not opt in for the provider (:data:`BODY_FIELD_NOT_PERMITTED`, naming each). Its parse
-        is held within :attr:`max_held` (:func:`_parse_cost`) while it is checked. An empty body has no field, and
+        is held within :attr:`max_held` (:func:`_scan`) while it is checked. An empty body has no field, and
         goes as it came."""
         if not body:
             return
-        reserve(len(body))  # the copy :func:`_parse_cost` makes to count the body's values
-        held = len(body)
+        reserve(2 * len(body))  # the copies :func:`_scan` makes to count the body's values
+        held = 2 * len(body)
         try:
-            cost = _parse_cost(body)
+            cost, depth = _scan(body)
             reserve(max(cost - held, 0))
             held = max(cost, held)
+            if depth > MAX_NESTING:  # before the parser, whose own limit differs between interpreters
+                raise ValueError(f"the JSON nests deeper than {MAX_NESTING} levels")
             fields = body_fields(endpoint, _document(body))
         except (ValueError, RecursionError) as exc:
             raise _Refused(400, BODY_UNREADABLE, f"the provider relay holds a model call's body to the operations "

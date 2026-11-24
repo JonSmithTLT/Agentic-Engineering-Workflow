@@ -53,9 +53,11 @@ def plugin_source(sentinel: Path, name: str, plugin_id: str) -> str:
 
 
 def plant_project(project: Path, sentinel: Path) -> None:
-    """Everything a project can put where OpenCode looks: root and ``.opencode/`` config files (each with an agent, a
-    command and, at the root, a local MCP server whose command writes a sentinel), the singular and plural markdown
-    and plugin directories, skills under ``.opencode/``, ``.claude/`` and ``.agents/``, and tools."""
+    """The project layers 2.2.6's bundle reads: ``opencode.json`` and ``opencode.jsonc`` at the root and in
+    ``.opencode/`` (agents and commands, and at the root a local MCP server whose command writes a sentinel), the
+    singular and plural agent, command, mode and plugin directories, skills under ``.opencode/``, ``.claude/`` and
+    ``.agents/``, and tools. The instruction files (``AGENTS.md``, ``CLAUDE.md``, ``instructions``) reach only the
+    model-visible request, so they are not planted here (E35's "nothing else loaded" scenario, item 14)."""
     def write(rel: str, text: str) -> None:
         path = project / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +69,11 @@ def plant_project(project: Path, sentinel: Path) -> None:
         "mcp": {f"{MARK}-mcp": {"type": "local", "command": ["touch", str(sentinel / "project-mcp")]}}}))
     write(".opencode/opencode.json", json.dumps({
         "agent": {f"{MARK}-dir-agent": agent}, "command": {f"{MARK}-dir-command": {"template": MARK}}}))
-    for kind in ("agent", "agents", "command", "commands"):
+    # comments are what make a .jsonc file one: OpenCode must read past them
+    write("opencode.jsonc", "// " + MARK + "\n" + json.dumps({"agent": {f"{MARK}-jsonc-agent": agent}}))
+    write(".opencode/opencode.jsonc", "// " + MARK + "\n" + json.dumps(
+        {"command": {f"{MARK}-jsonc-command": {"template": MARK}}}))
+    for kind in ("agent", "agents", "command", "commands", "mode", "modes"):
         write(f".opencode/{kind}/{MARK}-md-{kind}.md", f"---\ndescription: {MARK}\n---\n{MARK}\n")
     for kind in ("plugin", "plugins", "tool", "tools"):
         write(f".opencode/{kind}/probe.js", plugin_source(sentinel, f"project-{kind}", f"{MARK}-{kind}"))
@@ -168,10 +174,12 @@ def test_a_run_loads_nothing_from_the_projects_opencode_directory(tmp_path):
     tool directories are planted but not asserted on."""
     control = measure_project(tmp_path, flag=False)
     root = os.path.realpath(tmp_path / "project-control")
-    assert control["project_layers"] == sorted([f"{root}/opencode.json", f"{root}/.opencode/opencode.json",
+    assert control["project_layers"] == sorted([f"{root}/opencode.json", f"{root}/opencode.jsonc",
+                                                f"{root}/.opencode/opencode.json", f"{root}/.opencode/opencode.jsonc",
                                                 f"{root}/.opencode"]), control
-    named = {kind: {f"{MARK}-{where}-{kind}" for where in ("root", "dir")} | {f"{MARK}-md-{kind}", f"{MARK}-md-{kind}s"}
-             for kind in ("agent", "command")}
+    named = {kind: {f"{MARK}-{where}-{kind}" for where in ("root", "dir", "jsonc")}
+             | {f"{MARK}-md-{kind}", f"{MARK}-md-{kind}s"} for kind in ("agent", "command")}
+    named["agent"] |= {f"{MARK}-md-mode", f"{MARK}-md-modes"}  # a mode file is listed as an agent
     assert control["listed"] == {
         "/api/agent": sorted(named["agent"]), "/api/command": sorted(named["command"]),
         "/api/skill": sorted(f"{MARK}-{base}" for base in ("opencode-skill", "opencode-skills", "claude-skills",
@@ -220,11 +228,14 @@ def sources(server: Server, where: dict[str, str], origin: str) -> list[str]:
 
 
 def test_no_project_file_adds_a_wellknown_source(tmp_path, wellknown):
-    """The remote layer's sources live in the server's own database, in AEW's private state. The control: the
-    server's route adds one, with the server password, and the server fetches its manifest and lists it; without the
-    password the route is refused. Then the project names the same origin every way it could (the legacy
-    credential file's ``wellknown`` entries, at the project's root and in ``.opencode/``, a served-looking
-    ``.well-known/opencode``, and config keys), with the flag and without it: no fetch, no source."""
+    """The remote layer's sources are, in the bundle, one list in the server's own database (``wellknown:sources``),
+    in AEW's private state, set only by the server's route and by a one-time import of the legacy ``auth.json`` in the
+    XDG data directory; no project path feeds it. The control: the route adds one, with the server password, and the
+    server fetches its manifest and lists it; without the password the route is refused. Then the project names the
+    same origin in the shapes nearest those inputs (the legacy credential file's ``wellknown`` entries, at the
+    project's root and in ``.opencode/``, a served-looking ``.well-known/opencode``, and a config key), with the flag
+    and without it: no fetch, no source. Without the flag the project's ``.opencode/opencode.json`` is read, so its
+    key was seen and ignored."""
     sentinel = tmp_path / "sentinel"
     sentinel.mkdir()
     config = control_config(tmp_path, sentinel)
@@ -263,7 +274,10 @@ def test_no_project_file_adds_a_wellknown_source(tmp_path, wellknown):
         try:
             version = gate(server, sentinel, where)
             found = sources(server, where, wellknown)
+            layers = {str(d.get("path")) for d in get(server.client, "/api/config", where) or []}
         finally:
             tree.kill()
         record({"run": run, "version": version, "hits": list(WellKnown.hits), "sources": found}, tmp_path)
         assert WellKnown.hits == [] and found == [], (run, WellKnown.hits, found)
+        read = os.path.join(os.path.realpath(project), ".opencode", "opencode.json") in layers
+        assert read is not flag, (run, sorted(layers))

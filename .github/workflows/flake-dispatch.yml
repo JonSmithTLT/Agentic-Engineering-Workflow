@@ -3,53 +3,22 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
-  observe:
-    runs-on: windows-latest
-    timeout-minutes: 22
+  verify:
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        case: [ordinary, override, control, failure]
+        source: [45493091752, 45494709169]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-aew
+      - uses: actions/download-artifact@v8
         with:
-          python-version: '3.13'
-      - name: Observe Windows fixture boundaries
-        shell: bash
-        env:
-          PROBE_CASE: ${{ matrix.case }}
-          PYTHONPATH: tests/helpers
-        run: |
-          export FIXTURE_PROBE_OUT="$RUNNER_TEMP/fixture-proof"
-          args=(-q -p store_fixture_probe --discovery-out="$RUNNER_TEMP/discovery.json" --lane-report="$RUNNER_TEMP/lanes.json")
-          case "$PROBE_CASE" in
-            control) python -m pytest "${args[@]}" tests/unit/test_store_fixture_probe_controls.py ;;
-            failure)
-              printf '\ndef test_fixture_failure_path(tmp_path):\n    assert False, "fixture qualification plant"\n' >> tests/integration/test_history_store.py
-              code=0
-              python -m pytest "${args[@]}" --lane integration --shard 1/1 -k test_fixture_failure_path || code=$?
-              test "$code" -eq 1 ;;
-            *)
-              if [ "$PROBE_CASE" = override ]; then
-                export AEW_HARNESS_ADAPTERS='opencode=missing_fixture_probe_adapter:Adapter'
-              fi
-              for pair in 'integration test_history_store' 'regression test_log_sealing_model'; do
-                read -r lane module <<< "$pair"
-                python -m pytest "${args[@]}" -n 2 --dist worksteal --lane "$lane" --shard 1/1 -k "$module"
-              done ;;
-          esac
-      - name: Check qualification observations
-        shell: bash
-        env:
-          PROBE_CASE: ${{ matrix.case }}
-        run: python tests/helpers/check_store_fixture_probe.py
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: windows-fixture-${{ matrix.case }}
-          path: ${{ runner.temp }}/fixture-proof/
-          if-no-files-found: error
+          github-token: ${{ github.token }}
+          run-id: ${{ matrix.source }}
+          pattern: windows-fixture-*
+          path: observations
+      - name: Check all native worker node IDs and planted controls
+        run: python tests/helpers/check_store_fixture_probe.py observations

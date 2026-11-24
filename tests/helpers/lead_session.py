@@ -82,7 +82,7 @@ def call(provider, headers):
         return None
     try:
         conn = http.client.HTTPConnection(base.hostname, base.port, timeout=10)
-        conn.request("POST", base.path + "/probe", body=b"{{}}", headers={{**headers, "Content-Type": "x"}})
+        conn.request("POST", base.path + "/responses", body=b"{{}}", headers={{**headers, "Content-Type": "x"}})
         answer = conn.getresponse()
         return [answer.status, answer.read().decode()]
     except OSError as exc:

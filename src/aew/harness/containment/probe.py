@@ -580,7 +580,8 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
             upstream.start()
             state["secret"], sentinel = secrets.token_hex(16), relay.sentinel()
             target = relay.Upstream(f"http://127.0.0.1:{listener.getsockname()[1]}/aew-probe")
-            probe_relay = relay.ProviderRelay(target, {sentinel: state["secret"]},
+            # The probe's own operation, which only this host-side relay lists: a run's relay forwards no such path
+            probe_relay = relay.ProviderRelay(target, {sentinel: state["secret"]}, operations=("GET /check",),
                                               listener=netns.listen(os.path.join(directory, PROBE_RELAY))).start()
             stack.callback(probe_relay.close)
             state["relay"] = True

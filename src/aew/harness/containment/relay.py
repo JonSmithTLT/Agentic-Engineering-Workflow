@@ -5,7 +5,11 @@ file. The relay runs in the run's supervisor, outside the sandbox, and holds the
 holds only a sentinel in its place (:func:`sentinel`). For each request it:
 
 1. reads the request head (``origin-form`` only: a target that names a host is refused, so the sandbox never chooses
-   where the relay connects). A per-request credential also requires a path inside its upstream prefix;
+   where the relay connects). Its path must lie inside the upstream's prefix, spelled unambiguously
+   (:data:`OUTSIDE_UPSTREAM_PATH`), and name an operation the relay's policy allows (:data:`OPERATION_NOT_PERMITTED`):
+   the provider's model calls and its model list (:data:`DEFAULT_OPERATIONS`), and any other the operator's adopted
+   execution policy names for the provider (``containment.network.relay_operations``, read on the host at the relay's
+   start: never the request's or the sandbox's to widen). Either refusal is answered 403 before anything is connected;
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
@@ -78,6 +82,16 @@ OTHER_PLACEHOLDER = "other_placeholder"
 # What became of a request's credential header: its sentinel swapped for the credential; none carried one; or one
 # carried a sentinel this relay does not hold, and the request was refused.
 SWAP_OUTCOMES = ("swapped", "none", "refused_unknown_placeholder")
+# The refusals of a request outside the relay's operation scope (register STG-05): a path outside the upstream's
+# prefix, or spelled so an upstream might read it as another one; and an operation the relay's policy does not allow.
+OUTSIDE_UPSTREAM_PATH = "outside_upstream_path"
+OPERATION_NOT_PERMITTED = "operation_not_permitted"
+# The operations every relay forwards (:func:`_operation`'s labels): a model call and the model list. Anything else
+# goes upstream only when the operator's adopted policy names it (:func:`listed_operations`). OpenCode's calls
+# through the relay are these alone (tests/fixtures/opencode/relay-operations-2.2.6.json).
+DEFAULT_OPERATIONS = frozenset({"model", "models_list"})
+# The label of a request allowed only by an entry of the policy's ``relay_operations``.
+POLICY_OPERATION = "policy_listed"
 # Implementation bound: how much of a failed answer's body the record keeps. A provider's error is a short JSON object
 # (OpenAI's 401 for a wrong key is about 250 bytes); the record is for "why", not the whole answer.
 EXCERPT_BYTES = 512
@@ -91,6 +105,11 @@ _TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Resolve-mode forwards the target raw. Accept only unreserved path characters and literal separators so
 # neither percent decoding nor upstream-specific path parameter handling can change its interpretation.
 _RESOLVED_PATH = re.compile(r"/[A-Za-z0-9._~/\-]*")
+# A key-mode path is held to the same rule, with ``:`` too: Google's model calls name their method after one
+# (``/models/<id>:generateContent``). Its query passes as it came: it cannot move the path.
+_KEYED_PATH = re.compile(r"/[A-Za-z0-9._~/:\-]*")
+# What the policy may name in ``relay_operations``: a method and an exact path under the upstream's prefix.
+_POLICY_ENTRY = re.compile(r"(GET|POST|PUT|PATCH|DELETE) (/[A-Za-z0-9._~/:\-]*)")
 _PHRASES = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 408: "Request Timeout",
             431: "Request Header Fields Too Large", 501: "Not Implemented",
             502: "Bad Gateway", 503: "Service Unavailable"}
@@ -210,12 +229,35 @@ def _credential(value: str, credentials: Mapping[str, str], foreign: Collection[
     return value, None
 
 
-def _operation(method: str, target: str, base: str) -> str:
-    """Recognize API operations relative to the exact configured base, without retaining the path or query."""
+def _unambiguous(path: str) -> bool:
+    """Whether ``path`` has no empty, ``.`` or ``..`` segment, which an upstream might fold into another path."""
+    return "//" not in path and not {".", ".."}.intersection(path.split("/"))
+
+
+def listed_operations(entries: Collection[str]) -> frozenset[tuple[str, str]]:
+    """The operations a provider's ``containment.network.relay_operations`` entries add to :data:`DEFAULT_OPERATIONS`:
+    each ``METHOD /path``, the path exact and relative to the upstream's prefix (``POST /embeddings`` under
+    ``https://api.openai.com/v1``). Raises ``ValidationFailed`` (reason ``bad_relay_operation``) on any other form."""
+    out = set()
+    for entry in entries:
+        found = _POLICY_ENTRY.fullmatch(entry) if isinstance(entry, str) else None
+        if found is None or found[2] == "/" or not _unambiguous(found[2]):
+            raise ValidationFailed(f"relay operation {entry!r} is not METHOD /path (GET, POST, PUT, PATCH or DELETE, "
+                                   "and a path under the provider's upstream, such as POST /embeddings)",
+                                   entry=str(entry), reason="bad_relay_operation")
+        out.add((found[1], found[2]))
+    return frozenset(out)
+
+
+def _operation(method: str, target: str, base: str, listed: Collection[tuple[str, str]] = ()) -> str:
+    """Recognize API operations relative to the exact configured base, without retaining the path or query: a model
+    call, the model list, one the policy lists (:data:`POLICY_OPERATION`), else ``unknown``."""
     path = target.partition("?")[0]
     if not path.startswith(base + "/"):
         return "unknown"
     endpoint = path[len(base):]
+    if (method, endpoint) in listed:
+        return POLICY_OPERATION
     if method == "GET" and endpoint == "/models":
         return "models_list"
     if method == "POST" and (endpoint in ("/responses", "/chat/completions", "/completions", "/messages")
@@ -244,7 +286,8 @@ class ProviderRelay(Service):
     failed handshake), else the system's default verifying context; tests give their own. ``connect`` is a seam for
     tests (a plain connect to the upstream's name). ``record`` takes each request's entry (see the module's "The
     record"), with ``route`` (the provider) and ``login`` (``key``, ``oauth`` or ``none``) in it; a record that fails
-    is counted (``record_failed``) and never fails the request."""
+    is counted (``record_failed``) and never fails the request. ``operations`` are the operations the operator's
+    adopted policy adds for this provider (:func:`listed_operations`'s entries); the relay forwards no other."""
 
     name = "aew-relay"
 
@@ -254,9 +297,12 @@ class ProviderRelay(Service):
                  body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None,
                  client: ClientCert | None = None, record: Callable[[dict[str, Any]], None] | None = None,
                  route: str | None = None, login: str = "none", login_headers: Collection[str] = (),
-                 issued: Collection[str] = (), sources: Mapping[str, str] | None = None) -> None:
+                 issued: Collection[str] = (), sources: Mapping[str, str] | None = None,
+                 operations: Collection[str] = ()) -> None:
+        listed = listed_operations(operations)  # a bad entry is refused before anything is served
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
+        self.listed = listed
         self._credentials = dict(credentials)
         self.sources = dict(sources or {})  # sentinel to logical source name; only the name goes in a record
         self._resolve = resolve
@@ -302,13 +348,29 @@ class ProviderRelay(Service):
         with self._lock:
             return self._retryable_pending
 
-    def _check_resolved_target(self, target: str) -> None:
+    def _check_target(self, target: str) -> None:
+        """Refuse a target whose path is outside the upstream's prefix, or spelled so that an upstream might read it
+        as another path (an empty, ``.`` or ``..`` segment, a percent escape, a fragment)."""
         path = target.partition("?")[0]
-        if (not path.startswith(f"{self.upstream.path}/") or not _RESOLVED_PATH.fullmatch(path)
-                or "//" in path or "#" in target or {".", ".."}.intersection(path.split("/"))
-                or any(c <= " " or c == "\x7f" for c in target)):
-            raise _Refused(403, "outside_upstream_path", "the provider relay takes only unambiguous paths "
-                           "under the stored login's upstream path")
+        pattern = _RESOLVED_PATH if self._resolve is not None else _KEYED_PATH
+        if (not path.startswith(f"{self.upstream.path}/") or not pattern.fullmatch(path) or not _unambiguous(path)
+                or "#" in target or any(c <= " " or c == "\x7f" for c in target)):
+            whose = "the stored login's upstream path" if self._resolve is not None else \
+                f"the run's provider upstream path ({self.upstream.path or '/'})"
+            raise _Refused(403, OUTSIDE_UPSTREAM_PATH, "the provider relay takes only unambiguous paths under "
+                           f"{whose}: this request was not sent. Address the provider's API at the base URL AEW gave "
+                           "the harness")
+
+    def _check_operation(self, method: str, operation: str) -> None:
+        """Refuse an operation outside the relay's policy: :data:`DEFAULT_OPERATIONS` and what the policy lists."""
+        if operation in DEFAULT_OPERATIONS or operation == POLICY_OPERATION:
+            return
+        route = self.route or "<provider>"
+        raise _Refused(403, OPERATION_NOT_PERMITTED, f"the provider relay forwards only the operations its policy "
+                       f"allows for {route}: model calls and the model list, and any the operator's adopted execution "
+                       f"policy names in containment.network.relay_operations.{route}. This {method} request was not "
+                       "sent to the provider. If the run needs it, the operator names it there as METHOD /path (the "
+                       "path under the provider's upstream), adopts the policy and starts the run again")
 
     def handle(self, conn: socket.socket) -> None:
         """Serve one request on ``conn`` to its end, and close it."""
@@ -329,7 +391,8 @@ class ProviderRelay(Service):
         try:
             head, early = _read_head(conn, self.head_timeout)
             method, target, headers = self._request(head)
-            entry["operation"] = _operation(method, target, self.upstream.path)
+            entry["operation"] = _operation(method, target, self.upstream.path, self.listed)
+            self._check_operation(method, entry["operation"])  # before the grant and the connect: nothing connected
             framing = _framing(headers)
             credentials, extra = self._grant()  # before anything is connected: a refusal connects nothing
             held = [*credentials.values(), *extra.values()]
@@ -417,11 +480,10 @@ class ProviderRelay(Service):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1") from None
         if not _TOKEN.fullmatch(method) or version not in ("HTTP/1.1", "HTTP/1.0"):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1")
-        if self._resolve is not None:
-            self._check_resolved_target(target)
-        elif not target.startswith("/") or any(c <= " " or c == "\x7f" for c in target):
+        if self._resolve is None and (not target.startswith("/") or any(c <= " " or c == "\x7f" for c in target)):
             raise _Refused(400, "not_origin_form", "the provider relay takes a path only (/v1/...): it always "
                            "connects to the run's fixed provider upstream, which a request cannot name")
+        self._check_target(target)
         headers = []
         for raw in lines[1:]:
             name, sep, value = raw.partition(b":")

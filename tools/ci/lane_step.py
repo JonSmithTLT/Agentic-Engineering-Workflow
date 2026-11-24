@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import ctypes
+import functools
 import json
 import os
 import re
@@ -28,7 +29,7 @@ from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
 from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
 from session_deadline import collect_leftovers as collect  # noqa: E402
 from session_deadline import recorded_processes as identities  # noqa: E402
-from watchdog import SOURCE_TEST  # noqa: E402
+from watchdog import running_names  # noqa: E402
 
 CUTOFF_CLEARANCE_S = bounds.CUTOFF_CLEARANCE_S
 CUTOFF_GRACE_S = bounds.SESSION_END_MARGINS * bounds.DEADLINE_MARGIN_S + CUTOFF_CLEARANCE_S
@@ -38,15 +39,20 @@ HEARTBEAT = re.compile(rb"evidence-heartbeat ([0-9]+) ([0-9.]+)")
 GIL_ENTER = re.compile(rb"evidence-gil-enter ([0-9.]+)")
 # The Windows host's resources (register E3). Windows regression jobs have been lost with every in-VM timer silent;
 # the leading suspect is the host running out of something the lane's tests use. Each limit stops the lane while the
-# runner can still publish, and is set well past a loaded runner's normal reading so that only a runaway trips it.
-# The exit record and the step log carry every lane's peaks, which is how a limit is recalibrated.
+# runner can still publish, and is an estimate set well past the highest of the first observed peaks, so that only a
+# runaway trips it. Those peaks, over the 17 Windows regression and integration jobs of CI run 45431850900 (#546 at
+# 3c33bbda): commit 8.3 GiB, 44% of the smallest commit limit seen (integration 10/14, job 138579271173), 58,422
+# handles and 187 processes (integration 11/14, job 138579271198), and at least 142.9 GiB free (integration 1/14, job
+# 138579271016). Every Windows lane's exit record and step log carry its peaks, which is how a limit is recalibrated.
 HOST_POLL_S = 1.0  # GetPerformanceInfo walks the process list: once a second, as the cgroup monitor polls
 HOST_COMMIT_FRACTION = 0.92  # at the commit limit, process creation and heap growth fail with no Python trace;
-# 8% of the limit (well over a GiB on a hosted runner) is left for the capture and the publication steps
-HOST_HANDLES = 1_000_000  # system-wide; about ten times a loaded runner's count. Handles come from paged pool
+# 8% of the limit (over a GiB on a hosted runner) is left for the capture and the publication steps. The limit is the
+# current one: the runner's pagefile grows (the limit ran from 18.9 to 20.5 GiB across those jobs), so this can stop
+# before the host would truly run out
+HOST_HANDLES = 1_000_000  # system-wide; handles come from paged pool. About 17 times the observed peak
 HOST_PROCESSES = 1_000  # each CREATE_NO_WINDOW child also gets a conhost, and every process in the service session
-# takes desktop heap, whose exhaustion fails a new process at start (0xc0000142, as M4-B saw); about four times a
-# loaded runner's count
+# takes desktop heap, whose exhaustion fails a new process at start (0xc0000142, as M4-B saw). About 5 times the
+# observed peak; where desktop heap actually runs out is not known
 HOST_FREE_DISK = 2 * 1024 ** 3  # the scanned bundles are staged and zipped on this drive before upload
 
 
@@ -144,13 +150,16 @@ def memory_used() -> int | None:
         return None
 
 
+@functools.cache
+def _psapi_performance_info():
+    return ctypes.WinDLL("psapi", use_last_error=True).GetPerformanceInfo  # loaded once, on the first Windows read
+
+
 def _performance_info(call=None) -> _PerformanceInformation | None:
     info = _PerformanceInformation()
     info.cb = ctypes.sizeof(info)
     try:
-        if call is None:
-            call = ctypes.WinDLL("psapi", use_last_error=True).GetPerformanceInfo
-        return info if call(ctypes.pointer(info), info.cb) else None
+        return info if (call or _psapi_performance_info())(ctypes.pointer(info), info.cb) else None
     except (OSError, AttributeError):
         return None
 
@@ -196,13 +205,8 @@ def host_peak(peak: dict | None, reading: dict) -> dict:
 
 
 def running_tests(root: Path) -> list[str]:
-    """The tests the watchdog says are running, as the running-names publication reads them."""
-    names = set()
-    for path in Path(os.environ.get("AEW_RUNNING_TESTS_DIR") or root).glob("running-*.txt"):
-        with contextlib.suppress(OSError):
-            node = path.read_text(encoding="utf-8", errors="replace").strip()
-            names.add(node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>")
-    return sorted(names)
+    """The tests the watchdog says are running (its own reader, so the stop names what the publication names)."""
+    return sorted(set(running_names(Path(os.environ.get("AEW_RUNNING_TESTS_DIR") or root)).values()))
 
 
 def record_host_stop(root: Path, reading: dict, crossed: list[dict], peak: dict | None) -> None:

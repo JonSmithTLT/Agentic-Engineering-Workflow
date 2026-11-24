@@ -41,13 +41,37 @@ from typing import IO, Any
 
 import bounds
 import pytest
-from evidence_files import ARMED_NOTE, FRAME, WATCHDOG_HEADER, WATCHDOG_PREFIX, open_observation, stacks_ablated
+from evidence_files import (
+    ARMED_NOTE,
+    FRAME,
+    WATCHDOG_HEADER,
+    WATCHDOG_PREFIX,
+    is_link,
+    open_observation,
+    stacks_ablated,
+)
 from evidence_files import state as evidence_state
 
 USE_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
 # Publish source identifiers only. Parametrization IDs and stacks go through the scanned evidence path.
 SOURCE_TEST = re.compile(r"tests/(?:[\w-]+/)*[\w-]+\.py(?:::[\w]+)+", re.ASCII)
+RUNNING_FILE = re.compile(r"running-\d+\.txt")
 _deadline: float | None = None  # the running test's limit (monotonic), while the watchdog is on
+
+
+def running_names(directory: Path) -> dict[str, str]:
+    """Each worker's running-test file in ``directory``, by file name, with the test's source identifier (or a
+    placeholder): the one reader of these files, for the running-names publication and the lane step's stop."""
+    names = {}
+    for path in sorted(directory.glob("running-*.txt")):
+        try:
+            if not RUNNING_FILE.fullmatch(path.name) or is_link(path):
+                continue
+            node = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue  # a live writer moved or locked it
+        names[path.name] = node if SOURCE_TEST.fullmatch(node) else "<unrecognized test>"
+    return names
 
 
 def left() -> float | None:

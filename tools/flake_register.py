@@ -394,10 +394,25 @@ def queue(doc: dict[str, Any], recent: Iterable[tuple[str, dict[str, Any]]],
     return [(ident, count, count >= THRESHOLD) for ident, count in ordered]
 
 
+GH_ERROR_CHARS = 500  # gh's error is a line or two; the tail is kept should it print more
+
+
+class GhReadError(subprocess.CalledProcessError):
+    """A failed ``gh api`` read whose message carries gh's own error text, which names the HTTP status."""
+
+    def __str__(self) -> str:
+        detail = (self.stderr or b"").decode("utf-8", "replace").strip()[-GH_ERROR_CHARS:]
+        return f"{super().__str__().rstrip('.')}: {detail or 'gh printed no error'}"
+
+
 def _gh_read(*args: str) -> bytes:
-    result = subprocess.run(["gh", "api", *args],
-                            check=True, capture_output=True, timeout=45,
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        result = subprocess.run(["gh", "api", *args],
+                                check=True, capture_output=True, timeout=45,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.CalledProcessError as exc:
+        # Without this a failed read's traceback says only "exit status 1" (#546, job 138579044835).
+        raise GhReadError(exc.returncode, exc.cmd, exc.output, exc.stderr) from None
     return result.stdout
 
 

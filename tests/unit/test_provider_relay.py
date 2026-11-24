@@ -1878,7 +1878,12 @@ def test_the_model_call_bodies_a_relay_holds_at_once_are_bounded_and_released():
 def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_parsed():
     """#551's review, m3: parsing a body holds more than the body, most of all for many small values. The relay holds
     its estimate (``relay._scan``) within ``max_held`` before it parses, so a body that is small but would parse
-    large is refused 413 with nothing connected, and the estimate is above what the scan and the parse hold."""
+    large is refused 413 with nothing connected, and the estimate is above what the scan and the parse hold. What the
+    scan alone holds is within what the relay holds before it starts (``relay._scan_hold``), whatever the body:
+    #551's quick check, q2 and q3. A compact object of many short unique keys, the costliest shape per value measured
+    (q1), keeps a margin of a tenth."""
+    import itertools
+    import string
     import tracemalloc
 
     dense = json.dumps({"model": "m", "input": [{}] * 2000}).encode()
@@ -1888,14 +1893,25 @@ def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_
               json.dumps({"a": "\U0001F600" * 5000}, ensure_ascii=False).encode(),
               json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode(),
               json.dumps(["ab"] * 5000).encode().replace(b"[", b'{"a": [', 1) + b"}"]
-    for body in shapes:
+    names = ("".join(t) for k in (1, 2, 3, 4) for t in itertools.product(string.ascii_letters, repeat=k))
+    compact = ("{" + ",".join(f'"{name}":0' for name in itertools.islice(names, 200_000)) + "}").encode()
+    deep = b'{"a":' + b"[" * 200_000 + b"]" * 200_000 + b"}"
+    for body in [*shapes, compact, deep]:
         held = bytearray(body)  # as the relay holds it, before the scan starts
         tracemalloc.start()
-        cost, _ = relay._scan(held)
-        relay._document(held)
+        cost, depth = relay._scan(held)
+        scanned = tracemalloc.get_traced_memory()[1]
+        if depth <= relay.MAX_NESTING:
+            relay._document(held)
         peak = tracemalloc.get_traced_memory()[1]
         tracemalloc.stop()
+        assert scanned <= relay._scan_hold(len(held)), (body[:40], scanned, relay._scan_hold(len(held)))
         assert peak <= cost, (body[:40], peak, cost)
+    tracemalloc.start()
+    cost, _ = relay._scan(bytearray(compact))
+    relay._document(bytearray(compact))
+    assert tracemalloc.get_traced_memory()[1] * 1.1 <= cost
+    tracemalloc.stop()
 
 
 def _reset_mid_body(request: bytes, **kw: Any) -> tuple[Seam, list[dict[str, Any]]]:
@@ -2026,9 +2042,12 @@ def test_a_body_at_the_relays_nesting_bound_is_walked_and_one_past_it_refused_on
 
 
 def test_a_policy_cannot_list_a_model_call_and_so_take_its_body_out_of_scope():
-    """#551's review, m6: a model call or the model list in ``relay_operations`` refuses the relay's start, and a
-    model call is recognized as one whatever the policy lists, so its body is always held to its scope."""
-    for entry in ("POST /responses", "POST /messages", "POST /models/g:generateContent", "GET /models"):
+    """#551's review, m6, and its quick check: a model call or the model list in ``relay_operations``, in any letter
+    case, and an entry whose path ends in ``/``, refuse the relay's start; and a model call is recognized as one
+    whatever the policy lists, so its body is always held to its scope."""
+    for entry in ("POST /responses", "POST /messages", "POST /models/g:generateContent", "GET /models",
+                  "POST /Responses", "POST /MODELS/g:GENERATECONTENT", "GET /Models", "POST /responses/",
+                  "POST /embeddings/"):
         with pytest.raises(ValidationFailed) as caught:
             ProviderRelay(Upstream(UPSTREAM), {}, operations=(entry,))
         assert caught.value.details["reason"] == "bad_relay_operation"

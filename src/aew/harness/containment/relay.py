@@ -120,9 +120,11 @@ MAX_BODY = 64 * 1024 * 1024
 # documents) fits, and so do many of the sizes model calls take (a turn's context is a few MiB at most).
 MAX_HELD = 256 * 1024 * 1024
 # Implementation bound: what parsing one JSON value of a body costs at most, beyond its text and its strings' text
-# (:func:`_scan`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3): 28-62 bytes per
-# value across arrays of empty objects, empty arrays, small objects, numbers, keys and strings; 96 leaves a margin.
-PARSE_VALUE_BYTES = 96
+# (:func:`_scan`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3 and its quick check, q1):
+# 28-62 bytes per value across arrays of empty objects, empty arrays, small objects, numbers and strings, and about
+# 105 for an object of many short unique keys (each pair counted twice, by its ``:`` and its ``,``); 128 leaves a
+# margin over the largest.
+PARSE_VALUE_BYTES = 128
 # What any parse holds besides (its objects' headers, the parser's state): 1-2 KiB measured alike; 16 KiB margin.
 PARSE_BASE_BYTES = 16 * 1024
 # Implementation bound: how deep a model call's body may nest its arrays and objects (its top-level object is 1). It is
@@ -323,12 +325,13 @@ def listed_operations(entries: Collection[str], *, resolved: bool = False) -> fr
     """The operations a provider's ``containment.network.relay_operations`` entries add to :data:`DEFAULT_OPERATIONS`:
     each ``METHOD /path``, the path exact and relative to the prefix of whichever upstream the provider's relay uses
     (``POST /embeddings`` under ``https://api.openai.com/v1``; the same entry applies under a stored login's
-    upstream). Raises ``ValidationFailed`` (reason ``bad_relay_operation``) on any other form, and for a stored-login
-    relay (``resolved``) on a path it could never match (one with ``:``, which its paths never hold)."""
+    upstream). Raises ``ValidationFailed`` (reason ``bad_relay_operation``) on any other form (a path that ends in
+    ``/`` among them), for a stored-login relay (``resolved``) on a path it could never match (one with ``:``, which its
+    paths never hold), and on a model call or the model list, in any case (#551's review, m6, and its quick check)."""
     out = set()
     for entry in entries:
         found = _POLICY_ENTRY.fullmatch(entry) if isinstance(entry, str) else None
-        if found is None or found[2] == "/" or not _unambiguous(found[2]):
+        if found is None or found[2].endswith("/") or not _unambiguous(found[2]):
             raise ValidationFailed(f"relay operation {entry!r} is not METHOD /path (GET, POST, PUT, PATCH or DELETE, "
                                    "and a path under the provider's upstream, such as POST /embeddings)",
                                    entry=str(entry), reason="bad_relay_operation")
@@ -337,13 +340,30 @@ def listed_operations(entries: Collection[str], *, resolved: bool = False) -> fr
                                    "(its paths hold no ':'), and the entry applies to that relay too: take it out, "
                                    "or use the API-key route for this provider", entry=str(entry),
                                    reason="bad_relay_operation")
-        if _operation(found[1], found[2], "") in DEFAULT_OPERATIONS:
+        if _default_operation(found[1], found[2], fold=True):  # in any case an upstream might take it in
             raise ValidationFailed(f"relay operation {entry!r} is a model call or the model list, which every relay "
                                    "forwards already, a model call's body held to its scope: take it out (to allow a "
                                    "field of a model call's body, name it in containment.network.relay_body_fields)",
                                    entry=str(entry), reason="bad_relay_operation")
         out.add((found[1], found[2]))
     return frozenset(out)
+
+
+# The model-call endpoints of each provider route (:func:`_operation`), relative to the upstream's prefix
+_MODEL_ENDPOINTS = ("/responses", "/chat/completions", "/completions", "/messages")
+_GOOGLE_MODEL_CALL = r"/models/[^/:]+:(?:generateContent|streamGenerateContent)"
+
+
+def _default_operation(method: str, endpoint: str, *, fold: bool = False) -> str | None:
+    """Which of :data:`DEFAULT_OPERATIONS` ``method`` and ``endpoint`` are, if either: as the relay matches a request
+    (exactly), or, with ``fold``, in any letter case, as an upstream might."""
+    key = endpoint.casefold() if fold else endpoint
+    if method == "GET" and key == "/models":
+        return "models_list"
+    if method == "POST" and (key in _MODEL_ENDPOINTS or re.fullmatch(_GOOGLE_MODEL_CALL, endpoint,
+                                                                      re.IGNORECASE if fold else 0)):
+        return "model"
+    return None
 
 
 def _operation(method: str, target: str, base: str, listed: Collection[tuple[str, str]] = ()) -> str:
@@ -354,11 +374,9 @@ def _operation(method: str, target: str, base: str, listed: Collection[tuple[str
     if not path.startswith(base + "/"):
         return "unknown"
     endpoint = path[len(base):]
-    if method == "GET" and endpoint == "/models":
-        return "models_list"
-    if method == "POST" and (endpoint in ("/responses", "/chat/completions", "/completions", "/messages")
-                             or re.fullmatch(r"/models/[^/:]+:(?:generateContent|streamGenerateContent)", endpoint)):
-        return "model"
+    default = _default_operation(method, endpoint)
+    if default is not None:
+        return default
     if (method, endpoint) in listed:
         return POLICY_OPERATION
     return "unknown"
@@ -513,9 +531,9 @@ def _scan(body: bytes | bytearray) -> tuple[int, int]:
     The estimate (m3): its text, at the width Python stores it at (one byte a character, two from U+0100, four from
     U+10000), its strings' text again at the width they may take (a ``\\u`` escape may widen one),
     :data:`PARSE_VALUE_BYTES` for each value, counted from its ``[``, ``{``, ``,`` and ``:`` outside strings, and
-    :data:`PARSE_BASE_BYTES`. The scan itself holds at most two copies of the body beside it, each at most its size
-    (its caller holds them first), and what one :data:`SCAN_CHUNK` of its skeleton splits into (counted in the
-    estimate, as :data:`SCAN_CHUNK_BYTES` for each byte of it)."""
+    :data:`PARSE_BASE_BYTES`. The scan itself holds at most two copies of the body beside it, each at most its size,
+    and what one :data:`SCAN_CHUNK` of its skeleton splits into (:data:`SCAN_CHUNK_BYTES` for each byte of it), all
+    held by its caller before it starts (:func:`_scan_hold`); the estimate counts the chunk's share too."""
     size = len(body)
     # A string's escapes out first: each escaped backslash (left to right, so a run of them pairs as a parser reads
     # it), then each escaped quote; then all but its quotes and structure. Each copy is at most the body's size, and
@@ -532,12 +550,19 @@ def _scan(body: bytes | bytearray) -> tuple[int, int]:
         inside ^= len(pieces) % 2 == 0  # an odd number of quotes in this chunk
         del pieces
         values += sum(outside.count(c) for c in b"[{,:")
-        levels = list(itertools.accumulate(map(_NESTING_STEP.__getitem__, outside.translate(None, _NOT_BRACKET)),
-                                           initial=level))
-        depth, level = max(depth, *levels), levels[-1]
+        brackets = outside.translate(None, _NOT_BRACKET)
+        # A running maximum, one level at a time: never a list of them (#551's quick check, q3)
+        depth = max(depth, max(itertools.accumulate(map(_NESTING_STEP.__getitem__, brackets), initial=level)))
+        level += brackets.count(b"[") + brackets.count(b"{") - brackets.count(b"]") - brackets.count(b"}")
     del skeleton
-    scan = SCAN_CHUNK_BYTES * min(size, SCAN_CHUNK)
-    return size * (text + strings) + values * PARSE_VALUE_BYTES + PARSE_BASE_BYTES + scan, depth
+    chunk = SCAN_CHUNK_BYTES * min(size, SCAN_CHUNK)
+    return size * (text + strings) + values * PARSE_VALUE_BYTES + PARSE_BASE_BYTES + chunk, depth
+
+
+def _scan_hold(size: int) -> int:
+    """What :func:`_scan` holds beside a body of ``size`` bytes, whatever the body: two copies of it, and one
+    :data:`SCAN_CHUNK` of its skeleton split up. Its caller holds it before the scan (#551's quick check, q2)."""
+    return 2 * size + SCAN_CHUNK_BYTES * min(size, SCAN_CHUNK)
 
 
 def _document(body: bytes | bytearray) -> dict[str, Any]:
@@ -716,8 +741,8 @@ class ProviderRelay(Service):
         goes as it came."""
         if not body:
             return
-        reserve(2 * len(body))  # the copies :func:`_scan` makes to count the body's values
-        held = 2 * len(body)
+        held = _scan_hold(len(body))  # what the scan holds, before it starts
+        reserve(held)
         try:
             cost, depth = _scan(body)
             reserve(max(cost - held, 0))

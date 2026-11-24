@@ -7,7 +7,8 @@ the body whole before anything is connected and:
   `body_field_not_permitted`, naming each field in the answer and in the record's `body_fields`, recorded `refused`,
   with nothing connected. A key is matched as an upstream might read it: without
   its case, `_` or `-`. A tool call's own arguments and a function's parameters are never read for one. A model call
-  is recognized as one whatever `relay_operations` lists, and an entry there naming one refuses the start;
+  is recognized as one whatever `relay_operations` lists, and an entry there naming one, in any letter case, or whose
+  path ends in `/`, refuses the start;
 - **opts a field in only from the adopted policy:** `containment.network.relay_body_fields.<provider>` (each entry
   one of `relay.BODY_FIELDS` or `tools.<type>`), read on the host at the relay's start, as `relay_operations` is; per
   provider, for its API-key and stored-login relays alike. An entry the relay does not know refuses the start

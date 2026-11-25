@@ -104,7 +104,8 @@ def load_findings(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, int]
             mine = findings.setdefault(key, {**entry, "count": 0})
             mine["count"] += int(entry.get("count") or 0)
         for name, n in (data.get("errors") or {}).items():
-            errors[name] = errors.get(name, 0) + int(n)
+            key = f"{rel}: {name}"
+            errors[key] = errors.get(key, 0) + int(n)
     return findings, errors, sources
 
 

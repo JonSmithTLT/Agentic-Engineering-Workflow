@@ -528,6 +528,7 @@ def test_brackets_inside_a_string_never_count_toward_the_bound():
     assert mcp.Server(Spy()).handle_line(line) == [{"jsonrpc": "2.0", "id": 3, "result": {}}]
 
 
+@pytest.mark.serial  # how long this takes is what it asserts: alone, not on a loaded runner
 def test_a_malformed_line_is_answered_in_time_linear_in_its_length():
     # An unterminated string of escaped quotes, then more brackets than the bound: the depth scan must pass over it
     # once, not once per quote (PR #556 review, F1). A quadratic scan takes minutes here; a linear one milliseconds.

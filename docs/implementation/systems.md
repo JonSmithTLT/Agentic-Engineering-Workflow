@@ -218,7 +218,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Own slices left:** 4 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118); E100: change mode()'s win32 branch so an explicit required refuses the launch on every platform (E100); E92: forward plain http:// requests through the contained egress under the same R-6 host check (E92); ProcessTree.active() with a group holding only a zombie, for checking (E247) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
 
-**Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker on Windows, even when required is set explicitly — not read from the code
+**Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then refuses every launch — not read from the code
 
 **Wired:** cli:harness launch, cli:check run, cli:opencode, cli:lead session, cli:doctor, cli:harness status
 

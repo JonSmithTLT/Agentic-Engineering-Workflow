@@ -156,14 +156,16 @@ systems:
   depends_on: []
   switch:
     key: containment.mode (execution policy)
-    default: required on Linux; allow_weaker on Windows, even when required is set explicitly
-    default_evidence: 'src/aew/harness/containment/__init__.py:76 (Linux: explicit value or REQUIRED); :77-78 (win32 returns
-      ALLOW_WEAKER)'
+    default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then
+      refuses every launch
+    default_evidence: 'src/aew/harness/containment/__init__.py:85 (Linux: explicit value or REQUIRED); :86 (elsewhere:
+      REQUIRED only when explicit, else ALLOW_WEAKER)'
     owner: operator
     turning_on_changes: Already on by default on Linux. Setting allow_weaker on Linux still contains every launch that
       can be contained; only a launch whose containment fails then runs labelled workdir_separation_only, entered in the
       register of weaker contexts, instead of being refused (and aew lead session runs uncontained instead of being refused).
-      After E100, an explicit required on a host that cannot meet it refuses the launch instead of running weaker.
+      An explicit required on a host that cannot meet it, Windows included, refuses the launch instead of running weaker
+      (E100).
   state:
     board_state: partly_built
     built: partly
@@ -213,12 +215,13 @@ systems:
     not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
     Lead; it may belong with SYS-05.'
   evidence:
-  - src/aew/harness/containment/__init__.py:59-61 supported() is Linux only
-  - 'src/aew/harness/containment/__init__.py:70-79 mode(): Linux returns the explicit value or required (:76); win32 returns
-    allow_weaker even for an explicit required (:77-78), which is E100''s work'
-  - 'src/aew/harness/containment/__init__.py:168-172,202-208 establish(): under allow_weaker a launch is still contained
+  - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
+  - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
+    platform, Windows included, returns required only when it is explicit (:86), and establish() then refuses the launch
+    with reason unsupported_platform (:179-181; E100''s work)'
+  - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
-  - src/aew/harness/containment/__init__.py:101 the label records weaker_because
+  - src/aew/harness/containment/__init__.py:108 the label records weaker_because
   - src/aew/harness/containment/egress.py:1,416-421 the egress proxy serves CONNECT only and refuses plain http:// naming
     the https form (E92's work)
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before

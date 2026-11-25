@@ -959,8 +959,8 @@ class EvidenceCommands:
     def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
         """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,
         with an allow-listed environment. Under ``required`` a sandbox that cannot be established refuses, naming
-        ``allow_weaker``; where the policy allows a weaker run (and on Windows) it runs labelled so, and is entered in
-        the register of weaker contexts while it runs (G3 addendum 7)."""
+        ``allow_weaker``, on every platform (E100); where the policy allows a weaker run (and, with the mode unset, off
+        Linux) it runs labelled so, and is entered in the register of weaker contexts while it runs (G3 addendum 7)."""
         import secrets
         import shutil
         import time

@@ -54,6 +54,7 @@ from aew.harness import contract as K
 from aew.harness import delivery as L
 from aew.harness import progress as P
 from aew.harness.base import LAUNCH_REFUSALS, RELAY_FAMILY_SHOWN
+from aew.harness.bridge import MAP_OPERATIONS
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
@@ -212,6 +213,7 @@ class Harness:
             runs.append(run_record)
             if self.coordination.project_switch(state) == X.MESSAGING_ENABLED:
                 runs[-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+            runs[-1].update(maps_launch_snapshot(self.k))
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
@@ -367,7 +369,39 @@ class Harness:
         runs = inv.get("runs") or []
         if runs and run_messaging_snapshot(runs[-1]) == X.MESSAGING_ENABLED:
             ops |= {"message.reply", "message.read", "message.wait"}
+        # The map reads ride context.read (register F15.8): a role that reads context, in a run launched with them on
+        if runs and "context.read" in ops and K.run_maps_reads(runs[-1]) == X.MAPS_READS_STRUCTURAL:
+            ops |= set(MAP_OPERATIONS)
         return sorted(ops)
+
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        """What a worker's map read answers at (register F15.8): its invocation's workspace and base commit
+        (``invocation_workspace``, the one owner), the Ticket's effective scope paths, and who asks. The credential is
+        checked for ``context.read``, the operation the map reads ride. Reads the state; writes nothing."""
+        state = self.k.store.current()
+        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read",
+                                            archived=self.archive.archived_credential)
+        workspace, _, base = self.invocations.invocation_workspace(state, inv)
+        if not base:
+            raise IllegalTransition(f"{inv_id} has no base commit to read the map at", invocation=inv_id)
+        scope: list[str] | None
+        try:
+            scope = list((self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths")
+                         or [])
+        except Exception:  # noqa: BLE001 - a record that cannot be read: the answer says its scope is unknown (m9)
+            scope = None
+        return {"workspace": str(workspace), "base": base, "scope_paths": scope,
+                "recipient": {"kind": "worker", "invocation": inv_id, "role": inv["role"],
+                              "work_unit": inv["work_unit"]}}
+
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        """A work unit's effective scope paths, read lock-free from committed state, for the Lead's and the operator's
+        ``aew map show --scope ticket --work`` (register F15.8)."""
+        state = self.k.store.read_committed()
+        unit = state["work"].get(work_id)
+        if unit is None:
+            raise NotFound(f"no work unit {work_id}", work_id=work_id)
+        return list((self.gates.record_meta(unit).get("scope") or {}).get("paths") or [])
 
     def harness_contract(self, state: dict[str, Any], inv_id: str, run: str) -> K.LaunchContract:
         inv = state["invocations"][inv_id]
@@ -1109,6 +1143,17 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 # A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
 # surrogate pair), so a message this long always arrives (#138 review, F1).
 MAX_SEND_CHARS = 1 << 20
+
+
+def maps_launch_snapshot(k: Kernel) -> dict[str, Any]:
+    """A new run entry's ``maps.reads`` launch snapshot (register F15.8), from the adopted execution policy the
+    recording transaction holds (``contract.maps_reads_snapshot``): ``harness launch`` and a dispatch's ``--launch``
+    both record it here. A policy that cannot be read turns nothing on."""
+    try:
+        policy, _ = k.execution_policy()
+    except Exception:  # noqa: BLE001 - an unreadable policy offers no map reads, as an absent key reads
+        return {}
+    return K.maps_reads_snapshot(policy)
 
 
 def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:

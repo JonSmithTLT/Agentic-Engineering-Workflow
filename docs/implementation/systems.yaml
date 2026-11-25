@@ -4529,19 +4529,35 @@ systems:
   - F15.8
   - E162
   - E163
-  as_built: []
+  as_built:
+  - modules:aew.maps.query
+  - cli-commands:map search
   touches:
+  - src/aew/maps/query.py
+  - src/aew/harness/supervisor.py
+  - src/aew/cli/map_commands.py
   - src/aew/surface/contract.py
   - src/aew/surface/lead_text.py
   - src/aew/harness/bridge.py
   - docs/implementation/surface-map.md
   depends_on:
   - SYS-06
+  switch:
+    key: maps.reads
+    default: 'off'
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: structural
+    owner: operator
+    turning_on_changes: structural offers each worker run whose role reads context `aew map show` and `aew map search`
+      through its run's bridge (map.show, map.search), answered by aew.maps.query at the invocation's base, and one
+      preamble line naming them; a run reads it once, into its launch snapshot. A new project holds structural (`aew
+      init`'s template; the operator, 2026-11-25, O1); an existing one without the key reads off and keeps it
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: partly_built
+    built: partly
+    wired:
+    - cli:map search
+    on_by_default: true
     used_in_default_flow: 'no'
   finish_line: F15.3's aew-run server gives a worker whoami, check.run and submit as typed in-sandbox tools over the existing
     bridge, with aew-knowledge beside it; F15.8's read half serves the map and evidence reads; the Lead families still
@@ -4554,11 +4570,16 @@ systems:
       tools; the supervisor keeps the credential). Held in HOLD-06 until the designer''s match and the operator''s placement'
     row: F15.3
     estimate: 1-2 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation).
-      Waits on typed map and evidence reads'
+  - slice: 'F15.8''s map reads, unfrozen by the operator after E293 (2026-11-25: "unfreeze 15.8 after E293"): the shared
+      query module, `aew map search` and the worker bridge rows map.show and map.search are built (the mapping series''
+      PR A); the Lead''s typed map tool (PR A2) and outline, symbol, callers and callees over F22.4''s facts (PR C)
+      remain'
     row: F15.8
-    estimate: 2-3 PRs (estimate, census)
+    estimate: 2 PRs (the mapping series' plan, revision 2)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F15.8''s other items: evidence.show, check.suggest, tools.presentation and the in-sandbox aew-run server'
+    row: F15.8
+    estimate: 1-2 PRs (estimate, census)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       aew-knowledge as its own capability namespace over the shared transport library: part of F15.3''s text, so held
       with it in HOLD-06; what it serves waits on K-01''s increment'
@@ -4589,15 +4610,19 @@ systems:
     estimate: 1 PR (estimate)
   decision: 'decided: moved here from SYS-06, which finished by recording HOLD-06 as staying held (the operator, 2026-11-25:
     "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen
-    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
-  recommendation: keep
+    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6, apart
+    from F15.8''s map reads, which the operator unfroze after E293 (2026-11-25: "unfreeze 15.8 after E293"), with
+    maps.reads on for new projects (O1)'
+  recommendation: finish
   who: operator (placing F15.3 and F15.8 after first use, and the frozen Lead text work); then Lead
-  reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Not built: the worker side is three bridge operations
-    reached through the aew CLI, not MCP tools, and aew-run and aew-knowledge appear only in a comment. E162 and E163
-    are frozen on this board by the reset, but both are targeted Now and named in one item of the register''s Now list:
-    starting either moves this system to finish, partly built, and into the count, unless the operator rules they stay
-    frozen. Until then it is kept, not counted, until the operator places it.'
+  reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Partly built: F15.8''s map reads, which the operator
+    unfroze after E293, are built (aew.maps.query, `aew map search`, the worker bridge rows map.show and map.search, on
+    for new projects), so the system is partly built and counted, as this row said starting a slice would. The rest
+    stays as it was: the aew-run server and aew-knowledge appear only in a comment, F15.8''s other items stay frozen, and
+    E162 and E163 stay frozen by the reset unless the operator rules otherwise.'
   evidence:
+  - 'src/aew/maps/query.py: the shared map query module; src/aew/harness/bridge.py MAP_OPERATIONS: map.show and map.search;
+    src/aew/policy/execution.py maps.reads, written structural by `aew init`'
   - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
     through the aew CLI, not MCP tools'
   - 'src/aew/surface/__init__.py:14: SERVER_NAME = "aew-lead"; aew-run and aew-knowledge appear only in this comment (grep

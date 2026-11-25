@@ -8,7 +8,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
 
-**partly_built:** 15 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25
+**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-51
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -16,11 +16,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 21 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-46, SYS-49, SYS-50, SYS-51, SYS-52
+**designed_only:** 20 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
 
 **Waiting on your sign-off:** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 8 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22
+**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22, SYS-51
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -206,7 +206,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 12 — SYS-02, SYS-29, SYS-22, SYS-41, SYS-43, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 13 — SYS-02, SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -269,6 +269,20 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — the `plan_assessment` kind, its schema and the revision binding (E160); the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the `plan_assessment` kind, its schema and the revision binding — E160 — about 1 PR (estimate; the designer's reading, planner design Q3: 3-4 PRs in all)
 
 **Wired:** none
+
+### SYS-51 — Typed surface follow-ons (worker-side role servers, typed Lead rows, Lead text fixes)
+
+**Board state:** partly_built
+
+**Who:** operator (placing F15.3 and F15.8 after first use, and the frozen Lead text work); then Lead
+
+**Now:** 33
+
+**Own slices left:** 9 — FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement (F15.3); F15.8's map reads, unfrozen by the operator after E293 (2026-11-25: "unfreeze 15.8 after E293"): the shared query module, `aew map search` and the worker bridge rows map.show and map.search are built (the mapping series' PR A); the Lead's typed map tool (PR A2) and outline, symbol, callers and callees over F22.4's facts (PR C) remain (F15.8); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.8's other items: evidence.show, check.suggest, tools.presentation and the in-sandbox aew-run server (F15.8); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): aew-knowledge as its own capability namespace over the shared transport library: part of F15.3's text, so held with it in HOLD-06; what it serves waits on K-01's increment (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew *` (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): BOARD v2 §4 loose end and §6 stale text: drop the catalog's unused DESIGNED status and correct the contract.py docstring that says rows stay DESIGNED (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): The Lead's request-economy text remains owed after E139's worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E162); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): Lead text fixes (E162); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): a typed `plan accept` on the Lead's MCP server, with its surface-map entry (E163) — **Next:** FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement — F15.3 — 1-2 PRs (estimate, census)
+
+**Switch:** maps.reads — default: off (a new project: structural) — checked against src/aew/policy/execution.py:STRING_SWITCHES
+
+**Wired:** cli:map search
 
 ### SYS-45 — Branch review and document work (ref_review, technical_writer)
 
@@ -380,13 +394,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Not counted
 
-**Members:** 20 — SYS-18, SYS-12, SYS-51, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
+**Members:** 19 — SYS-18, SYS-12, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
 
 **SYS-18 — Ticket revisions:** freeze
 
 **SYS-12 — Discovery layer, D2 (output and text rules):** freeze
-
-**SYS-51 — Typed surface follow-ons (worker-side role servers, typed Lead rows, Lead text fixes):** keep
 
 **SYS-01 — Evaluation instrument (F19, M4-H):** freeze
 

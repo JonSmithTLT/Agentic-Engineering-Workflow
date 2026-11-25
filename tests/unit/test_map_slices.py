@@ -344,13 +344,14 @@ def test_the_v01_maps_profile_names_the_built_bounds_and_only_tests_that_exist()
     from aew.maps import EVIDENCE_CLASS, service
 
     root = Path(__file__).resolve().parents[2]
-    text = (root / "docs" / "implementation" / "maps-v01-profile.md").read_text(encoding="utf-8")
+    raw = (root / "docs" / "implementation" / "maps-v01-profile.md").read_text(encoding="utf-8")
+    text = " ".join(raw.split())  # a rewrapped line never fails a fact (the review of #567, n4)
     for fact in (f"`ROWS` ({slices.ROWS})", f"`HINTS` ({slices.HINTS})",
                  f"`SLICE_MAX_BYTES` ({slices.SLICE_MAX_BYTES // 1024} KiB)", f"within {slices.SCOPE_LISTING_S:g} s",
                  f"within {service.REFRESH_S:g} s (`service.REFRESH_S`)",
                  f"at most {structural.CAPS['directories']} rows", f"`{EVIDENCE_CLASS}`",
-                 "The byte budget is nominal, not a hard\nceiling"):
-        assert fact in text, fact
+                 "The byte budget is nominal, not a hard ceiling", "`rev-parse` and `config --list`"):
+        assert " ".join(fact.split()) in text, fact
     defined = {m for f in (root / "tests").rglob("test_*.py")
                for m in re.findall(r"^def (test_\w+)", f.read_text(encoding="utf-8"), re.M)}
     cited = set(re.findall(r"`(test_\w+)`", text))

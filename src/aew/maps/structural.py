@@ -43,6 +43,10 @@ DIRECTORY_DEPTH = 3
 CAPS = {"directories": 200, "submodules": 200, "unknown_extensions": 20, "build_descriptors": 200,
         "entry_point_candidates": 100, "test_candidates": 100, "generated_and_vendor": 200,
         "semantic_prerequisites": 100, "omissions": 100}
+# The cap behind each section field that counts what it left out, where the field is not named for its section's own
+# cap; the omissions section's lists share CAPS["omissions"].
+OMITTED_CAP = {"rows_omitted": "directories", "submodules_omitted": "submodules",
+               "unknown_extensions_omitted": "unknown_extensions"}
 SECTIONS = ("directories", "languages", "build_descriptors", "entry_point_candidates", "test_candidates",
             "generated_and_vendor", "semantic_prerequisites", "limits_and_omissions")
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
@@ -431,8 +435,7 @@ def _omissions(sections: dict[str, Any], entries: tuple[Entry, ...], f: _Facts,
         section = sections[name]
         for key, value in sorted(section.items()):
             if key.endswith("omitted") and value:
-                cap = {"rows_omitted": "directories", "submodules_omitted": "submodules",
-                       "unknown_extensions_omitted": "unknown_extensions"}.get(key, name)
+                cap = OMITTED_CAP.get(key, name)
                 caps.append({"section": name, "field": key, "limit": CAPS[cap], "omitted": value})
     cap = CAPS["omissions"]
     failures, failures_omitted = _capped(sorted(f.failures, key=lambda i: i["path"]), cap)

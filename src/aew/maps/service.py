@@ -31,12 +31,12 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.maps import EVIDENCE_CLASS, gitobjects, rules, store, structural
+from aew.maps import EVIDENCE_CLASS, gitobjects, query, rules, store, structural
 from aew.maps import freshness as F
 from aew.maps.canonical import seal
 from aew.util import atomic_write, utc_now
 
-ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "generator", "artifact_sha256")
+ENVELOPE = query.ENVELOPE
 
 
 def identity() -> dict[str, Any]:
@@ -353,14 +353,6 @@ def _registry_revision(aew_root: Path) -> tuple[dict[str, Any] | None, str]:
     return registry, store.revision_of(registry)
 
 
-def _section(record: dict[str, Any], name: str | None) -> dict[str, Any]:
-    if name is None:
-        return record
-    if name not in structural.SECTIONS:
-        raise UsageError(f"no section {name!r}; the sections are {', '.join(structural.SECTIONS)}")
-    return {**{k: record[k] for k in ENVELOPE}, "sections": {name: record["sections"][name]}}
-
-
 def show(engine: Any, *, commit: str | None = None, root: str | None = None,
          section: str | None = None) -> dict[str, Any]:
     against = commit or _default_commit(engine)
@@ -380,7 +372,7 @@ def show(engine: Any, *, commit: str | None = None, root: str | None = None,
     return {"ok": True, "status": "AVAILABLE", "root": record["artifact_sha256"], "evidence_class": EVIDENCE_CLASS,
             "selected": record["artifact_sha256"] == selected_sha, "map_revision": revision,
             "freshness": F.freshness(engine.repo_root, record, against, identity()),
-            **_architecture_field(engine, registry), "record": _section(record, section)}
+            **_architecture_field(engine, registry), "record": query.record_section(record, section)}
 
 
 def _architecture_field(engine: Any, registry: dict[str, Any] | None) -> dict[str, Any]:
@@ -418,6 +410,8 @@ def diff(engine: Any, operands: list[tuple[str, str]]) -> dict[str, Any]:
             continue
         fields = {k: _diff_value(x.get(k), y.get(k)) for k in sorted(set(x) | set(y)) if x.get(k) != y.get(k)}
         sections[name] = {"changed": True, "fields": fields}
-    return {"ok": True, "a": {k: a[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
+    # Every map read is labelled with its class, a diff of generated-in-memory records included (the review of #567, m1)
+    return {"ok": True, "evidence_class": EVIDENCE_CLASS,
+            "a": {k: a[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
             "b": {k: b[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
             "identical": a["artifact_sha256"] == b["artifact_sha256"], "envelope": envelope, "sections": sections}

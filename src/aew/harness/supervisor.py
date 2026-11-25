@@ -214,6 +214,16 @@ def spool(run_dir: Path, event: str, reason: str) -> None:
                        reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}")
 
 
+def bridge_tables(operations: list[str], *, messaging: bool) -> tuple[bridge.Operations, frozenset[str]]:
+    """A run's bridge: the operations it offers and those that are cooperative. Messaging's from the run's immutable
+    snapshot; the map reads (register F15.8) exactly when the contract's operations name them, that is when the launch
+    snapshot had them on and the role reads context (``harness_ops.operations_of``). Both are cooperative, so a long
+    wait or a slow map read never holds `check run` or `submit`. With neither, the bridge is as it always was."""
+    maps = {op: spec for op, spec in bridge.MAP_OPERATIONS.items() if op in operations}
+    offered = bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if messaging else {}) | maps
+    return offered, frozenset({"message.wait"} if messaging else ()) | frozenset(maps)
+
+
 class Supervisor:
     def __init__(self, run_dir: Path, handoff: dict[str, Any], ack: Any) -> None:
         from aew.engine.api import Engine  # the supervisor is an engine client like any other process
@@ -348,6 +358,8 @@ class Supervisor:
             self.stop_reason = (K.TERMINATED, f"authority ended: {problem}")
             raise errors.StaleAuthority(f"run {self.run} no longer holds {self.inv_id}'s authority: {problem}",
                                         run=self.run)
+        if op in bridge.MAP_OPERATIONS:
+            return self._map_read(op, args)
         # The window a rotation or revocation can race: the engine re-checks the credential under its lock.
         faults.pause("harness.bridge.before_engine")
         try:
@@ -371,6 +383,26 @@ class Supervisor:
             self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
             raise
         raise errors.UsageError(f"unknown bridge operation {op}")
+
+    def _map_read(self, op: str, args: dict[str, Any]) -> Any:
+        """A worker's map read (register F15.8), cooperative: :meth:`handle` has made its two checks; only the
+        credential's check and the state read (the invocation's base, workspace and scope) take the bridge's
+        serialization, and the query runs outside it, so a slow read never holds `check run` or `submit`. It reads
+        only: no map is refreshed or selected, a STALE one included."""
+        from aew.maps import query
+
+        assert self.bridge is not None
+        try:
+            with self.bridge.serialized():
+                basis = self.engine.map_read_basis(invocation_token=self._credential)
+        except errors.StaleAuthority as exc:
+            self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
+            raise
+        ctx = query.Context(repo_root=self.engine.repo_root, aew_root=self.engine.aew_root, commit=basis["base"],
+                            chosen_by=query.INVOCATION_BASE, recipient=basis["recipient"],
+                            workspace=Path(basis["workspace"]),
+                            scope_paths=None if basis["scope_paths"] is None else tuple(basis["scope_paths"]))
+        return query.serve(ctx, op, args)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -407,9 +439,8 @@ class Supervisor:
             self.record["contract"] = contract.to_record()
             (self.run_dir / "prompt.md").write_text(K.redact(contract.prompt), encoding="utf-8")
             self.messaging = (contract.extra.get("coordination") or {}).get("messaging") == "enabled"
-            self.bridge = bridge.BridgeServer(self.handle,
-                operations=bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if self.messaging else {}),
-                cooperative=frozenset({"message.wait"}) if self.messaging else frozenset(),
+            operations, cooperative = bridge_tables(contract.operations, messaging=self.messaging)
+            self.bridge = bridge.BridgeServer(self.handle, operations=operations, cooperative=cooperative,
                 connection_handlers={"message.wait": self.messages.wait} if self.messaging else {})
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}

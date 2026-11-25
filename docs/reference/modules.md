@@ -332,6 +332,9 @@ None.
 ### `aew.cli.map_commands`
 
 - `aew.cli.commands`
+- `aew.errors`
+- `aew.harness.bridge`
+- `aew.maps.query`
 - `aew.maps.service`
 - `aew.util`
 
@@ -916,6 +919,7 @@ None.
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.base`
+- `aew.harness.bridge`
 - `aew.harness.containment`
 - `aew.harness.contract`
 - `aew.harness.delivery`
@@ -1356,6 +1360,7 @@ None.
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`
 - `aew.engine.gates`
+- `aew.engine.harness_ops`
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
 - `aew.engine.transitions`
@@ -1385,6 +1390,7 @@ Imports from the groups:
 - `aew.dashboard`
 - `aew.engine`
 - `aew.knowledge`
+- `aew.maps`
 - `aew.policy`
 - `aew.schemas`
 - `aew.skills`
@@ -1522,8 +1528,11 @@ None.
 
 ### `aew.harness.contract`
 
+- `aew.harness.bridge`
 - `aew.harness.desktop_notifier`
 - `aew.harness.wait_binding`
+- `aew.maps`
+- `aew.policy.execution`
 
 ### `aew.harness.credential_report`
 
@@ -1628,6 +1637,7 @@ None.
 - `aew.harness.wake_queue`
 - `aew.harness.weaker_register`
 - `aew.lead_credential`
+- `aew.maps.query`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
@@ -1901,6 +1911,7 @@ None.
 - `aew.harness.weaker_register`
 - `aew.harness.worker_messages`
 - `aew.knowledge.evidence`
+- `aew.maps.query`
 - `aew.process_kind`
 - `aew.skills`
 - `aew.util`
@@ -2109,7 +2120,9 @@ None.
 Imports from the groups:
 
 - `aew`
+- `aew.capability`
 - `aew.engine`
+- `aew.harness`
 - `aew.knowledge`
 - `aew.policy`
 - `aew.schemas`
@@ -2137,6 +2150,22 @@ None.
 - `aew.maps.canonical`
 - `aew.workspace.git`
 
+### `aew.maps.query`
+
+- `aew.capability.ops`
+- `aew.capability.status`
+- `aew.errors`
+- `aew.harness.bridge`
+- `aew.harness.procs`
+- `aew.maps`
+- `aew.maps.canonical`
+- `aew.maps.freshness`
+- `aew.maps.gitobjects`
+- `aew.maps.rules`
+- `aew.maps.slices`
+- `aew.maps.store`
+- `aew.maps.structural`
+
 ### `aew.maps.rules`
 
 - `aew.maps.canonical`
@@ -2151,6 +2180,7 @@ None.
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
+- `aew.maps.query`
 - `aew.maps.rules`
 - `aew.maps.store`
 - `aew.maps.structural`

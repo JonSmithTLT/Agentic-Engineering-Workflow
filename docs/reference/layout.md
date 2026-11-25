@@ -673,6 +673,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.knowledge.evidence`: `read` (Path.read_text)
 - `aew.knowledge.records`: `read_record` (Path.read_text)
 - `aew.knowledge.render`: `views` (Path.exists), `views` (Path.read_text)
+- `aew.maps.query`: `_lexical` (Path.is_dir)
 - `aew.maps.rules`: `load` (Path.read_bytes)
 - `aew.maps.store`: `find_structural` (Path.stat)
 - `aew.policy.execution`: `load` (Path.exists), `load` (Path.read_bytes)

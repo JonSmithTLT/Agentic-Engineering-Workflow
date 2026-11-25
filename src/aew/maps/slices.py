@@ -54,7 +54,11 @@ ROWS, HINTS = 40, 20
 SLICE_MAX_BYTES = 9 * 1024
 # The bound on listing the map's source tree for the directories in scope that the record's cap left out (register
 # E293). A dispatch holds the control lock while it builds the pack; `ls-tree` without sizes reads tree objects only,
-# well under a second at 100,000 paths, so a git that takes longer leaves the slice with its "not absent" line.
+# well under a second at 100,000 paths, so a git that takes longer leaves the slice with its "not absent" line. The
+# bound covers the git processes the listing starts (`refuse_lazy_fetch`'s and `ls-tree`), not the configuration reads
+# every object git call makes first: `git.safe_config`'s `rev-parse --git-common-dir` and `config --list`
+# (`configured_drivers`), which have no timeout of their own and are cached per directory and configuration (the
+# review of #567, n3).
 SCOPE_LISTING_S = 5.0
 UNMATCHED_SHOWN = 5
 HEADING = "## Codebase map (structural; derived reference data, not authority)"
@@ -280,37 +284,38 @@ def static_prefix(pattern: str) -> str:
     return "/".join(parts)
 
 
-def _related(path: str, prefix: str) -> bool:
+def related(path: str, prefix: str) -> bool:
     """``path`` is the prefix, one of its ancestors, or under it."""
     return path in {".", prefix} or prefix.startswith(path + "/") or path.startswith(prefix + "/")
 
 
-def _scope(scope_paths: list[str]) -> tuple[list[str], bool]:
+def scope_of(scope_paths: list[str]) -> tuple[list[str], bool]:
     """The scope's static prefixes, and whether they restrict the slice (an empty scope or a bare ``**`` does not)."""
     prefixes = [static_prefix(p) for p in scope_paths]
     return prefixes, bool(prefixes) and all(prefixes)
 
 
-def _in_scope(path: str, prefixes: list[str], restricted: bool) -> bool:
-    return not restricted or any(_related(path, p) for p in prefixes)
+def in_scope(path: str, prefixes: list[str], restricted: bool) -> bool:
+    return not restricted or any(related(path, p) for p in prefixes)
 
 
-def _unmatched(prefixes: list[str], paths: set[str], max_depth: int) -> list[str]:
+def unmatched_prefixes(prefixes: list[str], paths: set[str], max_depth: int) -> list[str]:
     """The scope's prefixes no directories row names, among those shallow enough to be one."""
     return [p for p in dict.fromkeys(prefixes) if p.count("/") < max_depth and p not in paths]
 
 
-def scoped_rows(repo_root: Path, record: dict[str, Any], scope_paths: list[str]) -> dict[str, Any] | None:
+def scoped_rows(repo_root: Path, record: dict[str, Any], scope_paths: list[str], *,
+                limit: int = ROWS) -> dict[str, Any] | None:
     """The directories rows in scope, when the record's cap left some directories out of its rows: ``{"rows",
-    "in_scope", "unmatched"}`` read from the map's own source tree (at most ROWS rows, in the section's order, and the
-    count of all of them), or ``{"unlisted": why}``. None when the record's rows already hold every row in scope (the
-    scope is not restricted, or the cap cut nothing). Never raises.
+    "in_scope", "unmatched"}`` read from the map's own source tree (at most ``limit`` rows, ROWS for the slice, in the
+    section's order, and the count of all of them), or ``{"unlisted": why}``. None when the record's rows already
+    hold every row in scope (the scope is not restricted, or the cap cut nothing). Never raises.
 
     The section's cap keeps the largest directories for the global view, so a small directory a Ticket is about could
     be cut before its scope was applied (register E293, an external audit's reproduction: 205 directories of two files
     and one of one). The rows come from the listing the record was made from, checked against the record's own
     ``path_listing_sha256``, by the generator that made it: the same rows the record would hold without its cap."""
-    prefixes, restricted = _scope(scope_paths)
+    prefixes, restricted = scope_of(scope_paths)
     directories = record["sections"]["directories"]
     if not restricted or not directories.get("rows_omitted"):
         return None
@@ -330,9 +335,9 @@ def scoped_rows(repo_root: Path, record: dict[str, Any], scope_paths: list[str])
         return {"unlisted": "the map's source tree could not be listed"}
     except Exception:  # never raise: the slice says the rows in scope may be incomplete
         return {"unlisted": "the map's source tree could not be listed"}
-    rows = [r for r in every if _in_scope(r["path"], prefixes, restricted)]
-    return {"rows": rows[:ROWS], "in_scope": len(rows),
-            "unmatched": _unmatched(prefixes, {r["path"] for r in rows}, directories["max_depth"])}
+    rows = [r for r in every if in_scope(r["path"], prefixes, restricted)]
+    return {"rows": rows[:limit], "in_scope": len(rows),
+            "unmatched": unmatched_prefixes(prefixes, {r["path"] for r in rows}, directories["max_depth"])}
 
 
 def _freshness_line(fresh: dict[str, Any]) -> str:
@@ -381,21 +386,21 @@ def body(record: dict[str, Any], fresh: dict[str, Any], scope_paths: list[str], 
     never shown as absent. The rows in scope come from ``scoped`` when the cap cut some; when they could not be
     listed, the count is a lower bound and a line says a missing directory is not absent. A scope prefix that no row
     names is said to be no directory of the map's commit, and of that commit only."""
-    prefixes, restricted = _scope(scope_paths)
+    prefixes, restricted = scope_of(scope_paths)
     s = record["sections"]
     d = s["directories"]
     listed = scoped is not None and "rows" in scoped
     if listed:
-        rows, in_scope, unmatched = scoped["rows"], scoped["in_scope"], scoped["unmatched"]  # type: ignore[index]
+        rows, scoped_count, unmatched = scoped["rows"], scoped["in_scope"], scoped["unmatched"]  # type: ignore[index]
     else:
-        rows = [r for r in d["rows"] if _in_scope(r["path"], prefixes, restricted)]
-        in_scope, unmatched = len(rows), []
+        rows = [r for r in d["rows"] if in_scope(r["path"], prefixes, restricted)]
+        scoped_count, unmatched = len(rows), []
     partial = restricted and bool(d.get("rows_omitted")) and not listed
     if restricted and not partial and not listed:
-        unmatched = _unmatched(prefixes, {r["path"] for r in d["rows"]}, d["max_depth"])
+        unmatched = unmatched_prefixes(prefixes, {r["path"] for r in d["rows"]}, d["max_depth"])
     g = s["generated_and_vendor"]
     hints = [h for h in g["items"] if not restricted or "/" not in h["pattern"].rstrip("/")
-             or _in_scope(static_prefix(h["pattern"]) or ".", prefixes, restricted)]
+             or in_scope(static_prefix(h["pattern"]) or ".", prefixes, restricted)]
     o = s["limits_and_omissions"]
     commit = record["source_revision"][:12]
     row_lines = [f"- {r['path']} | {r['files']} | {r['label']} | {', '.join(r['languages']) or '-'}"
@@ -428,8 +433,8 @@ def body(record: dict[str, Any], fresh: dict[str, Any], scope_paths: list[str], 
             _freshness_line(fresh),
             *([note] if note else []),
             f"directories {'in scope' if restricted else '(scope not restricted)'} (path | files | label | languages):"
-            f" {len(row_lines)} of {'at least ' if partial else ''}{in_scope} shown"
-            f"{bound if len(row_lines) < min(in_scope, ROWS) else ''}, of "
+            f" {len(row_lines)} of {'at least ' if partial else ''}{scoped_count} shown"
+            f"{bound if len(row_lines) < min(scoped_count, ROWS) else ''}, of "
             f"{d['rows_total']} directories at depth <= {d['max_depth']}"
             + (" (read from the map's source tree: the map's directory cap bounds its global view, not this scope)"
                if listed else ""),

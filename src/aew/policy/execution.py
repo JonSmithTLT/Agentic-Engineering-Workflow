@@ -35,6 +35,13 @@ PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 # reads as off (``pack_slices``), so a project initialized before this default keeps its packs until the operator takes
 # the switch offer (``aew.switch_offer``), which reads its target from here.
 NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL
+# The worker's map reads (register F15.8; ``maps.reads``): ``structural`` offers a worker run the bridge's map
+# operations (``bridge.MAP_OPERATIONS``) and the prompt line that names them; ``off``, as an absent key reads, leaves
+# the run's prompt and operations byte-identical to a project without them. On for a new project (the operator,
+# 2026-11-25, O1); a project initialized before keeps its setting, as maps' pack slices did (E62). The mapping series'
+# PR B adds ``facts`` above ``structural``.
+MAPS_READS_OFF, MAPS_READS_STRUCTURAL = "off", "structural"
+NEW_PROJECT_MAPS_READS = MAPS_READS_STRUCTURAL
 
 TEMPLATE = """\
 # AEW execution policy (ADR-0010): which harness, provider, model and effort run each invocation.
@@ -96,9 +103,12 @@ notify:
   command: [aew, notify, desktop]
 # Project maps (ADR-0015): each worker's pack carries a bounded, fenced slice of the repository's structural map, made
 # from its Git objects, as navigation and never authority, and the Lead's resume view shows the map's freshness. "off"
-# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps.
+# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps. `reads`
+# offers each worker run `aew map show` and `aew map search` through its run's bridge, answered at the run's own base;
+# "off" leaves the worker's prompt and operations as in a project without them.
 maps:
-  pack_slices: """ + NEW_PROJECT_PACK_SLICES + "\n"
+  pack_slices: """ + NEW_PROJECT_PACK_SLICES + """
+  reads: """ + NEW_PROJECT_MAPS_READS + "\n"
 
 
 def policy_path(aew_root: Path, manifest: dict[str, Any]) -> Path:
@@ -213,6 +223,7 @@ PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 # ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.
 STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("maps", "pack_slices"): (PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL),  # register F22.1 (plan §5.1)
+    ("maps", "reads"): (MAPS_READS_OFF, MAPS_READS_STRUCTURAL),  # register F15.8 (the mapping series' PR A)
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
     ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
@@ -298,6 +309,14 @@ def pack_slices(policy: dict[str, Any] | None) -> str:
     :data:`NEW_PROJECT_PACK_SLICES`; an absent policy, an absent key and an unreadable policy all mean ``off``, so a
     project initialized before that default changes no pack until the operator takes the switch offer."""
     return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
+
+
+def maps_reads(policy: dict[str, Any] | None) -> str:
+    """The worker map-reads switch (``maps.reads``, register F15.8). A new project's policy holds
+    :data:`NEW_PROJECT_MAPS_READS`; an absent policy, an absent key and any other value mean ``off``. A run reads it
+    once, at launch, into its own snapshot (``contract.run_maps_reads``), never from today's policy."""
+    value = ((policy or {}).get("maps") or {}).get("reads")
+    return MAPS_READS_STRUCTURAL if value == MAPS_READS_STRUCTURAL else MAPS_READS_OFF
 
 
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:

@@ -531,9 +531,9 @@ class Coordination:
             for event in transition.get("events") or []
         )
 
-    def message_next_post(self, *, credential: str, run: str) -> dict[str, Any]:
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool]) -> dict[str, Any]:
         """Select in thread order and durably record POSTED before the supervisor calls the adapter."""
-        if not self._delivery_thread(self.k.store.read_committed(), credential, run).exists:
+        if not permit() or not self._delivery_thread(self.k.store.read_committed(), credential, run).exists:
             return {"message": None, "refused": []}
         with self.k.store.session() as s:
             thread = self._delivery_thread(s.state, credential, run)
@@ -546,6 +546,8 @@ class Coordination:
                 if not self._lead_revision_holds(s.state, message):
                     refused.append(mid)
                     continue
+                if not permit():
+                    break
                 self._write_fact(s.state, thread, {"kind": L.POSTED, "message": mid, "run": run,
                                                   "generation": s.state["lead"]["generation"],
                                                   "checked_rev": s.revision})

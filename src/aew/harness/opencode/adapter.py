@@ -408,6 +408,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.session: str | None = None
         self.sent: list[str] = []
         self._staged_coordination: list[str] = []
+        self._coordination_input_lock = threading.Lock()
         self._coordination_launch_id: str | None = None
         self.turn = "starting"          # running | held (after a Lead interrupt) | ended
         self.exit_code: int | None = None
@@ -1020,11 +1021,15 @@ class OpenCodeAdapter(HarnessAdapter):
         return self._coordination_launch_id
 
     def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool) -> str:
+        with self._coordination_input_lock:
+            return self._coordination_post(prompt_id, text, metadata, retry=retry)
+
+    def _coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool) -> str:
         assert self.client is not None and self.session is not None
         with self._lock:
             if self.turn == "ended":
                 return "session_lost"
-            staged = self.turn == "held" or (retry and self.turn != "running")
+            staged = self.turn == "held" or self._lead_interrupted or (retry and self.turn != "running")
             if not staged and prompt_id not in self.sent:
                 self.sent.append(prompt_id)
                 self._idle_seen = None
@@ -1086,14 +1091,21 @@ class OpenCodeAdapter(HarnessAdapter):
     def coordination_halt(self, timeout: float) -> bool:
         assert self.client is not None
         deadline = time.monotonic() + timeout
+        if not self._coordination_input_lock.acquire(timeout=timeout):
+            return False
         try:
-            self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"}, timeout=timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"}, timeout=remaining)
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 active = (self.client.get("/api/session/active", timeout=remaining) or {}).get("data") or {}
                 return self.session not in active
         except (OpenCodeUnavailable, OpenCodeError):
             pass
+        finally:
+            self._coordination_input_lock.release()
         return False
 
     def send(self, text: str, delivery: str) -> None:
@@ -1105,9 +1117,10 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def interrupt(self) -> None:
         assert self.client is not None
-        with self._lock:
-            self._lead_interrupted = True
-        self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"})
+        with self._coordination_input_lock:
+            with self._lock:
+                self._lead_interrupted = True
+            self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"})
         self._wake.set()
 
     # ------------------------------------------------------------------ watching

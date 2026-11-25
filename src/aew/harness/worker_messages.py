@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from aew.harness.supervisor import Supervisor
 
 _FINAL_CHECK_S = 5.0
+_TICK_S = 0.25
 
 
 class _Ended(Exception):
@@ -51,6 +52,10 @@ class WorkerMessages:
         self._has_posted = False
         self._problem: str | None = None
         self._launch: tuple[str, list[str]] | None = None
+        self._stop = threading.Event()
+        self._drained = threading.Event()
+        self._deadline: float | None = None
+        self._drain_until: float | None = None
 
     @property
     def waiting(self) -> bool:
@@ -62,6 +67,35 @@ class WorkerMessages:
         ids = (continuation or {}).get("messages")
         if ids and (prompt := self.owner.adapter.coordination_launch_prompt()):
             self._launch = prompt, ids
+
+    def start(self, deadline: float | None) -> None:
+        """The heartbeat loop never waits on a control write or a transport call for messaging."""
+        self._deadline = deadline
+
+        def work() -> None:
+            while not self._stop.is_set():
+                drain = self._drain_until is not None
+                try:
+                    self.tick(select=self._can_post())
+                except (errors.PermissionDenied, errors.IllegalTransition, errors.StaleAuthority):
+                    pass  # authority or policy changed before the locked delivery check
+                except (errors.AEWError, OSError) as exc:
+                    self.report_problem(getattr(exc, "code", type(exc).__name__))
+                if drain:
+                    self._drained.set()
+                    return
+                self._stop.wait(_TICK_S)
+
+        threading.Thread(target=work, name="aew-worker-message-delivery", daemon=True).start()
+
+    def drained(self) -> bool:
+        """Request a last admission read without waiting on the writer or provider from the watch loop."""
+        if self._drain_until is None:
+            self._drain_until = time.monotonic() + _FINAL_CHECK_S
+        return self._drained.is_set() or time.monotonic() >= self._drain_until
+
+    def stop(self) -> None:
+        self._stop.set()
 
     @property
     def has_posted(self) -> bool:
@@ -103,12 +137,12 @@ class WorkerMessages:
                         self._fail(item, "unconfirmed")
                 if item.message in self._offers:
                     self._offers[item.message] = self._offers.pop(item.message)
-            if not select or self.waiting or not adapter.coordination_live or self._launch:
+            if not select or not self._can_post() or self.waiting or not adapter.coordination_live or self._launch:
                 return
             # Retry an uncertain earlier POST before sending another message so record order survives a lost response.
             if any(item.outcome == "uncertain" for item in self._offers.values()):
                 return
-            result = sup.engine.message_next_post(credential=sup._credential, run=sup.run)
+            result = sup.engine.message_next_post(credential=sup._credential, run=sup.run, permit=self._can_post)
             for mid in result["refused"]:
                 if mid not in self._refused:
                     self._refused.add(mid)
@@ -125,16 +159,24 @@ class WorkerMessages:
             self._post(offer)
 
     def _post(self, item: _Offer) -> None:
+        if not self._can_post():
+            return
         reported, problem = self.owner._authority()
         if not reported or problem:
             self._fail(item, "authority_unconfirmed")
             return
         self.owner.require_message_authority()
+        if not self._can_post():
+            return
         item.outcome = self.owner.adapter.coordination_post(
             item.prompt, item.text, item.metadata, retry=item.attempts > 0)
         item.attempts += 1
         if item.outcome not in ("offered", "uncertain"):
             self._fail(item, item.outcome)
+
+    def _can_post(self) -> bool:
+        return (not self._stop.is_set() and self._drain_until is None
+                and (self._deadline is None or time.monotonic() < self._deadline))
 
     def final_check(self) -> None:
         """One bounded snapshot of the still-tracked admissions before ending on revoked authority."""
@@ -173,6 +215,8 @@ class WorkerMessages:
             sup.events({"event": "message_final_admission_refused", "code": exc.code})
 
     def _confirm(self, ids: list[str], via: str, prompt: str) -> None:
+        if self._stop.is_set():
+            return
         sup = self.owner
         sup.engine.message_confirm_delivery(credential=sup._credential, run=sup.run, ids=ids, via=via,
                                             transport_ref=prompt)

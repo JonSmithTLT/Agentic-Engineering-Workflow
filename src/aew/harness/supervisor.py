@@ -615,6 +615,8 @@ class Supervisor:
         self._watching.set()
         deadline_s = self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
+        if self.messaging:
+            self.messages.start(deadline)
         last_beat = last_poll = 0.0
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
@@ -629,8 +631,6 @@ class Supervisor:
                 kind = req.get("kind")
                 self._event("request", kind=kind)
                 if kind == "stop":
-                    if self.messages.has_posted and self.authority_problem():
-                        self.messages.final_check()
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
                 bound = self.adapter.STEERING_BOUND_S
                 until = time.monotonic() + bound
@@ -651,7 +651,6 @@ class Supervisor:
             if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
                 read, problem = self._authority()
                 if problem:
-                    self.messages.final_check()
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
                 unread = not read
                 if read:
@@ -664,14 +663,9 @@ class Supervisor:
                 if outcome != self.record["coordination_delivery"]:
                     self.record["coordination_delivery"] = outcome
                     self._save()
-                try:
-                    self.messages.tick(select=bool(status.get("alive") and not (deadline and now >= deadline)))
-                except (errors.PermissionDenied, errors.IllegalTransition, errors.StaleAuthority):
-                    pass  # authority or policy changed before the locked delivery check
-                except errors.IntegrityError as exc:
-                    self.messages.report_problem(exc.code)
             if not status.get("alive"):
-                return self._finish_exited(status)
+                if not self.messaging or self.messages.drained():
+                    return self._finish_exited(status)
             if deadline is not None and now >= deadline:
                 spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
                 # A low anomaly the next Lead commit records (M4-E E7b; plan v3 §2.4, A1 §3.2): this process commits
@@ -838,6 +832,10 @@ class Supervisor:
             until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
             ending = self._background_beats("aew-ending-heartbeat", until=until)
             try:
+                if self.messaging:
+                    self.messages.stop()
+                    if self.messages.has_posted and self.authority_problem():
+                        self.messages.final_check()
                 faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
                 self._end(status, reason, reason_code)
             finally:

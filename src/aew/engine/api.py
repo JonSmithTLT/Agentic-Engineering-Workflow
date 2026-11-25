@@ -1206,8 +1206,8 @@ class Engine:
     def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
         self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
 
-    def message_next_post(self, *, credential: str, run: str) -> dict[str, Any]:
-        return self._coordination.message_next_post(credential=credential, run=run)
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool]) -> dict[str, Any]:
+        return self._coordination.message_next_post(credential=credential, run=run, permit=permit)
 
     def message_confirm_delivery(self, *, credential: str, run: str, ids: list[str],
                                  via: str, transport_ref: str) -> None:

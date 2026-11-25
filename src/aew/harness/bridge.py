@@ -13,7 +13,8 @@ the connection. The agent's environment carries only the endpoint and the key; t
 
 * Requests are **structured JSON** (``send_bytes``/``recv_bytes``): never pickle, which would let an
   authenticated client run code inside the credential-holding supervisor.
-* Operations have exact arguments; enabled worker snapshots additionally offer reply/read/wait. A request cannot
+* Operations have exact arguments; enabled worker snapshots additionally offer reply/read/wait, and the map
+  reads. A request cannot
   name an invocation, run or credential: the bridge acts only as its own run.
 * The supervisor executes each request through the AEW engine with the held credential, so the engine's
   authority and scope checks stay authoritative. The bridge adds no authority.
@@ -59,6 +60,16 @@ MESSAGE_OPERATIONS: Operations = {
     "message.reply": {"in_reply_to": str, "kind": str, "body": str, "refs": list, "idempotency_id": str},
     "message.read": {},
     "message.wait": {"after": str, "timeout_s": str},
+}
+# The worker's map reads (register F15.8; the mapping series' PR A), offered only to a run whose launch snapshot has
+# ``maps.reads`` on and whose role reads context (``harness_ops.operations_of``). String arguments only, and none names
+# a commit, root, repository or workspace: a worker's basis is always its invocation's base (``aew.maps.query``).
+# ``map.show``: the orientation when ``section`` is empty, else that section; ``scope: ticket`` gives the Ticket's own
+# directories. ``map.search``: exact paths first, then a lexical search of the run's workspace. Both are cooperative in
+# the supervisor (they never hold ``check.run`` or ``submit``), and neither ever writes map state.
+MAP_OPERATIONS: Operations = {
+    "map.show": {"section": str, "scope": str},
+    "map.search": {"text": str, "kind": str, "limit": str},
 }
 MAX_REQUEST = 16 * 1024 * 1024
 IS_WINDOWS = sys.platform == "win32"

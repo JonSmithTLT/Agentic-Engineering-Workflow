@@ -1086,6 +1086,12 @@ class Engine:
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         return self._harness.invocation_whoami(invocation_token=invocation_token)
 
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        return self._harness.map_read_basis(invocation_token=invocation_token)
+
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        return self._harness.work_scope_paths(work_id)
+
     def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
         return self._evidence.invoke_cancel(token=token, expect_rev=expect_rev, invocation=invocation, reason=reason)
 

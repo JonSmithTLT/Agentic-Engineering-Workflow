@@ -21,6 +21,7 @@ from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 from notifier import until
 from racing_read import read_text_or_none
 
+from aew import skills
 from aew.harness import procs
 from aew.harness.containment import shim
 from aew.harness.opencode import lead, projection
@@ -118,8 +119,15 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "OPENAI_API_KEY", "AEW_HARNESS_ADAPTERS",
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
+    # The Lead's skills (E161): the manifest's list, copied beside the operator's own skills, kept by rules only
+    planned = out["containment"]["skills"]
+    assert planned["exposed"] == list(skills.lead()) and planned["copy"] == "rules_only"
+    [start] = (lab.aew_root / lead.LEAD_SKILLS_DIR).iterdir()  # this start's own folder, beside the Lead's state
+    at = lead.lead_skills_at(lab, start.name)
+    assert sorted(p.name for p in Path(at.folder).iterdir()) == planned["exposed"]
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
-        guide_of(lab), tools={"placed": False, "tools": []})  # and no tool of AEW's placed: it is not contained
+        guide_of(lab), tools={"placed": False, "tools": []},  # and no tool of AEW's placed: it is not contained
+        skills_dir=at, skills_planned=planned)
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert [env[n] for n in PROJECT_CONFIG_SWITCHES] == ["1", "1"]  # both names (E35)
@@ -151,8 +159,11 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     shown = res.json
     # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
     placed = None if lead.contained_here() else {"placed": False, "tools": []}
+    # the folder a start would copy the Lead's skills to, and the plan it would copy; nothing is copied (E161)
+    at = lead.lead_skills_at(lab)
     assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed,
-                                                     push_wake=lead.wakes_reach_the_lead({}))
+                                                     push_wake=lead.wakes_reach_the_lead({}), skills_dir=at)
+    assert shown["config"]["skills"] == [at.folder] and not Path(at.folder).exists()
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-3:] == ["--server", shim.SERVER_URL, str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]

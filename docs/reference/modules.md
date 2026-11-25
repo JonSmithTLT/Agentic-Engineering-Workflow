@@ -1751,6 +1751,7 @@ None.
 - `aew.lead_credential`
 - `aew.policy.execution`
 - `aew.process_kind`
+- `aew.skills`
 - `aew.surface.context`
 - `aew.surface.lead_text`
 - `aew.switch_offer`
@@ -2155,6 +2156,7 @@ None.
 - `aew.engine.freshness`
 - `aew.errors`
 - `aew.knowledge.evidence`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
@@ -2165,6 +2167,8 @@ None.
 
 ### `aew.maps.slices`
 
+- `aew.errors`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`

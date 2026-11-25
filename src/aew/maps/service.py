@@ -31,8 +31,8 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
+from aew.maps import EVIDENCE_CLASS, gitobjects, rules, store, structural
 from aew.maps import freshness as F
-from aew.maps import gitobjects, rules, store, structural
 from aew.maps.canonical import seal
 from aew.util import atomic_write, utc_now
 
@@ -106,7 +106,8 @@ def generate(engine: Any, *, token: str, commit: str | None = None, select: bool
     _lead_actor(engine, token, committed=True)
     sha, root = store.write_artifact(engine.aew_root, record)
     forget_failure(engine.aew_root)  # a dispatch at the failed base tries again
-    result: dict[str, Any] = {"ok": True, "root": sha, "path": f"{engine.aew_root.name}/{root}",
+    result: dict[str, Any] = {"ok": True, "root": sha, "evidence_class": EVIDENCE_CLASS,
+                              "path": f"{engine.aew_root.name}/{root}",
                               "source_revision": record["source_revision"], "source_tree": record["source_tree"],
                               "generator": record["generator"], "limits": record["limits"], "selected": False}
     try:
@@ -373,7 +374,10 @@ def show(engine: Any, *, commit: str | None = None, root: str | None = None,
             return {"ok": True, "status": found.status, "reason": found.reason, "map_revision": revision,
                     **_architecture_field(engine, registry)}
         record = found.record
-    return {"ok": True, "status": "AVAILABLE", "root": record["artifact_sha256"],
+    # ``commit`` is what the map's freshness is compared against, never a map of it: a map of another commit is
+    # `aew map generate --commit` (stored) or `aew map diff --commit` (in memory). The class is the reader's label,
+    # the same selected or not (A-14 P01-37, P01-38; register E293).
+    return {"ok": True, "status": "AVAILABLE", "root": record["artifact_sha256"], "evidence_class": EVIDENCE_CLASS,
             "selected": record["artifact_sha256"] == selected_sha, "map_revision": revision,
             "freshness": F.freshness(engine.repo_root, record, against, identity()),
             **_architecture_field(engine, registry), "record": _section(record, section)}

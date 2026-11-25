@@ -1249,18 +1249,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E81/`, oldest first (`python tools/register.py show E81`).*
 
-### E83
-
-**Work:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
-
-**Source:** STG-12's S12-4 trace, FIX claim "only the two declared steps auto-run, and only under run" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief; the set is the operator's R-DEC-04 decision of 2026-10-25 (design workspace `e1f1920`)
-
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
-
-**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
-
-*Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
-
 ### E86
 
 **Work:** The order of collection decides which `conftest` a helper imports. `tests/conftest.py` and `tests/discovery/conftest.py` both load as the module `conftest`, so a helper that runs `from conftest import ...` (`tests/helpers/vertical/scripted_operator.py`) gets the discovery one when `tests/discovery` is collected first in a session, and fails with an `ImportError`
@@ -2245,18 +2233,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E190/`, oldest first (`python tools/register.py show E190`).*
 
-### E191
-
-**Work:** `aew init` at a terminal has no up-front way to decline every tool download: `init`'s `--fetch-tool` option taking `none`, recorded as no answer, so the consent screen isn't shown. It grows `init`'s option pin. Done when that option downloads nothing, shows no screen, and leaves each tool unanswered
-
-**Source:** The review of #343 (E171), its point m8; #343's description leaves the row to the Lead
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E191/`, oldest first (`python tools/register.py show E191`).*
-
 ### E192
 
 **Work:** `tests/integration/test_harness_send_when.py::test_harness_send_defaults_to_next_step_and_posts_steer` failed once on Windows, a timing race in messaging. Find the race and remove it from the test or the code; never raise a deadline or add a retry
@@ -2304,18 +2280,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Owner, the Lead's reading, CI's lane sizing, beside E47
 
 *Later notes: `notes.d/E195/`, oldest first (`python tools/register.py show E195`).*
-
-### E196
-
-**Work:** Text in the code that no longer holds, in one small PR that changes comments and strings only: `dashboard/reasons.py`'s `AWAITS_ACTION_PROJECTION` ("until" F15.1), `capability/__init__.py`'s docstring (the bind "comes in the next" pull request), `engine/seams.py`'s "empty until ADR-0011's archival", and `surface/contract.py`'s docstring on rows still `DESIGNED`. Each is checked against `main` and reworded to what holds. Done when each says what `main` does
-
-**Source:** The Lead's reading of `main` at `bd27dc31`, 2026-11-06
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E196/`, oldest first (`python tools/register.py show E196`).*
 
 ### E197
 
@@ -4833,6 +4797,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
 
+### E83
+
+**Was:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
+
+**Closed:** 2026-11-25
+
+**By:** #445 (`5c51e388`), riding E228's fourth PR: `surface/classify.py` declares `AUTO_RUN` and derives `auto_run_set` from the contract, and `test_only_the_two_declared_steps_auto_run_each_called_without_execution` (`tests/unit/test_surface_contract.py`) holds the two equal and a call with `execution` never auto-runnable. That only Run lets them run unconfirmed is the steering loop's rule, tested in `tests/integration/test_steering_loop.py` (the row's note of 2026-11-11). Closed in the board's lag sweep; SYS-08 now awaits the operator's real Lead run
+
+*Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
+
 ### E84
 
 **Was:** A move or a promotion keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations. One of the trace's FIX rows (S12-6), taken ahead of its milestone
@@ -5062,6 +5036,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #384 (`039a281e`), with its review's follow-ons on #391. What it does not reach is in this row's note
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
+
+### E191
+
+**Was:** `aew init` at a terminal has no up-front way to decline every tool download: `init`'s `--fetch-tool` option taking `none`, recorded as no answer, so the consent screen isn't shown. It grows `init`'s option pin. Done when that option downloads nothing, shows no screen, and leaves each tool unanswered
+
+**Closed:** 2026-11-25
+
+**By:** #460 (`83d68093`): `aew init --fetch-tool none` skips the consent screen and the downloads and leaves each tool unanswered, and a combination with named tools is refused before anything is written; tested in `tests/unit/test_capability_consent.py`, `tests/unit/test_first_configuration.py` and `tests/integration/test_init_first_configuration.py`, with `init`'s surface-map entry (the row's note of 2026-11-11). Closed in the board's lag sweep
+
+*Later notes: `notes.d/E191/`, oldest first (`python tools/register.py show E191`).*
+
+### E196
+
+**Was:** Text in the code that no longer holds, in one small PR that changes comments and strings only: `dashboard/reasons.py`'s `AWAITS_ACTION_PROJECTION` ("until" F15.1), `capability/__init__.py`'s docstring (the bind "comes in the next" pull request), `engine/seams.py`'s "empty until ADR-0011's archival", and `surface/contract.py`'s docstring on rows still `DESIGNED`. Each is checked against `main` and reworded to what holds. Done when each says what `main` does
+
+**Closed:** 2026-11-25
+
+**By:** #460 (`83d68093`), with E191: the four texts reworded to what `main` does, in `dashboard/reasons.py`, `capability/__init__.py`, `engine/seams.py` and `surface/contract.py` (the row's note of 2026-11-11). Closed in the board's lag sweep
+
+*Later notes: `notes.d/E196/`, oldest first (`python tools/register.py show E196`).*
 
 ### E227
 

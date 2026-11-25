@@ -320,6 +320,7 @@ AEW_LIVE_OPENCODE_MODEL=<provider/model> python -m pytest --live tests/live -n 4
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
 AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # unscripted: also AEW_LIVE_PROVIDER_KEY_ENV (costs money)
 AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
+AEW_LIVE_LEAD_SKILLS_MODEL=<provider/model> AEW_LIVE_PROVIDER_KEY_ENV=<VARIABLE> AEW_LIVE_RESULTS=lead-skills.jsonl \n  python -m pytest --live tests/live/test_lead_skills_live.py -p no:xdist -q   # the Lead's skills (E161): the listing needs no model; the model test costs money
 ```
 
 The paid dogfood (M3 step 9) is not a test lane. It is an evaluation with its own driver, fixtures, hidden tests and pre-registered rubric in `eval/m3/dogfood/` (see its README), reported in `m3-dogfood-report.md`.

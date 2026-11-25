@@ -164,6 +164,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.notify:Watcher._write_state`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.lead:deliver_lead_skills`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer

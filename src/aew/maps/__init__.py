@@ -10,3 +10,10 @@ publication authority (T5-INV-01), and it has its own revision domain (``map_rev
 * ``freshness``: currentness of a record against a commit, computed on read and never written back;
 * ``service``: what the ``aew map`` commands do.
 """
+
+# The evidence class of every map V-01 serves (A-14 P01-37; register E293). It follows the path that produced and
+# stored the map, never what the map says of itself: maps are written by agent-reachable code into agent-reachable
+# ``.aew/local/maps/``, with no protected producer or ingress, so every map is this class, whatever its digest,
+# generator name or freshness says. A reader adds it; the artifact never carries it (a self-label is a claim), and
+# selecting a map never changes it (the Lead's selection is local, not a shared qualified one: P01-38).
+EVIDENCE_CLASS = "AGENT_REACHABLE_DERIVED"

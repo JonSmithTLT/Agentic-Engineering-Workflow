@@ -162,6 +162,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._retire`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.lead:deliver_lead_skills`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:StoredLogin._deciding_row`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer

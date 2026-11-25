@@ -59,6 +59,18 @@ EXPECT = {"schema": check_assurance.SKIPS_SCHEMA, "skipped": {"win32": {SKIP_ID:
           "xfail": {}}
 
 
+@pytest.mark.parametrize(("change", "expected"), [("docs/README.md", "docs"), ("src/aew/engine/base.py", "full")])
+def test_requesting_lane_names_uses_the_same_tier_as_workflow_output(tmp_path, change, expected):
+    paths = tmp_path / "changed.txt"
+    paths.write_text(change + "\n", encoding="utf-8")
+    workflow, lanes = tmp_path / "workflow.txt", tmp_path / "lanes.txt"
+    assert tier.main(["--event", "pull_request", "--base-ref", "main", "--labels", "",
+                      "--paths-file", str(paths), "--lanes-out", str(lanes),
+                      "--github-output", str(workflow)]) == 0
+    assert workflow.read_text(encoding="utf-8").splitlines()[0] == f"tier={expected}"
+    assert lanes.read_text(encoding="utf-8").splitlines() == list(tier.LANES[expected])
+
+
 def report(platform: str, lane: str, results: dict[str, str], shard: str | None = None, **kw) -> dict:
     return {"schema": check_assurance.REPORT_SCHEMA, "platform": platform, "lane": lane, "shard": shard,
             "exitstatus": 0, "python": "3.x", "wall_s": 1.0, "collected": list(ALL),

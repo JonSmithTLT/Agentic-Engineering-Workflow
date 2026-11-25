@@ -191,13 +191,14 @@ def make_lab(tmp_path: Path, *, upstreams: dict[str, str] | None = None, mode: s
 
 def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, str] | None = None,
                     timeout: float = 120, refreshing_upstream: str | None = None,
-                    key_upstream: str | None = None) -> dict[str, Any]:
+                    key_upstream: str | None = None, change_lead_copy: bool = False) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
     result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
     (``discovery.rules.split_refusal``), and whether the terminal got its settings back. A synthetic refreshing
     upstream replaces the built-in URL in the test subprocess only, and so does ``key_upstream`` for openai's API-key
-    route (which a policy upstream would also take from its stored login)."""
+    route (which a policy upstream would also take from its stored login). ``change_lead_copy`` changes one file of
+    the Lead's skills copy just after the start delivers it, before the contained Lead's layout binds it (E161)."""
     import pty
     import termios
 
@@ -211,21 +212,34 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         import fcntl, os, sys, termios
         os.setsid()
         fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-        refreshing_upstream, key_upstream = sys.argv.pop(1), sys.argv.pop(1)
-        if not refreshing_upstream and not key_upstream:
+        refreshing_upstream, key_upstream, change_lead_copy = sys.argv.pop(1), sys.argv.pop(1), sys.argv.pop(1)
+        if not refreshing_upstream and not key_upstream and not change_lead_copy:
             os.execv(sys.executable, [sys.executable, "-m", "aew", *sys.argv[1:]])
 
         import runpy
+        from pathlib import Path
         from aew.harness.containment import netns
+        from aew.harness.opencode import lead
 
         if refreshing_upstream:
             netns.REFRESHING_UPSTREAMS["openai"] = refreshing_upstream
         if key_upstream:
             netns.UPSTREAMS["openai"] = key_upstream
+        if change_lead_copy:
+            deliver = lead.deliver_lead_skills
+
+            def changed(engine):
+                planned, at = deliver(engine)
+                if not planned["exposed"]:  # nothing to change: the test would pass on a plain copy failure
+                    raise RuntimeError("change_lead_copy: the start delivered no skill to change")
+                (Path(at.folder) / planned["exposed"][0] / "SKILL.md").write_text("changed after delivery")
+                return planned, at
+
+            lead.deliver_lead_skills = changed
         runpy.run_module("aew", run_name="__main__", alter_sys=True)
     """)
-    command = [sys.executable, "-c", wrapper, refreshing_upstream or "", key_upstream or "", "-C", str(lab.root),
-               "opencode", *args]
+    command = [sys.executable, "-c", wrapper, refreshing_upstream or "", key_upstream or "",
+               "1" if change_lead_copy else "", "-C", str(lab.root), "opencode", *args]
     proc = subprocess.Popen(command, stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     shown = bytearray()
     try:

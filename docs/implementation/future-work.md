@@ -1321,18 +1321,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E91/`, oldest first (`python tools/register.py show E91`).*
 
-### E92
-
-**Work:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them. The proxy is CONNECT only, so CS-4 refuses them and names the https form
-
-**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25); its target is the designer's ruling of 2026-10-25 on #280's targets
-
-**When:** **Internal alpha**, now that CS-4 has merged (#283, `da547f9a`): V-01's matrix names no step that needs plain `http://`, and the refusal already names the https form
-
-**Notes:** It restricts nothing the threat model asks for (the designer)
-
-*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
-
 ### E93
 
 **Work:** Serve a stored OpenCode (Zen) key to the contained Lead: map each `opencode/*` model's catalogue address from a pinned copy of the catalogue, never the live one. Each such model carries its own address, so a provider-level override does not catch it, and AEW cannot see the live catalogue
@@ -1416,18 +1404,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
 *Later notes: `notes.d/E99/`, oldest first (`python tools/register.py show E99`).*
-
-### E100
-
-**Work:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An unset mode still runs weaker, and its label's `weaker_because` names the platform
-
-**Source:** The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
-
-**When:** **Internal alpha**, before the Windows trial: a build row, ready for a builder now that CS-4 has merged (#283, `da547f9a`)
-
-**Notes:** Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
-
-*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
 ### E101
 
@@ -2136,18 +2112,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
-
-### E183
-
-**Work:** The steering text and stop fix, with the `request_confirmation` hide, in one small PR: the steering tool's text and the Lead's say what works (lower needs an endpoint raise first; a project with no `steering.mode` refuses every action; in crawl and walk the Lead takes each step itself); the loop's crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's action enum and schema, and the texts that point the Lead at it (`cli/g3_commands.py`, the custody refusal) are reworded; comments that promise E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum once nothing emits them. `request_raise` stays advertised. Done when a test holds the normal catalog's steering actions to `lower` and `request_raise`, and the text to what works as a run receives it
-
-**Source:** The operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 2: "Hide both, keep lower"; the designer's ruling on the tool's text, in the build board of 2026-11-06; re-decided by the operator's re-cut of SYS-04, 2026-11-10: "yes to both, re-cut it and hide them", and their answers of the same day to the designer's questions: "yyes record SYS-47 that way, 1. yes but tell me about 2 and 3" (request_raise stays advertised) and "yes to 2" (no held system); the designer's ruling of 2026-11-11 on SYS-04's held items (`designer-decisions-2026-11-11-sys04-held-items.md`)
-
-**When:** **Unscheduled**, on SYS-04's finish line beside the scheduler's chain (E228)
-
-**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match, adding no scope to its build
-
-*Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 
 ### E184
 
@@ -4827,6 +4791,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
 
+### E92
+
+**Was:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them and naming the https form
+
+**Closed:** 2026-11-25
+
+**By:** #584 (`727b74f0`), on #582 (`7c788df8`): the egress proxy forwards an absolute-form `http://` request through CONNECT's host check on the URL's host:port, one request per connection, with every other shape refused before any DNS (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). The quick check of #584's m7, no 100 Continue to an HTTP/1.0 client, is fixed by #587. Tests in `tests/unit/test_egress_proxy.py`
+
+*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
+
+### E100
+
+**Was:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform; an unset mode still runs weaker, its `weaker_because` naming the platform
+
+**Closed:** 2026-11-25
+
+**By:** #578 (`752dc7f4`): an explicit `required` refuses the launch off Linux with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform`, on every launch route (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). `tests/unit/test_containment_required_everywhere.py`
+
+*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
+
 ### E112
 
 **Was:** G3 addendum 7's ruling 1, before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it, with ruling 2's register of weaker contexts, the launch census (DV-2, DV-5) and DV-4
@@ -5046,6 +5030,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`): its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops serves and lanes from SYS-48's finish line and files them as E365
 
 *Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
+
+### E183
+
+**Was:** The steering text and stop fix, with the `request_confirmation` hide: the steering tool's text and the Lead's say what works; the crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's enum and schema, and `request_raise` stays advertised; comments that promised E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum
+
+**Closed:** 2026-11-25
+
+**By:** #577: the steering tool's actions derived from one owner (`lower`, `request_raise`), its text, the Lead's system text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead's step (still kept from the Lead's wake, per QC-1 (c), confirmed by the operator on the PR, 2026-11-25), and the notify-event enum trimmed
+
+*Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 
 ### E191
 

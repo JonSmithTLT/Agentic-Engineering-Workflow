@@ -28,7 +28,21 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-13, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 16 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-13, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+
+### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
+
+**Board state:** partly_built
+
+**Who:** designer (E118's mechanism), then Lead (E118, E247)
+
+**Now:** 5
+
+**Own slices left:** 2 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118); ProcessTree.active() with a group holding only a zombie, for checking (E247) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
+
+**Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then refuses every launch — not read from the code
+
+**Wired:** cli:harness launch, cli:check run, cli:opencode, cli:lead session, cli:doctor, cli:harness status
 
 ### SYS-05 — Harness currency on the pin (OpenCode); qualification and further adapters are SYS-50's
 
@@ -112,7 +126,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
+**Own slices left:** 1 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
 
 **Switch:** steering.mode — default: crawl — not read from the code
 
@@ -220,21 +234,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 12 — SYS-02, SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
-
-### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
-
-**Board state:** partly_built
-
-**Who:** designer (E118's mechanism), then Lead (E118, E100, E92, E247)
-
-**Now:** 5
-
-**Own slices left:** 4 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118); E100: change mode()'s win32 branch so an explicit required refuses the launch on every platform (E100); E92: forward plain http:// requests through the contained egress under the same R-6 host check (E92); ProcessTree.active() with a group holding only a zombie, for checking (E247) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
-
-**Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then refuses every launch — not read from the code
-
-**Wired:** cli:harness launch, cli:check run, cli:opencode, cli:lead session, cli:doctor, cli:harness status
+**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 

@@ -292,9 +292,10 @@ def test_the_loop_starts_the_critical_ticket_first_whatever_the_ids(p):
 
 @pytest.mark.parametrize("case", ["undeclared", "unknown_class", "no_class", "outside_allow_list"])
 def test_walk_confirms_unknown_or_undeclared_effects(p, monkeypatch, case):
-    """A1 §2 / CWR §3 (`never_executes`; E7c adds `pending_and_notified`): Walk auto-runs only actions whose every
-    declared effect is in {control_state}; an undeclared primitive, an unknown class, no class or a class outside the
-    allow-list needs confirmation, and E7b never executes such an action. A bookkeeping-only stage runs."""
+    """A1 §2 / CWR §3 (`never_executes`; E7c, which would have added `pending_and_notified`, lapsed): Walk auto-runs
+    only actions whose every declared effect is in {control_state}; an undeclared primitive, an unknown class, no class
+    or a class outside the allow-list needs confirmation, and E7b never executes such an action. A bookkeeping-only
+    stage runs."""
     mode(p, "walk")
     primitive = {"undeclared": "probe.nothing", "unknown_class": "probe.network", "no_class": "probe.silent",
                  "outside_allow_list": "work.assign"}[case]
@@ -310,7 +311,7 @@ def test_walk_confirms_unknown_or_undeclared_effects(p, monkeypatch, case):
     spy = Spy()
     stop = loop(p, Scripted(lambda rev: [action("probe_effect", {"expect_rev": rev})]), executor=spy).activate()
     assert stop.code == L.CONFIRMATION_UNAVAILABLE and spy.calls == [], stop
-    assert stop_lines(p) == []  # recorded, but held from the spool until E7c (L.HELD_UNTIL_E7C)
+    assert stop_lines(p) == []  # recorded, but a quiet stop: the Lead's own step (register E183)
     ran = loop(p, Scripted(notes)).activate()  # control_state only: Walk runs it (until the repetition bound)
     assert ran.code == L.REPETITION, ran
 
@@ -318,8 +319,9 @@ def test_walk_confirms_unknown_or_undeclared_effects(p, monkeypatch, case):
 @pytest.mark.parametrize("case", ["walk", "run"])
 def test_confirm_before_actions_never_execute(p, endpoint, case):
     """Amendment 1, m3: when confirm_before(a) holds the action is never executed; the loop stops with
-    CONFIRMATION_UNAVAILABLE (recorded in loop.json; held from the spool until E7c). ``run``: the mode in force when the
-    action comes up is what counts, so a Lead that lowers Run to Walk stops a dispatching action from auto-running."""
+    CONFIRMATION_UNAVAILABLE (recorded in loop.json; quiet, never spooled: register E183). ``run``: the mode in force
+    when the action comes up is what counts, so a Lead that lowers Run to Walk stops a dispatching action from
+    auto-running."""
     mode(p, "walk" if case == "walk" else "run")
     if case == "run":
         e = Engine.discover(p.root)
@@ -1224,18 +1226,18 @@ def stop_lines(project: Any) -> list[str]:
     return [x["reason"] for x in spooled(project) if x["event"] == "loop_stopped"]
 
 
-def test_a_standing_stop_is_notified_once(p, monkeypatch):
-    """F1: one standing condition (T-0001's start needs a confirmation E7b cannot give) is one occurrence, notified
-    once, however many unrelated commits wake the loop meanwhile: each moves the revision, never the condition. The
-    stop is notified as it will be once E7c lifts the hold (``HELD_UNTIL_E7C`` emptied here)."""
-    monkeypatch.setattr(L, "HELD_UNTIL_E7C", frozenset())
-    mode(p, "walk")
+def test_a_standing_stop_is_notified_once(p):
+    """F1: one standing condition (T-0001's start, which Run cannot take with no operator endpoint) is one occurrence,
+    notified once, however many unrelated commits wake the loop meanwhile: each moves the revision, never the
+    condition. The standing condition here is Run's with no operator endpoint (``NOTIFIER_UNAVAILABLE``): the Lead's
+    own step, ``CONFIRMATION_UNAVAILABLE``, is never notified at all (register E183)."""
+    mode(p, "run")  # no operator endpoint: NOTIFIER_UNAVAILABLE whenever an action is eligible
     lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": "T-0001"})]))
-    assert lp.activate().code == L.CONFIRMATION_UNAVAILABLE
+    assert lp.activate().code == L.NOTIFIER_UNAVAILABLE
     e = Engine.discover(p.root)
     for n in range(5):  # the Lead works elsewhere; each of its commits wakes the loop (lead_broker._tool)
         e.checkpoint(token=p.token, expect_rev=p.rev(), note=f"Lead work {n}", next_action=None)
-        assert lp.activate().code == L.CONFIRMATION_UNAVAILABLE
+        assert lp.activate().code == L.NOTIFIER_UNAVAILABLE
     assert len(stop_lines(p)) == 1, stop_lines(p)
 
 
@@ -1265,16 +1267,21 @@ def lead_wake(project: Any) -> tuple[W.WakeQueue, Poster]:
     return q, poster
 
 
-def test_until_e7c_a_crawl_confirmation_stop_is_recorded_but_neither_notified_nor_woken(p, tmp_path):
-    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c): under crawl, from ``aew init``, a
-    planned Ticket stops the loop with ``CONFIRMATION_UNAVAILABLE``, which nothing can act on until E7c (no
-    confirmation exists, and crawl cannot be lowered). It is recorded, so ``status`` shows it, but it writes no spool
-    line (no toast) and gathers no ``loop_waiting`` wake for the Lead."""
+def test_a_crawl_stop_names_the_step_as_the_leads_and_is_quiet_never_notified_nor_woken(p, tmp_path):
+    """Register E183 (the designer's ruling of 2026-11-11 on SYS-04's held items), keeping the operator's ruling on the
+    quick check of E228's fourth PR, QC-1 (c): under crawl, from ``aew init``, a planned Ticket stops the loop with
+    ``CONFIRMATION_UNAVAILABLE``, which keeps its code. No confirmation exists, so the step is the Lead's, and the stop
+    says so, naming it. It is a quiet stop: recorded, so ``status`` shows it, but it writes no spool line (no toast)
+    and gathers no ``loop_waiting`` wake for the Lead."""
     create_planned_ticket(p, tmp_path, title="Add subtract()", scope=("calc/**", "tests/**"))
     spy = Spy()
     stop = loop(p, executor=spy).activate()
-    assert stop.code == L.CONFIRMATION_UNAVAILABLE and stop.attention and spy.calls == [], stop
-    assert Engine.discover(p.root).status()["steering"]["loop"]["stop"]["code"] == L.CONFIRMATION_UNAVAILABLE
+    assert stop.code == L.CONFIRMATION_UNAVAILABLE and stop.code in L.QUIET and spy.calls == [], stop
+    assert not stop.attention
+    assert stop.message.startswith(f"`{stop.action}` on {stop.subject} is your step: crawl ")
+    assert stop.message.endswith(f"take it yourself with the `{stop.action}` tool") and "E7c" not in stop.message
+    shown = Engine.discover(p.root).status()["steering"]["loop"]["stop"]
+    assert shown["code"] == L.CONFIRMATION_UNAVAILABLE and "is your step" in shown["message"]
     assert spooled(p) == []
     q, poster = lead_wake(p)
     assert q.doc["wake"] is None and poster.posts == [], q.doc
@@ -1667,14 +1674,13 @@ def test_an_activation_that_returned_control_is_never_resumed(p):
     assert second.code != L.LOOP_DEADLINE and len(lp.executed) >= 2, (second.code, second.message)
 
 
-def test_a_condition_still_recurring_is_never_forgotten_first(p, monkeypatch):
+def test_a_condition_still_recurring_is_never_forgotten_first(p):
     """Review of PR #199, R2: what was notified is forgotten least recently met first, so a standing condition that
-    keeps recurring stays notified once while 64 other conditions come and go. The standing stop is notified as it
-    will be once E7c lifts the hold (``HELD_UNTIL_E7C`` emptied here)."""
-    monkeypatch.setattr(L, "HELD_UNTIL_E7C", frozenset())
+    keeps recurring stays notified once while 64 other conditions come and go. The standing condition is one that
+    needs attention (``NOTIFIER_UNAVAILABLE``): the Lead's own step is never notified (register E183)."""
     mode(p, "walk")
     lp = loop(p, Scripted(lambda rev: []))
-    standing = L.Stop(L.CONFIRMATION_UNAVAILABLE, "T-0001's start needs a confirmation", "T-0001", "ticket_start", "d")
+    standing = L.Stop(L.NOTIFIER_UNAVAILABLE, "T-0001's start needs the notifier", "T-0001", "ticket_start", "d")
     lp._record(standing, None, "walk")
     for i in range(L.NOTIFIED_MAX):
         lp._record(L.Stop(L.ACTION_STOPPED, f"other condition {i}", f"T-{i:04d}", "probe_notes", f"{i}"), None, "walk")

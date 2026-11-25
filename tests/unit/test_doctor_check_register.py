@@ -9,6 +9,9 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from aew.engine import selection
 from aew.harness import check_changes, containment
 from aew.harness import weaker_register as W
 from aew.policy import checks as C
@@ -19,7 +22,9 @@ def git(*args: str, cwd: Path) -> str:
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
 
 
-def test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker(tmp_path, monkeypatch):
+@pytest.mark.parametrize("kind", ["doctor_check", "validation_selector"])
+def test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker(
+        tmp_path, monkeypatch, kind):
     repo = tmp_path / "repo"
     repo.mkdir()
     git("init", "-q", cwd=repo)
@@ -39,16 +44,23 @@ def test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries
         marker = Path(kw["env"][W.MARKER])
         ran.append({**kw, "live": [e["kind"] for e in W.read().live], "workspace": workspace,
                     "label": json.loads(marker.read_text(encoding="utf-8")) if marker.is_file() else None})
+        if out := kw.get("selection_out"):
+            out.write_bytes(b"fast\n")
         return {"exit_code": 0, "duration_s": 0.0, "log": "", "command": ["stand-in"], "outcome": "ran",
                 "spawn_errno": None}
 
     monkeypatch.setattr(C, "run", run)
-    out = check_changes.run_once(engine, "probe", {"command": ["true"]}, commit)
+    if kind == "doctor_check":
+        out = check_changes.run_once(engine, "probe", {"command": ["true"]}, commit)
+        assert out == {"outcome": "ran", "exit_code": 0, "paths": [], "mutated": False}
+    else:
+        out = selection.observe(engine, engine.snapshot_of, {"command": ["true"]}, commit, [])
+        assert out == {"result": "known", "items": ["fast"]}
     [given] = ran
-    assert "doctor_check" in given["live"], "entered before the check started"
+    assert given["live"] == [kind], "entered with the actual purpose before the check started"
     assert given["env"][W.MARKER].endswith("label.json") and given["label"] == weaker, "its marker names its label"
-    assert out == {"outcome": "ran", "exit_code": 0, "paths": [], "mutated": False}
-    assert "doctor_check" not in [e["kind"] for e in W.read().live], "ended once the check returned"
-    [ended] = [json.loads(f.read_text(encoding="utf-8")) for f in W.root().glob("doctor_check-*.json")]
+    assert Path(given["env"][W.MARKER]).parent.name.startswith(kind.replace("_", "-"))
+    assert kind not in [e["kind"] for e in W.read().live], "ended once the check returned"
+    [ended] = [json.loads(f.read_text(encoding="utf-8")) for f in W.root().glob(f"{kind}-*.json")]
     assert ended["outcome"] == "clean"
     assert not Path(given["env"][W.MARKER]).parent.exists() and not Path(given["workspace"]).exists()

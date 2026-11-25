@@ -135,6 +135,13 @@ STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
+# The clock of the worker phase receipts and of the signal they are read against (worker_evidence.phases_at_signal),
+# which takes a stamp equal to the signal, or two equal stamps, as indeterminate. It must be system-wide and fine
+# enough that a transition and a later reading never share a tick: CPython before 3.13 reads time.monotonic on Windows
+# from a 15.6 ms tick, so a receipt read just after a fast collection was indeterminate there (the nightly of
+# 2026-11-25). perf_counter is system-wide on every OS since 3.10, QueryPerformanceCounter on Windows, and is
+# CLOCK_MONOTONIC on Linux.
+PHASE_CLOCK = "perf_counter"
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -147,6 +154,10 @@ REAP_GATE_ENV = "G3_TEST_REAP_GATE"  # tests only: the reaper starts polling onc
 # deadline has its test running then. The deadline counts from configure, and a loaded Windows runner once took longer
 # than a 5 s deadline to reach the test (#443, 2026-11-11). The sentinel's times are unchanged.
 DEADLINE_GATE_ENV = "G3_TEST_DEADLINE_GATE"
+
+
+def phase_clock_ns() -> int:
+    return getattr(time, f"{PHASE_CLOCK}_ns")()
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
@@ -743,7 +754,7 @@ class Worker:
             if phase == WORKER_PHASES[0]:
                 self.phase_stream = self.lifecycle.open("xb", buffering=0)
             if self.phase_stream is not None:
-                line = f"{time.monotonic_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
+                line = f"{phase_clock_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
                 if self.phase_stream.write(line) != len(line):
                     raise OSError("incomplete worker phase")
         except OSError:

@@ -864,16 +864,14 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 # messaging. The operational digest below is therefore a project's with no table.
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
-    # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR);
-    # its steering comment reworded when init began recording that mode (#432's merge check, N1), and again for the
-    # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1): comments only; and
-    # `maps.pack_slices: structural`, a new project's default (ADR-0015, amended 2026-11-11); and `maps.reads:
-    # structural`, the worker's map reads, a new project's default (register F15.8; the operator, 2026-11-25, O1)
-    "policy/execution.yaml": "af6422ad80c6522b0681ed81d5ca3a8e237ca04ef833af5a741ff2a7a7fb2cc0",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
+# The frozen fixture precedes E183's steering-comment changes. The shipped template includes E183 and MS5b.
+LEGACY_INIT_EXECUTION_SHA256 = "af6422ad80c6522b0681ed81d5ca3a8e237ca04ef833af5a741ff2a7a7fb2cc0"
+SHIPPED_INIT_EXECUTION_SHA256 = "8602fa3fa52b93772f85830ff39df08d2df142a277faf56843e151254c52546a"
+
 # What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
 # (register E228's third PR): the standing crawl mode and the shipped notifier; and maps on (ADR-0015, amended
 # 2026-11-11), the worker's map reads with them (register F15.8, 2026-11-25).
@@ -904,7 +902,9 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     aew = root / ".aew"
     table = "policy/pricing.yaml"
     written = [rel for rel in policy_files(load_manifest(aew)) if rel != table]
-    assert {rel: sha256_file(aew / rel) for rel in written} == INIT_POLICY_SHA256
+    assert {rel: sha256_file(aew / rel) for rel in written} == {
+        **INIT_POLICY_SHA256, "policy/execution.yaml": LEGACY_INIT_EXECUTION_SHA256,
+    }
     assert (aew / table).read_bytes() == O.bundled_table() and b"coordination" not in O.bundled_table()
     assert e.policy_digests()["legality_digest"] == INIT_POLICY_DIGESTS["legality_digest"]
     with monkeypatch.context() as no_table:
@@ -939,7 +939,7 @@ def test_shipped_init_template_and_policy_digests_match_the_goldens(tmp_path, mo
     aew = root / ".aew"
     assert {rel: sha256_file(aew / rel) for rel in policy_files(load_manifest(aew))} == {
         **INIT_POLICY_SHA256,
-        "policy/execution.yaml": "0d79c086564339635b23e8715ee6eea70ef8aae1b0eddc5ed7e2d64a50611ae3",
+        "policy/execution.yaml": SHIPPED_INIT_EXECUTION_SHA256,
     }
     assert engine.policy_digests() == {
         **INIT_POLICY_DIGESTS,
@@ -1039,14 +1039,12 @@ def test_legality_modules_never_import_coordination():
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
     # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
-    # MS5: the supervisor uses the leaf bound to limit the number of final admission reads.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
-                         "aew/harness/told_messages.py", "aew/harness/worker_messages.py"}
+                         "aew/harness/told_messages.py"}
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
-    assert {m for m in _imports(src / "aew/harness/worker_messages.py") if _is_coordination(m)} == {
-        "aew.coordination.layout", "aew.coordination.layout.MAX_UNDELIVERED_LEAD"}
+    assert not any(map(_is_coordination, _imports(src / "aew/harness/worker_messages.py")))
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
                       "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",

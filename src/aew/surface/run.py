@@ -180,17 +180,16 @@ def _checkpoint(c: Call) -> Any:
 
 
 def _steering(c: Call) -> Any:
-    """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a request. A request grants nothing; only
-    the operator raises or confirms, at the operator endpoint."""
-    action = c.a["action"]
-    if action == "lower":
+    """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a raise request. A request grants
+    nothing; only the operator raises, at the operator endpoint. The tool offers no confirmation request (register
+    E183): ``contract.STEERING_ARGUMENTS`` holds its actions, and a call is checked against them before it runs."""
+    if c.a["action"] == "lower":
         out = c.engine.steering_lower(token=c.token(), expect_rev=c.a["expect_rev"], mode=c.a["mode"],
                                       rationale=c.a.get("rationale") or "", prior_value=c.a.get("prior_value"))
         c.committed("steering", out, f"steering mode lowered to {out.get('mode')}", [str(out.get("record"))])
         return out
-    kind = "raise" if action == "request_raise" else "confirmation"
-    out = c.engine.steering_request(token=c.token(), expect_rev=c.a["expect_rev"], kind=kind,
-                                    rationale=c.a["rationale"], mode=c.a.get("mode"), action_ref=c.a.get("action_ref"))
+    out = c.engine.steering_request(token=c.token(), expect_rev=c.a["expect_rev"], kind="raise",
+                                    rationale=c.a["rationale"], mode=c.a.get("mode"))
     c.committed("steering", out, f"steering request {out.get('request')} recorded (grants nothing)",
                 [str(out.get("request"))])
     return out

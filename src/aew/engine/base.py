@@ -499,7 +499,8 @@ class Kernel:
         the current Lead generation, and ``op`` is in the closed family), then the manifest and policy pins and every
         finalizer, as a Lead transaction. There is no expected revision: a custody commit is mechanical, and each one
         re-verifies what it relies on (the validation's transaction 2 does, the routing does). No Lead token is held or
-        used. A publication under custody needs the operator's envelope and the §17 predicate (E6b): it is refused."""
+        used. A publication under custody needs the operator's envelope and the §17 predicate, and none exists (E6b
+        lapsed on 2026-11-06): it is refused."""
         with self.store.session() as s:
             if op == CUSTODY_PUBLISH:
                 raise IllegalTransition("a custodian publishes only under the operator's publication envelope and the "

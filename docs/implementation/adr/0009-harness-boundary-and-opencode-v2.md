@@ -2213,6 +2213,62 @@ too.
 - **Tests:** `tests/unit/test_containment_required_everywhere.py`, with the platform simulated so that both sides run
   on every CI platform.
 
+## Amendment 2026-11-25 — plain `http://` through the egress proxy (register E92)
+
+CS-4's hand-off, addendum 1, §4: the designer accepted the refusal of plain `http://` as a limit for CS-4 on the
+condition that E92 was filed, and the operator unfroze E92 on 2026-11-25 as SYS-02's slice. It replaces two sentences
+above: "`CONNECT` only" in CS-3b's "Egress" section, and the CS-4 "The network" section's "A plain `http://` request is
+refused, and the refusal names the `https://` form to ask for instead". `HTTP_PROXY` still names the egress proxy for
+the Lead only; a worker's sandbox still has none.
+
+- **The same host check as `CONNECT`.** A plain request whose target is an absolute `http://` URL takes `CONNECT`'s
+  path on the URL's `host:port` (port 80 when it names none): the policy (the allowlist before any DNS), one resolve,
+  R-6 and the policy's address rule on every answer, a connect to the literal address, and R-6 again on the connected
+  peer (`egress.EgressProxy._open_upstream`, shared). A refused target is recorded as a `CONNECT`'s is.
+- **Refused before any DNS** (`egress.EgressProxy._plain`, `egress._framing`), each with its own reason: an
+  origin-form or `*` target (`origin_form`), another scheme (`scheme`), a userinfo part (`userinfo`), a fragment or a
+  control character in the URL, a malformed authority (`bad_request`); a missing, repeated or different `Host`
+  (`host_mismatch`); a field line that is not a field, or a value with a control character other than HTAB
+  (`bad_header`); `Upgrade` (501, `upgrade`); an `Expect` other than `100-continue` (417, `expectation`); a body framed
+  more than one way, a `Content-Length` repeated or of other than ASCII digits, a `Transfer-Encoding` other than
+  exactly `chunked` or on HTTP/1.0 (`bad_framing`); a body over `egress.MAX_BODY` (413, `body_too_large`).
+- **What is forwarded:** an origin-form target with the client's own HTTP version (so an HTTP/1.0 client is never sent
+  a chunked response), `Host` set to the URL's authority, every hop-by-hop header (`http1.HOP_BY_HOP`), every
+  `Proxy-*` header, `Connection` and what it names left out, the framing as checked, and `Connection: close`. The proxy
+  answers `100-continue` itself. A chunked body's size lines and trailer fields are held to the field-value rule, as the
+  relay's are (`bad_chunk`, `bad_header`); a trailer leaves out the fields the head leaves out, and one carrying
+  `Host`, `Content-Length` or `Transfer-Encoding` is refused (`bad_header`; RFC 9110 §6.5.1). A refused line is never
+  sent. The proxy holds no credential and adds none.
+- **One request per connection.** The answer says `Connection: close` (`http1.close_head`), and whatever the client
+  sends after its one request, pipelined or after the answer, is read and dropped, never forwarded.
+- **Bounds** (implementation bounds, not policy): the request head as before (`MAX_HEADER`, `HEADER_TIMEOUT`), a pause
+  in the body (`BODY_TIMEOUT`), the response head (`MAX_RESPONSE_HEAD`), and a response with no byte either way for
+  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that stops taking the request
+  (it closes, or takes nothing for `connect_timeout`) has an answer it already sent relayed, where one can still be
+  read (a connection reset can discard it, as Windows does); with none, the client is answered 502 (`upstream_closed`),
+  and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the request may have arrived
+  and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
+- **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
+  which the relay and the egress proxy both import.
+- **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a
+  header value with a control character other than HTAB, 400 `bad_header` (RFC 9110 §5.5); a chunk-size line whose
+  size or extension holds one, 400 `bad_chunk`, and a trailer line that is not such a field, 400 `bad_header`
+  (RFC 9112 §7.1.1, §7.1.2); and a `Content-Length` of other than ASCII digits, 400 `bad_framing`.
+- **Not claimed:** plain `http://` is plaintext beyond the host, as it is without the proxy; the proxy reads no
+  response content.
+- **Tests:** `tests/unit/test_egress_proxy.py`, the plain-http section: the forwarding, R-6 for every host route as
+  `CONNECT` meets it, the allowlist, the connected peer, each refusal, one request per connection, the chunked body's
+  rule and bound, and each time bound.
+
+## Amendment 2026-11-25 — `100-continue` to HTTP/1.1 only (the quick check of #584, m7)
+
+It narrows "The proxy answers `100-continue` itself" in the E92 amendment above: the egress proxy answers a plain
+request's `Expect: 100-continue` only on HTTP/1.1. An HTTP/1.0 client is sent no 1xx response (RFC 9110 §15.2), and its
+expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read and forwarded without one. Test:
+`test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
+The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
+only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
+
 ## Amendment 2026-11-25 — recorded harness send (E175)
 
 The MS5b rules replace the transitional messaging-enabled refusals in HS1. When both the adopted project switch

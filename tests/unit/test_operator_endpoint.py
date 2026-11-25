@@ -303,22 +303,29 @@ def test_requests_grant_nothing(project):
     def call(**args: Any) -> dict[str, Any]:
         return run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), **args}, token=project.token)
 
+    def confirmation(ref: str) -> dict[str, Any]:
+        # The engine's own confirmation request: the steering tool no longer offers one (register E183), so the bound
+        # on open requests is reached through the engine.
+        return engine.steering_request(token=project.token, expect_rev=project.rev(), kind="confirmation",
+                                       rationale="r", action_ref=ref)
+
     assert call(action="request_raise", mode="walk", rationale="routine edits")["ok"]
     assert call(action="request_raise", mode="run", rationale="unattended overnight")["ok"]
-    assert call(action="request_confirmation", action_ref="ticket_start T-0001", rationale="needs a look")["ok"]
+    assert confirmation("ticket_start T-0001")["ok"]
     view = engine.steering_view()
     assert view["effective"] == "crawl"
     assert [(r["kind"], r.get("mode")) for r in view["requests"]] == [("raise", "run"), ("confirmation", None)]
     assert any(r["kind"] == "request_closed" and "replaced" in r["closed"] for r in _records(project))
     for bad in ({"action": "request_raise", "mode": "run"}, {"action": "lower"},
-                {"action": "request_confirmation", "rationale": "r"},
+                {"action": "request_confirmation", "action_ref": "x", "rationale": "r"},
                 {"action": "lower", "mode": "crawl", "action_ref": "x"}):
         with pytest.raises(AdapterInputError):
             check_call("steering", {"expect_rev": 1, **bad}, NORMAL)
     for i in range(S.MAX_REQUESTS - 2):
-        assert call(action="request_confirmation", action_ref=f"step {i}", rationale="r")["ok"]
-    over = call(action="request_confirmation", action_ref="one too many", rationale="r")
-    assert not over["ok"] and len(engine.store.read()["steering"]["requests"]) == S.MAX_REQUESTS
+        assert confirmation(f"step {i}")["ok"]
+    with pytest.raises(errors.IllegalTransition, match="already open"):
+        confirmation("one too many")
+    assert len(engine.store.read()["steering"]["requests"]) == S.MAX_REQUESTS
     assert engine.steering_view()["effective"] == "crawl"
     assert_control_invariants(project)
 

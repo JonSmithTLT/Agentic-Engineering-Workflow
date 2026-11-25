@@ -252,7 +252,8 @@ def test_a_plan_assessor_whose_pack_drifted_is_dispatched_again_by_the_leads_typ
     assert "operator" not in entry
     # The engine's call and the catalog's route are one: the tool runs the choice, which runs the assessor.
     assert contract.RESOLVE_CHOICE_PRIMITIVE[(E.ASSESS_CHOICE, "plan")] == "plan.assess"
-    assert "plan.assess" in contract.TOOLS[E.ASSESS_TOOL].expands_to
+    for switches in (frozenset(), frozenset({contract.MESSAGING})):
+        assert "plan.assess" in contract.tool(E.ASSESS_TOOL, switches=switches).expands_to
     assert lead_text.plan_assessment() == f"`{E.ASSESS_TOOL}`, choice `{E.ASSESS_CHOICE}`, subject `<W>{E.PLAN_ITEM}`"
     other = gate_ops.redispatch_entry(state, "INV-0003", {**inv, "card": {"id": "custom_assessor"}}, "drift")
     assert "--card custom_assessor" in other["operator"] and "operator runs" in other["operator"]

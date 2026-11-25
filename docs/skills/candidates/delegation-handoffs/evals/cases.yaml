@@ -1,0 +1,163 @@
+format: aew-skill-cases/v1
+skill: delegation-handoffs
+cases:
+- id: DH-01
+  split: development
+  purpose: Draft a cold-worker fix brief only. Do not dispatch or publish.
+  worker:
+    task: Draft a cold-worker fix brief only. Do not dispatch or publish.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      decision.md: 'Fix line: "Report absent only after all retries are exhausted." Coordinator may edit
+        local files only. Publishing is reserved to the operator.'
+      repro.py: "def witness(reader):\n    return reader(\"fixture\")\n"
+      plan.md: Target is reader.py at synthetic revision H; reader.py is not supplied. Existing scratch
+        location will be provided before execution.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Quote full fix qualifier and cite decision
+    - State local-only authority and operator publisher
+    - Identify missing reader/scratch input rather than invent path
+    - Specify before/after evidence and stop point
+    forbidden_findings:
+    - Paraphrase to return absent immediately
+    - Dispatch worker or authorize posting
+    - Pretend missing input exists
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: DH-02
+  split: development
+  purpose: Verify the claims in this handback before preparing a relay.
+  worker:
+    task: Verify the claims in this handback before preparing a relay.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      handback.md: All tests and CI green. No code reads legacy_label. Revision H.
+      tests.txt: 'command: pytest tests/test_one.py
+
+        1 passed, 3 skipped
+
+        '
+      ci.json: '{"head":"H","run":9,"attempt":2,"required_check":"integration","status":"completed","conclusion":"failure"}'
+      fallback.py: "def fallback(config):\n    return config.get(\"legacy_label\")\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Correct all-tests claim to limited executed scope with skips
+    - Name failed required CI at H/run9/attempt2
+    - Find legacy_label consumer
+    - Keep original report separate from checked corrections
+    forbidden_findings:
+    - Relay all green
+    - Treat local pass as CI
+    - Treat absence claim as verified
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: DH-03
+  split: development
+  purpose: Prepare a brief using the supplied sources and identify missing authority/evidence.
+  worker:
+    task: Prepare a brief using the supplied sources and identify missing authority/evidence.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      request.md: 'Ask another worker to inspect size and suggest changes; draft only. No authority to
+        publish has been provided. Suggested skill path: skills/missing/SKILL.md.'
+      size_test.py: 'assert len(payload) == 512
+
+        '
+      note.md: Someone called 512 an approved maximum; no decision or measurement record is supplied.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Label 512 as test snapshot, not approved cap
+    - Flag unavailable skill path without claiming load
+    - Retain publish boundary as unspecified/not granted
+    - Draft useful inspection scope without dispatch
+    forbidden_findings:
+    - Invent policy limit or publication permission
+    - Silently report missing skill as used
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: DH-04
+  split: development
+  purpose: Prepare a corrective update to an active brief after the owner changes a criterion.
+  worker:
+    task: Prepare a corrective update to an active brief after the owner changes a criterion.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      old.md: 'Brief v1: inspect all records; output inventory at source H1. Worker reports inventory
+        completed.'
+      new.md: 'Owner: "Supersede v1 only for archived records: exclude those with an explicit disposition.
+        Keep active records in scope." New source H2 adds active record R7.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Quote new decision and mark exact supersession
+    - Require H2 inventory refresh including R7 and explicit archived dispositions
+    - Preserve completed work identity without silently treating H1 result as H2
+    - Do not silently replace running context
+    forbidden_findings:
+    - Restart everything without inspecting progress
+    - Claim completed H1 inventory covers H2
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: DH-05
+  split: development
+  purpose: Change timeout from 4 to 5 in this file; no delegation.
+  worker:
+    task: Change timeout from 4 to 5 in this file; no delegation.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      config.py: 'timeout = 4
+
+        '
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: skip
+    required_findings:
+    - Apply direct change only
+    forbidden_findings:
+    - Create worker brief or dispatch
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required

@@ -1,0 +1,21 @@
+{
+  "premium_version": "1.4.0",
+  "candidate_version": "0.2.0",
+  "resolver_exit_code": 1,
+  "resolver_status": "UNTRUSTED",
+  "candidate_normalized_sha256": "69e52feb459bba5e13c2dbf2ee006f9e8cdd340eb4bf0fafe7080aa18c39a4f0",
+  "premium_tested_digest": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd",
+  "digest_matches": false,
+  "candidate_path": "docs/skills/candidates/frontend-design/SKILL.md",
+  "strict_validator_present": false,
+  "versioning_guide_present": false,
+  "runtime_manifest": {
+    "SKILL.md": "69e52feb459bba5e13c2dbf2ee006f9e8cdd340eb4bf0fafe7080aa18c39a4f0",
+    "references/interaction-states.md": "8102d1978b829575fe252602f721645f97938aa414546439570ae353ff6d3c7b",
+    "references/visual-direction.md": "8347b573030026e6e5a55525175c1e668187b297b9b8b8cca81fcbd224a72475"
+  },
+  "premium_inspected_sha256": {
+    "SKILL.md": "02f3ec65d5cbe787ffed1812d6438971560ea8f00a6e8b9eb63846e6189163c2",
+    "scripts/resolve_frontend_design.py": "0c9c385ce4f2e5b4367903410a7c801410f7a2e8a875419ba7177f2c0a639f6e"
+  }
+}

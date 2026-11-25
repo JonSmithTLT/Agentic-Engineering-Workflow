@@ -512,3 +512,54 @@ def test_resolve_choice_primitive_pairs():
                for p in resolve_pair_problems(swapped))
     lost = {k: v for k, v in mapping.items() if k[0] != "abandon"}
     assert "RESOLVE_CHOICES is not the mapping's choices, in its order" in resolve_pair_problems(lost)
+
+
+# ---------------------------------------------------------------------------------------------- steering (E183)
+
+
+def _steering_as_a_run_receives_it() -> list[Any]:
+    """The `steering` entry of the normal profile's `tools/list`, each way a run receives it: standard text with
+    messaging off, compact with it on."""
+    from aew.surface import mcp
+
+    return [next(t for t in mcp.tools_list(NORMAL, switches)["tools"] if t["name"] == "steering")
+            for switches in (frozenset(), contract.ALL_SWITCHES)]
+
+
+def test_the_steering_tool_never_offers_request_confirmation_and_request_raise_stays_offered():
+    """Register E183 (the operator, 2026-11-06 and 2026-11-10): the normal catalog's steering actions are `lower` and
+    `request_raise`, derived from their one owner, ``contract.STEERING_ARGUMENTS``; `request_confirmation` and the
+    `action_ref` only it took are in neither the enum nor the schema, and a call naming it is refused before it runs."""
+    owned = [a for _, allowed in contract.STEERING_ARGUMENTS.values() for a in allowed]
+    for entry in _steering_as_a_run_receives_it():
+        properties = entry["inputSchema"]["properties"]
+        assert properties["action"]["enum"] == ["lower", "request_raise"] == list(contract.STEERING_ARGUMENTS)
+        assert set(properties) - {"expect_rev", "action"} == set(owned)
+        assert "request_confirmation" not in json.dumps(entry) and "action_ref" not in properties
+    with pytest.raises(AdapterInputError):
+        check_call("steering", {"expect_rev": 1, "action": "request_confirmation", "rationale": "r"}, NORMAL)
+    check_call("steering", {"expect_rev": 1, "action": "request_raise", "mode": "walk", "rationale": "r"}, NORMAL)
+
+
+def test_the_steering_text_says_what_works_as_a_run_receives_it():
+    """Register E183 (the designer's ruling of 2026-11-11 on the tool's text), in the tool's text, the Lead's system
+    text and the Lead's refusal of the raise command, which sends it to the tool: a lower needs the operator's raise
+    first, a project with no `steering.mode` refuses every action, and in crawl and walk the step is the Lead's own;
+    nothing offers a confirmation."""
+    from aew.cli.main import build_parser
+    from aew.harness import lead_broker
+    from aew.harness.opencode import projection
+
+    # The Lead's system text names the crawl and walk step as its own, from the one owner the tool's text uses too.
+    assert f"- Steering: {contract.STEERING_STEP}" in projection.LEAD_SYSTEM
+    assert contract.STEERING_STEP in contract.STEERING_TEXT and "you take each step" in contract.STEERING_STEP
+
+    refusal = lead_broker.refuses_locally(build_parser().parse_args(["lead", "mode", "raise", "walk"]))
+    assert refusal is not None and "request_raise" in refusal and "confirm" not in refusal, refusal
+    assert "lower" in refusal and "raise is in force" in refusal and contract.STEERING_STEP in refusal, refusal
+    for entry in _steering_as_a_run_receives_it():
+        text = entry["description"].lower()
+        assert "raise" in text.split("lower", 1)[1], text  # what a lower needs, said with it
+        assert "steering.mode" in text and "refused" in text, text
+        assert "crawl" in text and "walk" in text and "you take each step" in text, text
+        assert "confirm" not in text and "grant" in text and "nothing" in text, text

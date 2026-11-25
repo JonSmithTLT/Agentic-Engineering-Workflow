@@ -36,8 +36,8 @@ beside its subject Ticket (or under ``records/dispositions/`` when it concerns t
 Anomaly ids are ``ANM-n``: the archive's annotations already use ``AN-n``.
 
 E7 and E8 add their sources. A high anomaly adds no primitive guard and changes no refusal (n6): it stops the steering
-loop (E7), fails PIC's clause 7 (E6b), and makes its subject's projected actions ``auto_runnable: false``
-(``aew.surface.projection``).
+loop (E7), would fail PIC's clause 7 (E6b lapsed, so no PIC publish exists), and makes its subject's projected
+actions ``auto_runnable: false`` (``aew.surface.projection``).
 """
 
 from __future__ import annotations

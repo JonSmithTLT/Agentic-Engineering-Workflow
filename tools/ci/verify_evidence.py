@@ -15,7 +15,7 @@ from pathlib import Path
 
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
-from evidence_files import FRAME, entries, state, test_frame
+from evidence_files import CANCEL_COLLECTION, FRAME, WARNING, entries, state, test_frame
 from evidence_problems import evidence_problems
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
@@ -205,7 +205,7 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: s
         for row in interrupted:
             captures = ((sample, frames) for path in root.rglob(f"snapshots/{row['pid']}.txt")
                         for sample, frames in entries(path.read_text()))
-            if not any(sample.get("reason") == "warning" and sample.get("pid") == row["pid"]
+            if not any(sample.get("reason") == WARNING and sample.get("pid") == row["pid"]
                        and sample.get("start") == row["start"] and sample.get("node") == row["node"]
                        and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]
                        and test_frame(row["node"], frames) for sample, frames in captures):
@@ -414,8 +414,8 @@ def main(root: Path) -> int:
                     failures.extend(job_twins(merged, job))
             elif kind == "cancel":
                 for path in merged.rglob("snapshots/*.txt"):
-                    text = path.read_text().replace('"reason": "warning"', '"reason": "periodic"')
-                    path.write_text(text.replace('"reason": "cancel collection"', '"reason": "periodic"'))
+                    text = path.read_text().replace(f'"reason": "{WARNING}"', '"reason": "periodic"')
+                    path.write_text(text.replace(f'"reason": "{CANCEL_COLLECTION}"', '"reason": "periodic"'))
                 live_seen = any(row.get("alive_when_observed") for target in ("cancelled-*.txt", "interrupted-*.txt")
                                 for path in merged.rglob(target) for row in [json.loads(path.read_text())])
                 if live_seen:

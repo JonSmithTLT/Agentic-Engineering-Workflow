@@ -24,7 +24,7 @@ sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
 import worker_evidence  # noqa: E402
-from evidence_files import HOST_STOP_FILE, open_observation, stacks_ablated  # noqa: E402
+from evidence_files import CANCEL_COLLECTION, HOST_STOP_FILE, WARNING, open_observation, stacks_ablated  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
 from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
 from session_deadline import collect_leftovers as collect  # noqa: E402
@@ -149,7 +149,7 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
                 if after and after.groups() == header.groups() and proctree.same(known[pid][1]):
                     worker = worker_evidence.Worker(known[pid][0], pid, known[pid][1][1], node, float(started),
                                                     float(limit))
-                    worker_evidence.save_sample(root, worker, time.time(), elapsed, *result, reason="warning")
+                    worker_evidence.save_sample(root, worker, time.time(), elapsed, *result, reason=WARNING)
         except (OSError, ValueError):
             continue
 
@@ -302,6 +302,15 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     watch_heartbeat = os.environ.get("AEW_EVIDENCE_PLANT") == "hang"
     if watch_heartbeat:
         kwargs["stderr"] = subprocess.PIPE
+
+    def scope():
+        if job:
+            return {p.identity for p in job.members(command_lines=False)}
+        supervisor = proctree.identity(os.getpid())
+        return {p.identity for p in proctree.descendants(supervisor, proctree.table())} if supervisor else set()
+
+    # Before the lane starts, so its recorded sampling policy is written before any worker can reach the root (E3).
+    monitor = worker_evidence.Monitor(root, attach, scope)
     child = subprocess.Popen(argv, **kwargs)
     heartbeat: dict | None = None
     relay = None
@@ -316,14 +325,6 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     next_host = 0.
     snapshots_seen: set[tuple[int, str]] = set()
     lane_exit = None
-
-    def scope():
-        if job:
-            return {p.identity for p in job.members(command_lines=False)}
-        supervisor = proctree.identity(os.getpid())
-        return {p.identity for p in proctree.descendants(supervisor, proctree.table())} if supervisor else set()
-
-    monitor = worker_evidence.Monitor(root, attach, scope)
 
     signal_at = None
     worker_phases = None
@@ -361,7 +362,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     if before_signal and active:
                         alive = {worker.identity: proctree.same(worker.identity) for worker in active}
                         if not stacks_ablated():
-                            worker_evidence.capture(root, active, attach, reason="warning", allowed=scope())
+                            worker_evidence.capture(root, active, attach, reason=WARNING, allowed=scope())
                         for worker in active:
                             worker_evidence.record(root, worker, "interrupted", time.time(),
                                                    collect_at=at, alive_when_observed=alive[worker.identity])
@@ -441,15 +442,24 @@ def main(argv: list[str]) -> int:
         if cancelled or step_ended:
             active = list(worker_evidence.workers(args.root))
             at = time.time()
+            # Liveness is decided before the capture, as the Linux supervisor decides it before its warning attach: a
+            # worker that exits during the capture is still owed its stack, and its typed outcome says why there is
+            # none (register E3).
+            alive = {worker.identity: proctree.same(worker.identity) for worker in active}
             # Only attach to a live worker whose identity was sampled inside the supervisor's owned tree.
             allowed = {worker.identity for worker in active if any(
                 sample.get("pid") == worker.pid and sample.get("start") == worker.start
                 for sample, _ in worker_evidence.read_ring(args.root, worker))}
-            worker_evidence.capture(args.root, active, lambda pid: attach(pid, allow_sudo=False),
-                                    reason="cancel collection", allowed=allowed)
+            sampled = worker_evidence.capture(args.root, active, functools.partial(attach, allow_sudo=False),
+                                              reason=CANCEL_COLLECTION, allowed=allowed, collect_at=at)
             for worker in active:
-                worker_evidence.record(args.root, worker, "cancelled" if cancelled else "interrupted",
-                                       time.time(), collect_at=at)
+                # A worker whose first dump straddled a test change is recorded for the test its retained sample
+                # labels, so the observation and its stack name one test (register E3).
+                held = sampled.get(worker.identity, worker)
+                moved = {"straddled_from": worker.node} if held.node != worker.node else {}
+                worker_evidence.record(args.root, held, "cancelled" if cancelled else "interrupted",
+                                       time.time(), collect_at=at, alive_when_observed=alive[worker.identity],
+                                       **moved)
         worker_evidence.record_oom(args.root)
         worker_evidence.controller_loss(args.root)
         collect(args.root)

@@ -64,6 +64,24 @@ FRAME = re.compile(
 
 FRESH_S = 60
 PREFIX = "worker snapshot "
+WARNING = "warning"
+CANCEL_COLLECTION = "cancel collection"
+# The sample reasons taken at an interruption: the Linux supervisor's pre-signal warning and the cancellation
+# collection (lane_step --collect). Both retry inside one shared budget, and their stacks answer evidence_problems'
+# live-stack check (register E3).
+INTERRUPTION_REASONS = frozenset({WARNING, CANCEL_COLLECTION})
+# worker_evidence.Monitor records the lane's periodic sampling policy here; the cancellation collection and the
+# evidence check read it back through policy_samples (register E3).
+SAMPLING_POLICY = "runner-resources-sampling.txt"
+# Cancellation-collection outcomes for a worker with no sample in the owned tree. Only NOT_SAMPLED, in a lane whose
+# periodic sampling is off (AEW_WORKER_SNAPSHOTS=0), owes no stack, and only while no sampling attach of it failed: in a
+# lane that samples, a worker with no sample is a sampling gap and still owes its stack (register E3; review of #561,
+# M1). Hosted CI samples every worker, a serial lane's controller included (operator, 2026-11-25).
+NOT_SAMPLED = "not sampled in the owned tree"
+SAMPLING_GAP = "never sampled although its lane's policy samples it"
+# The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
+# accepts only these, and only when the retained frames themselves classify so (register E3).
+OUTSIDE_CALL = ("setup", "teardown", "between tests")
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
@@ -79,6 +97,39 @@ def test_frame(node: str, frames: str) -> bool:
         if ("/" + file.replace("\\", "/")).endswith("/" + source.replace("\\", "/")) and called == function:
             return True
     return False
+
+
+def pytest_phase(frames: str) -> str:
+    """Where a dump without its test-function frame stands in pytest's test protocol: one of OUTSIDE_CALL, ``call``
+    (inside pytest_runtest_call, so the test's frame is missing), or ``indeterminate``. Between tests needs the run
+    loop's own frame, so a dump that lost the main thread never reads as outside a call."""
+    called = {(match.group("function") or match.group("spy_function")).rsplit(".", 1)[-1]
+              for match in FRAME.finditer(frames)}
+    if "pytest_runtest_call" in called:
+        return "call"
+    if "runtestprotocol" not in called:
+        return "between tests" if "pytest_runtestloop" in called else "indeterminate"
+    if "pytest_runtest_teardown" in called:
+        return "teardown"
+    if "pytest_runtest_setup" in called:
+        return "setup"
+    return "indeterminate"
+
+
+def policy_samples(policy: dict) -> bool:
+    """Whether the lane's periodic sampling policy samples its workers. An unknown or unreadable policy counts as
+    sampling, so it never excuses a missing stack."""
+    return policy.get("periodic") is not False
+
+
+def sampling_failures(pid: int, start: int) -> str:
+    """The snapshots file keeping the first failed periodic or pressure attach of one worker identity."""
+    return f"{pid}-{start}-sampling-failures.txt"
+
+
+def cancel_outcome(pid: int, start: int) -> str:
+    """The snapshots file naming why the cancellation collection kept no test stack for one worker identity."""
+    return f"{pid}-{start}-cancel-outcome.txt"
 
 
 def entries(text: str):

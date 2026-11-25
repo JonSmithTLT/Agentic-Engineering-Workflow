@@ -2242,9 +2242,11 @@ the Lead only; a worker's sandbox still has none.
   `RESPONSE_IDLE_TIMEOUT`. A response that never begins is answered 502 (`no_response`, or `upstream_broken`), saying
   the request may have arrived and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
 - **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
-  which the relay and the egress proxy both import. The provider relay's "Requests" list in CS-3b's section also
-  refuses a header value with a control character other than HTAB (400 `bad_header`), and holds chunk extensions and
-  trailer fields to the same rule (#582; review of #582, n1).
+  which the relay and the egress proxy both import.
+- **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a
+  header value with a control character other than HTAB, 400 `bad_header` (RFC 9110 §5.5); a chunk-size line whose
+  size or extension holds one, 400 `bad_chunk`, and a trailer line that is not such a field, 400 `bad_header`
+  (RFC 9112 §7.1.1, §7.1.2); and a `Content-Length` of other than ASCII digits, 400 `bad_framing`.
 - **Not claimed:** plain `http://` is plaintext beyond the host, as it is without the proxy; the proxy reads no
   response content.
 - **Tests:** `tests/unit/test_egress_proxy.py`, the plain-http section: the forwarding, R-6 for every host route as

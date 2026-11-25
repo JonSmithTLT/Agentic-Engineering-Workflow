@@ -1578,6 +1578,53 @@ entries:
     note: >-
       evidence job of ci run 45512141007 (PR 553 at bc5492f2, superseded): live-stack defects in Linux fast and
       integration (Windows side: windows-cancel-live-stack).
+- id: phase-receipt-coarse-tick
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: wall clock
+  cause: >-
+    Worker phase receipts and the signal read against them were stamped with time.monotonic_ns, a 15.6 ms tick on
+    Windows before CPython 3.13. A receipt stamp equal to the signal, or two equal stamps, is rightly indeterminate,
+    so a fast collection's receipt read as indeterminate.
+  owner: CI timing fixes
+  test: tests/integration/test_hang_autopsy.py::test_xdist_collection_and_execution_have_distinct_live_worker_receipts
+  evidence:
+  - run: 45575864672
+    job: 139079380954
+    at: '2026-11-25T09:13:03Z'
+    note: reference serial 10/13 (windows-latest, py3.11), nightly dispatched by hand on main at d900ead8.
+  closure:
+    pr: 575
+    cause: >-
+      One phase clock (session_deadline.phase_clock_ns, perf_counter: system-wide, QueryPerformanceCounter on
+      Windows) stamps the receipts and the lane's signal.
+    test: tests/unit/test_evidence_states.py::test_a_worker_phase_is_read_at_a_later_signal_however_coarse_the_monotonic_tick
+    proof: fault injection
+- id: eval-ledger-latest-by-stamp
+  scope: test
+  lane: fast
+  platforms:
+  - windows
+  status: closed
+  class: wall clock
+  cause: >-
+    The attempt ledger named a cell's latest attempt by its largest wall-clock stamp; two registrations inside one
+    15.6 ms Windows tick (before CPython 3.13) tied, and the earlier attempt was named the latest.
+  owner: CI timing fixes
+  test: tests/unit/test_eval_instrument.py::test_a_retry_is_linked_and_allowed_only_by_the_frozen_policy
+  evidence:
+  - run: 45575864672
+    job: 139079380895
+    at: '2026-11-25T09:19:35Z'
+    note: reference serial 3/13 (windows-latest, py3.11), nightly dispatched by hand on main at d900ead8.
+  closure:
+    pr: 575
+    cause: The latest attempt is the cell's last registration in ledger order, never its stamp.
+    test: tests/unit/test_eval_instrument.py::test_a_cells_latest_attempt_is_its_last_registered_never_its_latest_stamp
+    proof: fault injection
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

@@ -1272,7 +1272,7 @@ def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_p
         return json.dumps(data).encode()
 
     assert execution.parse(policy(["POST /embeddings"]), source="t")["containment"]["network"]["relay_operations"]
-    for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b"):
+    for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b", "POST /embeddings/", "POST /"):
         with pytest.raises(ValidationFailed):
             execution.parse(policy([bad]), source="t")
 

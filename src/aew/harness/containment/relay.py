@@ -121,10 +121,10 @@ MAX_BODY = 64 * 1024 * 1024
 MAX_HELD = 256 * 1024 * 1024
 # Implementation bound: what parsing one JSON value of a body costs at most, beyond its text and its strings' text
 # (:func:`_scan`). Measured with tracemalloc (2026-11-24, #551's review, m3, and its quick checks, q1 and q4): 28-62
-# bytes per value across arrays of empty objects, empty arrays, small objects, numbers and strings; the most, about
-# 123 per value on CPython 3.11 (each pair counted twice, by its ``:`` and its ``,``), for a compact object of many
-# short unique keys whose values are each a new number object, at a size just past a dict's resize. 160 holds that
-# shape's peak to about 0.77 of the estimate on 3.11 and 3.13.
+# bytes per value across arrays of empty objects, empty arrays, small objects, numbers and strings; the most, up to
+# about 133 per value on CPython 3.11 (each pair counted twice, by its ``:`` and its ``,``), for a compact object of
+# many short unique keys whose values are each a new number object, at a size just past a dict's resize. 160 holds
+# that shape's peak to about 0.8 of the estimate on 3.11 (a little less on 3.13).
 PARSE_VALUE_BYTES = 160
 # What any parse holds besides (its objects' headers, the parser's state): 1-2 KiB measured alike; 16 KiB margin.
 PARSE_BASE_BYTES = 16 * 1024

@@ -8,7 +8,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 6 — SYS-08, SYS-09, SYS-13, SYS-39, SYS-47, SYS-48
 
-**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -20,7 +20,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Waiting on your sign-off:** 6 — SYS-08, SYS-09, SYS-13, SYS-39, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-19, SYS-22, SYS-43, SYS-51
+**Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-19, SYS-22, SYS-43, SYS-51, SYS-53
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 17 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-43, SYS-13, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 17 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -104,18 +104,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
-### SYS-43 — Plan assessment gate and planner staffing
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** 31
-
-**Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
-
-**Wired:** none
-
 ### SYS-13 — Lead-worker coordination messaging
 
 **Board state:** awaiting_signoff
@@ -129,6 +117,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** coordination.messaging — default: disabled (a new project: enabled) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
 **Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:message lost, cli:harness send
+
+### SYS-53 — Per-operation revision check (replacing the project-wide expect_rev)
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 42
+
+**Own slices left:** 1 — The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated, and the amendments (E329) — **Next:** The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated, and the amendments — E329 — 1 PR (the designer's ruling of 2026-11-10)
+
+**Wired:** none
 
 ### SYS-04 — Steering (Crawl/Walk/Run), operator endpoint and notifier
 
@@ -246,7 +246,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 10 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -284,6 +284,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-43 — Plan assessment gate and planner staffing
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 31
+
+**Own slices left:** 3 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160); the plan assessor's pack fitted to its scope: the reviewer archetype's text rendered at plan_assessment scope asks for a change's findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator, 2026-11-25) (E366) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
+
+**Wired:** none
+
 ### SYS-51 — Typed surface follow-ons (worker-side role servers, typed Lead rows, Lead text fixes)
 
 **Board state:** partly_built
@@ -314,11 +326,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E231's next part, E233, E241)
+**Who:** Lead (E231's next part, E233, E241, E367, E368)
 
-**Now:** not on the Now list
+**Now:** 44
 
-**Own slices left:** 3 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The worker route's size check (E241) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
+**Own slices left:** 5 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The worker route's size check (E241); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator, 2026-11-25) (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
 
@@ -374,7 +386,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Members:** 1 — SYS-26
 
-**Decided:** 37 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-47, SYS-48, SYS-49, SYS-50, SYS-51, SYS-52
+**Decided:** 38 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-47, SYS-48, SYS-49, SYS-50, SYS-51, SYS-52, SYS-53
 
 ### SYS-26 — Resource and progress supervision (stall detection, run health, weak-worker continuity, dynamic scheduler)
 

@@ -361,10 +361,15 @@ if IS_WINDOWS:  # pragma: windows-only
         process created after the controller joins it is a member, and ``spawn_detached``'s breakaway attempt fails
         into its fallback, inside the job. The handle is inheritable only so it can be handed to the sentinel."""
 
-        def __init__(self, name: str | None = None) -> None:
+        def __init__(self, name: str | None = None, *, exclusive: bool = False) -> None:
+            ctypes.set_last_error(0)
             self.handle = _k32.CreateJobObjectW(None, name)
             if not self.handle:
                 raise ctypes.WinError(ctypes.get_last_error())
+            if exclusive and ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS: a handle on another's job
+                _k32.CloseHandle(self.handle)
+                self.handle = None
+                raise FileExistsError(f"a job object named {name} already exists")
 
         @classmethod
         def open(cls, name: str) -> Job:
@@ -413,6 +418,22 @@ if IS_WINDOWS:  # pragma: windows-only
                 finally:
                     _k32.CloseHandle(h)
             return out
+
+        def holds(self, ident: tuple[int, int]) -> bool:
+            """Whether the process with this identity is a member now, read on one handle: in this job, the same
+            creation time, still alive. A pid reused by a process outside the job is never a member."""
+            h = _open(ident[0])
+            if not h:
+                return False
+            try:
+                return self._holds(h) and _creation(h) == ident[1] and _alive_handle(h)
+            finally:
+                _k32.CloseHandle(h)
+
+        def close(self) -> None:
+            if self.handle:
+                _k32.CloseHandle(self.handle)
+                self.handle = None
 
         def end(self, ident: tuple[int, int]) -> bool:
             """End one member, on one handle: still in this job, the same creation time, still alive. A pid reused by

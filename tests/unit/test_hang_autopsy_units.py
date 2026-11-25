@@ -324,6 +324,37 @@ def test_a_session_job_lists_exactly_its_members_and_refuses_breakaway():
     assert all(m in line.split("mine")[0] for m in mine), line
 
 
+@pytest.mark.skipif(not IS_WINDOWS, reason="membership of a job object is Windows'; the cancellation collection's "
+                                           "use of it is tested on every platform in test_evidence_states")
+def test_a_job_the_lane_named_holds_a_member_by_identity_and_its_name_is_never_joined_twice(tmp_path, monkeypatch):
+    name = f"aew-test-holds-{os.getpid()}"
+    job = proctree.Job(name, exclusive=True)
+    child = None
+    try:
+        with pytest.raises(FileExistsError):
+            proctree.Job(name, exclusive=True)
+        code = (f"import sys, time\nsys.path.insert(0, {str(Path(proctree.__file__).parent)!r})\nimport proctree\n"
+                f"proctree.Job.open({name!r}).assign_self()\nprint('in', flush=True)\ntime.sleep(30)\n")
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        assert child.stdout is not None and child.stdout.readline().strip() == "in"
+        member = proctree.identity(child.pid)
+        assert member is not None and job.holds(member)
+        assert not job.holds((member[0], member[1] + 1)), "another start time is another process"
+        assert not job.holds(proctree.identity(os.getpid()) or (os.getpid(), 0))
+        (tmp_path / "session-job.txt").write_text(name + "\n")
+        monkeypatch.setenv(session_deadline.JOB_NAMESPACE_ENV, name)
+        with session_deadline.session_job(tmp_path, named_by_lane=True) as opened:
+            assert opened is not None and opened.holds(member)
+        child.kill()
+        child.wait(timeout=30)
+        assert not job.holds(member)
+    finally:
+        if child is not None and child.poll() is None:
+            child.kill()
+        job.close()
+
+
 def test_a_job_that_runs_pytest_without_its_absolute_deadline_is_named(tmp_path):
     """Review of #217, M1: the pin names a job whose sessions have no AEW_JOB_DEADLINE, one that sets it after its
     first pytest step, and one whose value does not match its timeout."""

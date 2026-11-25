@@ -212,10 +212,14 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
             prove.wait_for_workers("x/y", 42)
 
 
-@pytest.mark.parametrize("late", [0, 322, 323, -322, 900, 1000, -1000, 1050, 1100, -1100, 1300])
+@pytest.mark.parametrize("late", [0, 322, 323, -322, 900, 1000, -1000, 1050, 1100, -1100, 1300, "linux-fails-early"])
 def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(monkeypatch, late):
     # Target runs 45513035294 and 45547533341: the Windows plant's runner came 322 s and 323 s after its Linux twin's,
     # which spent the Linux window before both were live. The plants now hold their deadline steps for their twin.
+    # A plant that fails before its lane runs (both runners assigned together, the Linux job failing in setup while
+    # Windows is still in its own) is not queueing, and is never named so (#564's quick check, m1).
+    fails_early = late == "linux-fails-early"
+    late = 0 if fails_early else late
     from datetime import UTC, datetime
     from types import SimpleNamespace
 
@@ -255,6 +259,14 @@ def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(m
             # The lane ends at its session deadline and the job concludes after it, as in target run 45547533341.
             row = {"id": index + 1, "name": f"plant ({os_name}, cancel, none)", "runner_id": 7 if at >= own else 0,
                    "conclusion": "failure" if at >= opened + 390 else None, "steps": []}
+            if row["conclusion"]:
+                row["completed_at"] = datetime.fromtimestamp(opened + 390, UTC).isoformat()
+            if fails_early and os_name == "ubuntu-24.04":
+                failed = own + 10  # before its deadline step
+                row.update(conclusion="failure" if at >= failed else None,
+                           completed_at=datetime.fromtimestamp(failed, UTC).isoformat() if at >= failed else None)
+                rows.append(row)
+                continue
             if at >= opened:
                 row["steps"].append({"name": "The job's deadline",
                                      "started_at": datetime.fromtimestamp(opened, UTC).isoformat()})
@@ -262,11 +274,17 @@ def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(m
                 row["steps"].append({"name": "Real planted lane",
                                      "status": "in_progress" if at < opened + 370 else "completed",
                                      "started_at": datetime.fromtimestamp(lane, UTC).isoformat()})
+                if at >= opened + 370:
+                    row["steps"][-1]["completed_at"] = datetime.fromtimestamp(opened + 370, UTC).isoformat()
             rows.append(row)
         return {"jobs": rows}
 
     monkeypatch.setattr(prove, "_api", jobs)
-    if abs(late) <= 600:
+    if fails_early:
+        with pytest.raises(RuntimeError, match="cancellation target finished before its replacement queued") as failed:
+            prove.wait_for_workers("x/y", 42)
+        assert not isinstance(failed.value, prove.PlantQueued)
+    elif abs(late) <= 600:
         assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
         trigger = now()
         for os_name in runners:  # the trigger falls inside both plants' live windows

@@ -2257,3 +2257,10 @@ the Lead only; a worker's sandbox still has none.
 - **Tests:** `tests/unit/test_egress_proxy.py`, the plain-http section: the forwarding, R-6 for every host route as
   `CONNECT` meets it, the allowlist, the connected peer, each refusal, one request per connection, the chunked body's
   rule and bound, and each time bound.
+
+## Amendment 2026-11-25 — `100-continue` to HTTP/1.1 only (the quick check of #584, m7)
+
+It narrows "The proxy answers `100-continue` itself" in the E92 amendment above: the egress proxy answers a plain
+request's `Expect: 100-continue` only on HTTP/1.1. An HTTP/1.0 client is sent no 1xx response (RFC 9110 §15.2), and its
+expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read and forwarded without one. Test:
+`test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).

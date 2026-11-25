@@ -1324,3 +1324,24 @@ def test_a_trailer_carrying_host_or_framing_is_refused_and_never_sent(field):
         spy.close()
     assert (status, headers["X-AEW-Refusal"]) == (400, "bad_header")
     assert got == b"0\r\n"
+
+
+def test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue():
+    """No 1xx goes to an HTTP/1.0 client (RFC 9110 §15.2): the proxy ignores its expectation, as an HTTP/1.0 server
+    must (§10.1.1), and the client gets only the response."""
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/", "Expect: 100-continue", "Content-Length: 5", method="POST",
+                                 body=b"hello").replace(b"HTTP/1.1", b"HTTP/1.0", 1))
+            far = far_of(spy)
+            _, _, rest = upstream_head(far)
+            while len(rest) < 5:
+                rest += far.recv(4096)
+            far.sendall(b"HTTP/1.0 200 OK\r\n\r\nok")
+            far.close()
+            answer = until_closed(client)
+    finally:
+        spy.close()
+    assert rest == b"hello"
+    assert answer.startswith(b"HTTP/1.0 200 OK") and b"100 Continue" not in answer

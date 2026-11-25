@@ -1321,18 +1321,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E91/`, oldest first (`python tools/register.py show E91`).*
 
-### E92
-
-**Work:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them. The proxy is CONNECT only, so CS-4 refuses them and names the https form
-
-**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25); its target is the designer's ruling of 2026-10-25 on #280's targets
-
-**When:** **Internal alpha**, now that CS-4 has merged (#283, `da547f9a`): V-01's matrix names no step that needs plain `http://`, and the refusal already names the https form
-
-**Notes:** It restricts nothing the threat model asks for (the designer)
-
-*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
-
 ### E93
 
 **Work:** Serve a stored OpenCode (Zen) key to the contained Lead: map each `opencode/*` model's catalogue address from a pinned copy of the catalogue, never the live one. Each such model carries its own address, so a provider-level override does not catch it, and AEW cannot see the live catalogue
@@ -1416,18 +1404,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
 *Later notes: `notes.d/E99/`, oldest first (`python tools/register.py show E99`).*
-
-### E100
-
-**Work:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An unset mode still runs weaker, and its label's `weaker_because` names the platform
-
-**Source:** The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
-
-**When:** **Internal alpha**, before the Windows trial: a build row, ready for a builder now that CS-4 has merged (#283, `da547f9a`)
-
-**Notes:** Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
-
-*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
 ### E101
 
@@ -4826,6 +4802,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of its direct edge, as ADR-0003's amendment of 2026-10-25 states. The class by any route is E96, and E85's named outcome closes only when E96 lands (designer, 2026-10-25)
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
+
+### E92
+
+**Was:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them and naming the https form
+
+**Closed:** 2026-11-25
+
+**By:** #584 (`727b74f0`), on #582 (`7c788df8`): the egress proxy forwards an absolute-form `http://` request through CONNECT's host check on the URL's host:port, one request per connection, with every other shape refused before any DNS (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). The quick check of #584's m7, no 100 Continue to an HTTP/1.0 client, is fixed by the pull request that closes this row. Tests in `tests/unit/test_egress_proxy.py`
+
+*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
+
+### E100
+
+**Was:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform; an unset mode still runs weaker, its `weaker_because` naming the platform
+
+**Closed:** 2026-11-25
+
+**By:** #578 (`752dc7f4`): an explicit `required` refuses the launch off Linux with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform`, on every launch route (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). `tests/unit/test_containment_required_everywhere.py`
+
+*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
 ### E112
 

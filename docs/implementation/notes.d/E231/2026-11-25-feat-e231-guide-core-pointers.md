@@ -22,9 +22,17 @@ lookups by command.
 - The system text's own fixes are left to the audit's PR: the "as the guide's first step shows" reference (that step
   is now in `aew guide steps`), its `aew guide` line, and its `--expect-rev` and refused-command lines.
 - The scripted probe's calibration step is stale on `main`: its rendered system text and guide no longer match the
-  wire. Its capture still works.
+  wire, so it stops before writing its analysis. Its capture still works.
 - Whether a sign-off "quoted from the operator" fits beside "approval only through the operator's own channels" is a
   question for the designer.
+
+**The scripted probe, before and after.** These runs used the pinned OpenCode 2.2.6 in a loopback-only namespace,
+with the same scripted turns.
+- At main ee89c341, the Lead's first request carried 34,161 B of instructions in a 55,932 B body.
+- At this branch, it carried 26,272 B of instructions in a 48,003 B body.
+- The tool list was 21,112 B in both, so the request is 7,929 B smaller.
+- The branch's session showed up in `aew lead telemetry` with 3 typed calls and no misuse. The scripted model makes no
+  guide reads or help lookups, so behaviour is UAT's to judge.
 
 **What to watch in UAT** (`aew lead telemetry`, per session, beside the transcript):
 - Typed-tool misuse: refused calls, defects and calls with invalid arguments. Failure is misuse that rises against an

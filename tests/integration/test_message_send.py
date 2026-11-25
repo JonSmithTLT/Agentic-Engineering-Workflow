@@ -20,9 +20,10 @@ from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
-# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved).
-OFF_LIST_SHA = {"normal": "1cbf05fd48612ec63c0d8970a29353cbe94f7743a9834878f677c7324d5c2cd9",
-                "recovery": "5cda7fe4022141324922406bad1ef39ce3403911d4d170f13aab43288bbd0b79"}
+# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved), and E160's `plan.assess`
+# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`; nothing else moved).
+OFF_LIST_SHA = {"normal": "d0e3c037a03b0e2efec315980f08312beec00280b31c58a0c1e8ff1d4d5947d0",
+                "recovery": "1cc60b9266b9c1170b605e92035a9be2169cc999eae354496824d3e24bb19f53"}
 OFF_CLI_SHA = "23ffb31e822a53f8e058aa909136de7b50d9a0891611b0ee5a66537a02e78004"
 
 

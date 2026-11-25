@@ -2,9 +2,10 @@
 ``CONNECT`` and forwards plain ``http://`` requests (register E92), under the same host check.
 
 The proxy serves the sandbox's optional non-provider egress, such as OpenCode's catalog fetch in connected mode. It
-runs in the host's network namespace, outside the run's sandbox, and holds no credential: it never sees or adds
-one, and it forwards no request header. Provider traffic never comes here: it goes through the credentialing relay
-(F28 §3.3, decision 5).
+runs in the host's network namespace, outside the run's sandbox, and holds no credential: it adds none. A tunnel
+carries the client's bytes unchanged; a plain request is forwarded with the client's own end-to-end headers, and none
+of the proxy's (below). Provider traffic never comes here: it goes through the credentialing relay (F28 §3.3,
+decision 5).
 
 **Policies.** :class:`Allowlist` is a bounded ``host:port`` list, the workers' policy. Web, browser and
 package-manager destinations are never added to it just because a harness supports them (F28 §3.4). :class:`AnyPublic`
@@ -34,14 +35,18 @@ policy decides only what is asked; R-6 then judges every address, under either p
   value); no ``Upgrade``; ``Expect`` only ``100-continue``, which the proxy answers itself;
 - its body is framed one way only (RFC 9112 §6.3): one ``Content-Length`` of ASCII digits, or one
   ``Transfer-Encoding`` of exactly ``chunked`` on HTTP/1.1, never both; within :data:`MAX_BODY`, chunk lines and
-  trailer fields held to the field-value rule.
+  trailer fields held to the field-value rule, and a trailer carrying ``Host``, ``Content-Length`` or
+  ``Transfer-Encoding`` refused (RFC 9110 §6.5.1).
 
-The proxy forwards it with an origin-form target, ``Host`` set to the URL's authority, the hop-by-hop headers out
-(``http1.HOP_BY_HOP``, every ``Proxy-*`` header, and what ``Connection`` names), its framing as checked, and
-``Connection: close``. **One request per connection:** the answer says ``Connection: close``, and what the client sends
-after its one request is never forwarded. The proxy holds no credential and adds none, so none it holds can reach a
-host. The response head is bounded (:data:`MAX_RESPONSE_HEAD`), and the response ends when the upstream ends it, the
-client goes, :meth:`EgressProxy.close`, or :data:`RESPONSE_IDLE_TIMEOUT` passes with no byte either way.
+The proxy forwards it with an origin-form target and the client's own HTTP version (so an HTTP/1.0 client is never sent
+a chunked response), ``Host`` set to the URL's authority, the hop-by-hop headers out (``http1.HOP_BY_HOP``, every
+``Proxy-*`` header, and ``Connection`` and what it names, in the head and in a chunked body's trailer section), its
+framing as checked, and ``Connection: close``. An upstream that answers and closes before it has taken the whole request
+(a 401 to a large upload) has that answer relayed. **One request per connection:** the answer says
+``Connection: close``, and what the client sends after its one request is never forwarded. The proxy holds no credential
+and adds none, so none it holds can reach a host. The response head is bounded (:data:`MAX_RESPONSE_HEAD`), and the
+response ends when the upstream ends it, the client goes, :meth:`EgressProxy.close`, or :data:`RESPONSE_IDLE_TIMEOUT`
+passes with no byte either way.
 
 **One refused answer refuses the name,** under both policies (the Lead, 2026-10-24). A name whose answers mix public
 and host-local addresses looks like rebinding or split-horizon tricks, and refusing it whole is simpler to prove than
@@ -199,6 +204,15 @@ def _framing(headers: list[tuple[str, str]], version: str) -> tuple[str, int]:
     return "length", int(lengths[0])
 
 
+def _connection_named(headers: list[tuple[str, str]]) -> set[str]:
+    """The header names a request's ``Connection`` lists, lowercased, and ``connection`` itself: hop-by-hop."""
+    return {"connection"} | {t.strip().lower() for k, v in headers if k.lower() == "connection" for t in v.split(",")}
+
+
+class _UpstreamClosed(Exception):
+    """The upstream stopped taking a plain request before all of it was sent."""
+
+
 class _Reader:
     """Buffered reads of a plain request's body from the client, each within ``timeout``."""
 
@@ -238,9 +252,9 @@ class _Plain:
     """A plain ``http://`` request, as checked: what is forwarded, and how its body is framed (``none``, ``length``
     with its size, or ``chunked``)."""
 
-    def __init__(self, method: str, path: str, headers: list[tuple[str, str]], framing: tuple[str, int],
-                 expect_continue: bool) -> None:
-        self.method, self.path, self.headers = method, path, headers
+    def __init__(self, method: str, path: str, version: str, headers: list[tuple[str, str]],
+                 framing: tuple[str, int], expect_continue: bool) -> None:
+        self.method, self.path, self.version, self.headers = method, path, version, headers
         self.framing, self.expect_continue = framing, expect_continue
         self.began = False  # its response's head has gone to the client: nothing else may be sent it
 
@@ -638,7 +652,7 @@ class EgressProxy(Service):
         expects = [v.lower() for k, v in headers if k.lower() == "expect"]
         if any(v != "100-continue" for v in expects):
             raise _Refused(417, "expectation", "this egress proxy meets no expectation but 100-continue")
-        return host, port, _Plain(method, "/" + path if path.startswith("?") else path or "/", headers,
+        return host, port, _Plain(method, "/" + path if path.startswith("?") else path or "/", version, headers,
                                   _framing(headers, version), bool(expects))
 
     def _refusal(self, value: Any) -> str | None:
@@ -701,7 +715,7 @@ class EgressProxy(Service):
                  early: bytes) -> None:
         """Forward one plain request to ``upstream`` (already judged) and stream its response back. A refusal before
         the response begins (``plain.began``) is raised, for :meth:`handle` to answer."""
-        named = {t.strip().lower() for k, v in plain.headers if k.lower() == "connection" for t in v.split(",")}
+        named = _connection_named(plain.headers)
         shown = f"[{host}]" if ":" in host else host
         out = [("Host", shown if port == 80 else f"{shown}:{port}")]
         for name, value in plain.headers:
@@ -717,24 +731,50 @@ class EgressProxy(Service):
             out.append(("Transfer-Encoding", "chunked"))
         out.append(("Connection", "close"))
         upstream.settimeout(self.connect_timeout)
-        upstream.sendall(head(f"{plain.method} {plain.path} HTTP/1.1", out))
-        if plain.expect_continue and kind != "none":
-            conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
-        self._send_body(conn, upstream, plain.framing, early)
+
+        def send(data: bytes) -> None:
+            try:
+                upstream.sendall(data)
+            except OSError:
+                raise _UpstreamClosed from None
+
+        try:
+            # The client's own version (RFC 9112 §2.3): an HTTP/1.0 client is never sent a chunked response
+            send(head(f"{plain.method} {plain.path} {plain.version}", out))
+            if plain.expect_continue and kind != "none":
+                conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
+            self._send_body(conn, send, plain.framing, early, named)
+        except _UpstreamClosed:
+            # The upstream stopped taking the request: it may have answered first (a 401 to a large upload), and that
+            # answer is the client's. None: said as it happened
+            self._count("upstream_closed")
+            try:
+                self._respond(conn, upstream, plain)
+            except _Refused as refused:
+                if refused.reason != "no_response":
+                    raise
+                raise _Refused(502, "upstream_closed", "the upstream closed the connection while the request was "
+                               "being sent, and sent no response; it may have received part of the request, which "
+                               "the egress proxy does not send again") from None
+            close_after_response(conn, REFUSAL_DRAIN_S)  # the client may still be sending: no reset over the answer
+            return
         self._count("allowed")  # the whole request went: a refusal of its body is counted as that, never as allowed
         self._respond(conn, upstream, plain)
 
-    def _send_body(self, conn: socket.socket, upstream: socket.socket, framing: tuple[str, int], early: bytes) -> None:
+    def _send_body(self, conn: socket.socket, send: Callable[[bytes], None], framing: tuple[str, int], early: bytes,
+                   named: set[str]) -> None:
         """The request body as its head frames it, and nothing after it (one request per connection). A chunked body
         is bounded by :data:`MAX_BODY`, its framing included, and refused at the line that would pass it; its size
         lines and trailer fields are held to the field-value rule (:func:`http1.chunk_size`, :func:`http1.fields`).
-        A refused line is never sent, so the upstream never gets the request whole."""
+        Trailer fields take the head's rule too: a hop-by-hop or ``Proxy-*`` field, ``Connection`` and what the head's
+        ``Connection`` names are left out, and ``Host``, ``Content-Length`` or ``Transfer-Encoding`` is refused
+        (RFC 9110 §6.5.1). A refused line is never sent, so the upstream never gets the request whole."""
         kind, left = framing
         reader = _Reader(conn, early, BODY_TIMEOUT)
         if kind == "length":
             while left:
                 data = reader.read(min(left, CHUNK))
-                upstream.sendall(data)
+                send(data)
                 left -= len(data)
             return
         if kind != "chunked":
@@ -754,29 +794,33 @@ class EgressProxy(Service):
             if size is None:
                 raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed")
             counted(len(line) + (size + 2 if size else 0))
-            upstream.sendall(line)
+            send(line)
             if size == 0:
                 while True:  # the trailer section, to its empty line
                     trailer = reader.line()
                     counted(len(trailer))
-                    if trailer != b"\r\n":
-                        try:
-                            fields([trailer[:-2]])
-                        except BadField as exc:
-                            raise _Refused(400, "bad_header", f"a trailer field: {exc}") from None
-                    upstream.sendall(trailer)
                     if trailer == b"\r\n":
+                        send(trailer)
                         return
+                    try:
+                        [(name, _)] = fields([trailer[:-2]])
+                    except BadField as exc:
+                        raise _Refused(400, "bad_header", f"a trailer field: {exc}") from None
+                    low = name.lower()
+                    if low in ("host", "content-length", "transfer-encoding"):
+                        raise _Refused(400, "bad_header", f"a trailer may not carry {name} (RFC 9110 §6.5.1)")
+                    if not (low in HOP_BY_HOP or low in named or low.startswith("proxy-")):
+                        send(trailer)
             while size:
                 data = reader.read(min(size, CHUNK))
-                upstream.sendall(data)
+                send(data)
                 size -= len(data)
             end = reader.read(2)
             if len(end) < 2:
                 end += reader.read(1)
             if end != b"\r\n":
                 raise _Refused(400, "bad_chunk", "a chunk's data is not followed by CRLF")
-            upstream.sendall(end)
+            send(end)
 
     def _respond(self, conn: socket.socket, upstream: socket.socket, plain: _Plain) -> None:
         """The upstream's response to the client: interim (1xx) heads as they come, the final head with its hop-by-hop

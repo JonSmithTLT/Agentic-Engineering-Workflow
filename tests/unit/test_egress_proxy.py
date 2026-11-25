@@ -1173,3 +1173,152 @@ def test_a_streaming_response_ends_when_the_proxy_closes():
             client.close()
         front.close()
         spy.close()
+
+
+def test_an_http_1_0_request_is_forwarded_as_http_1_0_so_its_response_is_never_chunked():
+    """The client's own version goes upstream (RFC 9112 §2.3, §6.1): an upstream may chunk only an HTTP/1.1 exchange,
+    and an HTTP/1.0 client could not read it."""
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/").replace(b"HTTP/1.1", b"HTTP/1.0", 1))
+            line, _, _ = upstream_head(far_of(spy))
+            far_of(spy).sendall(b"HTTP/1.0 200 OK\r\n\r\nok")
+            far_of(spy).close()
+            answer = until_closed(client)
+    finally:
+        spy.close()
+    assert line == b"GET / HTTP/1.0"
+    assert answer.startswith(b"HTTP/1.0 200 OK") and answer.endswith(b"ok")
+
+
+def test_an_answer_the_upstream_sends_before_taking_the_whole_body_reaches_the_client():
+    """An upstream may answer and close before it has read a large body (a 401 to an upload): that answer is the
+    client's, not a gateway error."""
+    proxy, _, spy = public_proxy()
+    size = 64 * SMALL_BUFFER
+    spy.small = True
+    try:
+        with served(proxy, small=True) as client:
+            client.sendall(plain("http://docs.example/up", f"Content-Length: {size}", method="POST"))
+            far = far_of(spy)
+            upstream_head(far)
+            sender = threading.Thread(target=send_until_closed, args=(client, b"x" * size), daemon=True)
+            sender.start()
+            far.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 6\r\n\r\ndenied")
+            far.close()
+            answer = until_closed(client)
+            sender.join(TIMEOUT)
+    finally:
+        spy.close()
+    assert answer.startswith(b"HTTP/1.1 401 Unauthorized") and answer.endswith(b"denied")
+    assert b"Connection: close" in answer
+
+
+def test_an_upstream_that_closes_mid_body_without_answering_is_said_to_have_done_so():
+    proxy, _, spy = public_proxy()
+    size = 64 * SMALL_BUFFER
+    spy.small = True
+    try:
+        with served(proxy, small=True) as client:
+            client.sendall(plain("http://docs.example/up", f"Content-Length: {size}", method="POST"))
+            far = far_of(spy)
+            upstream_head(far)
+            sender = threading.Thread(target=send_until_closed, args=(client, b"x" * size), daemon=True)
+            sender.start()
+            far.close()
+            status, headers, body = response(client)
+            sender.join(TIMEOUT)
+    finally:
+        spy.close()
+    assert (status, headers["X-AEW-Refusal"]) == (502, "upstream_closed")
+    assert "sent no response" in body.decode()
+
+
+def test_an_upstream_response_head_that_never_ends_is_refused_at_the_bound(monkeypatch):
+    monkeypatch.setattr(egress, "MAX_RESPONSE_HEAD", 64)
+    monkeypatch.setattr(egress, "RESPONSE_IDLE_TIMEOUT", 2.0)
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/"))
+            upstream_head(far_of(spy))
+            far_of(spy).sendall(b"HTTP/1.1 200 OK\r\nX-Pad: " + b"a" * 200)  # no end, and the upstream stays open
+            status, headers, _ = response(client)
+    finally:
+        spy.close()
+    assert (status, headers["X-AEW-Refusal"]) == (502, "bad_response")
+
+
+def test_a_request_pipelined_behind_a_bodyless_get_is_never_forwarded():
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/") + plain("http://127.0.0.1/admin"))
+            far = far_of(spy)
+            line, _, rest = upstream_head(far)
+            far.settimeout(0.3)
+            with pytest.raises(TimeoutError):
+                rest += far.recv(1)
+            far.sendall(PLAIN_OK)
+            far.close()
+            answer = until_closed(client)
+    finally:
+        spy.close()
+    assert line == b"GET / HTTP/1.1" and rest == b""
+    assert answer.count(b"HTTP/1.1 ") == 1
+    assert spy.calls == [("8.8.8.8", 80)]
+
+
+def test_a_streaming_response_with_no_byte_for_the_idle_timeout_is_ended(monkeypatch):
+    monkeypatch.setattr(egress, "RESPONSE_IDLE_TIMEOUT", 0.3)
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/stream"))
+            upstream_head(far_of(spy))
+            far_of(spy).sendall(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n")
+            answer = until_closed(client)  # within TIMEOUT, though the upstream keeps its connection open
+    finally:
+        spy.close()
+    assert answer.startswith(b"HTTP/1.1 200 OK") and answer.endswith(b"5\r\nfirst\r\n")
+
+
+def test_a_trailer_section_leaves_out_hop_by_hop_and_proxy_fields_as_the_head_does():
+    proxy, _, spy = public_proxy()
+    body = (b"3\r\nabc\r\n0\r\nX-T: a\r\nProxy-Authorization: Basic synthetic\r\nConnection: close\r\nKeep-Alive: 1\r\n"
+            b"X-Named: 1\r\nProxy-Custom: x\r\n\r\n")
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/up", "Transfer-Encoding: chunked", "Connection: X-Named",
+                                 method="POST", body=body))
+            far = far_of(spy)
+            _, _, rest = upstream_head(far)
+            while not rest.endswith(b"\r\n\r\n"):
+                rest += far.recv(4096)
+            far.sendall(PLAIN_OK)
+            far.close()
+            until_closed(client)
+    finally:
+        spy.close()
+    assert rest == b"3\r\nabc\r\n0\r\nX-T: a\r\n\r\n"
+
+
+@pytest.mark.parametrize("field", ["Host: docs.example", "Content-Length: 3", "Transfer-Encoding: chunked"],
+                         ids=["host", "content-length", "transfer-encoding"])
+def test_a_trailer_carrying_host_or_framing_is_refused_and_never_sent(field):
+    """RFC 9110 §6.5.1: a trailer may not carry these, and the request is refused as a whole."""
+    proxy, _, spy = public_proxy()
+    try:
+        with served(proxy) as client:
+            client.sendall(plain("http://docs.example/up", "Transfer-Encoding: chunked", method="POST",
+                                 body=b"0\r\n" + field.encode() + b"\r\n\r\n"))
+            status, headers, _ = response(client)
+            far = far_of(spy)
+            far.settimeout(1.0)
+            _, _, got = upstream_head(far)
+            got += until_closed(far)
+    finally:
+        spy.close()
+    assert (status, headers["X-AEW-Refusal"]) == (400, "bad_header")
+    assert got == b"0\r\n"

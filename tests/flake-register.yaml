@@ -1445,48 +1445,35 @@ entries:
     at: '2026-11-21T15:52:08Z'
     note: >-
       full suite 1/8 (windows-latest, py3.11): assert [['loop_waiting']] == [['out_of_scope']]. One sighting.
-- id: cancel-live-stack
+- id: windows-cancel-live-stack
   scope: session
   lane: integration
   platforms:
-  - linux
   - windows
-  status: open
+  status: closed
   class: autopsy evidence
   cause: >-
-    A cancelled lane's worker, alive when the interruption or cancellation collection observed it, has no
-    interruption stack (evidence_problems' live-stack). Seen on both platforms, mostly in integration shards, and in
-    the dozens on runs a newer push superseded since at least 2026-11-24 00:36, before PR 553 existed. Cause
-    unestablished. Leads from the E3 note of 2026-11-24: the cancellation collection takes one nonblocking py-spy dump
-    per worker without the warning path's retries, discards a dump that straddles a test boundary, and a worker in
-    fixture setup or teardown has no test-function frame.
+    A Windows xdist worker alive at the cancellation collection had no interruption stack (evidence_problems'
+    live-stack). Cause unestablished. Leads from the E3 note of 2026-11-24: the collection takes one nonblocking py-spy
+    dump per worker without the warning path's retries, discards a dump that straddles a test boundary, and a worker
+    in fixture setup or teardown has no test-function frame.
   owner: CI flake triage
   row: E3
+  closure:
+    pr: 561
+    cause: >-
+      The cancellation collection now retries a failed or frameless attach inside the shared budget, decides liveness
+      before its capture, and names each worker it keeps no test stack for with a typed outcome the evidence check
+      verifies.
+    test: tests/unit/test_evidence_states.py::test_a_windows_cancel_collection_retries_an_attach_that_failed
+    proof: fault injection
   evidence:
-  - run: 45295949117
-    job: 138124957110
-    at: '2026-11-24T00:36:32Z'
-    note: >-
-      evidence job of ci run 45295949163 (fix/xdist-collection-evidence at 0a981c2b, superseded): 15 live-stack defects,
-      Linux integration and regression, Windows integration.
-  - run: 45320100918
-    job: 138201080415
-    at: '2026-11-24T03:44:20Z'
-    note: >-
-      evidence job of ci run 45320101069 (ci/windows-pr-selection at 196dbb91, superseded): 19 live-stack defects,
-      Linux integration, Windows fast and integration.
   - run: 45338188607
     job: 138255795565
     at: '2026-11-24T06:33:34Z'
     note: >-
       integration 13/14 (windows-latest), PR 538, cancelled by a newer push. The run's assurance reported
       [live-stack] for cancelled-7776.txt.
-  - run: 45365647177
-    job: 138353302560
-    at: '2026-11-24T09:41:40Z'
-    note: >-
-      evidence job of ci run 45365647270 (fix/relay-bounds-and-outcome at 021a9fd6, superseded): 14 live-stack
-      defects, Linux integration, Windows integration, regression and adversarial.
   - run: 45512199966
     job: 138862502221
     at: '2026-11-24T23:44:10Z'
@@ -1495,13 +1482,69 @@ entries:
       (PR 553 at bc5492f2), whose run-cancel-control (manual) job 138862288052 reported live-stack for it. The
       worker's last labelled sample, 23:43:19.53, predated the trigger's lower bound by 16.468 s; the cancellation
       collection took 0.085 s. The same proof was green at 337ab3c1.
+  - run: 45295949117
+    job: 138124957110
+    at: '2026-11-24T00:36:32Z'
+    note: >-
+      evidence job of ci run 45295949163 (fix/xdist-collection-evidence at 0a981c2b, superseded): live-stack defects in
+      Windows integration (with Linux integration and regression, entry linux-cancel-live-stack).
+  - run: 45320100918
+    job: 138201080415
+    at: '2026-11-24T03:44:20Z'
+    note: >-
+      evidence job of ci run 45320101069 (ci/windows-pr-selection at 196dbb91, superseded): live-stack defects in
+      Windows fast and integration (with Linux integration, entry linux-cancel-live-stack).
+  - run: 45365647177
+    job: 138353302560
+    at: '2026-11-24T09:41:40Z'
+    note: >-
+      evidence job of ci run 45365647270 (fix/relay-bounds-and-outcome at 021a9fd6, superseded): live-stack defects in
+      Windows integration, regression and adversarial (with Linux integration, entry linux-cancel-live-stack).
   - run: 45512140932
     job: 138867517272
     at: '2026-11-24T23:53:16Z'
     note: >-
-      evidence job of ci run 45512141007 (PR 553 at bc5492f2, superseded): 20 live-stack defects, Linux fast and
-      integration, Windows fast, serial, integration and regression; Windows serial 1/1 also snapshot-age,
-      snapshot-label and snapshot for pid 2160.
+      evidence job of ci run 45512141007 (PR 553 at bc5492f2, superseded): live-stack defects in Windows fast, serial,
+      integration and regression; Windows serial 1/1 also snapshot-age, snapshot-label and snapshot for pid 2160 (with
+      Linux fast and integration, entry linux-cancel-live-stack).
+- id: linux-cancel-live-stack
+  scope: session
+  lane: integration
+  platforms:
+  - linux
+  status: open
+  class: autopsy evidence
+  cause: >-
+    A Linux xdist worker alive when the supervisor's interruption observed it had no interruption stack
+    (evidence_problems' live-stack), seen in the dozens on runs a newer push superseded since at least 2026-11-24 00:36.
+    The pre-signal warning attach failed; PR 554 records each attempt's typed outcome, so the next sighting names why.
+  owner: CI flake triage
+  row: E3
+  evidence:
+  - run: 45295949117
+    job: 138124957110
+    at: '2026-11-24T00:36:32Z'
+    note: >-
+      evidence job of ci run 45295949163 (fix/xdist-collection-evidence at 0a981c2b, superseded): live-stack defects in
+      Linux integration and regression (Windows side: windows-cancel-live-stack).
+  - run: 45320100918
+    job: 138201080415
+    at: '2026-11-24T03:44:20Z'
+    note: >-
+      evidence job of ci run 45320101069 (ci/windows-pr-selection at 196dbb91, superseded): live-stack defects in
+      Linux integration (Windows side: windows-cancel-live-stack).
+  - run: 45365647177
+    job: 138353302560
+    at: '2026-11-24T09:41:40Z'
+    note: >-
+      evidence job of ci run 45365647270 (fix/relay-bounds-and-outcome at 021a9fd6, superseded): live-stack defects in
+      Linux integration (Windows side: windows-cancel-live-stack).
+  - run: 45512140932
+    job: 138867517272
+    at: '2026-11-24T23:53:16Z'
+    note: >-
+      evidence job of ci run 45512141007 (PR 553 at bc5492f2, superseded): live-stack defects in Linux fast and
+      integration (Windows side: windows-cancel-live-stack).
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

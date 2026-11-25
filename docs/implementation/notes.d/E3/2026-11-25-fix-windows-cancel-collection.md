@@ -18,4 +18,6 @@ the owned tree, one that exited or straddled a test change during its attach, or
 classified by its pytest frames (setup, teardown, between tests, call, indeterminate). The evidence check excuses a live
 worker only by a never-sampled outcome with no retained sample of its identity, or a setup, teardown or between-tests
 outcome that the retained cancel-collection frames themselves classify so; a worker inside its test's call still owes
-its stack. The flake entry `windows-cancel-live-stack` is now `cancel-live-stack`, for both platforms.
+its stack. The flake entry `windows-cancel-live-stack` is closed by this PR, with the Windows lanes of four more
+superseded runs; their Linux lanes open `linux-cancel-live-stack`, whose cause is the pre-signal warning attach that
+#554 types, so its next sighting names why.

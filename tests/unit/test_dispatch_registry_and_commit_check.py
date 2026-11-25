@@ -11,6 +11,7 @@ import pytest
 
 from aew.engine.dispatch import CREATES_SCOPE, ENTRYPOINTS, Dispatch, DispatchDecision, GuardRegistration
 from aew.errors import DispatchUndecided, NotFound, UsageError
+from aew.schemas import schema
 
 
 def _pass(state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> None:
@@ -54,7 +55,8 @@ def test_every_entrypoint_that_creates_an_invocation_declares_the_scope_it_creat
     creating = {n for n, e in ENTRYPOINTS.items() if not e.covered_by and n not in {"harness.launch",
                                                                                     "integrate.prepare"}}
     assert set(CREATES_SCOPE) == creating
-    assert {s for s in CREATES_SCOPE.values() if s} <= {"ticket", "observation", "parent"}
+    scopes = schema("control")["properties"]["invocations"]["additionalProperties"]["properties"]["scope"]["enum"]
+    assert {s for s in CREATES_SCOPE.values() if s} <= set(scopes) - {"integration"}
 
 
 def test_a_wrapper_entrypoint_cannot_be_decided_on_its_own():

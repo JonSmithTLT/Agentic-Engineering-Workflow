@@ -946,7 +946,8 @@ def harness_with(fit: T.Fit | None = FULL) -> Harness:
 def test_a_finished_runs_message_leads_with_the_stage_that_accepts_its_report(role, scope, tool):
     state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
     message = harness_with()._after_run(state, {"work_unit": "T-0007", "role": role, "scope": scope},
-                                        [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}])
+                                        [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}],
+                                        "INV-0003")
     assert message.index(f"`{tool}`") < message.index("`aew ")
 
 
@@ -956,7 +957,7 @@ def test_a_finished_review_names_no_stage_that_is_not_a_whole_step_for_this_tick
     fit names the ingest alone."""
     state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
     message = harness_with(fit)._after_run(state, {"work_unit": "T-0007", "role": "reviewer", "scope": "ticket"},
-                                           [{"id": "EV-3", "kind": "review"}])
+                                           [{"id": "EV-3", "kind": "review"}], "INV-0003")
     assert "`aew review ingest T-0007" in message and not stage_named(message)
 
 
@@ -987,5 +988,5 @@ def test_a_decision_offers_its_stage_only_where_it_is_a_whole_step_for_this_tick
 def test_a_parents_or_non_mutating_report_names_no_stage():
     for unit, role in (({"kind": "story"}, "reviewer"), ({"kind": "ticket", "mutating": False}, "investigator")):
         message = harness_with(None)._after_run({"work": {"S-1": unit}}, {"work_unit": "S-1", "role": role},
-                                                [{"id": "EV-3", "kind": "review"}])
+                                                [{"id": "EV-3", "kind": "review"}], "INV-0003")
         assert not stage_named(message), message

@@ -379,6 +379,14 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).plan_adopt(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
         source=a.source, reason=a.reason, **_assurance(a)))
+    q = psub.add_parser("assess", help="dispatch an independent assessor of a unit's accepted plan revision (Lead; "
+                                      "once a revision's assessment counts, it is not assessed again)")
+    q.add_argument("work_id", help="the Ticket, Story or Epic whose accepted plan is assessed")
+    q.add_argument("--card", help="an assessor card (default: plan_assessor)")
+    _add_execution(q)
+    _add_launch(q)
+    _add_lead(q)
+    q.set_defaults(handler=lambda a: _dispatch(a, "plan_assess", work_id=a.work_id, card=a.card))
     q = psub.add_parser("reconfirm", help="rebind an accepted plan after an ancestor's plan changed (Lead)")
     q.add_argument("work_id")
     q.add_argument("--reason", required=True)
@@ -433,7 +441,8 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
 
     q = sub.add_parser("submit", help="submit role evidence (implementation report, review, verification)")
     q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
-                                                     "discovery_record", "research_record", "plan_proposal"])
+                                                     "discovery_record", "research_record", "plan_proposal",
+                                                     "plan_assessment"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
     q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=_submit)

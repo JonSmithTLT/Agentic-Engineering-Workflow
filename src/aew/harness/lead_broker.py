@@ -106,10 +106,14 @@ OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator"
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
                      frozenset({"capability", "remove"}), frozenset({"capability", "host-copies"}))
-# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
+# A Lead command whose Lead route is a typed tool not yet built, so only the operator runs it until then: `plan assess`
+# (E160 slice 2a; its typed tool is slice 2b, as the surface map's standing rule requires of a new Lead command).
+TYPED_PENDING = (frozenset({"plan", "assess"}),)
+# Commands only the operator runs, at their own terminal: never relayed, and never a typed tool (A1 §1), except those
+# in TYPED_PENDING, which are the operator's only until their typed tool is built and leave this list with it.
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
-                 + (CREDENTIAL_REPORT,))
+                 + (CREDENTIAL_REPORT,) + TYPED_PENDING)
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -132,8 +136,10 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
 ))
+# `plan assess` is not Lead-reachable yet (TYPED_PENDING), but it prints a credential like every dispatch, so a relay
+# would need --launch too.
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
-              frozenset({"invoke", "create"}))
+              frozenset({"invoke", "create"}), frozenset({"plan", "assess"}))
 POLL_S = 1.0
 RECEIPT_CLOSE_LOCK_S = 2.0  # let a successful send finish its receipt; a stalled client cannot hold close forever
 # If that bound expires, receipt remains uncertain and the body may be re-shown; never claim an unrecorded receipt.
@@ -251,6 +257,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "
                 "operator's, which only the operator confirms, at their own terminal: run it without that flag "
                 "(as the Lead's), or ask the operator")
+    if any(p <= path for p in TYPED_PENDING):
+        return (f"`aew {command_name(ns)}` reaches a Lead session through its typed tool, which is not built yet; "
+                "until it is, ask the operator to run it at their own terminal")
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "

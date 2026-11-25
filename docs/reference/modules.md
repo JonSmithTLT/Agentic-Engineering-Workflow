@@ -1800,6 +1800,7 @@ None.
 
 ### `aew.harness.opencode.projection`
 
+- `aew.harness.containment.layout`
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.wake_queue`

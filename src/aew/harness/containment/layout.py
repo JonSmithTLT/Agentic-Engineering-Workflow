@@ -43,7 +43,9 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   binds into that tree, such as a project under ``/run`` or ``/tmp`` (:func:`_hidden_with_its_tree`);
 * the capability register is bound read-only, and the context's own directory of entries is read-only and first on
   every process's ``PATH`` (:meth:`Layout.contained_path`, ``aew.capability.bind``), so OpenCode's ripgrep lookup never
-  misses and its download is never reached (CAPR-04; the designer's CAP-1 ruling 1).
+  misses and its download is never reached (CAPR-04; the designer's CAP-1 ruling 1);
+* the project's `.env` files at its top level are among the secret masks in every layout, since every layout shows the
+  project (:func:`project_env_masks`), so containment hides them from every tool; `.env.example` stays.
 
 The claim is filesystem integrity, not confidentiality: apart from the masks, a contained process can read what
 the operator's account can read.
@@ -492,6 +494,14 @@ class MaskPlan:
 
 HOME_LIST = "the home directory's secret paths"  # what names a path of the home directory's lists (_named)
 POLICY_HIDE = "containment.hide"
+# The project's `.env` files, masked in every layout as a containment.hide entry is (:func:`project_env_masks`), since
+# every layout shows the project. The one owner of the names: the OpenCode projection's read rules derive from these
+# (``opencode.projection.ENV_READ_RULES``; the designer, 2026-11-06), so both layers name the same files. A name
+# ``ENV_FILES`` matches is a `.env` file unless ``ENV_DOCS`` matches it too: `.env.example` is documentation by
+# convention (V2's own default reads it), so it stays.
+ENV_FILES = ("*.env", "*.env.*")
+ENV_DOCS = ("*.env.example",)
+PROJECT_ENV = "the project's .env files"
 
 
 def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None, needed: list[tuple[str, str]],
@@ -638,6 +648,28 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str],
     for path, source, secret in out:
         seen.setdefault(os.path.abspath(path), (source, secret))
     return [(path, source, secret) for path, (source, secret) in seen.items()]
+
+
+def project_env_masks(project: str | os.PathLike[str]) -> list[Named]:
+    """Each `.env` file at the top level of ``project`` (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), as
+    :func:`_named` lists a secret, so containment hides the project's `.env` files as it hides a containment.hide
+    entry: left out of the project where the run does not write it (a worker's view), masked in place by an empty
+    read-only file where it does (the Lead's), and named on the launch line there. A directory is not one: `.env` is
+    also a virtual environment's usual name, and masking that whole would hide the interpreter a run may need. A link
+    to a file is, and its target with it (:func:`_left_out`).
+
+    The top level only, as the files that tools load by convention live there: a walk of the whole tree at every launch
+    costs in proportion to the tree (vendored dependencies, build output), and in a worker's view each directory a mask
+    is left out of is emptied and refilled, entry by entry, under bubblewrap's argument limit (:data:`BWRAP_MAX_ARGS`).
+    A nested one is listed in ``containment.hide``. Present at the launch only, as a containment.hide entry in the run's
+    own tree is: one absent then is not masked, so a launch with none changes nothing."""
+    try:
+        with os.scandir(project) as it:
+            names = sorted(e.name for e in it if not e.is_dir())
+    except OSError:  # no project directory to show, so nothing in it to hide
+        return []
+    return [(os.path.join(os.fspath(project), n), PROJECT_ENV, "a project .env file") for n in names
+            if any(fnmatchcase(n, p) for p in ENV_FILES) and not any(fnmatchcase(n, p) for p in ENV_DOCS)]
 
 
 def _sandbox_own(path: str) -> bool:
@@ -1418,7 +1450,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     # the run's own tree, where a secret cannot be left out of its directory (a policy root that holds a mask is
     # refused below: CS-4 addendum 7, ruling 2)
     plan = _mask_plan(home, list(cfg.get("hide") or []), env, needed, tuple(writable),
-                      named_extra=client_cert.mask_entries(cfg.get("network")))
+                      named_extra=[*client_cert.mask_entries(cfg.get("network")), *project_env_masks(project)])
     _refuse_masks(plan.refused, home)
     hide_host = host_masks()
     secret = dict(plan.what)

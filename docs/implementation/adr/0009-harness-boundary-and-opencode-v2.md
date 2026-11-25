@@ -181,7 +181,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - **Permissions:** every rule is allow or deny, never `ask`, because an `ask` blocks forever.
     - Anything not named is denied.
     - `subagent`, `question` and `external_directory` are denied, except the run's own OpenCode output directories. V2 saves long tool output there and points the model at it, and V2's own defaults allow the same directories.
-    - `.env` and `.env.*` are not readable; `.env.example` is. V2's own default asks, which would block.
+    - `.env` and `.env.*` are not readable; `.env.example` is. V2's own default asks, which would block. *(Amended 2026-11-25, below: the read rule is defence in depth; containment hides the project's `.env` files.)*
     - `edit` for implementers only.
     - Web access only for cards requesting `documentation_lookup`.
     - `skill` only for skills the harness provides for the card. M3 provides none, so card skills are recorded as `unavailable` (WC §16.10) and named in the system text.
@@ -2266,3 +2266,35 @@ expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read 
 `test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
 The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
 only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
+
+## Amendment 2026-11-25 — containment hides the project's `.env` files
+
+It corrects what the projection's `.env` rule claimed above ("`.env` and `.env.*` are not readable"), and the Lead's
+system text that said the same: the guarantee is containment's, and the `read` deny is defence in depth.
+
+- **What is masked:** each entry at the project's top level whose name matches `*.env` or `*.env.*` and not
+  `*.env.example` (`layout.ENV_FILES`, `layout.ENV_DOCS`: the names the read rules already used, the designer's of
+  2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
+  `.env` is also a virtual environment's usual name. A link to a file is, with its target.
+- **Where:** in every layout `for_run` makes, as every layout shows the project read-only. The mask is a
+  `containment.hide` entry's (`_mask_plan`, through `layout.project_env_masks`), so it behaves as one: in the Lead's
+  own tree each file is masked in place by the empty read-only file and named on the launch line ("the project's .env
+  files"), and in a worker's view it is left out of the project, whose other entries are put back. A masked file reads
+  as empty or absent to every tool, OpenCode's and the shell's alike, and a write to it fails.
+- **The top level only.** A walk of the whole tree at every launch would cost in proportion to the tree, and in a
+  worker's view each directory a file is left out of is emptied and refilled entry by entry, under bubblewrap's
+  argument limit (CS-4 addendum 9). A nested `.env` file is named in `containment.hide`. As with a `containment.hide`
+  entry, a file absent at the launch is not masked, and a mask covers its path only, not a committed copy.
+- **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
+- **Workers:** a worker's worktree holds only what is committed, so no ignored `.env`; the project, visible read-only in
+  its sandbox, is where the mask applies.
+- **Not claimed:** where the run is not contained (Windows, or `containment.mode: allow_weaker`, labelled
+  `workdir_separation_only`) there are no masks, and only the `read` rule applies. The Lead's base system text says only
+  that its read tool refuses `.env` files; the line that a contained Lead's text gains (`lead_contained_text`) states
+  that containment hides them. Eval's own sandboxes (`eval/aew_eval`) run over eval task copies, not an AEW project, and
+  are unchanged.
+- **Tests:** `tests/unit/test_containment_layout.py` (the Lead's layout masks them in place and keeps `.env.example`;
+  a worker's leaves them out of the project; a directory named `.env` is not masked; the read rules derive from the
+  names), and, in a real sandbox on Linux, `tests/integration/test_lead_containment.py` and
+  `tests/integration/test_containment.py` (a read by name or by absolute path, a search of the tree and another
+  program's read find none of them, from the Lead's sandbox and from a worker's).

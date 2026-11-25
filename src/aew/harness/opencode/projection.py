@@ -12,7 +12,8 @@ Invocation runs:
 * every permission rule is ``allow`` or ``deny`` (an unanswered ``ask`` blocks a V2 session forever);
   anything not named is denied; ``subagent``, ``question`` and ``external_directory`` are always denied,
   except the run's own private OpenCode output directories (V2 saves long tool output there and points the
-  model at it); ``.env`` files are not readable (V2's own default asks; ``.env.example`` stays readable);
+  model at it); ``read`` denies ``.env`` files (V2's own default asks; ``.env.example`` stays readable), as defence
+  in depth: where the run is contained, containment hides the project's ``.env`` files (``layout.project_env_masks``);
   ``edit`` only for implementers; web access only for cards that request documentation lookup;
   ``skill`` only for the skills the run was given (``aew.skills``: the card's ``skills:`` and ``optional_skills``
   that AEW's install ships, copied into the run's own folder, which is the config's one ``skills`` entry; that
@@ -38,6 +39,7 @@ from typing import Any, NamedTuple
 from aew import skills as shipped_skills
 from aew.harness import contract as K
 from aew.harness import procs
+from aew.harness.containment.layout import ENV_DOCS, ENV_FILES
 from aew.harness.contract import (
     EXPECT_REV,
     PUSHED_ONLY,
@@ -82,10 +84,11 @@ def shell_rule(effect: str, resource: str = "*") -> list[dict[str, str]]:
 LEAD_FREE_TOOLS = ("read", "glob", "grep")
 
 # The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
-# Lead's, one list (the designer, 2026-11-06). A harness permission rule: it is not containment, it does not cover a
-# shell command the operator approves or the history of a tracked file, and on Windows no other layer applies.
-ENV_READ_RULES = (rule("read", "deny", "*.env"), rule("read", "deny", "*.env.*"),
-                  rule("read", "allow", "*.env.example"))
+# Lead's, one list (the designer, 2026-11-06), from the names containment owns (``layout.ENV_FILES``, ``ENV_DOCS``).
+# Defence in depth only: the guarantee is containment's, which hides the project's `.env` files from every tool
+# (``layout.project_env_masks``). A harness permission rule does not cover a shell command the operator approves or
+# the history of a tracked file, and where the run is not contained (Windows, ``allow_weaker``) no other layer applies.
+ENV_READ_RULES = (*(rule("read", "deny", p) for p in ENV_FILES), *(rule("read", "allow", p) for p in ENV_DOCS))
 
 
 def rules_hold(loaded: list[dict[str, Any]], want: list[dict[str, Any]]) -> str | None:
@@ -382,7 +385,8 @@ def lead_mcp_environment() -> dict[str, str]:
 # refused). A global option before the subcommand (`git -C dir diff`) matches none of these allows, so it asks too.
 LEAD_GIT_READS = ("git status*", "git diff*", "git log*", "git show*")
 # They also ask for a comparison outside the working tree and for a read naming a `.env` file (the designer,
-# 2026-11-06). Other spellings and shell globs aren't matched: a containment-level mask is the follow-on.
+# 2026-11-06). Other spellings and shell globs aren't matched: containment hides the project's `.env` files
+# (``layout.project_env_masks``), and these asks are defence in depth.
 LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for option in ("--output", "--ext-diff")),
                  "git diff*--no-index*", "git diff*/dev/null*",
                  *(f"git {cmd}*.env*" for cmd in ("diff", "log", "show")))
@@ -475,7 +479,8 @@ _LEAD_SYSTEM_TEMPLATE = "\n".join([
     # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator. OpenCode's
     # prompt is the one approval; a yes typed in chat is not a second gate (#304 review, m2; the designer).
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
-    "search them with your read, glob and grep tools (`.env` files aren't readable; `.env.example` is). The shell "
+    "search them with your read, glob and grep tools (leave `.env` files alone: your read tool refuses them; "
+    "`.env.example` is readable). The shell "
     "runs `aew` and `git status|diff|log|show` directly (a few of their options and paths ask, a `.env` file named "
     "among them). "
     "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
@@ -560,7 +565,8 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
     return (f"- This Lead session is contained (`{label.get('filesystem')}`, network `{net.get('mode')}`): only the "
             "working tree is writable. `.aew/` and the git metadata are read-only, so a commit fails here, while "
             "`git status`, `diff`, `log` and `show` work and your Lead `aew` commands still reach the broker, which "
-            "writes AEW state for you. The session reaches " + (" and ".join(reach) or "nothing outside it")
+            "writes AEW state for you. Containment hides the project's `.env` files (`.env.example` stays). "
+            "The session reaches " + (" and ".join(reach) or "nothing outside it")
             + ". The desktop, the clipboard bus, browser tools and private or host addresses are refused by design. "
             "A refusal is what a deny rule or this containment returns. Do not work around one: tell the operator "
             "what you needed and why, so they can do it at their own terminal or widen AEW's containment settings "

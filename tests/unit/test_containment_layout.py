@@ -1848,3 +1848,73 @@ def test_no_contained_environment_builder_passes_a_display_variable(tmp_path):
         built.append(Validation._check_env(None))
     for env in built:
         assert not {k.upper() for k in env} & set(L.DISPLAY_ENV), sorted(env)
+
+
+ENV_NAMES = (".env", ".env.local", "prod.env")  # what the projection's read rules name, at the project's top level
+
+
+def plant_env_files(repo: Path) -> None:
+    """Synthetic `.env` files at the project's top level, the documentation copy beside them, a virtual environment
+    named `.env`'s sibling and a nested one, made before the layout."""
+    repo.mkdir(parents=True, exist_ok=True)
+    for name in (*ENV_NAMES, ".env.example"):
+        (repo / name).write_text("SYNTHETIC=1\n")
+    (repo / "pkg").mkdir()
+    (repo / "pkg" / ".env").write_text("SYNTHETIC=1\n")
+
+
+def test_the_contained_leads_layout_masks_the_projects_env_files_and_keeps_env_example(tmp_path, fake_bwrap,
+                                                                                      tmp_unmasked):
+    """Containment hides the project's `.env` files, as the Lead's system text states: in the Lead's own tree each is
+    masked in place by the empty read-only file, and named on the launch line by what put it there. `.env.example`
+    stays, and so does a nested one, which only containment.hide names (the top level only)."""
+    plant_env_files(tmp_path / "repo")
+    layout = lead_layout(tmp_path)
+    repo = os.path.realpath(tmp_path / "repo")
+    want = {os.path.join(repo, n) for n in ENV_NAMES}
+    assert set(layout.hide_files) >= want
+    assert {p: by for p, by in layout.tree_masks if p in want} == dict.fromkeys(want, L.PROJECT_ENV)
+    kept = {os.path.join(repo, ".env.example"), os.path.join(repo, "pkg", ".env")}
+    masked = {*layout.hide_files, *layout.hide_dirs, *layout.left_out, *(p for p, _ in layout.tree_masks)}
+    assert not kept & masked
+    argv = C.bwrap_argv(layout, ["agent"])
+    for path in want:
+        at = argv.index(path)
+        assert argv[at - 2:at] == ["--ro-bind", layout.mask_file], path
+    assert all(p in C.tree_masks_line(layout) for p in want)
+
+
+def test_a_workers_layout_leaves_the_projects_env_files_out_of_the_project_it_shows(tmp_path, fake_bwrap,
+                                                                                    tmp_unmasked):
+    """Every worker's layout shows the project read-only, so containment hides the project's `.env` files there too:
+    each is left out of the project, whose other entries are put back, `.env.example` among them. The worker's own
+    worktree holds none of them, as a worktree holds only what is committed."""
+    for role in ("implementer", "reviewer"):
+        plant_env_files(tmp_path / role / "repo")
+        layout = run_layout(tmp_path / role, role)
+        repo = os.path.realpath(tmp_path / role / "repo")
+        assert repo in layout.visible
+        assert {os.path.join(repo, n) for n in ENV_NAMES} <= set(layout.left_out), role
+        assert repo in layout.left_out_of and os.path.join(repo, ".env.example") in layout.put_back, role
+        assert not [p for p in (*layout.left_out, *layout.hide_files) if p.endswith("/pkg/.env")], role
+        assert ("--tmpfs", repo) in L.order(layout), role
+        assert not [n for n in os.listdir(tmp_path / role / "ws") if n.startswith(".env")], role
+
+
+def test_a_directory_named_env_is_not_masked_and_a_project_without_env_files_masks_nothing_more(tmp_path, fake_bwrap):
+    """`.env` is also a virtual environment's usual name: a directory is not one of the project's `.env` files, so a run
+    that needs it keeps it. With none at the top level, the layout masks nothing in the project."""
+    (tmp_path / "with" / "repo" / ".env" / "bin").mkdir(parents=True)
+    layout = lead_layout(tmp_path / "with")
+    assert L.project_env_masks(tmp_path / "with" / "repo") == []
+    assert layout.tree_masks == () and layout.hide_dirs == () and layout.hide_files == ()
+    assert L.project_env_masks(tmp_path / "missing") == []
+
+
+def test_the_projections_env_read_rules_name_what_containment_masks():
+    """One owner for the names (derive, don't restate): the OpenCode read rules for `.env` files come from
+    containment's, so a name added to one layer is in the other."""
+    from aew.harness.opencode import projection
+
+    assert [(r["effect"], r["resource"]) for r in projection.ENV_READ_RULES] == [
+        *(("deny", p) for p in L.ENV_FILES), *(("allow", p) for p in L.ENV_DOCS)]

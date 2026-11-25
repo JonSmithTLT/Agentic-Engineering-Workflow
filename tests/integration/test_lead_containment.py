@@ -431,6 +431,25 @@ def test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it(lead_l
     assert key.read_text() == "SYNTHETIC-KEY\n" and not (keys / "new").exists()  # nothing changed on the host
 
 
+def test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_sandbox(lead_lab):
+    """Containment hides the project's `.env` files, as the Lead's system text states: inside, a read by name, a search
+    of the tree and a read from another program all find each empty, and a write fails; `.env.example` reads as it is.
+    The host's files are unchanged. Synthetic values only."""
+    lab = lead_lab
+    for name in (".env", ".env.local"):
+        (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / ".env.example").write_text("SYNTHETIC-DOC=\n")
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    env = lab.repo / ".env"
+    done = lab.sh(layout, f"cat .env .env.local; grep -rh SYNTHETIC . 2>/dev/null; "
+                          f"{sys.executable} -I -c \"print(open({str(env)!r}).read())\"; "
+                          f"echo x > .env; echo rc=$?; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
+    assert "SYNTHETIC-DOC=" in done.stdout, done.stdout  # the search ran, and the documentation copy stays
+    assert env.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
 # ------------------------------------------------------------------------------------------- outcome 6, rows
 
 def lead_establish(lab: LeadLab, monkeypatch, *, terminal: bool = True, mode: str | None = None,

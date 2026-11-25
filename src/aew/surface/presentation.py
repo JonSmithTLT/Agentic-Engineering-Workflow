@@ -16,7 +16,9 @@ DESCRIPTIONS = {
     "harness_status": "Inspect worker runs and progress; changes nothing.",
     "harness_wait": "Wait for a run to end or need the Lead; one call, no polling.",
     "checkpoint": "Record a bounded handoff note; advances no work.",
-    "steering": "Lower steering or request a raise or confirmation; requests grant nothing.",
+    # A deliberate short form of `contract.STEERING_TEXT` (and its `STEERING_STEP`), within the compact budget (E183).
+    "steering": "Lower (after a raise) or request a raise; grants nothing. Crawl/walk: you take each step. No "
+                "steering.mode: all refused.",
     "resolve": "Resolve a decision.",
     "ticket_draft": "Create a Ticket and optionally propose, never accept, its plan.",
     "ticket_start": "Assign a READY mutating Ticket by policy, launch and move to RUNNING.",

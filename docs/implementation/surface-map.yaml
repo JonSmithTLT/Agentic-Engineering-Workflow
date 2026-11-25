@@ -1871,6 +1871,7 @@ tools:
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+    note: "offers lower and request_raise only (contract.STEERING_ARGUMENTS; register E183): request_confirmation is hidden"
   - name: resolve
     home: product
     users: [lead]

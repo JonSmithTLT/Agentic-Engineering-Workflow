@@ -112,7 +112,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
+**Own slices left:** 1 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
 
 **Switch:** steering.mode — default: crawl — not read from the code
 

@@ -29,7 +29,6 @@ from aew.engine import stage_intents as SI
 from aew.engine import usage_ops as O
 from aew.engine.api import Engine
 from aew.errors import AEWError, PermissionDenied, StalePolicy
-from aew.harness import contract as K
 from aew.harness import lead_broker, procs
 from aew.harness.opencode import lead
 from aew.knowledge.manifest import DEFAULT_GATES
@@ -497,7 +496,7 @@ def _follow_the_hand_route(p, line: str, monkeypatch) -> None:
         path = root / manifest
         path.write_bytes(path.read_bytes().replace(b"policy:\n", f"policy:\n  {entry}\n".encode(), 1))
     printed = re.search(r"`(aew manifest adopt [^`]+)`", line)[1]
-    command = shlex.split(printed.replace(K.REVISION, str(p.rev())).replace("<reason>", "'by hand'"))
+    command = shlex.split(printed.replace("<reason>", "'by hand'"))
     argv = command[1:]
     monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
     monkeypatch.setattr(operator, "ask", lambda prompt, timeout=0: re.search(r"code ([0-9A-F]{6})", prompt)[1])
@@ -527,7 +526,7 @@ def test_the_hand_route_runs_as_printed_and_takes_the_declined_switch(old, at_te
 @pytest.mark.parametrize("row", ROWS)
 def test_every_line_naming_the_adopt_gives_the_paths_and_flags_it_needs(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
-    adopt = f"`aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
+    adopt = "`aew manifest adopt --reason <reason>`"
     guard = old.root / ".aew/policy/guardrails.yaml"
     guard.write_text(guard.read_text(encoding="utf-8") + "# an edit\n", encoding="utf-8", newline="\n")
     assert adopt in doctor(old)[f"switch-offer:{row}"]  # the blocked line
@@ -732,8 +731,9 @@ def test_only_refuses_a_never_pinned_project_where_an_adopt_would_pin_everything
     state = load_control(old.root)
     del state["policy_sha256"]
     (old.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    e = engine(old)
     with pytest.raises(IllegalTransition, match="no file was ever pinned"):
-        engine(old).manifest_adopt(token=old.token, expect_rev=old.rev(), reason="r", only=[GATES],
+        e.manifest_adopt(token=old.token, reason="r", only=[GATES], binding=e.manifest_approval(),
                                    authorization={"authorized_by": "operator-tty", "challenge_code": "X"})
 
 
@@ -951,7 +951,7 @@ def test_a_later_default_raise_is_a_new_offer(old, at_terminal, monkeypatch):
 # ------------------------------------------------------------------------------- open stages: the screen, and its truth
 
 def open_stage(p, steps: int = 3) -> str:
-    return engine(p).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest=ZERO,
+    return engine(p).stage_open(token=p.token, tool="probe", contract_digest=ZERO,
                                 arguments={"why": "a test"}, judgment_inputs=[], base_class="MECHANICAL",
                                 effective_class="MECHANICAL", plan=[{"primitive": "checkpoint"}] * steps, subject=None,
                                 ingress="test")["intent"]
@@ -959,7 +959,7 @@ def open_stage(p, steps: int = 3) -> str:
 
 def run_step(p, si: str, n: int) -> None:
     with SI.step(si, n):
-        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note=f"{si} {n}", next_action=f"after {n}")
+        engine(p).checkpoint(token=p.token, note=f"{si} {n}", next_action=f"after {n}")
 
 
 def test_open_stage_intents_are_named_for_a_legality_switch_and_the_table_says_it_stops_none(old, at_terminal):
@@ -1066,7 +1066,7 @@ def test_the_offer_reaches_the_adopt_with_a_token_on_both_acquire_paths(old, at_
     decision, out = start(old)
     e = decision.engine
     if acquire:
-        e.lead_release(token=old.token, expect_rev=old.rev())
+        e.lead_release(token=old.token, )
         monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
     else:
         monkeypatch.setenv("AEW_LEAD_TOKEN", old.token)

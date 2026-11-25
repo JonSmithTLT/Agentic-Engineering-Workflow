@@ -814,7 +814,7 @@ class Supervisor:
             pin = self.record.get("execution_profile") or {}
             if pin.get("credential") == "plan_login":
                 return self._finish(K.CRASHED, "the model provider rejected the operator's plan login. "
-                                    + K.plan_login_recovery(pin["provider"], self.inv_id))
+                                    + K.plan_login_recovery(pin["provider"], self.inv_id, self.run))
             names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
             return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
                                 "the harness exited without recording its expected output; check the key in "
@@ -838,16 +838,15 @@ class Supervisor:
         pack, so a repeat means a new invocation on another model: cancel this one, then dispatch."""
         inv = self.inv_id
         wid = self.record.get("work_unit") or "<work unit>"
-        rev = "--expect-rev <revision from aew status>"
-        return (f". Relaunch it with `aew harness launch {inv} {rev}`. A relaunch keeps the invocation's pinned "
-                "model (ADR-0010), so if the refusal repeats, cancel it:\n\n"
-                f"```sh\naew invoke cancel {inv} {rev} --fields - <<'EOF'\n"
-                "reason: 'why this invocation must end'\nEOF\n```\n\n"
-                "and dispatch a new invocation on another model:\n\n"
-                f"```sh\naew invoke create {wid} --launch --model PROVIDER/MODEL {rev}\n```\n\n"
+        cancel = K.fields_command(f"aew invoke cancel {inv}", "reason", "why this invocation must end")
+        redispatch = K.fields_command(f"aew work redispatch {wid} --launch --model PROVIDER/MODEL", "reason",
+                                     "why this Ticket is redispatched")
+        return (f". Relaunch it with `aew harness launch {inv} --prior-value {self.run}`. A relaunch keeps its pinned "
+                f"model (ADR-0010), so if the refusal repeats, cancel it:\n\n{cancel}\n\n"
+                "and dispatch a new invocation on another model with "
+                f"`aew invoke create {wid} --launch --model PROVIDER/MODEL`.\n\n"
                 "For a non-mutating Ticket, redispatch it instead of cancelling and dispatching:\n\n"
-                f"```sh\naew work redispatch {wid} --launch --model PROVIDER/MODEL {rev} --fields - <<'EOF'\n"
-                "reason: 'why this Ticket is redispatched'\nEOF\n```")
+                f"{redispatch}")
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:
         wid = self.record.get("work_unit")
@@ -939,7 +938,7 @@ class Supervisor:
                     if decisions.get("relay", {}).get(count_key):
                         self.record["cause"] = cause
                         self.record["next_action"] = K.plan_login_failure(
-                            cause, self.record["execution_profile"]["provider"], self.inv_id)
+                            cause, self.record["execution_profile"]["provider"], self.inv_id, self.run)
                         break
         self._event("ended", status=status, reason=reason)
         self._drop_credential()

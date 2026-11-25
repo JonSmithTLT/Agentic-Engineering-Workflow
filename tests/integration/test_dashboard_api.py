@@ -114,7 +114,7 @@ def released_world(tmp_path_factory) -> World:
     open_ticket = create_planned_ticket(p, tmp, title="Add apply()", extra=("--parent", story))
     blocked = create_planned_ticket(p, tmp, title="Add compose()", extra=("--parent", story))
     p.lead("work", "depend", blocked, "--add", f"{open_ticket}:mutating", "--reason", "compose needs apply")
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})
     p.lead("work", "move", done, "--parent", epic, "--reason", "regrouped under the Epic")
     w.ids = {"epic": epic, "story": story, "done": done, "investigation": inv, "open": open_ticket,
              "blocked": blocked}

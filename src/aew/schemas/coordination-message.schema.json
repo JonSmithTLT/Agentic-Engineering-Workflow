@@ -24,6 +24,6 @@
     "body": {"type": "string", "minLength": 1, "maxLength": 4000},
     "refs": {"description": "kind:value strings (D-12). A ref grants no access and is never resolved for the recipient.", "type": "array", "maxItems": 8, "items": {"type": "string", "minLength": 3, "maxLength": 200}},
     "created_at": {"type": "string"},
-    "checked_rev": {"description": "The control revision the message was recorded against: for a Lead message, the expect_rev it was checked against (D-4).", "type": "integer", "minimum": 0}
+    "checked_rev": {"description": "The control revision observed under the lock when the message was recorded.", "type": "integer", "minimum": 0}
   }
 }

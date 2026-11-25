@@ -13,7 +13,7 @@ def _result(**over):
 
 
 def test_a_line_is_built_from_the_stage_result_and_never_holds_the_arguments():
-    line = T.entry(tool="ticket_start", arguments='{"work_id": "T-0001", "expect_rev": 6}', ingress="mcp",
+    line = T.entry(tool="ticket_start", arguments='{"work_id": "T-0001"}', ingress="mcp",
                    profile="normal", result=_result(), input_error=None, error=None, revision_before=6,
                    duration_ms=12)
     assert {k: line[k] for k in ("tool", "effective_class", "ok", "boundary", "error_code", "revision_before",
@@ -23,7 +23,7 @@ def test_a_line_is_built_from_the_stage_result_and_never_holds_the_arguments():
         "duration_ms": 12, "ingress": "mcp"}
     assert "T-0001" not in str(line)
     # One digest for the same arguments, however the JSON text was spaced or ordered; the text itself when not JSON.
-    assert line["arguments_sha256"] == T.arguments_digest({"expect_rev": 6, "work_id": "T-0001"})
+    assert line["arguments_sha256"] == T.arguments_digest({"work_id": "T-0001"})
     assert T.arguments_digest("{not json") != T.arguments_digest("{not  json")
 
 

@@ -407,7 +407,7 @@ class Dispositions:
             value = {"id": subject, "evidence": evidence, "sha256": ev["_sha256"]}
         return {"subject": value, "digest": approval.digest(value)}
 
-    def dispose(self, *, token: str, expect_rev: int, subject: str, choice: str, rationale: str,
+    def dispose(self, *, token: str, subject: str, choice: str, rationale: str,
                 follow_up: str | None = None, binding: str | None = None) -> dict[str, Any]:
         """Dispose of a marked finding or claim, or an open anomaly: one Lead judgment, one commit."""
         if choice not in CHOICES:
@@ -416,7 +416,7 @@ class Dispositions:
             raise UsageError("a disposition needs a rationale")
         if (choice == "follow_up") != bool(follow_up):
             raise UsageError("follow_up names the Ticket that follows it up; only that choice takes one")
-        with self.k.lead_txn(token, expect_rev, "work.dispose") as ctx:
+        with self.k.lead_txn(token, "work.dispose") as ctx:
             state = ctx.state
             anomaly: dict[str, Any] | None = None
             evidence: str | None = None
@@ -425,8 +425,7 @@ class Dispositions:
                 kind, wid = "anomaly", anomaly["subject"]
             else:
                 kind, wid, evidence = self._item(state, subject)
-            if binding is not None:
-                approval.compare("work.dispose", subject, binding, self.approval_subject(state, subject)["digest"])
+            approval.compare("work.dispose", subject, binding, self.approval_subject(state, subject)["digest"])
             if follow_up is not None:
                 self._follow_up(state, follow_up, wid)
             rev = ctx.session.revision + 1

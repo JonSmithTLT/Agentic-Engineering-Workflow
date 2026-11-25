@@ -2266,3 +2266,9 @@ expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read 
 `test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
 The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
 only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+Launch and relaunch bind the prior run of the named invocation, or `none` when the invocation has no run. The locked launch checks the current run, active invocation and Lead authority before rotating the credential. A changed run requires a new decision. The state revision still identifies durable dispatch and launch commits.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

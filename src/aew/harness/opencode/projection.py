@@ -39,7 +39,6 @@ from aew import skills as shipped_skills
 from aew.harness import contract as K
 from aew.harness import procs
 from aew.harness.contract import (
-    EXPECT_REV,
     PUSHED_ONLY,
     WAIT_RULE,
     LaunchContract,
@@ -419,8 +418,9 @@ def lead_tools_text(switches: frozenset[str] = frozenset(), *, profile: str = NO
             f"Wait with {_named(waits, switches, profile)} "
             "(several runs at once; it returns when the first ends or needs you). "
             f"Act with {_named(acts, switches, profile)}. Each "
-            "returns the revision to pass as `expect_rev` next and a projection of what is available, blocked or "
-            "unknown, and of the decisions that are yours. Use the `aew` shell command where no tool covers the step, "
+            "returns a projection of what is available, blocked or "
+            "unknown, and of the decisions that are yours. Use the shown prior value or digest where required. "
+            "Use the `aew` shell command where no tool covers the step, "
             "or where a tool refuses.")
 
 
@@ -451,7 +451,7 @@ _LEAD_SYSTEM_TEMPLATE = "\n".join([
     "  - After each step, report what changed, what you skipped and why, and anything you noticed on the way (a risk, "
     "a contradiction, a follow-up). Keep it short and in plain words.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "
-    f"and `aew` commands for you. A shell mutation still needs `{EXPECT_REV}` (from `status` or the previous command).",
+    "and `aew` commands for you. A shell mutation still needs `` (from `status` or the previous command).",
     "\0LEAD_TOOLS\0",
     f"- Steering: {contract.STEERING_STEP} The `steering` tool says what else works.",
     "- Delegate implementation, review, verification, investigation and research to bounded invocations: the stages "

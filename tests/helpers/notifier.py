@@ -343,13 +343,13 @@ def takeover(project: Any, monkeypatch: Any) -> None:
     import aew.operator
 
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator-tty (test)"})
-    project.token = Engine.discover(project.root).lead_takeover(expect_rev=project.rev(), reason="the test takes over",
+    project.token = Engine.discover(project.root).lead_takeover(reason="the test takes over",
                                                                 session_label="operator")["token"]
 
 
 def request(project: Any, kind: str) -> None:
     engine = Engine.discover(project.root)
-    engine.steering_request(token=project.token, expect_rev=project.rev(), kind=kind, rationale="the test asks",
+    engine.steering_request(token=project.token, kind=kind, rationale="the test asks",
                             **({"mode": "walk"} if kind == "raise" else {"action_ref": "ticket_start:T-0001"}))
 
 

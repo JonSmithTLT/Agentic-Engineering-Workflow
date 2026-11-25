@@ -21,7 +21,6 @@ from aew.engine import approval, transitions
 from aew.engine import gates as G
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
-from aew.harness.contract import EXPECT_REV
 from aew.operator import require_operator_attribution
 from aew.policy import checks as C
 from aew.policy import consistency
@@ -177,7 +176,7 @@ class Roles:
                              allowed_archetypes=sorted(allowed))
 
     def work_staff(
-        self, *, token: str, expect_rev: int, work_id: str,
+        self, *, token: str, work_id: str,
         execute: list[str] | None = None, review: list[str] | None = None, verify: list[str] | None = None,
         forbid: list[str] | None = None, remove: list[str] | None = None,
         selected_by: str = "lead", pin: bool = False, reason: str | None = None,
@@ -186,7 +185,7 @@ class Roles:
         if selected_by not in {"lead", "operator"}:
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
         require_operator_attribution(selected_by == "operator", authorization, "a role selection")
-        with self.k.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
+        with self.k.lead_txn(token, "work.staff", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} cannot be staffed in state {unit['state']}")
@@ -265,7 +264,7 @@ class Roles:
         digest = approval.role_plan_digest(unit)
         return {"ok": True, "work_id": work_id, "role_plan": unit["role_plan"], "decision": decision,
                 "role_plan_digest": digest, "revision": revision,
-                "staff_argv": approval.bound_argv(("work", "staff", work_id), revision, digest)}
+                "staff_argv": approval.bound_argv(("work", "staff", work_id), digest)}
 
     def effective_role_plan(self, state: dict[str, Any], work_id: str,
                             gc: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -379,7 +378,7 @@ class Roles:
         if pinned and card.id not in pinned:
             raise PermissionDenied(
                 f"the operator pinned {pinned} for {work_id}'s execute slot; to dispatch {card.id}, change the role "
-                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason> {EXPECT_REV}` (a "
+                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason>` (a "
                 "recorded decision)",
                 pinned=pinned, requested=card.id)
 

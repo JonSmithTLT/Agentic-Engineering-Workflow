@@ -49,7 +49,7 @@ def test_generic_transition_cannot_impersonate_operations(project, tmp_path):
     wid = make_ticket(project)
     accept_plan(project, tmp_path, wid)
     res = project.aew("work", "transition", wid, "--to", "ASSIGNED",
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5
     assert res.error["code"] == "ILLEGAL_TRANSITION"
     assert res.error["details"]["required_operation"] == "assign"
@@ -58,7 +58,7 @@ def test_generic_transition_cannot_impersonate_operations(project, tmp_path):
 def test_cancel_requires_reason_and_records_decision(project, tmp_path):
     wid = make_ticket(project)
     res = project.aew("work", "transition", wid, "--to", "CANCELLED",
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 2 and res.error["code"] == "USAGE"
     out = project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "duplicate")
     decision = (project.root / f".aew/decisions/{out['decision']}.md").read_text()
@@ -78,7 +78,7 @@ def test_new_plan_revision_must_state_reason_and_supersede(project, tmp_path):
     wid = make_ticket(project)
     accept_plan(project, tmp_path, wid)
     res = project.aew("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 2
     out = project.lead("plan", "propose", "--assurance", "none", wid, "--file", body_file(tmp_path, "v2.md", "v2\n"),
                        "--reason", "runtime evidence disproved assumption X")
@@ -91,8 +91,7 @@ def test_new_plan_revision_must_state_reason_and_supersede(project, tmp_path):
 
 def test_story_rollup_and_inherited_policy_representation(project, tmp_path):
     res = project.aew("work", "create", "story", "--title", "Accounting", "--class", "3",
-                      "--min-descendant-class", "2", "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+                      "--min-descendant-class", "2", env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 2  # a floor needs a rationale
     story = project.lead("work", "create", "story", "--title", "Accounting", "--class", "3",
                          "--mandatory-gate", "review_security", "--min-descendant-class", "2",
@@ -101,6 +100,6 @@ def test_story_rollup_and_inherited_policy_representation(project, tmp_path):
     rollup = project.ok("work", "show", story)["rollup"]
     assert rollup["derived_state"] == "IN_PROGRESS" and rollup["children_by_state"] == {"BLOCKED": 1}
     res = project.aew("work", "transition", story, "--to", "CANCELLED", "--reason", "x",
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5  # parent state is derived, never hand-maintained
     assert project.ok("work", "show", t1)["control"]["risk_class"] == 1  # local class is preserved

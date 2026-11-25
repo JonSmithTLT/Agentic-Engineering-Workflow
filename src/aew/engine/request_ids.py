@@ -10,7 +10,7 @@ from typing import Any, NamedTuple
 
 from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
-from aew.harness.contract import EXPECT_REV, invocation_of_run
+from aew.harness.contract import invocation_of_run
 from aew.knowledge import evidence as E
 from aew.maps import slices
 from aew.util import sha256_text
@@ -128,7 +128,7 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
     if inv.get("runs") or inv["status"] != "active":
         credential["next_action"] = status
     else:
-        credential["rotate"] = f"aew harness launch {ref} {EXPECT_REV}"
+        credential["rotate"] = f"aew harness launch {ref} --prior-value none"
     identity = common | {"invocation": ref, "invocation_token": None, "credential_replay": credential}
     if op == "work.redispatch":
         return identity | {"work_id": wid, "observation": deepcopy(inv["observation"])} | metadata

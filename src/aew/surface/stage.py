@@ -1,21 +1,12 @@
 """The stage executor of the typed Lead surface (M4-E E3b; plan v3 E3; typed-lead-surface-design-v0.2 §3.4).
 
 A stage is one tool call that expands into several primitives, each its own durable transition. The executor opens
-the call's StageIntent by CAS on the caller's ``expect_rev`` (rules 1 and 2: a stale one commits nothing), then runs
-the planned primitives in order from the revision the intent's commit returned, each with its step armed
+the call's StageIntent under current Lead authority, then runs the planned primitives in order, each with its step armed
 (:func:`aew.engine.stage_intents.step`), so the journal records the step in the primitive's own commit or the commit
 does not land.
 
 - **First refusal stops** (rule 3): committed steps stand, and the intent records the stop boundary.
-  A partial stale stop with no known fresh-call continuation stays ACTIVE for explicit ``resolve`` (E137), never an
-  automatic retry. The existing E133 call-again paths still end their original intent.
-- **A later STALE_REVISION** is retried once (rule 4; R5-1, all five conditions): the step is MECHANICAL or
-  POLICY_RESOLVED, the stage's effective class is not judgment-bearing (rule 5: a judgment is never replayed, nor any
-  step of a stage that carries one), the bound legality digest is unchanged, the caller's authority still holds (its
-  generation, and the intent's), and the action is AVAILABLE at the current revision with the same arguments. An
-  availability the surface cannot query (a guard not migrated to a query, E4) is UNKNOWN, and UNKNOWN never
-  retries. The retried step carries ``retried_after_stale_revision`` on the intent and in
-  ``completed_steps``.
+  A changed prior value or approval subject requires a fresh decision (E329).
 - **Policy drift** stops as STALE_POLICY (rule 6), and **a launch that fails after its dispatch committed** stops as
   ``launch_failed`` (rule 7): the committed run identity stands. A dispatch made with ``launch`` records run 1 in its
   own commit (``dispatch.launch``: plan v3 §1 and E4, inside the dispatch's transaction and covered by its decision);
@@ -23,8 +14,6 @@ does not land.
   never started (#142 review, finding 1).
 - **A stop the executor cannot record** (the seat was lost, a policy edit awaits adoption, the journal refused the
   bookkeeping itself) leaves the intent ACTIVE for ``resume`` and the Lead's ``resolve`` (E3c): the result says so.
-  A refusal met while deciding on a retry (reading the binding with a policy edit pending) stops the stage the same
-  way, with its committed steps reported (#142 review, finding 2).
 
 The plan comes from the stage's planner (``STAGES``), and each planned primitive needs a step runner
 (``STEP_RUNNERS``); both are checked before anything commits. A planned step's argument may be ``{"$from": [m,
@@ -36,7 +25,7 @@ The plan is the contract's steps for the call, in order: a step is left out only
 unplanned (``ticket_draft`` without a plan). A launch planned right after its dispatch is recorded by the dispatch's
 commit (``covers``) and never runs on its own (M4-E E5a). The Ticket stages' planners (E5a: ``ticket_draft``,
 ``ticket_start``; E5b: the two request stages, whose dispatch and launch repeat once per card, ``plan_for``) take each
-step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck and R5-1 ask
+step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck asks
 each guard what ``explain`` and the projection ask (PR #170 review, finding 3).
 
 E6a builds the integration stages (plan v3 §2.3, E6a): ``ticket_prepare`` (accept the verification, COMMIT_READY,
@@ -59,7 +48,7 @@ from typing import TYPE_CHECKING, Any
 from aew import errors
 from aew.engine import stage_intents as SI
 from aew.engine.guards import GUARD_NOT_QUERYABLE
-from aew.engine.primitives import COVERED_BY_PREVIOUS, JUDGMENT_BEARING, spec_for
+from aew.engine.primitives import COVERED_BY_PREVIOUS, spec_for
 from aew.harness.contract import redact
 from aew.surface import availability as SA
 from aew.surface import contract
@@ -69,21 +58,19 @@ from aew.util import sha256_bytes
 if TYPE_CHECKING:
     from aew.surface.run import Call
 
-StepRunner = Callable[["Call", dict[str, Any], int], dict[str, Any]]  # (call, step arguments, expect_rev) -> output
+StepRunner = Callable[["Call", dict[str, Any]], dict[str, Any]]
 # The call's arguments -> [{primitive, args}]; a request stage's planner also takes the cards it launches (E5b).
 Planner = Callable[..., list[dict[str, Any]]]
-
-STOP_ATTEMPTS = 3  # recording a stop is the journal's bookkeeping, not a step: it follows the revision a few times
 
 
 # ---------------------------------------------------------------------------------------------- step runners
 
-def _checkpoint(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    return c.engine.checkpoint(token=c.token(), expect_rev=rev, note=a.get("note") or "", next_action=a.get("next"))
+def _checkpoint(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    return c.engine.checkpoint(token=c.token(), note=a.get("note") or "", next_action=a.get("next"))
 
 
-def _assign(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    out = c.engine.work_assign(token=c.token(), expect_rev=rev, work_id=a["work_id"],
+def _assign(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    out = c.engine.work_assign(token=c.token(), work_id=a["work_id"],
                                execution_profile=a.get("execution"), launch=launches(a))
     if not launches(a):
         return out
@@ -93,52 +80,52 @@ def _assign(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return c.engine.launch_dispatched(out)
 
 
-def _create(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    out = c.engine.work_create(token=c.token(), expect_rev=rev, **a)
+def _create(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    out = c.engine.work_create(token=c.token(), **a)
     c.subject = out["id"]  # the stage's subject from now on: its projection and later steps are the new unit's
     return out
 
 
-def _propose(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    return c.engine.plan_propose(token=c.token(), expect_rev=rev, **a)
+def _propose(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    return c.engine.plan_propose(token=c.token(), **a)
 
 
-def _transition(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    return c.engine.work_transition(token=c.token(), expect_rev=rev, work_id=a["work_id"], to=a["to"],
+def _transition(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    return c.engine.work_transition(token=c.token(), work_id=a["work_id"], to=a["to"],
                                     reason=a.get("reason"), prior_value=a.get("prior_value"))
 
 
-def _invoke(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _invoke(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """A reviewer or verifier for one card (M4-E E5b), made with ``launch``: its run 1 goes to its supervisor as the
     assignment's does (:func:`_assign`)."""
-    out = c.engine.invoke_create(token=c.token(), expect_rev=rev, work_id=a["work_id"], role=a.get("role"),
+    out = c.engine.invoke_create(token=c.token(), work_id=a["work_id"], role=a.get("role"),
                                  card=a.get("card"), scope=a.get("scope") or "ticket",
                                  execution_profile=a.get("execution"), launch=launches(a))
     return c.engine.launch_dispatched(out) if launches(a) else out
 
 
-def _review_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
-    return c.engine.review_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"])
+def _review_ingest(c: Call, a: dict[str, Any]) -> dict[str, Any]:
+    return c.engine.review_ingest(token=c.token(), work_id=a["work_id"], evidence_id=a["evidence"])
 
 
-def _verify_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _verify_ingest(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """The Ticket-scope verification, accepted (M4-E E6a: `ticket_prepare`'s first step)."""
-    return c.engine.verify_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"],
+    return c.engine.verify_ingest(token=c.token(), work_id=a["work_id"], evidence_id=a["evidence"],
                                   scope="ticket")
 
 
-def _integration_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _integration_ingest(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """The integration verifier's report, accepted (M4-E E6a: `integration_publish`'s first step in verifier mode); on a
     VALIDATED entry its commit is granted the fresh lease it runs under."""
-    return c.engine.verify_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"],
+    return c.engine.verify_ingest(token=c.token(), work_id=a["work_id"], evidence_id=a["evidence"],
                                   scope="integration")
 
 
-def _prepare(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _prepare(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """The candidate, prepared under a lease whose custodian's worker the engine starts right after the commit (M4-E
     E6a). A conflict is committed (the lease released to AWAITING_DISPOSITION) and stops the stage here, as an
     admission refusal does (raised by the prepare after its commit)."""
-    out = c.engine.integrate_prepare(token=c.token(), expect_rev=rev, work_id=a["work_id"])
+    out = c.engine.integrate_prepare(token=c.token(), work_id=a["work_id"])
     if not out.get("ok"):
         raise errors.IllegalTransition(
             f"{a['work_id']}'s candidate conflicts with the authoritative head: the entry waits for your disposition "
@@ -147,13 +134,13 @@ def _prepare(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return out
 
 
-def _publish(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _publish(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """The Lead's publication (M4-E E6a): the step is its intent commit, and the CAS, sync and DONE follow it. On a
     moved head it commits the one rebuild instead, and nothing is published. The stage then stops there, at its
     ``rebuilt`` boundary (ADR-0004 amendment 2026-10-10), unless it planned the rebuild (``rebuild``: verifier mode,
     where it goes on to launch the rebuilt candidate's verifier). In checks mode the lease's custodian revalidates the
     rebuilt candidate, and the entry returns to VALIDATED for the Lead's next `integration_publish`."""
-    out = c.engine.integrate_publish(token=c.token(), expect_rev=rev, work_id=a["work_id"],
+    out = c.engine.integrate_publish(token=c.token(), work_id=a["work_id"],
                                      candidate=a.get("candidate"))
     if out.get("rebuilt") and not a.get("rebuild"):
         then = ("the lease's custodian validates the rebuilt candidate, and the entry returns to VALIDATED: publish "
@@ -166,7 +153,7 @@ def _publish(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return out
 
 
-def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+def _covered(c: Call, a: dict[str, Any]) -> dict[str, Any]:
     """A launch never runs as a step of its own: its dispatch's commit records it (``covers``), and its dispatch's step
     runner hands its run to the supervisor. Reaching this is a plan the journal would refuse at its opening."""
     raise errors.IllegalTransition("dispatch.launch is run 1 of the dispatch planned before it, recorded in that "
@@ -371,13 +358,13 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     judgments += sorted({j for p in planned for j in spec_for(p).required_judgments
                          if j in SI.ACCEPTANCES and j not in judgments})
     opened = c.engine.stage_open(
-        token=c.token(), expect_rev=a["expect_rev"], tool=t.name, contract_digest=contract_digest(t), arguments=a,
+        token=c.token(), tool=t.name, contract_digest=contract_digest(t), arguments=a,
         judgment_inputs=judgments, base_class=t.base_class, effective_class=effective_class(t, a),
         plan=[{"primitive": p["primitive"], "args": p.get("args") or {}} for p in plan], subject=c.subject,
         ingress=c.ctx.ingress, **({"auto_run": c.auto_run} if c.auto_run is not None else {}))  # M4-E E7b
-    intent, rev = opened["intent"], opened["revision"]
+    intent = opened["intent"]
     c.intent, c.binding = intent, opened["binding"]
-    return _run_steps(c, intent, plan, 1, rev)
+    return _run_steps(c, intent, plan, 1)
 
 
 def _contract_steps(t: contract.Tool, a: dict[str, Any], cards: int = 1,
@@ -403,9 +390,8 @@ def _covers(plan: list[dict[str, Any]], n: int, args: dict[str, Any]) -> bool:
     return launches(args) and n < len(plan) and plan[n]["primitive"] in COVERED_BY_PREVIOUS
 
 
-def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev: int) -> dict[str, Any]:
-    """Run ``plan`` from step ``first`` (1 for a new stage; the first uncommitted step for a continued one) from
-    revision ``rev``, stopping at the first refusal, and complete the intent when the last step launched. A launch
+def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int) -> dict[str, Any]:
+    """Run ``plan`` from step ``first``, stopping at the first refusal, and finish after the last step. A launch
     planned after its dispatch is recorded by that dispatch's commit, so it is never run on its own (``_covers``)."""
     outputs: list[dict[str, Any]] = []
     final = False
@@ -420,65 +406,22 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
             return _stop(c, intent, n, step["primitive"], refusal, outputs)
         covers = _covers(plan, n, args)
         final = n == len(plan) and not launches(args) and step["primitive"] not in AFTER_COMMIT
-        retried = False
-        while True:
-            try:
-                with SI.step(intent, n, retried=retried, final=final, covers=covers):
-                    out = STEP_RUNNERS[step["primitive"]](c, args, rev)
-                    c.running = None
-                break
-            except errors.StaleRevision as refusal:
-                try:
-                    drift = _drift(c, intent)
-                    retry = drift is None and not retried and _retryable(c, intent, step["primitive"], args)
-                except errors.AEWError as unchecked:
-                    # Deciding on the retry was itself refused (a policy edit awaiting adoption fails every digest
-                    # read): the stage stops on that refusal like any other, never escaping with its committed steps
-                    # unreported (#142 review, finding 2).
-                    return _stop(c, intent, n, step["primitive"], unchecked, outputs)
-                if drift is not None:  # rule 6 before rule 4: the stage never runs on under a policy it did not bind
-                    return _stop(c, intent, n, step["primitive"], drift, outputs)
-                if not retry:
-                    named = _call_again(intent, c, refusal)
-                    return _stop(c, intent, n, step["primitive"], named, outputs)
-                retried, rev = True, _revision(c)
-            except errors.HarnessLaunchFailed as failed:
-                # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands.
-                return _stop(c, intent, n, step["primitive"], failed, outputs, boundary="launch_failed")
-            except errors.AEWError as refusal:
-                # A publish that only rebuilt stops at the journal's `rebuilt` boundary (its typed result keeps the
-                # surface's vocabulary: refused, STALE_CANDIDATE, `published: false`).
-                return _stop(c, intent, n, step["primitive"], refusal, outputs,
-                             journal=REBUILT if refusal.details.get("reason") == REBUILT else None)
+        try:
+            with SI.step(intent, n, final=final, covers=covers):
+                out = STEP_RUNNERS[step["primitive"]](c, args)
+                c.running = None
+        except errors.HarnessLaunchFailed as failed:
+            return _stop(c, intent, n, step["primitive"], failed, outputs, boundary="launch_failed")
+        except errors.AEWError as refusal:
+            # A publish that only rebuilt keeps that outcome in the journal (M4-E E6a).
+            return _stop(c, intent, n, step["primitive"], refusal, outputs,
+                         journal=REBUILT if refusal.details.get("reason") == REBUILT else None)
         outputs.append(out)
-        rev = out["revision"]
         if covers:
             covered = n + 1
     if not final:  # the last step launched: its commit could not also complete the stage
-        _end(c, lambda r: c.engine.stage_close(token=c.token(), expect_rev=r, intent=intent))
+        _end(c, lambda: c.engine.stage_close(token=c.token(), intent=intent))
     return _payload(c, intent, outputs)
-
-
-def _call_again(intent: str, c: Call, refusal: errors.StaleRevision) -> errors.StaleRevision:
-    """A stale step that may not retry: name E133's known fresh-call continuation, or retain a partial intent for
-    explicit resolve (E137). Committed steps stand; judgment is never replayed automatically."""
-    si = c.engine.stage_intent(intent)
-    unit = c.engine.store.current()["work"].get(si["subject"]["id"]) or {}
-    way = (SA.way_on(si["tool"], si["arguments"], unit, committed=bool(si["steps"]))
-           if si["tool"] in SA.STARTS_AT else None)
-    if way is None:
-        from aew.surface.run import _stale
-
-        if (0 < len(si["steps"]) < len(si["plan"]) and _stale(c.engine, c.ctx) is None
-                and assess(c.engine, si)["safe_to_continue"]):
-            return errors.StaleRevision(
-                f"{refusal.message}. The committed steps stand. Call resolve with subject {intent}, choice continue "
-                "and your rationale on the current revision to recheck and run only the remaining steps, or choice "
-                "abandon to leave them undone. Nothing is retried automatically",
-                **{**refusal.details, "reason": "resolve_stage", "resolve": {"tool": "resolve", "subject": intent}})
-        return refusal
-    return errors.StaleRevision(f"{refusal.message}: {way['say']}",
-                                **{**refusal.details, "reason": "call_again", "call_again": way["tool"]})
 
 
 def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -552,36 +495,6 @@ def _unknown_guard(reasons: list[str]) -> dict[str, Any]:
     return {"status": UNKNOWN_STATUS, "reason_codes": reasons, "message": message}
 
 
-def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
-    """STALE_POLICY when the legality digest in force is not the one ``intent`` bound (rule 6)."""
-    bound = c.engine.stage_intent(intent)["binding"]["legality_digest"]
-    current = c.engine.policy_digests()["legality_digest"]
-    if current == bound:
-        return None
-    return errors.StalePolicy(f"{SI.LEGALITY_MOVED} since {intent} opened: its next step is not run. Read "
-                              "the projection again and decide anew", intent=intent, bound=bound, current=current)
-
-
-def _retryable(c: Call, intent: str, primitive: str, args: dict[str, Any]) -> bool:
-    """R5-1's five conditions, each read now (the legality digest is checked first, by :func:`_drift`)."""
-    from aew.surface.run import _stale  # the runner's own authority check (run imports this module)
-
-    si = c.engine.stage_intent(intent)
-    if JUDGMENT_BEARING in (spec_for(primitive).operation_class, si["effective_class"]):
-        return False
-    if c.engine.policy_digests()["legality_digest"] != si["binding"]["legality_digest"]:
-        return False
-    if _stale(c.engine, c.ctx) is not None:
-        return False
-    if si["generation"] != int(c.engine.store.current()["lead"]["generation"]):
-        return False
-    return availability(c, primitive, args) == AVAILABLE
-
-
-def _revision(c: Call) -> int:
-    return int(c.engine.store.current()["revision"])
-
-
 def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, outputs: list[dict[str, Any]], *,
           boundary: str | None = None, journal: str | None = None) -> dict[str, Any]:
     """Stop the stage at step ``n`` and end its intent, or leave it ACTIVE when the stop cannot be recorded. A step
@@ -594,25 +507,17 @@ def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, ou
     si = c.engine.stage_intent(intent)
     done = len(si["steps"])
     at = done + 1 if done < len(si["plan"]) else done
-    _end(c, lambda r: c.engine.stage_stop(token=c.token(), expect_rev=r, intent=intent, n=at, boundary=journal or where,
-                                          code=exc.code, message=redact(exc.message), reason=exc.details.get("reason"),
-                                          await_resolution=exc.details.get("reason") == "resolve_stage"
-                                          and isinstance(exc, errors.StaleRevision)))
+    _end(c, lambda: c.engine.stage_stop(token=c.token(), intent=intent, n=at, boundary=journal or where,
+                                          code=exc.code, message=redact(exc.message), reason=exc.details.get("reason")))
     return _payload(c, intent, outputs)
 
 
-def _end(c: Call, record: Callable[[int], dict[str, Any]]) -> None:
-    """Record the intent's end, following the revision across others' commits; a refusal of any other kind leaves the
-    intent ACTIVE, and says why."""
-    for _ in range(STOP_ATTEMPTS):
-        try:
-            record(_revision(c))
-            return
-        except errors.StaleRevision as exc:
-            c.left_active = exc
-        except errors.AEWError as exc:
-            c.left_active = exc
-            return
+def _end(c: Call, record: Callable[[], dict[str, Any]]) -> None:
+    """Record the boundary once. An authority or other refusal leaves the intent active."""
+    try:
+        record()
+    except errors.AEWError as exc:
+        c.left_active = exc
 
 
 def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -724,7 +629,7 @@ def dispose(c: Call) -> dict[str, Any]:
     policy marks ``requires_disposition``, or on an anomaly. One transaction, so no stage intent (like the
     checkpoint)."""
     a = c.a
-    out = c.engine.work_dispose(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"], choice=a["choice"],
+    out = c.engine.work_dispose(token=c.token(), subject=a["subject"], choice=a["choice"],
                                 rationale=a["rationale"], follow_up=a.get("follow_up"),
                                 binding=a.get("approval_digest"))
     c.subject = out.get("work_id")
@@ -737,7 +642,7 @@ def replace_gate(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a stuck gate (ITEMS 55; designer, addendum 4): a parent's mandatory gate that can never
     be satisfied, replaced on the record by one that can. One transaction, so no stage intent (like a disposition)."""
     a = c.a
-    out = c.engine.work_gate_replace(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"],
+    out = c.engine.work_gate_replace(token=c.token(), subject=a["subject"],
                                      replacement=a.get("replacement"), rationale=a["rationale"],
                                      binding=a.get("approval_digest"))
     c.subject = out.get("work_id")
@@ -750,7 +655,7 @@ def add_scope(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a Ticket's scope (register E126): one exact test path added on the record, signed when
     the choice is ``add_scope_signed``. One transaction, so no stage intent (like a disposition)."""
     a = c.a
-    out = c.engine.work_scope_add(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"],
+    out = c.engine.work_scope_add(token=c.token(), subject=a["subject"],
                                   rationale=a["rationale"], signed=a["choice"] == "add_scope_signed")
     c.subject = out.get("work_id")
     c.committed("work.scope_add", out, f"{out['work_id']} scope: `{out['path']}` added ({out['correction']})",
@@ -783,7 +688,7 @@ def resolve_stage(c: Call) -> dict[str, Any]:
     si = c.engine.stage_intent(sid)
     c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])
     if a["choice"] == "abandon":
-        c.engine.stage_abandon(token=c.token(), expect_rev=a["expect_rev"], intent=sid, rationale=a["rationale"])
+        c.engine.stage_abandon(token=c.token(), intent=sid, rationale=a["rationale"])
         return _payload(c, sid, [])
     digest_now, plan_now, missing = _contract_now(si)
     if si["status"] == SI.ACTIVE and missing:
@@ -797,7 +702,7 @@ def resolve_stage(c: Call) -> dict[str, Any]:
                 f"({', '.join(guard['reason_codes']) or 'by its guard'}). Abandon it (committed steps "
                 "stand) and decide anew from the projection", reason="next_step_blocked", intent=sid,
                 reason_codes=guard["reason_codes"])
-    out = c.engine.stage_continue(token=c.token(), expect_rev=a["expect_rev"], intent=sid,
+    out = c.engine.stage_continue(token=c.token(), intent=sid,
                                   contract_digest=digest_now, plan=plan_now, rationale=a["rationale"],
                                   binding=a.get("approval_digest"))
     if out["status"] == SI.STOPPED:  # the launching step's run never started, or has ended: never completed
@@ -808,4 +713,4 @@ def resolve_stage(c: Call) -> dict[str, Any]:
                      "error": _error(failed)}
     if out["status"] != SI.ACTIVE:
         return _payload(c, sid, [])
-    return _run_steps(c, sid, si["plan"], out["next"], out["revision"])
+    return _run_steps(c, sid, si["plan"], out["next"])

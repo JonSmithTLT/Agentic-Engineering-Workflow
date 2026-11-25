@@ -118,7 +118,7 @@ aew opencode
 - A pasted image reaches the Lead's model without its path or file name, so the Lead can't name it, read it again or hand it to a worker (OpenCode sends no local path to a server it doesn't treat as local; register E211). To keep the path for a file in the project, attach it with an `@` mention, or type its path and ask the Lead to read it.
 - If the Lead's server dies, nothing restarts it: the session ends, `aew opencode` exits non-zero, and its result says how to go on, which depends on the seat. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
 - AEW wakes the Lead when a run needs it, by posting to the session you last viewed, so the Lead ends its turn after a dispatch and you can talk to it meanwhile; `aew status` shows each wake under "Lead wakes".
-- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session that took the seat itself holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
+- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ...`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session that took the seat itself holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
 - Wakes have these limits:
   - **`/new`:** no session exists between `/new` and your first prompt, and the server gives no signal for that gap. A wake in it goes to the session you left and spends a turn there, and it doesn't show in the TUI. `aew status` shows it was posted, and to which session.
   - **A restart:** a wake before your first prompt in this launch is held for it, and `aew status` shows it outstanding. Nothing shows in the TUI until you type.
@@ -158,7 +158,7 @@ aew harness status [INV]                        # runs, their local status, and 
 aew harness send R-INV-0001-1 --file nudge.md   # a message to a running agent, at its next step boundary
 aew harness interrupt R-INV-0001-1              # stop the current turn and keep the session
 aew harness stop R-INV-0001-1 --reason "..."    # stop the harness; the invocation is unchanged
-aew harness launch INV-0001 --expect-rev N      # a new run of the same invocation (rotates its credential)
+aew harness launch INV-0001      # a new run of the same invocation (rotates its credential)
 ```
 
 - **A run's end moves nothing.** Whatever a run reports, the Ticket advances only when the Lead ingests evidence and makes the transition, as before.
@@ -204,7 +204,7 @@ aew harness config opencode --lead     # the Lead's (the same as `aew opencode -
 | Symptom | Meaning | What to do |
 |---|---|---|
 | The TUI crashed or was closed | runs continue; nothing is lost | `aew opencode` again, then `/aew-resume` |
-| A run is `lost` or `crashed` | the harness died; the Ticket and credential are unchanged | `aew harness launch INV --expect-rev N`, or `aew invoke cancel` |
+| A run is `lost` or `crashed` | the harness died; the Ticket and credential are unchanged | read the invocation with `aew harness status` and follow its `launch_argv`, or run `aew invoke cancel` |
 | A run is `ended_without_evidence`; `aew harness wait` exits 20 and its result starts with a `headline` | it stopped without its expected output | `aew harness send` a nudge while it runs, relaunch, or cancel |
 | A run is `crashed` with `reason_code: provider_auth_failed` | the model provider rejected the selected key | replace the stored API-key login or update the explicit export, then relaunch. A broker using an export must restart with the new environment. Each relaunch resolves the source again. |
 | `HARNESS_INCOMPATIBLE` | no binary, a version that is not V2, a missing API capability, or the pinned model or variant missing from the catalog | the message names the gap; check `AEW_OPENCODE_BIN`, the policy's model ids, and `provider_env` |

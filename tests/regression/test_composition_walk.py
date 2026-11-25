@@ -82,7 +82,7 @@ class Walk:
         return state["work"][wid] if wid in state["work"] else self.engine.work_show(wid)["control"]
 
     def lead(self, method: str, **kw: Any) -> Any:
-        return getattr(self.engine, method)(token=self.token, expect_rev=self.state()["revision"], **kw)
+        return getattr(self.engine, method)(token=self.token, **kw)
 
     def submit(self, inv_token: str, kind: str, meta: dict[str, Any]) -> str:
         text = f"---\n{dump_yaml(meta)}---\nwalk step\n"
@@ -249,7 +249,7 @@ class Walk:
 
     def handoff(self, wid: str) -> None:
         offer = self.lead("lead_handoff_offer")["offer"]
-        out = self.engine.lead_handoff_accept(offer=offer, expect_rev=self.state()["revision"])
+        out = self.engine.lead_handoff_accept(offer=offer, )
         self.token, self.gen = out["token"], out["generation"]
 
     def handoff_cancel(self, wid: str) -> None:
@@ -258,7 +258,7 @@ class Walk:
 
     def takeover(self, wid: str) -> None:
         self.mp.setattr(operator, "authorize", lambda *a, **k: {"authorized_by": "walk-operator-stub"})
-        out = self.engine.lead_takeover(expect_rev=self.state()["revision"], reason="walk: previous Lead lost")
+        out = self.engine.lead_takeover(reason="walk: previous Lead lost")
         self.token, self.gen = out["token"], out["generation"]
 
     def second_ticket(self, wid: str) -> None:

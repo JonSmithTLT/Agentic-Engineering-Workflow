@@ -15,7 +15,7 @@ from aew.engine.api import Engine
 
 
 def refusal(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -72,7 +72,7 @@ def test_a_finalizer_runs_inside_the_lead_transaction_before_its_commit(tmp_path
     seen = []
     engine._k.finalizers.steps.append(lambda ctx: seen.append((ctx.session.committed_revision, ctx.state["revision"])))
     before = p.rev()
-    out = engine.checkpoint(token=p.token, expect_rev=before, note="finalizer")
+    out = engine.checkpoint(token=p.token, note="finalizer")
     assert seen == [(None, before)] and out["revision"] == before + 1
 
     def refuse(ctx):
@@ -80,5 +80,5 @@ def test_a_finalizer_runs_inside_the_lead_transaction_before_its_commit(tmp_path
 
     engine._k.finalizers.steps.append(refuse)
     with pytest.raises(RuntimeError, match="finalizer refused"):
-        engine.checkpoint(token=p.token, expect_rev=before + 1, note="refused")
+        engine.checkpoint(token=p.token, note="refused")
     assert p.rev() == before + 1  # nothing was committed

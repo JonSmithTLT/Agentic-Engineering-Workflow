@@ -52,8 +52,7 @@ def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, live=Fal
 
 def send(lab, body="Check the shutdown edge."):
     engine = Engine.discover(lab.root)
-    return engine.message_record_lead(token=lab.project.token, expect_rev=engine.store.read()["revision"],
-                                      to="INV-0001", body=body)
+    return engine.message_record_lead(token=lab.project.token, to="INV-0001", body=body)
 
 
 def steps_done(lab, run, i, bound):
@@ -223,10 +222,8 @@ def test_final_worker_reply_survives_submit_seal_and_a_post_submit_continuation(
     # Local receipt must not prevent the final reply from entering the settled unseen list at ingestion.
     current = e.store.read()
     if current["work"][inv["work_unit"]]["state"] == "ASSIGNED":
-        e.work_transition(token=lab.project.token, expect_rev=current["revision"],
-                          work_id=inv["work_unit"], to="RUNNING")
-    e.work_transition(token=lab.project.token, expect_rev=e.store.read()["revision"],
-                      work_id=inv["work_unit"], to="REVIEW_PENDING")
+        e.work_transition(token=lab.project.token, work_id=inv["work_unit"], to="RUNNING", prior_value="ASSIGNED")
+    e.work_transition(token=lab.project.token, work_id=inv["work_unit"], to="REVIEW_PENDING", prior_value="RUNNING")
     settled = e.message_attention()["awaiting_lead"]
     assert [m["id"] for m in settled] == [mid] and "seal" in settled[0]
     assert e.message_delivery_view()["awaiting_lead"] == []
@@ -249,8 +246,8 @@ def test_adopting_messaging_off_refuses_every_enabled_snapshot_worker_operation(
     e = Engine.discover(lab.root)
     before = e.message_thread("INV-0001")
     set_messaging(lab.root, "disabled")
-    e.manifest_adopt(token=lab.project.token, expect_rev=e.store.read()["revision"],
-                     reason="disable messaging after the launch snapshot", authorization=OPERATOR)
+    e.manifest_adopt(token=lab.project.token, reason="disable messaging after the launch snapshot",
+                     authorization=OPERATOR, binding=e.manifest_approval())
     (sync / "go").touch()
     for i in (2, 3, 4):
         result = steps_done(lab, run, i, "wait.condition")

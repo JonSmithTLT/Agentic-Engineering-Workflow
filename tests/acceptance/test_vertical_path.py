@@ -118,8 +118,7 @@ def open_session(op: Operator, step: str, *, steering: bool = False, credential_
         op.workaround("reopen" if step == "reopen" else "open",
                       "aew lead acquire; export AEW_LEAD_TOKEN=<credential>; aew opencode", step=step)
         if not op.credential:
-            acquired = op.type(f"{step}:acquire", ["lead", "acquire", "--expect-rev", "0", "--session-label",
-                                                   "operator"])
+            acquired = op.type(f"{step}:acquire", ["lead", "acquire", "--session-label", "operator"])
             assert acquired.returncode == 0, acquired.stderr
             op.credential = acquired.json["token"]
             op.lab.project.token = op.credential

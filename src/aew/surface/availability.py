@@ -43,6 +43,14 @@ def _same_unit(**fixed: Any) -> StepArgs:
     return lambda a: {"work_id": a.get("work_id"), **fixed}
 
 
+def _transition(to: str, *, from_step: str | None = None, evidence: str | None = None) -> StepArgs:
+    def args(a: dict[str, Any]) -> dict[str, Any]:
+        prior = from_step if evidence is None or a.get(evidence) else None
+        return {"work_id": a.get("work_id"), "to": to, "prior_value": prior or a.get("prior_value")}
+
+    return args
+
+
 def _create(a: dict[str, Any]) -> dict[str, Any]:
     """``ticket_draft``'s call as ``work.create``'s request (the CLI's names)."""
     return {"kind": "ticket", "title": a.get("title"), "risk_class": a.get("risk_class"),
@@ -171,11 +179,15 @@ def _publish_applies(*cases: str, verifier: bool = False) -> Callable[[Any, dict
 # integration verification and the rebuilt candidate's verifier (plan v3 §2.3, B2.5 and T3).
 STAGES: dict[str, tuple[StepArgs, ...]] = {
     "ticket_draft": (_create, _propose),
-    "ticket_start": (_same_unit(launch=True), _same_unit(), _same_unit(to="RUNNING")),
-    "ticket_request_review": (_same_unit(to="REVIEW_PENDING"), _same_unit(role="reviewer"), _same_unit()),
-    "ticket_request_verification": (_review_ingest, _same_unit(to="VERIFY_PENDING"), _same_unit(role="verifier"),
-                                    _same_unit()),
-    "ticket_prepare": (_verification_ingest, _same_unit(to="COMMIT_READY"), _same_unit(),
+    "ticket_start": (_same_unit(launch=True), _same_unit(), _transition("RUNNING", from_step="ASSIGNED")),
+    "ticket_request_review": (_transition("REVIEW_PENDING"), _same_unit(role="reviewer"), _same_unit()),
+    "ticket_request_verification": (_review_ingest,
+                                    _transition("VERIFY_PENDING", from_step="REVIEW_PASSED",
+                                                evidence="review_evidence"),
+                                    _same_unit(role="verifier"), _same_unit()),
+    "ticket_prepare": (_verification_ingest,
+                       _transition("COMMIT_READY", from_step="VERIFIED", evidence="verification_evidence"),
+                       _same_unit(),
                        _same_unit(role="verifier", scope="integration"), _same_unit()),
     "integration_publish": (_integration_ingest, _same_unit(), _same_unit(role="verifier", scope="integration"),
                             _same_unit()),

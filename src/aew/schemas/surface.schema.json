@@ -112,10 +112,9 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["expect_rev", "subject", "choice", "replacement", "approval_digest"],
+            "required": ["subject", "choice", "replacement", "approval_digest"],
             "additionalProperties": false,
             "properties": {
-              "expect_rev": {"type": "integer", "minimum": 0},
               "subject": {"type": "string"},
               "choice": {"const": "replace_gate"},
               "replacement": {"type": "string"},

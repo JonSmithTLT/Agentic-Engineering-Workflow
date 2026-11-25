@@ -241,30 +241,25 @@ class Operator:
         """``aew manifest adopt``, as the quickstart documents it, confirmed at the operator's terminal (in-process)."""
         from aew.engine.api import Engine
 
-        rev = self.rev()  # read from `aew status`, as the quickstart says
-        self.typed(f"{step}:status", "aew status")
-        self.typed(step, f'aew manifest adopt --reason "{reason}" --expect-rev {rev}',
-                   ["manifest", "adopt", "--reason", reason, "--expect-rev", str(rev)])
+        self.typed(step, f'aew manifest adopt --reason "{reason}"', ["manifest", "adopt", "--reason", reason])
         self.typed(f"{step}:prompt", self.credential)  # at the hidden prompt it asks with (CS-4 addendum 12)
-        Engine.discover(self.root).manifest_adopt(token=self.credential, expect_rev=rev, reason=reason,
-                                                  authorization={"authorized_by": "operator-tty"})
+        engine = Engine.discover(self.root)
+        engine.manifest_adopt(token=self.credential, reason=reason, binding=engine.manifest_approval(),
+                              authorization={"authorized_by": "operator-tty"})
 
     def takeover(self, step: str, reason: str) -> None:
         """``aew lead takeover`` at the operator's terminal (the challenge channel substituted in-process, as AT-1)."""
         import aew.operator
         from aew.engine.api import Engine
 
-        rev = self.rev()
-        self.typed(f"{step}:status", "aew status")
         original = aew.operator.authorize
         aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (vertical UAT)"}
         try:
-            token = Engine.discover(self.root).lead_takeover(expect_rev=rev, reason=reason,
-                                                             session_label="operator")["token"]
+            token = Engine.discover(self.root).lead_takeover(reason=reason, session_label="operator")["token"]
         finally:
             aew.operator.authorize = original
-        self.typed(step, f'aew lead takeover --reason "{reason}" --expect-rev {rev}',
-                   ["lead", "takeover", "--reason", reason, "--expect-rev", str(rev)], shown=token)
+        self.typed(step, f'aew lead takeover --reason "{reason}"',
+                   ["lead", "takeover", "--reason", reason], shown=token)
         self.credential = token
         self.lab.project.token = token
 

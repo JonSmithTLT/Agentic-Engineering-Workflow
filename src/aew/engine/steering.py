@@ -420,8 +420,7 @@ class Steering:
                                "source": now["source"], "record": now["record"],
                                "override_record": approval.override_value(state)}
         if now["mode"] in ("walk", "run"):
-            out["lower_arguments"] = {"action": "lower", "expect_rev": state["revision"],
-                                      "prior_value": out["override_record"]}
+            out["lower_arguments"] = {"action": "lower", "prior_value": out["override_record"]}
         if now.get("ended"):
             out["ended_override"] = now["ended"]
         if default is not None and is_raise(default, now["mode"]):
@@ -549,12 +548,12 @@ class Steering:
 
     # ------------------------------------------------------------------ the Lead's own (A1 §1.2)
 
-    def lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+    def lower(self, *, token: str, mode: str, rationale: str = "",
               prior_value: str | None = None) -> dict[str, Any]:
         """The Lead lowers its effective mode for its own generation (a restriction, never authority)."""
         if mode not in ("crawl", "walk"):
             raise UsageError("a Lead lowers to crawl or walk")
-        with self.k.lead_txn(token, expect_rev, "steering.lower") as ctx:
+        with self.k.lead_txn(token, "steering.lower") as ctx:
             state = ctx.state
             self._require_configured()
             previous = approval.override_value(state)
@@ -577,10 +576,10 @@ class Steering:
         out = {"ok": True, "record": record, "previous": now, "mode": mode, "override_record": record,
                "revision": revision}
         if mode == "walk":
-            out["lower_arguments"] = {"action": "lower", "expect_rev": revision, "prior_value": record}
+            out["lower_arguments"] = {"action": "lower", "prior_value": record}
         return out
 
-    def request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
+    def request(self, *, token: str, kind: str, rationale: str, mode: str | None = None,
                 action_ref: str | None = None) -> dict[str, Any]:
         """Record the Lead's request for a raise or a confirmation. It grants nothing: only the operator, at the
         endpoint, can raise or confirm (A1 §1.3). One raise request is open at a time (a new one replaces it), and a
@@ -589,7 +588,7 @@ class Steering:
             raise UsageError("a request is for a raise or a confirmation")
         if not rationale.strip():
             raise UsageError("a request carries its rationale")
-        with self.k.lead_txn(token, expect_rev, "steering.request") as ctx:
+        with self.k.lead_txn(token, "steering.request") as ctx:
             state = ctx.state
             self._require_configured()
             generation = int(state["lead"]["generation"])

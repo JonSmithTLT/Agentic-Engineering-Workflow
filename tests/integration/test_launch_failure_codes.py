@@ -51,7 +51,7 @@ def dispatched(lab: HarnessLab, tmp_path: Path) -> str:
 def launch_failure(lab: HarnessLab, inv: str) -> errors.HarnessLaunchFailed:
     p = lab.project
     with pytest.raises(errors.HarnessLaunchFailed) as failed:
-        Engine.discover(p.root).harness_launch(token=p.token, expect_rev=p.rev(), invocation=inv)
+        Engine.discover(p.root).harness_launch(token=p.token, invocation=inv, prior_value="none")
     return failed.value
 
 
@@ -80,11 +80,11 @@ def refuse(lab, tmp_path, monkeypatch) -> tuple[dict[str, Any] | None, errors.Ha
     pause = paused_at_custody(tmp_path, monkeypatch)
     p = lab.project
     failed: list[BaseException] = []
-    expect_rev = p.rev()
+    p.rev()
 
     def launch() -> None:
         try:
-            Engine.discover(p.root).harness_launch(token=p.token, expect_rev=expect_rev, invocation=inv)
+            Engine.discover(p.root).harness_launch(token=p.token, invocation=inv, prior_value="none")
         except BaseException as exc:  # handed to the test thread, which checks it
             failed.append(exc)
 

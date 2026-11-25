@@ -587,12 +587,12 @@ def test_a_run_file_is_retired_only_after_its_last_line_is_read(project, monkeyp
 
 def _handoff(project, monkeypatch) -> None:
     engine = Engine.discover(project.root)
-    offer = engine.lead_handoff_offer(token=project.token, expect_rev=project.rev())["offer"]
-    project.token = engine.lead_handoff_accept(offer=offer, expect_rev=project.rev())["token"]
+    offer = engine.lead_handoff_offer(token=project.token, )["offer"]
+    project.token = engine.lead_handoff_accept(offer=offer, )["token"]
 
 
 def _release(project, monkeypatch) -> None:
-    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
+    Engine.discover(project.root).lead_release(token=project.token, )
 
 
 @pytest.mark.parametrize("reason,end", [("takeover", takeover), ("handoff", _handoff), ("release", _release)])

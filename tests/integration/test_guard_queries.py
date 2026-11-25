@@ -82,7 +82,9 @@ def test_explain_answers_a_stage_per_step_from_its_guards(ready):
 
 
 def _transition(engine: Engine, p: Any, wid: str, to: str, reason: str | None = None) -> Callable[[int], Any]:
-    return lambda rev: engine.work_transition(token=p.token, expect_rev=rev, work_id=wid, to=to, reason=reason)
+    unit = engine.store.read()["work"].get(wid, {})
+    return lambda rev: engine.work_transition(token=p.token, work_id=wid, to=to, reason=reason,
+                                              prior_value=unit.get("state"))
 
 
 def test_guard_query_matches_execute_work_transition_and_implementer_active(ready):
@@ -119,7 +121,7 @@ def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path)
     engine = Engine.discover(p.root)
     answer = engine.guard_query("work.transition", wid, {"to": "RUNNING"})
     assert answer["availability"] == UNKNOWN and answer["not_queryable"] == "implementer_active"
-    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="RUNNING")
+    engine.work_transition(token=p.token, work_id=wid, to="RUNNING", prior_value="ASSIGNED")
     assert engine.store.read()["work"][wid]["state"] == "RUNNING"
     # Its ingest is another kind's too (the KindRegistry selects it): not migrated, UNKNOWN.
     ingest = engine.guard_query("review.ingest", wid, {"evidence": "EV-0001"})
@@ -194,7 +196,7 @@ def test_guard_query_matches_execute_ready_for_verification_without_review(ready
 
 
 def _ingest(engine: Engine, p: Any, wid: str, evidence: str) -> Callable[[int], Any]:
-    return lambda rev: engine.review_ingest(token=p.token, expect_rev=rev, work_id=wid, evidence_id=evidence)
+    return lambda rev: engine.review_ingest(token=p.token, work_id=wid, evidence_id=evidence)
 
 
 @pytest.fixture
@@ -243,7 +245,7 @@ def test_guard_query_matches_execute_disposition_required(implemented):
     evidence = review(p, wid, findings=[{"id": "F1", "severity": "minor", "summary": "a nit", "required": False}])
     answer = equivalent(engine, "review.ingest", wid, {"evidence": evidence}, _ingest(engine, p, wid, evidence))
     assert answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
-    engine.work_dispose(token=p.token, expect_rev=p.rev(), subject=f"{evidence}#F1", choice="accept_risk",
+    engine.work_dispose(token=p.token, subject=f"{evidence}#F1", choice="accept_risk",
                         rationale="a nit")
     assert equivalent(engine, "review.ingest", wid, {"evidence": evidence},
                       _ingest(engine, p, wid, evidence))["availability"] == AVAILABLE
@@ -300,8 +302,8 @@ def test_ticket_request_verification_is_composed_from_the_ingest_and_what_it_pro
     assert found["steps"][1]["produced_by"] == {"state": 1, "evidence": 1}
     assert engine.store.read()["work"][wid]["state"] == "REVIEW_PENDING"  # asking changed nothing
     # The primitives the stage would run, run directly, agree with each step's answer.
-    engine.review_ingest(token=p.token, expect_rev=p.rev(), work_id=wid, evidence_id=report)
-    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+    engine.review_ingest(token=p.token, work_id=wid, evidence_id=report)
+    engine.work_transition(token=p.token, work_id=wid, to="VERIFY_PENDING", prior_value="REVIEW_PASSED")
     assert p.lead("invoke", "create", wid, "--role", "verifier")["role"] == "verifier"
 
 
@@ -318,9 +320,9 @@ def test_a_failing_review_blocks_the_verification_stage_where_it_would_stop(impl
     assert found["availability"] == BLOCKED and [s["availability"] for s in found["steps"][:2]] == [
         AVAILABLE, BLOCKED]
     assert found["steps"][1]["reason_codes"] == ["ILLEGAL_TRANSITION"]
-    engine.review_ingest(token=p.token, expect_rev=p.rev(), work_id=wid, evidence_id=report)
+    engine.review_ingest(token=p.token, work_id=wid, evidence_id=report)
     with pytest.raises(AEWError) as refused:
-        engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+        engine.work_transition(token=p.token, work_id=wid, to="VERIFY_PENDING", prior_value="REVIEW_FAILED")
     assert refused.value.code == "ILLEGAL_TRANSITION"
 
 
@@ -331,7 +333,7 @@ DRAFT = {"kind": "ticket", "title": "Add multiply()", "risk_class": 1, "scope_pa
 
 
 def _create(engine: Engine, p: Any, fields: dict[str, Any]) -> Callable[[int], Any]:
-    return lambda rev: engine.work_create(token=p.token, expect_rev=rev, **fields)
+    return lambda rev: engine.work_create(token=p.token, **fields)
 
 
 @pytest.mark.parametrize(("change", "code"), [
@@ -369,7 +371,7 @@ def test_guard_query_matches_execute_work_create(ready):
 
 
 def _propose(engine: Engine, p: Any, wid: str, fields: dict[str, Any]) -> Callable[[int], Any]:
-    return lambda rev: engine.plan_propose(token=p.token, expect_rev=rev, work_id=wid, **fields)
+    return lambda rev: engine.plan_propose(token=p.token, work_id=wid, **fields)
 
 
 def test_guard_query_matches_execute_plan_propose(ready):
@@ -432,7 +434,7 @@ def test_guard_query_matches_execute_a_state_hooks_refusal(tmp_path, to):
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
-    crashed = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()),
+    crashed = p.aew(*p.lead_args("integrate", "publish", wid),
                     env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_publishing_record"})
     assert crashed.returncode == 86
     engine = Engine.discover(p.root)
@@ -471,7 +473,7 @@ def test_the_ingest_predicts_reviews_still_pending_as_the_ingest_leaves_them(tmp
     equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, general))
     assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "REVIEW_PENDING"
     with pytest.raises(AEWError) as refused:
-        engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
+        engine.work_transition(token=p.token, work_id=wid, to="VERIFY_PENDING", prior_value="REVIEW_PENDING")
     assert refused.value.code == stage["steps"][1]["reason_codes"][0]
     special = review(p, wid, specialty="security")
     args = {"evidence": special}
@@ -536,7 +538,7 @@ def test_one_read_only_answer_computes_a_gate_context_once_per_state(implemented
 
 def _verify_ingest(engine: Engine, p: Any, wid: str, evidence: str, scope: str = "ticket") -> Callable[[int], Any]:
     """The primitive's own execute entry: `verify.ingest` (``ticket``) or `verify.ingest.integration`."""
-    return lambda rev: engine.verify_ingest(token=p.token, expect_rev=rev, work_id=wid, evidence_id=evidence,
+    return lambda rev: engine.verify_ingest(token=p.token, work_id=wid, evidence_id=evidence,
                                             scope=scope)
 
 
@@ -616,7 +618,7 @@ def test_guard_query_matches_execute_all_gates_current(reviewed):
 
 
 def _prepare(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
-    return lambda rev: engine.integrate_prepare(token=p.token, expect_rev=rev, work_id=wid)
+    return lambda rev: engine.integrate_prepare(token=p.token, work_id=wid)
 
 
 def untouched(p: Any) -> Callable[[], None]:
@@ -749,14 +751,15 @@ def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
     assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "verification is already ingested" in (
         answer["blocking_conditions"][0]["message"])
     assert "candidate is leased for publishing" in answer["blocking_conditions"][0]["message"]
-    assert f"aew integrate publish {wid} --expect-rev N" in answer["blocking_conditions"][0]["message"]
+    assert f"aew integrate publish {wid} --candidate" in answer["blocking_conditions"][0]["message"]
 
 
 # ------------------------------------------------------------------------------------- integrate.publish (M4-E E4b)
 
 
 def _publish(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
-    return lambda rev: engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+    candidate = (engine.store.read()["work"][wid].get("integration") or {}).get("candidate")
+    return lambda rev: engine.integrate_publish(token=p.token, work_id=wid, candidate=candidate)
 
 
 def test_guard_query_matches_execute_integrate_publish(tmp_path):
@@ -822,7 +825,8 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
 
     check = stage.guard_check(engine, "integrate.publish", {"work_id": wid})
     assert check["status"] == stage.BLOCKED_WITH_DISPOSITION and "rebuild" in check["message"]
-    out = engine.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid)
+    candidate = engine.store.read()["work"][wid]["integration"]["candidate"]
+    out = engine.integrate_publish(token=p.token, work_id=wid, candidate=candidate)
     assert out["ok"] is False and out["rebuilt"] is True
     assert engine.store.read()["work"][wid]["state"] == "COMMIT_READY"  # nothing published
 
@@ -885,7 +889,8 @@ def test_the_publish_branches_on_the_querys_outcome_alone(tmp_path, monkeypatch)
     engine = Engine.discover(p.root)
     monkeypatch.setattr(engine._integration, "publish_query", lambda state, work_id, args: None)
     rev = p.rev()
+    candidate = engine.store.read()["work"][wid]["integration"]["candidate"]
     with pytest.raises(AEWError) as refused:
-        engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+        engine.integrate_publish(token=p.token, work_id=wid, candidate=candidate)
     assert refused.value.code == "INTEGRITY_ERROR" and p.rev() == rev
     assert engine.store.read()["work"][wid]["integration"]["status"] == "prepared"

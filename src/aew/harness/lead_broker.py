@@ -5,7 +5,7 @@ raw Lead credential**. ``aew lead session -- <harness command>`` holds the Lead 
 memory, serves a Lead bridge, and runs the Lead's harness (an OpenCode TUI in ``aew opencode``) with
 only the bridge's coordinates in its environment. The ``aew`` CLI routes every Lead-authenticated
 command to the bridge when no credential is supplied, and the broker runs the same command handler with
-the held credential, so the engine's checks (current Lead, expected revision) stay authoritative.
+the held credential, so the engine's checks (current Lead authority and scoped bindings) stay authoritative.
 
 It is the invocation bridge (``bridge.BridgeServer``: JSON only, key challenge, exact arguments,
 redaction, drain) with these operations: ``lead.cli {argv, cwd, stdin}`` relays one Lead-authenticated command,
@@ -57,7 +57,6 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
-from aew.harness.contract import EXPECT_REV
 from aew.maps.query import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
@@ -1127,7 +1126,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                              f"{result['generation']}; carried: {carried}; processes left: "
                              f"{seat.describe_leftovers(previous)}\n")
         else:
-            result = engine.lead_acquire(expect_rev=state["revision"], session_label=session_label,
+            result = engine.lead_acquire(session_label=session_label,
                                          kind=opencode_kind or seat.LEAD_ACQUIRE)
         token = result.pop("token")
         generation = result["generation"]
@@ -1203,7 +1202,7 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
     left = seat.remaining(previous, survivors, ownership)
     if not (keep_seat or active or left is None or left) and state["lead"]["status"] == "active":
-        engine.lead_release(token=token, expect_rev=state["revision"])
+        engine.lead_release(token=token, )
         return "released"
     if opencode:
         seat.write_leftovers(engine.aew_root, generation, left)
@@ -1213,7 +1212,7 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     if left is None or left:
         outcome = f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
         if left is None or isinstance(left, int):
-            outcome += (f"; to free the seat instead, run `aew lead takeover --reason <reason> {EXPECT_REV}` "
-                        f"at your own terminal, then `aew lead release {EXPECT_REV}` with the new revision")
+            outcome += ("; to free the seat instead, run `aew lead takeover --reason <reason>` "
+                        "at your own terminal, then `aew lead release` with the new revision")
         return outcome
     return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

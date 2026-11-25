@@ -201,8 +201,6 @@ def main() -> None:
                     continue
                 for value in values:
                     args = {k: a.ticket if k == "work_id" else TOOL_DEFAULTS.get(k, "r") for k in required}
-                    if "expect_rev" in props:
-                        args["expect_rev"] = engine.store.read()["revision"]
                     if "timeout_s" in props:
                         args["timeout_s"] = 1
                     args[key] = value if spec["type"] == "string" else [value]

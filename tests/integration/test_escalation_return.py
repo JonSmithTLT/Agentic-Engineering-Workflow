@@ -44,7 +44,7 @@ def show(p, wid):
 
 
 def err(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -272,7 +272,8 @@ def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None
     answer = engine.guard_query("work.transition", wid, {"to": to, "reason": "r"})
     rev = engine.store.read()["revision"]
     try:
-        engine.work_transition(token=p.token, expect_rev=rev, work_id=wid, to=to, reason="r")
+        engine.work_transition(token=p.token, work_id=wid, to=to, reason="r",
+                               prior_value=engine.prior_value("work_transition", wid))
     except AEWError as exc:
         assert answer["availability"] == BLOCKED, (to, answer, exc.message)
         [blocker] = answer["blocking_conditions"]
@@ -360,8 +361,8 @@ def test_a_return_with_no_guard_to_recheck_is_refused_and_names_one_that_has(tmp
         code, why, details, _ = _attempt(engine, p, wid, "REVIEW_PENDING")
         assert (code, why) == ("GATE_UNSATISFIED", reason) and details is not None, (code, why, details)
         assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
-        engine.work_transition(token=p.token, expect_rev=engine.store.read()["revision"], work_id=wid, to="RUNNING",
-                               reason="the named return")
+        engine.work_transition(token=p.token, work_id=wid, to="RUNNING",
+                               reason="the named return", prior_value="ESCALATED")
         assert show(p, wid)["state"] == "RUNNING"
         monkeypatch.undo()
     assert_control_invariants(p)
@@ -384,7 +385,7 @@ def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the
     def attempt(op: Any) -> AEWError | None:
         rev = engine.store.read()["revision"]
         try:
-            op(token=p.token, expect_rev=rev, work_id=wid, to="RUNNING", reason="the operator answered")
+            op(token=p.token, work_id=wid, to="RUNNING", reason="the operator answered")
         except AEWError as exc:
             assert engine.store.read()["revision"] == rev
             return exc

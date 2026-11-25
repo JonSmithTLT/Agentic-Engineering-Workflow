@@ -187,7 +187,7 @@ def take_over(e: Engine) -> None:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        e.lead_takeover(expect_rev=int(e.store.read()["revision"]), reason="the Lead's session was lost",
+        e.lead_takeover(reason="the Lead's session was lost",
                         session_label="operator")
     finally:
         aew.operator.authorize = original
@@ -381,7 +381,8 @@ def test_custody_worker_commits_nothing_after_its_custodian_ends(tmp_path, conta
     if ending == "takeover":
         take_over(e)
     else:
-        e.integrate_defer(token=p.token, expect_rev=p.rev(), work_id=wid, reason="set aside")
+        e.integrate_defer(token=p.token, work_id=wid, reason="set aside",
+                          prior_value=e.prior_value("integrate_defer", wid))
     rev = p.rev()
     assert e.custody_step(custodian, custody[custodian]) == (CO.ENDED, None)
     with pytest.raises(StaleAuthority):
@@ -496,9 +497,9 @@ def test_custody_credential_refused_outside_the_closed_family(tmp_path, containe
             with e._k.custody_txn(credential, op):
                 pass
     with pytest.raises(PermissionDenied):
-        e.work_transition(token=credential, expect_rev=rev, work_id=wid, to="RUNNING")
+        e.work_transition(token=credential, work_id=wid, to="RUNNING")
     with pytest.raises(PermissionDenied):
-        e.integrate_publish(token=credential, expect_rev=rev, work_id=wid)
+        e.integrate_publish(token=credential, work_id=wid)
     with pytest.raises(PermissionDenied):
         A.require_invocation(control(p), credential, None)
     assert p.rev() == rev
@@ -517,13 +518,13 @@ def test_custody_credential_revoked_on_each_trigger(tmp_path, contained, custody
     if trigger == "custodian_death":
         e.custody_register(credential)
         monkeypatch.setattr(procs, "same_process", lambda pid, started: False)
-        e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
+        e.checkpoint(token=p.token, note="any Lead commit runs sync")
     elif trigger == "generation":
         take_over(e)
     elif trigger in ("cancel", "reconcile"):
-        e.invoke_cancel(token=p.token, expect_rev=p.rev(), invocation=custodian, reason="stop it")
+        e.invoke_cancel(token=p.token, invocation=custodian, reason="stop it")
         if trigger == "reconcile":
-            e.integrate_reconcile(token=p.token, expect_rev=p.rev(), work_id=wid)
+            e.integrate_reconcile(token=p.token, work_id=wid)
             assert lease(p) is None
     else:
         e.custody_step(custodian, credential)  # validates: its lease ends, VALIDATED
@@ -593,16 +594,16 @@ def test_dead_custody_worker_marks_reconcile(tmp_path, contained, custody, monke
     e.custody_register(custody[custodian])
     worker = control(p)["invocations"][custodian]["worker"]
     assert worker["host_pid"] and worker["started_at"]
-    e.checkpoint(token=p.token, expect_rev=p.rev(), note="a live worker is never ended")
+    e.checkpoint(token=p.token, note="a live worker is never ended")
     assert lease(p)["reconcile"] is None
     monkeypatch.setattr(procs, "same_process", lambda pid, started: False)
-    e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
+    e.checkpoint(token=p.token, note="any Lead commit runs sync")
     held = lease(p)
     assert held["reconcile"] is not None and "custody worker" in held["reconcile"]["reason"]
     assert control(p)["invocations"][custodian]["status"] == "interrupted"
     assert entry(p, wid)["state"] == "LEASED"  # nothing released by it
     assert_control_invariants(p)
-    e.integrate_reconcile(token=p.token, expect_rev=p.rev(), work_id=wid)
+    e.integrate_reconcile(token=p.token, work_id=wid)
     assert lease(p) is None and entry(p, wid)["state"] == "QUEUED"
 
 
@@ -620,7 +621,7 @@ def test_unregistered_custodian_marks_reconcile(tmp_path, contained, custody):
     wid, custodian, _out = prepared(p, tmp_path)
     e = engine(p)
     time.sleep(2.5)
-    e.checkpoint(token=p.token, expect_rev=p.rev(), note="past the bound")
+    e.checkpoint(token=p.token, note="past the bound")
     held = lease(p)
     assert held["reconcile"] is not None and "no custody worker registered" in held["reconcile"]["reason"]
     assert control(p)["invocations"][custodian]["status"] == "interrupted" and entry(p, wid)["state"] == "LEASED"
@@ -645,15 +646,15 @@ def test_broker_spawned_custody_worker_registers(tmp_path, monkeypatch):
     monkeypatch.setenv("AEW_LEAD_BROKER_KEY", "00" * 16)
     monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
     e = Engine.discover(p.root)
-    e.integrate_prepare(token=p.token, expect_rev=int(e.store.read()["revision"]), work_id=wid)
+    e.integrate_prepare(token=p.token, work_id=wid)
     custodian = lease(p)["custodian"]
     _wait_for(lambda: "worker" in control(p)["invocations"][custodian], "the custody worker to register",
               "wait.custody")
     worker = control(p)["invocations"][custodian]["worker"]
     assert procs.pid_alive(worker["host_pid"])
     assert control(p)["last_transition"]["actor"]["kind"] == "custodian"
-    e.integrate_defer(token=p.token, expect_rev=int(e.store.read()["revision"]), work_id=wid,
-                      reason="end the custody")
+    e.integrate_defer(token=p.token, work_id=wid, reason="end the custody",
+                      prior_value=e.prior_value("integrate_defer", wid))
     _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit", "wait.custody")
     assert_control_invariants(p)
 
@@ -664,7 +665,7 @@ def test_lead_shell_custody_run_commits_nothing(tmp_path, custody):
     p = sample_project(tmp_path)
     wid, _impl = to_commit_ready(p, tmp_path)
     e = Engine.discover(p.root)
-    e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+    e.integrate_prepare(token=p.token, work_id=wid)
     custodian = lease(p)["custodian"]
     rev = p.rev()
     refused = run_aew("-C", str(p.root), "integrate", "custody", custodian,
@@ -689,7 +690,7 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     seen: dict[str, Any] = {}
     real = e._integration._finish_publish
 
-    def finish(token: str, expect_rev: int, work_id: str, **kw: Any) -> dict[str, Any]:
+    def finish(token: str, work_id: str, **kw: Any) -> dict[str, Any]:
         held = lease(p)
         seen["custodian"] = custodian = held["custodian"]
         rev = p.rev()
@@ -699,10 +700,10 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
         seen["between"] = e.custody_step(custodian, custody[custodian])
         seen["committed"] = p.rev() != rev
         monkeypatch.setattr(e._integration, "_finish_publish", real)  # the registration lands once
-        return real(token, expect_rev, work_id, **kw)  # the revision the intent's commit returned, now stale
+        return real(token, work_id, **kw)
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
-    out = e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid, candidate=candidate)
+    out = e.integrate_publish(token=p.token, work_id=wid, candidate=candidate)
     assert out["state"] == "DONE"
     assert seen["registered"]
     assert seen["between"] == (CO.WAITING, None) and not seen["committed"]
@@ -823,7 +824,7 @@ def test_a_verifiers_clean_report_is_a_publish_decision_that_takes_the_ticket_to
         assert decision["availability"] == "AVAILABLE"
         assert decision["arguments"]["verification_evidence"] == decision["evidence"][0]
         assert decision["arguments"]["prepared_candidate"] == control(p)["work"][wid]["integration"]["candidate"]
-        arguments = {**decision["arguments"], "expect_rev": p.rev()}
+        arguments = {**decision["arguments"], }
         done_ = R.run_tool(engine(p), CTX, decision["tool"], arguments, token=p.token)
         assert done_["ok"], done_["stopped"]
         assert done(p, wid)
@@ -850,68 +851,44 @@ def test_a_report_that_does_not_fit_is_refused_before_anything_commits(tmp_path,
     assert not away["ok"] and away["stopped"]["error"]["details"]["reason"] == SA.NOT_FROM_THIS_STATE
 
 
-def test_a_stage_stopped_stale_says_to_call_it_again_and_that_call_goes_on(tmp_path, contained, custody, monkeypatch):
-    """E133, with rule 5 unchanged: a judgment-bearing stage never retries a stale step. Its refusal names the call that
-    takes the Ticket on from where it stopped, and the acceptance it committed stands."""
+def test_prepare_keeps_its_reviewed_subject_across_an_unrelated_commit(tmp_path, contained, custody, monkeypatch):
+    """A checkpoint between verification acceptance and preparation cannot change the Ticket's judgment."""
     p = sample_project(tmp_path)
     checks_mode(p)
     wid, report = verifying(p, tmp_path)
-    intervene(monkeypatch, "work.transition")
-    stopped = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
-    assert not stopped["ok"] and control(p)["work"][wid]["state"] == "VERIFIED"
-    error = stopped["stopped"]["error"]
-    assert error["code"] == "STALE_REVISION" and error["details"]["call_again"] == "ticket_prepare"
-    assert "Call ticket_prepare again" in error["message"]
-    out = call(p, "ticket_prepare", work_id=wid)
+    seen = intervene(monkeypatch, "work.transition")
+    out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
     assert out["ok"], out["stopped"]
+    assert len(seen) == 1
+    assert [s["primitive"] for s in intent(p, out)["steps"]][:2] == ["verify.ingest", "work.transition"]
     assert control(p)["work"][wid]["integration"]["status"] == "prepared"
     assert_control_invariants(p)
 
 
-@pytest.mark.parametrize("stales", [1, 2])
-def test_a_draft_interrupted_by_another_tickets_registration_has_a_typed_continuation(
-        tmp_path, contained, custody, monkeypatch, stales):
-    """E137: the created Ticket stands; explicit resolve proposes its plan without creating another Ticket."""
+@pytest.mark.parametrize("checkpoint_count", [1, 2])
+def test_a_draft_keeps_its_ticket_across_other_tickets_registration(
+        tmp_path, contained, custody, monkeypatch, checkpoint_count):
     p = sample_project(tmp_path)
     checks_mode(p)
     _other, custodian, _prepared = prepared(p, tmp_path)
-    seen = intervene(monkeypatch, "plan.propose", times=stales,
-                     before=lambda c: c.engine.custody_register(custody[custodian]))
-    stopped = call(p, "ticket_draft", **DRAFT)
-    assert not stopped["ok"] and stopped["stopped"]["error"]["code"] == "STALE_REVISION"
-    si = intent(p, stopped)
-    assert [s["primitive"] for s in si["steps"]] == ["work.create"]
-    wid = si["subject"]["id"]
-    assert control(p)["work"][wid]["plans"] == []
-    assert si["status"] == SI.ACTIVE, "a terminal partial draft cannot be continued by resolve"
-    assert si["stopped"]["error"]["reason"] == "resolve_stage"
-    assert stopped["stopped"]["error"]["details"]["resolve"] == {"tool": "resolve", "subject": si["id"]}
-    for _ in range(stales):
-        kept = engine(p).stage_intent(si["id"])["stopped"]
-        summary = {"n": kept["n"], "boundary": kept["boundary"], "rev": kept["rev"],
-                   "error": {"code": kept["error"]["code"], "reason": kept["error"]["reason"]}}
-        resumed = R.run_tool(engine(p), CTX, "resume", {}, token=p.token)
-        [row] = [s for s in resumed["result"]["stage_intents"] if s["intent"] == si["id"]]
-        assert row["stopped"] == summary and row["safe_to_continue"]
-        projection.clear_cache()
-        [decision] = [d for d in project(engine(p), CTX, wid)["decisions_required"]
-                      if d["decision"] == "RESOLVE_STAGE"]
-        assert decision["stopped"] == summary
-        out = call(p, decision["tool"], **{**decision["arguments"], "choice": "continue",
-                                          "rationale": "finish the draft, keeping its created Ticket"})
-        if not out["ok"]:
-            assert intent(p, out)["status"] == SI.ACTIVE and len(intent(p, out)["steps"]) == 1
+
+    def register(c):
+        for _ in range(checkpoint_count):
+            c.engine.custody_register(custody[custodian])
+            c.engine.checkpoint(token=p.token, note="another actor's commit")
+
+    seen = intervene(monkeypatch, "plan.propose", before=register)
+    out = call(p, "ticket_draft", **DRAFT)
     assert out["ok"], out["stopped"]
-    assert intent(p, out)["status"] == SI.COMPLETED
-    assert [s["primitive"] for s in intent(p, out)["steps"]] == ["work.create", "plan.propose"]
-    assert len(control(p)["work"][wid]["plans"]) == 1
-    assert len(seen) == stales + 1 and seen == sorted(set(seen))
+    si = intent(p, out)
+    assert si["status"] == SI.COMPLETED and len(seen) == 1
+    assert [step["primitive"] for step in si["steps"]] == ["work.create", "plan.propose"]
+    assert len(control(p)["work"][si["subject"]["id"]]["plans"]) == 1
     assert lease(p)["custodian"] == custodian
     assert_control_invariants(p)
 
 
-def test_a_continued_verification_request_that_goes_stale_again_stays_resolvable(tmp_path, monkeypatch):
-    """F2, adopted from the review repro: an empty continuation still has durable committed acceptance steps."""
+def test_a_verification_request_keeps_its_accepted_review_after_an_unrelated_commit(tmp_path, monkeypatch):
     p = sample_project(tmp_path)
     lab = launching(p, tmp_path, monkeypatch)
     lab.script("default", [{"do": "hang"}])
@@ -920,21 +897,12 @@ def test_a_continued_verification_request_that_goes_stale_again_stays_resolvable
         implement(assign(p, wid))
         p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
         report = review(p, wid)
-        ran = intervene(monkeypatch, "invoke.create.mutating", times=2)
+        ran = intervene(monkeypatch, "invoke.create.mutating")
         out = call(p, "ticket_request_verification", work_id=wid, review_evidence=report)
         si = intent(p, out)
-        committed = list(si["steps"])
-        assert si["status"] == SI.ACTIVE and len(committed) == 2
-        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="dispatch the verifier")
-        assert not out["ok"] and intent(p, out)["status"] == SI.ACTIVE
-        error = out["stopped"]["error"]
-        assert error["details"]["reason"] == "resolve_stage"
-        assert "Nothing of this call was committed" not in error["message"]
-        assert intent(p, out)["steps"] == committed and len(ran) == 2
-        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="dispatch the verifier")
         assert out["ok"], out["stopped"]
-        assert intent(p, out)["status"] == SI.COMPLETED and len(ran) == 3
-        assert intent(p, out)["steps"][:len(committed)] == committed
+        assert si["status"] == SI.COMPLETED and len(ran) == 1
+        assert [step["primitive"] for step in si["steps"]][:2] == ["review.ingest", "work.transition"]
         assert control(p)["work"][wid]["state"] == "VERIFY_PENDING"
         assert_control_invariants(p)
     finally:
@@ -942,7 +910,7 @@ def test_a_continued_verification_request_that_goes_stale_again_stays_resolvable
 
 
 def test_verifier_publish_registration_between_acceptance_and_publish(tmp_path, monkeypatch, custody):
-    """F3, adopted from the review repro: fresh lease registration after acceptance, explicit resolve to DONE."""
+    """Fresh lease registration after acceptance cannot stale the particular candidate shown to the Lead."""
     p = sample_project(tmp_path)
     lab = launching(p, tmp_path, monkeypatch)
     sync = tmp_path / "sync"
@@ -972,46 +940,50 @@ def test_verifier_publish_registration_between_acceptance_and_publish(tmp_path, 
         out = call(p, "integration_publish", work_id=wid, prepared_candidate=candidate,
                    verification_evidence=routed["routed"]["report"])
         si = intent(p, out)
-        assert not out["ok"] and si["status"] == SI.ACTIVE and len(registrations) == 1
-        assert [s["primitive"] for s in si["steps"]] == ["verify.ingest.integration"]
-        assert out["stopped"]["error"]["details"]["resolve"] == {"tool": "resolve", "subject": si["id"]}
-        prefix = list(si["steps"])
-        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="publish the accepted candidate")
         assert out["ok"], out["stopped"]
-        final = intent(p, out)
-        assert final["status"] == SI.COMPLETED and done(p, wid) and len(ran) == 2
-        assert final["steps"][:1] == prefix
-        assert [s["primitive"] for s in final["steps"]] == ["verify.ingest.integration", "integrate.publish"]
+        assert si["status"] == SI.COMPLETED and done(p, wid) and len(ran) == len(registrations) == 1
+        assert [step["primitive"] for step in si["steps"]] == ["verify.ingest.integration", "integrate.publish"]
         assert_control_invariants(p)
     finally:
         lab.cleanup()
 
 
-@pytest.mark.parametrize("change", ["abandon", "stale_revision", "policy_drift", "takeover"])
-def test_a_retained_stale_stage_still_requires_current_authority_policy_and_explicit_choice(
+@pytest.mark.parametrize("change", ["abandon", "changed_binding", "policy_drift", "takeover"])
+def test_an_interrupted_stage_still_requires_current_authority_policy_and_explicit_choice(
         tmp_path, contained, custody, monkeypatch, change):
+    from aew.engine import faults
+
     p = sample_project(tmp_path)
     checks_mode(p)
-    _other, custodian, _prepared = prepared(p, tmp_path)
-    intervene(monkeypatch, "plan.propose", before=lambda c: c.engine.custody_register(custody[custodian]))
-    stopped = call(p, "ticket_draft", **DRAFT)
-    si = intent(p, stopped)
+    real = stage.STEP_RUNNERS["plan.propose"]
+
+    def stop_before_plan(c, args):
+        raise faults.InjectedFault("interrupted before proposing the plan")
+
+    monkeypatch.setitem(stage.STEP_RUNNERS, "plan.propose", stop_before_plan)
+    with pytest.raises(faults.InjectedFault):
+        call(p, "ticket_draft", **DRAFT)
+    monkeypatch.setitem(stage.STEP_RUNNERS, "plan.propose", real)
+    [si] = control(p)["stage_intents"].values()
     assert si["status"] == SI.ACTIVE and len(si["steps"]) == 1
-    rev = p.rev()
     if change == "policy_drift":
         set_mutating_concurrency(p, NOT_THE_DEFAULT_CAP)
         assert engine(p).policy_digests()["legality_digest"] != si["binding"]["legality_digest"]
     elif change == "takeover":
         take_over(engine(p))
+    binding = stage.assess(engine(p), si)["approval"]["digest"]
+    if change == "changed_binding":
+        binding = ("1" if binding[0] == "0" else "0") + binding[1:]
     before = p.rev()
-    out = call(p, "resolve", subject=si["id"], choice="abandon" if change == "abandon" else "continue",
-               rationale="an explicit new decision", expect_rev=rev - 1 if change == "stale_revision" else before)
+    choice = "abandon" if change == "abandon" else "continue"
+    args = {"approval_digest": binding} if choice == "continue" else {}
+    out = call(p, "resolve", subject=si["id"], choice=choice, rationale="an explicit new decision", **args)
     if change == "abandon":
         assert out["ok"] and intent(p, out)["status"] == SI.ABANDONED
     else:
         assert not out["ok"] and p.rev() == before
         assert out["stopped"]["error"]["code"] == {
-            "stale_revision": "STALE_REVISION", "policy_drift": "STALE_POLICY",
+            "changed_binding": "CHANGED_SINCE_READ", "policy_drift": "STALE_POLICY",
             "takeover": "STALE_AUTHORITY"}[change]
         assert engine(p).stage_intent(si["id"])["status"] == SI.ACTIVE
     assert control(p)["work"][si["subject"]["id"]]["plans"] == []
@@ -1024,7 +996,7 @@ def test_a_retained_stale_stage_still_requires_current_authority_policy_and_expl
     ("ticket_request_review", True, 2), ("ticket_request_verification", False, 1)])
 def test_custody_registration_between_ticket_stage_steps_never_replays_a_judgment(
         tmp_path, contained, custody, monkeypatch, name, promoted, dispatch_no):
-    """Real other-Ticket registration: policy retry, or explicit resolve past the committed dispatch/acceptance."""
+    """A real other-Ticket registration does not replay a dispatch or an acceptance."""
     p = sample_project(tmp_path)
     checks_mode(p)
     set_mutating_concurrency(p, 2)
@@ -1049,24 +1021,10 @@ def test_custody_registration_between_ticket_stage_steps_never_replays_a_judgmen
                          before=lambda c: c.engine.custody_register(custody[custodian])
                          if len(seen) == dispatch_no else None)
         out = call(p, name, **args)
-        needs_judgment = promoted or name == "ticket_request_verification"
-        if needs_judgment:
-            assert not out["ok"] and len(seen) == dispatch_no, out["stopped"]
-            si = intent(p, out)
-            assert si["status"] == SI.ACTIVE and not si["retried_after_stale_revision"]
-            committed = list(si["steps"])
-            projection.clear_cache()
-            [decision] = [d for d in project(engine(p), CTX, wid)["decisions_required"]
-                          if d["decision"] == "RESOLVE_STAGE"]
-            out = call(p, "resolve", **{**decision["arguments"], "choice": "continue",
-                                        "rationale": "finish only the uncommitted steps"})
-            assert intent(p, out)["steps"][:len(committed)] == committed
         assert out["ok"], out["stopped"]
         si = intent(p, out)
-        assert si["status"] == SI.COMPLETED and len(seen) == dispatch_no + 1
-        if dispatch_no == 2:
-            assert len([s for s in si["steps"] if s["primitive"] == "invoke.create.mutating"]) == 2
-        assert len({s["key"] for s in si["steps"]}) == len(si["plan"])
+        assert si["status"] == SI.COMPLETED
+        assert len(seen) == dispatch_no
         assert control(p)["work"][wid]["state"] == {
             "ticket_start": "RUNNING", "ticket_request_review": "REVIEW_PENDING",
             "ticket_request_verification": "VERIFY_PENDING"}[name]
@@ -1077,7 +1035,7 @@ def test_custody_registration_between_ticket_stage_steps_never_replays_a_judgmen
 
 @pytest.mark.parametrize("mode", ["checks", "verifier"])
 def test_prepare_follows_the_real_same_ticket_registration_after_grant(tmp_path, contained, custody, monkeypatch, mode):
-    """Once the granting lock is released, registration stales the next step, never the committed preparation."""
+    """Once the granting lock is released, registration cannot stale the prepared candidate and its next step."""
     p = sample_project(tmp_path)
     lab = launching(p, tmp_path, monkeypatch)
     lab.script("default", [{"do": "hang"}])
@@ -1087,26 +1045,21 @@ def test_prepare_follows_the_real_same_ticket_registration_after_grant(tmp_path,
 
     real = stage.STEP_RUNNERS["integrate.prepare"]
 
-    def prepare(c, args, rev):
-        out = real(c, args, rev)
+    def prepare(c, args):
+        out = real(c, args)
         custodian = lease(p)["custodian"]
         binding = SI._STEP.set(None)  # the worker has its own context, not the Lead's armed prepare step
         try:
             seen.append(c.engine.custody_register(custody[custodian])["revision"])
         finally:
             SI._STEP.reset(binding)
-        return out  # deliberately keep prepare's now-stale returned revision
+        return out
 
     monkeypatch.setitem(stage.STEP_RUNNERS, "integrate.prepare", prepare)
     try:
         wid, report = verifying(p, tmp_path)
         out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
         assert len(seen) == 1
-        if mode == "verifier":
-            assert not out["ok"]
-            assert out["stopped"]["error"]["details"]["call_again"] == "integration_publish"
-            out = call(p, "integration_publish", work_id=wid,
-                       prepared_candidate=control(p)["work"][wid]["integration"]["candidate"])
         assert out["ok"], out["stopped"]
         assert intent(p, out)["status"] == SI.COMPLETED
         assert_control_invariants(p)
@@ -1115,30 +1068,25 @@ def test_prepare_follows_the_real_same_ticket_registration_after_grant(tmp_path,
 
 
 @pytest.mark.parametrize("times", [1, 3])
-def test_prepare_close_registration_drift_is_bounded_and_resolvable(tmp_path, contained, custody, monkeypatch, times):
-    """Bookkeeping follows drift without replaying prepare; exhaustion keeps the existing typed resolution."""
+def test_prepare_close_follows_registrations_without_replaying_steps(tmp_path, contained, custody, monkeypatch, times):
     p = sample_project(tmp_path)
     checks_mode(p)
     real = Engine.stage_close
     seen = []
 
     def close(e, **kw):
-        seen.append(kw["expect_rev"])
-        if len(seen) <= times:
+        seen.append(kw["intent"])
+        for _ in range(times):
             e.custody_register(custody[lease(p)["custodian"]])
         return real(e, **kw)
 
     monkeypatch.setattr(Engine, "stage_close", close)
     wid, report = verifying(p, tmp_path)
     out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
-    si = intent(p, out)
-    steps = list(si["steps"])
-    if times == 3:
-        assert si["status"] == SI.ACTIVE and out["result"]["left_active"]["code"] == "STALE_REVISION"
-        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="close the finished preparation")
     assert out["ok"], out["stopped"]
-    assert intent(p, out)["status"] == SI.COMPLETED and intent(p, out)["steps"] == steps
-    assert len(seen) == min(times + 1, 3)
+    si = intent(p, out)
+    assert si["status"] == SI.COMPLETED and seen == [si["id"]]
+    assert [step["primitive"] for step in si["steps"]] == ["verify.ingest", "work.transition", "integrate.prepare"]
     assert_control_invariants(p)
 
 
@@ -1147,7 +1095,8 @@ def test_registration_rechecks_revoked_custody_in_its_locked_transaction(tmp_pat
     checks_mode(p)
     wid, custodian, _out = prepared(p, tmp_path)
     e = engine(p)
-    e.integrate_defer(token=p.token, expect_rev=p.rev(), work_id=wid, reason="release before worker registers")
+    e.integrate_defer(token=p.token, work_id=wid, reason="release before worker registers",
+                      prior_value=e.prior_value("integrate_defer", wid))
     rev = p.rev()
     with pytest.raises((PermissionDenied, StaleAuthority)):
         e.custody_register(custody[custodian])
@@ -1155,14 +1104,8 @@ def test_registration_rechecks_revoked_custody_in_its_locked_transaction(tmp_pat
     assert_control_invariants(p)
 
 
-@pytest.mark.parametrize(("step", "again", "takes_the_report"), [
-    ("verify.ingest", "ticket_prepare", True),
-    ("work.transition", "ticket_prepare", False),
-    ("integrate.prepare", "ticket_prepare", False),
-    ("invoke.create.mutating", "integration_publish", False)])  # a launch takes no revision, so nothing stops it stale
-def test_ticket_prepare_stale_at_each_step_names_only_a_call_that_goes_on(tmp_path, monkeypatch, custody, step, again,
-                                                                         takes_the_report):
-    """E133's review, M2: every step in verifier mode, following what the refusal names."""
+@pytest.mark.parametrize("step", ["verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating"])
+def test_ticket_prepare_survives_an_unrelated_commit_at_each_step(tmp_path, monkeypatch, custody, step):
     p = sample_project(tmp_path)
     lab = launching(p, tmp_path, monkeypatch)
     sync = tmp_path / "sync"
@@ -1170,35 +1113,36 @@ def test_ticket_prepare_stale_at_each_step_names_only_a_call_that_goes_on(tmp_pa
     try:
         wid, report = verifying(p, tmp_path)
         lab.script("default", verifier_script(sync))
-        intervene(monkeypatch, step)
-        stopped = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
-        assert not stopped["ok"], step
-        details = stopped["stopped"]["error"]["details"]
-        assert details.get("call_again") == again, stopped["stopped"]
-        if again is None:
-            return
-        assert again in stopped["stopped"]["error"]["message"]
-        named = ({"prepared_candidate": control(p)["work"][wid]["integration"]["candidate"]}
-                 if again == "integration_publish" else {"verification_evidence": report} if takes_the_report else {})
-        followed = call(p, again, work_id=wid, **named)
-        assert followed["ok"], followed["stopped"]
+        seen = intervene(monkeypatch, step)
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert out["ok"], out["stopped"]
+        assert len(seen) == 1 and intent(p, out)["status"] == SI.COMPLETED
         assert_control_invariants(p)
     finally:
         lab.cleanup()
 
 
-def _commits_before_finishes(p: Project, e: Engine, monkeypatch, times: int) -> list[int]:
-    """Another commit lands before the publish's next ``times`` finishes, each then run on the revision it was given."""
+def _commit_before_finish(p: Project, e: Engine, monkeypatch) -> list[int]:
     real, seen = e._integration._finish_publish, []
 
-    def finish(token: str, expect_rev: int, work_id: str, **kw: Any) -> dict[str, Any]:
-        seen.append(expect_rev)
-        if len(seen) <= times:
-            e.checkpoint(token=p.token, expect_rev=p.rev(), note="another commit", next_action=None)
-        return real(token, expect_rev, work_id, **kw)
+    def finish(token: str, work_id: str, **kw: Any) -> dict[str, Any]:
+        seen.append(p.rev())
+        e.checkpoint(token=p.token, note="another commit")
+        return real(token, work_id, **kw)
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     return seen
+
+
+def _interrupt_finish_once(e: Engine, monkeypatch) -> None:
+    real = e._integration._finish_publish
+
+    def finish(token: str, work_id: str, **kw: Any):
+        monkeypatch.setattr(e._integration, "_finish_publish", real)
+        # A refusal before touching the ref leaves the recorded intent for reconcile.
+        raise IllegalTransition(IO._publish_unfinished(work_id), reason=IO.PUBLISH_UNFINISHED)
+
+    monkeypatch.setattr(e._integration, "_finish_publish", finish)
 
 
 def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishes_it(tmp_path, monkeypatch):
@@ -1224,13 +1168,14 @@ def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishe
     to_ready(first, roles[0], {"calc/one.py": "ONE = 1\n"})
     prepare_and_validate(p, first)
     e = engine(p)
-    _commits_before_finishes(p, e, monkeypatch, IO.FINISH_ATTEMPTS)
-    with pytest.raises(AEWError):
-        e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=first)
+    _interrupt_finish_once(e, monkeypatch)
+    candidate = entry(p, first)["validated"]["candidate"]
+    with pytest.raises(IllegalTransition, match="nothing was published"):
+        e.integrate_publish(token=p.token, work_id=first, candidate=candidate)
     to_ready(second, roles[1], {"calc/two.py": "TWO = 2\n"})
-    finishes = f"`aew integrate reconcile {first} --expect-rev <revision from aew status>` finishes it first"
+    finishes = f"`aew integrate reconcile {first} ` finishes it first"
 
-    refused = p.aew("integrate", "prepare", second, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew("integrate", "prepare", second, env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and refused.error["code"] == "LEASE_HELD", refused.error
     assert finishes in refused.error["message"], refused.error
     projection.clear_cache()
@@ -1242,7 +1187,7 @@ def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishe
 
 
 def _publish(p: Project, e: Engine, wid: str, candidate: str) -> dict[str, Any]:
-    return R.run_tool(e, CTX, "integration_publish", {"expect_rev": p.rev(), "work_id": wid,
+    return R.run_tool(e, CTX, "integration_publish", {"work_id": wid,
                                                       "prepared_candidate": candidate}, token=p.token)
 
 
@@ -1254,17 +1199,17 @@ def test_a_commit_landing_after_the_publish_intent_never_strands_the_stage(tmp_p
     wid, _first = validated(p, tmp_path, custody)
     candidate = entry(p, wid)["validated"]["candidate"]
     e = engine(p)
-    seen = _commits_before_finishes(p, e, monkeypatch, 1)
+    seen = _commit_before_finish(p, e, monkeypatch)
     out = _publish(p, e, wid, candidate)
     assert out["ok"], out["stopped"]
     assert intent(p, out)["status"] == SI.COMPLETED and done(p, wid)
-    assert seen == [seen[0], seen[0] + 1]  # refused on the revision it was given, then finished on the next
+    assert len(seen) == 1  # the unrelated commit causes no retry
     assert_control_invariants(p)
 
 
 def test_a_publish_that_cannot_finish_says_where_it_stands_and_what_finishes_it(tmp_path, contained, custody,
                                                                                  monkeypatch):
-    """E137: past its attempts the stage stops with the Ticket `publishing` and the ref unmoved, and its result, a
+    """The stage can stop with the Ticket `publishing` and the ref unmoved, and its result, a
     second publish and the projection all name the one call that finishes it, which does."""
     p = sample_project(tmp_path)
     checks_mode(p)
@@ -1272,9 +1217,8 @@ def test_a_publish_that_cannot_finish_says_where_it_stands_and_what_finishes_it(
     candidate = entry(p, wid)["validated"]["candidate"]
     head = git("rev-parse", "HEAD", cwd=p.root)
     e = engine(p)
-    seen = _commits_before_finishes(p, e, monkeypatch, IO.FINISH_ATTEMPTS)
+    _interrupt_finish_once(e, monkeypatch)
     out = _publish(p, e, wid, candidate)
-    assert len(seen) == IO.FINISH_ATTEMPTS
     assert not out["ok"], out
     stopped = out["stopped"]["error"]
     reconcile = f"aew integrate reconcile {wid}"
@@ -1291,7 +1235,7 @@ def test_a_publish_that_cannot_finish_says_where_it_stands_and_what_finishes_it(
     decisions = project(engine(p), CTX, wid)["decisions_required"]
     [offered] = [d for d in decisions if d["decision"] == "FINISH_PUBLISH"]
     assert offered["tool"] is None and offered["cli_fallback"][:3] == ["integrate", "reconcile", wid]
-    assert engine(p).integrate_reconcile(token=p.token, expect_rev=p.rev(), work_id=wid)["state"] == "DONE"
+    assert engine(p).integrate_reconcile(token=p.token, work_id=wid)["state"] == "DONE"
     assert_control_invariants(p)
 
 
@@ -1310,12 +1254,12 @@ def _verified(p: Project, held: dict[str, str], *, validate: bool, mode: str) ->
     if not validate:
         return found
     e = engine(p)
-    e.verify_ingest(token=p.token, expect_rev=p.rev(), work_id="T-0001", evidence_id=found["report"])
-    e.work_transition(token=p.token, expect_rev=p.rev(), work_id="T-0001", to="COMMIT_READY")
-    e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id="T-0001")
+    e.verify_ingest(token=p.token, work_id="T-0001", evidence_id=found["report"])
+    e.work_transition(token=p.token, work_id="T-0001", to="COMMIT_READY", prior_value="VERIFIED")
+    e.integrate_prepare(token=p.token, work_id="T-0001")
     custodian = lease(p)["custodian"]
     if mode == "verifier":
-        out = e.launch_dispatched(e.invoke_create(token=p.token, expect_rev=p.rev(), work_id="T-0001",
+        out = e.launch_dispatched(e.invoke_create(token=p.token, work_id="T-0001",
                                                   role="verifier", scope="integration", launch=True))
         assert not e.harness_wait(out["launch"]["run"], timeout=300)["timed_out"]
     found_step, routed = e.custody_step(custodian, held[f"{p.root / '.aew'}|{custodian}"])
@@ -1388,21 +1332,21 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
             assert all(d.startswith("/files/evidence/") or "validation-runs" in d for d in before), before
             if name == "ticket_prepare":
                 out = call(staged, name, work_id="T-0001", verification_evidence=found["report"])
-                e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                e.verify_ingest(token=direct.token, work_id="T-0001",
                                 evidence_id=found["report"], scope="ticket")
-                e.work_transition(token=direct.token, expect_rev=direct.rev(), work_id="T-0001", to="COMMIT_READY")
-                e.integrate_prepare(token=direct.token, expect_rev=direct.rev(), work_id="T-0001")
+                e.work_transition(token=direct.token, work_id="T-0001", to="COMMIT_READY", prior_value="VERIFIED")
+                e.integrate_prepare(token=direct.token, work_id="T-0001")
             else:
                 accept = {"verification_evidence": found["integration_report"]} if case == "verifier" else {}
                 out = call(staged, name, work_id="T-0001", prepared_candidate=found["candidate"], **accept)
                 if accept:
-                    e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                    e.verify_ingest(token=direct.token, work_id="T-0001",
                                     evidence_id=found["integration_report"], scope="integration")
-                e.integrate_publish(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                e.integrate_publish(token=direct.token, work_id="T-0001",
                                     candidate=found["candidate"])
             if (name, case) in (("ticket_prepare", "verifier"), ("integration_publish", "rebuild_verifier")):
                 # the integration verifier the stage launches, launched directly
-                e.launch_dispatched(e.invoke_create(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                e.launch_dispatched(e.invoke_create(token=direct.token, work_id="T-0001",
                                                     role="verifier", scope="integration", launch=True))
             if (name, case) == ("integration_publish", "rebuild"):  # it stops at its `rebuilt` boundary
                 assert out["stopped"]["error"]["details"]["reason"] == "rebuilt", out["stopped"]
@@ -1434,18 +1378,18 @@ def test_declared_effects_cover_observed_effects(tmp_path, contained, custody, p
     e = engine(p)
     if primitive == "integrate.prepare":
         before = _observe(p)
-        e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+        e.integrate_prepare(token=p.token, work_id=wid)
     elif primitive == "verify.ingest.integration":
-        e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+        e.integrate_prepare(token=p.token, work_id=wid)
         evidence = verify(p, wid, scope="integration")
         before = _observe(p)
-        e.verify_ingest(token=p.token, expect_rev=p.rev(), work_id=wid, evidence_id=evidence, scope="integration")
+        e.verify_ingest(token=p.token, work_id=wid, evidence_id=evidence, scope="integration")
     else:
-        e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+        e.integrate_prepare(token=p.token, work_id=wid)
         custodian = lease(p)["custodian"]
         e.custody_step(custodian, custody[custodian])
         before = _observe(p)
-        e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid)
+        e.integrate_publish(token=p.token, work_id=wid, candidate=entry(p, wid)["validated"]["candidate"])
     seen = _effects(before, _observe(p))
     assert "control_state" in seen and seen <= _declared(primitive), seen
     assert "credential" in seen
@@ -1619,7 +1563,7 @@ def test_a_spawned_custody_worker_validates_end_to_end(tmp_path):
     contained_here = e._validation.containment_available()
     switch = os.environ.pop(CO.WORKER_SWITCH, None)
     try:
-        e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+        e.integrate_prepare(token=p.token, work_id=wid)
     finally:
         if switch is not None:
             os.environ[CO.WORKER_SWITCH] = switch

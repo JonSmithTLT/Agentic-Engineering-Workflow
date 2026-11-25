@@ -250,8 +250,8 @@ def test_digest_ignores_unrelated_commits(engine):
     """A Lead commit moves the control revision; no document's digest moves (the ETag half is F1c's)."""
     e = configured(engine)
     before = index(e)
-    token = e.lead_acquire(expect_rev=0)["token"]
-    e.checkpoint(token=token, expect_rev=e.store.read_committed()["revision"], note="unrelated")
+    token = e.lead_acquire()["token"]
+    e.checkpoint(token=token, note="unrelated")
     assert e.store.read_committed()["revision"] >= 2
     after = index(e)
     assert [d["digest"] for d in after["documents"]] == [d["digest"] for d in before["documents"]]
@@ -336,7 +336,7 @@ def test_digest_distinct_per_input_case(tmp_path):
 
 
 def lead(e: Engine) -> tuple[str, Any]:
-    token = e.lead_acquire(expect_rev=e.store.read_committed()["revision"])["token"]
+    token = e.lead_acquire()["token"]
     return token, lambda: e.store.read_committed()["revision"]
 
 
@@ -346,7 +346,7 @@ def test_digest_ignores_authority_decision(engine):
     before = {d["document"]: d["digest"] for d in index(e)["documents"]}
     token, rev = lead(e)
     candidate = e.authority_list()["candidates"][0]["id"]
-    e.authority_accept(token=token, expect_rev=rev(), candidate_id=candidate, klass="decisions", decided_by="lead")
+    e.authority_accept(token=token, candidate_id=candidate, klass="decisions", decided_by="lead")
     after = {d["document"]: d["digest"] for d in index(e)["documents"]}
     assert after["execution"] == before["execution"] and doc(e, "execution")["state"] == C.ADOPTED
     assert after["project"] != before["project"]
@@ -360,7 +360,8 @@ def test_digest_changes_on_adopt_on_hand_edit_and_per_document(engine):
     assert d1["execution"] != d0["execution"]  # on a hand edit
     assert {k: v for k, v in d1.items() if k != "execution"} == {k: v for k, v in d0.items() if k != "execution"}
     token, rev = lead(e)
-    e.manifest_adopt(token=token, expect_rev=rev(), reason="reviewed", authorization={"authorized_by": "operator-tty"})
+    e.manifest_adopt(token=token, reason="reviewed", authorization={"authorized_by": "operator-tty"},
+                     binding=e.manifest_approval())
     d2 = {d["document"]: d["digest"] for d in index(e)["documents"]}
     assert d2["execution"] not in (d0["execution"], d1["execution"]) and doc(e, "execution")["state"] == C.ADOPTED
     _append(aew(e) / "policy/gates.yaml")

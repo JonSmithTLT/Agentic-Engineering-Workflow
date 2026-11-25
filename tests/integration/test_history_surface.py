@@ -51,7 +51,7 @@ def finished_ticket(p, tmp_path, title: str = "Investigate calc.core", **kw) -> 
 
 
 def audit(p, *extra: str) -> dict:
-    return p.ok("history", "audit", *extra, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    return p.ok("history", "audit", *extra, "--record", env={"AEW_LEAD_TOKEN": p.token})
 
 
 # ---------------------------------------------------------------------------------------------- show, list, links
@@ -148,15 +148,14 @@ def test_load_refuses_what_it_cannot_load(tmp_path):
     survey, _, _ = finished_ticket(p, tmp_path)
     wid = create_investigation(p, tmp_path, title="Follow-up")
     p.lead("history", "load", survey, "--into", wid, "--reason", "context")
-    rev = str(p.rev())
+    str(p.rev())
     cases = {
         (survey, wid): "USAGE",  # already loaded
         ("T-9999", wid): "NOT_FOUND",
         (survey, survey): "ILLEGAL_TRANSITION",  # finished work does not change
     }
     for (record, into), code in cases.items():
-        res = p.aew("history", "load", record, "--into", into, "--reason", "x", "--expect-rev", rev,
-                    env={"AEW_LEAD_TOKEN": p.token})
+        res = p.aew("history", "load", record, "--into", into, "--reason", "x", env={"AEW_LEAD_TOKEN": p.token})
         assert res.error["code"] == code, (record, into, res.stderr)
     assert_control_invariants(p)
 
@@ -207,7 +206,7 @@ def test_damage_fails_the_audit_records_a_finding_and_keeps_the_verified_root(tm
     bundle.write_text(bundle.read_text(encoding="utf-8") + "# changed\n", encoding="utf-8", newline="\n")
     advisory = p.aew("history", "audit", "--full")
     assert advisory.returncode != 0 and advisory.error["code"] == "INTEGRITY_ERROR"
-    res = p.aew("history", "audit", "--full", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("history", "audit", "--full", "--record", env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and res.error["details"]["audit"]["recorded"] is True
     assert hot(p)["cold"]["verified"] == verified  # a failed audit never advances the verified root
     audit_id = res.error["details"]["audit"]["audit"]
@@ -232,7 +231,7 @@ def test_an_audit_continues_incrementally_when_the_root_moves_before_it_records(
     gate.write_text("", encoding="utf-8")
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
     proc = subprocess.Popen(
-        [sys.executable, "-m", "aew", "-C", str(p.root), "history", "audit", "--expect-rev", str(p.rev())],
+        [sys.executable, "-m", "aew", "-C", str(p.root), "history", "audit", "--record", ],
         env=clean_env({"AEW_LEAD_TOKEN": p.token, "AEW_PAUSE": f"history.audit_after_verify={gate}"}),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
         **kwargs)
@@ -259,7 +258,7 @@ def test_a_crash_before_the_audit_is_recorded_leaves_the_history_as_it_was(tmp_p
     p = sample_project(tmp_path)
     finished_ticket(p, tmp_path)
     before = hot(p)
-    res = run_aew("-C", str(p.root), "history", "audit", "--expect-rev", str(p.rev()),
+    res = run_aew("-C", str(p.root), "history", "audit", "--record",
                   env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "history.audit_before_record"})
     assert res.returncode == CRASH_EXIT_CODE
     after = hot(p)
@@ -270,15 +269,16 @@ def test_a_crash_before_the_audit_is_recorded_leaves_the_history_as_it_was(tmp_p
     assert_control_invariants(p)
 
 
-def test_recording_needs_the_lead_and_the_revision(tmp_path):
+def test_only_an_explicit_lead_audit_records_the_verified_root(tmp_path):
     p = sample_project(tmp_path)
     finished_ticket(p, tmp_path)
-    p.ok("history", "audit", env={"AEW_LEAD_TOKEN": p.token})  # the credential alone: advisory, nothing recorded
+    advisory = p.ok("history", "audit", env={"AEW_LEAD_TOKEN": p.token})
+    assert advisory["recorded"] is False
     assert "verified" not in hot(p)["cold"]
-    stale = p.aew("history", "audit", "--expect-rev", str(p.rev() - 1), env={"AEW_LEAD_TOKEN": p.token})
-    assert stale.error["code"] == "STALE_REVISION"
-    forged = p.aew("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": "aew1.T-0000.nope"})
+    forged = p.aew("history", "audit", "--record", env={"AEW_LEAD_TOKEN": "aew1.T-0000.nope"})
     assert forged.returncode != 0 and "verified" not in hot(p)["cold"]
+    assert audit(p)["recorded"] is True
+    assert hot(p)["cold"]["verified"]
 
 
 # ---------------------------------------------------------------------------------------------- Epic closeout, status
@@ -295,8 +295,7 @@ def test_an_epic_closes_only_once_the_history_is_audited_through_the_current_roo
     p.lead("verify", "ingest", epic, "--evidence", parent_verify(p, epic))
     actions = p.ok("status", "--json")["next_actions"]
     assert any(a.startswith(f"{epic}:") and "aew history audit" in a for a in actions)
-    refused = p.aew("work", "close", epic, "--reason", "done", "--expect-rev", str(p.rev()),
-                    env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew("work", "close", epic, "--reason", "done", env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "GATE_UNSATISFIED" and "history audit" in refused.error["message"]
     audit(p)
     p.lead("work", "close", epic, "--reason", "acceptance gates passed")
@@ -361,13 +360,12 @@ def test_an_audit_covers_the_records_each_unit_pins_and_holds_the_epic_open(tmp_
     record.write_bytes(original + b"# changed\n")  # the bundle and its manifest entry are untouched
     for mode in ((), ("--full",)):
         assert p.aew("history", "audit", *mode).error["code"] == "INTEGRITY_ERROR", mode
-    res = p.aew("history", "audit", "--full", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("history", "audit", "--full", "--record", env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and res.error["details"]["audit"]["recorded"] is True
     assert any(rec in problem or wid in problem for problem in res.error["details"]["audit"]["problems"])
     assert "verified" not in hot(p)["cold"]
     assert ("audit_finding", wid) in [(a["rel"], a["subject"]) for a in hot_annotations(p, wid)]
-    refused = p.aew("work", "close", epic, "--reason", "done", "--expect-rev", str(p.rev()),
-                    env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew("work", "close", epic, "--reason", "done", env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "GATE_UNSATISFIED"
     record.write_bytes(original)
     assert audit(p, "--full")["ok"] is True
@@ -379,7 +377,7 @@ def test_a_loaded_lead_record_keeps_its_verifiers_out_of_packs(tmp_path):
     """Review P2c-2: a pack shows a loaded record redacted, as `history show` does."""
     p = sample_project(tmp_path)
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
     raw = load_yaml((p.root / ".aew/history/lead/000001.yaml").read_text(encoding="utf-8"))
     verifiers = [tok["verifier"] for tok in raw["tokens"].values()]
     assert verifiers and all(verifiers)
@@ -411,10 +409,9 @@ def test_an_archived_evidence_record_is_loaded_exactly_with_its_own_trust(tmp_pa
     text = (p.root / ".aew" / pinned["pack"]["path"]).read_text(encoding="utf-8")
     assert f"history:{rec}@{loaded['sha256'][:12]} (evidence; source: model)" in text and "Findings." in text
     assert p.ok("context", "pack", out["invocation"])["matches_recorded"] is True
-    rev = str(p.rev())
+    str(p.rev())
     for record, word in ((inv, "invocation"), (hot_credential(p, survey), "credential")):
-        res = p.aew("history", "load", record, "--into", wid, "--reason", "x", "--expect-rev", rev,
-                    env={"AEW_LEAD_TOKEN": p.token})
+        res = p.aew("history", "load", record, "--into", wid, "--reason", "x", env={"AEW_LEAD_TOKEN": p.token})
         assert res.error["code"] == "USAGE" and word in res.error["message"], res.stderr
     assert_control_invariants(p)
 

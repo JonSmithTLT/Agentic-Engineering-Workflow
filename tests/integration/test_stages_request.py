@@ -76,7 +76,7 @@ def mark(p: Project, **block: list[str]) -> None:
 def seed_anomaly(p: Project, subject: str | None, n: int = 0) -> str:
     """An open high anomaly, recorded as the engine records a signalled refusal (a seed: no worker needed)."""
     e = Engine.discover(p.root)
-    with e._k.lead_txn(p.token, p.rev(), "anomaly.record") as ctx:
+    with e._k.lead_txn(p.token, "anomaly.record") as ctx:
         an = e._dispositions.open(ctx.state, source="WORKSPACE_MUTATED", subject=subject, detail=f"seeded {n}",
                                   key=f"seed-{n}", details={}, rev=ctx.session.revision + 1)
     assert an is not None
@@ -259,8 +259,7 @@ def test_a_non_mutating_tickets_hints_and_refusals_name_no_stage(lab_project, tm
     p.lead("work", "staff", wid, "--review", "code_reviewer")
     role, _o = dispatch(p, wid)
     p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
-    refused = p.aew("review", "ingest", wid, "--evidence", "x", "--expect-rev", str(p.rev()),
-                    env={"AEW_LEAD_TOKEN": p.token}).error["message"]
+    refused = p.aew("review", "ingest", wid, "--evidence", "x", env={"AEW_LEAD_TOKEN": p.token}).error["message"]
     assert "`aew work transition" in refused and not stages_named(refused), refused
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     rv = p.lead("invoke", "create", wid, "--card", "code_reviewer")
@@ -334,15 +333,15 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
         if name == "ticket_request_review":
             out = call(staged, name, work_id="T-0001")
             assert out["ok"], out["stopped"]
-            e.work_transition(token=direct.token, expect_rev=rev(), work_id="T-0001", to="REVIEW_PENDING")
+            e.work_transition(token=direct.token, work_id="T-0001", to="REVIEW_PENDING", prior_value="RUNNING")
             role = "reviewer"
         else:
             out = call(staged, name, work_id="T-0001", review_evidence=found["review"])
             assert out["ok"], out["stopped"]
-            e.review_ingest(token=direct.token, expect_rev=rev(), work_id="T-0001", evidence_id=found["review"])
-            e.work_transition(token=direct.token, expect_rev=rev(), work_id="T-0001", to="VERIFY_PENDING")
+            e.review_ingest(token=direct.token, work_id="T-0001", evidence_id=found["review"])
+            e.work_transition(token=direct.token, work_id="T-0001", to="VERIFY_PENDING", prior_value="REVIEW_PASSED")
             role = "verifier"
-        e.launch_dispatched(e.invoke_create(token=direct.token, expect_rev=rev(), work_id="T-0001", role=role,
+        e.launch_dispatched(e.invoke_create(token=direct.token, work_id="T-0001", role=role,
                                             launch=True))
         a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
         assert differences(a, b) == before, "\n".join(sorted(set(differences(a, b)) ^ set(before)))
@@ -373,23 +372,23 @@ def test_declared_effects_cover_observed_effects(tmp_path, primitive):
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     if primitive == "invoke.create.mutating":
         before = _observe(p)
-        e.invoke_create(token=tok, expect_rev=rev(), work_id=wid, role="reviewer")
+        e.invoke_create(token=tok, work_id=wid, role="reviewer")
     elif primitive == "work.dispose":
         evidence = review(p, wid, findings=[MINOR])
         before = _observe(p)
-        e.work_dispose(token=tok, expect_rev=rev(), subject=f"{evidence}#F1", choice="accept_risk",
+        e.work_dispose(token=tok, subject=f"{evidence}#F1", choice="accept_risk",
                        rationale="a naming nit")
     elif primitive == "review.ingest":
         evidence = review(p, wid)
         before = _observe(p)
-        e.review_ingest(token=tok, expect_rev=rev(), work_id=wid, evidence_id=evidence)
+        e.review_ingest(token=tok, work_id=wid, evidence_id=evidence)
     else:
         first = review(p, wid)
-        e.review_ingest(token=tok, expect_rev=rev(), work_id=wid, evidence_id=first)
+        e.review_ingest(token=tok, work_id=wid, evidence_id=first)
         p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
         evidence = verify(p, wid)
         before = _observe(p)
-        e.verify_ingest(token=tok, expect_rev=rev(), work_id=wid, evidence_id=evidence, scope="ticket")
+        e.verify_ingest(token=tok, work_id=wid, evidence_id=evidence, scope="ticket")
     seen = _effects(before, _observe(p))
     assert "control_state" in seen and seen <= _declared(primitive), seen
     if primitive in ("review.ingest", "verify.ingest", "invoke.create.mutating"):
@@ -419,8 +418,7 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
     evidence = review(p, wid, findings=[MINOR])
     engine = Engine.discover(p.root)
     rev = p.rev()
-    refused = p.aew("review", "ingest", wid, "--evidence", evidence, "--expect-rev", str(rev),
-                    env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew("review", "ingest", wid, "--evidence", evidence, env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "DISPOSITION_REQUIRED" in (refused.stdout + refused.stderr)
     answer = engine.guard_query("review.ingest", wid, {"evidence": evidence})
     assert answer["availability"] == "BLOCKED" and answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
@@ -429,10 +427,10 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
                                                     "arguments": {"work_id": wid, "review_evidence": evidence}})
     assert explained["result"]["availability"] == "BLOCKED"
     out = R.run_tool(engine, CTX, "ticket_request_verification",
-                     {"expect_rev": p.rev(), "work_id": wid, "review_evidence": evidence}, token=p.token)
+                     {"work_id": wid, "review_evidence": evidence}, token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["code"] == "DISPOSITION_REQUIRED" and not out["completed_steps"]
     assert unit(p, wid)["state"] == "REVIEW_PENDING" and p.rev() == rev + 2  # the intent opened and stopped
-    disposed = R.run_tool(engine, CTX, "resolve", {"expect_rev": p.rev(), "subject": f"{evidence}#F1",
+    disposed = R.run_tool(engine, CTX, "resolve", {"subject": f"{evidence}#F1",
                                                    "choice": "accept_risk", "rationale": "a naming nit"},
                           token=p.token)
     assert disposed["ok"], disposed["stopped"]
@@ -446,7 +444,7 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
     assert (p.root / ".aew" / pointer["path"]).is_file()
     projection.clear_cache()
     out = R.run_tool(engine, CTX, "ticket_request_verification",
-                     {"expect_rev": p.rev(), "work_id": wid, "review_evidence": evidence}, token=p.token)
+                     {"work_id": wid, "review_evidence": evidence}, token=p.token)
     assert out["ok"], out["stopped"]  # the whole stage, never a stop after the ingest (PR 182 review, n1)
     assert [s["primitive"] for s in out["completed_steps"]] == ["review.ingest", "work.transition",
                                                                 "invoke.create.mutating", "dispatch.launch"]
@@ -477,8 +475,7 @@ def test_an_ingested_marked_finding_holds_the_next_advance(tmp_path):
     implement(impl, {**SUBTRACT_PATCH, "calc/extra.py": "X = 1\n"})
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     passing = review(p, wid, resolved=[f"{failing}#F2"])
-    refused = p.aew("review", "ingest", wid, "--evidence", passing, "--expect-rev", str(p.rev()),
-                    env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew("review", "ingest", wid, "--evidence", passing, env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "DISPOSITION_REQUIRED" in (refused.stdout + refused.stderr)
     p.lead("work", "dispose", f"{failing}#F1", "--choice", "follow_up", "--follow-up",
            create_planned_ticket(p, tmp_path, title="Rename"), "--rationale", "renamed separately")
@@ -518,7 +515,7 @@ def test_a_disposition_is_refused_unless_it_names_a_marked_open_item(tmp_path, c
     if case == "twice":
         p.lead("work", "dispose", subject, "--choice", "not_applicable", "--rationale", "out of scope")
     rev = p.rev()
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"expect_rev": rev, "subject": subject,
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": subject,
                                                                "choice": "accept_risk", "rationale": "r", **extra},
                      token=p.token)
     assert not out["ok"] and p.rev() == rev
@@ -583,7 +580,7 @@ def test_a_reviewer_that_mutates_its_workspace_opens_a_high_anomaly(tmp_path):
     status = R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid})["projection"]
     assert [a["details"]["anomaly"] for a in status["anomalies"]] == [an["id"]]
     assert any(d["decision"] == "DISPOSE_ANOMALY" for d in status["decisions_required"])
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"expect_rev": p.rev(), "subject": an["id"],
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": an["id"],
                                                                "choice": "not_applicable",
                                                                "rationale": "the reviewer was replaced"},
                      token=p.token)
@@ -602,8 +599,7 @@ def test_a_lead_call_refused_with_workspace_mutated_records_an_anomaly(tmp_path)
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     impl.write({"calc/core.py": "def add(a, b):\n    return a + b + 0\n"})
     rev = p.rev()
-    res = p.aew("invoke", "create", wid, "--role", "reviewer", "--expect-rev", str(rev),
-                env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("invoke", "create", wid, "--role", "reviewer", env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0 and "WORKSPACE_MUTATED" in (res.stdout + res.stderr)
     assert p.rev() == rev + 1
     [an] = control(p)["anomalies"].values()
@@ -633,7 +629,7 @@ def test_a_contradiction_is_recorded_and_disposed_of_only_once_it_is_gone(tmp_pa
 
     # The decision answers what the disposal's own query answers (PR 182 review, m4): BLOCKED while still live.
     assert decision()["availability"] == "BLOCKED"
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"expect_rev": p.rev(), "subject": an["id"],
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": an["id"],
                                                                "choice": "accept_risk", "rationale": "r"},
                      token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "still_live"
@@ -674,7 +670,7 @@ def test_disposed_anomalies_leave_hot_state_and_read_cold_quickly(tmp_path):
         ids.append(seed_anomaly(p, wid, n))
     assert len(control(p)["anomalies"]) == 8
     for an in ids:
-        engine.work_dispose(token=p.token, expect_rev=p.rev(), subject=an, choice="not_applicable",
+        engine.work_dispose(token=p.token, subject=an, choice="not_applicable",
                             rationale="seeded")
     state = control(p)
     assert "anomalies" not in state and len(state["work"][wid]["dispositions"]) == 8
@@ -713,7 +709,7 @@ def test_self_healing_housekeeping_is_never_recorded_as_an_anomaly(tmp_path):
     _role, out = dispatch(p, wid)
     path = Path(out["observation"]["path"])
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
     assert path.exists()  # retired, pruned later
     p.lead("checkpoint", "--next", "the new Lead's first commit")
     assert "anomalies" not in control(p)

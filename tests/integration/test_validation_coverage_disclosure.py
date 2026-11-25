@@ -199,7 +199,7 @@ def test_coverage_consumers_use_the_runners_cwd_not_a_second_calculation(tmp_pat
     assert checked["coverage"]["checks"][0]["cwd"] == marker
     p.lead("invoke", "cancel", inv["invocation"], "--reason", "exercise checks-mode runner provenance next")
     policy(p, checks=SMOKE)
-    out = engine(p).integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+    out = engine(p).integrate_validate(token=p.token, work_id=wid)
     assert out["coverage"]["checks"][0]["cwd"] == marker
 
 
@@ -218,7 +218,7 @@ def test_coverage_uses_the_pinned_inventory_when_unrelated_policy_changes_during
         return original(work_id, run)
 
     monkeypatch.setattr(eng._validation, "_execute", execute)
-    out = eng.integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+    out = eng.integrate_validate(token=p.token, work_id=wid)
     assert out["result"] == "pass"
     assert "added-after-pin" not in {c["check_id"] for c in out["coverage"]["configured_not_run"]}
     pin = integ(p, wid)[VO.CURRENT]["coverage_inputs"]
@@ -396,7 +396,7 @@ def test_slow_selector_copy_setup_cannot_spend_the_checks_deadline(tmp_path, con
     monkeypatch.setattr(C, "run", run_check)
     monkeypatch.setattr(check_changes, "remove_copy", retire_copy)
     try:
-        out = eng.integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+        out = eng.integrate_validate(token=p.token, work_id=wid)
     finally:
         checks_started.set()
     assert started.is_set(), "the selector must reach copy setup for this control"

@@ -3,8 +3,8 @@ F9-A MS1; ADR-0017; F9-A plan v4 D-1 to D-12, D-15, D-31, D-32).
 
 **What a message is.** Lead-worker coordination: knowledge moved between the current Lead generation and one active
 role invocation, never project state (F9 invariant 1; F9-A1 §11). Recording one takes the control lock and commits
-nothing (D-4), as ``submit`` does: the revision does not move, so neither a Lead message nor a worker reply makes a
-Lead's ``expect_rev`` stale. No gate, transition, dispatch or evidence path reads a message.
+nothing (D-4), as ``submit`` does. The control revision does not move. No gate, transition, dispatch or
+evidence path reads a message.
 
 **The thread.** One append-only JSONL file per invocation, ``.aew/work/<T>/coordination/<INV>.jsonl`` (D-1, D-3),
 outside control state and every run directory. Each line is canonical JSON with ``h = sha256(previous h || the line
@@ -65,13 +65,11 @@ from aew.errors import (
     RefOutOfScope,
     RefUnknown,
     ReplyNotInThread,
-    StaleRevision,
     UsageError,
     ValidationFailed,
 )
 from aew.harness import contract as K
 from aew.harness import runlog
-from aew.harness.contract import EXPECT_REV
 from aew.history.manifest import canonical_json
 from aew.history.store import prewrite
 from aew.knowledge.manifest import MANIFEST
@@ -355,25 +353,17 @@ class Coordination:
 
     # ------------------------------------------------------------------ records
 
-    def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
+    def message_record_lead(self, *, token: str, to: str, body: str, kind: str | None = None,
                             in_reply_to: str | None = None, refs: list[str] | None = None,
                             idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
-        """Record a Lead message to an active worker (D-4, D-17's engine half). ``expect_rev`` is the control revision
-        the Lead read, checked under the lock before anything else; recording moves no revision, so the same
-        ``expect_rev`` stays valid for the Lead's next send or stage."""
+        """Record a Lead message to an active worker (D-4, D-17's engine half). The message records the revision
+        observed under the control lock and does not advance control state."""
         draft = self._draft(kind or L.LEAD_DEFAULT_KIND, body, refs, in_reply_to, idempotency_id, channel)
         if not L.ANY_INVOCATION_RE.match(to or ""):
             raise UsageError(f"a message goes to one invocation (INV-n), not {to!r}")
         with self.k.store.session() as s:
             state = s.state
             actor = require_lead(state, token, archived=self.archive.archived_credential)
-            if expect_rev is None:
-                raise StaleRevision("a Lead message must state the revision it was written against (--expect-rev)",
-                                    current=s.revision)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}: read again, "
-                                    "then decide whether the message still holds", expected=expect_rev,
-                                    current=s.revision)
             self._require_recordable(state)
             inv = self._invocation(state, to)
             thread = read_thread(self.k.aew_root, inv["work_unit"], to)
@@ -397,7 +387,7 @@ class Coordination:
                                         pending=pending)
             self._check_refs(state, thread, draft.refs, worker=None)
             record = self._record(thread, inv, draft, sender=sender, recipient=L.invocation_party(to),
-                                  checked_rev=expect_rev)
+                                  checked_rev=s.revision)
             self._write(state, thread, record)
             return self._result(thread, record, duplicate=False) | {
                 "revision": s.revision, "unseen_replies": self._unseen_replies(thread),
@@ -1275,8 +1265,8 @@ class Coordination:
         when either refuses."""
         if state.get("schema") != V2:
             raise MigrationRequired("this project's control state is v1: messages are recorded on v2 projects only; "
-                                    f"the operator runs `aew migrate {EXPECT_REV}` first",
-                                    schema=state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
+                                    "the operator runs `aew migrate` first",
+                                    schema=state.get("schema"), next_action="aew migrate")
         switch, reason = messaging_switch(self.k.aew_root, state)
         if switch != X.MESSAGING_ENABLED:
             raise MessagingDisabled(

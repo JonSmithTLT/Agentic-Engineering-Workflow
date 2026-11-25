@@ -325,7 +325,7 @@ def test_the_lead_is_told_to_launch_by_every_route_that_dispatches_and_each_take
     routes = [s.argv for s in commands_in(lines[0])]
     assert routes == [("work", "assign"), ("work", "dispatch"), ("invoke", "create"), ("guide",)]
     for route in routes[:-1]:
-        whole = (*route, "<T>", "--launch", "--expect-rev", "<revision from aew status>")
+        whole = (*route, "<T>", "--launch", )
         assert rules.o_cmd(rules.Suggestion(whole, " ".join(whole), structured=True)) is None
 
 

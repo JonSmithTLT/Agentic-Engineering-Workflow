@@ -216,16 +216,64 @@ class Project:
         return res.json
 
     def rev(self) -> int:
-        """The committed control revision, read as `aew lead show` reads it (``lead_show``: the store's ``current``,
-        under the control lock and after recovery, as any writer process reads it), but in this process: before every
-        Lead call, a second `aew` process cost about 1.4 s on Windows and a quarter of a Lead-heavy test's time."""
+        """Read the committed control revision for assertions about progress and atomicity."""
         from aew.engine.api import Engine
 
         return Engine.discover(self.root).lead_show()["revision"]
 
     def lead(self, *args: str) -> Any:
-        """Run a Lead mutation with the current token and revision."""
-        return self.ok(*args, "--expect-rev", str(self.rev()), env={"AEW_LEAD_TOKEN": self.token})
+        """Run a Lead fixture command using the scope a caller would have read before deciding."""
+        return self.ok(*self.lead_args(*args), env={"AEW_LEAD_TOKEN": self.token})
+
+    def lead_args(self, *args: str) -> list[str]:
+        """Fill scoped observations for workflow setup. Interface and race tests can call `aew` with their own args."""
+        from aew.engine.api import Engine
+        from aew.surface import stage
+
+        argv = list(args)
+        route = ".".join(args[:2])
+
+        def value(option: str) -> str | None:
+            return argv[argv.index(option) + 1] if option in argv else None
+
+        if route in {"work.transition", "work.move", "work.promote", "work.staff", "harness.launch",
+                     "integrate.defer", "integrate.requeue"} and value("--prior-value") is None:
+            engine = Engine.discover(self.root)
+            prior = engine.prior_value(route.replace(".", "_"), args[2])
+            return [*argv, "--prior-value", prior]
+        if route == "integrate.publish" and value("--candidate") is None:
+            engine = Engine.discover(self.root)
+            candidate = (engine.status(args[2])["work_unit"].get("integration") or {}).get("candidate")
+            return [*argv, "--candidate", candidate] if candidate else argv
+        if route == "history.audit" and "--record" not in argv:
+            return [*argv, "--record"]
+        if args[:3] == ("lead", "mode", "lower") and value("--prior-value") is None:
+            engine = Engine.discover(self.root)
+            return [*argv, "--prior-value", engine.steering_view()["override_record"]]
+        if value("--approval-digest") is not None:
+            return argv
+        if route == "plan.accept":
+            engine = Engine.discover(self.root)
+            plans = engine.status(args[2])["work_unit"].get("plans", [])
+            shown = next((r["sha256"] for r in plans if str(r["revision"]) == value("--revision")), None)
+        elif route == "stage.continue":
+            engine = Engine.discover(self.root)
+            shown = stage.assess(engine, engine.stage_intent(args[2]))["approval"]["digest"]
+        elif route == "work.dispose":
+            engine = Engine.discover(self.root)
+            shown = engine.disposition_approval(args[2])["digest"]
+        elif route in {"work.accept", "work.close", "work.cancel", "plan.reconfirm", "verify.classify",
+                       "work.acknowledge-input", "gate.waive"}:
+            if route == "gate.waive" and value("--finding") is not None:
+                return argv
+            engine = Engine.discover(self.root)
+            op = {"gate.waive": "waive", "work.acknowledge-input": "input.acknowledge"}.get(route, route)
+            result = engine.approval_subject(args[2], op, gate=value("--gate"),
+                                             evidence=value("--evidence"), source=value("--from"))
+            shown = result["digest"] if result else None
+        else:
+            return argv
+        return [*argv, "--approval-digest", shown] if shown else argv
 
     def adopt_policy(self, reason: str = "the operator's reviewed policy edit") -> Any:
         """Accept a manifest or policy edit made in the test, as the operator would: `aew manifest adopt`, confirmed at
@@ -251,9 +299,10 @@ class Project:
         it."""
         from aew.engine.api import Engine
 
-        return getattr(Engine.discover(self.root), method)(
-            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty"},
-            **kwargs)
+        engine = Engine.discover(self.root)
+        if method == "manifest_adopt" and "binding" not in kwargs:
+            kwargs["binding"] = engine.manifest_approval()
+        return getattr(engine, method)(token=self.token, authorization={"authorized_by": "operator-tty"}, **kwargs)
 
 
 def policy_pins(root: Path) -> dict[str, str | None]:
@@ -461,15 +510,15 @@ def copy_test_repository(dest: Path, variant: tuple[str, str], build: Callable[[
     return shutil.copytree(_template_cache[variant], dest)
 
 
-def acquire_test_lead(p: Project, expect_rev: int = 0) -> Project:
-    p.token = p.ok("lead", "acquire", "--expect-rev", str(expect_rev), "--session-label", "lead-a")["token"]
+def acquire_test_lead(p: Project) -> Project:
+    p.token = p.ok("lead", "acquire", "--session-label", "lead-a")["token"]
     return p
 
 
 def copy_released_world(root: Path, dest: Path) -> Project:
     """Give each copy of a released module world its own Lead."""
     p = Project(shutil.copytree(root, dest))
-    return acquire_test_lead(p, expect_rev=p.rev())
+    return acquire_test_lead(p)
 
 
 def fixture_repository(dest: Path, *, initialized: bool) -> Path:

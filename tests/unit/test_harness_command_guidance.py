@@ -40,8 +40,7 @@ def _parse(command: str, *, fenced: bool) -> argparse.Namespace:
         assert match, f"the body is not one single-quoted value: {line!r}"
         key, value = match.groups()
         assert getattr(args, key) == value.replace("''", "'"), (key, getattr(args, key), value)
-    if "--expect-rev" in command:
-        assert args.expect_rev == 17
+    assert "--expect-rev" not in command
     return args
 
 
@@ -82,7 +81,7 @@ def _adapter_for_catalog(models: list[dict[str, object]]) -> adapter_module.Open
     adapter.client = _CatalogClient(models)
     adapter.directory = "."
     adapter._relayed = False
-    adapter.contract = SimpleNamespace(invocation="INV-1234")
+    adapter.contract = SimpleNamespace(invocation="INV-1234", run="R-INV-1234-1")
     return adapter
 
 
@@ -251,11 +250,11 @@ def test_a_stage_launch_failure_keeps_the_stages_own_abandon_remedy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """The stage's remedy is abandoning the intent; an `invoke cancel` alone leaves it unresolved and the subject
-    blocked (#313 review, F4). The abandon command comes with its revision and a `rationale:` body."""
+    blocked (#313 review, F4). The abandon command includes the `rationale:` body."""
     message = _stage(monkeypatch, tmp_path, harness_contract.UNCONFIRMED)
     abandon = [args for command, fenced in _commands(message)
                if (args := _parse(command, fenced=fenced)).__dict__.get("stage_cmd") == "abandon"]
-    assert [(a.intent, a.expect_rev, a.rationale) for a in abandon] == [("SI-0003", 17, "stage launch failed")]
+    assert [(a.intent, a.rationale) for a in abandon] == [("SI-0003", "stage launch failed")]
     assert len(message) < 2000  # the intent keeps its stopped error's message[:2000]
 
 
@@ -263,7 +262,8 @@ def test_a_relaunch_hint_without_an_invocation_names_where_to_find_one() -> None
     """With no id in reach the placeholder names its source; it is never a bare `<INV>` (#313 review, F1)."""
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         send_route("disabled", "enabled", "next-step")
-    assert "aew harness launch <invocation from aew harness status> --expect-rev" in raised.value.message
+    command = "aew harness launch <invocation from aew harness status> --prior-value <run from aew harness status>"
+    assert command in raised.value.message
     assert "<INV>" not in raised.value.message
 
 
@@ -275,7 +275,7 @@ def test_fields_command_roundtrip(value: str) -> None:
     """Whatever the value, the printed block is one command line, a body of one line, and `EOF` alone, and the value
     arrives as written: a quote is doubled, and a line break or other unprintable character is escaped in a
     double-quoted scalar, so no body line can be `EOF` (#313 review, N3)."""
-    block = harness_contract.fields_command(f"aew invoke cancel INV-1 {harness_contract.EXPECT_REV}", "reason", value)
+    block = harness_contract.fields_command("aew invoke cancel INV-1", "reason", value)
     [(command, fenced)] = _commands(block)
     assert fenced and len(command.splitlines()) == 3
     [args] = P.parse(command, fenced=True)
@@ -299,4 +299,4 @@ def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(mon
     harness.harness_send(token="token", run="R-INV-0012-1", text="hello")
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         admitted[0]({}, {"run": "R-INV-0012-1"})
-    assert "`aew harness launch INV-0012 --expect-rev <revision from aew status>`" in raised.value.message
+    assert "`aew harness launch INV-0012 --prior-value R-INV-0012-1`" in raised.value.message

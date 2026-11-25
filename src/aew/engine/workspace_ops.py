@@ -79,7 +79,7 @@ class Invocations:
             if (current.get("status") == "active" and current.get("role") == archetype
                     and current.get("scope", "ticket") == scope
                     and (current.get("card") or {}).get("id") == card_id):
-                cancel = K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                cancel = K.fields_command(f"aew invoke cancel {invocation}", "reason",
                                           "why this active invocation must end")
                 raise IllegalTransition(
                     f"{invocation} is still active for {work_id}'s {card_id} card. "
@@ -375,7 +375,7 @@ class Assignment:
             # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
             return blocker_from(IllegalTransition(
                 f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
-                f"implementer. Dispatch it with `aew work dispatch {work_id} {K.EXPECT_REV}` (the M2 non-mutating "
+                f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating "
                 "path)"))
         facts["archetype"] = "implementer"
         return None
@@ -437,9 +437,9 @@ class Assignment:
 
     # ---- the route
 
-    def work_assign(self, *, token: str, expect_rev: int, work_id: str,
+    def work_assign(self, *, token: str, work_id: str,
                     execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "work.assign") as ctx:
+        with self.k.lead_txn(token, "work.assign") as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)

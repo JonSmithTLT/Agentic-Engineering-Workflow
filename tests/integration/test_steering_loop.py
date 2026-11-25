@@ -144,7 +144,7 @@ class Scripted:
 
 
 def notes(rev: int) -> list[dict[str, Any]]:
-    return [action("probe_notes", {"expect_rev": rev, "note": "auto"})]
+    return [action("probe_notes", {"note": "auto"})]
 
 
 class Spy:
@@ -155,7 +155,7 @@ class Spy:
 
     def __call__(self, engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
         self.calls.append(name)
-        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
+        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": engine.store.current()["revision"]}
 
 
 class Acted:
@@ -272,7 +272,7 @@ def test_the_loop_starts_the_critical_ticket_first_whatever_the_ids(p):
         _, real = L._project_all(engine, ctx, state)
         subjects = {str(unit["subject"]) for unit in real}
         assert subjects >= {normal, critical}, subjects
-        offered = {str(unit["subject"]): [action("probe_notes", {"expect_rev": rev, "note": unit["subject"]})]
+        offered = {str(unit["subject"]): [action("probe_notes", {"note": unit["subject"]})]
                    for unit in real}
         return projection("project", rev), [projection(s, rev, actions=offered[s]) for s in offered]
 
@@ -280,7 +280,7 @@ def test_the_loop_starts_the_critical_ticket_first_whatever_the_ids(p):
 
     def executor(engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
         took.append(arguments["note"])
-        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
+        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": engine.store.current()["revision"]}
 
     mode(p, "walk")
     loop(p, projector, executor=executor).activate()
@@ -309,7 +309,7 @@ def test_walk_confirms_unknown_or_undeclared_effects(p, monkeypatch, case):
     row = PROBES["probe_notes"][0]._replace(name="probe_effect", expands_to=(primitive,))
     monkeypatch.setitem(contract.TOOLS, "probe_effect", row)
     spy = Spy()
-    stop = loop(p, Scripted(lambda rev: [action("probe_effect", {"expect_rev": rev})]), executor=spy).activate()
+    stop = loop(p, Scripted(lambda rev: [action("probe_effect", {})]), executor=spy).activate()
     assert stop.code == L.CONFIRMATION_UNAVAILABLE and spy.calls == [], stop
     assert stop_lines(p) == []  # recorded, but a quiet stop: the Lead's own step (register E183)
     ran = loop(p, Scripted(notes)).activate()  # control_state only: Walk runs it (until the repetition bound)
@@ -325,9 +325,10 @@ def test_confirm_before_actions_never_execute(p, endpoint, case):
     mode(p, "walk" if case == "walk" else "run")
     if case == "run":
         e = Engine.discover(p.root)
-        e.steering_lower(token=p.token, expect_rev=p.rev(), mode="walk", rationale="the Lead restricts itself")
+        e.steering_lower(token=p.token, mode="walk", rationale="the Lead restricts itself",
+                         prior_value=e.steering_view()["override_record"])
     spy = Spy()
-    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": "T-0001"})]),
+    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"work_id": "T-0001"})]),
               executor=spy)
     stop = lp.activate()
     assert stop.code == L.CONFIRMATION_UNAVAILABLE and spy.calls == [] and "work.assign" in stop.message
@@ -351,12 +352,12 @@ def _corpus(rev: int) -> dict[str, tuple[dict[str, Any], list[dict[str, Any]]]]:
         "decision": (projection("project", rev), [projection("T-0001", rev, actions=eligible, decisions=[
             {"decision": "PUBLISH", "evidence": [], "subject": "T-0001"}])]),
         "blocker": (projection("project", rev), [projection("T-0001", rev, actions=[action(
-            "probe_notes", {"expect_rev": rev}, availability="BLOCKED", auto=False)], blockers=[
+            "probe_notes", {}, availability="BLOCKED", auto=False)], blockers=[
             {"code": "PROTECTED_CONDITION_OVERLAP", "message": "x"}])]),
         "unknown": (projection("project", rev), [projection("T-0001", rev, actions=[action(
-            "probe_notes", {"expect_rev": rev}, availability="UNKNOWN", auto=False)])]),
+            "probe_notes", {}, availability="UNKNOWN", auto=False)])]),
         "judgment": (projection("project", rev), [projection("T-0001", rev, actions=[action(
-            "probe_judged", {"expect_rev": rev, "work_id": "T-0001"}, auto=False)])]),
+            "probe_judged", {"work_id": "T-0001"}, auto=False)])]),
         "nothing": (projection("project", rev), [projection("T-0001", rev)]),
         "eligible": (projection("project", rev), [projection("T-0001", rev, actions=eligible)]),
     }
@@ -524,7 +525,8 @@ def test_mode_never_changes_a_guard_gate_or_transition(calc, tmp_path):
     for m in ("walk", "run"):
         mode(calc, m)
         assert legality() == before, m
-    Engine.discover(calc.root).steering_lower(token=calc.token, expect_rev=calc.rev(), mode="crawl")
+    e = Engine.discover(calc.root)
+    e.steering_lower(token=calc.token, mode="crawl", prior_value=e.steering_view()["override_record"])
     assert legality() == before
 
 
@@ -553,8 +555,8 @@ def test_repetition_stops_after_n(p):
     stop = lp.activate()
     assert stop.code == L.REPETITION and [x["action"] for x in lp.executed] == ["probe_notes"] * 2, stop
     assert [x["event"] for x in spooled(p)] == ["loop_stopped"]
-    rev = p.rev()
-    Engine.discover(p.root).checkpoint(token=p.token, expect_rev=rev, note="the Lead acts", next_action=None)
+    p.rev()
+    Engine.discover(p.root).checkpoint(token=p.token, note="the Lead acts", next_action=None)
     again = loop(p, Scripted(notes)).activate()  # a commit not the loop's: progress the key cannot see, a new count
     assert again.code == L.REPETITION
 
@@ -778,7 +780,7 @@ def test_run_never_auto_starts_a_run_without_a_hard_deadline(p, endpoint):
     mode(p, "run")
     policy_text(p, command=p.extra["notify"], ready=False)
     spy = Spy()
-    stop = loop(p, Scripted(lambda rev: [action("ticket_start", {"expect_rev": rev, "work_id": "T-0001"})]),
+    stop = loop(p, Scripted(lambda rev: [action("ticket_start", {"work_id": "T-0001"})]),
                 executor=spy).activate()
     assert stop.code == L.NO_HARD_DEADLINE and spy.calls == [], stop
     # an unconfigured policy is said to be one, with the route, never a profile named `<none>`
@@ -823,55 +825,50 @@ def test_policy_drift_between_steps_is_stale_policy(p, monkeypatch):
     assert si["stopped"]["error"]["code"] == "STALE_POLICY"
 
 
-def test_a_mode_change_is_never_stale_policy(p, monkeypatch):
-    """A3 §6: the mode is operational, so a mode changed between an auto-run stage's steps never makes it
-    STALE_POLICY and leaves its binding unchanged; the committed step stands, and the next tick obeys the new mode.
-    The change is itself a commit, so the next step meets the ordinary CAS: here a probe whose checkpoint guard has no
-    query form, which R5-1 cannot re-ask, so the probe stops as STALE_REVISION. A stage R5-1 can re-ask completes:
-    ``test_mode_change_mid_step_leaves_the_step``."""
+def test_a_mode_change_changes_the_next_action_without_changing_legality(p, monkeypatch):
     mode(p, "walk")
     e = Engine.discover(p.root)
     digest = e.policy_digests()["legality_digest"]
 
     def lower(c: Any) -> None:
         if len(seen) == 2:
-            e.steering_lower(token=p.token, expect_rev=int(e.store.read()["revision"]), mode="crawl")
+            e.steering_lower(token=p.token, mode="crawl", prior_value=e.steering_view()["override_record"])
 
     seen = intervene(monkeypatch, "checkpoint", times=2, before=lower)
     lp = loop(p, Scripted(notes))
-    stop = lp.tick(L.Activation("LA-test", time.monotonic()))
-    assert isinstance(stop, L.Stop) and stop.code == L.ACTION_STOPPED and "STALE_REVISION" in stop.message, stop
+    completed = lp.tick(L.Activation("LA-test", time.monotonic()))
+    assert isinstance(completed, dict) and completed["ok"], completed
     first = Engine.discover(p.root).stage_intent(lp.executed[0]["intent"])
-    assert len(first["steps"]) == 1 and first["stopped"]["error"]["code"] == "STALE_REVISION"  # never STALE_POLICY
-    assert first["binding"]["legality_digest"] == digest == Engine.discover(p.root).policy_digests()["legality_digest"]
-    assert Engine.discover(p.root).steering_view()["effective"] == "crawl"
+    assert first["status"] == "COMPLETED" and len(first["steps"]) == 2
+    assert "retried_after_stale_revision" not in first
+    assert first["binding"]["legality_digest"] == digest == e.policy_digests()["legality_digest"]
+    assert e.steering_view()["effective"] == "crawl"
     after = lp.tick(L.Activation("LA-next", time.monotonic()))
     assert isinstance(after, L.Stop) and after.code == L.CONFIRMATION_UNAVAILABLE
 
 
-def test_loop_commit_stales_a_judgment_call_which_is_never_replayed(p):
-    """Plan v3 §2.7 (n5): the loop's commit is real progress and stales the Lead's expect_rev. The Lead's
-    judgment-bearing call then fails STALE_REVISION with nothing committed, and nothing replays it: not the stage
-    runner (rule 5), not the loop (it never runs a judgment)."""
+def test_loop_checkpoint_leaves_an_unrelated_lead_draft_available(p):
     mode(p, "walk")
-    rev = p.rev()
+    before = p.rev()
     lp = loop(p, Scripted(notes))
     lp.activate()
+    assert p.rev() > before
     out = R.run_tool(Engine.discover(p.root), CTX, "ticket_draft",
-                     {"expect_rev": rev, "title": "A judgment", "risk_class": 1}, token=p.token)
-    assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision" and out["stage_intent_id"] is None
-    assert not [u for u in load_control(p.root)["work"].values() if u.get("title") == "A judgment"]
+                     {"title": "A judgment", "risk_class": 1}, token=p.token)
+    assert out["ok"], out["stopped"]
+    matches = [u for u in load_control(p.root)["work"].values() if u.get("title") == "A judgment"]
+    assert len(matches) == 1
     assert {x["action"] for x in lp.executed} == {"probe_notes"}
 
 
 def test_two_intents_in_flight(p, monkeypatch):
     """Plan v3 §2.7: the bound on intents in flight is two, the Lead's call and one the loop auto-runs. The loop
     never advances a unit with an unfinished stage (the Lead's to resolve) and never stacks a second on it; the two
-    are each checked by CAS, and the Lead's resolves afterwards as usual."""
+    have their own journal and subject guards, and the Lead's resolves afterwards as usual."""
     mode(p, "walk")
     wid = create_planned_ticket(p, p.root.parent)
     e = Engine.discover(p.root)
-    lead = e.stage_open(token=p.token, expect_rev=p.rev(), tool="probe_start", contract_digest="0" * 64,
+    lead = e.stage_open(token=p.token, tool="probe_start", contract_digest="0" * 64,
                         arguments={"work_id": wid}, judgment_inputs=[], base_class="POLICY_RESOLVED",
                         effective_class="POLICY_RESOLVED", subject=wid, ingress="test",
                         plan=[{"primitive": "checkpoint", "args": {}}, {"primitive": "work.assign",
@@ -889,7 +886,7 @@ def test_two_intents_in_flight(p, monkeypatch):
     assert counts and max(counts) == 2, counts  # the Lead's, and the loop's while it ran
     assert [x["subject"] for x in lp.executed] == ["T-9999"]
     assert e.stage_intent(lead)["status"] == "ACTIVE" and len(hot_intents(p)) == 1
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"expect_rev": p.rev(), "subject": lead,
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": lead,
                                                                 "choice": "abandon", "rationale": "done"},
                      token=p.token)
     assert out["ok"], out["stopped"]
@@ -916,8 +913,7 @@ class Turns:
         units = []
         for subject, what in sorted(turn.items()):
             if what == "act":
-                units.append(projection(subject, rev, actions=[action("probe_notes", {"expect_rev": rev,
-                                                                                        "note": subject})]))
+                units.append(projection(subject, rev, actions=[action("probe_notes", {"note": subject})]))
             else:
                 units.append(projection(subject, rev, blockers=[{"code": "FILES_CONFLICT", "message": "held"}]))
         return projection("project", rev), units
@@ -974,7 +970,7 @@ class ProjectHeld:
             return projection("project", rev, blockers=[{"code": "POLICY_DRIFT", "message": "held"}]), []
         if turn == "act":
             return projection("project", rev), [projection("T-0001", rev, actions=[
-                action("probe_notes", {"expect_rev": rev, "note": "T-0001"})])]
+                action("probe_notes", {"note": "T-0001"})])]
         return projection("project", rev), []
 
 
@@ -1104,7 +1100,7 @@ def test_hard_deadline_terminates_and_releases_no_lease(tmp_path, monkeypatch):
         until(lambda: (runlog.read_record(runlog.run_dir(p.root / ".aew", run)) or {}).get("status") == "terminated",
               "wait.condition", "the hard deadline")
         before = load_control(p.root)
-        Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="after the deadline",
+        Engine.discover(p.root).checkpoint(token=p.token, note="after the deadline",
                                            next_action=None)
         after = load_control(p.root)
         [an] = [a for a in after["anomalies"].values() if a["source"] == "HARD_DEADLINE"]
@@ -1152,8 +1148,9 @@ def test_a_run_started_under_run_keeps_its_deadline_when_run_ends_during_its_lau
         assert res.returncode == 86, res.stdout  # the launcher ends at the hand-off; its supervisor goes on
         lab.until(lambda: Path(f"{held}.reached").exists(), "wait.condition",
                   what="the supervisor held after its launch")
-        Engine.discover(p.root).steering_lower(token=p.token, expect_rev=p.rev(), mode="crawl",
-                                               rationale="Run ends while the harness starts")
+        e = Engine.discover(p.root)
+        e.steering_lower(token=p.token, mode="crawl", rationale="Run ends while the harness starts",
+                         prior_value=e.steering_view()["override_record"])
         held.unlink()
         run = lab.until(lambda: next(iter(load_control(p.root)["invocations"].values()))["runs"][0]["run"],
                         "wait.condition",
@@ -1199,7 +1196,7 @@ def test_the_loop_runs_in_the_broker_and_stops_with_its_session(p, tmp_path):
               "the first activation", describe=loop_chain(broker))
         looks.another()  # its own commits are no wake: a second activation would have run before this look
         assert len(broker.loop.executed) == 2
-        out = broker._tool({"name": "checkpoint", "arguments": json.dumps({"expect_rev": p.rev(), "note": "Lead"}),
+        out = broker._tool({"name": "checkpoint", "arguments": json.dumps({"note": "Lead"}),
                             "ingress": "cli", "profile": "normal"})
         assert out["stage_result"]["ok"]
         until(lambda: len(broker.loop.executed) == 4, activation_wait_s(broker.loop),
@@ -1232,11 +1229,11 @@ def test_a_standing_stop_is_notified_once(p):
     condition. The standing condition here is Run's with no operator endpoint (``NOTIFIER_UNAVAILABLE``): the Lead's
     own step, ``CONFIRMATION_UNAVAILABLE``, is never notified at all (register E183)."""
     mode(p, "run")  # no operator endpoint: NOTIFIER_UNAVAILABLE whenever an action is eligible
-    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": "T-0001"})]))
+    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"work_id": "T-0001"})]))
     assert lp.activate().code == L.NOTIFIER_UNAVAILABLE
     e = Engine.discover(p.root)
     for n in range(5):  # the Lead works elsewhere; each of its commits wakes the loop (lead_broker._tool)
-        e.checkpoint(token=p.token, expect_rev=p.rev(), note=f"Lead work {n}", next_action=None)
+        e.checkpoint(token=p.token, note=f"Lead work {n}", next_action=None)
         assert lp.activate().code == L.NOTIFIER_UNAVAILABLE
     assert len(stop_lines(p)) == 1, stop_lines(p)
 
@@ -1432,7 +1429,7 @@ def test_no_new_action_starts_once_the_broker_is_closing(p):
         # close() has begun (its drain follows the loop's request_stop): an event, never a sleep, orders the commit
         # after it
         assert draining.wait(HANG_S), "close() never reached the drain"
-        Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="another actor's commit",
+        Engine.discover(p.root).checkpoint(token=p.token, note="another actor's commit",
                                            next_action=None)
         # close() asked the loop to stop before its drain, so the loop ends whatever wakes it, and once it has ended
         # nothing more can start: its end, never a sleep, says when to count, while the drain still holds close()
@@ -1453,9 +1450,9 @@ def test_the_loops_own_commits_never_restart_the_envelope(p, endpoint):
     envelope goes on. A stage that commits its first step and is refused at its second, every time, runs at most
     repetition_n (2) times, then the loop stops; without this every own commit would start a fresh envelope."""
     mode(p, "run")
-    wid = Engine.discover(p.root).work_create(token=p.token, expect_rev=p.rev(), kind="ticket", title="Unplanned",
+    wid = Engine.discover(p.root).work_create(token=p.token, kind="ticket", title="Unplanned",
                                               risk_class=1)["id"]  # not READY: its assignment is always refused
-    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": wid})]))
+    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"work_id": wid})]))
     looks = Looks(lp)
     lp.start()
     try:
@@ -1470,32 +1467,30 @@ def test_the_loops_own_commits_never_restart_the_envelope(p, endpoint):
 
 
 def test_mode_change_mid_step_leaves_the_step(tmp_path, monkeypatch):
-    """A3 §4, §6 / CWR §8: changing the mode does not interrupt an executing action. Run is lowered to Walk between
-    `ticket_start`'s steps: the stage completes, its next step retried once under R5-1 (its guard is re-asked and the
-    mode changed no legality), with its binding unchanged and nothing STALE_POLICY; the next tick follows Walk."""
+    """A3: Run admits this whole action. Lowering to Walk changes the next action's admission."""
     p, lab, wid = _run_lab(tmp_path, monkeypatch)
     lab.script("default", [{"do": "hang"}])
     e = Engine.discover(p.root)
     digest = e.policy_digests()["legality_digest"]
 
     def lower(c: Any) -> None:
-        e.steering_lower(token=p.token, expect_rev=int(e.store.read()["revision"]), mode="walk")
+        e.steering_lower(token=p.token, mode="walk", prior_value=e.steering_view()["override_record"])
 
     ep = operator_endpoint.OperatorEndpoint(Engine.discover(p.root), console=Console(), dev=True, timeout=10)
     ep.start()
     try:
         intervene(monkeypatch, "work.transition", times=1, before=lower)
         lp = loop(p)
-        ran = lp.tick(L.Activation("LA-a3", time.monotonic()))
-        assert isinstance(ran, dict) and ran["ok"], ran
+        completed = lp.tick(L.Activation("LA-a3", time.monotonic()))
+        assert isinstance(completed, dict) and completed["ok"], completed
         si = Engine.discover(p.root).stage_intent(lp.executed[0]["intent"])
         assert si["status"] == "COMPLETED" and si["stopped"] is None
         assert [s["primitive"] for s in si["steps"]] == ["work.assign", "dispatch.launch", "work.transition"]
-        assert si["steps"][-1].get("retried_after_stale_revision") is True
+        assert "retried_after_stale_revision" not in si and load_control(p.root)["work"][wid]["state"] == "RUNNING"
         assert si["binding"]["legality_digest"] == digest == Engine.discover(p.root).policy_digests()[
             "legality_digest"]
         assert Engine.discover(p.root).steering_view()["effective"] == "walk"
-        after = loop(p, Scripted(lambda rev: [action("ticket_start", {"expect_rev": rev, "work_id": "T-0001"})]),
+        after = loop(p, Scripted(lambda rev: [action("ticket_start", {"work_id": "T-0001"})]),
                      executor=Spy()).tick(L.Activation("LA-next", time.monotonic()))
         assert isinstance(after, L.Stop) and after.code == L.CONFIRMATION_UNAVAILABLE  # Walk confirms a dispatch
     finally:
@@ -1613,7 +1608,7 @@ def test_a_superseded_loop_writes_nothing_shared(p, monkeypatch):
     spool = event_spool.file_of(p.root / ".aew", event_spool.BROKER)
     before = (loop_json.read_bytes(), spool.read_bytes())
     assert json.loads(before[0])["generation"] == 1
-    Engine.discover(p.root).checkpoint(token=old_token, expect_rev=p.rev(), note="the Lead acts", next_action=None)
+    Engine.discover(p.root).checkpoint(token=old_token, note="the Lead acts", next_action=None)
     seen = intervene(monkeypatch, "checkpoint", times=2,
                      before=lambda c: takeover(p, monkeypatch) if len(seen) == 2 else None)
     stop = lp.activate()  # a new activation: its stage is cut by the takeover, and the loop finds itself superseded

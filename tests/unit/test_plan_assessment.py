@@ -222,7 +222,7 @@ def test_a_lead_session_cannot_relay_plan_assess_until_its_typed_tool():
 
     assert frozenset({"plan", "assess"}) not in lead_broker.LEAD_REACHABLE
     assert frozenset({"plan", "assess"}) in lead_broker.DISPATCHES
-    argv = ["plan", "assess", "T-0001", "--launch", "--expect-rev", "3"]
+    argv = ["plan", "assess", "T-0001", "--launch", ]
     refusal = lead_broker.refuses_locally(build_parser().parse_args(argv))
     assert refusal == ("`aew plan assess` reaches a Lead session through its typed tool, which is not built yet; "
                        "until it is, ask the operator to run it at their own terminal")

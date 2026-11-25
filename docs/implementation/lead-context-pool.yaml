@@ -13,10 +13,10 @@ authority:
 baseline:
   push_wake: true
   switches: [coordination.messaging]
-  system_bytes: 9020
-  guide_bytes: 16412
+  system_bytes: 8987
+  guide_bytes: 15657
   join_bytes: 2
-  mcp_bytes: 11900
+  mcp_bytes: 10893
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
   # 242 B. The line would be 453 B with all six shipped tools placed.
   containment:
@@ -56,10 +56,11 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then adds
-# its 200 B. Preserve the operator's exact words and date in approval history when the cap changes.
+# E329 measured 38,728 B on main ee89c341 and 36,933 B after the cutover with messaging on.
+# The system dropped 33 B, the guide 755 B and the MCP list 1,007 B. The baseline and cap both drop 1,795 B.
+# Existing allocation and approval history are retained.
 approval:
-  ceiling_bytes: 42971
+  ceiling_bytes: 41176
   operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
   date: '2026-11-15'
 # The approved drop after PR 3 still applies.
@@ -80,6 +81,10 @@ approval_history:
     date: '2026-11-11'
   # The maps guide entry: 200 B measured, the cap raised by exactly that (before E328's 21 B drop: 42971 after it).
   - ceiling_bytes: 42992
+    operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
+    date: '2026-11-15'
+  # The cap immediately before the E329 cutover.
+  - ceiling_bytes: 42971
     operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
     date: '2026-11-15'
 # When approved, a raise takes the systems board's wip_allowance shape.

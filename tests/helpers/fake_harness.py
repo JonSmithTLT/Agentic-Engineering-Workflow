@@ -230,7 +230,7 @@ class HarnessLab:
         return res.json
 
     def lead_args(self, *args: str) -> list[str]:
-        return [*args, "--expect-rev", str(self.project.rev())]
+        return self.project.lead_args(*args)
 
     def lead_env(self, env: dict[str, str] | None) -> dict[str, str]:
         """The Lead credential the way the operator gives it, in the environment."""

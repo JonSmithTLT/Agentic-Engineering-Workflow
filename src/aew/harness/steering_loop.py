@@ -34,16 +34,15 @@ to a stop; the envelope is counted per activation.
    notifier must be able to deliver, and before each action the operator endpoint must answer
    (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4; register E228), and a dispatching action needs every profile routing
    can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1 §3.2).
-6. Execute it as a normal stage call (``run_tool``), with the projection's ``expect_rev``, a StageIntent, and the
+6. Execute it as a normal stage call (``run_tool``), with the projection's arguments, a StageIntent, and the
    loop's attribution on that intent (``auto_run``: activation, mode and its record and generation, digests,
    projection) and on its dispatches (channel ``steering_loop``). It is the same call a Lead makes, checked the same
-   way: R5-1 is the stage executor's, and a judgment is never replayed (it is never auto-run at all).
+   way. Stage admission rechecks the loop's mode and policy under the lock. Each operation uses its own binding.
 7. **Runtime declaration check (SAE-07):** each committed step's typed events must stay within what its primitives
    declare; an excess is recorded as a high anomaly and stops the loop.
 
-**Interaction with the Lead's ``expect_rev`` (n5):** the loop's commits are real progress and stale the Lead's next call
-(``STALE_REVISION``); the Lead re-reads and re-judges, nothing replays. The loop runs on an engine of its own, so a
-Lead's call and the loop's are each one stage, CAS-checked: at most two intents in flight (plan v3 §2.7).
+The loop runs on an engine of its own, so a Lead's call and the loop's are each one stage. The stage intent admits
+one outstanding stage per subject; each operation rechecks the facts its own action depends on.
 
 **What it records:** its state (``.aew/local/steering/loop.json``: running or stopped, and why; never control state,
 §2.7), and a ``loop_stopped`` line in the broker's event spool for a stop that needs attention, so the operator
@@ -104,7 +103,7 @@ ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch
 PLAN_LOGIN_FAILED = "PLAN_LOGIN_FAILED"
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
-STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
+PROJECTION_READS = 3  # another actor's commits during a projection read: re-project, a few times
 COARSE_S = 30.0  # the look that covers a wake lost by a failed bump (``outbox.bump_wake``): one projection per period
 TERMINAL_STATES = frozenset({"DONE", "CANCELLED"})
 
@@ -115,7 +114,7 @@ class Stop:
     message: str
     subject: str = "project"
     action: str | None = None  # the action a stop is about, if any: with its arguments, the condition's identity
-    arguments_digest: str | None = None  # of its arguments without expect_rev (``arguments_digest``)
+    arguments_digest: str | None = None
     episode: str | None = None  # an envelope stop's activation: each activation that exhausts it is an occurrence
 
     @property
@@ -237,8 +236,8 @@ def ingesting_action(state: dict[str, Any], action: dict[str, Any]) -> bool:
 
 
 def arguments_digest(action: dict[str, Any]) -> str:
-    """An action's arguments without ``expect_rev``, which moves with every commit and names no different action."""
-    args = {k: v for k, v in (action.get("arguments") or {}).items() if k != "expect_rev"}
+    """The arguments of the projected action, including its scoped bindings."""
+    args = action.get("arguments") or {}
     return sha256_bytes(json.dumps(args, sort_keys=True, default=str).encode("utf-8"))[:32]
 
 
@@ -434,11 +433,11 @@ class SteeringLoop:
             if isinstance(outcome, Stop):
                 self._record(outcome, act, self._mode())
                 return outcome
-            if outcome.get("stale"):
+            if outcome.get("projection_moved"):
                 stale += 1
-                if stale >= STALE_RETRIES:
-                    stop = Stop(ACTION_STOPPED, "the projection kept moving under the loop's calls "
-                                                f"({STALE_RETRIES} stale revisions in a row): it waits for the next "
+                if stale >= PROJECTION_READS:
+                    stop = Stop(ACTION_STOPPED, "state changed while the loop read the projection "
+                                                f"({PROJECTION_READS} reads in a row): it waits for the next "
                                                 "change", episode=act.id)
                     self._record(stop, act, self._mode())
                     return stop
@@ -458,8 +457,7 @@ class SteeringLoop:
             return None
 
     def tick(self, act: Activation) -> Stop | dict[str, Any]:
-        """One evaluation: a stop, or the action it executed (``{"stale": True}`` when another actor's commit beat
-        the call: nothing ran, and the next tick re-projects)."""
+        """One evaluation: a stop, an executed action, or a read invalidated while assembling the projection."""
         if self._closed.is_set():
             return Stop(OFF, "the broker is closing")  # recorded as nothing: the session ended, not the loop
         self._seen = self._snapshot()  # before any read: a change after it is one this tick did not see (F3)
@@ -484,7 +482,7 @@ class SteeringLoop:
             record = runlog.read_record(runlog.run_dir(self.aew_root, run)) or {}
             if record.get("status") not in (K.CRASHED, K.ENDED_WITHOUT_EVIDENCE, K.LAUNCH_FAILED):
                 continue
-            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id):
+            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id, run):
                 return Stop(PLAN_LOGIN_FAILED, f"{run}: {failure}", subject=inv["work_unit"])
         if act.last_own_rev is not None and int(state["revision"]) != act.last_own_rev:
             act.counts.clear()  # a commit the loop did not make: progress the repetition key cannot see
@@ -506,7 +504,7 @@ class SteeringLoop:
         # A stage can be chosen from an earlier Ticket state than the one its live guards read. A blocker from
         # that mixed projection is no more current than an action: retry before recording a stop or waking the Lead.
         if self._revision() != state["revision"]:
-            return {"stale": True}
+            return {"projection_moved": True}
         picked = select(project, units, PRIORITY.order(state))
         self._selected = selection(picked)
         if isinstance(picked, Stop):
@@ -566,8 +564,6 @@ class SteeringLoop:
             result = self._execute(self.engine, self._ctx(), picked.action["action"],
                                    dict(picked.action["arguments"]), token=self._token(), auto_run=attribution)
         stopped = result.get("stopped")
-        if result.get("stage_intent_id") is None and stopped and stopped.get("boundary") == "stale_revision":
-            return {"stale": True}  # another actor committed first: nothing ran (the intent never opened)
         act.actions += 1
         act.counts[key] = act.counts.get(key, 0) + 1
         act.last_own_rev = act.own_rev = int(result.get("revision") or 0)

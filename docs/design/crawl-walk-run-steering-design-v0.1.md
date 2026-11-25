@@ -172,3 +172,9 @@ M4-H/F19 must measure operator confirmations, blocked time, Lead actions, false 
 For personal dogfood, **Walk** is the approved test default because it exercises the confirmation path while avoiding confirmation of pure bookkeeping.
 
 Crawl is explicitly not the universal default.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends CWR-07 and CWR-09. The loop runs the projected action with its scoped inputs and recorded steering and policy basis. It checks those facts in the committing transaction. A confirmation applies to the projected action, its approval digest and its policy binding where the command supports confirmation. A stale subject requires a new decision. The loop may re-read a mixed projection before it submits an action.
+
+[Adopted control-binding amendment](scoped-control-bindings-amendment-2026-11-25.md).

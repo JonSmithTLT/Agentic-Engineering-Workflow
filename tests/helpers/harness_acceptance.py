@@ -232,7 +232,7 @@ def operator_takeover(lab: HarnessLab, reason: str) -> str:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        return Engine.discover(lab.root).lead_takeover(expect_rev=lab.project.rev(), reason=reason,
+        return Engine.discover(lab.root).lead_takeover(reason=reason,
                                                        session_label="operator")["token"]
     finally:
         aew.operator.authorize = original
@@ -513,7 +513,7 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
         lead("harness", "launch", "INV-0001", "--replace"),                                     # 9: rotation
         wait(r2),
         lead("lead", "handoff", "offer"),                                                       # 11
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "0"]},                        # 12
+        {"do": "aew", "args": ["lead", "acquire", ]},                        # 12
         lead("work", "assign", WID),                                                            # 13: no --launch
         {**lead("checkpoint", "--next", "x"), "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},  # 14
         {"do": "scan", "out": str(sync / "lead-hits"), "roots": roots},                         # 15

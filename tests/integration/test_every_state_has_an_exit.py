@@ -30,7 +30,7 @@ CTX = SurfaceContext.outside_session()
 
 
 def call(p: Project, name: str, **arguments: Any) -> dict[str, Any]:
-    return run.run_tool(Engine.discover(p.root), CTX, name, {"expect_rev": p.rev(), **arguments}, token=p.token)
+    return run.run_tool(Engine.discover(p.root), CTX, name, {**arguments}, token=p.token)
 
 
 # Where a Ticket has no offered exit: why, and what its hint says today, for whoever closes it.

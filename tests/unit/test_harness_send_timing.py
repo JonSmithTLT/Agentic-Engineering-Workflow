@@ -90,7 +90,7 @@ def test_send_route_decides_every_cell_and_refuses_all_but_the_request_file(when
         with pytest.raises(MessagingSnapshotMismatch) as refused:
             send_route(project, snapshot, when, invocation="INV-0007")
         assert refused.value.details == {"project": project, "snapshot": snapshot, "when": when}
-        assert ("Relaunch the run (`aew harness launch INV-0007 --expect-rev <revision from aew status>`)"
+        assert ("Relaunch the run (`aew harness launch INV-0007 --prior-value <run from aew harness status>`)"
                 in refused.value.message)
         assert "needs messaging switched off" not in refused.value.message
 

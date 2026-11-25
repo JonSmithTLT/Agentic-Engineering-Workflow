@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from aew.errors import ChangedSinceRead, IntegrityError
 from aew.util import sha256_text
@@ -25,7 +25,8 @@ def prior_state(op: str, subject: str, expected: str, current: str, *, root: Pat
 def prior(op: str, subject: str, field: str, expected: str | None, current: str, *,
           root: Path, state: dict[str, Any], event: Callable[[dict[str, Any]], bool] | None = None,
           record: str | None = None) -> None:
-    if expected is None or expected == current:
+    require_binding(op, subject, field, expected)
+    if expected == current:
         return
     source = ""
     if record is None and event is not None:
@@ -76,8 +77,8 @@ def role_plan_digest(unit: dict[str, Any]) -> str:
     return digest({slot: plan.get(slot, []) for slot in ("execute", "review", "verify", "forbidden")})
 
 
-def bound_argv(argv: tuple[str, ...], revision: int, value: str) -> list[str]:
-    return [*argv, "--expect-rev", str(revision), "--prior-value", value]
+def bound_argv(argv: tuple[str, ...], value: str) -> list[str]:
+    return [*argv, "--prior-value", value]
 
 
 def refuse_change(op: str, subject: str, field: str, expected: Any, current: Any, *,
@@ -90,9 +91,25 @@ def refuse_change(op: str, subject: str, field: str, expected: Any, current: Any
     )
 
 
+_Binding = TypeVar("_Binding")
+
+
+def require_binding(op: str, subject: str, field: str, binding: _Binding | None) -> _Binding:
+    """Missing observations never become approvals of whatever is current at commit."""
+    if binding is None:
+        raise ChangedSinceRead(
+            f"{op}: read {subject}'s {field} before deciding. The call has no binding for it.",
+            op=op, subject=subject, field=field, reason="missing_binding",
+            next_step="Read the subject and decide again.",
+        )
+    return binding
+
+
 def compare(op: str, subject: str, expected: str | None, current: str | None, *,
             next_step: str = "Read the subject again and decide anew.", **details: Any) -> None:
     """A digest mismatch may include uncommitted file edits, so it has no general change-record lookup."""
+    if op != "manifest.adopt":
+        require_binding(op, subject, "approval subject", expected)
     if expected != current:
         refuse_change(op, subject, "approval subject", expected, current, next_step=next_step, **details)
 
@@ -120,8 +137,6 @@ def failure_digest(unit: dict[str, Any], evidence_id: str | None) -> str:
 
 
 def failure_ref(op: str, unit: dict[str, Any], evidence_id: str | None, binding: str | None) -> str | None:
-    if binding is None:
-        return evidence_id
     compare(op, evidence_id or "verification failure", binding, failure_digest(unit, evidence_id))
     return f"{evidence_id}@record:{binding}"
 
@@ -131,7 +146,7 @@ def gate_digest(context: dict[str, Any], gate: str) -> str:
                    "result": context["gates"].get(gate)})
 
 
-def command(op: str, work_id: str, revision: int, binding: str, *options: str) -> list[str]:
-    """The relay arguments carry the digest from the same read as the revision."""
+def command(op: str, work_id: str, binding: str, *options: str) -> list[str]:
+    """The relay arguments carry the digest of the subject shown."""
     route = {"input.acknowledge": "work acknowledge-input", "waive": "gate waive"}.get(op, op.replace(".", " "))
-    return [*route.split(), work_id, *options, "--expect-rev", str(revision), "--approval-digest", binding]
+    return [*route.split(), work_id, *options, "--approval-digest", binding]

@@ -154,7 +154,7 @@ def test_a_lead_rotation_after_the_durable_offer_never_posts_to_the_old_run(work
     def rotate_after_selection(**kwargs):
         result = select(**kwargs)
         assert result["message"] is not None and facts(w) == [["RECORDED", "POSTED"]]
-        w.e.lead_takeover(expect_rev=w.rev(), reason="the seat was lost", session_label="lead-b")
+        w.e.lead_takeover(reason="the seat was lost", session_label="lead-b")
         return result
 
     monkeypatch.setattr(w.e, "message_next_post", rotate_after_selection)

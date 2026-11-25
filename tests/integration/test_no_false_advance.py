@@ -102,7 +102,7 @@ def _held_by_intent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Pr
     """A READY Ticket an unfinished stage holds: one whose executor died right after opening its intent."""
     p, wid, done = _ready(tmp_path, monkeypatch)
     e = Engine.discover(p.root)
-    e.stage_open(token=p.token, expect_rev=int(e.store.read()["revision"]), tool="ticket_start",
+    e.stage_open(token=p.token, tool="ticket_start",
                  contract_digest="0" * 64, arguments={"work_id": wid}, judgment_inputs=[], base_class="POLICY_RESOLVED",
                  effective_class="POLICY_RESOLVED", plan=[{"primitive": "checkpoint"}], subject=wid, ingress="test")
     return p, wid, done
@@ -203,7 +203,7 @@ def test_no_false_advance(tmp_path, monkeypatch, name):
         engine = Engine.discover(p.root)
         rev = int(engine.store.read()["revision"])
         held = set(engine.store.read().get("stage_intents") or {})  # a seed's own unfinished stage stays as it was
-        arguments = {"expect_rev": rev, **_bind(case["arguments"], wid, rev, EVIDENCE.get(str(p.root)))}
+        arguments = {**_bind(case["arguments"], wid, rev, EVIDENCE.get(str(p.root)))}
         explain_args = {k: v for k, v in arguments.items() if k != "expect_rev"}
         explained = R.run_tool(engine, CTX, "explain", {"stage": case["stage"], "arguments": explain_args})
         assert explained["ok"], explained["stopped"]

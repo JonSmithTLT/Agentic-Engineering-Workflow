@@ -148,7 +148,7 @@ def test_the_walks_fail_on_a_new_file_argument_the_client_does_not_handle():
 # ----------------------------------------------------------------------------------- the client's half
 
 
-REV = ["--expect-rev", "1"]
+REV = []
 
 
 def _sent(parser, argv, cwd):

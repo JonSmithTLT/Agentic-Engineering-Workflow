@@ -57,6 +57,7 @@ NOT_TOOLS = {
     "slice_bytes": "a field of a pack's map source: the bytes of the slice the worker reads",
     "why": "a wait result's field: why it returned (E122)",
     "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
+    "launch_argv": "the status result’s scoped relaunch command",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
     "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
     "loop": "a field of a push wake: the steering loop's stop a `loop_waiting` wake is about (A-58 CL-R07)",
@@ -506,7 +507,7 @@ def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidat
     the stage requires, and names only a command where the stage is no whole step."""
     part: dict[str, Any] = {"state": "COMMIT_READY", "revision": 3, "decisions": [],
                             "unit": {"integration": {"status": "prepared", "candidate": "C-1"}}}
-    surface._ticket_actions(part, "T-0007", 3)
+    surface._ticket_actions(part, "T-0007")
     monkeypatch.setattr(surface, "_reports", lambda *a: ["EV-9"])
     monkeypatch.setattr(surface, "_items", lambda *a, **kw: [])
     monkeypatch.setattr(surface.SA, "stage_availability", lambda *a, **kw: {"availability": "AVAILABLE"})
@@ -514,7 +515,7 @@ def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidat
     [decision] = surface._decisions(engine, part, "T-0007", [], [])
     assert decision["decision"] == "PUBLISH", "named for what its tool does"
     assert decision["tool"] == "integration_publish" and decision["availability"] == "AVAILABLE"
-    assert decision["arguments"] == {"expect_rev": 3, "work_id": "T-0007", "verification_evidence": "EV-9",
+    assert decision["arguments"] == {"work_id": "T-0007", "verification_evidence": "EV-9",
                                      "prepared_candidate": "C-1"}
     required = contract.tool("integration_publish").input_schema["required"]
     assert set(required) <= set(decision["arguments"])
@@ -600,7 +601,8 @@ def test_a_move_that_requires_a_reason_is_printed_with_one(frm, dst):
     """#331 review F8: each of these is refused without `--reason`, and the guide and the refusals printed it bare."""
     assert T.RULES[frm, dst].reason_required
     assert "--reason <reason>" in T.command(frm, dst, "T-0007")
-    assert f"`aew work transition T-0007 --to {dst} --reason <reason> " in T.next_steps(frm, "T-0007")
+    command = f"aew work transition T-0007 --to {dst} --prior-value {frm} --reason <reason>"
+    assert f"`{command}`" in T.next_steps(frm, "T-0007")
     text = rendered()
     assert way_of(text, frm, dst) == f"{guide.TRANSITION} {guide.WITH_REASON}"
     assert f'"{guide.WITH_REASON}" adds `--reason <reason>`' in text
@@ -706,7 +708,7 @@ def test_every_ticket_hint_names_each_command_whole_so_it_parses(monkeypatch):
 
     hints = every_ticket_hint(monkeypatch)
     assert any("`aew integrate publish T-0007 " in h for h in hints)  # the walk reaches the publish
-    assert any("`aew review ingest T-0007 --evidence EV-1 " in h for h in hints)
+    assert any("`aew review ingest T-0007 --evidence EV-1`" in h for h in hints)
     found = [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_actions": hints}))
              if f.rule == "O-CMD"]
     assert found == [], found
@@ -728,7 +730,7 @@ def test_a_dispatch_hint_is_the_guides_own_launched_move(state, role):
     moves = {m.qualifier: m.shell for m in guide.PATH if m.primitive == "invoke.create.mutating"}
     if role in moves:
         assert moves[role] == f"`{T.dispatch_command('<T>', role)}`"
-    argv = command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:]
+    argv = command.split()[1:]
     ns = build_parser().parse_args(argv)
     assert ns.launch and ns.role == role and ns.work_id == "T-0007", ns
 
@@ -768,8 +770,7 @@ def test_the_parent_acceptance_hint_is_the_guides_own_launched_move(monkeypatch)
     assert f"`{command}`" in hint, hint
     assert whole([hint]) == 1
     for role in ("reviewer", "verifier"):
-        ns = build_parser().parse_args(command.replace("reviewer|verifier", role)
-                                       .replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:])
+        ns = build_parser().parse_args(command.replace("reviewer|verifier", role).split()[1:])
         assert ns.launch and ns.role == role and ns.work_id == "S-0007", ns
 
 
@@ -786,7 +787,7 @@ def test_a_parents_re_verification_with_its_card_is_launched():
     command = T.dispatch_command("S-0007", card="verifier")
     assert text is not None and f"`{command}`" in text, text
     assert whole([text]) == 1
-    ns = build_parser().parse_args(command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:])
+    ns = build_parser().parse_args(command.split()[1:])
     assert ns.launch and ns.card == "verifier" and ns.role is None and ns.work_id == "S-0007", ns
     with pytest.raises(ValueError):
         T.dispatch_command("S-0007", "verifier", card="verifier")  # one or the other: never both
@@ -802,7 +803,7 @@ def launched_redispatch(text: str, work_id: str = "T-0007") -> argparse.Namespac
 
     [command] = [c for c, _ in P.commands(text) if c.startswith("aew work redispatch")]
     assert command == T.operation_command("work.redispatch", work_id), text
-    argv = shlex.split(command.replace(f" {T.EXPECT_REV}", " --expect-rev 3"))[1:]
+    argv = shlex.split(command)[1:]
     return build_parser().parse_args(argv)
 
 
@@ -967,7 +968,7 @@ def decisions_offered(fit: T.Fit | None) -> dict[str, Any]:
     out = {}
     for state in ("REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY"):
         part.update(state=state, decisions=[])
-        surface._ticket_actions(part, "T-0007", 3)
+        surface._ticket_actions(part, "T-0007")
         [decision] = part["decisions"]
         out[state] = surface._fitting(decision, fit)
     return out

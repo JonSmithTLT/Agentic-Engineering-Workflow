@@ -48,7 +48,7 @@ def _handoff(engine) -> str:
 def _create(p, engine, broker, *more):
     """A Ticket created as the Lead's shell creates one: no credential, through the broker."""
     res = p.aew("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--contract", "c",
-                "--scope", "calc/**", *more, "--expect-rev", str(_rev(engine)), env=clean_env(broker.env))
+                "--scope", "calc/**", *more, env=clean_env(broker.env))
     assert res.returncode == 0, res.stderr
     return res.json["id"]
 
@@ -63,16 +63,14 @@ def _relay(argv, cwd, stdin=""):
 def test_a_file_the_lead_wrote_in_the_project_goes_through_the_client(held):
     p, wid, engine, broker = held
     (p.root / "note.md").write_bytes(b"a note the Lead wrote\n")
-    res = p.aew("checkpoint", "--next", "x", "--note-file", "note.md", "--expect-rev", str(_rev(engine)),
-                env=clean_env(broker.env))
+    res = p.aew("checkpoint", "--next", "x", "--note-file", "note.md", env=clean_env(broker.env))
     assert res.returncode == 0, res.stderr
     assert "a note the Lead wrote" in _handoff(engine)
 
 
 def test_a_note_piped_with_a_dash_goes_through_the_client(held):
     p, wid, engine, broker = held
-    res = p.aew("checkpoint", "--next", "x", "--note-file", "-", "--expect-rev", str(_rev(engine)),
-                env=clean_env(broker.env), input="a piped note\n")
+    res = p.aew("checkpoint", "--next", "x", "--note-file", "-", env=clean_env(broker.env), input="a piped note\n")
     assert res.returncode == 0, res.stderr
     assert "a piped note" in _handoff(engine)
 
@@ -82,11 +80,9 @@ def test_a_plan_from_a_file_or_a_dash_is_proposed_through_the_client(held):
     env = clean_env(broker.env)
     wid = _create(p, engine, broker)
     (p.root / "plan.md").write_bytes(b"# A plan from a file\n")
-    res = p.aew("plan", "propose", wid, "--file", "plan.md", "--assurance", "none", "--expect-rev", str(_rev(engine)),
-                env=env)
+    res = p.aew("plan", "propose", wid, "--file", "plan.md", "--assurance", "none", env=env)
     assert res.returncode == 0, res.stderr
-    res = p.aew("plan", "propose", wid, "--file", "-", "--assurance", "none", "--expect-rev", str(_rev(engine)),
-                env=env, input="# A plan from stdin\n")
+    res = p.aew("plan", "propose", wid, "--file", "-", "--assurance", "none", env=env, input="# A plan from stdin\n")
     assert res.returncode == 0, res.stderr
 
 
@@ -101,8 +97,7 @@ def test_fields_from_a_file_are_expanded_by_the_client(held):
     p, wid, engine, broker = held
     (p.root / "fields.yaml").write_bytes(b"next: from a file\nnote-file: note.md\n")
     (p.root / "note.md").write_bytes(b"its note\n")
-    res = p.aew("checkpoint", "--fields", str(p.root / "fields.yaml"), "--expect-rev", str(_rev(engine)),
-                env=clean_env(broker.env))
+    res = p.aew("checkpoint", "--fields", str(p.root / "fields.yaml"), env=clean_env(broker.env))
     assert res.returncode == 0, res.stderr
     assert engine.store.read()["next_action"] == "from a file" and "its note" in _handoff(engine)
 
@@ -110,8 +105,7 @@ def test_fields_from_a_file_are_expanded_by_the_client(held):
 def test_a_file_the_client_cannot_read_stops_the_command_there(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
-    res = p.aew("checkpoint", "--next", "x", "--note-file", "gone.md", "--expect-rev", str(rev),
-                env=clean_env(broker.env))
+    res = p.aew("checkpoint", "--next", "x", "--note-file", "gone.md", env=clean_env(broker.env))
     assert res.returncode != 0 and "cannot read" in res.stderr and "gone.md" in res.stderr
     assert _rev(engine) == rev
 
@@ -135,7 +129,7 @@ def test_the_broker_refuses_a_path_on_the_relay_naming_the_dash_and_stores_nothi
     content = "content only this file holds"
     target = p.root / "given.txt"
     target.write_text(f"next: {content}\n", encoding="utf-8")
-    sent = [a.replace("{file}", str(target)).replace("{wid}", wid) for a in argv] + ["--expect-rev", str(rev)]
+    sent = [a.replace("{file}", str(target)).replace("{wid}", wid) for a in argv] + []
     with pytest.raises(errors.UsageError, match="give - as the file") as refused:
         _relay(sent, p.root)
     assert refused.value.details["reason"] == "relayed_path"
@@ -147,7 +141,7 @@ def test_the_broker_refuses_a_path_on_the_relay_naming_the_dash_and_stores_nothi
 
 def test_the_broker_takes_the_text_a_client_sends_with_a_dash(held):
     p, wid, engine, broker = held
-    out = _relay(["checkpoint", "--next", "x", "--note-file=-", "--expect-rev", str(_rev(engine))], p.root,
+    out = _relay(["checkpoint", "--next", "x", "--note-file=-", ], p.root,
                  stdin="sent as bytes")
     assert out["result"]
     assert "sent as bytes" in _handoff(engine)
@@ -172,7 +166,7 @@ def test_a_stage_intent_is_found_by_its_id_alone(tmp_path):
     with pytest.raises(errors.NotFound, match="no disposition"):
         engine.disposition("../../beside")
     out = run.run_tool(engine, CTX, "resolve", {"subject": "../../beside", "choice": "abandon", "rationale": "r",
-                                                "expect_rev": _rev(engine)}, token=p.token)
+                                                }, token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["code"] == "NOT_FOUND", out["stopped"]
 
 

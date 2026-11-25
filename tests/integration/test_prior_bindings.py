@@ -10,7 +10,6 @@ from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.queue_ops import empty as empty_queue
 from aew.engine.store import Transition
 from aew.errors import ChangedSinceRead
-from aew.harness import contract as K
 from aew.harness.lead_broker import run_cli
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project as projected
@@ -37,9 +36,9 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, request, 
             monkeypatch.setenv(key, value)
         engine = Engine.discover(p.root)
         ticket = create_planned_ticket(p, tmp_path)
-        inv = engine.work_assign(token=p.token, expect_rev=p.rev(), work_id=ticket)["invocation"]
+        inv = engine.work_assign(token=p.token, work_id=ticket)["invocation"]
         monkeypatch.setattr(type(engine._harness), "_spawn_run", lambda _self, _inv, run, _token: {"run": run})
-        first = engine.harness_launch(token=p.token, expect_rev=p.rev(), invocation=inv, prior_value="none")
+        first = engine.harness_launch(token=p.token, invocation=inv, prior_value="none")
         # Age the unconfirmed run past launch grace without sleeping. It has no supervisor record.
         with engine.store.session() as session:
             run = session.state["invocations"][inv]["runs"][-1]
@@ -100,7 +99,7 @@ def _printed_argv(text, revision):
 
     [(command, fenced)] = printed_commands.commands(text)
     printed_commands.check(command, "fence" if fenced else "span")
-    return shlex.split(command.replace(K.REVISION, str(revision)))[1:]
+    return shlex.split(command)[1:]
 
 
 def test_a_retired_queue_entry_names_the_commit(tmp_path):
@@ -115,7 +114,7 @@ def test_a_retired_queue_entry_names_the_commit(tmp_path):
         engine._integration.queue.sync(session.state)
         rev = session.commit(Transition(op="test.retire", actor={"kind": "test"}, summary="retire queue entry"))
     with pytest.raises(ChangedSinceRead) as refused:
-        engine.integrate_defer(token=p.token, expect_rev=rev, work_id=wid, reason="reviewed", prior_value=prior)
+        engine.integrate_defer(token=p.token, work_id=wid, reason="reviewed", prior_value=prior)
     assert refused.value.details["changed_by"] == f"control revision {rev}"
 
 
@@ -143,7 +142,7 @@ def test_a_missing_change_record_leaves_the_prior_refusal(tmp_path, monkeypatch,
 
 
 @pytest.mark.parametrize("op", B_OPS)
-def test_a_changed_prior_value_refuses_without_a_commit(tmp_path, monkeypatch, request, op):
+def test_missing_or_changed_prior_values_refuse_without_a_commit(tmp_path, monkeypatch, request, op):
     project = sample_project(tmp_path)
     engine = Engine.discover(project.root)
     parent = create_unit(project, "story", "Parent", cls=0)
@@ -162,11 +161,11 @@ def test_a_changed_prior_value_refuses_without_a_commit(tmp_path, monkeypatch, r
             monkeypatch.setenv(key, value)
         engine = Engine.discover(project.root)
         ticket = create_planned_ticket(project, tmp_path)
-        dispatched = engine.work_assign(token=project.token, expect_rev=project.rev(), work_id=ticket)
+        dispatched = engine.work_assign(token=project.token, work_id=ticket)
         inv = dispatched["invocation"]
         prior, args = engine.harness_status(inv)["launch_argv"][-1], {"invocation": inv}
         monkeypatch.setattr(engine._harness, "_spawn_run", lambda _inv, run, _token: {"run": run})
-        engine.harness_launch(token=project.token, expect_rev=project.rev(), invocation=inv, prior_value=prior)
+        engine.harness_launch(token=project.token, invocation=inv, prior_value=prior)
     elif op == "steering.lower":
         prior, args = engine.steering_view()["override_record"], {"mode": "crawl"}
         monkeypatch.setattr(engine._steering, "policy_default", lambda: "crawl")
@@ -178,8 +177,12 @@ def test_a_changed_prior_value_refuses_without_a_commit(tmp_path, monkeypatch, r
     revision = project.rev()
     path = engine.aew_root / "state/control.yaml"
     before = path.read_bytes()
+    with pytest.raises(ChangedSinceRead) as missing:
+        getattr(engine, method)(token=project.token, **args)
+    assert missing.value.details["op"] == op and missing.value.details["reason"] == "missing_binding"
+    assert project.rev() == revision and path.read_bytes() == before
     with pytest.raises(ChangedSinceRead) as refused:
-        getattr(engine, method)(token=project.token, expect_rev=revision, prior_value=prior, **args)
+        getattr(engine, method)(token=project.token, prior_value=prior, **args)
     details = refused.value.details
     assert details["op"] == op and details["expected"] == prior and details["current"] != prior
     assert details["changed_by"] == (changed_by or f"control revision {revision}")

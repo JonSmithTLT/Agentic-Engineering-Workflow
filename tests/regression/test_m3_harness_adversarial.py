@@ -308,17 +308,16 @@ def test_two_leads_race_to_launch_the_same_invocation(lab, tmp_path, sync):
     inv = out["invocation"]
     lab.script(R1, [touch(sync / "ready"), wait(sync / "go")])
     lab.script(R2, [touch(sync / "ready"), wait(sync / "go")])
-    rev = str(lab.project.rev())
-    racers = [spawn_aew(lab, "harness", "launch", inv, "--expect-rev", rev, env={"AEW_LEAD_TOKEN": lab.project.token})
-              for _ in range(2)]
+    racers = [spawn_aew(lab, "harness", "launch", inv, "--prior-value", "none",
+                        env={"AEW_LEAD_TOKEN": lab.project.token}) for _ in range(2)]
     results = [(p.wait(timeout=180), *p.communicate()) for p in racers]
     codes = sorted(r[0] for r in results)
-    assert codes == [0, 3], results
-    loser = next(r for r in results if r[0] == 3)
-    assert json.loads(loser[2])["error"]["code"] == "STALE_REVISION"
+    assert codes == [0, 5], results
+    loser = next(r for r in results if r[0] == 5)
+    assert json.loads(loser[2])["error"]["code"] == "CHANGED_SINCE_READ"
     assert [r["run"] for r in inv_show(lab, inv)["runs"]] == [R1]
     assert not runlog.run_dir(lab.aew_root, R2).exists()
-    # A third Lead that re-reads the revision is refused: run 1 may be live.
+    # A third call that binds the active run is refused: run 1 may be live.
     assert lab.lead_res("harness", "launch", inv).error["code"] == "RUN_LIVE"
     # The credential printed at dispatch died at the first launch.
     res = lab.aew("whoami", "--invocation-token", printed)
@@ -417,7 +416,7 @@ def test_rotation_racing_submissions_never_admits_evidence_after_revocation(lab,
         lab.script(nxt, [touch(sync / f"ready{n + 1}"), wait(sync / f"go{n + 1}"),
                          {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
         racer = spawn_aew(lab, "harness", "launch", inv, "--replace",
-                          "--expect-rev", str(lab.project.rev()), env={"AEW_LEAD_TOKEN": lab.project.token})
+                          "--prior-value", f"R-{inv}-{n}", env={"AEW_LEAD_TOKEN": lab.project.token})
         (sync / f"go{n}").touch()
         assert racer.wait(timeout=180) == 0, racer.communicate()
         lab.wait(f"R-{inv}-{n}")
@@ -462,7 +461,7 @@ def test_broker_alive_then_takeover(lab, tmp_path, sync, monkeypatch):
                         env=pause_env((WATCHDOG, watchdog)))
     lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator (test)"})
-    taken = Engine.discover(lab.root).lead_takeover(expect_rev=lab.project.rev(), reason="Lead unresponsive",
+    taken = Engine.discover(lab.root).lead_takeover(reason="Lead unresponsive",
                                                     session_label="lead-b")
     lab.project.token = taken["token"]
     (sync / "go").touch()
@@ -482,8 +481,7 @@ def test_a_carried_run_keeps_working_across_a_cooperative_handoff(lab, tmp_path,
     out = lab.lead("work", "dispatch", wid, "--launch")
     lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="ready")
     offer = lab.lead("lead", "handoff", "offer", "--carry", out["invocation"])["offer"]
-    accepted = lab.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(lab.project.rev()),
-                      "--session-label", "lead-b")
+    accepted = lab.ok("lead", "handoff", "accept", "--offer", offer, "--session-label", "lead-b")
     lab.project.token = accepted["token"]
     (sync / "go").touch()
     done = lab.wait("R-INV-0001-1")
@@ -543,7 +541,7 @@ def test_agent_cannot_print_or_read_the_raw_credential(lab, tmp_path, sync):
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script(R1, steps)
     lead_env = {"AEW_LEAD_TOKEN": lab.project.token, "AEW_INVOCATION_TOKEN": "aew1.tk_0123456789abcdef." + "x" * 43}
-    out = lab.ok("work", "assign", wid, "--launch", "--expect-rev", str(lab.project.rev()), env=lead_env)
+    out = lab.ok("work", "assign", wid, "--launch", env=lead_env)
     assert not contains_credential(json.dumps(out))
     assert lab.wait(R1)["status"] == "ended_with_evidence"
     env = json.loads((sync / "env").read_text())
@@ -563,7 +561,7 @@ def test_model_controlled_child_processes_inherit_no_secret(lab, tmp_path, sync)
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script(R1, [{"do": "child_env", "path": str(sync / "child"), "shell_path": str(sync / "shell")},
                     {"do": "read_parent_environ", "pid": "ppid"}])
-    lab.ok("work", "assign", wid, "--launch", "--expect-rev", str(lab.project.rev()), env=secrets_in_lead_env)
+    lab.ok("work", "assign", wid, "--launch", env=secrets_in_lead_env)
     assert lab.wait(R1)["status"] == "ended_without_evidence"
     child = json.loads((sync / "child").read_text())
     shell = (sync / "shell").read_text()
@@ -803,13 +801,13 @@ def test_an_investigator_cannot_obtain_implementer_authority(lab, tmp_path):
     implementer, or mint any credential; its operations are the investigator's only."""
     wid = create_investigation(lab.project, tmp_path)
     target = create_planned_ticket(lab.project, tmp_path, title="The change it would like to make")
-    rev = str(lab.project.rev())
+    str(lab.project.rev())
     lab.script(R1, [
         {"do": "aew", "args": ["whoami"]},
         {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
-        {"do": "aew", "args": ["work", "assign", target, "--expect-rev", rev]},
-        {"do": "aew", "args": ["invoke", "create", target, "--role", "implementer", "--expect-rev", rev]},
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", rev]},
+        {"do": "aew", "args": ["work", "assign", target, ]},
+        {"do": "aew", "args": ["invoke", "create", target, "--role", "implementer", ]},
+        {"do": "aew", "args": ["lead", "acquire", ]},
         {"do": "submit", "kind": "discovery_record", "meta": DISCOVERY}])
     run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
     assert lab.wait(run)["status"] == "ended_with_evidence"
@@ -830,13 +828,12 @@ def test_a_lead_acting_on_stale_conversational_state_is_refused(lab, tmp_path, s
     remembered = lab.project.rev()
     lab.project.lead("checkpoint", "--next", "the state moved on")
     script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
-    script.write_text(json.dumps([{"do": "aew", "args": ["work", "assign", wid, "--launch", "--expect-rev",
-                                                         str(remembered)]}]), encoding="utf-8")
+    script.write_text(json.dumps([{"do": "aew", "args": ["work", "assign", wid, "--launch", ]}]), encoding="utf-8")
     res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
                   "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
     assert res.returncode == 0, res.stderr
     [step] = [json.loads(line)["result"] for line in transcript.read_text(encoding="utf-8").splitlines()]
-    assert error_code(step) == "STALE_REVISION", step
+    assert error_code(step) == "CHANGED_SINCE_READ", step
     assert control(lab, wid)["state"] == "READY" and lab.project.rev() == remembered + 1
     assert_control_invariants(lab.project)
 
@@ -851,7 +848,7 @@ def test_model_and_role_configuration_are_pinned_at_dispatch(lab, tmp_path):
     policy.write_text(policy.read_text(encoding="utf-8").replace("fake-model", "cheaper-model"), encoding="utf-8")
     lab.project.adopt_policy()
     assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model",
-                   "--expect-rev", str(lab.project.rev()), env={"AEW_LEAD_TOKEN": lab.project.token}).returncode != 0
+                   env={"AEW_LEAD_TOKEN": lab.project.token}).returncode != 0
     lab.script(R2, [{"do": "aew", "args": ["whoami"]}])
     lab.lead("harness", "launch", out["invocation"])
     lab.wait(R2)

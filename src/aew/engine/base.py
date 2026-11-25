@@ -22,10 +22,9 @@ from aew.errors import (
     IntegrityError,
     MigrationRequired,
     ProjectNotFound,
-    StaleRevision,
     WorkspaceNotAuthority,
 )
-from aew.harness.contract import EXPECT_REV, MANIFEST_ADOPT
+from aew.harness.contract import MANIFEST_ADOPT
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -420,7 +419,6 @@ class Kernel:
     def lead_txn(
         self,
         token: str,
-        expect_rev: int | None,
         op: str,
         *,
         reason: str | None = None,
@@ -428,30 +426,18 @@ class Kernel:
         _adopting_manifest: bool = False,
         request: ControlRequest | None = None,
     ) -> Iterator[TxnContext]:
-        """A control transition: current Lead credential + expected revision, atomic commit.
-
-        Authority is checked before the revision so a superseded Lead is told it
-        is superseded (STALE_AUTHORITY) rather than merely out of date.
-        """
+        """Check current Lead authority and commit a guarded control transition under the lock."""
         try:
             with self.store.session() as s:
                 actor = require_lead(s.state, token, allow_pending=allow_pending, archived=self.archived_credential)
-                if expect_rev is None:
-                    raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
-                                        current=s.revision)
-                if expect_rev != s.revision:
-                    raise StaleRevision(
-                        f"expected control revision {expect_rev}, current is {s.revision}",
-                        expected=expect_rev, current=s.revision,
-                    )
                 if s.state.get("schema") != V2 and (
                     request is not None or (op not in V1_OPS and not self.legacy_v1_writes)
                 ):
                     raise MigrationRequired(
                         "this project's control state is v1: migrate it first (the operator runs `aew migrate "
-                        f"{EXPECT_REV}` at their own terminal); until then the Lead can change the seat and cancel "
+                        "` at their own terminal); until then the Lead can change the seat and cancel "
                         "invocations, and the operator can adopt the manifest",
-                        schema=s.state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
+                        schema=s.state.get("schema"), next_action="aew migrate")
                 if not _adopting_manifest:
                     self.check_manifest_pin(s.state)
                 # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
@@ -471,7 +457,7 @@ class Kernel:
                                          ctx.request_metadata)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
-                             expect_rev=expect_rev, state=ctx.commit_state)
+                             state=ctx.commit_state)
                 finally:
                     self._txn_pins = _NOT_IN_TXN
                 for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
@@ -512,7 +498,7 @@ class Kernel:
                 yield ctx
                 self.finalizers.run(ctx)
                 s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
-                                    events=ctx.events), expect_rev=s.revision, state=ctx.commit_state)
+                                    events=ctx.events), state=ctx.commit_state)
             finally:
                 self._txn_pins = _NOT_IN_TXN
             for effect in ctx.after_commit:  # best effort, as in a Lead transaction

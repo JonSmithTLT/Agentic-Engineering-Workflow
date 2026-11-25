@@ -62,11 +62,11 @@ def test_class_0_is_explained_as_evidenced_and_the_implementation_is_accepted_by
     assert "--class <0-4>" in text and "--class 1 " not in text  # X4a: no anchoring example
 
 
-def test_resolve_guidance_distinguishes_a_retained_stale_stop_from_an_ended_intent():
+def test_resolve_guidance_names_the_unfinished_intent_and_its_approval():
     text = lead_text.render(DEFAULT_GATES, CONFIGURED)
-    assert "A partial stale stage whose result names `resolve` is one" in text
-    assert "an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not" in text
-    assert "a stage that already stopped is not one" not in text
+    assert "`resolve`** settles only what `resume` or a decision lists" in text
+    assert "Continuing an unfinished stage requires the shown approval digest." in text
+    assert "A changed item or approval subject calls for a new decision." in text
 
 
 def test_every_listed_move_is_one_the_engine_allows():

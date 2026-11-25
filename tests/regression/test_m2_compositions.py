@@ -39,14 +39,14 @@ def show(p, wid):
 
 
 def err(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
 
 def handoff(p):
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
 
 
 def main_commit(p):
@@ -324,7 +324,7 @@ def test_parent_cancellation_waits_for_an_in_progress_publish(tmp_path):
     story = create_unit(p, "story", "Objective", cls=1)
     wid, _ = to_commit_ready(p, tmp_path, extra=("--parent", story))
     prepare_and_validate(p, wid)
-    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()),
+    res = p.aew(*p.lead_args("integrate", "publish", wid),
                 env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_publishing_record"})
     assert res.returncode == 86
     refused = err(p, "work", "cancel", story, "--reason", "objective dropped")

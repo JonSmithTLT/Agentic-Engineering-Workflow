@@ -28,14 +28,13 @@ from aew.engine import faults
 from aew.engine.api import Engine
 from aew.engine.harness_ops import Harness
 from aew.engine.request_ids import INDEX
-from aew.errors import IdempotencyConflict, IllegalTransition, StaleAuthority, StaleRevision, UsageError
+from aew.errors import IdempotencyConflict, IllegalTransition, StaleAuthority, UsageError
 from aew.harness import runlog
-from aew.harness.contract import REVISION
 
 
 def _call(p, method, **kwargs):
     engine = Engine.discover(p.root)
-    return getattr(engine, method)(token=p.token, expect_rev=engine.lead_show()["revision"], **kwargs)
+    return getattr(engine, method)(token=p.token, **kwargs)
 
 
 def _replay(p, method, first, **kwargs):
@@ -51,12 +50,12 @@ def _assert_invocation_replay(p, method, first, **kwargs):
     replay = _replay(p, method, first, **kwargs)
     info = replay["credential_replay"]
     assert info["status"] == "NOT_REPLAYABLE"
-    assert info["rotate"].startswith(f"aew harness launch {first['invocation']} --expect-rev ")
+    assert info["rotate"] == f"aew harness launch {first['invocation']} --prior-value none"
     assert replay == first | {"replayed": True, "invocation_token": None, "credential_replay": info}
     assert first["invocation_token"] not in repr(load_control(p.root)[INDEX])
 
 
-def test_work_create_replays_under_current_revision_and_keys_are_pruned_at_generation_change(project):
+def test_work_create_replays_after_unrelated_commit_and_keys_are_pruned_at_generation_change(project):
     args = {"kind": "epic", "title": "Request IDs", "risk_class": 1}
     first_without_id = _call(project, "work_create", **args)
     second_without_id = _call(project, "work_create", **args)
@@ -72,18 +71,15 @@ def test_work_create_replays_under_current_revision_and_keys_are_pruned_at_gener
     with pytest.raises(IdempotencyConflict) as exc:
         _call(project, "work_create", **(args | {"title": "Other", "risk_class": 99}), request_id="same")
     assert exc.value.details["fields"] == ["risk_class", "title"]
-    with pytest.raises(StaleRevision):
-        Engine.discover(project.root).work_create(token=project.token, expect_rev=first["revision"],
-                                                  **args, request_id="same")
     assert load_control(project.root) == before
 
     _call(project, "lead_release")
     state = load_control(project.root)
     assert state[INDEX]["generation"] == state["lead"]["generation"]
     engine = Engine.discover(project.root)
-    acquired = engine.lead_acquire(expect_rev=state["revision"])
+    acquired = engine.lead_acquire()
     with pytest.raises(StaleAuthority):
-        engine.work_create(token=project.token, expect_rev=acquired["revision"], **args, request_id="same")
+        engine.work_create(token=project.token, **args, request_id="same")
     project.token = acquired["token"]
     assert INDEX not in load_control(project.root)
     new = _call(project, "work_create", **args, request_id="same")
@@ -100,7 +96,9 @@ def test_plan_propose_and_work_promote_replay_the_committed_results(tmp_path):
     assert _replay(p, "plan_propose", proposed, **plan) == proposed | {"replayed": True}
 
     dispatch(p, t)
-    promote = {"work_id": t, "to": "story", "title": "Larger scope", "reason": "Needed", "request_id": "same"}
+    prior = Engine.discover(p.root).prior_value("work_promote", t)
+    promote = {"work_id": t, "to": "story", "title": "Larger scope", "reason": "Needed", "request_id": "same",
+               "prior_value": prior}
     promoted = _call(p, "work_promote", **promote)
     replay = _replay(p, "work_promote", promoted, **promote)
     assert replay == promoted | {"replayed": True}
@@ -191,7 +189,7 @@ def test_harness_launch_replays_the_run_when_the_original_process_stops_after_co
     t = create_planned_ticket(p, tmp_path)
     assigned = lab.lead("work", "assign", t)
     inv = assigned["invocation"]
-    args = {"invocation": inv, "request_id": "launch"}
+    args = {"invocation": inv, "request_id": "launch", "prior_value": "none"}
     launcher = (
         "import json, sys\n"
         "from pathlib import Path\n"
@@ -201,7 +199,7 @@ def test_harness_launch_replays_the_run_when_the_original_process_stops_after_co
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     crashed = subprocess.run(
         [sys.executable, "-B", "-c", launcher], cwd=p.root,
-        input=json.dumps({"token": p.token, "expect_rev": p.rev(), **args}), text=True, capture_output=True,
+        input=json.dumps({"token": p.token, **args}), text=True, capture_output=True,
         timeout=60, creationflags=flags, start_new_session=sys.platform != "win32",
         env=clean_env({**lab.env, "AEW_FAULT": "harness.launch.after_commit", "AEW_FAULT_MODE": "exit"}),
     )
@@ -234,11 +232,11 @@ def test_harness_launch_replays_the_run_when_the_original_process_stops_after_co
 
 
 def _follow_launch(p, command):
-    command = shlex.split(command.replace(REVISION, str(p.rev())))
+    command = shlex.split(command)
     assert command[:3] == ["aew", "harness", "launch"]
-    assert command[4] == "--expect-rev"
+    assert command[4] == "--prior-value"
     return Engine.discover(p.root).harness_launch(token=p.token, invocation=command[3],
-                                                  expect_rev=int(command[5]), replace="--replace" in command)
+                                                  prior_value=command[5], replace="--replace" in command)
 
 
 def test_following_the_rotate_step_and_forwarding_a_launch_replay(lab, tmp_path, monkeypatch):
@@ -252,7 +250,7 @@ def test_following_the_rotate_step_and_forwarding_a_launch_replay(lab, tmp_path,
     manual = {"work_id": t, "role": "reviewer", "request_id": "manual"}
     first = _call(p, "invoke_create", **manual)
     replay = _replay(p, "invoke_create", first, **manual)
-    command = shlex.split(replay["credential_replay"]["rotate"].replace(REVISION, str(p.rev())))
+    command = shlex.split(replay["credential_replay"]["rotate"])
     assert command[:3] == ["aew", "harness", "launch"] and "--replace" not in command
     inv = first["invocation"]
     before = load_control(p.root)["invocations"][inv]["token_id"]

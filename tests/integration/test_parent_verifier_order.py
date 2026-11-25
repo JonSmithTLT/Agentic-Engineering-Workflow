@@ -29,7 +29,7 @@ def parent(tmp_path):
 
 
 def _call(p, method, **kwargs):
-    return getattr(Engine.discover(p.root), method)(token=p.token, expect_rev=p.rev(), **kwargs)
+    return getattr(Engine.discover(p.root), method)(token=p.token, **kwargs)
 
 
 def _verify(p, story, evidence):

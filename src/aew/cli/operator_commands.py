@@ -64,7 +64,7 @@ def _lower(a: argparse.Namespace) -> Any:
     prior = a.prior_value
     if prior is None and _approval_terminal(a):
         prior = engine.steering_view()["override_record"]
-    return engine.steering_lower(token=token, expect_rev=a.expect_rev, mode=a.mode,
+    return engine.steering_lower(token=token, mode=a.mode,
                                  rationale=a.rationale, prior_value=prior)
 
 

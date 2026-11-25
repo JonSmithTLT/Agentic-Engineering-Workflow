@@ -142,6 +142,41 @@ overlays:
         kind: extends
         by: "§10"
 
+  - id: scoped-control-bindings-2026-11-25
+    path: docs/design/scoped-control-bindings-amendment-2026-11-25.md
+    sections: ["1", "2", "3", "4", "5"]
+    status: adopted
+    adoption:
+      at: 2026-11-25
+      by: operator
+      evidence: "Adopted 2026-11-25 by the operator"
+    targets:
+      - doc: WC
+        section: "5"
+        part: crash-safe control authority rule
+        kind: replaces
+        by: "§1"
+        quote: "Each mutating control operation must be conditioned on the current control-state revision and current Lead authority generation (or an equivalent stale-writer guard)."
+      - doc: WC
+        section: "6"
+        part: authoritative control-state mutation in the authority table
+        kind: replaces
+        by: "§2"
+        quote: "Expected state revision + current authority generation/stale-writer guard"
+      - doc: KC
+        section: "12.3"
+        part: stale-writer conditions of authoritative control transitions
+        kind: replaces
+        by: "§3"
+        quote: "Each mutating transition must be conditioned on the expected current control-state revision and current Lead authority generation (or an equivalent guard)."
+      - doc: KC
+        section: "26"
+        case: Crash-safe control update and superseded Lead
+        part: the acceptance case
+        kind: replaces
+        by: "§4"
+        quote: "hand authority from Lead A to Lead B, then attempt an authoritative update from Lead A using its stale revision/authority generation."
+
 effective:
   - doc: WC
     section: "7.4"
@@ -181,6 +216,24 @@ effective:
     section: "12"
     parts:
       - {part: "Ticket revisions as first-class durable revision history", extended_by: [ticket-revisions-2026-10-06]}
+
+  - doc: WC
+    section: "5"
+    parts:
+      - {part: crash-safe control authority rule, replaced_by: [scoped-control-bindings-2026-11-25], head: scoped-control-bindings-2026-11-25}
+  - doc: WC
+    section: "6"
+    parts:
+      - {part: authoritative control-state mutation in the authority table, replaced_by: [scoped-control-bindings-2026-11-25], head: scoped-control-bindings-2026-11-25}
+  - doc: KC
+    section: "12.3"
+    parts:
+      - {part: stale-writer conditions of authoritative control transitions, replaced_by: [scoped-control-bindings-2026-11-25], head: scoped-control-bindings-2026-11-25}
+  - doc: KC
+    section: "26"
+    case: Crash-safe control update and superseded Lead
+    parts:
+      - {part: the acceptance case, replaced_by: [scoped-control-bindings-2026-11-25], head: scoped-control-bindings-2026-11-25}
 
 pending: []
 

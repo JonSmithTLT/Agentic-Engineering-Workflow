@@ -68,7 +68,6 @@ from aew.harness.contract import (
     AVAILABLE_TOOLS,
     CATALOG_TIMEOUT,
     CREDENTIAL_PATTERNS,
-    EXPECT_REV,
     LONG_TOKEN,
     PLUGINS_TIMEOUT,
     PROVIDER_AUTH_FAILED,
@@ -450,8 +449,9 @@ class OpenCodeAdapter(HarnessAdapter):
     def _relaunch_command(self) -> str:
         """The complete command for recovering this invocation's run."""
         contract = getattr(self, "contract", None)
-        invocation = contract.invocation if contract is not None else "<invocation from aew harness status>"
-        return f"`aew harness launch {invocation} {EXPECT_REV}`"
+        if contract is None:
+            return "`aew harness status` and its `launch_argv`"
+        return f"`aew harness launch {contract.invocation} --prior-value {contract.run}`"
 
     @staticmethod
     def projected_config(contract: LaunchContract, state: str | None = None,

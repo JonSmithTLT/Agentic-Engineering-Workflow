@@ -35,9 +35,9 @@ def step(summary: str = "T-0001 VERIFIED -> COMMIT_READY", primitive: str = "wor
 
 
 def action(name: str = "ticket_start", **over: Any) -> dict[str, Any]:
-    return {"action": name, "kind": "stage", "arguments": {"expect_rev": 15, "work_id": "T-0001"},
+    return {"action": name, "kind": "stage", "arguments": {"work_id": "T-0001"},
             "operation_class": "POLICY_RESOLVED", "availability": "AVAILABLE", "callable": True, "auto_runnable": False,
-            "reason_codes": [], "cli_fallback": ["work", "assign", "T-0001", "--launch", "--expect-rev", "15"], **over}
+            "reason_codes": [], "cli_fallback": ["work", "assign", "T-0001", "--launch", ], **over}
 
 
 def stage(**over: Any) -> dict[str, Any]:
@@ -69,7 +69,7 @@ def rows(text: str) -> int:
 def test_a_clean_stage_opens_with_the_outcome_then_the_next_step_then_what_happened():
     lines = lines_of(stage(projection={"actions": [action()]}))
     assert lines[0] == "ticket_prepare: done (T-0001: READY)"
-    assert lines[1] == "next: ticket_start expect_rev=15 work_id=T-0001"
+    assert lines[1] == "next: ticket_start work_id=T-0001"
     assert lines[2] == "- T-0001 VERIFIED -> COMMIT_READY"
 
 
@@ -94,7 +94,7 @@ def test_a_project_level_next_step_never_reads_as_the_way_on_from_the_call():
     project["blockers"] = []
     assert lines_of(stopped(projection=project))[1] == "next for the project: nothing offered"
     offered = {"subject": "project", "state": None, "actions": [action()]}
-    assert lines_of(stopped(projection=offered))[1] == "next for the project: ticket_start expect_rev=15 work_id=T-0001"
+    assert lines_of(stopped(projection=offered))[1] == "next for the project: ticket_start work_id=T-0001"
     assert lines_of(stage(projection={"subject": "project", "state": None, "hints": ["go on"]}))[:2] == [
         "ticket_prepare: done (project)", "next for the project: go on"]
     assert lines_of(stopped(projection={"hints": ["go on"]}))[1] == "next: go on"
@@ -148,7 +148,7 @@ def test_a_wait_the_control_lane_ended_gives_why_and_not_the_run_s_stale_status(
                          "next for the project: classify authority candidates"]
 
 
-FENCE = "```sh\naew invoke cancel INV-0001 --expect-rev 3 --fields - <<'EOF'\nreason: 'ended'\nEOF\n```"
+FENCE = "```sh\naew invoke cancel INV-0001 --fields - <<'EOF'\nreason: 'ended'\nEOF\n```"
 
 
 @pytest.mark.parametrize("place", ["refusal", "next_action", "hint", "blocker", "listed blocker", "anomaly", "step"])
@@ -209,18 +209,18 @@ def test_authored_text_is_scrubbed_in_the_head_and_in_the_json(secret):
 
 
 def test_a_next_step_that_is_a_printed_command_parses_as_printed():
-    argv = ["work", "assign", "T-0001", "--launch", "--expect-rev", "15"]
+    argv = ["work", "assign", "T-0001", "--launch", ]
     line = lines_of(stage(projection={"actions": [action(callable=False, cli_fallback=argv)]}))[1]
-    assert line == "next: aew work assign T-0001 --launch --expect-rev 15"
+    assert line == "next: aew work assign T-0001 --launch"
     P.parse(line.removeprefix("next: "), fenced=False)
     choices = ["work", "dispose", "A-1", "--choice", "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
-               "--expect-rev", "15"]
+               "--approval-digest", "<shown digest>"]
     line = lines_of(stage(projection={"actions": [action(callable=False, cli_fallback=choices)]}))[1]
     P.parse(line.removeprefix("next: "), fenced=False)
 
 
 def test_a_next_step_from_a_hint_keeps_its_printed_command_whole_or_not_at_all():
-    command = "aew plan accept T-0010 --revision 1 --expect-rev 15"
+    command = "aew plan accept T-0010 --revision 1 --approval-digest <shown digest>"
     whole = lines_of(stage(projection={"hints": [f"T-0010: accept its plan: `{command}`"]}))[1]
     assert P.commands(whole) == [(command, False)]
     P.parse(command, fenced=False)
@@ -235,15 +235,15 @@ def test_a_long_next_step_wraps_to_at_most_three_rows():
 
 def test_the_next_step_prefers_the_lead_s_decision_then_a_move_then_a_wait_then_a_hint_then_a_blocker():
     decision = {"decision": "DISPOSE_ANOMALY", "subject": "A-1", "evidence": ["A-1"], "tool": "resolve",
-                "arguments": {"expect_rev": 15, "subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
+                "arguments": {"subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
                 "cli_fallback": None}
     wait = action("harness_wait", kind="wait", arguments={"runs": ["R-1"]}, cli_fallback=None)
     query = action("status", kind="query", arguments={}, cli_fallback=None)
     hint, blocker = ["do this"], [{"code": "PLAN_NOT_ACCEPTED", "message": "plan not accepted"}]
     every = {"actions": [query, wait, action()], "decisions_required": [decision], "hints": hint, "blockers": blocker}
-    assert lines_of(stage(projection=every))[1] == "decide DISPOSE_ANOMALY on A-1: resolve expect_rev=15 subject=A-1"
+    assert lines_of(stage(projection=every))[1] == "decide DISPOSE_ANOMALY on A-1: resolve subject=A-1"
     every["decisions_required"] = []
-    assert lines_of(stage(projection=every))[1] == "next: ticket_start expect_rev=15 work_id=T-0001"
+    assert lines_of(stage(projection=every))[1] == "next: ticket_start work_id=T-0001"
     every["actions"] = [query, wait]
     assert lines_of(stage(projection=every))[1] == f'next: harness_wait runs=["R-1"] ({K.WAIT_RULE})'
     every["actions"] = [query, action(availability="BLOCKED")]
@@ -324,11 +324,11 @@ SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done
 def full_result(shape: str) -> dict[str, Any]:
     """Every list full, so every line writer has something to write. The next step comes from the shape named."""
     decision = {"decision": "CHOOSE", "subject": "T-0001", "evidence": ["E-1"], "tool": "resolve",
-                "arguments": {"expect_rev": 15, "subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
+                "arguments": {"subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
                 "cli_fallback": ["work", "dispose", "A-1"]}
     run = {"run": "R-1", "invocation": "INV-1", "work_unit": "T-0001", "role": "reviewer", "status": "running",
            "reason": "r", "evidence": ["E-2"], "source": "local_telemetry", "observed_at": "2026-11-04T00:00:00Z"}
-    projection = {"actions": [action(arguments={"expect_rev": 15, "note": "n"}, callable=shape != "command",
+    projection = {"actions": [action(arguments={"note": "n"}, callable=shape != "command",
                                      cli_fallback=["work", "assign", "T-0001"])],
                   "decisions_required": [decision], "blockers": [{"code": "B1", "message": "m1"}],
                   "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run],
@@ -543,7 +543,7 @@ def test_a_result_over_the_cut_still_brings_the_head_and_says_the_json_was_cut()
     text = render(huge)
     seen = opencode_cut(text).split("\n")
     assert seen[0] == "ticket_prepare: done (T-0001: READY)"
-    assert seen[1] == "next: ticket_start expect_rev=15 work_id=T-0001"
+    assert seen[1] == "next: ticket_start work_id=T-0001"
     assert seen[2] == "- T-0001 VERIFIED -> COMMIT_READY"
     assert seen[-2] == readable.JSON_OVER_THE_CUT and "names the file" in seen[-2] and "2,000" in seen[-2]
     assert f"{readable.CUT_BYTES // 1024} KiB" in seen[-2]

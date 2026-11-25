@@ -168,16 +168,17 @@ class Harness:
             stop = K.fields_command(f"aew harness stop {previous['run']}", "reason", "superseded run is still live")
             return blocker_from(RunLive(
                 f"{previous['run']} may still be running; stop it with:\n\n{stop}\n\n"
-                f"or relaunch with `aew harness launch {invocation} {K.EXPECT_REV} "
+                f"or relaunch with `aew harness launch {invocation} --prior-value {previous['run']} "
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+    def harness_launch(self, *, token: str, invocation: str, replace: bool = False,
                        request_id: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
         request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
-        with self.k.lead_txn(token, expect_rev, "harness.launch", request=request) as ctx:
+        with self.k.lead_txn(token, "harness.launch", request=request) as ctx:
+            approval.require_binding("harness.launch", invocation, "run", prior_value)
             if request is not None and ctx.replayed is not None:
                 replay = ctx.replayed
                 invocation = replay["invocation"]
@@ -306,7 +307,7 @@ class Harness:
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                           f"with `aew harness launch {inv_id} {K.EXPECT_REV}` (the credential "
+                                           f"with `aew harness launch {inv_id} --prior-value {run}` (the credential "
                                            "rotates)", **base,
                                           **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
@@ -331,7 +332,7 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      f"with `aew harness launch {inv_id} {K.EXPECT_REV}` "
+                                      f"with `aew harness launch {inv_id}` "
                                       "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
@@ -570,12 +571,12 @@ class Harness:
         answer = {"runs": out}
         if invocation and state["invocations"][invocation]["status"] == "active":
             prior = approval.run_value(state["invocations"][invocation])
-            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), state["revision"], prior)
+            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), prior)
         return answer
 
     @staticmethod
     def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:
-        launch = f"aew harness launch {invocation} {K.EXPECT_REV} --prior-value {run['run']}"
+        launch = f"aew harness launch {invocation} --prior-value {run['run']}"
         if runlog.possibly_live(K.UNCONFIRMED, run["launched_at"]):
             return (f"Wait for the {runlog.UNCONFIRMED_GRACE_S:g}-second launch grace period. "
                     f"If the run is still unconfirmed, relaunch with `{launch}`.")
@@ -856,7 +857,7 @@ class Harness:
                     raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
                 if status not in K.LIVE_RUNS:
                     raise IllegalTransition(
-                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id}` to continue "
                         "its invocation")
             entry = next(r for r in inv["runs"] if r["run"] == run)
             name, text = self._record_request(entry, kind, payload)
@@ -903,7 +904,7 @@ class Harness:
 
         def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
             send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when,
-                       invocation=K.invocation_of_run(entry["run"]))
+                       invocation=K.invocation_of_run(entry["run"]), run=entry["run"])
 
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.
@@ -976,13 +977,13 @@ class Harness:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced, inv_id)} (the run itself decides nothing)")
             elif plan_failure := K.plan_login_failure(
-                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
+                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id, run
             ):
                 action = f"{run} ended because {plan_failure}"
             elif (_reason_code(record) == K.PROVIDER_AUTH_FAILED
                   and (inv.get("execution_profile") or {}).get("credential") == "plan_login"):
                 action = (f"{run} ended because the provider rejected the operator's plan login. "
-                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id))
+                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id, run))
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
                     try:
@@ -992,19 +993,19 @@ class Harness:
                         provider_env = []
                 names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
                     "provider_env"))]  # else the names this run was launched with
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}`, or "
+                          f"relaunch with `aew harness launch {inv_id}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "harness run ended")
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"{K.EXPECT_REV}` (its credential rotates) or cancel it with:"
+                          f"` (its credential rotates) or cancel it with:"
                           f"\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
@@ -1030,7 +1031,7 @@ class Harness:
         if command is None:
             return "ingest it"
         return f"ingest it: {self._stage_for_report(state, inv)}" + ", ".join(
-            f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+            f"`{command} {wid} --evidence {e}`" for e in records)
 
     def _after_assessment(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
                           inv_id: str) -> str:
@@ -1048,7 +1049,7 @@ class Harness:
             standing = f"{counted['id']} already counts for {wid}'s accepted plan, so it is history"
         else:
             standing = f"it is bound to a plan revision that is no longer {wid}'s accepted one, so it counts for none"
-        end = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}", "reason",
+        end = K.fields_command(f"aew invoke cancel {inv_id}", "reason",
                                "its plan assessment is recorded")
         return (f"its plan assessment {', '.join(mine) or '(none)'} is recorded and nothing ingests it: {standing}. "
                 f"End {inv_id}, which retires its observation and credential, with:\n\n{end}\n")
@@ -1069,14 +1070,14 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
+            step = f"`aew work transition {wid} --to {to}`"
             stage = self.gates.stage_for(state, wid, "RUNNING", to)
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
-            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as "
                     "its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING {K.EXPECT_REV}`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
@@ -1187,7 +1188,8 @@ def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
             else X.MESSAGING_DISABLED)
 
 
-def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
+def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None,
+               run: str | None = None) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
@@ -1196,7 +1198,7 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                  f"{K.EXPECT_REV}`) and send to the new run")
+                  f"--prior-value {run or '<run from aew harness status>'}`) and send to the new run")
         raise MessagingSnapshotMismatch(
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)

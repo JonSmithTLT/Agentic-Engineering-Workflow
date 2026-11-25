@@ -1178,7 +1178,7 @@ class Engine:
     def lead_acquire(self, **_: Any) -> dict[str, str | int]:
         return {"token": "synthetic-token", "generation": 1}
 
-    def lead_release(self, *, token: str, expect_rev: int) -> None:
+    def lead_release(self, *, token: str) -> None:
         self.released.append(token)
 
 

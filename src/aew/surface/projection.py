@@ -138,9 +138,9 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
         part["blockers"].append(_blocker(kind.upper(), kind.replace("_", " "),
                                          {k: v for k, v in b.items() if k != "kind"}))
     if unit.get("kind") == "ticket":
-        _ticket_actions(part, subject, int(part["revision"]))
+        _ticket_actions(part, subject)
         if subject in state["work"]:  # the marked findings the Ticket records and the Lead has not disposed of (E5b)
-            part["decisions"].extend(_dispose(item, int(part["revision"]), engine, state=state)
+            part["decisions"].extend(_dispose(item, engine, state=state)
                                      for item in _items(engine, subject, state=state))
     return part
 
@@ -169,20 +169,19 @@ def _anomalies(state: dict[str, Any], subject: str) -> list[dict[str, Any]]:
 
 def _anomaly_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any]) -> None:
     """An open anomaly is the Lead's to dispose of (plan v3 §2.4): a decision with no default."""
-    r = str(part["revision"])
     for a in part["anomalies"]:
         try:
             shown = engine.disposition_approval(a["id"], state=state)
         except AEWError:
             shown = None
-        args = {"expect_rev": part["revision"], "subject": a["id"]}
+        args = {"subject": a["id"]}
+        argv = ["work", "dispose", a["id"], "--choice", "<accept_risk|follow_up|not_applicable>",
+                "--rationale", "<why>"]
         if shown is not None:
             args["approval_digest"] = shown["digest"]
+            argv.extend(["--approval-digest", shown["digest"]])
         part["decisions"].append({"decision": "DISPOSE_ANOMALY", "tool": "resolve", "evidence": [a["id"]],
-                                  "arguments": args,
-                                  "cli": ["work", "dispose", a["id"], "--choice",
-                                          "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
-                                          "--expect-rev", r]})
+                                  "arguments": args, "cli": argv})
 
 
 def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], subject: str) -> None:
@@ -196,7 +195,7 @@ def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], su
     except AEWError:  # the catalogue or policy cannot be read now: doctor says so
         items = []
     for i in items:
-        args = {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"}
+        args = {"subject": i["id"], "choice": "replace_gate"}
         choices = {name: {**args, "replacement": name, "approval_digest": shown["digest"]}
                    for name, shown in i["approval_subjects"].items()}
         if len(choices) == 1:
@@ -213,56 +212,54 @@ def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], su
             | {"approval_digests": {name: row["digest"] for name, row in i["approval_subjects"].items()}}))
 
 
-def _dispose(item: dict[str, Any], rev: int, engine: Any, *,
+def _dispose(item: dict[str, Any], engine: Any, *,
              state: dict[str, Any] | None = None) -> dict[str, Any]:
     """A finding or claim policy marks ``requires_disposition``, not disposed of yet: the Lead's decision (§2.4)."""
-    args = {"expect_rev": rev, "subject": item["id"]}
+    args = {"subject": item["id"]}
+    argv = ["work", "dispose", item["id"], "--choice", "<accept_risk|follow_up|not_applicable>",
+            "--rationale", "<why>"]
     try:
         shown = engine.disposition_approval(item["id"], state=state)
     except AEWError:
         pass
     else:
         args["approval_digest"] = shown["digest"]
+        argv.extend(["--approval-digest", shown["digest"]])
     return {"decision": "DISPOSE_FINDING" if item["kind"] == "finding" else "DISPOSE_CLAIM", "tool": "resolve",
-            "evidence": [item["id"]], "arguments": args,
-            "availability": AVAILABLE,
-            "cli": ["work", "dispose", item["id"], "--choice", "<accept_risk|follow_up|not_applicable>", "--rationale",
-                    "<why>", "--expect-rev", str(rev)]}
+            "evidence": [item["id"]], "arguments": args, "availability": AVAILABLE, "cli": argv}
 
 
 def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) -> None:
     """An unfinished stage of the subject (every one, for the project) is the current Lead's to resolve, continue or
     abandon, never inferred (M4-E E3c; §3.4 rule 8). The decision names the intent and carries no choice: no
     default."""
-    r = str(part["revision"])
     for sid, si in sorted((state.get("stage_intents") or {}).items()):
         if subject == "project" or si["subject"]["id"] == subject:
             part["decisions"].append({"decision": "RESOLVE_STAGE", "tool": "resolve", "evidence": [sid],
-                                      "arguments": {"expect_rev": part["revision"], "subject": sid},
-                                      "cli": ["stage", "<continue|abandon>", sid, "--rationale", "<why>",
-                                              "--expect-rev", r], "stopped": stage.kept_stop(si)})
+                                      "arguments": {"subject": sid},
+                                      "cli": ["stage", "continue", sid, "--rationale", "<why>"],
+                                      "stopped": stage.kept_stop(si)})
 
 
-def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
+def _ticket_actions(part: dict[str, Any], wid: str) -> None:
     """The decisions a Ticket's state requires, each named by its stable typed tool (so the vocabulary does not change
     when F15.2 builds it) with the primitive command that does it today. A decision that accepts a report is completed
     per report by the evidence overlay, which also asks its stage's availability (E4); a decision whose stage is not
     migrated stays UNKNOWN. The stage actions are the legality overlay's (:func:`_stage_actions`)."""
     st = part["state"]
     integration = part["unit"]["integration"]
-    r = str(rev)
     if st == "REVIEW_PENDING":
         part["decisions"].append({"decision": "ACCEPT_REVIEW_EVIDENCE", "role": "reviewer", "kind": "review",
                                   "scope": None, "tool": "ticket_request_verification", "argument": "review_evidence",
-                                  "cli": ["review", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
+                                  "cli": ["review", "ingest", wid, "--evidence", "{evidence}"]})
     elif st == "VERIFY_PENDING":
         part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "kind": "verification",
                                   "scope": "ticket", "tool": "ticket_prepare", "argument": "verification_evidence",
-                                  "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
+                                  "cli": ["verify", "ingest", wid, "--evidence", "{evidence}"]})
     elif st == "VERIFICATION_FAILED":
         part["decisions"].append({"decision": "CLASSIFY_FAILURE", "tool": None,
                                   "cli": ["verify", "classify", wid, "--as", "<classification>", "--reason",
-                                          "<why>", "--expect-rev", r]})
+                                          "<why>", "--approval-digest", "<shown digest>"]})
     elif st == "COMMIT_READY" and integration.get("status") == "prepared":
         # A prepared candidate is validated after integration before it may be published (the engine's own guidance):
         # by an integration verifier, or, in checks mode, by the engine's own validation (D5), which needs no Lead
@@ -273,29 +270,31 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
         routed = part["unit"].get("validated_report")
         if routed:
             part["decisions"].append({"decision": "PUBLISH", "tool": "integration_publish", "evidence": [routed],
-                                      "arguments": {"expect_rev": rev, "work_id": wid, **candidate,
+                                      "arguments": {"work_id": wid, **candidate,
                                                     "verification_evidence": routed},
-                                      "cli": ["verify", "ingest", wid, "--evidence", routed, "--expect-rev", r]})
+                                      "cli": ["verify", "ingest", wid, "--evidence", routed]})
         else:
             part["decisions"].append({"decision": "PUBLISH", "role": "verifier", "kind": "verification",
                                       "scope": "integration", "tool": "integration_publish",
                                       "argument": "verification_evidence", "with": candidate,
-                                      "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
+                                      "cli": ["verify", "ingest", wid, "--evidence", "{evidence}"]})
     elif st == "COMMIT_READY" and integration.get("status") == "validated":
         candidate = integration.get("candidate")
+        argv = ["integrate", "publish", wid]
+        if candidate:
+            argv.extend(["--candidate", str(candidate)])
         part["decisions"].append({"decision": "PUBLISH", "tool": "integration_publish",
-                                  "arguments": {"expect_rev": rev, "work_id": wid,
+                                  "arguments": {"work_id": wid,
                                                 **({"prepared_candidate": str(candidate)} if candidate else {})},
-                                  "cli": ["integrate", "publish", wid, "--expect-rev", r]})
+                                  "cli": argv})
     elif st == "COMMIT_READY" and integration.get("status") == "publishing":
         # A publish that recorded its intent and did not finish (E137): no stage takes it from here, so without this
         # the projection offers nothing while the lease holds up every other integration.
         part["decisions"].append({"decision": "FINISH_PUBLISH", "tool": None,
-                                  "cli": ["integrate", "reconcile", wid, "--expect-rev", r]})
+                                  "cli": ["integrate", "reconcile", wid]})
     elif st == "INTERRUPTED":
         part["decisions"].append({"decision": "RECONCILE", "tool": None,
-                                  "cli": ["work", "reconcile", wid, "--to", "<phase>", "--reason", "<reason>",
-                                          "--expect-rev", r]})
+                                  "cli": ["work", "reconcile", wid, "--to", "<phase>", "--reason", "<reason>"]})
 
 
 def _cached_control_part(engine: Any, subject: str) -> dict[str, Any]:
@@ -340,12 +339,11 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
     unit = part["unit"]
     if unit is None or unit["kind"] != "ticket":
         return [], []
-    rev, st = part["revision"], part["state"]
-    r = str(rev)
+    st = part["state"]
     if unit["mutating"] and st in ("READY", "BLOCKED"):
-        stage, cli = "ticket_start", ["work", "assign", wid, "--launch", "--expect-rev", r]
+        stage, cli = "ticket_start", ["work", "assign", wid, "--launch"]
     elif unit["mutating"] and st == "RUNNING":
-        stage, cli = "ticket_request_review", ["work", "transition", wid, "--to", "REVIEW_PENDING", "--expect-rev", r]
+        stage, cli = "ticket_request_review", ["work", "transition", wid, "--to", "REVIEW_PENDING"]
     elif not unit["mutating"] and st in ("READY", "BLOCKED"):
         return _nm_dispatch(engine, part, wid)
     elif unit["mutating"] and st in _LATER_START and not (
@@ -356,16 +354,15 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
         stage = T.stage_for(st, to, fit) or ("ticket_prepare" if st == "COMMIT_READY" else None)
         if stage is None:
             return [], []
-        cli = (["integrate", "prepare", wid, "--expect-rev", r] if st == "COMMIT_READY"
-               else ["work", "transition", wid, "--to", to, "--expect-rev", r])
+        cli = (["integrate", "prepare", wid] if st == "COMMIT_READY"
+               else ["work", "transition", wid, "--to", to])
     else:
         return [], []
-    found = SA.stage_availability(engine, stage, {"work_id": wid})
-    args = {"expect_rev": rev, "work_id": wid}
+    args = {"work_id": wid}
     if cli[:2] == ["work", "transition"]:
         cli.extend(["--prior-value", st])
-    if stage in {"ticket_request_review", "ticket_request_verification"}:
         args["prior_value"] = st
+    found = SA.stage_availability(engine, stage, args)
     action = _action(stage, args, kind=contract.STAGE,
                      availability=found["availability"], reason_codes=found["reason_codes"], cli_fallback=cli)
     blockers = [_blocker(b["code"], b["message"], b.get("details")) for b in found["blockers"]]
@@ -374,7 +371,6 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
 
 def _nm_dispatch(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """A non-mutating Ticket's dispatch, answered by ``DispatchDecision`` now (no stage dispatches one)."""
-    rev = part["revision"]
     entrypoint = "work.dispatch"
     blockers: list[dict[str, Any]] = []
     try:
@@ -387,7 +383,7 @@ def _nm_dispatch(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[dict
                         decision.get("blocking_conditions") or []]
     except AEWError as exc:
         availability, reasons = UNKNOWN, [exc.code]
-    cli = ["work", "dispatch", wid, "--launch", "--expect-rev", str(rev)] if entrypoint == "work.dispatch" else None
+    cli = ["work", "dispatch", wid, "--launch"] if entrypoint == "work.dispatch" else None
     return [_action(entrypoint, {"work_id": wid}, kind=contract.PRIMITIVE, availability=availability,
                     reason_codes=reasons, cli_fallback=cli)], blockers
 
@@ -453,6 +449,7 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     for d in map(lambda d: _fitting(d, fit), part["decisions"]):
         if "role" not in d:
             arguments = d.get("arguments")
+            argv = list(d["cli"])
             found = d.get("availability", UNKNOWN)
             if d["decision"] == "RESOLVE_STAGE" and arguments:
                 try:
@@ -461,37 +458,40 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                     pass
                 else:
                     arguments = {**arguments, "approval_digest": shown["digest"]}
+                    argv += ["--approval-digest", shown["digest"]]
             if d["decision"] == "DISPOSE_ANOMALY":  # the disposal's own query, read now: a live contradiction (m4)
                 refused = _disposal_refusal(engine, d["evidence"][0])
                 found = BLOCKED if refused else AVAILABLE
                 if refused:
                     blockers.append(_blocker(refused["code"], refused["message"], refused["details"]))
+            if d["decision"] == "CLASSIFY_FAILURE":
+                shown = engine.approval_subject(subject, "verify.classify")
+                if shown is not None:
+                    argv[-1] = shown["digest"]
             if arguments is not None and d["tool"] and SA.migrated(d["tool"]):  # PUBLISH: its stage's (M4-E E4b)
-                composed = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
-                                                                     if k != "expect_rev"})
+                composed = SA.stage_availability(engine, d["tool"], arguments)
                 found = composed["availability"]
                 blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in composed["blockers"])
             out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=arguments,
-                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
+                                 cli_fallback=argv, evidence=d.get("evidence"), availability=found))
             if "stopped" in d:
                 out[-1]["stopped"] = d["stopped"]
             if "approval_options" in d:
                 out[-1]["approval_options"] = d["approval_options"]
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
-            arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e, **d.get("with", {})}
+            arguments = ({"work_id": subject, d["argument"]: e, **d.get("with", {})}
                          if d["argument"] else None)
             found = UNKNOWN
             if arguments is not None and SA.migrated(d["tool"]):  # its stage's availability with this report (E4)
-                found = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
-                                                                  if k != "expect_rev"})["availability"]
+                found = SA.stage_availability(engine, d["tool"], arguments)["availability"]
             out.append(_decision(d["decision"], subject, tool=d["tool"], evidence=[e], arguments=arguments,
                                  cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]], availability=found))
             # The report's own marked items, which its acceptance would refuse to advance past (M4-E E5b, §2.4).
             for item in _items(engine, subject, evidence=[e], state=state):
                 if item["evidence"] == e and item["id"] not in listed:
                     listed.add(item["id"])
-                    x = _dispose(item, int(part["revision"]), engine, state=state)
+                    x = _dispose(item, engine, state=state)
                     out.append(_decision(x["decision"], subject, tool=x["tool"], evidence=x["evidence"],
                                          arguments=x["arguments"], cli_fallback=x["cli"], availability=AVAILABLE))
     return out
@@ -519,7 +519,7 @@ def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
     for path in sorted({v["path"] for v in violations if v["rule"] == "outside_ticket_scope"}):
         if not SC.test_code(path) or SC.exact_path_problem(path) is not None:  # rule 1, a newline included
             continue
-        args = {"expect_rev": part["revision"], "subject": SC.item_id(subject, path), "choice": SC.CHOICE}
+        args = {"subject": SC.item_id(subject, path), "choice": SC.CHOICE}
         found = engine.guard_query(SC.OP, None, {"subject": args["subject"], "rationale": "(the Lead's reason)"},
                                    state=state)
         blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in found["blocking_conditions"])
@@ -576,10 +576,10 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         if queue_state := bindings.get("queue_state"):
             if queue_state != "DEFERRED" and part["unit"]["integration"].get("status") != "publishing":
                 fallback["integrate.defer"] = approval.bound_argv(
-                    ("integrate", "defer", subject, "--reason", "<reason>"), part["revision"], queue_state)
+                    ("integrate", "defer", subject, "--reason", "<reason>"), queue_state)
             if queue_state in {"DEFERRED", "AWAITING_DISPOSITION", "VALIDATED"}:
                 fallback["integrate.requeue"] = approval.bound_argv(
-                    ("integrate", "requeue", subject, "--reason", "<reason>"), part["revision"], queue_state)
+                    ("integrate", "requeue", subject, "--reason", "<reason>"), queue_state)
         if fallback:
             out["cli_fallback"] = fallback
     coordination = engine.message_attention(work_id=None if subject == "project" else subject)

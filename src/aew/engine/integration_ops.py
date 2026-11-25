@@ -36,10 +36,9 @@ from aew.errors import (
     LeaseNotHeld,
     LeaseReconcileRequired,
     StaleCandidate,
-    StaleRevision,
     UsageError,
 )
-from aew.harness.contract import EXPECT_REV, redact
+from aew.harness.contract import redact
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -58,7 +57,6 @@ if TYPE_CHECKING:
 # registration is one such commit, once per lease, and the one the tool-call log shows in that window both times a
 # publish stopped there; more than this in that window is a busy project, and the refusal then says what finishes the
 # publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
-FINISH_ATTEMPTS = 3
 PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when the Ticket is left `publishing`
 
 # Match the rebuild summary's SHA length in _moved_head.
@@ -115,7 +113,7 @@ def _publish_unfinished(work_id: str) -> str:
     """What a Lead reads when a publish recorded its intent and did not finish (E137): where the Ticket stands, and the
     one call that finishes it. Nothing else moves it, and the lease holds up other integrations meanwhile."""
     return (f"{work_id} is publishing: a publish recorded its intent and did not finish. Publishing again is refused "
-            f"and nothing is decided anew: `aew integrate reconcile {work_id} {EXPECT_REV}` finishes it, by inspecting "
+            f"and nothing is decided anew: `aew integrate reconcile {work_id}` finishes it, by inspecting "
             "the authoritative ref")
 
 
@@ -305,7 +303,7 @@ class Integration:
             if lost:
                 raise IllegalTransition(f"{work_id}'s VALIDATED candidate lost its integration worktree "
                                         f"({integ['workspace']}): requeue it (`aew integrate requeue {work_id} "
-                                        f"--reason <reason> {EXPECT_REV}`) to "
+                                        f"--reason <reason>`) to "
                                         "build a new candidate", workspace=integ["workspace"])
             return
         # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the
@@ -446,8 +444,8 @@ class Integration:
             ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
         return unit, conflict, refused
 
-    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
+    def integrate_prepare(self, *, token: str, work_id: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, "integrate.prepare") as ctx:
             state = ctx.state
             # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian. The
             # admission is the query's own (M4-E E4b): decide_in records the decision and requires it.
@@ -473,13 +471,13 @@ class Integration:
 
     # ------------------------------------------------------------------ the Lead's queue commands (M4-D4)
 
-    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def integrate_defer(self, *, token: str, work_id: str, reason: str,
                           prior_value: str | None = None) -> dict[str, Any]:
         """Set a queue entry aside: the Ticket stays COMMIT_READY and holds up nobody. A LEASED entry gives up its
         lease, and its open candidate, which nothing published, is retired."""
         if not (reason and reason.strip()):
             raise UsageError("deferring needs a reason")
-        with self.k.lead_txn(token, expect_rev, "integrate.defer", reason=reason) as ctx:
+        with self.k.lead_txn(token, "integrate.defer", reason=reason) as ctx:
             self.queue.sync(ctx.state)
             qid, entry = Q.entry_of(ctx.state, work_id)
             approval.prior("integrate.defer", qid or work_id, "queue entry state", prior_value,
@@ -502,13 +500,13 @@ class Integration:
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
                 "revision": ctx.session.committed_revision}
 
-    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def integrate_requeue(self, *, token: str, work_id: str, reason: str,
                           prior_value: str | None = None) -> dict[str, Any]:
         """Return a DEFERRED or AWAITING_DISPOSITION entry to the queue in its own place: the Lead's disposition when
         the cause is settled (a policy changed, a head that moved twice, an inconclusive result to retry)."""
         if not (reason and reason.strip()):
             raise UsageError("requeueing needs a reason")
-        with self.k.lead_txn(token, expect_rev, "integrate.requeue", reason=reason) as ctx:
+        with self.k.lead_txn(token, "integrate.requeue", reason=reason) as ctx:
             self.queue.sync(ctx.state)
             qid, entry = Q.entry_of(ctx.state, work_id)
             approval.prior("integrate.requeue", qid or work_id, "queue entry state", prior_value,
@@ -520,15 +518,15 @@ class Integration:
             ctx.summary = f"{work_id} queue entry {moved['entry']} requeued from {moved['from']}: {reason}"
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
                 "revision": ctx.session.committed_revision,
-                "next": f"`aew integrate prepare {work_id} {EXPECT_REV}` when it is next in the queue"}
+                "next": f"`aew integrate prepare {work_id}` when it is next in the queue"}
 
-    def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
+    def integrate_reorder(self, *, token: str, work_id: str, before: str | None,
                           reason: str) -> dict[str, Any]:
         """Move a queue entry ahead of another (or to the front). Order is scheduling, never eligibility: the work
         graph still decides what may integrate (M4 report §2.6)."""
         if not (reason and reason.strip()):
             raise UsageError("reordering needs a reason")
-        with self.k.lead_txn(token, expect_rev, "integrate.reorder", reason=reason) as ctx:
+        with self.k.lead_txn(token, "integrate.reorder", reason=reason) as ctx:
             self.queue.sync(ctx.state)
             moved = self.queue.reorder(ctx.state, work_id, before=before)
             ctx.summary = (f"{work_id} queue entry {moved['entry']} moved "
@@ -641,7 +639,7 @@ class Integration:
                 "binding": pinned["obligation"]["binding"]} != current:
             raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: it "
                                   f"must be validated again (recovery: `aew integrate validate {work_id} "
-                                  f"{EXPECT_REV}`)",
+                                  f"`)",
                                   validated=pinned, current=current)
         run = integ.get("current_validation_run") or {}
         if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":
@@ -782,6 +780,10 @@ class Integration:
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
+            if "candidate" in args:
+                approval.compare("integrate.publishing", work_id, args["candidate"], integ.get("candidate"),
+                                 next_step="Read its projection and decide on the current one.",
+                                 reason="candidate_mismatch", named=args["candidate"])
             scratch = copy.deepcopy(state)
             self.queue.sync(scratch)
             # A VALIDATED entry is published under a fresh lease, granted in the publish's own first commit (M4-E
@@ -812,26 +814,20 @@ class Integration:
 
         return guard_checked(check)
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str,
+    def integrate_publish(self, *, token: str, work_id: str,
                           candidate: str | None = None) -> dict[str, Any]:
-        """Publish ``work_id``'s candidate (``candidate``, when given: the one the Lead named, M4-E E6a; any other is
-        refused before anything commits)."""
+        """Publish the candidate the Lead named. A missing or changed candidate commits nothing."""
         # Phase 1: record intent (publishing H -> M) after re-validating everything: the guard's query first (M4-E
         # E4b), whose refusal is raised unchanged, except the two it answers with a committed disposition.
         stale = None
         moved: dict[str, Any] | None = None
-        with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
+        with self.k.lead_txn(token, "integrate.publishing") as ctx:
             # A VALIDATED entry first gets its fresh lease, in this same commit (M4-E E6a; plan v3 §2.3): the
             # `integrate.prepare` decision recomputed and recorded for the custodian it admits. A refusal below rolls
             # the grant back with everything else.
             self.queue.regrant(ctx, work_id, lambda state, entrypoint, wid, **kw: self.dispatch.decide_in(
                 ctx, entrypoint, wid, **kw))
-            named = (ctx.state["work"].get(work_id) or {}).get("integration") or {}
-            if candidate is not None:
-                approval.compare("integrate.publishing", work_id, candidate, named.get("candidate"),
-                                 next_step="Read its projection and decide on the current one.",
-                                 reason="candidate_mismatch", named=candidate)
-            args: dict[str, Any] = {}
+            args: dict[str, Any] = {"candidate": candidate}
             refused = self.publish_query(ctx.state, work_id, args)
             outcome = (args.get("found") or {}).get("outcome")
             if refused is not None and outcome not in (self.SUPERSEDED, self.MOVED_HEAD):
@@ -865,36 +861,17 @@ class Integration:
             raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; run "
                                  "`aew integrate prepare` again", **stale)
         faults.hit("integrate.after_publishing_record")
-        committed = ctx.session.committed_revision
-        assert committed is not None  # the transaction above committed
-        # The publish's effect after its intent commit: never a stage step's commit (M4-E E6a; `SI.unarmed`).
+        # Final publication is a separate guarded commit, not a step in the stage journal.
         from aew.engine.stage_intents import unarmed
 
         with unarmed():
-            return self._finish_following(token, committed, work_id)
+            return self._finish_publish(token, work_id)
 
-    def _finish_following(self, token: str, rev: int, work_id: str) -> dict[str, Any]:
-        """The publish's finish, from the revision its intent commit returned and on past any commit that lands after it
-        (E137): the custody worker's registration takes no expected revision, the log shows it landing here, and a
-        refusal here stranded the Ticket in `publishing`, with the ref unmoved. The Lead's revision was checked when the
-        intent committed, and that commit is its publication decision; following replays no judgment, since the finish
-        re-verifies the authority, the intent, the lease and the binding under the lock on every attempt."""
-        for attempt in range(1, FINISH_ATTEMPTS + 1):
-            try:
-                return self._finish_publish(token, rev, work_id)
-            except StaleRevision as exc:
-                if attempt == FINISH_ATTEMPTS:
-                    raise StaleRevision(f"nothing was published, but the publish did not finish. "
-                                        f"{_publish_unfinished(work_id)}", reason=PUBLISH_UNFINISHED,
-                                        **exc.details) from None
-                rev = int(exc.details["current"])
-        raise IntegrityError("engine defect: a publish's finish ended with no outcome", work_id=work_id)
-
-    def _finish_publish(self, token: str, expect_rev: int, work_id: str, *,
+    def _finish_publish(self, token: str, work_id: str, *,
                         reconciling: bool = False) -> dict[str, Any]:
         """CAS, worktree sync and DONE as ONE Lead transaction (review 2026-09-26 M1).
 
-        Authority, the expected control revision and the manifest pin are all verified under the
+        Authority, the publish intent, its pinned inputs and the manifest pin are verified under the
         control-state lock *before* any ref or worktree side effect, and the lock is held until DONE
         commits. A rejected call therefore never moves the ref, and no other writer can interleave
         between publication and completion. A crash at any fault point leaves ``publishing`` for
@@ -905,7 +882,7 @@ class Integration:
         withdrawn: GateUnsatisfied | None = None
         sync: dict[str, Any] = {}  # set on the path that completes; the others raise below
         remove_ticket_workspace = False
-        with self.k.lead_txn(token, expect_rev, "integrate.publish") as ctx:
+        with self.k.lead_txn(token, "integrate.publish") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
             if integ.get("status") != "publishing":
@@ -1059,10 +1036,10 @@ class Integration:
         if lease["reconcile"] is not None:
             raise LeaseReconcileRequired(
                 f"{work_id}'s integration lease lost its custodian ({lease['reconcile']['reason']}): run `aew "
-                f"integrate reconcile {work_id} {EXPECT_REV}`", entry=lease["entry"])
+                f"integrate reconcile {work_id}`", entry=lease["entry"])
         return lease
 
-    def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def integrate_reconcile(self, *, token: str, work_id: str) -> dict[str, Any]:
         """Resume an interrupted publish by inspecting git: CAS pending, already done, or stale. A lease whose
         custodian died, with no publish in progress, is reconciled instead: nothing was published, so its open
         candidate is retired and the entry returns to the queue in its place (M4-D: never a timeout)."""
@@ -1070,8 +1047,8 @@ class Integration:
         unit = state["work"].get(work_id) or {}
         lease = Q.lease_of(state, work_id)
         if (unit.get("integration") or {}).get("status") == "publishing" or not (lease and lease["reconcile"]):
-            return self._finish_publish(token, expect_rev, work_id, reconciling=True)
-        with self.k.lead_txn(token, expect_rev, "integrate.reconcile") as ctx:
+            return self._finish_publish(token, work_id, reconciling=True)
+        with self.k.lead_txn(token, "integrate.reconcile") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             lease = Q.lease_of(ctx.state, work_id)
             if lease is None or lease["reconcile"] is None or \

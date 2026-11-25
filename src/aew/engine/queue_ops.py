@@ -52,7 +52,6 @@ from aew.engine.authority import mint_custody, revoke, token_id_of
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.errors import IllegalTransition, IntegrityError, LeaseHeld, LeaseNotHeld, LeaseReconcileRequired, QueueOrder
-from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import format_id
 from aew.policy import validation as V
 from aew.util import dump_yaml, load_yaml, utc_now
@@ -101,7 +100,7 @@ def unfinished_publish(state: dict[str, Any], holder: str | None) -> str | None:
     integ = ((state.get("work") or {}).get(holder) or {}).get("integration") or {}
     if integ.get("status") != "publishing":
         return None
-    return (f"its publish recorded its intent and did not finish: `aew integrate reconcile {holder} {EXPECT_REV}` "
+    return (f"its publish recorded its intent and did not finish: `aew integrate reconcile {holder}` "
             "finishes it first")
 
 
@@ -270,7 +269,7 @@ class Queue:
             why = (entry.get("disposition") or {}).get("reason")
             return blocker_from(IllegalTransition(
                 f"{work_id}'s queue entry {qid} is {entry['state']}" + (f" ({why})" if why else "")
-                + f": the Lead disposes of it first (`aew integrate requeue {work_id} --reason <reason> {EXPECT_REV}` "
+                + f": the Lead disposes of it first (`aew integrate requeue {work_id} --reason <reason>` "
                   "once the cause is settled, the "
                 "Ticket back to RUNNING for a new implementation attempt, or REPLAN_REQUIRED)", entry=qid,
                 state=entry["state"]))
@@ -281,7 +280,7 @@ class Queue:
             return blocker_from(IllegalTransition(
                 f"{work_id}'s queue entry {qid} is VALIDATED: its candidate validated clean and is kept. Publish it "
                 "with `integration_publish` (a fresh lease; a moved head is rebuilt and revalidated), or requeue it "
-                f"to build a new candidate (`aew integrate requeue {work_id} --reason <reason> {EXPECT_REV}`)",
+                f"to build a new candidate (`aew integrate requeue {work_id} --reason <reason>`)",
                 entry=qid, state=entry["state"]))
         for other_id, other in sorted(queue["entries"].items(), key=lambda kv: kv[1]["seq"]):
             if other["seq"] >= entry["seq"]:
@@ -306,7 +305,7 @@ class Queue:
         if lease["reconcile"] is not None:
             return blocker_from(LeaseReconcileRequired(
                 f"the integration lease of {holder.get('work')} lost its custodian ({lease['reconcile']['reason']}): "
-                f"run `aew integrate reconcile {holder.get('work')} {EXPECT_REV}` first", holder=holder.get("work"),
+                f"run `aew integrate reconcile {holder.get('work')}` first", holder=holder.get("work"),
                 entry=lease["entry"]))
         if lease["entry"] != facts.get("queue_entry"):
             unfinished = unfinished_publish(state, holder.get("work"))
@@ -438,7 +437,7 @@ class Queue:
             lease = state["queue"]["lease"]
             if lease["reconcile"] is not None:
                 raise LeaseReconcileRequired(f"{work_id}'s lease lost its custodian ({lease['reconcile']['reason']}): "
-                                             f"run `aew integrate reconcile {work_id} {EXPECT_REV}` first", entry=qid)
+                                             f"run `aew integrate reconcile {work_id}` first", entry=qid)
             self._end_lease(state, entry, result="deferred", custodian_status="completed")
         entry["state"] = "DEFERRED"
         entry["disposition"] = {"reason": "deferred", "at": utc_now(), "detail": {"by_lead": reason, "was": was}}
@@ -559,5 +558,5 @@ class Queue:
         if lease["reconcile"] is not None:
             raise LeaseReconcileRequired(
                 f"{work_id}'s integration lease lost its custodian ({lease['reconcile']['reason']}): run `aew "
-                f"integrate reconcile {work_id} {EXPECT_REV}`", entry=lease["entry"])
+                f"integrate reconcile {work_id}`", entry=lease["entry"])
         return lease

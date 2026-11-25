@@ -466,7 +466,7 @@ class Lead:
         if step == 1 and d["decision"] == "RESOLVE_STAGE":
             # The known gap: an unfinished stage (often the steering loop's, or one a lost session left) whose typed
             # call lacks the choice and rationale. The Lead continues it with its own rationale, from the shell, as
-            # the decision's command names (`aew stage <continue|abandon> <intent> --rationale <why> --expect-rev <r>`).
+            # the decision's command names (`aew stage continue <intent> --rationale <why> --approval-digest <shown>`).
             self.event("gap", gap="resolve_stage", why="the stage's typed resolution was refused; its command needs a "
                                                         "choice and a rationale")
             cli = [("continue" if x == "<continue|abandon>" else
@@ -486,10 +486,10 @@ class Lead:
         message = str(error.get("message") or "")
         if argv[:2] == ["stage", "continue"] and "abandon" in message.lower():
             self.event("gap", gap="refusal_names_a_step", why=message[:300], code=error.get("code"))
-            rev = self.call("status", {"work_id": self.subject}).get("revision")
+            self.call("status", {"work_id": self.subject})
             self.shell(["stage", "abandon", argv[2], "--rationale",
-                        "the refusal says the stage's subject moved: abandon it and decide anew from the projection",
-                        "--expect-rev", str(rev)], why="the refusal names abandon as the step to take")
+                        "the refusal says the stage's subject moved: abandon it and decide anew from the projection"],
+                       why="the refusal names abandon as the step to take")
 
     # ------------------------------------------------------------------ the counted fallbacks
 
@@ -499,8 +499,7 @@ class Lead:
         self.seen[("no_ticket",)] = 1
         self.event("gap", gap="no_ticket", why="the project's projection offers no action for the operator's request")
         draft = dict(self.spec["draft"])
-        args = {"expect_rev": proj.get("revision"), **draft}
-        out = self.call("ticket_draft", args, why="no_ticket")
+        out = self.call("ticket_draft", draft, why="no_ticket")
         found = (out.get("projection") or {}).get("subject")
         if out.get("ok") and found and found != "project":
             self.subject = found
@@ -545,7 +544,7 @@ class Lead:
         (``fill_hint``), and ``--launch`` once a refusal asks for it (each a counted call). A hint the Lead cannot
         complete runs nothing and is recorded; the next read goes on to whatever else the policy has, or stuck."""
         try:
-            argv = fill_hint(hint, self.subject, proj.get("revision"))
+            argv = fill_hint(hint, self.subject)
         except NotFollowable as exc:
             self.event("gap", gap="hint_not_followable", why=str(exc), hint=hint)
             return True
@@ -555,12 +554,8 @@ class Lead:
             return True
         error = out.get("error") or {}
         message = str(error.get("message") or "")
-        if "unrecognized arguments: --expect-rev" in message:  # a read command takes none
-            self.hint_retry(argv[:-2], why="hint_command: the usage error refused --expect-rev")
-        elif "--launch" in message and not parse_failed(error):
-            rev = self.call("status", {"work_id": self.subject}).get("revision")
-            self.hint_retry([*argv[:-2], "--launch", "--expect-rev", str(rev)],
-                            why="hint_command: the refusal asked for --launch")
+        if "--launch" in message and not parse_failed(error):
+            self.hint_retry([*argv, "--launch"], why="hint_command: the refusal asked for --launch")
         elif is_usage_error(error):
             self.hint_usage_error(argv, error)
         else:
@@ -588,12 +583,11 @@ class Lead:
         self.seen[("redispatch",)] = 1
         self.last_refusal = ""
         self.event("gap", gap="redispatch", why="no active implementer invocation, and nothing offered")
-        rev = str(proj.get("revision"))
         if unit.get("mutating", True):
-            argv = ["invoke", "create", str(self.subject), "--role", "implementer", "--launch", "--expect-rev", rev]
+            argv = ["invoke", "create", str(self.subject), "--role", "implementer", "--launch"]
         else:
             argv = ["work", "redispatch", str(self.subject), "--reason", "the interrupted attempt is gone",
-                    "--launch", "--expect-rev", rev]
+                    "--launch"]
         self.shell(argv, why="redispatch: a new attempt after the interrupted one")
         return True
 
@@ -609,7 +603,7 @@ class Lead:
                           detail={"decision": None, "gap": "publish_not_offered", "tool": "integration_publish"})
         if not answer.lower().startswith(("y", "approve", "ok", "go")):
             return self.stuck("the operator did not approve the publish")
-        args = {"expect_rev": proj.get("revision"), "work_id": self.subject, "prepared_candidate": candidate,
+        args = {"work_id": self.subject, "prepared_candidate": candidate,
                 **({"verification_evidence": report} if report else {})}
         self.call("integration_publish", args, why="publish_not_offered")
         return True
@@ -622,8 +616,11 @@ class Lead:
                           detail={"decision": None, "gap": "plan_not_accepted", "tool": "aew plan accept (shell)"})
         if not answer.lower().startswith(("y", "approve", "ok")):
             return self.stuck("the operator did not approve the plan")
-        self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--expect-rev",
-                    str(proj.get("revision"))], why="plan_not_accepted")
+        binding = plan.get("sha256")
+        if not binding:
+            return self.stuck("the proposed plan's digest was not shown")
+        self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--approval-digest", binding],
+                   why="plan_not_accepted")
         return True
 
     def stuck(self, why: str) -> bool:

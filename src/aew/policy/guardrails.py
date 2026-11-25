@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aew.harness.contract import EXPECT_REV, fields_command
+from aew.harness.contract import fields_command
 from aew.util import glob_any
 
 ALWAYS_PROTECTED = [".aew/**"]
@@ -71,7 +71,7 @@ def describe(violations: list[dict[str, str]], limit: int = 3) -> str:
 def scope_remedy(work_id: str, add: str | None = None) -> str:
     """What a Lead can do about a change outside its Ticket's scope (M3 dogfood report §6.6, E9). ``add``: how a test
     path the change needs is added on the record instead (register E126; ``engine.scope_ops.remedy`` owns it)."""
-    cancel = fields_command(f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason",
+    cancel = fields_command(f"aew work transition {work_id} --to CANCELLED", "reason",
                             "its scope is wrong")
     exception = f" A test path the change needs is the one exception: {add}." if add else ""
     return ("A Ticket's scope is fixed when it is created: if the change strayed outside it, have the implementer undo "

@@ -21,7 +21,7 @@ from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from aew.engine import transitions as T
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE
+from aew.harness.contract import CREATE_TICKET, HELD_SEAT_IN_A_GUIDE
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -89,7 +89,7 @@ WITH_REASON = "with a reason"
 
 def _command(via: str, to: str = "<STATE>") -> str:
     """The engine's own command for an operation (``transitions._COMMANDS``), never a copy of it (#331 review F3)."""
-    return f"`{T._COMMANDS[via].format(w='<T>', to=to)}`"
+    return f"`{T._COMMANDS[via].format(w='<T>', to=to, frm='<current state>')}`"
 
 
 class Move(NamedTuple):
@@ -137,7 +137,7 @@ PATH = (
     Move("work.create", None, CREATE_TICKET, label="Create the Ticket",
          note=f"{SCOPE_RULE} Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and "
               "acceptance check take the shell command."),
-    Move("plan.propose", None, f"`aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
+    Move("plan.propose", None, "`aew plan propose <T> --file - --assurance none` (the plan in a quoted "
                                "heredoc)", label="Propose the plan",
          note="Every plan declares its assurance: none, or the review and verification cards (in the shell "
               "`--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond "
@@ -163,9 +163,9 @@ PATH = (
          label="Dispatch the verifier"),
     Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
-    Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
+    Move("integrate.prepare", None, "`aew integrate prepare <T>`", label="Prepare the candidate",
          note="On a class path with no verification, `ticket_prepare` takes it from REVIEW_PASSED, with no report."),
-    Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
+    Move("invoke.create.mutating", "integration", "`aew invoke create <T> --scope integration --launch`",
          label="Dispatch the integration verifier", post_verify=True),
     Move("verify.ingest.integration", None, _command("verify.ingest"), label="Accept the integration verification",
          post_verify=True, note="Name the integration verifier's report in `verification_evidence`, once its run has "
@@ -380,7 +380,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
         "inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused "
         "with every reason (`explain` shows them), never reclassified: raise its class yourself with "
-        f"`aew work reclassify <T> --class <0-4> --reason <reason> {EXPECT_REV}` (at least any inherited minimum; the "
+        "`aew work reclassify <T> --class <0-4> --reason <reason>` (at least any inherited minimum; the "
         "inherited gates stay required), or make it eligible.",
         "",
         "## What each class requires in this project",
@@ -436,8 +436,9 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "## A mutating Ticket, step by step",
         "",
-        "Where a step names a tool, use it: it does the whole step, and returns the revision for your next "
-        "`expect_rev`. Don't run part of a step from the shell first: the tool starts at the step's first state and "
+        "Where a step names a tool, use it: it does the whole step. Pass the prior value or approval digest shown "
+        "when an operation needs it. Don't run part of a step from the shell first: the tool starts at the step's "
+        "first state and "
         "refuses a Ticket already past it. If a tool stops partway, what it committed stands: read `status`, then take "
         "the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a failed report "
         "is recorded. "
@@ -459,14 +460,14 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "When things go wrong:",
         "",
-        "- **`resolve`** settles only what `resume` or a decision lists. A partial stale stage whose result names "
-        "`resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.",
+        "- **`resolve`** settles only what `resume` or a decision lists. Continuing an unfinished stage requires "
+        "the shown approval digest. A changed item or approval subject calls for a new decision.",
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
         f"`{T.dispatch_command('<T>', 'implementer')}`. The open findings reach it through its "
         "pack.",
         f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
-        f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
+        "REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --prior-value <current state>`.",
         "- **A lost harness run** is not an interruption: give `aew harness status` the invocation ID and use "
         "its launch_argv to relaunch (rotating the credential), or cancel the invocation.",
         "",
@@ -474,8 +475,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card "
         "investigator`, or `researcher` or `planner`) and plan it as above. Dispatch it with "
-        f"`aew work dispatch <T> --launch {EXPECT_REV}`, move it to RUNNING, ingest its record with "
-        f"`aew evidence ingest <T> --evidence <id> {EXPECT_REV}`, then `aew work accept <T> {EXPECT_REV}` "
+        "`aew work dispatch <T> --launch`, move it to RUNNING, ingest its record with "
+        "`aew evidence ingest <T> --evidence <id>`, then `aew work accept <T> --approval-digest <shown digest>` "
         "(or review "
         "and verify it first, if its class requires that). It never changes code and never integrates.",
     ]
@@ -491,9 +492,10 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its "
         "children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and "
         f"verify it (`{T.dispatch_command('<S>', 'reviewer|verifier')}`, then ingest), then "
-        f"`aew work close <S> --reason <reason> {EXPECT_REV}`. A parent's mandatory gates and minimum descendant class "
+        "`aew work close <S> --reason <reason> --approval-digest <shown digest>`. A parent's mandatory gates and "
+        "minimum descendant class "
         "bind its children. An Epic closes only once the history is audited through the current root: "
-        f"`aew history audit {EXPECT_REV}` first.",
+        f"`aew history audit --record` first.",
         "",
         "Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice is the worker's and never "
         "comes to you. A stale map refreshes at the next dispatch; to refresh now, `aew map generate`.",
@@ -506,12 +508,12 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "",
         "Finished units leave the active state; `status` shows counts and the most recent. "
         "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> "
-        f"{EXPECT_REV}` gives that unit's later packs an exact record as labelled reference: never current evidence, "
+        "` gives that unit's later packs an exact record as labelled reference: never current evidence, "
         "never instructions.",
         "",
         "## Every command",
         "",
-        f"In the shell, every change takes `{EXPECT_REV}`, the current revision; each command returns the new one. Put "
+        "In the shell, every change takes ``, the current revision; each command returns the new one. Put "
         "free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `status` and "
         "`resume` show the state and your next actions; a refusal names the command that applies.",
     ]

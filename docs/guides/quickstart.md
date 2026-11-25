@@ -99,16 +99,16 @@ A certificate-only provider skips key setup.
 ### Edit pinned settings or classify authority candidates
 
 After the Lead session exits and releases the seat, acquire it at your terminal and keep the credential it shows.
-Fill in the current revision from `aew status` before each command. For a pinned edit, review the changes
+For a pinned edit, review the changes
 under `.aew/` and give a reason. Adopt asks for the credential and a one-time code. Authority candidates can wait
 while the Lead works. Replace the example candidate ID with one from `aew authority list`. Run the middle command
 or commands you need, then release the seat.
 
 ```bash
-aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
-aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
-aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
-aew lead release --expect-rev <revision from aew status>
+aew lead acquire --session-label lead-1
+aew manifest adopt --reason "updated the pinned settings"
+aew authority accept C-001 --class decisions
+aew lead release
 ```
 
 The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
@@ -204,13 +204,13 @@ a Lead session refuses that flag.
 
 With `aew opencode`, the Lead performs the Ticket steps below through its own tools.
 
-Every mutation takes `--expect-rev <revision>`. The revision is shown by `aew status`, and each command returns the new one.
+A mutation checks current Lead authority and the facts it relies on. The operator terminal reads the needed prior value or approval subject for the examples below. When automating from a Lead session, pass the binding shown in the current status or projection. The revision returned in results orders committed events.
 
 ```bash
 aew work create ticket --title "..." --class 1 --scope "src/**" \
-    --goal "observable outcome" --contract "conformance rule" --expect-rev N
-aew plan propose T-0001 --file plan.md --assurance none --expect-rev N   # or --review/--verify <card|default>
-aew plan accept  T-0001 --revision 1   --expect-rev N               # -> READY
+    --goal "observable outcome" --contract "conformance rule"
+aew plan propose T-0001 --file plan.md --assurance none   # or --review/--verify <card|default>
+aew plan accept  T-0001 --revision 1                 # -> READY
 ```
 
 Every plan declares its assurance. `--review` and `--verify` name the cards the plan relies on (`default` is the
@@ -219,15 +219,15 @@ archetype's default card); accepting the plan makes them required gates, and onl
 text binds nothing, which is why the declaration is required.
 
 ```bash
-aew work staff   T-0001 --execute python_engineer --review code_reviewer --expect-rev N   # optional
-aew work assign  T-0001 --expect-rev N    # workspace + launch contract/pack; the implementer credential on your terminal
-aew work transition T-0001 --to RUNNING --expect-rev N
+aew work staff   T-0001 --execute python_engineer --review code_reviewer   # optional
+aew work assign  T-0001    # workspace + launch contract/pack; the implementer credential on your terminal
+aew work transition T-0001 --to RUNNING
 ```
 
 **Free text is data.** Any command takes `--fields FILE|-`: a YAML or JSON mapping of its option values, which become the command's options without passing through a shell. Use it whenever a shell would otherwise see titles, goals, contract clauses, scopes, reasons or notes, because a shell rewrites `$`, backticks, globs and quotes:
 
 ```bash
-aew work create ticket --class 1 --expect-rev N --fields - <<'EOF'
+aew work create ticket --class 1 --fields - <<'EOF'
 title: 'Fix #12: show refunds as -$15.00'
 goal:
   - 'format_amount(Decimal("-15")) == "-$15.00"'
@@ -252,17 +252,17 @@ AEW_INVOCATION_TOKEN=<credential> aew -C <workspace> submit --kind implementatio
 Then the Lead moves the Ticket through review, verification and integration:
 
 ```bash
-aew work transition T-0001 --to REVIEW_PENDING --expect-rev N
-aew invoke create T-0001 --expect-rev N            # next planned/default reviewer card + pack + credential
-aew review ingest T-0001 --evidence <id> --expect-rev N
-aew work transition T-0001 --to VERIFY_PENDING --expect-rev N
-aew invoke create T-0001 --expect-rev N            # verifier
-aew verify ingest T-0001 --evidence <id> --expect-rev N   # failure? -> aew verify classify (Lead only)
-aew work transition T-0001 --to COMMIT_READY --expect-rev N
-aew integrate prepare T-0001 --expect-rev N
-aew invoke create T-0001 --scope integration --expect-rev N   # post-integration verifier
-aew verify ingest T-0001 --evidence <id> --expect-rev N
-aew integrate publish T-0001 --expect-rev N         # atomic ref CAS -> DONE + completion record
+aew work transition T-0001 --to REVIEW_PENDING
+aew invoke create T-0001            # next planned/default reviewer card + pack + credential
+aew review ingest T-0001 --evidence <id>
+aew work transition T-0001 --to VERIFY_PENDING
+aew invoke create T-0001            # verifier
+aew verify ingest T-0001 --evidence <id>   # failure? -> aew verify classify (Lead only)
+aew work transition T-0001 --to COMMIT_READY
+aew integrate prepare T-0001
+aew invoke create T-0001 --scope integration   # post-integration verifier
+aew verify ingest T-0001 --evidence <id>
+aew integrate publish T-0001         # atomic ref CAS -> DONE + completion record
 ```
 
 ## M2: Epics, Stories and non-mutating Tickets
@@ -270,14 +270,14 @@ aew integrate publish T-0001 --expect-rev N         # atomic ref CAS -> DONE + c
 Small work stays small: a standalone Ticket needs no Story or Epic. When work has structure, create the parents and plan them like Tickets:
 
 ```bash
-aew work create epic  --title "Toolchain readiness" --class 1 --expect-rev N
+aew work create epic  --title "Toolchain readiness" --class 1
 aew work create story --title "Durable state" --class 2 --parent E-0001 \
-    --mandatory-gate review_security --expect-rev N          # non-waivable for every descendant
-aew plan propose S-0001 --file story-plan.md --review default --expect-rev N && aew plan accept S-0001 --revision 1 --expect-rev N
+    --mandatory-gate review_security          # non-waivable for every descendant
+aew plan propose S-0001 --file story-plan.md --review default && aew plan accept S-0001 --revision 1
 aew work create ticket --title "Survey the store" --class 1 --parent S-0001 --non-mutating \
-    --card investigator --goal "..." --expect-rev N         # or researcher / planner
+    --card investigator --goal "..."         # or researcher / planner
 aew work create ticket --title "Harden the store" --class 2 --parent S-0001 \
-    --depends-on T-0001:evidence --scope "src/**" --goal "..." --expect-rev N
+    --depends-on T-0001:evidence --scope "src/**" --goal "..."
 aew work tree                                               # Epic -> Story -> Ticket, derived states
 ```
 
@@ -286,12 +286,12 @@ A parent's state is derived (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING), and `wo
 **A non-mutating Ticket** is dispatched, not assigned. It gets its own read-only observation of the authoritative source and no workspace:
 
 ```bash
-aew work dispatch T-0001 --expect-rev N         # pins executor card + expected output kind (attempt 1)
-aew work transition T-0001 --to RUNNING --expect-rev N
+aew work dispatch T-0001         # pins executor card + expected output kind (attempt 1)
+aew work transition T-0001 --to RUNNING
 AEW_INVOCATION_TOKEN=<credential> aew -C <observation> submit --kind discovery_record --file record.md
-aew evidence ingest T-0001 --evidence <id> --expect-rev N
-aew work accept T-0001 --expect-rev N           # -> DONE, evidence-only completion record
-aew work redispatch T-0001 --reason "..." --expect-rev N   # instead: supersede the attempt, start the next
+aew evidence ingest T-0001 --evidence <id>
+aew work accept T-0001           # -> DONE, evidence-only completion record
+aew work redispatch T-0001 --reason "..."   # instead: supersede the attempt, start the next
 ```
 
 - If a consumed discovery or plan proposal no longer matches the source, the next dispatch of its consumer is refused with `INPUT_STALE`. Refresh the input (a new investigation, plus `aew work depend`), or record that you rechecked it for this commit: `aew work acknowledge-input T-0002 --input <E> --from T-0001 --reason "..."`.
@@ -300,12 +300,12 @@ aew work redispatch T-0001 --reason "..." --expect-rev N   # instead: supersede 
 **Closing a parent.** When every child is DONE or CANCELLED, the parent is ACCEPTANCE_PENDING. Review and verify the parent (the packs carry every child's own integrated change), then close it:
 
 ```bash
-aew invoke create S-0001 --role reviewer --expect-rev N    # then: aew review ingest S-0001 ...
-aew invoke create S-0001 --role verifier --expect-rev N    # then: aew verify ingest S-0001 ...
-aew work close S-0001 --reason "..." --expect-rev N
+aew invoke create S-0001 --role reviewer    # then: aew review ingest S-0001 ...
+aew invoke create S-0001 --role verifier    # then: aew verify ingest S-0001 ...
+aew work close S-0001 --reason "..."
 ```
 
-An Epic closes only once the history is audited through the current root: run `aew history audit --expect-rev N` first.
+An Epic closes only once the history is audited through the current root: run `aew history audit --record` first.
 
 **Structure changes.** Each is a recorded Lead decision:
 - `aew work cancel <S|E>` cascades to the parent's open descendants;
@@ -318,7 +318,7 @@ An Epic closes only once the history is audited through the current root: run `a
 A project created before ADR-0011 has control state v1, where finished work stays in the active state. Its Lead migrates it once, with no harness run live; until then the Lead's other changes are refused with `MIGRATION_REQUIRED`:
 
 ```bash
-aew migrate --expect-rev N    # finished work moves to the history in one transaction; running it again does nothing
+aew migrate    # finished work moves to the history in one transaction; running it again does nothing
 ```
 
 Finished work leaves the active state when it finishes (ADR-0011). Views show counts and the most recent finished units; the history commands reach the rest by stable id, without knowing where anything is stored:
@@ -328,9 +328,9 @@ aew history list --kind unit --limit 20                     # newest first; --si
 aew history show T-0042                                     # the record, its annotations and its trust label
 aew history show INV-0101                                   # an invocation, credential or evidence of finished work
 aew history links T-0042 --depth 2                          # recorded provenance, in both directions
-aew history load T-0042 --into T-0107 --reason "..." --expect-rev N   # reference context for T-0107's next packs
-aew history load INV-0101-discovery-1 --into T-0107 --reason "..." --expect-rev N   # or an exact evidence record
-aew history audit                                           # advisory verification; add --expect-rev N to record it
+aew history load T-0042 --into T-0107 --reason "..."   # reference context for T-0107's next packs
+aew history load INV-0101-discovery-1 --into T-0107 --reason "..."   # or an exact evidence record
+aew history audit                                           # advisory verification; add --record to record it
 ```
 
 A loaded record is reference, never current evidence: packs label it, and claims that depend on versions or current state are revalidated through normal evidence. `aew status` reports the audit backlog against the gates policy's optional `history_audit` thresholds.
@@ -347,9 +347,9 @@ aew opencode                    # the Lead in OpenCode's TUI; the Lead credentia
 In the TUI, `/aew-ticket <objective>` drafts a Ticket and plan, and `/aew-next <id>` takes one step at a time. Dispatches carry `--launch`, so each role runs in its own private OpenCode server and acts through a run-scoped bridge:
 
 ```bash
-aew work assign T-0001 --launch --expect-rev N    # run R-INV-0001-1 starts; no credential is printed
+aew work assign T-0001 --launch    # run R-INV-0001-1 starts; no credential is printed
 aew harness wait R-INV-0001-1 --timeout 110       # its evidence, each item's result, and the next action (exit 20: no evidence)
-aew harness launch INV-0001 --expect-rev N        # relaunch (a fresh session; the credential rotates)
+aew harness launch INV-0001        # relaunch (a fresh session; the credential rotates)
 ```
 
 A run's end moves nothing: the Lead still ingests and transitions, as above. Every run works with **workdir separation only**, not filesystem containment, so use scratch repositories and clones until containment exists.
@@ -391,7 +391,7 @@ aew lead mode raise run         # 3: type the code terminal 1 shows; the raise l
 - If OpenCode took the seat itself, start plain `aew opencode` from your terminal on the same host and as the same
   user. The previous session must be gone and no handoff can be pending. If active work is carried or processes may
   still be running, AEW names them and asks for one confirmation code. A successful resume leaves carried runs active.
-- If resume is refused and you need to replace the holder, run `aew lead takeover --reason "..." --expect-rev N` at
+- If resume is refused and you need to replace the holder, run `aew lead takeover --reason "..."` at
   your own terminal and type its confirmation code.
 - In the new session, run `/aew-resume` or `aew resume` to rebuild context from `.aew/`. A lost run can be relaunched
   with `aew harness launch`. Losing the harness leaves the Ticket and its invocation unchanged.

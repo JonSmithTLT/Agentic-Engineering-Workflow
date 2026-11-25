@@ -345,9 +345,9 @@ def test_the_snapshot_check_reads_only_the_hot_state_and_the_recent_ring(lab, tm
     archived = []
     for i in range(3):
         wid = create_planned_ticket(lab.project, tmp_path, title=f"Archived {i}")
-        rev = load_control(lab.root)["revision"]
-        Engine.discover(lab.root).work_transition(token=lab.project.token, expect_rev=rev, work_id=wid, to="CANCELLED",
-                                                  reason="not needed")
+        load_control(lab.root)["revision"]
+        Engine.discover(lab.root).work_transition(token=lab.project.token, work_id=wid, to="CANCELLED",
+                                                  reason="not needed", prior_value="RUNNING")
         archived.append(wid)
     opened = []
     real = Archive.bundle

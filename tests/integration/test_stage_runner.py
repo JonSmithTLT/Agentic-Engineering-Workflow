@@ -18,7 +18,6 @@ from fake_harness import HarnessLab, contains_credential
 from invariants import assert_control_invariants, load_control
 
 import aew.operator
-from aew import errors
 from aew.engine import harness_ops
 from aew.engine import stage_intents as SI
 from aew.engine.api import Engine
@@ -26,19 +25,19 @@ from aew.harness import runlog
 from aew.surface import contract, stage
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
+from aew.surface.errors import AdapterInputError
 
 CTX = SurfaceContext.outside_session()
-REV = contract.EXPECT_REV
 WORK = contract.WORK_ID
 
 
 def _probe(name: str, base: str, expands_to: tuple[str, ...], *, judgments: tuple[str, ...] = (),
            unit: bool = False) -> contract.Tool:
-    props: dict[str, Any] = {"expect_rev": REV, "note": {"type": "string"}}
+    props: dict[str, Any] = {"note": {"type": "string"}}
     if unit:
         props |= {"work_id": WORK, "execution": contract.EXECUTION, "launch": {"type": "boolean"}}
     return contract.Tool(name, contract.STAGE, base, f"a probe stage ({name})",
-                         contract._obj(props, ("expect_rev", "work_id") if unit else ("expect_rev",)),
+                         contract._obj(props, ("work_id",) if unit else ()),
                          expands_to=expands_to, required_judgments=judgments, promotes=("execution",) if unit else (),
                          mutates=True, progression=True)
 
@@ -78,8 +77,19 @@ def project(tmp_path, monkeypatch):
 
 
 def call(p, name: str, **arguments: Any) -> dict[str, Any]:
-    arguments.setdefault("expect_rev", p.rev())
-    return R.run_tool(Engine.discover(p.root), CTX, name, arguments, token=p.token)
+    engine = Engine.discover(p.root)
+    wid = arguments.get("work_id")
+    if "prior_value" not in arguments:
+        if name == "ticket_request_review":
+            arguments["prior_value"] = "RUNNING"
+        elif name == "ticket_request_verification" and "review_evidence" not in arguments and wid:
+            if engine.prior_value("work_transition", wid) == "REVIEW_PASSED":
+                arguments["prior_value"] = "REVIEW_PASSED"
+        elif name == "ticket_prepare" and "verification_evidence" not in arguments and wid:
+            state = engine.prior_value("work_transition", wid)
+            if state in {"REVIEW_PASSED", "VERIFIED"}:
+                arguments["prior_value"] = state
+    return R.run_tool(engine, CTX, name, arguments, token=p.token)
 
 
 def intent(p, result: dict[str, Any]) -> dict[str, Any]:
@@ -93,23 +103,22 @@ def hot(p) -> dict[str, Any]:
 def intervene(monkeypatch, primitive: str, *, times: int = 1,
               before: Callable[[Any], None] | None = None) -> list[int]:
     """Wrap ``primitive``'s step runner: for its first ``times`` calls, another commit lands just before the step's
-    own (a checkpoint by default), so the step runs on a stale revision. Returns the revisions it ran on."""
+    own (a checkpoint by default). Return the revisions observed when the step was entered."""
     real = stage.STEP_RUNNERS[primitive]
     seen: list[int] = []
 
-    def wrapped(c, args, rev):
-        seen.append(rev)
+    def wrapped(c, args):
+        seen.append(int(c.engine.store.current()["revision"]))
         if len(seen) <= times:
             armed = SI._STEP.set(None)  # another actor's commit is not the step: it runs outside the step's binding
             try:
                 if before is not None:
                     before(c)
                 else:
-                    current = int(c.engine.store.read()["revision"])
-                    c.engine.checkpoint(token=c.token(), expect_rev=current, note="another actor's commit")
+                    c.engine.checkpoint(token=c.token(), note="another actor's commit")
             finally:
                 SI._STEP.reset(armed)
-        return real(c, args, rev)
+        return real(c, args)
 
     monkeypatch.setitem(stage.STEP_RUNNERS, primitive, wrapped)
     return seen
@@ -135,8 +144,7 @@ def take_over(c) -> None:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        c.engine.lead_takeover(expect_rev=int(c.engine.store.read()["revision"]),
-                               reason="the Lead's session was lost", session_label="operator")
+        c.engine.lead_takeover(reason="the Lead's session was lost", session_label="operator")
     finally:
         aew.operator.authorize = original
 
@@ -166,12 +174,12 @@ def unready_ticket(p) -> str:
 
 # ---------------------------------------------------------------------------------------------- rules 1 to 8
 
-def rule_cas(p, tmp_path, monkeypatch):
-    """Rule 1: a stale ``expect_rev`` opens no intent and commits nothing."""
+def rule_retired_input(p, tmp_path, monkeypatch):
+    """The typed ingress refuses the retired project revision before an intent can open."""
     rev = p.rev()
-    out = call(p, "probe_notes", expect_rev=rev - 1)
-    assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
-    assert out["stage_intent_id"] is None and out["completed_steps"] == [] and p.rev() == rev
+    with pytest.raises(AdapterInputError) as exc:
+        call(p, "probe_notes", expect_rev=rev)
+    assert exc.value.code == "INVALID_ARGUMENTS" and p.rev() == rev
     assert "stage_intents" not in load_control(p.root) and "stage_intent" not in load_control(p.root)["counters"]
 
 
@@ -182,7 +190,7 @@ def rule_intent_first(p, tmp_path, monkeypatch):
     out = call(p, "probe_notes", note="probe")
     assert out["ok"] and out["stopped"] is None, out["stopped"]
     si = intent(p, out)
-    assert si["status"] == "COMPLETED" and si["opened"] == {**si["opened"], "expect_rev": rev, "rev": rev + 1}
+    assert si["status"] == "COMPLETED" and si["opened"] == {**si["opened"], "rev": rev + 1}
     assert [s["revision"] for s in out["completed_steps"]] == [rev + 2, rev + 3] == [s["revision"] for s in si["steps"]]
     assert out["revision"] == rev + 3 and si["closed"]["rev"] == rev + 3 and hot(p) == {}
     digests = Engine.discover(p.root).policy_digests()
@@ -203,31 +211,29 @@ def rule_first_refusal(p, tmp_path, monkeypatch):
     assert load_control(p.root)["work"][wid]["state"] != "ASSIGNED"
 
 
-def rule_stale_retry(p, tmp_path, monkeypatch):
-    """Rule 4 and R5-1: a non-judgment step of a non-judgment stage, still AVAILABLE with the same arguments, is
-    retried once after a stale revision, and the retry is recorded on the intent and in the result."""
+def rule_unrelated_writer(p, tmp_path, monkeypatch):
+    """A checkpoint during a policy-resolved assignment never requires that assignment to be attempted twice."""
     wid = create_planned_ticket(p, tmp_path)
     seen = intervene(monkeypatch, "work.assign")
     out = call(p, "probe_start", work_id=wid)
     assert out["ok"], out["stopped"]
-    assert len(seen) == 2 and seen[1] == seen[0] + 1  # the retry ran on the revision the other commit left
+    assert len(seen) == 1
     si = intent(p, out)
-    assert si["status"] == "COMPLETED" and si["retried_after_stale_revision"]
-    assert si["steps"][1]["retried_after_stale_revision"] and "retried_after_stale_revision" not in si["steps"][0]
-    assert out["completed_steps"][1]["retried_after_stale_revision"] is True
+    assert si["status"] == "COMPLETED" and "retried_after_stale_revision" not in si
+    assert all("retried_after_stale_revision" not in s for s in si["steps"] + out["completed_steps"])
     assert load_control(p.root)["work"][wid]["state"] == "ASSIGNED"
 
 
 def rule_no_replay(p, tmp_path, monkeypatch):
-    """Rule 5 (BRP-03): a judgment-bearing stage never retries, not even a policy-resolved step inside it."""
+    """A competing assignment refuses the judgment's step once. The first step and other writer's work stand."""
     wid = create_planned_ticket(p, tmp_path)
-    seen = intervene(monkeypatch, "work.assign")
+    seen = intervene(monkeypatch, "work.assign", before=lambda c: c.engine.work_assign(token=c.token(), work_id=wid))
     out = call(p, "probe_judged", work_id=wid)
-    assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision" and len(seen) == 1
+    assert not out["ok"] and out["stopped"]["boundary"] == "refused" and len(seen) == 1
     si = intent(p, out)
-    assert si["effective_class"] == "JUDGMENT_BEARING" and si["status"] == SI.ACTIVE
-    assert si["stopped"]["error"]["reason"] == "resolve_stage"  # renewed judgment, never an automatic replay
-    assert not si["retried_after_stale_revision"] and load_control(p.root)["work"][wid]["state"] == "READY"
+    assert si["effective_class"] == "JUDGMENT_BEARING" and si["status"] == SI.STOPPED
+    assert [s["primitive"] for s in si["steps"]] == ["checkpoint"]
+    assert "retried_after_stale_revision" not in si and load_control(p.root)["work"][wid]["state"] == "ASSIGNED"
 
 
 def rule_drift(p, tmp_path, monkeypatch):
@@ -273,8 +279,8 @@ def rule_takeover(p, tmp_path, monkeypatch):
     assert list(hot(p)) == [out["stage_intent_id"]]
 
 
-RULES = {"cas": rule_cas, "intent_first": rule_intent_first, "first_refusal": rule_first_refusal,
-         "stale_retry": rule_stale_retry, "no_replay": rule_no_replay, "drift": rule_drift,
+RULES = {"retired_input": rule_retired_input, "intent_first": rule_intent_first, "first_refusal": rule_first_refusal,
+         "unrelated_writer": rule_unrelated_writer, "no_replay": rule_no_replay, "drift": rule_drift,
          "launch_failed": rule_launch_failed, "takeover": rule_takeover}
 
 
@@ -287,53 +293,35 @@ def test_stage_intent_rules(project, tmp_path, monkeypatch, rule):
 
 # ---------------------------------------------------------------------------------------------- R5-1, the rest
 
-def test_judgment_bearing_stages_never_retry(project, tmp_path, monkeypatch):
-    """BRP-03 / M5: an execution override promotes a policy-resolved stage to judgment-bearing, and then its
-    policy-resolved assignment is never retried."""
+def test_a_judgment_bearing_stage_does_not_repeat_a_refused_step(project, tmp_path, monkeypatch):
     p = project
     wid = create_planned_ticket(p, tmp_path)
-    seen = intervene(monkeypatch, "work.assign")
+    seen = intervene(monkeypatch, "work.assign", before=lambda c: c.engine.work_assign(token=c.token(), work_id=wid))
     out = call(p, "probe_start", work_id=wid, execution={"effort": "high"})
     assert out["effective_operation_class"] == "JUDGMENT_BEARING" and len(seen) == 1
-    assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
+    assert not out["ok"] and out["stopped"]["boundary"] == "refused"
     assert intent(p, out)["judgment_inputs"] == ["execution"]
 
 
-def test_a_stale_retry_happens_at_most_once(project, tmp_path, monkeypatch):
+def test_a_step_without_a_query_still_uses_its_actual_transaction(project, monkeypatch):
     p = project
-    wid = create_planned_ticket(p, tmp_path)
-    seen = intervene(monkeypatch, "work.assign", times=2)
-    out = call(p, "probe_start", work_id=wid)
-    assert len(seen) == 2 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
-    si = intent(p, out)
-    assert si["status"] == SI.ACTIVE and len(si["steps"]) == 1
-    assert si["stopped"]["error"]["reason"] == "resolve_stage"
-    assert_control_invariants(p)
-
-
-def test_a_step_whose_availability_is_unknown_is_never_retried(project, monkeypatch):
-    """R5-1's fifth condition: a checkpoint's guard is not a queryable decision yet, so its availability is UNKNOWN,
-    and UNKNOWN never retries (E4 migrates the guards)."""
-    p = project
-    seen = intervene(monkeypatch, "checkpoint", times=2, before=lambda c: c.engine.checkpoint(
-        token=c.token(), expect_rev=int(c.engine.store.read()["revision"]), note="x") if hot(p) and
-        hot(p)[next(iter(hot(p)))]["steps"] else None)
+    seen = intervene(monkeypatch, "checkpoint", times=2)
     out = call(p, "probe_notes")
-    assert len(seen) == 2 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
-    assert len(intent(p, out)["steps"]) == 1
+    assert len(seen) == 2 and out["ok"]
+    assert len(intent(p, out)["steps"]) == 2 and "retried_after_stale_revision" not in intent(p, out)
 
 
-def test_a_stale_retry_needs_the_action_still_available(project, tmp_path, monkeypatch):
-    """R5-1: the other commit assigned the unit itself, so the stage's assignment is no longer AVAILABLE: no retry."""
+def test_a_competing_assignment_stops_at_the_dispatch_guard(project, tmp_path, monkeypatch):
+    """The other commit assigned the unit itself. Its assignment uses its own dispatch guard."""
     p = project
     wid = create_planned_ticket(p, tmp_path)
 
     def assign_first(c):
-        c.engine.work_assign(token=c.token(), expect_rev=int(c.engine.store.read()["revision"]), work_id=wid)
+        c.engine.work_assign(token=c.token(), work_id=wid)
 
     seen = intervene(monkeypatch, "work.assign", before=assign_first)
     out = call(p, "probe_start", work_id=wid)
-    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
+    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "refused"
     assert intent(p, out)["status"] == SI.STOPPED
     assert out["stopped"]["error"]["details"].get("reason") != "resolve_stage"
     assert hot(p) == {}
@@ -341,68 +329,23 @@ def test_a_stale_retry_needs_the_action_still_available(project, tmp_path, monke
     assert again["stopped"]["error"]["details"].get("reason") != "open_intent"
 
 
-def test_a_stale_stage_with_an_unchanged_subject_but_a_blocked_next_guard_ends(project, tmp_path, monkeypatch):
+def test_a_stage_with_an_unchanged_subject_but_a_blocked_next_guard_ends(project, tmp_path, monkeypatch):
     """F1: another Ticket's assignment blocks the guard without moving this subject; don't retain a dead end."""
     p = project
     wid = create_planned_ticket(p, tmp_path)
     other = create_planned_ticket(p, tmp_path)
 
     def occupy(c):
-        c.engine.work_assign(token=c.token(), expect_rev=p.rev(), work_id=other)
+        c.engine.work_assign(token=c.token(), work_id=other)
 
     seen = intervene(monkeypatch, "work.assign", before=occupy)
     out = call(p, "probe_start", work_id=wid)
-    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
+    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "refused"
     assert load_control(p.root)["work"][wid]["state"] == "READY"
     assert Engine.discover(p.root).guard_query("work.assign", wid, {"work_id": wid})["availability"] == "BLOCKED"
     assert intent(p, out)["status"] == SI.STOPPED and hot(p) == {}
     again = call(p, "probe_start", work_id=wid)
     assert again["stopped"]["error"]["details"].get("reason") != "open_intent"
-
-
-def before_the_retry_decision(monkeypatch, act: Callable[[Any], None]) -> list[int]:
-    """Run ``act`` after the assignment step met STALE_REVISION and before the executor decides on a retry (its drift
-    check runs first). Returns the revisions the assignment step ran on."""
-    real = stage._drift
-
-    def drift(c, intent_id):
-        act(c)
-        return real(c, intent_id)
-
-    monkeypatch.setattr(stage, "_drift", drift)
-    return intervene(monkeypatch, "work.assign")
-
-
-def test_a_takeover_before_the_retry_decision_means_no_retry(project, tmp_path, monkeypatch):
-    """R5-1's fourth condition, the generation: the seat moved to a new Lead generation after the step met
-    STALE_REVISION. The intent's generation is no longer current, so the step is not retried, though the action is
-    still AVAILABLE (#142 review, finding 3). Outside a Lead session only the intent's generation says so."""
-    p = project
-    wid = create_planned_ticket(p, tmp_path)
-    seen = before_the_retry_decision(monkeypatch, take_over)
-    out = call(p, "probe_start", work_id=wid)
-    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision", out["stopped"]
-    si = intent(p, out)
-    assert si["status"] == "ACTIVE" and len(si["steps"]) == 1 and not si["retried_after_stale_revision"]
-    assert out["result"]["left_active"]["code"] == "STALE_AUTHORITY"  # the new Lead resolves it (E3c)
-    assert load_control(p.root)["work"][wid]["state"] == "READY"
-
-
-def test_a_session_that_lost_authority_before_the_retry_decision_never_retries(project, tmp_path, monkeypatch):
-    """R5-1's fourth condition, the caller's session: the broker reports that this Lead session no longer holds the
-    seat, with no new generation yet, so the credential would still commit. The step is not retried (#142 review,
-    finding 3); the stop itself is the journal's bookkeeping and is recorded."""
-    p = project
-    wid = create_planned_ticket(p, tmp_path)
-    session: dict[str, Any] = {"holds": True, "generation": 1, "session_label": "lead"}
-    ctx = SurfaceContext(lead_session=session, generation=1)
-    seen = before_the_retry_decision(monkeypatch, lambda c: session.update(holds=False, detail="the seat moved on"))
-    out = R.run_tool(Engine.discover(p.root), ctx, "probe_start", {"expect_rev": p.rev(), "work_id": wid},
-                     token=p.token)
-    assert len(seen) == 1 and not out["ok"] and out["stopped"]["boundary"] == "stale_revision", out["stopped"]
-    si = intent(p, out)
-    assert si["status"] == "STOPPED_AT_BOUNDARY" and len(si["steps"]) == 1 and not si["retried_after_stale_revision"]
-    assert load_control(p.root)["work"][wid]["state"] == "READY"
 
 
 def test_a_pending_policy_edit_leaves_the_intent_for_resolve(project, monkeypatch):
@@ -416,7 +359,7 @@ def test_a_pending_policy_edit_leaves_the_intent_for_resolve(project, monkeypatc
     assert intent(p, out)["status"] == "ACTIVE"
 
 
-def test_a_refused_retry_decision_stops_the_stage_with_its_committed_steps(project, monkeypatch):
+def test_a_pending_policy_edit_after_an_unrelated_write_preserves_committed_steps(project, monkeypatch):
     """Another commit lands, then a policy file is edited and not yet adopted: step 2 meets STALE_REVISION (the
     revision is checked before the policy pins), and reading the binding to decide on a retry is refused
     (INTEGRITY_ERROR). The stage stops at step 2 on that refusal with step 1 reported, and the stop it cannot record
@@ -425,7 +368,7 @@ def test_a_refused_retry_decision_stops_the_stage_with_its_committed_steps(proje
 
     def other_commit_then_edit(c):
         if hot(p) and hot(p)[next(iter(hot(p)))]["steps"]:
-            c.engine.checkpoint(token=c.token(), expect_rev=int(c.engine.store.read()["revision"]), note="other")
+            c.engine.checkpoint(token=c.token(), note="other")
             legality_edit(p)
 
     intervene(monkeypatch, "checkpoint", times=2, before=other_commit_then_edit)
@@ -436,27 +379,6 @@ def test_a_refused_retry_decision_stops_the_stage_with_its_committed_steps(proje
     assert out["result"]["status"] == "ACTIVE" and out["result"]["left_active"]["code"] == "INTEGRITY_ERROR"
     si = intent(p, out)
     assert si["status"] == "ACTIVE" and len(si["steps"]) == 1
-
-
-def test_a_retry_check_that_is_refused_stops_through_the_journal(project, tmp_path, monkeypatch):
-    """Any refusal while checking R5-1's conditions stops the stage as that refusal: the stop is recorded at the step
-    that met STALE_REVISION, and the committed step is reported (#142 review, finding 2)."""
-    p = project
-    wid = create_planned_ticket(p, tmp_path)
-
-    def refused(*_):
-        raise errors.NotFound("the availability read was refused", reason="test")
-
-    monkeypatch.setattr(stage, "_retryable", refused)
-    seen = intervene(monkeypatch, "work.assign")
-    out = call(p, "probe_start", work_id=wid)
-    assert len(seen) == 1 and not out["ok"], out["stopped"]
-    assert (out["stopped"]["at"], out["stopped"]["boundary"]) == ("work.assign", "not_found")
-    assert [s["primitive"] for s in out["completed_steps"]] == ["checkpoint"]
-    si = intent(p, out)
-    assert si["status"] == "STOPPED_AT_BOUNDARY" and si["stopped"]["n"] == 2
-    assert si["stopped"]["error"]["code"] == "NOT_FOUND"
-    assert_control_invariants(p)
 
 
 # ---------------------------------------------------------------------------------------------- the plan

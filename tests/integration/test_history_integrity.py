@@ -37,7 +37,7 @@ def aew(t: CP.Template, *args: str) -> Any:
 
 def migrated(tmp_path: Path) -> CP.Template:
     t = CP.make_template(tmp_path / "repo")
-    out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    out = aew(t, "migrate", )
     assert out.returncode == 0 and out.json["migrated"] is True, out.stderr
     return t
 
@@ -178,7 +178,7 @@ def test_a_full_audit_covers_cited_checks_and_the_logs_records_pin(tmp_path):
     saved = log.read_bytes()
     log.write_bytes(saved + b"\nedited\n")
     before = load_control(t.root)["cold"].get("verified")
-    recorded = aew(t, "history", "audit", "--full", "--expect-rev", str(t.rev()))
+    recorded = aew(t, "history", "audit", "--full", "--record", )
     assert recorded.error["code"] == "INTEGRITY_ERROR" and recorded.error["details"]["audit"]["recorded"] is True
     assert load_control(t.root)["cold"].get("verified") == before
     findings = [a for a in aew(t, "history", "show", "T-0001").json.get("annotations") or []
@@ -192,7 +192,7 @@ def test_a_unit_whose_verification_changed_after_ingest_is_not_archived(tmp_path
     t = CP.make_template(tmp_path / "repo")
     report = t.root / ".aew/evidence/T-0001/INV-0003-verify-6.md"
     report.write_bytes(report.read_bytes() + b"\nedited\n")
-    out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    out = aew(t, "migrate", )
     assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-verify-6" in out.error["message"]
     assert load_control(t.root)["schema"] == "aew/control/v1"
     shutil.rmtree(t.root / ".aew/local", ignore_errors=True)
@@ -220,12 +220,12 @@ def test_cited_checks_that_are_not_what_the_engine_sealed_are_never_pinned(tmp_p
     }
     for what, damage in cases.items():
         damage()
-        out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+        out = aew(t, "migrate", )
         assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-check-unit-4" in out.error["message"], what
         assert load_control(t.root)["schema"] == "aew/control/v1", what
         cited.write_bytes(saved)
         log.write_bytes(saved_log)
-    out = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    out = aew(t, "migrate", )
     assert out.returncode == 0 and out.json["migrated"] is True, out.stderr
 
 
@@ -238,7 +238,7 @@ def legacy_migrated(tmp_path: Path, monkeypatch: Any) -> CP.Template:
     with monkeypatch.context() as m:
         m.setattr(archive_ops, "ARCHIVE_SCHEMA", archive_ops.LEGACY_ARCHIVE_SCHEMA)
         m.setattr(archive_ops, "cited_checks", lambda *_: [])
-        Engine.discover(t.root).migrate(token=t.token, expect_rev=t.rev())
+        Engine.discover(t.root).migrate(token=t.token, )
     bundle = load_yaml((t.root / ".aew" / bundle_rel("T-0001")).read_text(encoding="utf-8"))
     assert bundle["schema"] == archive_ops.LEGACY_ARCHIVE_SCHEMA and not bundle.get("cited_evidence")
     return t
@@ -250,18 +250,18 @@ def test_an_older_v2_archive_audits_clean_only_once_its_closure_is_recorded(tmp_
     audit = aew(t, "history", "audit", "--full")
     assert audit.error["code"] == "INTEGRITY_ERROR"
     assert any("T-0001" in p and "aew migrate" in p for p in audit.error["details"]["audit"]["problems"])
-    recorded = aew(t, "history", "audit", "--full", "--expect-rev", str(t.rev()))
+    recorded = aew(t, "history", "audit", "--full", "--record", )
     assert recorded.error["code"] == "INTEGRITY_ERROR" and "verified" not in load_control(t.root)["cold"]
     assert not [a for a in aew(t, "history", "show", "T-0001").json.get("annotations") or []
                 if a["entry"]["rel"] == "audit_finding"]
     # The upgrade: an append-only annotation pins the cited checks; the bundle is untouched.
     bundle = (t.root / ".aew" / bundle_rel("T-0001")).read_bytes()
-    up = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    up = aew(t, "migrate", )
     assert up.returncode == 0 and up.json["migrated"] is False, up.stderr
     assert [c["id"] for c in up.json["closure"]] == ["T-0001"]
     assert "INV-0003-check-unit-4" in up.json["closure"][0]["cited"]
     assert (t.root / ".aew" / bundle_rel("T-0001")).read_bytes() == bundle
-    again = aew(t, "migrate", "--expect-rev", str(t.rev()))
+    again = aew(t, "migrate", )
     assert again.json["migrated"] is False and "closure" not in again.json  # idempotent
     clean = aew(t, "history", "audit", "--full")
     assert clean.returncode == 0 and clean.json["ok"] is True, clean.stderr
@@ -284,6 +284,6 @@ def test_the_upgrade_refuses_a_cited_check_already_changed(tmp_path, monkeypatch
     cited = t.root / ".aew" / CITED
     cited.write_bytes(cited.read_bytes() + b"\nedited\n")
     rev = t.rev()
-    out = aew(t, "migrate", "--expect-rev", str(rev))
+    out = aew(t, "migrate", )
     assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-check-unit-4" in out.error["message"]
     assert t.rev() == rev  # nothing recorded

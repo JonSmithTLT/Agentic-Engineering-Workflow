@@ -104,9 +104,9 @@ def test_a_call_returns_the_stage_result_as_structured_content_with_is_error_fro
 @pytest.mark.parametrize(("profile", "params", "code"), [
     ("normal", {"name": "nope", "arguments": {}}, "UNKNOWN_TOOL"),
     # Every catalog row is built since E6a: a designed row's refusal is tested in test_surface_contract.
-    ("normal", {"name": "ticket_prepare", "arguments": {"expect_rev": 1}}, "INVALID_ARGUMENTS"),
+    ("normal", {"name": "ticket_prepare", "arguments": {}}, "INVALID_ARGUMENTS"),
     ("normal", {"name": "cli", "arguments": {"argv": ["status"]}}, "TOOL_NOT_EXPOSED"),
-    ("normal", {"name": "checkpoint", "arguments": {"expect_rev": "one"}}, "INVALID_ARGUMENTS"),
+    ("normal", {"name": "checkpoint", "arguments": {"expect_rev": 1}}, "INVALID_ARGUMENTS"),
     ("recovery", {"name": "status", "arguments": "not an object"}, "INVALID_ARGUMENTS"),
 ])
 def test_ill_formed_calls_are_input_errors_that_never_reach_the_broker(profile, params, code):
@@ -286,7 +286,7 @@ def test_a_tool_call_without_an_id_is_dropped_unrun(capsys):
     spy = Spy()
     server = mcp.Server(spy)
     assert server.handle({"jsonrpc": "2.0", "method": "tools/call",
-                          "params": {"name": "checkpoint", "arguments": {"expect_rev": 3}}}) is None
+                          "params": {"name": "checkpoint", "arguments": {}}}) is None
     assert server.handle({"jsonrpc": "2.0", "method": "ping"}) is None
     assert spy.calls == []
     assert "dropped tools/call sent without an id" in capsys.readouterr().err
@@ -433,7 +433,7 @@ def _entry_bytes(row: contract.Tool) -> int:
 
 # The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
 # catalog moves them here first.
-A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 955, "A1a-2": 365,
+A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 864, "A1a-2": 365,
             "A1b resume readOnlyHint": 1}
 
 

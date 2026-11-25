@@ -24,9 +24,9 @@ from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
 from aew.engine.request_ids import INDEX
 from aew.engine.store import Transition
-from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
+from aew.errors import IllegalTransition, PermissionDenied
 from aew.harness import procs, seat
-from aew.harness.contract import EXPECT_REV, fields_command
+from aew.harness.contract import fields_command
 from aew.knowledge.records import format_id
 from aew.roles import NON_MUTATING_EXECUTORS
 from aew.util import render_frontmatter, utc_now
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 ACTIVE_INVOCATION_STATES = {"active"}
 # The operator's takeover when the holding session is gone, as a refusal prints it (#311 review, F3).
 TAKEOVER_REASON = "the holding Lead session is gone"
-TAKEOVER = fields_command(f"aew lead takeover {EXPECT_REV}", "reason", TAKEOVER_REASON)
+TAKEOVER = fields_command("aew lead takeover", "reason", TAKEOVER_REASON)
 # The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
 # Ticket's state in doubt; every other state is already determined by ingested evidence or a Lead
 # decision, and interruption must not erase the obligation it carries — e.g. VERIFICATION_FAILED
@@ -91,7 +91,7 @@ class Lead:
         if lease:
             work = ((after["queue"]["entries"].get(lease["entry"])) or {}).get("work")
             interrupts += (f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work} "
-                           f"{EXPECT_REV}`")
+                           f"`")
         advice = (f"Cannot resume with `aew opencode`: {resume[1]}. " if resume else
                   "A successor takes it over cooperatively with `aew lead handoff accept`. If the holding session "
                   "is gone (its wrapper exited or crashed and its credential went with it), the seat cannot be "
@@ -102,7 +102,7 @@ class Lead:
             f"revokes the old credential, and {interrupts}:\n\n{TAKEOVER}",
             generation=generation, session_label=lead.get("session_label"), acquired_at=lead.get("acquired_at"),
             active_invocations=active, interrupted_work=stopped,
-            next=f"aew lead takeover {EXPECT_REV} --reason '{TAKEOVER_REASON}'",
+            next=f"aew lead takeover --reason '{TAKEOVER_REASON}'",
             **({"reason": resume[0]} if resume else {}))
 
     def _new_lead(self, state: dict[str, Any], session_label: str | None, kind: str = seat.LEAD_ACQUIRE) -> str:
@@ -195,14 +195,11 @@ class Lead:
             "handoff_pending": lead["status"] == "handoff_pending",
         }
 
-    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None,
+    def lead_acquire(self, *, session_label: str | None = None,
                      kind: str = "lead_acquire") -> dict[str, Any]:
         with self.k.store.session() as s:
             if s.state["lead"]["status"] != "vacant":
                 raise self._seat_held(s.state)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected revision {expect_rev}, current is {s.revision}",
-                                    expected=expect_rev, current=s.revision)
             token = self._new_lead(s.state, session_label, kind)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
@@ -215,7 +212,7 @@ class Lead:
             rev = s.commit(Transition(op="lead.acquire", actor=actor,
                                       summary=f"Lead authority acquired (generation {s.state['lead']['generation']})",
                                       refs=refs),
-                           expect_rev=expect_rev, state=projected)
+                           state=projected)
         return {"ok": True, "token": token, "generation": s.state["lead"]["generation"], "revision": rev}
 
     def _check_resume(self, state: dict[str, Any]) -> None:
@@ -302,15 +299,15 @@ class Lead:
             self.coordination.seal_ending(s, ctx.refs)
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.resume", actor=actor, summary=f"Lead seat resumed ({decision})",
-                                      refs=ctx.refs, events=ctx.events), expect_rev=s.revision, state=projected)
+                                      refs=ctx.refs, events=ctx.events), state=projected)
         return {"ok": True, "token": token, "generation": new_gen, "revision": rev, "previous_generation": generation,
                 "carried_invocations": list(carry), "leftovers": leftovers, "decision": decision}
 
     def lead_handoff_offer(
-        self, *, token: str, expect_rev: int, note: str = "", carry_invocations: list[str] | None = None
+        self, *, token: str, note: str = "", carry_invocations: list[str] | None = None
     ) -> dict[str, Any]:
         carry = list(carry_invocations or [])
-        with self.k.lead_txn(token, expect_rev, "lead.handoff.offer") as ctx:
+        with self.k.lead_txn(token, "lead.handoff.offer") as ctx:
             state = ctx.state
             for inv in carry:
                 if state["invocations"].get(inv, {}).get("status") != "active":
@@ -327,8 +324,8 @@ class Lead:
             ctx.summary = "Lead handoff offered"
         return {"ok": True, "offer": offer, "handoff_record": path, "revision": ctx.session.committed_revision}
 
-    def lead_handoff_cancel(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "lead.handoff.cancel", allow_pending=True) as ctx:
+    def lead_handoff_cancel(self, *, token: str, ) -> dict[str, Any]:
+        with self.k.lead_txn(token, "lead.handoff.cancel", allow_pending=True) as ctx:
             lead = ctx.state["lead"]
             if lead["status"] != "handoff_pending":
                 raise IllegalTransition("no handoff is pending")
@@ -338,13 +335,10 @@ class Lead:
             ctx.summary = "Lead handoff cancelled"
         return {"ok": True, "revision": ctx.session.committed_revision}
 
-    def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
+    def lead_handoff_accept(self, *, offer: str, session_label: str | None = None) -> dict[str, Any]:
         with self.k.store.session() as s:
             state = s.state
             offer_id = verify_offer(state, offer)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected revision {expect_rev}, current is {s.revision}",
-                                    expected=expect_rev, current=s.revision)
             self.k.check_manifest_pin(state)
             previous = {"generation": state["lead"]["generation"], "session_label": state["lead"]["session_label"]}
             handoff = state["lead"]["handoff"]
@@ -375,21 +369,18 @@ class Lead:
             projected = self.archive.end_lead_credentials(s)
             rev = s.commit(Transition(op="lead.handoff.accept", actor=actor,
                                       summary=f"Lead authority transferred by handoff ({decision})",
-                                      refs=ctx.refs, events=ctx.events), expect_rev=expect_rev, state=projected)
+                                      refs=ctx.refs, events=ctx.events), state=projected)
         return {"ok": True, "token": token, "generation": new_gen, "revision": rev,
                 "carried_invocations": sorted(carry), "interrupted_invocations": interrupted,
                 "decision": decision}
 
-    def lead_takeover(self, *, expect_rev: int, reason: str, session_label: str | None = None) -> dict[str, Any]:
+    def lead_takeover(self, *, reason: str, session_label: str | None = None) -> dict[str, Any]:
         if not reason or not reason.strip():
             raise PermissionDenied("a takeover reason is required for provenance")
         snapshot = self.k.store.current()
         lead = snapshot["lead"]
         if lead["status"] == "vacant":
-            raise IllegalTransition(f"the Lead seat is vacant; use `aew lead acquire {EXPECT_REV}`")
-        if expect_rev != snapshot["revision"]:
-            raise StaleRevision(f"expected revision {expect_rev}, current is {snapshot['revision']}",
-                                expected=expect_rev, current=snapshot["revision"])
+            raise IllegalTransition("the Lead seat is vacant; use `aew lead acquire`")
         # Authorization is obtained by the engine from the controlling terminal. There is
         # deliberately no parameter, flag or environment variable that can supply it.
         auth = operator.authorize(
@@ -401,11 +392,10 @@ class Lead:
         )
         with self.k.store.session() as s:
             state = s.state
+            if state["lead"]["status"] == "vacant":
+                raise IllegalTransition("the Lead seat is now vacant; use `aew lead acquire`")
             approval.compare("lead.takeover", "Lead generation", str(lead["generation"]),
                              str(state["lead"]["generation"]), next_step="Re-run takeover.")
-            if s.revision != snapshot["revision"]:
-                raise StaleRevision("control state changed during operator authorization; re-run takeover",
-                                    expected=snapshot["revision"], current=s.revision)
             previous = {"generation": state["lead"]["generation"], "session_label": state["lead"]["session_label"]}
             self._revoke_all_lead_credentials(state, "superseded by operator-authorized takeover")
             token = self._new_lead(state, session_label, seat.TAKEOVER)
@@ -428,12 +418,12 @@ class Lead:
             rev = s.commit(Transition(op="lead.takeover", actor=actor, reason=reason,
                                       summary=f"Operator-authorized takeover ({decision})", refs=ctx.refs,
                                       events=ctx.events),
-                           expect_rev=snapshot["revision"], state=projected)
+                           state=projected)
         return {"ok": True, "token": token, "generation": new_gen, "revision": rev,
                 "interrupted_invocations": interrupted, "decision": decision}
 
-    def lead_release(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "lead.release") as ctx:
+    def lead_release(self, *, token: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, "lead.release") as ctx:
             state = ctx.state
             active = [i for i, inv in state["invocations"].items() if inv["status"] == "active"]
             if active:

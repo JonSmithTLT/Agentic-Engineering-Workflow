@@ -119,13 +119,13 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
                  ["notify", "desktop"]):  # the endpoint's notifier: the desktop shows no agent's text (A-44)
         refusal = lead_broker.refuses_locally(parser.parse_args(argv))
         assert refusal and "operator endpoint" in refusal, argv
-    assert lead_broker.refuses_locally(parser.parse_args(["lead", "mode", "lower", "crawl", "--expect-rev", "1"])) \
+    assert lead_broker.refuses_locally(parser.parse_args(["lead", "mode", "lower", "crawl", ])) \
         is None
     res = run_aew("-C", str(project.root), "lead", "mode", "raise", "walk",
                   env={"AEW_LEAD_BROKER": "x", "AEW_LEAD_BROKER_KEY": "y"})
     assert res.returncode != 0 and "operator endpoint" in res.stderr, res.stderr
     with pytest.raises(AdapterInputError) as refused:
-        check_call("steering", {"expect_rev": 1, "action": "raise", "mode": "run"}, NORMAL)
+        check_call("steering", {"action": "raise", "mode": "run"}, NORMAL)
     assert refused.value.code == "INVALID_ARGUMENTS"
     engine = _adopt(project, mode="walk")
 
@@ -146,8 +146,8 @@ def test_mode_commands_refuse_while_steering_is_not_configured(project):
     without_steering(project)
     engine = _adopt(project)
     for call in (lambda: engine.steering_raise_preview("walk"),
-                 lambda: engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl"),
-                 lambda: engine.steering_request(token=project.token, expect_rev=project.rev(), kind="raise",
+                 lambda: engine.steering_lower(token=project.token, mode="crawl", prior_value="none"),
+                 lambda: engine.steering_request(token=project.token, kind="raise",
                                                  mode="walk", rationale="r")):
         with pytest.raises(errors.SteeringNotConfigured):
             call()
@@ -209,8 +209,8 @@ def test_a_raise_lasts_only_for_the_generation_it_was_granted_to(project):
     assert record["legality_digest"].startswith("sha256:") and record["operational_digest"].startswith("sha256:")
     assert record["revision"] == out["revision"] == engine.store.read()["revision"]
     assert record["by"]["principal"]["endpoint"]["pid"] == os.getpid()
-    project.ok("lead", "release", "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
-    project.token = project.ok("lead", "acquire", "--expect-rev", str(project.rev()))["token"]
+    project.ok("lead", "release", env={"AEW_LEAD_TOKEN": project.token})
+    project.token = project.ok("lead", "acquire", )["token"]
     view = engine.steering_view()
     assert view["effective"] == "crawl" and view["ended_override"]["mode"] == "walk"
     assert_control_invariants(project)
@@ -248,7 +248,7 @@ def test_run_needs_an_executable_notifier(project, tmp_path, case):
 
         def offer(e: Any, ctx: Any, state: dict[str, Any]) -> Any:
             rev = int(state["revision"])
-            act = {"action": "checkpoint", "kind": "stage", "arguments": {"expect_rev": rev},
+            act = {"action": "checkpoint", "kind": "stage", "arguments": {},
                    "availability": "AVAILABLE", "auto_runnable": True, "reason_codes": []}
             return ({"subject": "project", "anomalies": [], "blockers": [], "decisions_required": []},
                     [{"subject": "T-0001", "revision": rev, "state": "READY", "actions": [act],
@@ -276,8 +276,9 @@ def test_a_lead_lowers_its_mode(project):
     engine = _adopt(project, mode="crawl")
     _raise(engine, "walk")
     ctx = SurfaceContext(profile=NORMAL, generation=1, lead_session=None)
-    out = run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), "action": "lower", "mode": "crawl",
-                                             "rationale": "the next change touches the schema"}, token=project.token)
+    out = run_tool(engine, ctx, "steering",
+                   {"action": "lower", "mode": "crawl", "prior_value": engine.steering_view()["override_record"],
+                    "rationale": "the next change touches the schema"}, token=project.token)
     assert out["ok"], out["stopped"]
     assert out["completed_steps"][0]["primitive"] == "steering"
     assert out["effective_operation_class"] == "MECHANICAL"
@@ -285,11 +286,12 @@ def test_a_lead_lowers_its_mode(project):
     assert view["effective"] == "crawl" and view["source"] == "lower"
     record = _records(project)[-1]
     assert record["by"] == {"kind": "lead", "generation": 1} and record["rationale"]
-    refused = run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), "action": "lower", "mode": "walk"},
+    refused = run_tool(engine, ctx, "steering",
+                       {"action": "lower", "mode": "walk", "prior_value": view["override_record"]},
                        token=project.token)
     assert not refused["ok"] and refused["stopped"]["error"]["code"] == "ILLEGAL_TRANSITION"
     res = run_aew("-C", str(project.root), "lead", "mode", "lower", "walk",
-                  "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                  env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode != 0 and "is not lower" in res.stderr
     assert_control_invariants(project)
 
@@ -301,12 +303,12 @@ def test_requests_grant_nothing(project):
     ctx = SurfaceContext(profile=NORMAL, generation=1, lead_session=None)
 
     def call(**args: Any) -> dict[str, Any]:
-        return run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), **args}, token=project.token)
+        return run_tool(engine, ctx, "steering", {**args}, token=project.token)
 
     def confirmation(ref: str) -> dict[str, Any]:
         # The engine's own confirmation request: the steering tool no longer offers one (register E183), so the bound
         # on open requests is reached through the engine.
-        return engine.steering_request(token=project.token, expect_rev=project.rev(), kind="confirmation",
+        return engine.steering_request(token=project.token, kind="confirmation",
                                        rationale="r", action_ref=ref)
 
     assert call(action="request_raise", mode="walk", rationale="routine edits")["ok"]
@@ -320,7 +322,7 @@ def test_requests_grant_nothing(project):
                 {"action": "request_confirmation", "action_ref": "x", "rationale": "r"},
                 {"action": "lower", "mode": "crawl", "action_ref": "x"}):
         with pytest.raises(AdapterInputError):
-            check_call("steering", {"expect_rev": 1, **bad}, NORMAL)
+            check_call("steering", {**bad}, NORMAL)
     for i in range(S.MAX_REQUESTS - 2):
         assert confirmation(f"step {i}")["ok"]
     with pytest.raises(errors.IllegalTransition, match="already open"):

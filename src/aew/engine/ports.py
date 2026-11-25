@@ -168,7 +168,7 @@ class GatesPort(Protocol):
 class WorkCommandsPort(Protocol):
     """What other collaborators use of ``WorkCommands``."""
 
-    def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
+    def work_reconcile(self, *, token: str, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
 

@@ -26,8 +26,8 @@ from aew.harness.procs import same_process
 def acquired(tmp_path, monkeypatch):
     project = sample_project(tmp_path)
     engine = Engine.discover(project.root)
-    engine.lead_release(token=project.token, expect_rev=project.rev())
-    old = engine.lead_acquire(expect_rev=project.rev(), session_label="old", kind=seat.VACANT_START)
+    engine.lead_release(token=project.token, )
+    old = engine.lead_acquire(session_label="old", kind=seat.VACANT_START)
     project.token = old["token"]
     seat.write_leftovers(engine.aew_root, old["generation"], seat.empty_leftovers())
     prompts = []
@@ -56,7 +56,7 @@ def test_empty_seat_resumes_without_a_code_and_can_resume_again(acquired):
     assert second["generation"] == first["generation"] + 1
     assert not prompts
     with pytest.raises(StaleAuthority):
-        engine.lead_release(token=old["token"], expect_rev=project.rev())
+        engine.lead_release(token=old["token"], )
     assert_control_invariants(project)
 
 
@@ -97,18 +97,18 @@ def test_ineligible_seats_refuse_without_prompting(acquired, monkeypatch, failur
     project, engine, old, prompts = acquired
     host, user = seat.principal()
     if failure in {"kind", "legacy"}:
-        engine.lead_release(token=old["token"], expect_rev=project.rev())
-        engine.lead_acquire(expect_rev=project.rev(), session_label="old")
+        engine.lead_release(token=old["token"], )
+        engine.lead_acquire(session_label="old")
         assert engine.store.current()["lead"]["start"]["kind"] == "lead_acquire"
     if failure == "general_session":
-        engine.lead_release(token=old["token"], expect_rev=project.rev())
+        engine.lead_release(token=old["token"], )
         monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
         lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="old", keep_seat=True,
                                 contained=lambda _dir, env: lead_broker.Harness(
                                     argv=["synthetic"], env=env, relay=False, label={}, close=lambda: None))
         assert engine.store.current()["lead"]["start"]["kind"] == "lead_acquire"
     if failure == "takeover":
-        engine.lead_takeover(expect_rev=project.rev(), reason="test takeover", session_label="old")
+        engine.lead_takeover(reason="test takeover", session_label="old")
         assert engine.store.current()["lead"]["start"]["kind"] == "takeover"
         assert len(prompts) == 1
         prompts.clear()
@@ -128,10 +128,10 @@ def test_ineligible_seats_refuse_without_prompting(acquired, monkeypatch, failur
     if failure == "live":
         monkeypatch.setattr(procs, "same_process", same_process)  # the acquiring test process is still alive
     if failure == "handoff":
-        engine.lead_handoff_offer(token=old["token"], expect_rev=project.rev())
+        engine.lead_handoff_offer(token=old["token"], )
     if failure == "accepted_handoff":
-        offer = engine.lead_handoff_offer(token=old["token"], expect_rev=project.rev())["offer"]
-        engine.lead_handoff_accept(offer=offer, expect_rev=project.rev(), session_label="old")
+        offer = engine.lead_handoff_offer(token=old["token"], )["offer"]
+        engine.lead_handoff_accept(offer=offer, session_label="old")
         assert engine.store.current()["lead"]["start"]["kind"] == "handoff"
     if failure == "terminal":
         monkeypatch.setattr(switch_offer, "terminal", lambda: False)
@@ -188,10 +188,10 @@ def test_resume_rechecks_the_bound_subject_after_the_prompt(acquired, tmp_path, 
             assign(project, work)
             changes["invocation"], = engine.store.current()["invocations"]
         elif race == "generation":
-            engine.lead_release(token=old["token"], expect_rev=project.rev())
-            changes.update(engine.lead_acquire(expect_rev=project.rev(), kind=seat.VACANT_START))
+            engine.lead_release(token=old["token"], )
+            changes.update(engine.lead_acquire(kind=seat.VACANT_START))
         elif race == "ended":
-            engine.invoke_cancel(token=project.token, expect_rev=project.rev(), invocation=changes["invocation"],
+            engine.invoke_cancel(token=project.token, invocation=changes["invocation"],
                                  reason="finished while the operator was reading the prompt")
         elif race == "leftovers":
             seat.write_leftovers(engine.aew_root, old["generation"], seat.empty_leftovers())
@@ -369,7 +369,7 @@ def test_resumed_empty_seat_releases_or_stays_held_as_requested(acquired, monkey
 @pytest.mark.parametrize("active_work", [False, True], ids=["keep-seat", "active-work"])
 def test_next_flagless_session_resumes_the_seat_held_by_the_first(acquired, tmp_path, monkeypatch, active_work):
     project, engine, old, prompts = acquired
-    engine.lead_release(token=old["token"], expect_rev=project.rev())
+    engine.lead_release(token=old["token"], )
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
 
     def start_work(token):
@@ -406,18 +406,18 @@ def test_unknown_leftover_outcome_keeps_the_seat_and_names_the_way_back(acquired
     assert result["seat"].startswith("held; processes left: unknown; ")
     assert "the next `aew opencode` resumes it from this host and user if eligible" in result["seat"]
     assert "to free the seat instead" in result["seat"]
-    assert "`aew lead takeover --reason <reason> --expect-rev " in result["seat"]
-    assert "at your own terminal, then `aew lead release --expect-rev " in result["seat"]
+    assert "`aew lead takeover --reason <reason>`" in result["seat"]
+    assert "at your own terminal, then `aew lead release`" in result["seat"]
     generation = engine.lead_show()["generation"]
     assert engine.lead_show()["status"] == "active" and seat.read_leftovers(engine.aew_root, generation) is None
-    replacement = engine.lead_takeover(expect_rev=project.rev(), reason="retake held seat")
-    engine.lead_release(token=replacement["token"], expect_rev=project.rev())
+    replacement = engine.lead_takeover(reason="retake held seat")
+    engine.lead_release(token=replacement["token"], )
     assert engine.lead_show()["status"] == "vacant"
 
 
 def test_a_seat_held_by_a_live_lead_session_is_never_resumed(acquired, monkeypatch):
     project, engine, old, prompts = acquired
-    engine.lead_release(token=old["token"], expect_rev=project.rev())
+    engine.lead_release(token=old["token"], )
     flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], stdin=subprocess.DEVNULL,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **flags) as child:
@@ -427,7 +427,7 @@ def test_a_seat_held_by_a_live_lead_session_is_never_resumed(acquired, monkeypat
             record = {**seat.start_identity(seat.OPENCODE_ACQUIRE), "pid": child.pid, "start_id": start}
             with monkeypatch.context() as patch:
                 patch.setattr(seat, "start_identity", lambda _: record)
-                taken = engine.lead_acquire(expect_rev=project.rev(), kind=seat.OPENCODE_ACQUIRE,
+                taken = engine.lead_acquire(kind=seat.OPENCODE_ACQUIRE,
                                             session_label="live child")
             seat.write_leftovers(engine.aew_root, taken["generation"], seat.empty_leftovers())
             monkeypatch.setattr(procs, "same_process", same_process)
@@ -470,7 +470,7 @@ def test_opencode_selects_the_seat_or_existing_credential(acquired, monkeypatch,
 
     project, engine, old, _ = acquired
     if mode == "self":
-        engine.lead_release(token=old["token"], expect_rev=project.rev())
+        engine.lead_release(token=old["token"], )
     monkeypatch.delenv(lead_credential.ENV, raising=False)
     if exported:
         monkeypatch.setenv(lead_credential.ENV, old["token"] if mode == "export" else "unused")

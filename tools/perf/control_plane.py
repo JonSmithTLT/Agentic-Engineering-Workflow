@@ -133,13 +133,17 @@ class Template:
         # ADR-0011 refuses the Lead's mutations on v1 until `aew migrate`; this in-process engine builds the M3 layout
         # anyway (every measurement then runs on the migrated project, through the CLI).
         self.eng._k.legacy_v1_writes = True
-        self.token = self.eng.lead_acquire(expect_rev=0, session_label="perf")["token"]
-
-    def rev(self) -> int:
-        return self.eng.store.read()["revision"]
+        self.token = self.eng.lead_acquire(session_label="perf")["token"]
 
     def lead(self, method: str, **kw: Any) -> dict[str, Any]:
-        return getattr(self.eng, method)(token=self.token, expect_rev=self.rev(), **kw)
+        if method == "plan_accept":
+            plans = self.eng.work_show(kw["work_id"])["control"]["plans"]
+            kw["binding"] = next(plan["sha256"] for plan in plans if plan["revision"] == kw["revision"])
+        elif method == "work_transition":
+            kw["prior_value"] = self.eng.prior_value(method, kw["work_id"])
+        elif method == "integrate_publish":
+            kw["candidate"] = self.eng.work_show(kw["work_id"])["control"]["integration"]["candidate"]
+        return getattr(self.eng, method)(token=self.token, **kw)
 
     def parent_unit(self, kind: str, title: str, parent: str | None) -> str:
         """An Epic or Story with an accepted plan, so that Tickets below it can be dispatched (ADR-0007)."""
@@ -343,7 +347,7 @@ def build(root: Path, units: int) -> Template:
 def migrate(t: Template) -> dict[str, Any]:
     """``aew migrate`` (ADR-0011) on a built project, timed: the series measure the migrated project."""
     t0 = time.perf_counter()
-    out = Engine.discover(t.root).migrate(token=t.token, expect_rev=t.rev())
+    out = Engine.discover(t.root).migrate(token=t.token)
     return {"migrate_s": round(time.perf_counter() - t0, 2), "archived": out["archived"], "hot": out["hot"],
             "history_entries": out["history"]["entries"]}
 
@@ -538,8 +542,7 @@ class Runner:
             self.snap = Snapshot(self.t.root)
         # The Lead credential goes in the command's environment, never on its command line.
         try:
-            return cli(self.t.root, [*args, "--expect-rev", str(self.t.rev())],
-                       {**self.env, "AEW_LEAD_TOKEN": self.t.token})
+            return cli(self.t.root, args, {**self.env, "AEW_LEAD_TOKEN": self.t.token})
         finally:
             self.snap.restore()
 

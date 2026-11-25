@@ -4,7 +4,7 @@
   "title": "AEW gate correction",
   "description": "ITEMS 55 (operator, option (b), 2026-11-01; designer, addenda 2 to 4): a Story's or Epic's mandatory gate that can never be satisfied, replaced on the record by one that can (the typed `resolve` tool, choice `replace_gate`). Written once, immutable, beside the unit (`work/<S>/gate-corrections/<GC>.yaml`) and pointed to from its control-state policy. The unit's own record is never rewritten.",
   "type": "object",
-  "required": ["schema", "id", "work_unit", "replaced", "with", "reason", "by", "generation", "expected_revision", "rev",
+  "required": ["schema", "id", "work_unit", "replaced", "with", "reason", "by", "generation", "rev",
                "at", "stale_invocations"],
   "additionalProperties": false,
   "properties": {
@@ -17,7 +17,7 @@
     "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
     "by": {"description": "The actor: the Lead, or the operator through the Lead seat.", "type": "object"},
     "generation": {"description": "The Lead generation that replaced it.", "type": "integer", "minimum": 1},
-    "expected_revision": {"description": "The control revision the write expected (an expected-revision write).", "type": "integer", "minimum": 0},
+    "expected_revision": {"description": "Historical caller revision on records written before E329.", "type": "integer", "minimum": 0},
     "rev": {"description": "The control revision the replacement committed.", "type": "integer", "minimum": 1},
     "at": {"type": "string"},
     "stale_invocations": {

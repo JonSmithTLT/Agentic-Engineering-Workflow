@@ -94,7 +94,7 @@ def test_every_path_the_engine_writes_in_the_store_is_owner_only_whatever_the_um
     assert p.ok("history", "compact", "--json")["sealed"], "the compaction sealed nothing: the test proves nothing"
     create_unit(p, "ticket", "After the compaction")  # a real commit on top
     offer = p.lead("lead", "handoff", "offer")["offer"]  # last: the handoff supersedes this Lead's credential
-    p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))
+    p.ok("lead", "handoff", "accept", "--offer", offer, )
     found = store_modes(aew)
     assert any(rel.startswith("state/log/seg-") for rel in found)
     assert any(r.startswith("state/handoffs/") and not r.endswith("/") for r in found), sorted(found)

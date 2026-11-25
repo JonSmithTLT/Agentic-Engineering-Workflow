@@ -53,7 +53,7 @@ def build_world(tmp: Path, *, maps: bool = False, search: bool = False) -> World
     integrate(p, done)
     open_ticket = create_planned_ticket(p, tmp, title="Add apply()", extra=("--parent", epic))
     hostile = create_unit(p, "ticket", HOSTILE, cls=1, parent=epic)
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})
     if search:
         policy = p.root / ".aew/policy/execution.yaml"
         policy.write_text(policy.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n",

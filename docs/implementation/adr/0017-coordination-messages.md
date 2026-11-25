@@ -419,3 +419,9 @@ MS7 provider evidence remain later slices. No default or qualification pin is ch
   and then only bounded keys.
 - With messaging off, which is the default and M4-H's treatment, every surface MS1 to MS6 touches is byte-identical,
   proven by disabled-state identity tests in each slice.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends D1 and D2 (CMG-02). Lead and worker messaging validate authority and thread admission under the control lock. A message records the observed control revision without advancing it. A duplicate remains scoped to the sender and thread. Repair, durability, seals, recipient checks and message finality are unchanged.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

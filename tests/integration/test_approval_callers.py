@@ -35,7 +35,7 @@ def test_relay_accepts_the_plan_binding_prefilled_by_the_read(project):
 
     engine = Engine.discover(project.root)
     wid = create_unit(project, "story", "Reviewed plan", cls=0)
-    engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+    engine.plan_propose(token=project.token, work_id=wid,
                         body="Reviewed plan.", no_assurance=True)
     argv = engine.status(wid)["plan_accept_argv"][1]
     revision = project.rev()
@@ -53,7 +53,7 @@ def test_plan_accept_prints_the_terminal_binding(project, monkeypatch, capsys):
 
     engine = Engine.discover(project.root)
     wid = create_unit(project, "story", "Reviewed plan", cls=0)
-    engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+    engine.plan_propose(token=project.token, work_id=wid,
                         body="Reviewed plan.", no_assurance=True)
     argv = engine.status(wid)["plan_accept_argv"][1]
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)

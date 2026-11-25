@@ -262,9 +262,6 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/doctor-check-{}-{}/scratch/changed.txt`
   - `aew.harness.check_changes:run_copy` (direct: Path.write_bytes)
-  - `aew.policy.checks:run` (direct: Path.write_text)
-- `local/harness/runs/doctor-check-{}-{}/scratch/selection.txt`
-  - `aew.policy.checks:run` (direct: Path.write_text)
 - `local/harness/runs/doctor-check-{}-{}/tools`
   - `aew.capability.bind:place` (direct: shutil.rmtree)
 - `local/harness/runs/doctor-check-{}-{}/tools/first`

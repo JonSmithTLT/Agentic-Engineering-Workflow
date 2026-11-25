@@ -615,6 +615,7 @@ class Validation:
         directory = self._staging(run["id"])
         pinned = run["_definitions"][check_id]  # the definition transaction 1 resolved, never live policy
         cfg = pinned["cfg"]
+        takes_selection = selected is not None and C.takes_selection(cfg)
         if cfg.get("builtin"):  # the guardrails, over what the candidate changes against its base
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
                                   pinned["guardrails"], scope[0], scope[1])
@@ -624,8 +625,9 @@ class Validation:
                    "cwd": str(workspace.resolve())}
         else:
             try:
+                selection_args: dict[str, Any] = {"selected": selected} if takes_selection else {}
                 out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees,
-                            selected=selected)
+                            **selection_args)
             except ContainmentUnavailable as exc:  # at the spawn: refused as itself, never "interrupted" (E114)
                 return {"infra": V.classify_containment_failure(exc),
                         "detail": f"check {check_id} was refused at its start: {exc.message}"}
@@ -641,7 +643,7 @@ class Validation:
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
                   "command": out["command"], "cwd": out.get("cwd"), "log": out["log"],
                   **({"network": out["network"]} if out.get("network") else {})}
-        if selected is not None and selection_ref is not None and C.takes_selection(cfg):
+        if takes_selection and selection_ref is not None:
             record["selection_sha256"] = selection_ref["sha256"]
         name = f"{check_id}.json"
         atomic_write(directory / name, json.dumps(record, indent=2, sort_keys=True))

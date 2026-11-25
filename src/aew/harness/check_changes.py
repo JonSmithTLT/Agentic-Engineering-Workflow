@@ -216,8 +216,8 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
         if weaker is not None:
             weaker.started()
         try:
-            out = C.run(cfg, copy, policy=policy, env=env, layout=layout, trees=copy_trees,
-                        paths_file=paths_file, selection_out=selection_out)
+            channels: dict[str, Any] = {"paths_file": paths_file, "selection_out": selection_out} if paths_file else {}
+            out = C.run(cfg, copy, policy=policy, env=env, layout=layout, trees=copy_trees, **channels)
         except ContainmentUnavailable as exc:
             return {"not_run": f"it was refused at its start ({exc.message})"}
         finally:

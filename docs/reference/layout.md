@@ -245,7 +245,6 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.harness.check_changes:run_copy`
     - `aew.harness.containment.layout:for_run`
-    - `aew.policy.checks:run`
 - `local/harness/runs/doctor-check-{}-{}/tools` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.capability.bind:place`

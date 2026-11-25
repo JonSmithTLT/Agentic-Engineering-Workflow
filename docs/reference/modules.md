@@ -2144,6 +2144,7 @@ None.
 - `aew.engine.freshness`
 - `aew.errors`
 - `aew.knowledge.evidence`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
@@ -2154,6 +2155,8 @@ None.
 
 ### `aew.maps.slices`
 
+- `aew.errors`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`

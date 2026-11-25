@@ -21,10 +21,11 @@ from aew.surface.validate import AdapterInputError
 SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
 # description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved), and E160's `plan.assess`
-# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`; nothing else moved).
-OFF_LIST_SHA = {"normal": "d0e3c037a03b0e2efec315980f08312beec00280b31c58a0c1e8ff1d4d5947d0",
-                "recovery": "1cc60b9266b9c1170b605e92035a9be2169cc999eae354496824d3e24bb19f53"}
-OFF_CLI_SHA = "23ffb31e822a53f8e058aa909136de7b50d9a0891611b0ee5a66537a02e78004"
+# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`), and E160 slice 2b's `assess_plan` choice
+# on `resolve`, its description, and its `dispatches` (nothing else moved).
+OFF_LIST_SHA = {"normal": "5217385bf5d89beb23d8c16fd29719bbe853b43e71bb9835f23a5acbf0b3c141",
+                "recovery": "daa9a4b353ce3a0644751fed6e5ab1e3b17f57caa1246986375723bfe49eb661"}
+OFF_CLI_SHA = "f0cc439f2f2c4de9028f7afe22a395a459acc278cd66ff872e9937169fa5249b"
 
 
 def digest(value):
@@ -198,8 +199,10 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
         "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
                     "Requests grant nothing.",
-        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and its description names it.
-        "resolve": "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
+        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and E160 the plan assessor's dispatch
+        # (`assess_plan`); its description names both.
+        "resolve": "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan "
+                   "(W#plan).",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

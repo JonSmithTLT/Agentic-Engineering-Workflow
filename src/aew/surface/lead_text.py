@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.engine import guide
+from aew.knowledge import evidence as E
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.context import NORMAL
@@ -48,11 +49,21 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
+def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """The typed route to a plan assessor, from the catalog (E160 slice 2b): the tool that runs ``plan.assess``, the
+    `resolve` choice that runs it and the subject it takes, or None when the profile offers none."""
+    choices = [c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if p == "plan.assess"]
+    for t in contract.exposed(profile, switches):
+        if "plan.assess" in t.expands_to and choices:
+            return f"`{t.name}`, choice `{choices[0]}`, subject `<W>{E.PLAN_ITEM}`"
+    return None
+
+
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
            switches: frozenset[str] = frozenset()) -> str:
     """The guide for a policy, with the normal profile's stages for the supplied switches."""
     return guide.render(gates_policy, checks_policy, stages(switches=switches),
-                        messaging=contract.MESSAGING in switches)
+                        messaging=contract.MESSAGING in switches, plan_assessment=plan_assessment(switches=switches))
 
 
 def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
@@ -60,5 +71,5 @@ def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
     from aew.surface.context import switches_for
 
     selected = switches_for(engine) if switches is None else switches
-    return str(engine.lead_guide(stages(switches=selected),
+    return str(engine.lead_guide(stages(switches=selected), plan_assessment=plan_assessment(switches=selected),
                                 **({"messaging": True} if contract.MESSAGING in selected else {})))

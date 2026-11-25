@@ -2446,6 +2446,7 @@ None.
 ### `aew.surface.lead_text`
 
 - `aew.engine.guide`
+- `aew.knowledge.evidence`
 - `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
@@ -2525,6 +2526,7 @@ None.
 - `aew.engine.stage_intents`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.surface.availability`
 - `aew.surface.classify`
 - `aew.surface.contract`

@@ -7,14 +7,16 @@ with the Lead credential."""
 
 from __future__ import annotations
 
+import json
 import shlex
+import sys
 from pathlib import Path
 
 import printed_commands as P
 import pytest
 from aewflow import Role, create_planned_ticket, create_unit, implement, plan_unit, sample_project
 from conftest import run_aew
-from fake_harness import HarnessLab
+from fake_harness import AGENT, HarnessLab
 from invariants import assert_control_invariants
 
 from aew.engine import gate_ops
@@ -279,3 +281,83 @@ def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_
     me = reviewer.ok("whoami")
     assert "submit.review" in me["operations"] and f"submit.{E.PLAN_ASSESSMENT}" not in me["operations"]
     assert me["expected_kinds"] == ["review"]
+
+
+def resolve_assess(p, env, subject, rationale="the plan rests on code I have not read"):
+    """The Lead's typed route (E160 slice 2b): `resolve`, choice `assess_plan`, through `aew lead tool`."""
+    arguments = {"expect_rev": p.rev(), "subject": subject, "choice": "assess_plan", "rationale": rationale}
+    return run_aew("-C", str(p.root), "lead", "tool", "resolve", "--arguments", "-", input=json.dumps(arguments),
+                   env={**env, "AEW_LEAD_TOKEN": p.token})
+
+
+def test_the_leads_typed_route_dispatches_and_launches_an_assessor_of_the_accepted_plan(lab, tmp_path):
+    """`resolve` with `assess_plan` on `<W>#plan` dispatches through the `plan.assess` entrypoint with the typed
+    channel's provenance and launches the run in the same commit; the run's supervisor holds the credential, so the
+    result carries none. The same refusals hold: a second assessor of a revision that is assessed is refused."""
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    res = resolve_assess(p, lab.env, f"{wid}{E.PLAN_ITEM}")
+    assert res.returncode == 0, res.stderr or res.stdout
+    out = res.json
+    assert out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["plan.assess"]
+    assert "aew1." not in res.stdout  # no credential reaches the Lead
+    inv = p.ok("work", "show", wid)["control"]["invocations"][-1]
+    shown = p.ok("invoke", "show", inv)
+    assert shown["scope"] == E.ASSESSMENT_SCOPE and shown["dispatch"]["entrypoint"] == "plan.assess"
+    run = shown["runs"][-1]["run"]
+    assert shown["runs"][-1]["dispatch"]["covered_by"] == "plan.assess"
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    again = resolve_assess(p, lab.env, f"{wid}{E.PLAN_ITEM}")
+    assert again.returncode != 0 and again.json["stopped"]["error"]["details"]["reason"] == "plan_revision_assessed"
+    assert_control_invariants(p)
+
+
+def test_the_typed_route_takes_only_a_plan_subject(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    rev = p.rev()
+    for subject in (wid, f"{wid}#plan:1", "#plan"):
+        res = resolve_assess(p, {}, subject)
+        assert res.returncode != 0 and res.json["stopped"]["error"]["details"]["reason"] == "plan_subject", subject
+    assert p.rev() == rev
+
+
+def test_a_lead_session_assesses_a_plan_through_resolve_and_never_through_its_shell(tmp_path):
+    """E160 slice 2b, in a real Lead session: the typed `resolve` call over the `aew-lead` MCP transport dispatches the
+    assessor with the session's channel, while the same command relayed from the session's shell is refused (TYPED_ONLY)
+    and changes nothing."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, lead_session=True)
+    try:
+        p = lab.project
+        wid = create_planned_ticket(p, tmp_path)
+        lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+        probe = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
+        script, transcript = tmp_path / "mcp.json", tmp_path / "mcp.jsonl"
+        script.write_text(json.dumps([
+            {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
+            {"call": "status", "arguments": {}},
+            {"call": "resolve", "arguments": {"expect_rev": "$revision", "subject": f"{wid}{E.PLAN_ITEM}",
+                                              "choice": "assess_plan", "rationale": "the plan rests on unread code"}},
+        ]), encoding="utf-8")
+        res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
+                      "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": p.token}, timeout=600)
+        assert res.returncode == 0, res.stderr
+        steps = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+        result = steps[3]["reply"]["result"]["structuredContent"]
+        assert result["ok"], result["stopped"]
+        inv = p.ok("invoke", "show", result["result"]["invocation"])
+        assert inv["dispatch"]["entrypoint"] == "plan.assess" and inv["dispatch"]["channel"] == "lead_mcp"
+        assert lab.wait(inv["runs"][-1]["run"])["status"] == "ended_with_evidence"
+        rev = p.rev()
+        shell = tmp_path / "shell.json"
+        shell.write_text(json.dumps([{"do": "lead", "args": ["plan", "assess", wid, "--launch"]}]), encoding="utf-8")
+        res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(shell),
+                      "--transcript", str(tmp_path / "shell.jsonl"), env={**lab.env, "AEW_LEAD_TOKEN": p.token},
+                      timeout=600)
+        relayed = json.loads((tmp_path / "shell.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        assert "use its typed route" in json.dumps(relayed), relayed
+        assert p.rev() == rev
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()

@@ -32,6 +32,8 @@ ASSESSMENT_SCOPE = "plan_assessment"
 ASSESSOR_CARD = "plan_assessor"
 # The invocation scopes that hold their own read-only observation of the source (ADR-0008): a non-mutating Ticket's
 # executor and its reviewers and verifiers, a parent's acceptance roles, and a plan assessor.
+# The `resolve` subject that names a unit's accepted plan, `<W>#plan`: the typed route to the assessor (E160 slice 2b).
+PLAN_ITEM = "#plan"
 OBSERVER_SCOPES = frozenset({"observation", "parent", ASSESSMENT_SCOPE})
 
 ROLE_KINDS = {

@@ -535,11 +535,12 @@ class NonMutating:
         return checked(check)
 
     def plan_assess(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
-                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                    reason: str | None = None) -> dict[str, Any]:
         """Dispatch a plan assessor of ``work_id``'s accepted plan revision (a Ticket, Story or Epic): a reviewer
         invocation at scope ``plan_assessment`` with its own read-only observation of the authoritative source, pinned
         to the revision it assesses. Its legality is the ``plan.assess`` entrypoint's guards (E160 slice 2)."""
-        with self.k.lead_txn(token, expect_rev, "plan.assess") as ctx:
+        with self.k.lead_txn(token, expect_rev, "plan.assess", reason=reason) as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             decision = self.dispatch.decide_in(ctx, "plan.assess", work_id, card_id=card)

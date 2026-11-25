@@ -213,19 +213,22 @@ def test_a_review_still_validates_against_the_shared_finding_shape():
         }, source="review")
 
 
-def test_a_lead_session_cannot_relay_plan_assess_until_its_typed_tool():
-    # E160 slice 2a: the command takes the Lead credential and is not Lead-reachable, so a Lead session's broker refuses
-    # it, saying why and what to do; slice 2b gives the Lead its typed tool. Like every dispatch, a relay would need
-    # --launch.
+def test_a_lead_session_reaches_plan_assess_through_its_typed_route_only():
+    # E160 slice 2b: the command takes the Lead credential and is typed only (lead_broker.TYPED_ONLY): a Lead session's
+    # client and broker refuse it from the shell and the `cli` escape, naming the typed route, which `resolve`'s
+    # `assess_plan` choice runs. Like every dispatch, a relay would need --launch.
     from aew.errors import PermissionDenied as Refused
     from aew.harness import lead_broker
+    from aew.surface import contract
 
-    assert frozenset({"plan", "assess"}) not in lead_broker.LEAD_REACHABLE
-    assert frozenset({"plan", "assess"}) in lead_broker.DISPATCHES
+    path = frozenset({"plan", "assess"})
+    assert path not in lead_broker.LEAD_REACHABLE and path in lead_broker.DISPATCHES
+    assert not any(p <= path for p in lead_broker.OPERATOR_ONLY)
+    assert contract.RESOLVE_CHOICE_PRIMITIVE[("assess_plan", "plan")] == "plan.assess"
     argv = ["plan", "assess", "T-0001", "--launch", "--expect-rev", "3"]
     refusal = lead_broker.refuses_locally(build_parser().parse_args(argv))
-    assert refusal == ("`aew plan assess` reaches a Lead session through its typed tool, which is not built yet; "
-                       "until it is, ask the operator to run it at their own terminal")
+    assert refusal == ("`aew plan assess` is not run from a Lead session's shell: use its typed route, the `resolve` "
+                       "tool, choice `assess_plan`, subject `<W>#plan`")
     with pytest.raises(Refused) as exc:  # the broker applies the same check before anything runs
         lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
     assert exc.value.message == refusal

@@ -326,7 +326,9 @@ def staffing_text() -> str:
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage], *,
-           messaging: bool = False) -> str:
+           messaging: bool = False, plan_assessment: str | None = None) -> str:
+    """``plan_assessment``: the typed route that dispatches an assessor of a unit's accepted plan, as the surface names
+    it (E160 slice 2b; the engine never imports the surface), or None where the profile offers none."""
     from aew.engine.workspace_ops import mutating_cap  # local: its imports reach the harness, which reaches this text
 
     paths = gates_policy.get("risk_paths") or {}
@@ -445,6 +447,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         f"\"{TRANSITION}\" means {_command('transition')}, and \"{WITH_REASON}\" adds `--reason <reason>`.",
         "",
         *([staffing, ""] if (staffing := staffing_text()) else []),
+        *([f"An independent assessment of a unit's accepted plan: {plan_assessment}.", ""] if plan_assessment else []),
         *_steps_text(stages, post_verify, mutating_cap(gates_policy)),
         "",
         "Each state and the moves out of it (the engine refuses any other):",

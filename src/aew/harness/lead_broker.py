@@ -1012,6 +1012,8 @@ class WeakerLead:
 
     def __init__(self, engine: Any, argv: list[str], *, kind: str, who: str) -> None:
         self.engine, self.argv, self.kind, self.who = engine, list(argv), kind, who
+        # What the harness adds to the session's record, set before it is built: `aew opencode`'s skills (E161)
+        self.label_extra: dict[str, Any] = {}
 
     def precheck(self) -> None:
         from aew.harness import containment
@@ -1027,7 +1029,7 @@ class WeakerLead:
 
         self.precheck()
         run_dir = lead_run_dir(self.engine)
-        label = containment.label(contained=False, reason=containment.uncontained_reason())
+        label = {**containment.label(contained=False, reason=containment.uncontained_reason()), **self.label_extra}
         label["session"] = run_dir.name
         record_label(run_dir, label)
         sys.stderr.write(f"{self.who}: the Lead runs NOT contained ({label['filesystem']}): "

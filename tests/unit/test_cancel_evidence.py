@@ -230,7 +230,8 @@ def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(m
     names = [step.get("name") for step in steps]
     barrier = steps[names.index("Wait for the twin plant's runner")]
     assert names.index("Wait for the twin plant's runner") < names.index("The job's deadline")
-    assert barrier["if"] == "matrix.kind == 'cancel' && inputs.probe_origin"
+    assert barrier["if"] == "startsWith(matrix.kind, 'cancel') && inputs.probe_origin"
+    assert barrier["env"]["TWIN"].endswith(", ${{ matrix.kind }}, none)")
     assert f"bound={prove.TWIN_BARRIER_SECONDS}\n" in barrier["run"]
     assert barrier["timeout-minutes"] * 60 > prove.TWIN_BARRIER_SECONDS
     waits = []
@@ -729,3 +730,413 @@ def test_a_failed_gh_read_names_gh_s_own_error(monkeypatch):
     with pytest.raises(subprocess.CalledProcessError, match=r"exit status 1: gh: Server Error \(HTTP 502\)") as raised:
         flake_register._gh_read("repos/o/r/actions/runs/1/attempts/1/jobs")
     assert raised.value.stderr == b"gh: Server Error (HTTP 502)\n"  # _pages still reads the raw text
+
+
+# A lane cancelled while its sessions start (register E3): superseded CI run 45590135545 cancelled ten lanes 37 to 96 s
+# into their pytest step, each with "[death-record] cancel: no pre-cleanup worker observation" and "[running] missing
+# running test name", since no worker was in a test to observe or name.
+BEFORE = "integration 8/8 (ubuntu-latest)"
+
+
+def _starting_lane(raw, layout):
+    """A lane root as a cancellation finds it while its sessions start. ``layout`` names the sessions' state."""
+    raw.mkdir(parents=True, exist_ok=True)
+    (raw / "runner-resources-job.txt").write_text(json.dumps({"job_label": BEFORE}))
+    if layout == "no session":
+        return []
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    (session / "session-started.txt").write_text("started")
+    (session / "controller-pid.txt").write_text("42")
+    (session / "controller-start.txt").write_text("4200")
+    if layout == "serial":
+        return []
+    (session / "worker-count.txt").write_text("2\n")
+    rows = []
+    phase = {"collecting": "collecting", "collection ended": "collection-ended", "executing": "execution-started",
+             "finished": "collection-ended", "workers not up": None}[layout]
+    for index, pid in enumerate((101, 102) if phase else ()):
+        (session / f"worker-gw{index}-pid.txt").write_text(f"{pid}\n")
+        (session / f"worker-gw{index}-start.txt").write_text(f"{pid * 2}\n")
+        (session / f"worker-{pid}-{pid * 2}-lifecycle.txt").write_text(
+            "".join(f"{stamp} {name} 7\n" for stamp, name in enumerate(
+                ("collecting", "collection-ended", "execution-started")[:("collecting", "collection-ended",
+                                                                         "execution-started").index(phase) + 1],
+                start=10)))
+        rows.append({"session": session.name, "worker": f"worker-gw{index}", "pid": pid, "start": pid * 2,
+                     "phase": phase})
+    if layout == "finished":
+        (session / "session-finished.txt").write_text("2026-11-25 10:02:37 pid 42: the session finished (exit 1);")
+    return rows
+
+
+def _published(tmp_path, raw, monkeypatch):
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    root = tmp_path / "published"
+    root.mkdir()
+    # As the lane action publishes: the running names, the priority (watchdog) bundle, the reports and the full bundle.
+    priority = tmp_path / "evidence-before-attempt-1-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=BEFORE)
+    (tmp_path / "evidence-before-attempt-1-names").rename(root / "evidence-before-attempt-1-running")
+    stage.stage(priority, root / "evidence-before-attempt-1-watchdog")
+    stage.stage(raw, root / "evidence-before-attempt-1")
+    stage.stage(raw, root / "lane-report-evidence-before-attempt-1", reports_only=True)
+    return root
+
+
+def _cancelled_lane_job():
+    return {"id": 139124033808, "name": BEFORE, "conclusion": "cancelled", "steps": [],
+            "cancel_reason": CANCEL.classify(OLD, {"id": 139124033808}, NOTES, [NEW])}
+
+
+def _collect(raw, rows, monkeypatch):
+    import sys
+
+    lane = _load("lane_step")
+    monkeypatch.setenv("AEW_LANE_JOB_STATUS", "cancelled")
+    monkeypatch.setenv("AEW_LANE_JOB_LABEL", BEFORE)
+    monkeypatch.setattr(sys.modules["cancel_evidence"], "collect_reason", lambda *_: None)
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", lambda root, at_ns: rows)
+    assert lane.main(["--collect", "--root", str(raw)]) == 0
+
+
+NOTHING_RAN = {"schema": "aew/lane-report/v1", "complete": True, "exitstatus": 2, "collected": [], "results": {}}
+
+
+@pytest.mark.parametrize("layout", ["no session", "workers not up", "collecting", "collection ended", "finished"])
+def test_a_lane_cancelled_before_any_test_started_has_complete_typed_evidence(tmp_path, monkeypatch, layout):
+    # "finished": interrupted gracefully during start-up, the session finished with a report of no results (#579, M1).
+    raw = tmp_path / "raw"
+    rows = _starting_lane(raw, layout)
+    if layout == "finished":
+        (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+        rows = []  # its workers are gone: no live phase is read, and its own files decide
+    _collect(raw, rows, monkeypatch)
+    record = json.loads((raw / "runner-resources-before-tests.txt").read_text())
+    assert record["outcome"] == "cancelled before any test started" and record["observed_by"] == "cancel collection"
+    assert [len(s["workers"]) for s in record["sessions"]] == {"no session": [], "workers not up": [0]}.get(layout, [2])
+    check = _load("check_evidence_run")
+    rows = []
+    assert check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows) == []
+    assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
+
+
+@pytest.mark.parametrize("layout", ["serial", "executing", "finished without a report", "finished after a test",
+                                    "finished without a receipt", "finished past execution",
+                                    "finished with an incomplete report", "finished with a result collected nothing"])
+def test_a_cancelled_lane_whose_tests_may_have_begun_is_never_typed_before_tests(tmp_path, monkeypatch, layout):
+    # A serial controller runs its own tests and keeps no lifecycle receipt, and a worker past its first test has begun
+    # its tests. A finished session is shown not to have begun one only by its receipts and its lane report. None of
+    # these is shown to stand before its first test, so the gap stays a defect.
+    raw = tmp_path / "raw"
+    rows = _starting_lane(raw, "executing" if layout == "finished past execution" else layout.split()[0])
+    result = {"tests/test_a.py::test_a": {"outcome": "passed"}}
+    if layout == "finished past execution":
+        # A worker's receipt reached its first test's protocol (#579 quick check, m4).
+        (raw / "autopsy/session-42-abc/session-finished.txt").write_text("finished\n")
+        (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+    elif layout == "finished with an incomplete report":
+        (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "complete": False}))
+    elif layout == "finished with a result collected nothing":
+        # Under xdist the controller fills `collected` only as each worker goes down, so an empty list proves nothing.
+        (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "results": result}))
+    elif layout == "finished after a test":
+        (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "collected": ["tests/test_a.py::test_a"],
+                                                     "results": {"tests/test_a.py::test_a": {"outcome": "passed"}}}))
+    elif layout == "finished without a receipt":
+        (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+        (raw / "autopsy/session-42-abc/worker-102-204-lifecycle.txt").unlink()
+    _collect(raw, rows if layout.split()[0] != "finished" else [], monkeypatch)
+    assert not (raw / "runner-resources-before-tests.txt").exists()
+    check = _load("check_evidence_run")
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()])
+    assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects)
+    assert any("[running] missing running test name" in d for d in defects)
+
+
+@pytest.mark.parametrize("contradiction", ["execution started", "unlisted session", "unlisted worker", "running name",
+                                           "torn record", "finished", "test result", "collection error",
+                                           "receipt missing", "start mismatch", "receipt short of the phase",
+                                           "a test's autopsy"])
+def test_a_before_tests_record_the_bundle_contradicts_is_a_defect(tmp_path, monkeypatch, contradiction):
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, "collection ended" if contradiction == "receipt short of the phase"
+                                 else "collecting"), monkeypatch)
+    session = raw / "autopsy/session-42-abc"
+    if contradiction == "receipt missing":
+        (session / "worker-101-202-lifecycle.txt").unlink()
+    elif contradiction == "start mismatch":
+        (session / "worker-gw0-start.txt").write_text("999\n")
+    elif contradiction == "receipt short of the phase":
+        (session / "worker-101-202-lifecycle.txt").write_text("10 collecting 7\n")
+    elif contradiction == "a test's autopsy":
+        test = raw / "autopsy/tests_unit_test_a.py_test_a-0123"
+        test.mkdir()
+        (test / "reason.txt").write_text("[gw0 pid 101] tests/unit/test_a.py::test_a: failed in call\n")
+    elif contradiction == "execution started":
+        with (session / "worker-101-202-lifecycle.txt").open("a") as receipt:
+            receipt.write("30 collection-ended 7\n40 execution-started 7\n")
+    elif contradiction == "unlisted session":
+        other = raw / "autopsy/session-77-def"
+        other.mkdir()
+        (other / "session-started.txt").write_text("started")
+    elif contradiction == "unlisted worker":
+        (session / "worker-gw2-pid.txt").write_text("103\n")
+    elif contradiction == "running name":
+        (raw / "running-101.txt").write_text("tests/integration/test_a.py::test_case\n")
+    elif contradiction in {"test result", "collection error"}:
+        phase = "collect" if contradiction == "collection error" else "call"
+        failure = {"phase": phase, "longrepr": "E   ValueError: cause", "crash": "test_a.py:5: ValueError: cause"}
+        (raw / "report.json").write_text(json.dumps({
+            "schema": "aew/lane-report/v1", "complete": False, "exitstatus": None,
+            "results": {"tests/test_a.py::test_a": {"outcome": "failed", "failures": [failure]}}}))
+    elif contradiction == "torn record":
+        (raw / "runner-resources-before-tests.txt").write_text('{"outcome": "cancelled before any test started"}\n')
+    else:
+        (session / "session-finished.txt").write_text("finished")
+    check = _load("check_evidence_run")
+    rows = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows)
+    if contradiction == "collection error":
+        # Collection fails before any test starts, so it never contradicts the record; the failure is still reported.
+        assert not any("[before-tests]" in d for d in defects) and rows[0]["failed_nodes"]
+    elif contradiction == "running name":
+        # A running name is a death marker: the cancellation is checked as one that interrupted a test.
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']})" and defects
+    else:
+        assert any("[before-tests]" in d for d in defects) and rows[0]["A2"] == "no"
+        if contradiction == "a test's autopsy":
+            assert any("[before-tests] autopsy/tests_unit_test_a.py_test_a-0123: a test's autopsy" in d
+                       for d in defects), defects
+
+
+@pytest.mark.parametrize("bounded_read", ["observed", "unavailable"])
+def test_the_linux_supervisor_records_a_cancel_before_tests_at_the_signal(tmp_path, monkeypatch, bounded_read):
+    import signal
+    import sys
+    from types import SimpleNamespace
+
+    lane = _load("lane_step")
+    rows = _starting_lane(tmp_path, "collecting")
+    handlers, signals = {}, []
+    process = SimpleNamespace(poll=lambda: None, send_signal=signals.append, kill=lambda: None, wait=lambda **_: None)
+    monkeypatch.setattr(lane, "sys", SimpleNamespace(platform="linux", stdout=sys.stdout, stderr=sys.stderr))
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane.proctree, "identity", lambda pid: (pid, 1))
+    monkeypatch.setattr(lane.proctree, "table", lambda: {})
+    monkeypatch.setattr(lane.proctree, "descendants", lambda *_: [])
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", lambda *_args, **_kw: handlers[signal.SIGINT](signal.SIGINT, None))
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane, "memory_used", lambda: None)
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", lambda root, at_ns: rows)
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    if bounded_read == "unavailable":
+        # The bounded read of the phases ran out: the supervisor reads them itself, from the receipts.
+        monkeypatch.setattr(lane, "interrupt_phases", lambda root, at: {"monotonic_ns": at, "status": "unavailable"})
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 130
+    assert signals == [signal.SIGINT]
+    record = json.loads((tmp_path / "runner-resources-before-tests.txt").read_text())
+    assert record["observed_by"] == "warning"
+    assert [(w["worker"], w["phase"]) for w in record["sessions"][0]["workers"]] == [
+        ("worker-gw0", "collecting"), ("worker-gw1", "collecting")]
+
+
+@pytest.mark.parametrize("sign", ["watchdog header", "running name"])
+def test_a_before_tests_record_is_never_written_while_a_test_is_in_flight(tmp_path, sign):
+    from types import SimpleNamespace
+
+    import watchdog
+    import worker_evidence
+
+    rows = _starting_lane(tmp_path, "collecting")
+    if sign == "watchdog header":
+        guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+        (tmp_path / "hang-gw0-101.txt").write_text(guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_a")))
+    else:
+        (tmp_path / "running-101.txt").write_text("tests/test_a.py::test_a\n")
+    assert not worker_evidence.before_tests(tmp_path, 1.0, rows, observer="cancel collection")
+    assert not (tmp_path / "runner-resources-before-tests.txt").exists()
+
+
+@pytest.mark.parametrize("ran", ["lane report", "finished session"])
+def test_the_hosted_twin_finds_a_lane_whose_tests_ran_claimed_as_cancelled_before_them(tmp_path, monkeypatch, ran):
+    verify = _load("verify_evidence")
+    raw = tmp_path / "raw"
+    _starting_lane(raw, "finished" if ran == "finished session" else "no session")
+    if ran == "lane report":
+        (raw / "report.json").write_text(json.dumps({"schema": "aew/lane-report/v1", "complete": True, "exitstatus": 0,
+                                                      "results": {"tests/test_a.py::test_a": {"outcome": "passed"}}}))
+    root = _published(tmp_path, raw, monkeypatch)
+    if ran == "lane report":
+        # As a hosted normal plant publishes: a passing lane has no priority (watchdog) bundle.
+        import shutil
+
+        shutil.rmtree(root / "evidence-before-attempt-1-watchdog")
+    assert verify.before_tests_twin(root) == []
+    for path in root.rglob("report.json"):
+        path.unlink()
+    for path in root.rglob("session-finished.txt"):
+        path.unlink()
+    # With nothing left that shows a test ran, the claim stands: the twin reports that its ablation survived.
+    [survived] = verify.before_tests_twin(root)
+    assert survived.startswith("before-tests: before-tests ablation survived:") and "[before-tests]" not in survived
+
+
+@pytest.mark.parametrize("branch", ["watchdog header", "interruption record", "running name"])
+def test_the_checker_finds_each_sign_of_a_test_outside_the_sessions(tmp_path, monkeypatch, branch):
+    # Called directly, as the hosted proof does: each sign is its own before-tests contradiction (#579, m2).
+    from types import SimpleNamespace
+
+    import watchdog
+
+    evidence_problems = _load("evidence_problems").evidence_problems
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, "collecting"), monkeypatch)
+    root = _published(tmp_path, raw, monkeypatch)
+    assert not [p for p in evidence_problems(root, kind="cancel-before-tests") if "[before-tests]" in p]
+    bundle = root / "evidence-before-attempt-1"
+    if branch == "watchdog header":
+        guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+        (bundle / "hang-gw0-101.txt").write_text(guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_a")))
+        expected = "hang-gw0-101.txt: a test was in flight"
+    elif branch == "interruption record":
+        (bundle / "cancelled-101.txt").write_text("{}\n")
+        expected = "cancelled-101.txt: a worker was observed in a test"
+    else:
+        (bundle / "running-101.txt").write_text("tests/test_a.py::test_a\n")
+        expected = "a running test name was published"
+    assert f"evidence defect: [before-tests] {expected}" in evidence_problems(root, kind="cancel-before-tests")
+
+
+def test_every_lane_command_keeps_its_sessions_where_the_collection_looks():
+    """The before-tests record reads no session under the lane root as "pytest had not registered one". That holds
+    only while every command the lane action runs passes --session-deadline, and its hang directory (--hang-dir, else
+    the lane report's directory) is the lane root or one level under it, where session_directories looks (#579, m3)."""
+    import re
+    import shlex
+
+    import bounds
+
+    seen, problems = 0, []
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        for job in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"].values():
+            for step in job.get("steps") or []:
+                if step.get("uses") != "./.github/actions/lane":
+                    continue
+                source = re.sub(r"\$\{\{[^}]*\}\}", "X", step["with"]["source"]).rstrip("/")
+                for command, _ in bounds._commands(str(step["with"]["command"])):
+                    seen += 1
+                    argv = shlex.split(re.sub(r"\$\{\{[^}]*\}\}", "X", command))
+                    hang = bounds._option(argv, "--hang-dir") or (bounds._option(argv, "--lane-report") or "")
+                    hang = hang.rstrip("/") if bounds._option(argv, "--hang-dir") else hang.rsplit("/", 1)[0]
+                    below = hang.removeprefix(source + "/") if hang.startswith(source + "/") else None
+                    if bounds._option(argv, "--session-deadline") is None or not (
+                            hang == source or below is not None and "/" not in below):
+                        problems.append(f"{workflow.name}: {command[:80]}")
+    assert seen >= 10 and problems == [], problems
+
+
+@pytest.mark.parametrize("outcome", ["held", "twin late", "ended early"])
+def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection(monkeypatch, outcome):
+    # The hosted row for the before-tests record (#579, M1): both start-up lanes run START_READY_SECONDS before the
+    # control cancels, inside the plant's hold; a lane that ended first is named, as runner queueing when its twin
+    # was not yet held, and never passes.
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    import cancel_evidence_plant
+
+    prove = _load("prove_cancel_evidence")
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("startup", ROOT / "tests/integration/evidence_plants/startup.py")
+    startup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(startup)  # outside a start-up plant its import holds nothing
+    assert prove.START_READY_SECONDS + 60 < startup.HOLD_S < prove.CANCEL_PLANT_SECONDS
+    waits = []
+
+    def now():
+        return sum(waits)
+
+    clock = SimpleNamespace(monotonic=now, time=now, sleep=waits.append)
+    monkeypatch.setattr(prove, "time", clock)
+    monkeypatch.setattr(cancel_evidence_plant, "time", clock)
+
+    def jobs(repo, endpoint):
+        rows = []
+        for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
+            # "ended early": Windows has held its collection long enough when Linux's lane ends.
+            started = 30 + (400 if outcome == "twin late" else -60 if outcome == "ended early" else 0) * index
+            running = now() >= started
+            ended = outcome == "ended early" and index == 0 and now() >= started + 40
+            stamp = datetime.fromtimestamp(started, UTC).isoformat()
+            rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel-start, none)", "runner_id": 7,
+                         "conclusion": None, "steps": [{
+                             "name": "Real planted lane", "started_at": stamp if running else None,
+                             "status": "completed" if ended else "in_progress"}]})
+        return {"jobs": rows}
+
+    monkeypatch.setattr(prove, "_api", jobs)
+    if outcome == "held":
+        assert [job["id"] for job in prove.wait_for_start_up("x/y", 42)] == [1, 2]
+        assert now() >= 30 + prove.START_READY_SECONDS
+    elif outcome == "twin late":
+        # Linux's lane ends at its deadline while Windows has no lane yet: the queueing is named.
+        def late(repo, endpoint):
+            rows = jobs(repo, endpoint)
+            if now() >= 30 + 360:
+                rows["jobs"][0]["steps"][0]["status"] = "completed"
+            return rows
+
+        monkeypatch.setattr(prove, "_api", late)
+        with pytest.raises(prove.PlantQueued, match="cancel-start, none\\) was not held"):
+            prove.wait_for_start_up("x/y", 42)
+    else:
+        with pytest.raises(RuntimeError, match="lane ended before its start-up cancellation") as failed:
+            prove.wait_for_start_up("x/y", 42)
+        assert not isinstance(failed.value, prove.PlantQueued)
+
+
+def test_a_controller_ended_by_the_cancellation_still_lets_the_lane_be_typed_before_tests(tmp_path, monkeypatch):
+    # The sentinel writes abnormal-exit when the cancellation ends the controller unfinished: that is the cancellation's
+    # own death, not a test interrupted, so it does not keep the lane from its before-tests typing (#579, M1).
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, "collecting"), monkeypatch)
+    (raw / "autopsy/session-42-abc/abnormal-exit.txt").write_text("the controller is gone without session-finished\n")
+    check = _load("check_evidence_run")
+    rows = []
+    assert check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows) == []
+    assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
+
+
+@pytest.mark.parametrize("kind", ["manual-or-api cancel", "manual-or-api cancel before tests"])
+def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch, kind):
+    # The start-up control's accepted side (#579 quick check, m5): a target job with complete evidence that is not
+    # typed "before tests" fails the control.
+    prove = _load("prove_cancel_evidence")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "x/y")
+    monkeypatch.setenv("GITHUB_RUN_ID", "7")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    parent = {"workflow_id": 3, "head_sha": "a" * 40, "head_branch": "b",
+              "path": ".github/workflows/evidence-proof.yml"}
+    target = {"id": 42, "status": "completed", "conclusion": "cancelled", "run_attempt": 1}
+    monkeypatch.setattr(prove, "_api", lambda repo, endpoint: parent if endpoint == "actions/runs/7" else target)
+    monkeypatch.setattr(prove, "dispatch", lambda *args: None)
+    monkeypatch.setattr(prove, "target_run", lambda *args: target)
+    monkeypatch.setattr(prove, "wait_for_start_up", lambda repo, ident: [{"id": 1}, {"id": 2}])
+    monkeypatch.setattr(prove, "_gh_read", lambda *args: b"HTTP/2 200\r\ndate: Wed, 25 Nov 2026 14:40:00 GMT\r\n")
+    reason = {"kind": "manual-or-api", "message": CANCEL.MANUAL, "actor": "github-actions[bot]"}
+    rows = [{"job": job, "missing": [], "cancel_reason": reason, "A2": "yes", "artifacts": [9],
+             "kind": kind.replace("manual-or-api ", "superseded (by run 1) ")} for job in (1, 2)]
+    monkeypatch.setattr(prove, "inspect_run", lambda *args, **kwargs: rows)
+    monkeypatch.setattr(prove, "run_jobs", lambda *args: [])
+    monkeypatch.setattr(prove, "classify", lambda *args: {"kind": "unresolved"})
+    if kind.endswith("before tests"):
+        prove.main("start")
+    else:
+        with pytest.raises(RuntimeError, match="was not typed as cancelled before tests"):
+            prove.main("start")

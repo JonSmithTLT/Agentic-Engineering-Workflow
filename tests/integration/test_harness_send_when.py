@@ -32,8 +32,10 @@ EXECUTION = ".aew/policy/execution.yaml"
 @pytest.fixture
 def lab(tmp_path):
     lab = FakeOpenCodeDriver().create_lab(tmp_path)
-    enable_messaging(lab, X.MESSAGING_DISABLED)
     try:
+        # The lab already pins an explicit disabled policy. Only tests that change it need adoption.
+        policy, _ = Engine.discover(lab.root).execution_policy()
+        assert policy is not None and policy["coordination"]["messaging"] == X.MESSAGING_DISABLED
         yield lab
     finally:
         lab.cleanup()

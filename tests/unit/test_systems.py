@@ -860,10 +860,11 @@ def test_allowance_conditions_are_labelled_not_interpreted():
 
 def test_request_economy_tracks_the_leads_existing_open_row():
     data, own = systems.read_board(ROOT), owners_at_head()
-    e = sys_(data, "SYS-06")
-    slices = [s for s in e["remaining"] if "request-economy" in s["slice"]]
+    # The slice moved from SYS-06 to SYS-51 with E162 (the operator's finish-plan decisions of 2026-11-25); the
+    # guarantee is the row it tracks, wherever the board places it.
+    slices = [s for e in data["systems"] for s in e["remaining"] if "request-economy" in s["slice"]]
     assert len(slices) == 1 and slices[0]["row"] == "E162" and "E162" in own.open_rows
-    assert all(s["row"] != "E139" for s in e["remaining"])
+    assert all(s["row"] != "E139" for e in data["systems"] for s in e["remaining"])
 
 
 def test_unreadable_code_or_reference_is_exit_two_not_no_problem(monkeypatch, tmp_path, capsys):

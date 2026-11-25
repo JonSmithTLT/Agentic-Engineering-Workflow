@@ -5041,7 +5041,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-25
 
-**By:** #577: the steering tool's actions derived from one owner (`lower`, `request_raise`), its text, the Lead's system text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead's step (still kept from the Lead's wake, per QC-1 (c), pending the operator's confirmation on the PR), and the notify-event enum trimmed
+**By:** #577: the steering tool's actions derived from one owner (`lower`, `request_raise`), its text, the Lead's system text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead's step (still kept from the Lead's wake, per QC-1 (c), confirmed by the operator on the PR, 2026-11-25), and the notify-event enum trimmed
 
 *Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 

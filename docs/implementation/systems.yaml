@@ -492,8 +492,8 @@ systems:
       (engine/steering.py:343, on_adopt) or at its migration to v2 (:356, register_on_migrate). The loop thread in every
       Lead broker therefore stops at CONFIRMATION_UNAVAILABLE on each step it could take, naming the step as the Lead''s
       (E183): a quiet stop, recorded in loop.json and shown by status, never notified, and kept from the Lead''s wake
-      (LEADS_OWN_STEP, the operator''s ruling QC-1 (c) on E228''s fourth PR, pending the operator''s confirmation for
-      E183); the default desktop notifier shows each stop that needs attention once. RUN is opt-in: one `aew lead mode raise run` approved
+      (LEADS_OWN_STEP, the operator''s ruling QC-1 (c) on E228''s fourth PR, confirmed for E183 by the operator,
+      2026-11-25); the default desktop notifier shows each stop that needs attention once. RUN is opt-in: one `aew lead mode raise run` approved
       at the operator endpoint (auto-started by `aew opencode`, or `aew operator serve --dev`), which also needs a deliverable
       notifier (notifier_problem, :279) and a deadline_s on every routable profile. Every record stays guarantee: dev.'
   state:

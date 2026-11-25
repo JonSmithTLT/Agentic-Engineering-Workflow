@@ -6388,7 +6388,7 @@ sections:
     Closed: '2026-11-25'
     By: '#577: the steering tool''s actions derived from one owner (`lower`, `request_raise`), its text, the Lead''s system
       text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead''s step (still kept from
-      the Lead''s wake, per QC-1 (c), pending the operator''s confirmation on the PR), and the notify-event enum trimmed'
+      the Lead''s wake, per QC-1 (c), confirmed by the operator on the PR, 2026-11-25), and the notify-event enum trimmed'
 
   - '#': E191
     Was: '`aew init` at a terminal has no up-front way to decline every tool download: `init`''s `--fetch-tool` option taking

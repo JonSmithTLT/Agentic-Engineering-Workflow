@@ -230,12 +230,14 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
                 "the operator's, approved at the operator endpoint in their own terminal; a Lead session cannot run "
                 "it: `aew capability list` shows the register, and the operator makes the change")
     if any(p <= path for p in OPERATOR_ENDPOINT):
-        # What works (register E183): a request grants nothing, and a lower needs a mode the operator raised.
+        from aew.surface.contract import STEERING_STEP
+
+        # What works (register E183): a request grants nothing, and a lower needs a mode the operator raised; the
+        # crawl and walk step is the one owner's sentence, as in the tool's text and the Lead's system text.
         return (f"`aew {command_name(ns)}` is the operator's, through the operator endpoint in their own terminal; a "
                 "Lead session can neither raise its own steering mode nor reach the endpoint: request a raise with "
                 "the `steering` tool (action request_raise), which grants nothing until the operator raises it. A "
-                "lower (`aew lead mode lower`) works only once the operator's raise is in force; in crawl and walk "
-                "you take each step yourself")
+                "lower (`aew lead mode lower`) works only once the operator's raise is in force. " + STEERING_STEP)
     if path == frozenset({"init"}):  # `aew init` stays the operator's own; its first configuration is at the console
         from aew.engine.first_configuration import FLAGS
 

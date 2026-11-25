@@ -23,5 +23,5 @@
   `test_a_crawl_stop_names_the_step_as_the_leads_and_is_quiet_never_notified_nor_woken`
   (`tests/integration/test_steering_loop.py`); the pinned catalog digests in `tests/integration/test_message_send.py`
   and the Lead projection goldens. The surface map's `steering` entry notes the two actions it offers.
-- **Not closed here:** SYS-04's `remaining` still names E183, so closing the row would be a `stale_slice` problem in
-  `tools/systems.py`; the close goes with the SYS-04 update.
+- **Closed with SYS-04's update (review of #577, m2):** the E183 slice leaves SYS-04's `remaining`, its switch text
+  and evidence say what is built, and the row moves to §9. The stop's wake hold waits on the operator's confirmation.

@@ -551,7 +551,7 @@ def test_the_steering_text_says_what_works_as_a_run_receives_it():
 
     refusal = lead_broker.refuses_locally(build_parser().parse_args(["lead", "mode", "raise", "walk"]))
     assert refusal is not None and "request_raise" in refusal and "confirm" not in refusal, refusal
-    assert "lower" in refusal and "raise is in force" in refusal and "you take each step" in refusal, refusal
+    assert "lower" in refusal and "raise is in force" in refusal and contract.STEERING_STEP in refusal, refusal
     for entry in _steering_as_a_run_receives_it():
         text = entry["description"].lower()
         assert "raise" in text.split("lower", 1)[1], text  # what a lower needs, said with it

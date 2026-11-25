@@ -458,3 +458,103 @@ def test_a_launch_that_fails_after_the_dispatch_still_reports_the_committed_step
     assert out["completed_steps"][0]["revision"] == rev + 1 == p.rev()
     assert out["stopped"]["boundary"] == "launch_failed"
     assert out["stopped"]["error"]["code"] == "HARNESS_LAUNCH_FAILED"
+
+
+def custom_assessor_card(p):
+    """A project card of the assessor archetype other than the built-in one (the typed route cannot dispatch it)."""
+    from aew import roles
+
+    built_in = (Path(roles.__file__).parent / "cards" / f"{E.ASSESSOR_CARD}.yaml").read_text(encoding="utf-8")
+    catalog = p.root / ".aew" / "roles"
+    catalog.mkdir(parents=True, exist_ok=True)
+    (catalog / "custom_assessor.yaml").write_text(
+        built_in.replace(f"role: {E.ASSESSOR_CARD}", "role: custom_assessor"), encoding="utf-8")
+    return "custom_assessor"
+
+
+def follow_the_assessors_entry(lab, tmp_path, entry, card):
+    """#586 quick check, M-a: the stale-invocation entry a correction recorded for an active plan assessor, followed
+    to its outcome: the cancellation from a Lead session's shell, then the built-in card's typed dispatch from the
+    session, or another card's `--card` form at the operator's own terminal."""
+    p = lab.project
+    cancel = entry["commands"][0]
+    head, _ = P.split(cancel, False)
+    args = shlex.split(head.replace("<revision from aew status>", str(p.rev())))[1:]
+    [cancelled] = in_lead_session(lab, tmp_path, f"cancel-{card}", [
+        {"do": "aew", "args": args, "stdin": "".join(f"{k}: {json.dumps(v)}\n" for k, v in entry["fields"].items())}])
+    assert cancelled["result"]["exit"] == 0, cancelled
+    assert p.ok("invoke", "show", entry["invocation"])["status"] == "cancelled"
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    if card == E.ASSESSOR_CARD:
+        assert "operator" not in entry
+        [again] = in_lead_session(lab, tmp_path, f"dispatch-{card}", [typed_step(p, entry["commands"][1],
+                                                                                 entry["arguments"])])
+        result = answered(again)["result"]
+    else:
+        [operator_form] = P.commands(entry["operator"])
+        result = follow(p, *operator_form, env=lab.env)
+    assert result["role_card"] == card and result["scope"] == E.ASSESSMENT_SCOPE
+    assert lab.wait(result["launch"]["run"])["status"] == "ended_with_evidence"
+
+
+@pytest.mark.parametrize("custom", [False, True], ids=["built-in card", "custom card"])
+def test_a_scope_add_with_an_active_plan_assessor_is_recorded_and_its_entry_is_followed(lead_lab, tmp_path, custom):
+    """#586 quick check, M-a: a real `resolve` `add_scope` while the Ticket's plan assessor is active is recorded (the
+    correction's schema takes the assessor's entry), and the entry it names re-dispatches the assessor."""
+    import yaml
+    from aewflow import assign
+
+    from aew.engine import scope_ops as SC
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    lab, p = lead_lab, lead_lab.project
+    wid = create_planned_ticket(p, tmp_path, scope=("calc/core.py",))
+    card = custom_assessor_card(p) if custom else E.ASSESSOR_CARD
+    _, out = assess(p, wid, *(("--card", card) if custom else ()))
+    assign(p, wid)
+    arguments = {"expect_rev": p.rev(), "subject": SC.item_id(wid, "tests/test_core.py"), "choice": SC.CHOICE,
+                 "rationale": "the change to core needs its existing test extended"}
+    added = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
+                         token=p.token)
+    assert added["ok"], added["stopped"]
+    unit = Engine.discover(p.root)._k.store.current()["work"][wid]
+    doc = yaml.safe_load((p.root / ".aew" / unit[SC.UNIT_KEY][-1]["record"]).read_text(encoding="utf-8"))
+    [entry] = [s for s in doc["stale_invocations"] if s["invocation"] == out["invocation"]]
+    assert entry["arguments"]["subject"] == f"{wid}{E.PLAN_ITEM}" and ("operator" in entry) == custom
+    follow_the_assessors_entry(lab, tmp_path, entry, card)
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("custom", [False, True], ids=["built-in card", "custom card"])
+def test_a_gate_replacement_with_an_active_plan_assessor_is_recorded_and_its_entry_is_followed(lead_lab, tmp_path,
+                                                                                               custom):
+    """#586 quick check, M-a: a real `resolve` `replace_gate` on a Story whose child's plan assessor is active is
+    recorded, and the entry it names re-dispatches the assessor."""
+    import yaml
+
+    from aew.engine.store import Transition
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    lab, p = lead_lab, lead_lab.project
+    story = create_unit(p, "story", "Objective")
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    card = custom_assessor_card(p) if custom else E.ASSESSOR_CARD
+    _, out = assess(p, child, *(("--card", card) if custom else ()))
+    prose = "the targeted tests pass and the module stays under 300 lines"
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:  # a parent written before ITEMS 55 holds a gate no unit type can satisfy
+        s.state["work"][story]["policy"] = {"mandatory_gates": [prose], "min_descendant_class": None,
+                                            "rationale": None}
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="a parent written before ITEMS 55"))
+    arguments = {"expect_rev": p.rev(), "subject": gate_ops.item_id(story, prose), "choice": "replace_gate",
+                 "replacement": "check:unit", "rationale": "the targeted check is that standard"}
+    replaced = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
+                            token=p.token)
+    assert replaced["ok"], replaced["stopped"]
+    [entry] = [s for s in replaced["result"]["stale_invocations"] if s["invocation"] == out["invocation"]]
+    pointer = Engine.discover(p.root)._k.store.current()["work"][story]["policy"]["corrections"][-1]
+    record = yaml.safe_load((p.root / ".aew" / pointer["path"]).read_text(encoding="utf-8"))
+    assert entry in record["stale_invocations"] and ("operator" in entry) == custom
+    follow_the_assessors_entry(lab, tmp_path, entry, card)

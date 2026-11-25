@@ -69,6 +69,8 @@ GUIDE_CORES = {
     "keep the steps": ("Who does what", "A mutating Ticket, step by step", "Every command", "Coordination messages"),
     "lean": ("Who does what", "Every command", "Coordination messages"),
 }
+# The desktop session a notifier reads: without it, `status` reports the same unavailable notifier on every host.
+DESKTOP_VARIABLES = frozenset({"DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY"})
 POINTER = "- {heading}: `aew guide --section {slug}`\n"  # a hypothetical command; only its length matters here
 
 
@@ -161,6 +163,18 @@ def items(turn: dict[str, Any], output: str, n: int) -> tuple[int, int]:
     return probe_measure.size(call), probe_measure.size(result)
 
 
+def fixture_env(base: Path, home: Path, host: dict[str, str] | None = None) -> dict[str, str]:
+    """The host's environment, less what would change the result text: AEW's own variables (a credential, a fault
+    switch), Git's, and the desktop session a notifier reads. It is not rebuilt from nothing: Windows' OpenSSL cannot
+    create a TLS context without SYSTEMROOT, and `aew init` makes one (PR #589's Windows integration lane)."""
+    env = {key: value for key, value in (os.environ if host is None else host).items()
+           if not key.upper().startswith(("AEW_", "GIT_")) and key.upper() not in DESKTOP_VARIABLES}
+    env.update({"HOME": str(home), "LANG": "C.UTF-8", "PYTHONPATH": str(ROOT / "src"), "PYTHONDONTWRITEBYTECODE": "1",
+                capability_store.base_variable(): str(base / "capability"),
+                "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z"})
+    return env
+
+
 class Fixture:
     """A fresh project with a planned Ticket, driven through the real CLI. A new project selects its map at init."""
 
@@ -173,12 +187,7 @@ class Fixture:
         self.repo.mkdir()
         home = base / "home"
         home.mkdir()
-        # A fixed, minimal environment, so the result text does not depend on the host's desktop or its register.
-        self.env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home), "LANG": "C.UTF-8",
-                    "PYTHONPATH": str(ROOT / "src"), "PYTHONDONTWRITEBYTECODE": "1",
-                    capability_store.base_variable(): str(base / "capability"),
-                    "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
-                    "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        self.env = fixture_env(base, home)
         for args in (("init", "-q", "-b", "main"), ("config", "user.name", "AEW Probe"),
                      ("config", "user.email", "probe@invalid"), ("config", "core.autocrlf", "false")):
             self.git(*args)
@@ -208,7 +217,7 @@ class Fixture:
                               text=True, encoding="utf-8", stdin=subprocess.DEVNULL, timeout=180, check=False,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if proc.returncode:
-            raise RuntimeError(f"aew {args[0]} exited {proc.returncode}: {proc.stderr.strip()[-400:]}")
+            raise RuntimeError(f"aew {args[0]} exited {proc.returncode}: {proc.stderr.strip()[-2000:]}")
         return proc.stdout
 
     def ok(self, *args: str) -> Any:

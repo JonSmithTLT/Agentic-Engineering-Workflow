@@ -41,3 +41,14 @@ def test_the_break_even_needs_a_shell_saving_per_use_to_exist():
     assert E.break_even(0, 400, 34, 0.0, 40_000) == 0.0
     # 600 B on 34 requests against one saved 40,000 B request less 400 B resent on 16.5 later ones.
     assert E.break_even(600, 400, 34, 1.0, 40_000) == pytest.approx(600 * 34 / (40_000 - 400 * 16.5))
+
+
+def test_the_fixture_keeps_the_hosts_environment_but_not_a_credential_git_or_a_desktop(tmp_path):
+    # Windows' OpenSSL needs SYSTEMROOT to create a TLS context, which `aew init` does (#589's Windows lane).
+    host = {"SYSTEMROOT": r"C:\Windows", "PATH": "/bin", "AEW_LEAD_TOKEN": "x", "aew_invocation_token": "y",
+            "GIT_DIR": "/elsewhere", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/bus", "XDG_RUNTIME_DIR": "/run/user"}
+    env = E.fixture_env(tmp_path, tmp_path / "home", host)
+    assert env["SYSTEMROOT"] == r"C:\Windows" and env["PATH"] == "/bin" and env["HOME"] == str(tmp_path / "home")
+    assert not {"AEW_LEAD_TOKEN", "aew_invocation_token", "GIT_DIR", "DBUS_SESSION_BUS_ADDRESS",
+                "XDG_RUNTIME_DIR"} & set(env)
+    assert env["GIT_AUTHOR_DATE"] == env["GIT_COMMITTER_DATE"]

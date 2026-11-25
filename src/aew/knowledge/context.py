@@ -302,6 +302,32 @@ def _on_the_bridge(operations: list[str]) -> list[str]:
     return [op for op in operations if op in BRIDGE_OPERATIONS or op.split(".")[0] in BRIDGE_OPERATIONS]
 
 
+def _scope_duties(p: PackInputs, delivered: set[str]) -> list[str]:
+    """What a role evaluates, and from which inputs, at the scope it was dispatched at: added to the archetype's
+    responsibilities, which hold at every scope (register E366). A duty that reads an input is given only where the pack
+    delivers it (``delivered``: its other sections), and the values a field takes come from the evidence schema."""
+    if p.role != "reviewer":
+        return []
+    if p.scope == E.ASSESSMENT_SCOPE:
+        statuses = schema("evidence")["properties"]["assessment"]["properties"]["requirement_trace"]["items"][
+            "properties"]["status"]["enum"]
+        return ["trace every requirement and acceptance criterion of the unit, and of its ancestors, to the plan, and "
+                f"mark each {', '.join(statuses[:-1])} or {statuses[-1]}",
+                "challenge the plan's load-bearing premises, the ones it declares and the factual premises the request "
+                "states, against the source in your workspace and the evidence",
+                "name consequential reliance the plan omits, and the dependency, integration, feasibility and evidence "
+                "obligations it leaves without an owner",
+                "give every gap in the trace and every premise that fails a finding of its own"]
+    duties = []
+    if "change" in delivered:
+        checks = " and the check results on its snapshot" if "check-results" in delivered else ""
+        duties += [f"evaluate the change below{checks}; look for defects, plan violations, missing tests, ownership "
+                   "mistakes, security and error-path problems, and unnecessary scope"]
+    if "open-findings" in delivered:
+        duties += ["when re-reviewing, state which of the open findings below are resolved"]
+    return duties
+
+
 def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
     """``delivered``: the names of the pack's other sections, so the contract promises only what follows it (most of
     them depend on the scope, a switch or the data)."""
@@ -330,8 +356,8 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
             name for name in p.role_def["context"]["knowledge"] if KNOWLEDGE_SECTIONS.get(name) in delivered),
         "- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none"),
         "",
-        "### Responsibilities (archetype)",
-        *_bullets(p.role_def["responsibilities"]),
+        "### Responsibilities",
+        *_bullets([*p.role_def["responsibilities"], *_scope_duties(p, delivered)]),
         "",
         "### Allowed engine operations",
         *_bullets(_on_the_bridge(_operations(p))),
@@ -382,14 +408,12 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
                            "into the run's private index)",
                            "an implementation report with a completed self-review is submitted"])
     elif p.role == "reviewer" and p.scope == E.ASSESSMENT_SCOPE:
-        lines += _bullets(["every requirement and acceptance criterion is traced to the plan as covered, partial or "
-                           "missing", "the plan's load-bearing premises, and the facts the request states, are "
-                           "challenged against the source and the evidence",
-                           "every gap and every premise that fails cites a finding of its own",
-                           "a plan_assessment is submitted; you do not revise the plan yourself"])
+        lines += _bullets(["a plan_assessment is submitted that does each responsibility above; you do not revise the "
+                           "plan yourself"])
     elif p.role == "reviewer":
         lines += _bullets(["every finding has a severity and says whether a change is required",
-                           "earlier open findings are marked resolved or remain open",
+                           *(["the open findings are marked resolved or remain open"] if "open-findings" in delivered
+                             else []),
                            "a review is submitted; do not fix anything yourself"])
     elif p.role == "verifier":
         lines += _bullets(["each acceptance criterion is demonstrated by evidence you produced",
@@ -693,11 +717,8 @@ def sections(p: PackInputs) -> list[Section]:
     if p.role == "reviewer" and assessing:
         out.append(_lines_section("review-scope", CONSTRAINTS, [
             "", "## Assessment scope", "",
-            "Assess the accepted plan above, independently: compare it with the requirement and the request as "
-            "recorded, never with a summary of them; challenge its dependency, integration, feasibility and evidence "
-            "obligations; test its load-bearing premises, and the facts the request states, against the source in "
-            "your workspace; and name consequential reliance the plan leaves out. Record each gap and each premise "
-            "that fails as a finding."]))
+            "Assess the accepted plan above, independently, as your responsibilities say: against the requirement and "
+            "the request as recorded, never a summary of them."]))
     elif p.role == "reviewer" and p.scope in {"observation", "parent"}:
         out.append(_lines_section("review-scope", CONSTRAINTS, [
             "", "## Review scope", "",

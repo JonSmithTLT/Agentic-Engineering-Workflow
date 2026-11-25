@@ -11,6 +11,8 @@ Each guard is a function of the rendered text or the role's definition, so its p
 - a report format is what the engine accepts as it stands, its other values listed beside it from what the engine
   validates, and it names no scope (the engine fills in the dispatched one);
 - a role that may not change the tree it evaluates is told what a check that writes there does to its submission;
+- an evaluating role's instructions fit its scope: none names an input its pack there does not carry (a diff, check
+  output, open findings), and none asks for a field its scope's report refuses (register E366);
 - a role with no credential is told to stop, never to get one, and what an archetype tells any role asks for no
   credential and names only commands that parse (D2 does not scan these two).
 
@@ -33,7 +35,7 @@ from aew.harness import bridge
 from aew.harness import contract as K
 from aew.knowledge import context as ctx
 from aew.knowledge import evidence as E
-from aew.schemas import validate_property
+from aew.schemas import schema, validate_property
 from aew.util import load_yaml
 
 SCOPES = {"implementer": ["ticket"],
@@ -208,6 +210,41 @@ def archetype_prose(role: str) -> str:
                      for line in definition.get(key) or [])
 
 
+# Words in a role's instructions that send it to an input, each with the pack section that delivers that input
+# (register E366): an instruction may name one only where its pack has that section.
+INPUTS = {r"\bdiffs?\b|\bthe change\b": "change", r"\bcheck (?:output|results)\b": "check-results",
+          r"\b(?:earlier|open) (?:review )?findings\b|\bre-review": "open-findings"}
+# The roles that evaluate another's work from what their pack carries. An implementer's diff is its own workspace's,
+# never a pack input, so its words name no input here.
+EVALUATORS = {"reviewer", "verifier"}
+# Words that ask a role for a report field, each with the field: the scope's report must take it (its schema section).
+FIELDS = {r"\bresolved\b": "resolved_findings"}
+
+
+def instructions(p: ctx.PackInputs) -> str:
+    """What the pack tells the role to do: its contract (authority, responsibilities, completion criteria) and its
+    card, never the sections that carry the inputs themselves, nor the card's selection guidance (the Lead's)."""
+    return "\n".join(line for s in ctx.sections(p) if s.name in {"contract", "role-card"} for line in s.head
+                     if not line.startswith("Selection guidance"))
+
+
+def scope_misfits(p: ctx.PackInputs) -> list[str]:
+    """Each instruction that names an input the pack at its scope does not deliver, or asks for a field the scope's
+    report refuses."""
+    if p.role not in EVALUATORS:
+        return []
+    delivered = {s.name for s in ctx.sections(p)}
+    text = instructions(p)
+    out = [f"names {section} ({m.group(0)!r}), which this pack does not deliver"
+           for word, section in INPUTS.items() if section not in delivered for m in [re.search(word, text, re.I)] if m]
+    kind = ctx.output_template(p.role, p.scope)[0]
+    if kind:
+        section = schema("evidence")["properties"][SECTION[kind]]
+        out += [f"asks for {field} ({m.group(0)!r}), which a {kind} refuses" for word, field in FIELDS.items()
+                if field not in (section.get("properties") or {}) for m in [re.search(word, text, re.I)] if m]
+    return out
+
+
 def check_trap(pack: str, role: str) -> str | None:
     """What is wrong with what ``pack`` says about a check that writes, if anything."""
     offered, said = "aew check run <check-id>" in pack, ctx.CHECK_WRITES_NOTE in pack
@@ -279,6 +316,28 @@ def test_context_read_is_the_only_operation_left_off_the_list(role):
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_a_report_format_is_what_the_engine_accepts_and_lists_the_other_values(role, scope, full, card):
     assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role, scope) == []
+
+
+@pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
+def test_a_roles_instructions_fit_its_scope(role, scope, full, card):
+    """Register E366: no instruction sends a role to an input its pack at that scope does not carry (a diff, check
+    output, earlier findings), and none asks for a field the scope's report refuses (a plan assessment's
+    `resolved_findings`)."""
+    assert scope_misfits(inputs(role, scope, full=full, card=card)) == []
+
+
+@pytest.mark.parametrize(("text", "problem"), [
+    ("- evaluate the change against the requirement, diff and check output", "names change"),
+    ("- when re-reviewing, state which earlier findings are resolved", "names open-findings"),
+    ("- state which findings are resolved", "asks for resolved_findings"),
+    ("- trace every requirement to the plan", None),
+])
+def test_the_scope_fit_guard_right_wrong_and_missing(monkeypatch, text, problem):
+    """Planted lines in an assessor's contract: each misfit is named; a line that fits is not."""
+    p = inputs("reviewer", E.ASSESSMENT_SCOPE, full=False)
+    monkeypatch.setitem(p.role_def, "responsibilities", [*p.role_def["responsibilities"], text.removeprefix("- ")])
+    found = scope_misfits(p)
+    assert found == [] if problem is None else any(problem in f for f in found), found
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())

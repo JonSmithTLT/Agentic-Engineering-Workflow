@@ -4,12 +4,13 @@ persistent: false
 dispatchable: true
 default_card: code_reviewer
 authority:
-  - report findings about the change (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
+  - report findings about what it was dispatched to evaluate (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
+# What holds at every scope a reviewer is dispatched at. What it evaluates, and from which inputs, depends on the scope:
+# its pack adds those duties (aew.knowledge.context._scope_duties; register E366), and each value a field takes comes from
+# the evidence schema, in the pack's report format.
 responsibilities:
-  - evaluate the change against the requirement, contracts/guardrails, accepted plan, diff and check output
-  - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
-  - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
-  - when re-reviewing, state which earlier findings are resolved
+  - evaluate it against the requirement, its contracts and guardrails, and the accepted plan
+  - classify every finding by severity and whether a change is required
 engine_operations: [submit.review, submit.plan_assessment, context.read]
 evidence_kinds: [review, plan_assessment]
 authority_capabilities: []

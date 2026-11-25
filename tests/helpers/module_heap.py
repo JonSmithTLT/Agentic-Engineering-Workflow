@@ -36,6 +36,10 @@ fail.
 - pytest's own objects for each test are charged to its module: about 50 blocks per collected item at import, and
   about 80 to 120 per test after its tests (the reports pytest keeps). So a module of about 2,500 to 3,000 tests could
   reach the budget after its tests from that alone; the largest today has 738.
+- A ``shared_setup.once`` value's ``cache_clear`` withdraws its owner's whole credit, so it is exact only for a
+  top-level value nothing else holds: clearing a value another module still holds, or an outer build whose nested
+  build is still cached, is charged to the clearing module; clearing a nested build leaves the outer build's credit
+  standing. No ``once`` value is cleared today (quick check of #559, n6).
 - Allocations a C extension makes with its own allocator are not counted, and under ``PYTHONMALLOC=malloc`` nothing
   is: the reading stays flat and the guard is inert.
 """

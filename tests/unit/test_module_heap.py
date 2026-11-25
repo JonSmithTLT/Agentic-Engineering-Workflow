@@ -148,6 +148,7 @@ def test_a_cleared_and_rebuilt_shared_value_is_credited_once_not_twice():
     del kept
     value()
     assert first > 100_000 and shared_setup.credited() - before == pytest.approx(first, rel=0.1)
+    value.cache_clear()  # type: ignore[attr-defined]  # withdraw the credit, so this module keeps no allowance (n7)
 
 
 def test_a_shared_build_is_recorded_once_and_a_nested_one_is_not_counted_twice():
@@ -168,3 +169,5 @@ def test_a_shared_build_is_recorded_once_and_a_nested_one_is_not_counted_twice()
     assert calls == ["outer", "inner"]
     added = {k: v for k, v in shared_setup.owners().items() if before.get(k) != v}
     assert list(added) == [f"{__name__}.{outer.__qualname__}"]
+    inner.cache_clear()  # type: ignore[attr-defined]
+    outer.cache_clear()  # type: ignore[attr-defined]  # withdraw the credit, so this module keeps no allowance (n7)

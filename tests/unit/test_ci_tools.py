@@ -47,6 +47,16 @@ def _load(name: str):
 
 check_assurance = _load("check_assurance")
 tier = _load("tier")
+update_durations = _load("update_durations")
+shard_plan = _load("shard_plan")
+cost_record = _load("cost_record")
+coverage_gate = _load("coverage_gate")
+
+ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
+       "tests/integration/test_c.py::posix_only"]
+SKIP_ID = "tests/integration/test_c.py::posix_only"
+EXPECT = {"schema": check_assurance.SKIPS_SCHEMA, "skipped": {"win32": {SKIP_ID: "needs POSIX"}, "linux": {}},
+          "xfail": {}}
 
 
 @pytest.mark.parametrize(("change", "expected"), [("docs/README.md", "docs"), ("src/aew/engine/base.py", "full")])
@@ -59,16 +69,6 @@ def test_requesting_lane_names_uses_the_same_tier_as_workflow_output(tmp_path, c
                       "--github-output", str(workflow)]) == 0
     assert workflow.read_text(encoding="utf-8").splitlines()[0] == f"tier={expected}"
     assert lanes.read_text(encoding="utf-8").splitlines() == list(tier.LANES[expected])
-update_durations = _load("update_durations")
-shard_plan = _load("shard_plan")
-cost_record = _load("cost_record")
-coverage_gate = _load("coverage_gate")
-
-ALL = ["tests/unit/test_a.py::t1", "tests/unit/test_a.py::t2", "tests/regression/test_b.py::t3",
-       "tests/integration/test_c.py::posix_only"]
-SKIP_ID = "tests/integration/test_c.py::posix_only"
-EXPECT = {"schema": check_assurance.SKIPS_SCHEMA, "skipped": {"win32": {SKIP_ID: "needs POSIX"}, "linux": {}},
-          "xfail": {}}
 
 
 def report(platform: str, lane: str, results: dict[str, str], shard: str | None = None, **kw) -> dict:

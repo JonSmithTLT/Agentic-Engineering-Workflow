@@ -941,16 +941,16 @@ def test_a_complete_run_decides_stale_whatever_its_event(tmp_path, capsys, monke
     D2 enforce measurement). A full-tier pull request runs what main runs, so it fails on the change that caused it."""
     ratchet = _ratchet()
     head = tmp_path / "allowed.yaml"
-    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    head.write_text(allowed.render({"O-IDS cli:aew x|result"}), encoding="utf-8")
     args = [str(_reports(tmp_path)), "--event", event, "--allowlist", str(head), "--tier", "full",
             "--assurance", "success"]
     assert ratchet.main(args) == 0  # shadow: reported only
     assert "1 stale (allow-listed, no longer observed)" in capsys.readouterr().out
-    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    monkeypatch.setitem(modes.MODES, "O-IDS", modes.ENFORCE)
     assert ratchet.main(args) == 1
     out = capsys.readouterr().out
-    assert "FAIL O-CMD cli:aew x|result" in out
-    assert allowed.remove_command("O-CMD cli:aew x|result") in out  # what to do, ready to paste
+    assert "FAIL O-IDS cli:aew x|result" in out
+    assert allowed.remove_command("O-IDS cli:aew x|result") in out  # what to do, ready to paste
 
 
 def test_a_lost_shard_fails_the_assurance_check_and_yields_no_mass_stale(tmp_path, capsys, monkeypatch):
@@ -1067,6 +1067,29 @@ def test_a_planted_credential_ask_fails_the_ratchet_under_the_committed_modes_an
         keys += [f"{f.rule} {f.site}" for f in found]
     assert not [f for f in rules.check(Output(site="unit", text=f"Your key is sk-ant-api03-{fake}AA and it works."))
                 if f.rule == "O-SECRET"]
+    head = tmp_path / "allowed.yaml"
+    head.write_text((Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "allowed.yaml")
+                    .read_text(encoding="utf-8"), encoding="utf-8")
+    assert _ratchet().main([str(_with_findings(tmp_path, keys)), "--event", "push", "--tier", "fast",
+                            "--assurance", "success", "--allowlist", str(head)]) == 1
+
+
+def test_a_planted_unparseable_suggestion_fails_the_ratchet_under_the_committed_modes_and_a_mention_is_no_finding(
+        tmp_path):
+    """With the modes as committed and nothing patched, a structured next step that does not parse, or a typed tool
+    the catalog lacks, fails the run as the ratchet decides it in `assurance`: O-CMD enforces (the operator: E140,
+    2026-11-04, and 2026-11-19, after its triage). A command named in prose without its arguments is a mention, and
+    no finding."""
+    from pathlib import Path
+
+    planted = {"next": Output(site="cli:aew planted-next|result", payload={"next": "`aew harness send`"}),
+               "tool": Output(site="cli:aew planted-tool|result", payload={"tool": "integration_publsh"})}
+    keys = []
+    for name, output in planted.items():
+        found = [f for f in rules.check(output) if f.rule == "O-CMD"]
+        assert found, name
+        keys += [f"{f.rule} {f.site}" for f in found]
+    assert not [f for f in rules.check(prose("aew harness send")) if f.rule == "O-CMD"]
     head = tmp_path / "allowed.yaml"
     head.write_text((Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "allowed.yaml")
                     .read_text(encoding="utf-8"), encoding="utf-8")
@@ -1292,7 +1315,7 @@ def _base_modes(tmp_path, values: str):
     return path
 
 
-def _lowering(tmp_path, monkeypatch, labels, values='"O-CMD": ENFORCE'):
+def _lowering(tmp_path, monkeypatch, labels, values='"O-IDS": ENFORCE'):
     ratchet = _ratchet()
     read: list[int] = []
 
@@ -1316,13 +1339,13 @@ def test_lowering_a_mode_fails_a_pull_request_without_the_operators_label(tmp_pa
     """Any pull request could set a rule back to shadow, and only review caught it. Labels that cannot be read sign
     nothing."""
     assert _lowering(tmp_path, monkeypatch, labels)[0] == 1
-    assert "FAIL mode O-CMD: lowered from enforce against the base" in capsys.readouterr().out
+    assert "FAIL mode O-IDS: lowered from enforce against the base" in capsys.readouterr().out
 
 
 def test_lowering_a_mode_passes_on_a_pull_request_the_operator_merges(tmp_path, monkeypatch, capsys):
     assert _lowering(tmp_path, monkeypatch, ["operator-merge"])[0] == 0
     out = capsys.readouterr().out
-    assert "accepted mode O-CMD lowered" in out and "FAIL" not in out
+    assert "accepted mode O-IDS lowered" in out and "FAIL" not in out
 
 
 @pytest.mark.parametrize(("labels", "code", "line"), [([], 1, "FAIL mode O-GONE"),
@@ -1540,12 +1563,12 @@ def test_a_negator_still_governs_its_own_verb(text):
 # negator kind (recall first, the Lead's call). Generated from Unicode's own classes, not from a list of marks: every
 # character in a punctuation (P*) or symbol (S*) category, and every character Python splits lines at. Only a word
 # character ("_", which joins a name such as AEW_LEAD_TOKEN) and the backtick (a code span is the verb's own object)
-# are not punctuation.
-_EVERY_CHARACTER = [chr(c) for c in range(sys.maxunicode + 1)]
-PUNCTUATION_CHARS = [c for c in _EVERY_CHARACTER if unicodedata.category(c)[0] in "PS"]
+# are not punctuation. Every character is walked, never kept: a list of all of them held 1.1 M memory blocks for the
+# rest of the session in every process that collects this module (register E363's sweep).
+PUNCTUATION_CHARS = [chr(c) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c))[0] in "PS"]
 NOT_PUNCTUATION = {c for c in PUNCTUATION_CHARS if re.fullmatch(r"\w", c)} | {"`"}
 MARKS = [c for c in PUNCTUATION_CHARS if c not in NOT_PUNCTUATION]
-LINE_BREAKS = [c for c in _EVERY_CHARACTER if len(f"a{c}b".splitlines()) == 2]
+LINE_BREAKS = [chr(c) for c in range(sys.maxunicode + 1) if len(f"a{chr(c)}b".splitlines()) == 2]
 NEGATOR_LEADS = {"prohibition": "AEW can't", "plain negator": "The shell has no session",
                  "refusing verb": "Ignore the warning"}
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]

@@ -9,8 +9,10 @@ text with no other edit. What is still hand-written is the prose, listed in the 
 
 from __future__ import annotations
 
+import argparse
 import ast
 import re
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -729,6 +731,154 @@ def test_a_dispatch_hint_is_the_guides_own_launched_move(state, role):
     argv = command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:]
     ns = build_parser().parse_args(argv)
     assert ns.launch and ns.role == role and ns.work_id == "T-0007", ns
+
+
+def whole(texts: list[str]) -> int:
+    """Judge ``texts`` as a structured next step is judged (E140's O-CMD flip): D2's own rule finds nothing, and every
+    `aew` command in them runs on the live parser with each placeholder in its table. Returns how many parsed."""
+    import printed_commands as P
+    from discovery import rules
+
+    found = [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_actions": texts}))
+             if f.rule == "O-CMD"]
+    assert found == [], found
+    parsed = 0
+    for text in texts:
+        for command, fenced in P.commands(text):
+            if command.startswith("aew "):
+                P.parse(command, fenced=fenced)  # raises PrintedCommandError, saying why, if it does not run
+                parsed += 1
+    return parsed
+
+
+def test_the_parent_acceptance_hint_is_the_guides_own_launched_move(monkeypatch):
+    """#547 quick check n1: the parent's acceptance hint dispatches a reviewer or verifier, launched, by the one owner
+    (`transitions.dispatch_command`); without `--launch` it made an invocation with no run."""
+    from aew.cli.main import build_parser
+
+    monkeypatch.setattr(resume_ops, "dependency_blockers", lambda *a, **k: [])
+    resume = Resume.__new__(Resume)
+    resume.units = SimpleNamespace(plan_binding_problem=lambda state, wid: None)  # type: ignore[assignment]
+    resume.gates = SimpleNamespace(gate_context=lambda state, wid: {  # type: ignore[assignment]
+        "gates": {"review_r1": {"status": G.MISSING}}, "open_required_findings": [],
+        "snapshot": {"children_digest": "d", "base_revision": 1}})
+    resume.k = SimpleNamespace(repo_root=None, authoritative_commit=lambda: "c")  # type: ignore[assignment]
+    [hint] = resume._parent_actions({"work": {}}, "S-0007", {"state": "ACCEPTANCE_PENDING", "kind": "story"})
+    command = T.dispatch_command("S-0007", "reviewer|verifier")
+    assert f"`{command}`" in hint, hint
+    assert whole([hint]) == 1
+    for role in ("reviewer", "verifier"):
+        ns = build_parser().parse_args(command.replace("reviewer|verifier", role)
+                                       .replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:])
+        assert ns.launch and ns.role == role and ns.work_id == "S-0007", ns
+
+
+def test_a_parents_re_verification_with_its_card_is_launched():
+    """#547 quick check n2: a parent's verification classified ENVIRONMENT_OR_EVIDENCE_BLOCKED is re-verified with the
+    failed card, and the printed dispatch, read from the one owner, launches it: without `--launch` it made an
+    invocation with no run."""
+    from aew.cli.main import build_parser
+    from aew.engine.hierarchy_ops import Hierarchy
+
+    unit = {"parent_verification": {"classification": "ENVIRONMENT_OR_EVIDENCE_BLOCKED", "failed_evidence": "EV-3"}}
+    gc = {"classification_retry": {"current": False, "card": "verifier"}}
+    text = Hierarchy._classification_unmet(Hierarchy.__new__(Hierarchy), "S-0007", unit, gc)
+    command = T.dispatch_command("S-0007", card="verifier")
+    assert text is not None and f"`{command}`" in text, text
+    assert whole([text]) == 1
+    ns = build_parser().parse_args(command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:])
+    assert ns.launch and ns.card == "verifier" and ns.role is None and ns.work_id == "S-0007", ns
+    with pytest.raises(ValueError):
+        T.dispatch_command("S-0007", "verifier", card="verifier")  # one or the other: never both
+    with pytest.raises(ValueError):
+        T.dispatch_command("S-0007", "")  # an empty role is no role (#555 review n1): never `--card None`
+
+
+def launched_redispatch(text: str, work_id: str = "T-0007") -> argparse.Namespace:
+    """The one `aew work redispatch` that ``text`` prints, parsed by the real parser with its revision filled."""
+    import printed_commands as P
+
+    from aew.cli.main import build_parser
+
+    [command] = [c for c, _ in P.commands(text) if c.startswith("aew work redispatch")]
+    assert command == T.operation_command("work.redispatch", work_id), text
+    argv = shlex.split(command.replace(f" {T.EXPECT_REV}", " --expect-rev 3"))[1:]
+    return build_parser().parse_args(argv)
+
+
+def test_every_printed_redispatch_launches_the_new_attempt(monkeypatch):
+    """#555 review m1: a redispatch printed without `--launch` makes an attempt with no run, as #547's M1 found for a
+    dispatch. The owner's command, the refusal of an executor dispatch, and a stale record's action each parse on the
+    real parser with `--launch`."""
+    from aew.engine import nonmutating_ops
+    from aew.engine.nonmutating_ops import NonMutating
+
+    ns = launched_redispatch(f"`{T.operation_command('work.redispatch', 'T-0007')}`")
+    assert ns.launch and ns.work_id == "T-0007" and ns.reason == "<reason>", ns
+    engine = NonMutating.__new__(NonMutating)
+    unit = {"kind": "ticket", "mutating": False, "state": "RUNNING"}
+    blocker = engine._g_invoke({"work": {"T-0007": unit}}, "T-0007", {})
+    assert blocker is not None and launched_redispatch(blocker.message).launch, blocker
+    monkeypatch.setattr(nonmutating_ops.F, "record_freshness", lambda root, ev, commit: {"source_bound": True,
+                                                                                       "status": "STALE"})
+    engine.k = SimpleNamespace(repo_root=None)  # type: ignore[assignment]
+    record = {"_sha256": "s", "kind": "investigation", "attempt": 1, "result": "pass", "plan_revision": None}
+    unit = {"execution": {"record": {"id": "EV-1", "sha256": "s"}, "expected_kind": "investigation", "attempt": 1}}
+    status = engine.execute_record_status({"work": {"T-0007": unit}}, "T-0007", {"EV-1": record}, "c")
+    assert status["status"] == G.STALE and launched_redispatch(status["action"]).launch, status
+
+
+def test_the_project_and_non_mutating_next_actions_name_each_command_whole(monkeypatch):
+    """E140's O-CMD flip, the leftovers the triage named: a pending handoff, a non-mutating Ticket's new attempt and
+    its record's ingest, a stale dispatch's redispatch, and a non-mutating reconcile's next step. Each is offered to
+    be run as given, so each command is whole and read from its owner; the handoff names no command at all, since
+    its whole form would carry the offer secret."""
+    from aew.engine import nonmutating_ops
+    from aew.engine.nonmutating_ops import NonMutating
+
+    monkeypatch.setattr(resume_ops.H, "is_v2", lambda state: True)
+    monkeypatch.setattr(resume_ops.gate_ops, "open_items", lambda state, catalogue: [])
+    resume = Resume.__new__(Resume)
+    resume.k = SimpleNamespace(manifest={"authority": {"candidates": []}},  # type: ignore[assignment]
+                               policy=lambda name: {"checks": {}})
+    resume.roles = SimpleNamespace(policy_problems=lambda: [], gate_catalogue=lambda: {})  # type: ignore[assignment]
+    resume.harness = SimpleNamespace(harness_resume=lambda state: [])  # type: ignore[assignment]
+    resume.history = SimpleNamespace(audit_status=lambda state: None)  # type: ignore[assignment]
+    project = resume.next_actions({"lead": {"status": "handoff_pending", "generation": 1}, "work": {}})
+    assert project == [f"a Lead handoff is pending: {resume_ops.HANDOFF_ACCEPT}"]
+    assert "aew " not in resume_ops.HANDOFF_ACCEPT and "--offer" not in resume_ops.HANDOFF_ACCEPT
+
+    redispatch = T.operation_command("work.redispatch", "T-0007")
+    resume.units = SimpleNamespace(plan_binding_problem=lambda state, wid: None,  # type: ignore[assignment]
+                                   dispatch_binding_problem=lambda state, wid: "moved")
+    resume.inputs = SimpleNamespace(input_status=lambda state, wid: [])  # type: ignore[assignment]
+    resume._submitted = lambda state, wid, unit, kind: ["EV-1"]  # type: ignore[method-assign]
+    execution = {"invocation": "INV-1", "attempt": 1, "expected_kind": "investigation"}
+    hints = resume._common_actions({}, "T-0007", {"state": "RUNNING"})
+    for status in ("active", "completed"):
+        hints += resume._nm_ticket_actions({"invocations": {"INV-1": {"status": status}}}, "T-0007",
+                                           {"state": "RUNNING", "execution": execution, "invocations": ["INV-1"]})
+    hints += resume._nm_ticket_actions({"invocations": {}}, "T-0007", {"state": "INTERRUPTED", "invocations": []})
+    monkeypatch.setattr(nonmutating_ops.E, "scan", lambda root, wid: ([], []))
+    reconcile = NonMutating.__new__(NonMutating)
+    reconcile.k = SimpleNamespace(aew_root=None)  # type: ignore[assignment]
+    hints.append(reconcile._inspect_attempt({"invocations": {}}, "T-0007", {"execution": execution})["next"])
+    assert sum(f"`{redispatch}`" in h for h in hints) == 4, hints
+    assert f"`{T.operation_command('evidence.ingest', 'T-0007', 'EV-1')}`" in hints[1], hints
+    assert whole(hints) == 5
+
+
+def test_every_validation_next_step_names_each_command_whole():
+    """E140's O-CMD flip: `aew integrate validate`'s results named publish and classify without their revision,
+    `requeue` bare or with only its Ticket, and `validate` without its revision. Every `next` a validation result gives
+    is in one table, and each command in it is whole; so is a stuck run's step in `resume`."""
+    from aew.engine import validation_ops as VO
+
+    steps = VO.next_steps("T-0007")
+    assert whole(list(steps.values())) == len(steps)
+    run = {"id": "IV-1-1", "state": "running", "deadline_at": "2000-01-01T00:00:00Z"}
+    assert whole([VO.stuck_run(run, "T-0007") or ""]) == 1
+    assert f"`{T.operation_command('integrate.requeue', 'T-0007')}`" in steps["inconclusive"]
 
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:

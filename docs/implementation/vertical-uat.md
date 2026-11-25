@@ -426,7 +426,7 @@ In `shadow` a finding is reported and never fails a run. Every rule starts in `s
 | Rule | Mode |
 |---|---|
 | O-IDS | `shadow` |
-| O-CMD | `shadow` |
+| O-CMD | `enforce` |
 | O-CODE | `shadow` |
 | O-WORDS | `shadow` |
 | O-SECRET | `enforce` |

@@ -18,6 +18,7 @@ schema: aew/systems/v1
 wip_limit: 12
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
+  E363: the test suite's own hygiene (shared setup and the module heap guard), CI tooling rather than a product system
 systems:
 - id: SYS-01
   name: Evaluation instrument (F19, M4-H)
@@ -1414,12 +1415,12 @@ systems:
   switch:
     key: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test
       holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
-    default: O-SECRET enforce; O-CMD shadow
+    default: O-SECRET enforce; O-CMD enforce
     default_evidence: tests/helpers/discovery/modes.py:20,23
     owner: operator
     turning_on_changes: A new (rule, output-site) key under an enforced rule fails the CI run on every pull request and
-      on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19;
-      O-CMD still only reports.
+      on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19,
+      and O-CMD from its flip after its triage (E140's third PR).
   state:
     board_state: built_off
     built: 'yes'
@@ -1431,10 +1432,10 @@ systems:
     gaps closed. The other four rules stay in shadow until the operator decides. No product surface: it is done when CI
     fails on a new violation of an enforced rule.'
   remaining:
-  - slice: 'E140 PR 3, its O-CMD half: the flip of O-CMD to enforce, once a full-tier run with the triage''s fixes shows
-      no O-CMD key new, with the keys that run shows stale removed first (O-SECRET was flipped alone on 2026-11-19)'
+  - slice: 'E140''s last condition after the O-CMD flip: each pull request open at the flip runs once on the flipped base
+      before it merges, and the first nightly on the flipped base shows neither rule new or stale'
     row: E140
-    estimate: 1 PR (estimate)
+    estimate: no PR (the runs themselves)
   - slice: 'E141: scan the worker preamble, role cards, MCP text and readable.py, and judge a bare command named in a sentence'
     row: E141
     estimate: 1-2 PRs (estimate, census)
@@ -1445,8 +1446,9 @@ systems:
     item 6 (stays in shadow); then O-SECRET enforced alone and the D2 machinery kept, on the operator''s decisions: E140
     (2026-11-04, "enforce those two") and 2026-11-19 (triage the discovery rules once, then switch them on). The nightly
     reference run applies D2; its run 44567041398 found 0 O-SECRET findings in 47,192 captured outputs, at a commit older
-    than the flip''s base, and the flip''s own full-tier PR run is the proof at the base. The other five rules stay in
-    shadow'
+    than the flip''s base, and the flip''s own full-tier PR run is the proof at the base. O-CMD was enforced after its
+    triage (E140): its keys new against the allow-list fixed at their source, and the keys a full-tier run showed stale
+    removed. The other four rules stay in shadow'
   recommendation: freeze
   who: operator (E140, 2026-11-04; 2026-11-19), every rule's mode; the Lead builds each flip
   reason: 'The operator''s order is on the record: "enforce those two" (docs/implementation/future-work.yaml (row E140,

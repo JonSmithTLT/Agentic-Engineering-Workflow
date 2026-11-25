@@ -6,9 +6,9 @@ typed tools and when to use each, and one pointer per section. The core also nam
 which the system text's "as the guide says" pointed to with nothing behind it. `aew guide` is a relayed read for the
 contained Lead, so it adds no tool and no bytes to the tool list.
 
-**Measured with the pool gate's own render.** With messaging on, the guide went from 17,338 B to 9,437 B, a saving of
-7,901 B. With messaging off, it went from 17,160 B to 9,214 B. Under the pool's rule, the baseline's guide bytes
-dropped from 16,412 B to 8,511 B and the cap from 42,971 B to 35,070 B. The operator approves that cap, or records an
+**Measured with the pool gate's own render.** With messaging on, the guide went from 17,338 B to 9,447 B, a saving of
+7,891 B. With messaging off, it went from 17,160 B to 9,224 B. Under the pool's rule, the baseline's guide bytes
+dropped from 16,412 B to 8,521 B and the cap from 42,971 B to 35,080 B. The operator approves that cap, or records an
 allocation from the saving.
 
 **The failure criterion's counters.** Each line of the broker's typed-tool log now names its Lead session and
@@ -29,7 +29,7 @@ lookups by command.
 **The scripted probe, before and after.** These runs used the pinned OpenCode 2.2.6 in a loopback-only namespace,
 with the same scripted turns.
 - At main ee89c341, the Lead's first request carried 34,161 B of instructions in a 55,932 B body.
-- At this branch, it carried 26,272 B of instructions in a 48,003 B body.
+- At this branch's commit 6445f91f (its core 10 B shorter than the final one), it carried 26,272 B of instructions in a 48,003 B body.
 - The tool list was 21,112 B in both, so the request is 7,929 B smaller.
 - The branch's session showed up in `aew lead telemetry` with 3 typed calls and no misuse. The scripted model makes no
   guide reads or help lookups, so behaviour is UAT's to judge.

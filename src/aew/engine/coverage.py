@@ -34,6 +34,8 @@ SUMMARY_CHARS = 500
 SUMMARY_BYTES = 8 * 1024
 # A 600-byte line lets ten observed checks plus the inventory unknowns fit that budget even with wide characters.
 SUMMARY_LINE_BYTES = 600
+AFFECTED_TESTS_LIMIT = ("Coverage records which checks finished with the selection. "
+                        "The project determines which individual tests ran.")
 
 
 def inventory(checks: dict[str, Any], guardrails: dict[str, Any]) -> list[dict[str, Any]]:
@@ -140,12 +142,13 @@ def _affected_inventory(record: dict[str, Any], ref: dict[str, str], unit: str,
         return {"known": False, "reason": record["reason"]}
     reasons_for: dict[str | None, str] = {"spawn_failed": "could_not_start", "timeout": "not_completed"}
     cited = [c for c in checks if c.get("selection_sha256") == ref["sha256"]]
-    ran = any(c.get("exit_code") is not None for c in cited)
-    reasons = [] if ran else sorted({reasons_for.get(c.get("outcome"), "not_run_in_this_validation")
-                                    for c in cited} or {"not_run_in_this_validation"})
+    completed = sorted({c["check_id"] for c in cited if c.get("exit_code") is not None})
+    reasons = [] if completed else sorted({reasons_for.get(c.get("outcome"), "not_run_in_this_validation")
+                                          for c in cited} or {"not_run_in_this_validation"})
     items = record["items"]
     return {"known": True, "source": "selection:" + ref["sha256"], "unit": unit,
-            "items": [{"name": name, "ran": ran, "reasons": reasons} for name in items[:MAX_PATHS]],
+            "items": [{"name": name, "ran": bool(completed), "reasons": reasons} for name in items[:MAX_PATHS]],
+            "completed_by": completed, "observation_limit": AFFECTED_TESTS_LIMIT,
             "omitted": max(0, len(items) - MAX_PATHS)}
 
 
@@ -279,10 +282,16 @@ def summarize(value: dict[str, Any], *, completed_by: dict[str, list[str]] | Non
                 # A selection-consuming check receives the whole list, so omitted items have the same outcome.
                 total_missed = len(missed) + (omitted if missed else 0)
                 counts[f"{field}_not_run"] = total_missed
-                detail = f"{count} selected, {total_missed} not run" if count else "none selected"
+                detail = f"{count} selected, {total_missed} without a completed check" if count else "none selected"
+                if completed := item.get("completed_by"):
+                    names = ", ".join(_listed([_text(c) for c in completed]))
+                    detail += f". Checks that finished with the selection: {names}"
                 inventories.append(f"{label} (per the project's selector{unit}): {detail}")
+                if limit := item.get("observation_limit"):
+                    inventories.append(_text(limit))
+            gap_label = "without a completed check" if field == "affected_tests" else "not run"
             inventory_gaps.extend(
-                f"{label}: {_text(i.get('name'))}: not run "
+                f"{label}: {_text(i.get('name'))}: {gap_label} "
                 f"({_text(', '.join(reason.replace('_', ' ') for reason in i.get('reasons', [])) or 'not run')})"
                 for i in missed)
         else:

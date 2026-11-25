@@ -629,9 +629,8 @@ class Validation:
                    "cwd": str(workspace.resolve())}
         else:
             try:
-                selection_args: dict[str, Any] = {"selected": selected} if takes_selection else {}
                 out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees,
-                            **selection_args)
+                            selected=selected if takes_selection else None)
             except ContainmentUnavailable as exc:  # at the spawn: refused as itself, never "interrupted" (E114)
                 return {"infra": V.classify_containment_failure(exc),
                         "detail": f"check {check_id} was refused at its start: {exc.message}"}

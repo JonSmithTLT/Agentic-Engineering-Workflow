@@ -59,7 +59,8 @@ def _run_within(budget_s: float, run: Callable[[procs.CheckTrees], dict[str, Any
 
 
 def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], selector: dict[str, Any],
-            candidate: str | None, paths: list[str] | None, *, budget_s: float | None = None) -> dict[str, Any]:
+            candidate: str | None, paths: list[str] | None, *, budget_s: float | None = None,
+            doctor_probe: bool = False) -> dict[str, Any]:
     """Return evidence about the selector itself. The result is advisory even if the command cannot run."""
     def unknown(reason: str, **details: Any) -> dict[str, Any]:
         return {"result": "unknown", "reason": reason, **details}
@@ -72,13 +73,14 @@ def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], se
     inputs = _inputs(selector)
     if any(glob_any(path, inputs) for path in paths):
         return unknown("selector_changed_by_subject")
+    kind = "doctor_check" if doctor_probe else "validation_selector"
     try:
         if budget_s is None:
-            out = check_changes.run_copy(project, snapshot_of, selector, candidate, changed_paths=paths)
+            out = check_changes.run_copy(project, snapshot_of, selector, candidate, changed_paths=paths, kind=kind)
         else:
             out = _run_within(min(budget_s, selector.get("timeout_s", checks.DEFAULT_TIMEOUT_S)),
                               lambda trees: check_changes.run_copy(project, snapshot_of, selector, candidate,
-                                                                 changed_paths=paths, trees=trees))
+                                                                 changed_paths=paths, trees=trees, kind=kind))
     except (AEWError, OSError):
         return unknown("selector_could_not_start")
     if out.get("not_run") or out["outcome"] == "spawn_failed":
@@ -92,7 +94,7 @@ def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], se
     lines = out.get("selection_items")
     items = list(dict.fromkeys(filter(None, lines or [])))
     if lines is None or any(item == "*" or "\r" in item or "\0" in item for item in items) or (
-            not items and not selector.get("may_select_none")):
+            not items and not (selector.get("may_select_none") or doctor_probe and not paths)):
         return unknown("selector_no_output")
     return {"result": "known", "items": items}
 

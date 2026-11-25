@@ -697,12 +697,12 @@ def test_publishing_through_the_verifier_ends_a_run_left_running(calc, tmp_path,
 def spawn_failure(monkeypatch, codes: list[int]):
     real = C.run
 
-    def run(cfg, workspace, *, policy, env=None, layout=None, trees=None):
+    def run(cfg, workspace, **kwargs):
         if codes:
             code = codes.pop(0)
             return {"exit_code": None, "duration_s": 0.0, "log": f"$ x\nfailed to start: [Errno {code}]",
                     "command": ["x"], "outcome": "spawn_failed", "spawn_errno": code}
-        return real(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees)
+        return real(cfg, workspace, **kwargs)
 
     monkeypatch.setattr(C, "run", run)
 

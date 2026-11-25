@@ -137,7 +137,8 @@ or lanes. The selector receives the changed paths in `{changed_paths_file}` and 
 covers preparing the copy, running the command and retiring the copy. The validation checks keep their own deadline.
 List the selector code and configuration under `inputs` so validation reports the selection as unknown when a change
 touches them. When `inputs` is omitted, the selector's project-file arguments are its declared inputs. An empty
-selection is known only when `may_select_none` is true and the command writes an empty output file.
+selection in validation is known only when `may_select_none` is true and the command writes an empty output file.
+Doctor's explicit empty-change probe can report a written empty file as a successful diagnostic.
 
 ```yaml
 coverage:

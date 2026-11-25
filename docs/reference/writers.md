@@ -239,49 +239,6 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/harness/runs/check-{}-{}/{}`
   - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.unlink, shutil.rmtree)
-- `local/harness/runs/doctor-check-{}-{}`
-  - `aew.harness.check_changes:run_copy` (direct: Path.mkdir, shutil.rmtree)
-- `local/harness/runs/doctor-check-{}-{}/.aew-mask`
-  - `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
-- `local/harness/runs/doctor-check-{}-{}/git`
-  - `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
-- `local/harness/runs/doctor-check-{}-{}/git/index`
-  - `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
-- `local/harness/runs/doctor-check-{}-{}/git/objects`
-  - `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/harness`
-  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/harness/.aew-containment-probe-{}.spec.json`
-  - `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
-- `local/harness/runs/doctor-check-{}-{}/label.json`
-  - `aew.harness.check_changes:run_copy` (direct: Path.write_text)
-- `local/harness/runs/doctor-check-{}-{}/scratch`
-  - `aew.harness.check_changes:run_copy` (direct: Path.mkdir)
-  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/scratch/.cache`
-  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/scratch/changed.txt`
-  - `aew.harness.check_changes:run_copy` (direct: Path.write_bytes)
-- `local/harness/runs/doctor-check-{}-{}/tools`
-  - `aew.capability.bind:place` (direct: shutil.rmtree)
-- `local/harness/runs/doctor-check-{}-{}/tools/first`
-  - `aew.capability.bind:place` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/tools/first/.aew-tools`
-  - `aew.capability.bind:place` (direct: Path.write_bytes)
-- `local/harness/runs/doctor-check-{}-{}/tools/first/.{}.new`
-  - `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
-- `local/harness/runs/doctor-check-{}-{}/tools/first/{}`
-  - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name`
-  - `aew.capability.bind:place` (direct: Path.mkdir)
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name/.aew-tools`
-  - `aew.capability.bind:place` (direct: Path.write_bytes)
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name/.{}.new`
-  - `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name/{}`
-  - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
-- `local/harness/runs/doctor-check-{}-{}/{}`
-  - `aew.harness.check_changes:run_copy` (direct: Path.unlink, shutil.rmtree)
 - `local/harness/runs/doctor-{}-{}`
   - `aew.harness.model_list:read` (direct: shutil.rmtree)
 - `local/harness/runs/doctor-{}-{}/.aew-containment-probe-{}.sentinel`
@@ -378,6 +335,49 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/harness/runs/{}`
   - `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}`
+  - `aew.harness.check_changes:run_copy` (direct: Path.mkdir, shutil.rmtree)
+- `local/harness/runs/{}-{}-{}/.aew-mask`
+  - `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
+- `local/harness/runs/{}-{}-{}/git`
+  - `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
+- `local/harness/runs/{}-{}-{}/git/index`
+  - `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
+- `local/harness/runs/{}-{}-{}/git/objects`
+  - `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/harness`
+  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/harness/.aew-containment-probe-{}.spec.json`
+  - `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/{}-{}-{}/label.json`
+  - `aew.harness.check_changes:run_copy` (direct: Path.write_text)
+- `local/harness/runs/{}-{}-{}/scratch`
+  - `aew.harness.check_changes:run_copy` (direct: Path.mkdir)
+  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/scratch/.cache`
+  - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/scratch/changed.txt`
+  - `aew.harness.check_changes:run_copy` (direct: Path.write_bytes)
+- `local/harness/runs/{}-{}-{}/tools`
+  - `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/harness/runs/{}-{}-{}/tools/first`
+  - `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/tools/first/.aew-tools`
+  - `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/{}-{}-{}/tools/first/.{}.new`
+  - `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/{}-{}-{}/tools/first/{}`
+  - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/{}-{}-{}/tools/own_name`
+  - `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/{}-{}-{}/tools/own_name/.aew-tools`
+  - `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/{}-{}-{}/tools/own_name/.{}.new`
+  - `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/{}-{}-{}/tools/own_name/{}`
+  - `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/{}-{}-{}/{}`
+  - `aew.harness.check_changes:run_copy` (direct: Path.unlink, shutil.rmtree)
 - `local/harness/runs/{}/.aew-mask`
   - `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/{}/events.jsonl`

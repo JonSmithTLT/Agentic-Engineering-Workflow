@@ -98,8 +98,8 @@ def test_doctor_reports_the_declaration_under_checks_configured_and_says_when_it
     assert any(r["check"] == "mutating-concurrency" for r in rows), rows  # its error drops no other row
 
 
-def test_doctor_runs_only_an_adopted_selector(tmp_path, monkeypatch):
-    from aew.engine import selection
+@pytest.mark.parametrize("items", [[], None])
+def test_doctor_runs_only_an_adopted_selector_and_reports_its_explicit_empty_output(tmp_path, monkeypatch, items):
     from aew.harness import check_changes
 
     p = sample_project(tmp_path)
@@ -107,16 +107,17 @@ def test_doctor_runs_only_an_adopted_selector(tmp_path, monkeypatch):
     eng = engine(p)
     visible = []
 
-    def observe(_project, _snapshot, cfg, _commit, paths):
-        visible.append((cfg, paths))
-        return {"result": "known", "items": ["fast"]}
+    def run_copy(_project, _snapshot, cfg, _commit, *, changed_paths, kind):
+        visible.append((cfg, changed_paths, kind))
+        return {"outcome": "ran", "exit_code": 0, "selection_items": items}
 
-    monkeypatch.setattr(selection, "observe", observe)
+    monkeypatch.setattr(check_changes, "run_copy", run_copy)
     monkeypatch.setattr(check_changes, "run_once", lambda *_: {"not_run": "configured check stand-in"})
     assert all("Affected-test selector" not in row["detail"] for row in check_changes.doctor_rows(eng, run=False))
-    assert any("Affected-test selector: 1 selected" in row["detail"]
-               for row in check_changes.doctor_rows(eng, run=True))
-    assert visible == [(SELECTOR["selector"], [])]
+    detail = "0 selected for an empty change" if items == [] else "selector no output"
+    assert {"check": "checks-configured", "status": "PASS" if items == [] else "WARN",
+            "detail": f"Affected-test selector: {detail} (diagnostic only)"} in check_changes.doctor_rows(eng, run=True)
+    assert visible == [(SELECTOR["selector"], [], "doctor_check")]
 
     # Legacy state can still configure its checks, but has no adopted declaration to drive the selector.
     monkeypatch.setattr(eng._k, "_pins_in_force", lambda: None)
@@ -304,12 +305,14 @@ def test_plain_validated_requires_both_known_lists_and_all_items_run(tmp_path, m
                                              for c in value["run_capabilities"].values())
     assert value["ci_tools"]["items"] == [{"name": "pytest", "ran": True, "reasons": []}]
     assert value["affected_tests"] == {"known": True, "source": f"selection:{value['selection']['sha256']}",
-                                       "unit": "lanes", "omitted": 0, "items": [
+                                       "unit": "lanes", "omitted": 0, "completed_by": ["smoke"],
+                                       "observation_limit": CV.AFFECTED_TESTS_LIMIT, "items": [
                                            {"name": "fast", "ran": True, "reasons": []}]}
     assert value["summary"]["verdict"] == "validated"
 
 
-@pytest.mark.parametrize("case", ["covered", "fixed-scope", "changed-selector", "mutated-copy", "diagnostic-bytes"])
+@pytest.mark.parametrize("case", ["covered", "fixed-scope", "changed-selector", "mutated-copy", "mutated-paths",
+                                  "diagnostic-bytes"])
 def test_a_validation_reports_the_committed_selector_observation_and_keeps_its_candidate(tmp_path, contained,
                                                                                         monkeypatch, case):
     from aew.harness import containment
@@ -328,6 +331,8 @@ def test_a_validation_reports_the_committed_selector_observation_and_keeps_its_c
         declaration["selector"]["inputs"] = ["calc/**"]
     if case == "mutated-copy":
         declaration["selector"]["command"][2] += "; Path('calc/core.py').write_text('a change', encoding='utf-8')"
+    if case == "mutated-paths":
+        declaration["selector"]["command"][2] += "; Path(sys.argv[1]).write_text('rewritten\\n', encoding='utf-8')"
     if case == "diagnostic-bytes":
         declaration["selector"]["command"][2] += (
             "; sys.stdout.buffer.write(b'\\xff'); sys.stderr.buffer.write(b'\\xfe')")
@@ -342,6 +347,10 @@ def test_a_validation_reports_the_committed_selector_observation_and_keeps_its_c
     if normal:
         assert coverage["affected_tests"]["source"] == f"selection:{pin['sha256']}"
         consumed = case != "fixed-scope"
+        assert coverage["affected_tests"]["completed_by"] == (["smoke"] if consumed else [])
+        assert CV.AFFECTED_TESTS_LIMIT in coverage["summary"]["lines"]
+        assert any("Checks that finished with the selection: smoke" in line
+                   for line in coverage["summary"]["lines"]) == consumed
         assert coverage["affected_tests"]["items"] == [{
             "name": "fast", "ran": consumed, "reasons": [] if consumed else ["not_run_in_this_validation"]}]
     else:

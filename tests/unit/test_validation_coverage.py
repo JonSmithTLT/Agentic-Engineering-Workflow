@@ -143,6 +143,17 @@ def test_doctor_checks_each_declaration_and_names_uncovered_tools(tmp_path, monk
     assert missing_tools[0] == missing_selection[0] == selection[0]
 
 
+def test_doctor_warns_about_fixed_scope_checks_when_the_project_declares_a_selector(tmp_path):
+    declaration = {"ci_tools": [], "affected_tests": {"selector": {"command": ["select"]}, "unit": "tests"}}
+    checks = {"unit": {"configured": True, "command": ["run"]}}
+    warning = ("WARN", "The project's CI selects tests for each change; no check runs that selection. "
+               "Checks with a fixed scope: guardrails, unit")
+    assert warning in CV.doctor_rows({"checks": checks}, declaration, tmp_path)
+    checks["unit"]["command"].append("{selection_file}")
+    assert all("no check runs that selection" not in detail
+               for _, detail in CV.doctor_rows({"checks": checks}, declaration, tmp_path))
+
+
 def test_legacy_unpinned_checks_policy_is_not_a_declaration_source(tmp_path, monkeypatch):
     checks = "policy/checks.yaml"
     raw = b"schema: aew/checks/v1\nchecks: {}\ncoverage: {ci_tools: []}\n"

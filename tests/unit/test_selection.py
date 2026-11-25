@@ -42,13 +42,15 @@ def test_an_unobservable_subject_never_runs_a_selector(monkeypatch, commit, path
     assert selection.observe(None, dict, SELECTOR, commit, paths) == {"result": "unknown", "reason": reason}
 
 
-def test_a_selection_observation_is_reused_only_for_the_same_complete_key(tmp_path, monkeypatch):
+@pytest.mark.parametrize("observed", [{"result": "known", "items": ["fast"]},
+                                     {"result": "unknown", "reason": "selector_timed_out"}])
+def test_a_selection_observation_is_reused_only_for_the_same_complete_key(tmp_path, monkeypatch, observed):
     seen = []
 
     def observe(_project, _snapshot_of, _cfg, commit, paths, *, budget_s):
         assert budget_s == 20
         seen.append((commit, paths))
-        return {"result": "known", "items": ["fast"]}
+        return observed
 
     monkeypatch.setattr(selection, "observe", observe)
     project = SimpleNamespace(aew_root=tmp_path)
@@ -109,7 +111,7 @@ def test_coverage_counts_all_unrun_items_even_when_its_display_is_bounded():
     assert len(value["affected_tests"]["items"]) == coverage.MAX_PATHS
     assert value["affected_tests"]["omitted"] == 10
     assert value["summary"]["known_gaps"]["affected_tests_not_run"] == len(names)
-    assert f"{len(names)} selected, {len(names)} not run" in "\n".join(value["summary"]["lines"])
+    assert f"{len(names)} selected, {len(names)} without a completed check" in "\n".join(value["summary"]["lines"])
 
 
 def test_the_selector_allowance_is_separate_from_the_original_checks_deadline():

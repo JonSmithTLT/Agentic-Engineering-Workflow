@@ -68,6 +68,7 @@ KINDS = frozenset({
     "lead_opencode",     # `aew opencode`: off Linux always, on Linux when its label is weaker
     "worker_run",        # a run's supervisor
     "validation_run",    # a checks-mode validation run, authoritative or diagnostic
+    "validation_selector",  # the advisory affected-test selector on a validation candidate copy (E243)
     "check_run",         # the operator's own `aew check run`
     "doctor_model_list",  # `aew doctor`'s read of the harness's model list, as a launch reads it (E153)
     "doctor_check",      # `aew doctor --run-checks`: the project's check, once, on a disposable copy (E153)

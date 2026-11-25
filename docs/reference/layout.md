@@ -227,35 +227,6 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-check-{}-{}` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `run_copy`; `aew.harness.containment.layout`: `for_run`
-  - Written by
-    - `aew.capability.bind:place`
-    - `aew.harness.check_changes:run_copy`
-    - `aew.harness.containment.layout:for_run`
-    - `aew.harness.containment.layout:retire_private_git`
-- `local/harness/runs/doctor-check-{}-{}/git` (git-ignored, masked by containment); read by none
-  - Written by
-    - `aew.harness.containment.layout:private_git`
-    - `aew.harness.containment.layout:retire_private_git`
-- `local/harness/runs/doctor-check-{}-{}/harness` (git-ignored, masked by containment); read by none
-  - Written by
-    - `aew.harness.containment.layout:for_run`
-    - `aew.harness.containment.probe:_self_test`
-- `local/harness/runs/doctor-check-{}-{}/scratch` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `_protocol_bytes`
-  - Written by
-    - `aew.harness.check_changes:run_copy`
-    - `aew.harness.containment.layout:for_run`
-- `local/harness/runs/doctor-check-{}-{}/tools` (git-ignored, masked by containment); read by none
-  - Written by
-    - `aew.capability.bind:place`
-- `local/harness/runs/doctor-check-{}-{}/tools/first` (git-ignored, masked by containment); read by none
-  - Written by
-    - `aew.capability.bind:_write_entry`
-    - `aew.capability.bind:place`
-- `local/harness/runs/doctor-check-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
-  - Written by
-    - `aew.capability.bind:_write_entry`
-    - `aew.capability.bind:place`
 - `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
   - Written by
     - `aew.capability.bind:place`
@@ -340,6 +311,35 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.runlog:write_record`
     - `aew.harness.runlog:write_returned`
     - `aew.harness.supervisor:Supervisor.start`
+- `local/harness/runs/{}-{}-{}` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `run_copy`; `aew.harness.containment.layout`: `for_run`
+  - Written by
+    - `aew.capability.bind:place`
+    - `aew.harness.check_changes:run_copy`
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/{}-{}-{}/git` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:private_git`
+    - `aew.harness.containment.layout:retire_private_git`
+- `local/harness/runs/{}-{}-{}/harness` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.harness.containment.layout:for_run`
+    - `aew.harness.containment.probe:_self_test`
+- `local/harness/runs/{}-{}-{}/scratch` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `_protocol_bytes`
+  - Written by
+    - `aew.harness.check_changes:run_copy`
+    - `aew.harness.containment.layout:for_run`
+- `local/harness/runs/{}-{}-{}/tools` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:place`
+- `local/harness/runs/{}-{}-{}/tools/first` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
+- `local/harness/runs/{}-{}-{}/tools/own_name` (git-ignored, masked by containment); read by none
+  - Written by
+    - `aew.capability.bind:_write_entry`
+    - `aew.capability.bind:place`
 - `local/harness/runs/{}/git` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.containment.layout:private_git`

@@ -100,7 +100,7 @@ def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
         from aew.engine import selection
 
         commit = engine.authoritative_commit()
-        result = selection.observe(engine, engine.snapshot_of, selector, commit, [])
+        result = selection.observe(engine, engine.snapshot_of, selector, commit, [], doctor_probe=True)
         detail = (f"{len(result['items'])} selected for an empty change"
                   if result["result"] == "known" else result["reason"].replace("_", " "))
         selection_row = {"check": "checks-configured",
@@ -170,7 +170,8 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
 
 
 def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], cfg: dict[str, Any], commit: str,
-             *, changed_paths: list[str] | None = None, trees: CheckTrees | None = None) -> dict[str, Any]:
+             *, changed_paths: list[str] | None = None, trees: CheckTrees | None = None,
+             kind: str = "doctor_check") -> dict[str, Any]:
     """The check-copy mechanism also runs a declared selector, with input and output outside the copied tree."""
     from aew.errors import AEWError, ContainmentUnavailable
     from aew.harness import containment, procs, runlog, weaker_register
@@ -180,8 +181,9 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
     copy_trees = procs.CheckTrees() if trees is None else trees
     policy, _ = project.execution_policy()
     stamp = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{secrets.token_hex(3)}"
-    run_dir = runlog.run_dir(project.aew_root, f"doctor-check-{stamp}")
-    copy = project.workspaces_root() / f".doctor-check-{stamp}"  # a worker workspace, outside the store
+    run_name = f"{kind.replace('_', '-')}-{stamp}"
+    run_dir = runlog.run_dir(project.aew_root, run_name)
+    copy = project.workspaces_root() / f".{run_name}"  # a worker workspace, outside the store
     weaker = None
     try:
         run_dir.mkdir(parents=True)
@@ -213,7 +215,7 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
             return {"outcome": "timeout"}
         try:
             weaker = weaker_register.enter_if_weaker(
-                label, kind="doctor_check", ownership=weaker_register.ownership_of(label), project=project.repo_root,
+                label, kind=kind, ownership=weaker_register.ownership_of(label), project=project.repo_root,
                 aew_root=project.aew_root, directory=run_dir, marker=marker)
         except ContainmentUnavailable as exc:
             return {"not_run": exc.message}

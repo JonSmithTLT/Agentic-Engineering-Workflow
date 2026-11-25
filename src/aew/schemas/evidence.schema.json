@@ -191,6 +191,9 @@
          "properties": {"known": {"const": true}, "source": {"type": "string", "minLength": 1},
                         "unit": {"type": "string", "minLength": 1},
                         "omitted": {"type": "integer", "minimum": 0},
+                        "completed_by": {"type": "array", "uniqueItems": true,
+                                         "items": {"type": "string", "minLength": 1}},
+                        "observation_limit": {"type": "string", "minLength": 1},
                         "items": {"type": "array", "items": {
                           "type": "object", "required": ["name", "ran", "reasons"], "additionalProperties": false,
                           "properties": {"name": {"type": "string"}, "ran": {"type": "boolean"},

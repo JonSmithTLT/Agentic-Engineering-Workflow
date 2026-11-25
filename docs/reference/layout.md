@@ -123,13 +123,24 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.doctor_relay:lead_rows`
-- `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
+- `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`; `aew.skills`: `deliver`, `root_problems`
   - Written by
     - `aew.harness.containment.layout:for_run`
+    - `aew.harness.opencode.lead:deliver_lead_skills`
     - `aew.harness.opencode.lead:serve_spec`
+    - `aew.skills:deliver`
 - `local/harness/lead/server` (git-ignored, masked by containment); read by `aew.harness.opencode.lead_wake`: `url_of`
   - Written by
     - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/lead/skills` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.harness.opencode.lead:deliver_lead_skills`
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/lead/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+  - Written by
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
 - `local/harness/lead/xdg-data` (git-ignored, masked by containment); read by `aew.harness.opencode.login`: `own_store`
   - Written by
     - None

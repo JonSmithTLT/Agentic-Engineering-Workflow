@@ -23,7 +23,10 @@ Invocation runs:
 
 The Lead's TUI (``aew opencode``) gets the ``aew-lead`` agent and the ``/aew-*`` commands. The operator
 is present there, so unlisted actions ``ask``; editing and subagents are denied. Command templates run
-only fixed read commands as inline shell (V2 runs those outside the permission flow).
+only fixed read commands as inline shell (V2 runs those outside the permission flow). Its skills are the
+manifest's ``lead`` list, through the same plan and copy as a run's (:func:`lead_skills`; register E161):
+contained, only that copy (every other id denied, the compatibility plugin off); not contained, beside
+the operator's own skills, which stay at ``ask``.
 """
 
 from __future__ import annotations
@@ -141,9 +144,12 @@ class SkillsAt(NamedTuple):
     pattern: str
 
 
+SKILLS_DIR = "skills"  # the copy's folder, in a run's harness state directory or the Lead's state (E161)
+
+
 def skills_at(state_dir: str, sep: str) -> SkillsAt:
-    """Where the run's skills are copied: ``skills`` in its harness state directory (``aew.skills.deliver``)."""
-    folder = sep.join([state_dir, "skills"])
+    """Where the run's skills are copied: :data:`SKILLS_DIR` in its harness state directory (``aew.skills.deliver``)."""
+    folder = sep.join([state_dir, SKILLS_DIR])
     return SkillsAt(folder, sep.join([folder, "*"]))
 
 
@@ -593,10 +599,45 @@ def lead_wake_text(messaging: bool = False) -> str:
           for advice in [K.wake_advice(why, messaging)])])
 
 
+def lead_skills(planned: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """What the Lead gets of its skills (register E161): the plan as delivered, when its copy was made, or else the
+    same function a run's plan comes from (``aew.skills.plan``) over the manifest's ``lead`` list, every id optional,
+    since the Lead has no card. Never a computation of its own: the copy, the rules, the text and the record read one
+    answer, as a run's do (:func:`skills`)."""
+    if isinstance(planned, Mapping):
+        return dict(planned)
+    return shipped_skills.plan((), shipped_skills.lead())
+
+
+def lead_skill_rules(exposed: list[str], skills_dir: SkillsAt, *, contained: bool) -> list[dict[str, str]]:
+    """The Lead's skill rules, after :data:`LEAD_RULES` (last match wins). Contained (the designer, 2026-11-06, (a)):
+    every other id is denied, so only AEW's copy is offered, as a run's rules do. Not contained, the operator's own
+    skills stay where :data:`LEAD_RULES` leaves them, at ``ask``, and AEW's ids are allowed beside them. Either way the
+    copy is readable and never editable, the two rules together, as a run's (E127)."""
+    rules = [rule("skill", "deny")] if contained else []
+    rules += [rule("skill", "allow", name) for name in exposed]
+    if exposed:
+        rules += [rule("external_directory", "allow", skills_dir.pattern), rule("edit", "deny", skills_dir.pattern)]
+    return rules
+
+
+def lead_skills_text(planned: Mapping[str, Any], *, contained: bool) -> list[str]:
+    """The Lead's line naming its skills, from its plan's ``exposed`` (the operator, 2026-11-25: the Lead gets a
+    delivery mechanism, as the roles it staffs do). Nothing exposed, no line."""
+    exposed = list(planned.get("exposed") or [])
+    if not exposed:
+        return []
+    beside = ("" if contained else " Your own OpenCode skills are listed beside them; loading one of those asks the "
+              "operator first.")
+    return [f"- The `skill` tool lists AEW's skills for you, {_ids(exposed)}: load each one whose description matches "
+            f"what you are doing.{beside}"]
+
+
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                 relays: Mapping[str, str] | None = None, tools: Mapping[str, Any] | None = None,
                  push_wake: bool = False, models: Mapping[str, list[str]] | None = None,
-                 switches: frozenset[str] = frozenset()) -> dict[str, Any]:
+                 switches: frozenset[str] = frozenset(), skills_dir: SkillsAt | None = None,
+                 skills_planned: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
     contained Lead does not load (STG-05 CS-4). ``tools``: the tools AEW placed in the Lead's sandbox, named in its
     system text as a worker's are (:func:`tools_text`).
@@ -610,7 +651,13 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     id, relayed with a client certificate: register E123), from the policy's profiles: each gets the relay's
     ``baseURL``, and the provider plain HTTP requests, as a worker's pinned provider does (:func:`relayed`).
     Every Lead's configuration (contained, not contained, and ``--print-config``'s) denies
-    :data:`LEAD_DENIED_PROVIDERS`."""
+    :data:`LEAD_DENIED_PROVIDERS`.
+
+    ``skills_dir`` is where the Lead's skills are copied (``lead.lead_skills_at``), and ``skills_planned`` the plan as
+    delivered there (:func:`lead_skills`; register E161). Given a folder, the Lead is offered its plan's ``exposed``
+    through one ``skills`` entry, the folder's absolute path, with :func:`lead_skill_rules` and a line of text; the
+    contained Lead also has the compatibility plugin off, so only AEW's copy is a source. Without one it has no
+    skills entry and no skill rule of AEW's."""
     messaging = contract.MESSAGING in switches
     system = lead_system(switches)
     sentence = f"Wait on runs with `harness_wait`: {K.wait_rule(messaging)}."
@@ -618,6 +665,17 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
         system = system.replace(f" {sentence}", "") + f"\n{lead_wake_text(messaging)}"
     system += f"\n{lead_contained_text(contained)}" if contained is not None else ""
     system += "".join(f"\n{line}" for line in tools_text(tools, note=LEAD_TOOLS_NOTE))
+    planned = lead_skills(skills_planned) if skills_dir is not None else {}
+    exposed = list(planned.get("exposed") or [])
+    system += "".join(f"\n{line}" for line in lead_skills_text(planned, contained=contained is not None))
+    rules = LEAD_RULES + (lead_skill_rules(exposed, skills_dir, contained=contained is not None)
+                          if skills_dir is not None else [])
+    # The one skills entry AEW adds: its copy, by absolute path (an object entry loads nothing: skills probe
+    # 2026-11-04). Contained, the compatibility plugin is off too, so nothing but the copy is a source (the designer,
+    # 2026-11-06, (a)); not contained, the operator's own sources stay, beside it.
+    found: dict[str, Any] = {"skills": [skills_dir.folder]} if exposed and skills_dir is not None else {}
+    if contained is not None and skills_dir is not None:
+        found["plugins"] = [COMPATIBILITY_PLUGIN]
     system = f"{system}\n\n{guide}" if guide else system
     if messaging and K.MESSAGE_READ_COST not in guide:
         system += "\n" + "\n".join(K.messaging_guide_lines())
@@ -638,5 +696,5 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                                                   "environment": lead_mcp_environment(), "codemode": False,
                                                   "pool": False}}},
             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
-                                    "system": system, "permissions": LEAD_RULES}},
-            "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}
+                                    "system": system, "permissions": rules}},
+            "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}, **found}

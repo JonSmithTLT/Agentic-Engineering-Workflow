@@ -17,6 +17,8 @@ A skill is technique, never authority (ADR-0006): procedural text an agent loads
   (``reasons``) and the run goes on: a missing skill never fails a run.
 * **The copy** (:func:`deliver`): only exposed skills, only the manifest's files, re-hashed after copying, into the
   run's own folder before its sandbox exists. What the run could reach is ``delivered``.
+* **The Lead** has no card: the manifest's ``lead`` list (:func:`lead`) is its ``optional_skills``, through the same
+  :func:`plan` and :func:`deliver` (register E161; ADR-0006, amendment 2026-11-25).
 
 Every skill here is labelled ``unevaluated`` (:data:`LABEL`): the operator released them for the personal alpha, and
 qualification is owed before anything beyond it. The package copy changes only by an explicit pull request that
@@ -38,6 +40,7 @@ SHIPPED = "shipped"
 SKILL_FILE = "SKILL.md"
 ALLOWED_DIRS = ("references", "examples")
 LABEL = "unevaluated"
+LEAD = "lead"  # the manifest's list of the Lead's own skills (:func:`lead`)
 
 # Why a skill a card names is not exposed (``reasons``): a closed set, for the system text, the Lead and E120's results
 NOT_SHIPPED = "not_shipped"            # not in AEW's install: the card may name it, nothing serves it
@@ -79,6 +82,13 @@ def entries() -> dict[str, dict[str, Any]]:
 def shipped() -> frozenset[str]:
     """The ids AEW's install ships (whether their files still match is :func:`check`'s)."""
     return frozenset(entries())
+
+
+def lead() -> tuple[str, ...]:
+    """The Lead's own list (register E161): the ids the manifest offers the Lead, which has no card. Only ids, as a
+    card's lists are: what it gets of them is :func:`plan`'s, with every one optional."""
+    names = manifest().get(LEAD)
+    return tuple(sorted({str(n) for n in names})) if isinstance(names, list) else ()
 
 
 def _read(name: str, rel: str) -> bytes:

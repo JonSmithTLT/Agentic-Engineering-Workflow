@@ -23,6 +23,7 @@ import pytest
 from fake_harness import contains_credential
 from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
 
+from aew import skills
 from aew.capability import ops as capability
 from aew.harness import procs, wake_queue
 from aew.harness.containment import netns
@@ -103,8 +104,12 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert server["command"] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
         assert server["environment"] == procs.engine_imports({})
         # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
+        # The Lead's skills (E161): the manifest's list, copied into its own state and bound read-only there
+        assert label["skills"]["exposed"] == list(skills.lead()) and label["skills"]["copy"] == "read_only_bind"
+        assert json.loads((run_dir / "label.json").read_text())["skills"] == label["skills"]
         assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
-                                                tools=capability.placed(label, contained=True), push_wake=True)
+                                                tools=capability.placed(label, contained=True), push_wake=True,
+                                                skills_dir=lead.lead_skills_at(lab), skills_planned=label["skills"])
         assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
         assert wake_queue.HEADER in config["agents"][projection.LEAD_AGENT]["system"]  # no key names it: it is on
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \

@@ -1,6 +1,6 @@
 {
  "schema": "aew/skills-manifest/v1",
- "about": "AEW's shipped skills (register E127; ADR-0006, amendment 2026-11-05). Each changes only by a pull request that re-hashes this file. Every skill is unevaluated: released for the personal alpha only.",
+ "about": "AEW's shipped skills (register E127; ADR-0006, amendment 2026-11-05). Each changes only by a pull request that re-hashes this file. Every skill is unevaluated: released for the personal alpha only. `lead` is the Lead's own list (register E161; ADR-0006, amendment 2026-11-25): skills offered to the Lead, never to a role card.",
  "skills": {
   "acceptance-verification": {
    "version": "0.1.0",
@@ -95,6 +95,34 @@
     "snapshot_holds": "the candidate folder in this repository: SKILL.md, examples/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with examples/ verbatim and without evals/, and SKILL.md without its Evaluation section, which links only evals/ (never runtime resources: docs/skills/specification.md), so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   },
+  "delegation-handoffs": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "fedc5b3c124352d72ae1b8091b4ee7bed74d9a15c427bf0f2558fb5fa413436d",
+   "files": {
+    "references/handoff-fields.md": "39148b7824226413fd365883d5ba0b6653cc5d4c10312b3fcf7371558cac4b65",
+    "SKILL.md": "c8df39152c8c19058fc525f2921d22f4437df6d9d60774b7717561c8b157b941"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/delegation-handoffs",
+    "snapshot": "delegation-handoffs-0.1.0-c8df3915",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
+  "engineering-planning": {
+   "version": "0.2.0",
+   "label": "unevaluated",
+   "sha256": "fc4620dbf0ea6460f5c13496549c75386997ac896d75146daab951bdb8ff30b4",
+   "files": {
+    "references/mechanical-inventories.md": "df09d8ed9ad911f5dec1d3267f99dd3b827cf3c0b69c12ac167b6a4e419b782a",
+    "SKILL.md": "b50e3fbebe0e057c8c9655acf9bcdd0a0135fda9f4c2aba6b79b3071a8d13a8b"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/engineering-planning",
+    "snapshot": "engineering-planning-0.2.0-b50e3fbe",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
   "python-development": {
    "version": "0.4.0",
    "label": "unevaluated",
@@ -108,6 +136,19 @@
     "candidate": "docs/skills/candidates/python-development",
     "snapshot": "python-development-0.4.0-24e3214d",
     "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
+  "requirements-clarification": {
+   "version": "0.2.0",
+   "label": "unevaluated",
+   "sha256": "edd9cd251419165e89a19dc907c6604e4784792a9c7d2aec2ea91e6a45da050f",
+   "files": {
+    "SKILL.md": "8c00603a591f533b1c03acb28e50c0aca6ac2e5fb3f20a14b389080279f6cfdc"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/requirements-clarification",
+    "snapshot": "requirements-clarification-0.2.0-8c00603a",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   },
   "security-review": {
@@ -128,5 +169,10 @@
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 3-5 (cryptography, secret lifetime, untrusted input) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   }
- }
+ },
+ "lead": [
+  "delegation-handoffs",
+  "engineering-planning",
+  "requirements-clarification"
+ ]
 }

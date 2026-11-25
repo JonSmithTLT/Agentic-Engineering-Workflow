@@ -131,6 +131,14 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.mkdir)
 - `local/harness/lead/server/lead-server.json`
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
+- `local/harness/lead/skills`
+  - `aew.harness.opencode.lead:deliver_lead_skills` (direct: shutil.rmtree)
+  - `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
+- `local/harness/lead/skills/{}`
+  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
+  - `aew.skills:deliver` (direct: Path.mkdir)
+- `local/harness/lead/skills/{}/{}`
+  - `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/lead/xdg-data/opencode/opencode.db`
   - `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect)
   - `aew.harness.opencode.login:clear_aew_logins` (direct: sqlite3.connect)

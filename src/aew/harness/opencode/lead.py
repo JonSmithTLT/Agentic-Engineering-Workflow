@@ -99,8 +99,42 @@ def refuse_unusable(provider_env: list[str], base: Mapping[str, str]) -> None:
         raise UsageError(f"--provider-env {name}: {why}", variable=name)
 
 
+def lead_skills_at(engine: Any) -> projection.SkillsAt:
+    """Where the Lead's skills are copied (register E161): ``skills`` in its own state, per project, by real path (the
+    configuration's ``skills`` entry is absolute, and the contained Lead's layout binds that path read-only). Both
+    routes use it: the uncontained Lead's configuration is made before its session's run directory exists."""
+    return projection.skills_at(os.path.realpath(engine.aew_root / LEAD_DIR), os.sep)
+
+
+def deliver_lead_skills(engine: Any) -> dict[str, Any]:
+    """Copy the Lead's exposed skills into :func:`lead_skills_at` (``aew.skills.deliver``, as a run's supervisor does)
+    and return the plan as delivered. Made afresh at each start, from AEW's install: a Lead started on the same project
+    meanwhile has its copy replaced with the same bytes, and only a superseded session can be using it. A copy that
+    fails reports ``copy_failed`` and the session goes on: a missing skill never fails a start (the 2026-11-03
+    ruling, §3)."""
+    from aew import skills
+
+    planned = projection.lead_skills()
+    folder = engine.aew_root / LEAD_DIR / projection.SKILLS_DIR  # lead_skills_at's folder, before its real path
+    try:
+        return skills.deliver(planned, folder)
+    except Exception:  # noqa: BLE001 - a missing skill never fails a start (the 2026-11-03 ruling, §3)
+        shutil.rmtree(folder, ignore_errors=True)
+        failed = {str(n): skills.COPY_FAILED for n in planned.get("exposed") or []}
+        return {**planned, "exposed": [], "reasons": dict(sorted({**(planned.get("reasons") or {}), **failed}.items())),
+                "delivered": []}
+
+
+def skills_label(planned: Mapping[str, Any], bound: bool) -> dict[str, Any]:
+    """The Lead session's record of its skills, for its ``label.json`` (register E161): the plan as delivered, and how
+    the copy was kept from being written, as a run's record says (``read_only_bind`` or ``rules_only``)."""
+    return {**planned, "copy": "read_only_bind" if bound else "rules_only"} if planned.get("exposed") else dict(planned)
+
+
 def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "",
-             push_wake: bool = False, switches: frozenset[str] = frozenset()) -> dict[str, str]:
+             push_wake: bool = False, switches: frozenset[str] = frozenset(),
+             skills_dir: projection.SkillsAt | None = None,
+             skills_planned: Mapping[str, Any] | None = None) -> dict[str, str]:
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper().startswith("XDG_")
            or (sys.platform != "win32" and k.startswith("LC_")) or k.upper() in PASSED_THROUGH}
@@ -117,21 +151,28 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     # A Lead that runs here is not contained (the contained Lead's start replaces this configuration): it is told no
     # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
     config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake,
-                                    switches=switches)
+                                    switches=switches, skills_dir=skills_dir, skills_planned=skills_planned)
     env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, sort_keys=True)
     env.update(capabilities.FIXED_SWITCHES)  # last, after the provider variables (register E35)
     return env
 
 
-def session_presentation(engine: Any, *, provider_env: list[str], contained: ContainedLead | None = None
+def session_presentation(engine: Any, *, provider_env: list[str], contained: ContainedLead | None = None,
+                         weaker: lead_broker.WeakerLead | None = None
                          ) -> Callable[[dict[str, str], frozenset[str]], dict[str, str]]:
-    """Refresh guide/system only after offer.apply, from the exact snapshot the broker and catalog already took."""
+    """Refresh guide/system only after offer.apply, from the exact snapshot the broker and catalog already took. The
+    Lead's skills are copied here too, once the seat is held and before the harness is built, and the plan as
+    delivered goes to whichever builds it, for its configuration and its record (register E161)."""
     def prepare(env: dict[str, str], switches: frozenset[str]) -> dict[str, str]:
         guide = guide_of(engine, switches=switches)
+        planned = deliver_lead_skills(engine)
         if contained is not None:
-            contained.guide, contained.surface_switches = guide, switches
+            contained.guide, contained.surface_switches, contained.skills_planned = guide, switches, planned
+        if weaker is not None:
+            weaker.label_extra = {"skills": skills_label(planned, bound=False)}
         return {**env, **tui_env(env, provider_env=provider_env, guide=guide, switches=switches,
-                               push_wake=pushes_wakes(engine))}
+                               push_wake=pushes_wakes(engine), skills_dir=lead_skills_at(engine),
+                               skills_planned=planned)}
 
     return prepare
 
@@ -238,8 +279,9 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
     guide = guide_of(engine, switches=switches)
     refuse_unusable(provider_env, os.environ)  # contained, the variables feed relays and stay out of the TUI's env
     wakes = pushes_wakes(engine)
+    at = lead_skills_at(engine)  # the folder and the plan a start would copy there; nothing is copied here
     env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide, push_wake=wakes,
-                  switches=switches)
+                  switches=switches, skills_dir=at)
     try:
         argv: list[str] | str = command(engine, extra_args or [])
     except HarnessIncompatible as exc:
@@ -260,7 +302,7 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
                  f"session without a typed-back code; {dashboard_autostart.OFF_ENV}=off turns that off. A running "
                  "dashboard is reused without issuing; later opens against an auto-started server refuse.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
-    config = (projection.lead_config(guide, push_wake=wakes, switches=switches) if contained_here()
+    config = (projection.lead_config(guide, push_wake=wakes, switches=switches, skills_dir=at) if contained_here()
               else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
     return {"command": argv, "config": config,
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env, "notes": notes}
@@ -398,7 +440,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready,
                                       opencode_kind=opencode_kind, prompt_token=prompt_token,
-                                      prepare_env=session_presentation(engine, provider_env=provider_env))
+                                      prepare_env=session_presentation(engine, provider_env=provider_env,
+                                                                       weaker=weaker))
     return _outcome(out, version)
 
 
@@ -584,8 +627,9 @@ class StartStages:
 
 def establish_layout(engine: Any, policy: dict[str, Any] | None, run_dir: Path, *,
                      terminal: list[int] | None, bridge_dir: str | None = None,
-                     bridge: str | None = None) -> tuple[Any, dict[str, Any]]:
-    """Build and self-test the contained Lead's layout, including the relayed-terminal check."""
+                     bridge: str | None = None, skills_dir: str | None = None) -> tuple[Any, dict[str, Any]]:
+    """Build and self-test the contained Lead's layout, including the relayed-terminal check. ``skills_dir`` is the
+    copy of the Lead's skills, bound read-only and protected, as a run's (register E161)."""
     from aew.harness import containment
     from aew.harness.containment import egress
 
@@ -593,7 +637,7 @@ def establish_layout(engine: Any, policy: dict[str, Any] | None, run_dir: Path, 
     return containment.establish(
         role="lead", scope="project", workspace=project, run_dir=run_dir, scratch=str(run_dir / "scratch"),
         bridge_dir=bridge_dir, policy=policy, project=project, bridge=bridge, egress_policy=egress.AnyPublic(),
-        state_dir=str(engine.aew_root / LEAD_DIR), relayed_terminal={"forbid": terminal})
+        state_dir=str(engine.aew_root / LEAD_DIR), relayed_terminal={"forbid": terminal}, skills_dir=skills_dir)
 
 
 class LeadProviders:
@@ -691,6 +735,7 @@ class ContainedLead(LeadProviders):
         self.terminal = _launching_terminal()
         self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
         self.surface_switches: frozenset[str] = frozenset()  # set by the broker's post-offer presentation callback
+        self.skills_planned: dict[str, Any] = {}  # the Lead's skills as copied, set by the same callback (E161)
         policy = engine.execution_policy()[0]
         self.warning_h = login_warning_h(policy)
         super().__init__(policy, provider_env, base)
@@ -785,10 +830,15 @@ class ContainedLead(LeadProviders):
                  "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
         policy, policy_sha256 = engine.execution_policy()
         project = str(engine.repo_root)
+        at = lead_skills_at(engine)
+        planned = self.skills_planned
         layout, label = establish_layout(engine, policy, run_dir, terminal=self.terminal,
-                                         bridge_dir=bridge_dir, bridge=child_env.get(lead_broker.ENV_ENDPOINT))
+                                         bridge_dir=bridge_dir, bridge=child_env.get(lead_broker.ENV_ENDPOINT),
+                                         skills_dir=at.folder if planned.get("exposed") else None)
         self.stages.mark("sandbox")
         label["session"] = run_dir.name
+        label["skills"] = skills_label(planned, bound=bool(planned.get("exposed")) and layout is not None
+                                       and at.folder in layout.skills_binds)
         label["start_s"] = self.stages.seconds  # the stages to come are added in place, before the label is recorded
         if layout is None:  # allowed weaker by the policy: the TUI runs as it does elsewhere, labelled so
             # No relay runs, so a Lead whose only provider takes the certificate would have none: refused, as a
@@ -848,7 +898,8 @@ class ContainedLead(LeadProviders):
                                             models={p: m for p, m in self.models.items()
                                                     if network is not None and p in network.relays},
                                             tools=capability.placed(label, contained=True),
-                                             push_wake=pushes_wakes(engine), switches=self.surface_switches)
+                                             push_wake=pushes_wakes(engine), switches=self.surface_switches,
+                                            skills_dir=at, skills_planned=planned)
             inside = self._inside(child_env, layout, run_dir, state, config, network)
             password = secrets.token_urlsafe(32)
             launch_env = {**inside, "OPENCODE_PASSWORD": password, weaker_register.MARKER: str(where["marker"])}

@@ -267,7 +267,8 @@ class Invocations:
         }]
         if self.coordination.project_switch(ctx.state) == X.MESSAGING_ENABLED:
             inv["runs"][-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
-        inv["runs"][-1].update(maps_launch_snapshot(self.k))  # as `harness launch` records it (register F15.8)
+        # the run's map-reads snapshot, as `harness launch` records it (register F15.8)
+        ctx.state["invocations"][inv_id]["runs"][-1].update(maps_launch_snapshot(self.k))
         ctx.refs.append(f"run:{run}")
 
     def invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:

@@ -4,8 +4,9 @@ pack or preamble is a product defect).
 Each guard is a function of the rendered text or the role's definition, so its planted cases run the same code:
 - a pack promises only sections it has, and each archetype's knowledge list is sections its pack can have;
 - every operation in a pack's allowed list and every `aew` command a worker's text prints is one its custody bridge
-  offers. Its limits: a project card's "Restricted to operations" line is not read (no built-in card restricts, so the
-  matrix never renders one), and `submit.<anything>` passes on its prefix;
+  offers, and each `submit.<kind>` listed is a kind the engine accepts from that role at that scope. Its limit: a
+  card's "Restricted to operations" line is not read (the built-in `plan_assessor` card restricts; its allowed list,
+  which the guard reads, is derived from the same restriction);
 - no worker's text both asks for a credential and says there is none, and no text corrects another;
 - a report format is what the engine accepts as it stands, its other values listed beside it from what the engine
   validates, and it names no scope (the engine fills in the dispatched one);
@@ -35,13 +36,15 @@ from aew.knowledge import evidence as E
 from aew.schemas import validate_property
 from aew.util import load_yaml
 
-SCOPES = {"implementer": ["ticket"], "reviewer": ["ticket", "observation", "parent", "integration"],
+SCOPES = {"implementer": ["ticket"],
+          "reviewer": ["ticket", "observation", "parent", "integration", E.ASSESSMENT_SCOPE],
           "verifier": ["ticket", "observation", "parent", "integration"], "investigator": ["observation"],
           "researcher": ["observation"], "planner": ["observation"]}
 DISPATCHABLE = [name for name in roles.ARCHETYPES if roles.archetype(name).get("dispatchable")]
 PROMISE = "- Required knowledge (included below): "
 SECTION = {"implementation_report": "implementation", "review": "review", "verification": "verification",
-           "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
+           "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
+           E.PLAN_ASSESSMENT: "assessment"}
 CARDS = sorted(roles.builtin_cards().items())
 
 
@@ -59,6 +62,8 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
                          "content": "x: y"}],
             "subject": {"id": "E-3", "kind": "discovery_record", "sha256": "0" * 64, "content": "x: y"},
             "children": [{"id": "T-2", "kind": "ticket", "state": "DONE", "title": "t"}],
+            "request": [{"id": "S-1", "kind": "story", "title": "t", "body": "the request",
+                         "acceptance": {"goal_backwards": ["g"]}}],
         }
     return ctx.PackInputs(
         invocation_id="INV-1", role=role, role_def=role_def or roles.archetype(role), work_id="T-1", title="a title",
@@ -70,19 +75,27 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
         checks={"unit": {"configured": True, "description": "unit tests"}}, authority=[], card=card, **optional)
 
 
+def card_scopes(card: roles.Card) -> list[str]:
+    """The scopes a card is dispatched at: those whose report it writes (a plan assessor's card only at the assessor's
+    scope, a code reviewer's never there; ``evidence.kinds_for``)."""
+    outputs = set(card.meta.get("outputs") or roles.archetype(card.archetype)["evidence_kinds"])
+    return [s for s in SCOPES[card.archetype] if outputs & E.kinds_for(card.archetype, s)]
+
+
 def matrix() -> list[tuple[str, str, bool, dict[str, Any] | None]]:
     cases: list[tuple[str, str, bool, dict[str, Any] | None]] = []
     cases += [(role, scope, full, None) for role in DISPATCHABLE for scope in SCOPES[role] for full in (True, False)]
-    cases += [(c.archetype, scope, True, c.meta) for _, c in CARDS for scope in SCOPES[c.archetype]]
+    cases += [(c.archetype, scope, True, c.meta) for _, c in CARDS for scope in card_scopes(c)]
     return cases
 
 
-def prompt(pack: str, role: str) -> str:
+def prompt(pack: str, role: str, scope: str = "ticket") -> str:
     """The whole text a harness run's worker is given."""
     return K.LaunchContract(
         run="R-INV-1-1", invocation="INV-1", work_unit="T-1", role=role, scope="ticket", card=None,
-        execution_profile={}, workspace="/ws/T-1", expected_kinds=sorted(roles.archetype(role)["evidence_kinds"]),
-        operations=sorted(roles.archetype(role)["engine_operations"]), pack_path="/p", pack_sha256="0" * 64,
+        execution_profile={}, workspace="/ws/T-1", expected_kinds=sorted(E.kinds_for(role, scope)),
+        operations=sorted(E.submit_operations(roles.archetype(role)["engine_operations"], role, scope)),
+        pack_path="/p", pack_sha256="0" * 64,
         pack_text=pack, continuation={"previous_runs": ["R-INV-1-0"], "evidence": [], "changed_paths": []},
         run_dir="/r", scratch="/s").prompt
 
@@ -106,14 +119,18 @@ def false_promises(p: ctx.PackInputs) -> list[str]:
     return [n for n in names if ctx.KNOWLEDGE_SECTIONS.get(n) not in delivered]
 
 
-def operations_off_the_bridge(text: str) -> list[str]:
-    """Operations in the pack's allowed list, and `aew` commands in ``text``, that the bridge lacks. A prohibition may
-    name what only the Lead runs (the planner's `aew plan adopt`): it tells the worker not to, so it is not scanned."""
+def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | None = "ticket") -> list[str]:
+    """Operations in the pack's allowed list, and `aew` commands in ``text``, that the bridge lacks, and each
+    `submit.<kind>` listed for a kind the engine refuses this role at this scope (``evidence.kinds_for``; #581 review,
+    F1). A prohibition may name what only the Lead runs (the planner's `aew plan adopt`): it tells the worker not to, so
+    it is not scanned."""
     allowed = re.search(r"^### Allowed engine operations\n+((?:- .*\n?)+)", text, re.M)
     missing = []
     for op in re.findall(r"^- (\S+)$", allowed.group(1) if allowed else "", re.M):
         key = "submit" if op.startswith("submit.") else op
         if key not in bridge.OPERATIONS and op != "(none)":
+            missing.append(op)
+        elif key == "submit" and op.removeprefix("submit.") not in E.kinds_for(role, scope):
             missing.append(op)
     offered = re.sub(r"^(?:### Prohibited|Additional prohibitions:)\n+(?:- .*\n?)+", "", text, flags=re.M)
     for suggestion in rules.suggestions(rules.Output(site="unit", plane=rules.MODEL, text=offered)):
@@ -133,14 +150,15 @@ def says_there_is_none(text: str) -> bool:
     return "no credential" in text.lower()
 
 
-def report_format_problems(pack: str, role: str) -> list[str]:
+def report_format_problems(pack: str, role: str, scope: str | None = None) -> list[str]:
     """Why the pack's report format is not what the engine accepts as it stands (a `<...>` placeholder is a string to
     the schema, so filling those in is all a copy needs), or does not list a field's other values."""
     fence = re.search(r"^```markdown\n---\n(.*?)\n---\n", pack, re.S | re.M)
     if fence is None:
         return ["no report format"]
     meta = load_yaml(fence.group(1))
-    kind = ctx.OUTPUT_TEMPLATES[role][0]
+    kind = ctx.output_template(role, scope)[0]
+    assert kind is not None
     problems = []
 
     def walk(value: Any) -> None:
@@ -158,12 +176,12 @@ def report_format_problems(pack: str, role: str) -> list[str]:
     if "scope" in section:
         problems.append("names a scope")
     try:
-        E.check_submission(role, kind, meta)
+        E.check_submission(role, kind, meta, scope=scope)
         filled = {"scope": "ticket", **section} if kind == "verification" else section  # as the engine fills it
         validate_property("evidence", SECTION[kind], filled, source="the template")
     except AEWError as exc:
         problems.append(exc.message)
-    allowed = ctx._allowed_values(role)
+    allowed = ctx._allowed_values(role, scope)
     if "result" in meta and meta["result"] not in allowed["result"]:
         problems.append(f"result {meta['result']!r} is refused")
     listed = next((ln for ln in pack.splitlines() if ln.startswith("Allowed values: ")), "")
@@ -236,7 +254,8 @@ def test_a_section_that_is_absent_is_not_promised_and_one_that_is_present_is():
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_every_operation_a_workers_text_names_is_on_its_bridge(role, scope, full, card):
-    assert operations_off_the_bridge(prompt(ctx.render(inputs(role, scope, full=full, card=card)), role)) == []
+    text = prompt(ctx.render(inputs(role, scope, full=full, card=card)), role, scope)
+    assert operations_off_the_bridge(text, role, scope) == []
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
@@ -259,7 +278,7 @@ def test_context_read_is_the_only_operation_left_off_the_list(role):
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_a_report_format_is_what_the_engine_accepts_and_lists_the_other_values(role, scope, full, card):
-    assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role) == []
+    assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role, scope) == []
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
@@ -345,6 +364,9 @@ def test_the_promise_guard_right_wrong_and_missing(monkeypatch, promised, gaps):
     ("### Allowed engine operations\n- harness.launch\n\n", ["harness.launch"]),
     ("Then run `aew work transition T-1 --to RUNNING`.", ["aew work transition T-1 --to RUNNING"]),
     ("### Prohibited\n- running `aew work transition T-1 --to RUNNING`\n\n", []),
+    # A submit the engine refuses this role at this scope is off, though its prefix is on the bridge (#581 F1).
+    ("### Allowed engine operations\n- submit.review\n- submit.plan_assessment\n\n", ["submit.plan_assessment"]),
+    ("### Allowed engine operations\n- submit.verification\n\n", ["submit.verification"]),
 ])
 def test_the_bridge_guard_right_wrong_and_missing(text, off):
     assert operations_off_the_bridge(text) == off
@@ -404,3 +426,20 @@ def test_the_check_guard_right_wrong_and_missing(role, offered, said, trap):
 ])
 def test_the_credential_guard_tells_an_ask_from_a_denial(text, asks, none):
     assert asks_for_a_credential(text) is asks and says_there_is_none(text) is none
+
+
+def allowed_operations(pack: str) -> list[str]:
+    block = re.search(r"^### Allowed engine operations\n+((?:- .*\n?)+)", pack, re.M)
+    return re.findall(r"^- (\S+)$", block.group(1) if block else "", re.M)
+
+
+@pytest.mark.parametrize("card", [None, *(c.meta for _, c in CARDS if c.archetype == "reviewer")])
+def test_only_a_plan_assessor_is_told_it_may_submit_a_plan_assessment(card):
+    """#581 review, F1: the reviewer archetype holds the grant, but a reviewer of a change, with any card, is offered
+    only the review, and the assessor only its assessment."""
+    for scope in SCOPES["reviewer"]:
+        listed = allowed_operations(ctx.render(inputs("reviewer", scope, full=True, card=card)))
+        if scope == E.ASSESSMENT_SCOPE:
+            assert f"submit.{E.PLAN_ASSESSMENT}" in listed and "submit.review" not in listed, (scope, listed)
+        else:
+            assert f"submit.{E.PLAN_ASSESSMENT}" not in listed, (scope, listed)

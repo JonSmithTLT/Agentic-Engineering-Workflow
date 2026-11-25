@@ -70,7 +70,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
 | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
-| 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+| 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
 | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 
@@ -1249,18 +1249,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E81/`, oldest first (`python tools/register.py show E81`).*
 
-### E83
-
-**Work:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
-
-**Source:** STG-12's S12-4 trace, FIX claim "only the two declared steps auto-run, and only under run" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief; the set is the operator's R-DEC-04 decision of 2026-10-25 (design workspace `e1f1920`)
-
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
-
-**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
-
-*Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
-
 ### E86
 
 **Work:** The order of collection decides which `conftest` a helper imports. `tests/conftest.py` and `tests/discovery/conftest.py` both load as the module `conftest`, so a helper that runs `from conftest import ...` (`tests/helpers/vertical/scripted_operator.py`) gets the discovery one when `tests/discovery` is collected first in a session, and fails with an `ImportError`
@@ -2149,18 +2137,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E182
-
-**Work:** The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned, and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:** `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator's decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy. **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and the Lead's tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository, and lanes. Done when CI fails on an unowned row, a line citation or a count above N
-
-**Source:** The operator's decision of 2026-11-06, the build board's generator placed now (design workspace `7040a55`): "Now, PR 1 first"; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the Lead's audit of the hand-kept board, 2026-11-06
-
-**When:** **Now.** Item 39 of the Now list. PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use
-
-**Notes:** Filed by the Lead. Until PR 2 renders the board, it stays hand-kept, citing register row ids, never line numbers
-
-*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
-
 ### E184
 
 **Work:** `maps.pack_slices` on for every card: every role's pack carries the bounded structural slice, not only the roles whose context names `codebase_map`. The PR measures each card's added pack tokens and records them, as a record and not a gate: every byte of a pack is paid on every request. Done when every card's pack carries the slice, and the tokens it adds are recorded per card
@@ -2233,18 +2209,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E190/`, oldest first (`python tools/register.py show E190`).*
 
-### E191
-
-**Work:** `aew init` at a terminal has no up-front way to decline every tool download: `init`'s `--fetch-tool` option taking `none`, recorded as no answer, so the consent screen isn't shown. It grows `init`'s option pin. Done when that option downloads nothing, shows no screen, and leaves each tool unanswered
-
-**Source:** The review of #343 (E171), its point m8; #343's description leaves the row to the Lead
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E191/`, oldest first (`python tools/register.py show E191`).*
-
 ### E192
 
 **Work:** `tests/integration/test_harness_send_when.py::test_harness_send_defaults_to_next_step_and_posts_steer` failed once on Windows, a timing race in messaging. Find the race and remove it from the test or the code; never raise a deadline or add a retry
@@ -2292,18 +2256,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Owner, the Lead's reading, CI's lane sizing, beside E47
 
 *Later notes: `notes.d/E195/`, oldest first (`python tools/register.py show E195`).*
-
-### E196
-
-**Work:** Text in the code that no longer holds, in one small PR that changes comments and strings only: `dashboard/reasons.py`'s `AWAITS_ACTION_PROJECTION` ("until" F15.1), `capability/__init__.py`'s docstring (the bind "comes in the next" pull request), `engine/seams.py`'s "empty until ADR-0011's archival", and `surface/contract.py`'s docstring on rows still `DESIGNED`. Each is checked against `main` and reworded to what holds. Done when each says what `main` does
-
-**Source:** The Lead's reading of `main` at `bd27dc31`, 2026-11-06
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E196/`, oldest first (`python tools/register.py show E196`).*
 
 ### E197
 
@@ -4189,6 +4141,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E364/`, oldest first (`python tools/register.py show E364`).*
 
+### E365
+
+**Work:** The systems generator's later work, split from E182 when it closed: derive `serves` from each system's `serves_claims` and `as_built` against the requirements trace, and compute lanes from `touches` and `depends_on` (per slice, once each slice carries its own `touches` and `after`, as the board's format owes)
+
+**Source:** E182's **Later** clause; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops it from SYS-48's finish line
+
+**When:** **Unscheduled**, once the requirements trace is in the repository
+
+**Notes:** Filed by the Lead. SYS-48 owns it, outside its finish line
+
+*Later notes: `notes.d/E365/`, oldest first (`python tools/register.py show E365`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -4821,6 +4785,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
 
+### E83
+
+**Was:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
+
+**Closed:** 2026-11-25
+
+**By:** #445 (`5c51e388`), riding E228's fourth PR: `surface/classify.py` declares `AUTO_RUN` and derives `auto_run_set` from the contract, and `test_only_the_two_declared_steps_auto_run_each_called_without_execution` (`tests/unit/test_surface_contract.py`) holds the two equal and a call with `execution` never auto-runnable. That only Run lets them run unconfirmed is the steering loop's rule, tested in `tests/integration/test_steering_loop.py` (the row's note of 2026-11-11). Closed in the board's lag sweep; SYS-08 now awaits the operator's real Lead run
+
+*Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
+
 ### E84
 
 **Was:** A move or a promotion keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations. One of the trace's FIX rows (S12-6), taken ahead of its milestone
@@ -5051,6 +5025,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
 
+### E182
+
+**Was:** The systems generator: `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane (PR 1), the rendered board (PR 2), and state read from the code with the N = 12 check (PR 3). Its later work, `serves` once the requirements trace is in the repository and lanes, is E365
+
+**Closed:** 2026-11-25
+
+**By:** #346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`): its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops serves and lanes from SYS-48's finish line and files them as E365
+
+*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
+
 ### E183
 
 **Was:** The steering text and stop fix, with the `request_confirmation` hide: the steering tool's text and the Lead's say what works; the crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's enum and schema, and `request_raise` stays advertised; comments that promised E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum
@@ -5060,6 +5044,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #577: the steering tool's actions derived from one owner (`lower`, `request_raise`), its text, the Lead's system text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead's step (still kept from the Lead's wake, per QC-1 (c), pending the operator's confirmation on the PR), and the notify-event enum trimmed
 
 *Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
+
+### E191
+
+**Was:** `aew init` at a terminal has no up-front way to decline every tool download: `init`'s `--fetch-tool` option taking `none`, recorded as no answer, so the consent screen isn't shown. It grows `init`'s option pin. Done when that option downloads nothing, shows no screen, and leaves each tool unanswered
+
+**Closed:** 2026-11-25
+
+**By:** #460 (`83d68093`): `aew init --fetch-tool none` skips the consent screen and the downloads and leaves each tool unanswered, and a combination with named tools is refused before anything is written; tested in `tests/unit/test_capability_consent.py`, `tests/unit/test_first_configuration.py` and `tests/integration/test_init_first_configuration.py`, with `init`'s surface-map entry (the row's note of 2026-11-11). Closed in the board's lag sweep
+
+*Later notes: `notes.d/E191/`, oldest first (`python tools/register.py show E191`).*
+
+### E196
+
+**Was:** Text in the code that no longer holds, in one small PR that changes comments and strings only: `dashboard/reasons.py`'s `AWAITS_ACTION_PROJECTION` ("until" F15.1), `capability/__init__.py`'s docstring (the bind "comes in the next" pull request), `engine/seams.py`'s "empty until ADR-0011's archival", and `surface/contract.py`'s docstring on rows still `DESIGNED`. Each is checked against `main` and reworded to what holds. Done when each says what `main` does
+
+**Closed:** 2026-11-25
+
+**By:** #460 (`83d68093`), with E191: the four texts reworded to what `main` does, in `dashboard/reasons.py`, `capability/__init__.py`, `engine/seams.py` and `surface/contract.py` (the row's note of 2026-11-11). Closed in the board's lag sweep
+
+*Later notes: `notes.d/E196/`, oldest first (`python tools/register.py show E196`).*
 
 ### E227
 

@@ -333,8 +333,15 @@
               "ticket",
               "integration",
               "observation",
-              "parent"
+              "parent",
+              "plan_assessment"
             ]
+          },
+          "plan_revision": {
+            "description": "E160: a plan assessor's (scope plan_assessment) pin, the accepted plan revision and sha256 it was dispatched to assess; its assessment is refused once the accepted plan is another",
+            "type": "object",
+            "required": ["revision", "sha256"],
+            "properties": {"revision": {"type": "integer"}, "sha256": {"type": "string"}}
           },
           "specialty": {
             "type": [
@@ -402,6 +409,11 @@
                   "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
                   "type": "object", "additionalProperties": false, "required": ["messaging"],
                   "properties": {"messaging": {"const": "enabled"}}
+                },
+                "maps": {
+                  "description": "The worker map-reads switch's immutable launch snapshot (register F15.8); absent on old runs and on runs launched with it off.",
+                  "type": "object", "additionalProperties": false, "required": ["reads"],
+                  "properties": {"reads": {"const": "structural"}}
                 },
                 "provider_key_admission": {
                   "description": "Stored credential admission metadata. API keys carry the SQLite row ID and update time. Plan logins carry their kind.",

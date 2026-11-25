@@ -20,7 +20,7 @@ into an invariant violation. Their names are retained from the brief because
 those distinctions make selection and evaluation practical. Invariant tracing
 and small regression probes are techniques within these procedures; separate
 skills for them are deferred until evidence supports the extra selection cost.
-Eleven further candidates, added later, are listed in
+Further candidates, added later, are listed in
 [section 6](#further-candidates); they are unevaluated too.
 
 The design makes four deliberate choices:
@@ -122,10 +122,12 @@ material and cannot establish unseen-case performance.
 
 ### Further candidates
 
-Eleven more candidates are public as text, from the operator's local drafts
-(E136). Each is **unevaluated**. Being in this directory does not ship a skill
-or offer it on a card: whether and where each is served is a separate fit
-decision, made in the register row's pull requests. They follow the layout
+More candidates are public as text, from the operator's local drafts, one per
+row of the table below. Each is **unevaluated**. Being in this directory does
+not ship a skill or offer it on a card: whether and where each is served is a
+separate fit decision, made in the register's pull requests (E136, and E161 for
+the Lead's own list). What ships is what AEW's skill manifest lists
+(`src/aew/skills/manifest.json`), and what each card offers is on the card. They follow the layout
 above, except that none has an `examples/` directory yet, and their `evals/`
 also hold authoring notes, sources and, for some, runtime manifests.
 

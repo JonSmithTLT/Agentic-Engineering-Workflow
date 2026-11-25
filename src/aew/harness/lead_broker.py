@@ -58,6 +58,7 @@ from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
 from aew.harness.contract import EXPECT_REV
+from aew.maps.query import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -106,10 +107,14 @@ OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator"
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
                      frozenset({"capability", "remove"}), frozenset({"capability", "host-copies"}))
-# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
+# A Lead command whose Lead route is a typed tool not yet built, so only the operator runs it until then: `plan assess`
+# (E160 slice 2a; its typed tool is slice 2b, as the surface map's standing rule requires of a new Lead command).
+TYPED_PENDING = (frozenset({"plan", "assess"}),)
+# Commands only the operator runs, at their own terminal: never relayed, and never a typed tool (A1 §1), except those
+# in TYPED_PENDING, which are the operator's only until their typed tool is built and leave this list with it.
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
-                 + (CREDENTIAL_REPORT,))
+                 + (CREDENTIAL_REPORT,) + TYPED_PENDING)
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -132,8 +137,10 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
 ))
+# `plan assess` is not Lead-reachable yet (TYPED_PENDING), but it prints a credential like every dispatch, so a relay
+# would need --launch too.
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
-              frozenset({"invoke", "create"}))
+              frozenset({"invoke", "create"}), frozenset({"plan", "assess"}))
 POLL_S = 1.0
 RECEIPT_CLOSE_LOCK_S = 2.0  # let a successful send finish its receipt; a stalled client cannot hold close forever
 # If that bound expires, receipt remains uncertain and the body may be re-shown; never claim an unrecorded receipt.
@@ -148,7 +155,8 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("resume", ("json",)),
     ("harness status", ("invocation",)),
     ("harness wait", ("run", "any_", "timeout")),
-    ("map show", ("commit", "root", "section", "json")),
+    ("map show", ("commit", "root", "section", "scope", "work", "json")),
+    ("map search", ("text", "kind", "limit", "commit", "json")),  # register F15.8: a read of the map and listing
     ("map diff", ("operands", "json")),
     # F25 R6: a provisional run's usage is read from its run directory under `.aew/local`, which the sandbox masks
     ("usage show", ("target", "all", "since", "until", "json")),
@@ -165,6 +173,8 @@ _NAME = (re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*"), "an id or name, with no pat
 RELAYED_VALUES: dict[str, tuple[re.Pattern[str], str]] = {
     "root": (re.compile(r"[0-9a-f]{64}"), "a stored map is named by its sha256"),
     "commit": (re.compile(r"[^-\x00][^\x00]*"), "a revision that is not an option"),
+    "text": (re.compile(rf"[^-\x00][^\x00]{{0,{TEXT_MAX - 1}}}"),
+             f"search text: at most {TEXT_MAX} characters, not an option, no NUL"),
 }
 _LOCAL = "a read of committed state, which the sandbox shows read-only: it runs there, lock-free"
 _HERE = "it reports on the environment it runs in: in the sandbox, the sandbox's"
@@ -253,6 +263,9 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "
                 "operator's, which only the operator confirms, at their own terminal: run it without that flag "
                 "(as the Lead's), or ask the operator")
+    if any(p <= path for p in TYPED_PENDING):
+        return (f"`aew {command_name(ns)}` reaches a Lead session through its typed tool, which is not built yet; "
+                "until it is, ask the operator to run it at their own terminal")
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
@@ -1018,22 +1031,26 @@ class WeakerLead:
 
     def __init__(self, engine: Any, argv: list[str], *, kind: str, who: str) -> None:
         self.engine, self.argv, self.kind, self.who = engine, list(argv), kind, who
+        # What the harness adds to the session's record, set before it is built: `aew opencode`'s skills (E161)
+        self.label_extra: dict[str, Any] = {}
 
     def precheck(self) -> None:
         from aew.harness import containment
 
         policy, _ = self.engine.execution_policy()
-        if containment.mode(policy) == containment.REQUIRED:
-            raise errors.ContainmentUnavailable(UNCONTAINED_LEAD if self.kind == "lead_session" else
-                                                containment.unsupported_message(), reason="lead_uncontained",
-                                                instead="aew opencode")
+        if containment.mode(policy) != containment.REQUIRED:
+            return
+        if not containment.supported():  # no contained Lead here either, so `aew opencode` is no way on (E100)
+            raise errors.ContainmentUnavailable(containment.unsupported_message(),
+                                                reason=containment.UNSUPPORTED_PLATFORM, platform=sys.platform)
+        raise errors.ContainmentUnavailable(UNCONTAINED_LEAD, reason="lead_uncontained", instead="aew opencode")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> Harness:
         from aew.harness import containment, weaker_register
 
         self.precheck()
         run_dir = lead_run_dir(self.engine)
-        label = containment.label(contained=False, reason=containment.uncontained_reason())
+        label = {**containment.label(contained=False, reason=containment.uncontained_reason()), **self.label_extra}
         label["session"] = run_dir.name
         record_label(run_dir, label)
         sys.stderr.write(f"{self.who}: the Lead runs NOT contained ({label['filesystem']}): "

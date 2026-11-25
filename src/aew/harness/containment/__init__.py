@@ -6,11 +6,15 @@ sandbox built from the run's role (:mod:`.layout`). The run's :class:`~aew.harne
 every spawn, so an adapter cannot start an uncontained process. Before the harness starts, the supervisor runs the
 launch self-test (:mod:`.probe`) on that exact layout.
 
-Policy (``containment`` in the execution policy): ``mode: required`` (the default) refuses a launch whose sandbox
-cannot be established or fails its self-test; ``mode: allow_weaker`` launches it with the weaker label.
+Policy (``containment`` in the execution policy): ``mode: required`` (the default on Linux) refuses a launch whose
+sandbox cannot be established or fails its self-test; ``mode: allow_weaker`` launches it with the weaker label.
 ``network.mode`` (:mod:`.netns`) is the run's network: ``proxy_only`` by default, a namespace of its own whose only
 routes out are its provider relay and its egress allowlist; ``isolated``; or ``shared``, the host's network, an explicit
 weaker choice, labelled so.
+
+On a platform with no containment, Windows included, an explicit ``mode: required`` refuses every launch
+(``CONTAINMENT_UNAVAILABLE``, reason :data:`UNSUPPORTED_PLATFORM`), never runs weaker; an unset mode runs labelled
+weaker, its ``weaker_because`` naming the platform (the designer's decision of 2026-10-25, register E100).
 
 Every run records what it actually had (:func:`label`). ``os_readonly_roots`` is filesystem integrity: the host
 root is readable apart from masked secrets. It never means "the sandbox hides the host". The label's ``network`` says
@@ -43,6 +47,7 @@ from aew.harness.containment.netns import NOT_PROVIDED
 __all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
            "label", "normalize", "weaker",
            "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "ALLOW_WEAKER_REMEDY", "NO_CONTAINMENT_REMEDY",
+           "UNSUPPORTED_PLATFORM",
            "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
            "ISOLATED", "SHARED", "NOT_PROVIDED"]
 
@@ -52,6 +57,8 @@ REQUIRED, ALLOW_WEAKER = "required", "allow_weaker"
 # every other refusal on that condition, validation's and the custodian's (STG-05).
 ALLOW_WEAKER_REMEDY = "set containment.mode: allow_weaker to run labelled workdir_separation_only"
 NO_CONTAINMENT_REMEDY = f"run on Linux, or {ALLOW_WEAKER_REMEDY}"
+# The reason code of a launch refused because the policy requires containment and the platform has none (E100)
+UNSUPPORTED_PLATFORM = "unsupported_platform"
 CONTAINED = "os_readonly_roots"          # OS-enforced: only the layout's writable roots can be written
 WORKDIR_ONLY = "workdir_separation_only"  # separate directories, nothing enforced
 
@@ -68,15 +75,15 @@ def network() -> str:
 
 
 def mode(policy: dict[str, Any] | None) -> str:
-    """The policy's containment mode. On Linux, ``required`` unless the operator chose ``allow_weaker``. Windows has
-    no containment and is labelled for what it is (ADR-0009: real-repository work stays off it by process). Any
-    other platform honours an explicit ``required`` by refusing, and otherwise runs labelled weaker (M4-B review)."""
+    """The policy's containment mode. On Linux, ``required`` unless the operator chose ``allow_weaker``. On every
+    other platform, Windows included, an explicit ``required`` is honoured, and every launch under it is refused
+    (:func:`establish`, :func:`unsupported_message`); an unset mode runs labelled weaker, its ``weaker_because``
+    naming the platform (:func:`uncontained_reason`). The designer's decision of 2026-10-25 (register E100), which
+    ended Windows' exception: an explicit ``required`` there used to run weaker (ADR-0009, amendment of 2026-11-25)."""
     explicit = ((policy or {}).get("containment") or {}).get("mode")
     if supported():
         return str(explicit or REQUIRED)
-    if sys.platform == "win32" or explicit != REQUIRED:
-        return ALLOW_WEAKER
-    return REQUIRED
+    return REQUIRED if explicit == REQUIRED else ALLOW_WEAKER
 
 
 def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str, Any] | None = None,
@@ -119,9 +126,10 @@ def _no_platform() -> str:
 
 
 def unsupported_message() -> str:
-    """The refusal of a launch under an explicit ``required`` on a platform with no containment."""
-    return (f"execution policy requires containment (containment.mode: required), and {_no_platform()}: "
-            f"{NO_CONTAINMENT_REMEDY}")
+    """The refusal of a launch under an explicit ``required`` on a platform with no containment: what was refused,
+    why, and what works instead."""
+    return (f"the launch is refused: the execution policy requires containment (containment.mode: required), and "
+            f"{_no_platform()}; {NO_CONTAINMENT_REMEDY}")
 
 
 def weaker(value: Any) -> bool:
@@ -170,7 +178,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
     wanted = mode(policy)
     if not supported():
         if wanted == REQUIRED:
-            raise ContainmentUnavailable(unsupported_message())
+            raise ContainmentUnavailable(unsupported_message(), reason=UNSUPPORTED_PLATFORM, platform=sys.platform)
         return None, label(contained=False, reason=uncontained_reason())
     settings = (policy or {}).get("containment") or {}
     net_mode = netns.mode(policy)

@@ -5,12 +5,14 @@ than from hand lists (docs/implementation/vertical-uat.md §8)."""
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
 import sys
 import threading
 import unicodedata
+from types import SimpleNamespace
 
 import pytest
 from discovery import allowed, capture, modes, rules, static
@@ -645,6 +647,46 @@ def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
     assert "O-WORDS cli:aew status|PROJECT_NOT_FOUND" in data["findings"], data["findings"]
 
 
+@pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="pytest-xdist not installed (extra: parallel)")
+def test_a_lost_xdist_worker_after_its_tests_pass_publishes_the_exit_and_fails_d2(tmp_path, capsys):
+    """An EOF after the last test report has no crash item. The green pytest lane still needs a red D2 result."""
+    import os
+    from pathlib import Path
+
+    tests = Path(__file__).resolve().parents[1]
+    probe = tmp_path / "tests" / "unit" / "test_probe.py"
+    probe.parent.mkdir(parents=True)
+    probe.write_text("def test_probe():\n    pass\n", encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "exit_worker.py").write_text(
+        "import os\n\ndef pytest_sessionfinish(session):\n"
+        "    if hasattr(session.config, 'workerinput'):\n        os._exit(37)\n", encoding="utf-8")
+    report = tmp_path / "reports" / "probe.json"
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tests), os.environ.get("PYTHONPATH", "")]),
+           "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+    env.pop("PYTEST_ADDOPTS", None)
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "xdist.plugin", "-p", "conftest",
+               "-p", "exit_worker", "--rootdir", str(tmp_path), "-c", str(tmp_path / "pytest.ini"), "-n", "1",
+               "--dist", "worksteal", "--max-worker-restart", "0", "--lane-report", str(report), str(probe)]
+    proc = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300,
+                          stdin=subprocess.DEVNULL,
+                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]
+    assert json.loads(report.read_text(encoding="utf-8"))["complete"]
+    discovery = capture.out_path_for(report)
+    data = json.loads(discovery.read_text(encoding="utf-8"))
+    assert sum(data["errors"].values()) == 1
+    [loss] = data["worker_losses"]
+    assert isinstance(loss["pid"], int) and loss["pid"] > 0
+    assert (loss["worker"], loss["exit_code"], loss["findings_received"]) == ("gw0", 37, False)
+    assert loss["last_report"] == {"test": "tests/unit/test_probe.py::test_probe", "phase": "teardown",
+                                   "outcome": "passed"}
+    assert _ratchet().main([str(report.parent), "--event", "push", "--tier", "full", "--assurance", "success"]) == 1
+    output = capsys.readouterr().out
+    assert "FAIL capture errors (outputs left unjudged): 1" in output
+    assert f"{discovery.name}: RuntimeError: gw0 went down without its findings" in output
+
+
 # ---------------------------------------------------------------------------------------------- the ratchet
 
 def test_a_pull_request_fails_only_on_new_keys_of_enforced_rules():
@@ -814,8 +856,24 @@ def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output,
     snapshot = plugin.recorder.as_dict()
     assert sum(snapshot["errors"].values()) == (1 if lost else 0)  # counted, and once per worker
     assert all("gw3 went down without its findings" in name for name in snapshot["errors"])
-    if not lost:
+    if lost:
+        assert plugin._loss_details() == [{"worker": "gw3", "pid": None, "exit_code": None,
+                                          "findings_received": capture.WORKER_KEY in output, "last_report": None}]
+    else:
+        assert plugin._loss_details() == []
         assert snapshot["findings"]["O-CMD x"]["count"] == 1 and snapshot["outputs"] == 2
+
+
+def test_a_synthetic_crash_item_never_replaces_the_last_report_from_the_lost_worker():
+    plugin = capture.CapturePlugin(None, None)  # type: ignore[arg-type]
+    node = SimpleNamespace(gateway=SimpleNamespace(id="gw3"))
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="setup", outcome="passed"))
+    plugin.pytest_testnodedown(node, "Not properly terminated")
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="???", outcome="failed"))
+    [loss] = plugin._loss_details()
+    assert loss["last_report"] == {"test": "test_worker.py::test_example", "phase": "setup", "outcome": "passed"}
 
 
 def test_o_ids_still_reads_a_line_that_does_not_parse():

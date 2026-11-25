@@ -118,7 +118,8 @@ def pin(root: Path) -> None:
     (root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
 
 
-def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False) -> World:
+def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False,
+          model: str | None = None) -> World:
     root = make_git_repo(tmp_path / "repo", CP.FILES)
     Engine.initialize(root, project_id="calc")
     if checks:
@@ -136,7 +137,7 @@ def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = F
                    contract=["changes stay in calc/ and tests/"])["id"]
     w.lead("plan_propose", no_assurance=True, work_id=w.wid, body=CP.PLAN, affected_paths=["calc/core.py"])
     w.lead("plan_accept", work_id=w.wid, revision=1)
-    out = w.lead("work_assign", work_id=w.wid)
+    out = w.lead("work_assign", work_id=w.wid, execution_profile={"model": model} if model else None)
     w.lead("work_transition", work_id=w.wid, to="RUNNING")
     w.inv, w.worker, w.workspace = out["invocation"], out["invocation_token"], Path(out["workspace"]["path"])
     return w
@@ -857,25 +858,28 @@ INIT_POLICY_SHA256 = {
     # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR);
     # its steering comment reworded when init began recording that mode (#432's merge check, N1), and again for the
     # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1), and again when that stop became the
-    # Lead's own step (register E183): comments only; and
-    # `maps.pack_slices: structural`, a new project's default (ADR-0015, amended 2026-11-11)
-    "policy/execution.yaml": "d0ad4a66b2b08134a89d7ff05a0336d06d5a9915dc945a0e1cea9a30ce45b01f",
+    # Lead's own step (register E183): comments only; and `maps.pack_slices: structural`, a new project's default
+    # (ADR-0015, amended 2026-11-11); and `maps.reads: structural`, the worker's map reads, a new project's default
+    # (register F15.8; the operator, 2026-11-25, O1)
+    "policy/execution.yaml": "8760ad23c0c8bc85d306943aaa6bcb8588d38e8d5658685eb0ec657da47d3ceb",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
 # What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
 # (register E228's third PR): the standing crawl mode and the shipped notifier; and maps on (ADR-0015, amended
-# 2026-11-11).
+# 2026-11-11), the worker's map reads with them (register F15.8, 2026-11-25).
 INIT_EXECUTION_PARSED = {"schema": "aew/execution/v1", "configured": False, "harness": "opencode", "profiles": {},
                          "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}},
                          "provider_env": [], "steering": {"mode": "crawl"},
-                         "notify": {"command": ["aew", "notify", "desktop"]}, "maps": {"pack_slices": "structural"}}
+                         "notify": {"command": ["aew", "notify", "desktop"]}, "maps": {"pack_slices": "structural",
+                                                                                     "reads": "structural"}}
 INIT_POLICY_DIGESTS = {
     # gates.yaml's cap, and maps.pack_slices, legality-affecting, on for a new project (ADR-0015, amended 2026-11-11)
     "legality_digest": "sha256:44effcd55a0b3ed573217ea37eb7151dad57e8f3f90043cf8efccfd389900c13",
-    # moved by the template's standing crawl mode and notifier, both operational (register E228's third PR)
-    "operational_digest": "sha256:b171d55f4bfaed0d117731cc4d2435834b54537c4a0e30629cd3467706bc1bef",
+    # moved by the template's standing crawl mode and notifier, both operational (register E228's third PR), and by
+    # maps.reads, operational, on for a new project (register F15.8)
+    "operational_digest": "sha256:9715d986f159282b61e6ef8b6732522bbec2a09242b6d436418e61aed80a63ee",
 }
 
 
@@ -956,11 +960,14 @@ def test_legality_modules_never_import_coordination():
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
     # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
+    # MS5: the supervisor uses the leaf bound to limit the number of final admission reads.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
-                         "aew/harness/told_messages.py"}
+                         "aew/harness/told_messages.py", "aew/harness/worker_messages.py"}
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
+    assert {m for m in _imports(src / "aew/harness/worker_messages.py") if _is_coordination(m)} == {
+        "aew.coordination.layout", "aew.coordination.layout.MAX_UNDELIVERED_LEAD"}
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
                       "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",

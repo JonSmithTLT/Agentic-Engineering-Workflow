@@ -29,6 +29,7 @@ from lead_session import KEYS
 from notifier import Console, raise_to, recorder
 from proxy_env import RecordingProxy, proxy_env
 
+from aew import roles
 from aew.capability import consent
 from aew.engine.api import Engine
 from aew.harness import contract as K
@@ -1118,7 +1119,7 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     ran = lab.record("R-INV-0001-1")["launch"]["skills"]  # one plan: what the run got is what config shows
     assert ran["copy"] in ("read_only_bind", "rules_only") and {k: v for k, v in ran.items() if k != "copy"} == shown[
         "skills"]
-    exposed = ["c-development", "debugging-root-cause-analysis", "python-development"]
+    exposed = sorted(roles.builtin_cards()["engineer"].meta["optional_skills"])  # the card owns its list
     assert shown["skills"]["exposed"] == exposed == sorted(
         p.name for p in (harness_dir(lab) / "skills").iterdir())
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
@@ -1132,8 +1133,11 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
     placed = None if opencode_lead.contained_here() else {"placed": False, "tools": []}
     engine = Engine.discover(lab.root)  # wakes on, as a project that names no key has them, where they reach the Lead
+    # and the Lead's skills a start would copy, into the folder each start makes (E161): the same plan and folder
+    at = opencode_lead.lead_skills_at(engine)
     assert lead["config"] == projection.lead_config(lead_text.guide_for(engine), tools=placed,
-                                                    push_wake=opencode_lead.pushes_wakes(engine))
+                                                    push_wake=opencode_lead.pushes_wakes(engine), skills_dir=at)
+    assert lead["config"]["skills"] == [at.folder] and not os.path.lexists(at.folder)  # nothing copied
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
 
 

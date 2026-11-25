@@ -70,6 +70,8 @@ EXEMPT = {
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/cli/capability_commands.py:145": "the command word comes from a value: "
                                               "test_each_capability_change_names_a_capability_command",
+    "src/aew/harness/contract.py:395": "the command words come from bridge.MAP_OPERATIONS: "
+                                       "test_the_worker_map_reads_line_names_real_commands",
 }
 
 
@@ -372,6 +374,21 @@ def test_each_capability_change_names_a_capability_command() -> None:
         P.check(f"aew capability {kind.replace('_', '-')}", "span")
 
 
+def test_the_worker_map_reads_line_names_real_commands() -> None:
+    """Blind spot 1 again (the worker preamble's map-reads line, ``aew {op}`` from ``bridge.MAP_OPERATIONS``; register
+    F15.8): every command the line renders is a real `aew` command."""
+    from aew.harness.bridge import MAP_OPERATIONS
+
+    line = K.preamble(K.LaunchContract(
+        run="R-1", invocation="INV-1", work_unit="T-1", role="investigator", scope="observation", card=None,
+        execution_profile={}, workspace="w", expected_kinds=[], operations=sorted(MAP_OPERATIONS), pack_path="p",
+        pack_sha256="0", pack_text="", continuation=None, run_dir="r")).splitlines()[-1]
+    printed = [text for text, _ in P.commands(line)]
+    assert printed == [f"aew {op.replace('.', ' ')}" for op in MAP_OPERATIONS]
+    for text in printed:
+        P.check(text, "span")
+
+
 @pytest.mark.parametrize(("role", "unit"), [("reviewer", {"kind": "ticket"}), ("verifier", {"kind": "ticket"}),
                                             ("investigator", {"kind": "ticket", "mutating": False})])
 def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object]) -> None:
@@ -383,7 +400,7 @@ def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object
     produced = [{"id": "EV-0003", "kind": "review" if role == "reviewer" else "verification"}]
     harness = Harness.__new__(Harness)
     harness.gates = SimpleNamespace(stage_for=lambda state, wid, frm, dst: None)  # type: ignore[assignment]
-    message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced)
+    message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced, "INV-0003")
     [(printed, fenced)] = P.commands(message)
     [args] = P.parse(printed, fenced=fenced)
     assert (args.work_id, args.evidence, args.expect_rev) == ("T-0007", "EV-0003", 17)

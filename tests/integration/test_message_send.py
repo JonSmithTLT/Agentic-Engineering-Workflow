@@ -20,10 +20,11 @@ from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
-# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); and E183's `steering`
+# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
+# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`; nothing else moved); and E183's `steering`
 # row, which offers `lower` and `request_raise` only and says what works.
-OFF_LIST_SHA = {"normal": "52cf583001d4460b6997a2c7954118d1394ce6888b1de89743868acc0b817a06",
-                "recovery": "2bd21cf9ccc307f745de926141e7128425e99d7b5c5b816a56671ac07da44d15"}
+OFF_LIST_SHA = {"normal": "f5a5e0b35171423e7c9dc2f8e69af73ced83fc432870ee047ca93acfa9faf79d",
+                "recovery": "055e82ff87ba4e896f0b25c02157f2ee9dce6f169c2176ba41b784fc759f76ea"}
 OFF_CLI_SHA = "fde19b21896575d7088957988da3d528b231a5e281db60f2d3a894ac2a9e14a3"
 
 
@@ -100,7 +101,7 @@ def test_message_send_creates_no_invocation_run_or_credential_and_leaves_expect_
     assert first["ok"], first["stopped"]
     assert first["revision"] == rev and first["completed_steps"] == [] and first["stage_intent_id"] is None
     assert first["base_operation_class"] == first["effective_operation_class"] == "MECHANICAL"
-    assert first["result"]["delivery"] == "not_built" and "not built yet" in first["result"]["next"]
+    assert first["result"]["delivery"] == "no_live_run" and "next launched" in first["result"]["next"]
     assert w.control_bytes() == before
     assert call(w, body="A second message at the same revision.")["ok"]
     assert w.control_bytes() == before
@@ -213,7 +214,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                           "Publication stays a separate decision.",
         "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
-                        "Delivery not built; turn-end refused.",
+                        "Deliver at the next step or on relaunch. Turn-end refused.",
     }
     assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
     assert expected["ticket_start"] in text

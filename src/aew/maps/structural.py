@@ -43,6 +43,10 @@ DIRECTORY_DEPTH = 3
 CAPS = {"directories": 200, "submodules": 200, "unknown_extensions": 20, "build_descriptors": 200,
         "entry_point_candidates": 100, "test_candidates": 100, "generated_and_vendor": 200,
         "semantic_prerequisites": 100, "omissions": 100}
+# The cap behind each section field that counts what it left out, where the field is not named for its section's own
+# cap; the omissions section's lists share CAPS["omissions"].
+OMITTED_CAP = {"rows_omitted": "directories", "submodules_omitted": "submodules",
+               "unknown_extensions_omitted": "unknown_extensions"}
 SECTIONS = ("directories", "languages", "build_descriptors", "entry_point_candidates", "test_candidates",
             "generated_and_vendor", "semantic_prerequisites", "limits_and_omissions")
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
@@ -274,7 +278,12 @@ def _read_metadata(tree: Tree, r: dict[str, Any]) -> _Facts:
 # ------------------------------------------------------------------------------------------- the sections
 
 
-def _directories(files: list[Entry], gitlinks: list[Entry], r: dict[str, Any]) -> dict[str, Any]:
+def directory_rows(entries: tuple[Entry, ...] | list[Entry], r: dict[str, Any]) -> list[dict[str, Any]]:
+    """The root's row and every directory's at depth <= DIRECTORY_DEPTH, by file count (most first) and then path: the
+    section's rows before its cap. A slice reads the rows of a Ticket's scope from here when the cap left some of
+    them out of the record (register E293: the cap bounds the global view, never the Ticket's own directories)."""
+    files = [e for e in entries if e.type == "blob"]
+    gitlinks = [e for e in entries if e.gitlink]
     count: Counter[str] = Counter()
     langs: defaultdict[str, set[str]] = defaultdict(set)
     every_language: set[str] = set()
@@ -294,6 +303,12 @@ def _directories(files: list[Entry], gitlinks: list[Entry], r: dict[str, Any]) -
     rows += [{"path": d, "depth": d.count("/") + 1, "files": count[d], "languages": sorted(langs[d]),
               "label": labels.get(_name(d).lower(), "unknown")} for d in names]
     rows.sort(key=lambda row: (-row["files"], row["path"]))
+    return rows
+
+
+def _directories(entries: tuple[Entry, ...], r: dict[str, Any]) -> dict[str, Any]:
+    rows = directory_rows(entries, r)
+    gitlinks = [e for e in entries if e.gitlink]
     shown, omitted = _capped(rows, CAPS["directories"])
     subs, subs_omitted = _capped([{"path": g.path, "object": g.oid} for g in sorted(gitlinks, key=lambda g: g.path)],
                                  CAPS["submodules"])
@@ -420,8 +435,7 @@ def _omissions(sections: dict[str, Any], entries: tuple[Entry, ...], f: _Facts,
         section = sections[name]
         for key, value in sorted(section.items()):
             if key.endswith("omitted") and value:
-                cap = {"rows_omitted": "directories", "submodules_omitted": "submodules",
-                       "unknown_extensions_omitted": "unknown_extensions"}.get(key, name)
+                cap = OMITTED_CAP.get(key, name)
                 caps.append({"section": name, "field": key, "limit": CAPS[cap], "omitted": value})
     cap = CAPS["omissions"]
     failures, failures_omitted = _capped(sorted(f.failures, key=lambda i: i["path"]), cap)
@@ -442,11 +456,10 @@ def generate(tree: Tree, rules: Rules) -> dict[str, Any]:
     r = rules.data
     files = [e for e in tree.entries if e.type == "blob"]  # regular files and symlinks
     regular = [e for e in files if e.regular]
-    gitlinks = [e for e in tree.entries if e.gitlink]
     facts = _read_metadata(tree, r)
     under = _under(files)
     sections: dict[str, Any] = {
-        "directories": _directories(files, gitlinks, r),
+        "directories": _directories(tree.entries, r),
         "languages": _languages(regular, r),
         "build_descriptors": _build_descriptors(files, r, facts),
         "entry_point_candidates": _entry_points(regular, r, facts),

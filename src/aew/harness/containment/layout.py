@@ -1450,7 +1450,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     package = _aew_package()
     protected += [p for p in dict.fromkeys((_real(package), _real(os.path.dirname(package)))) if p not in protected]
     tool_fields = _tool_fields(run, tools, hide_host, readonly, protected)
-    skills_binds = (_real(skills_dir),) if skills_dir is not None and os.path.isdir(skills_dir) else ()
+    # a directory of its own, never a link to one: the copy's own path is what is bound (E161)
+    skills_binds = ((_real(skills_dir),) if skills_dir is not None and os.path.isdir(skills_dir)
+                    and not os.path.islink(skills_dir) else ())
     readonly += [p for p in skills_binds if p not in readonly]
     protected += [p for p in skills_binds if p not in protected]
     visible = [_real(project)] if os.path.isdir(project) else []

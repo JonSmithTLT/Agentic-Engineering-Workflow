@@ -9,7 +9,7 @@
     "schema": {"const": "aew/evidence/v1"},
     "id": {"type": "string"},
     "kind": {"enum": ["implementation_report", "review", "verification", "check_result",
-                      "discovery_record", "research_record", "plan_proposal"]},
+                      "discovery_record", "research_record", "plan_proposal", "plan_assessment"]},
     "work_unit": {"type": "string"},
     "producer": {
       "type": "object",
@@ -64,20 +64,7 @@
         "independence": {"enum": ["R0", "R1", "R2", "R3"]},
         "specialty": {"type": ["string", "null"]},
         "disposition": {"enum": ["pass", "changes_required"]},
-        "findings": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "severity", "summary", "required"],
-            "properties": {
-              "id": {"type": "string"},
-              "severity": {"enum": ["blocker", "major", "minor", "observation"]},
-              "summary": {"type": "string"},
-              "location": {"type": ["string", "null"]},
-              "required": {"type": "boolean"}
-            }
-          }
-        },
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
         "resolved_findings": {"type": "array", "items": {"type": "string"}}
       }
     },
@@ -157,6 +144,41 @@
         "affected_paths": {"type": "array", "items": {"type": "string"}}
       }
     },
+    "assessment": {
+      "type": "object",
+      "description": "E160: a plan assessment (the reviewer archetype's challenge of an accepted plan revision): the requirements traced to the plan, the premises challenged, and findings. A gap in the trace, or a premise that fails, cites a finding of the same assessment (checked at submission)",
+      "required": ["requirement_trace", "premises_challenged", "findings"],
+      "additionalProperties": false,
+      "properties": {
+        "requirement_trace": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["requirement", "status"], "additionalProperties": false,
+            "properties": {
+              "requirement": {"type": "string", "minLength": 1, "description": "the requirement, by its id where it has one"},
+              "status": {"enum": ["covered", "partial", "missing"], "description": "how far the plan meets it"},
+              "plan_reference": {"type": ["string", "null"], "description": "where in the plan it is met"},
+              "finding": {"type": ["string", "null"], "description": "the finding that records a partial or missing requirement"}
+            }
+          }
+        },
+        "premises_challenged": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["premise", "source", "challenge", "outcome"], "additionalProperties": false,
+            "properties": {
+              "premise": {"type": "string", "minLength": 1},
+              "source": {"enum": ["plan", "request"], "description": "where it is relied on: the plan, or a factual premise stated in the request (EW-U04.i, with the U3 note on E160)"},
+              "challenge": {"type": "string", "minLength": 1, "description": "how it was tested"},
+              "outcome": {"enum": ["holds", "fails", "unverified"]},
+              "evidence": {"type": "array", "items": {"type": "string"}},
+              "finding": {"type": ["string", "null"], "description": "the finding that records a premise that fails"}
+            }
+          }
+        },
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
     "check": {
       "type": "object",
       "required": ["check_id", "exit_code"],
@@ -179,9 +201,29 @@
       "then": {"properties": {"kind": {"const": "check_result"},
                               "producer": {"required": ["validation_run"], "not": {"required": ["role"]}}}},
       "else": {"properties": {"producer": {"required": ["role"]}}}
+    },
+    {
+      "description": "E160: a plan assessment is the reviewer archetype's, carries its assessment, and is bound to the accepted plan revision and its sha256",
+      "if": {"properties": {"kind": {"const": "plan_assessment"}}},
+      "then": {"required": ["assessment", "plan_revision"],
+               "properties": {"producer": {"properties": {"role": {"const": "reviewer"}}},
+                              "plan_revision": {"type": "object", "required": ["revision", "sha256"],
+                                                "properties": {"sha256": {"pattern": "^[0-9a-f]{64}$"}}}}}
     }
   ],
   "$defs": {
+    "finding": {
+      "type": "object",
+      "description": "A finding of a review or a plan assessment (E160): one shape for both",
+      "required": ["id", "severity", "summary", "required"],
+      "properties": {
+        "id": {"type": "string"},
+        "severity": {"enum": ["blocker", "major", "minor", "observation"]},
+        "summary": {"type": "string"},
+        "location": {"type": ["string", "null"]},
+        "required": {"type": "boolean"}
+      }
+    },
     "coverage_inventory": {
       "oneOf": [
         {"type": "object", "required": ["known", "reason"], "additionalProperties": false,

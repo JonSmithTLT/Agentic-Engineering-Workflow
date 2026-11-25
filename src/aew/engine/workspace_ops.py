@@ -14,6 +14,7 @@ from aew.engine.conflicts import live_mutating_tickets
 from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.harness_ops import maps_launch_snapshot
 from aew.engine.queue_ops import is_custodian
 from aew.errors import (
     ConcurrencyLimit,
@@ -26,6 +27,7 @@ from aew.errors import (
 )
 from aew.harness import agentenv, base, registry
 from aew.harness import contract as K
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.policy import execution as X
 from aew.roles import NON_MUTATING_EXECUTORS
@@ -266,6 +268,8 @@ class Invocations:
         }]
         if self.coordination.project_switch(ctx.state) == X.MESSAGING_ENABLED:
             inv["runs"][-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+        # the run's map-reads snapshot, as `harness launch` records it (register F15.8)
+        ctx.state["invocations"][inv_id]["runs"][-1].update(maps_launch_snapshot(self.k))
         ctx.refs.append(f"run:{run}")
 
     def invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
@@ -274,7 +278,7 @@ class Invocations:
         An invocation is never retargeted to a later workspace or candidate of the same Ticket.
         """
         unit = state["work"][inv["work_unit"]]
-        if inv.get("scope") in {"observation", "parent"}:
+        if inv.get("scope") in E.OBSERVER_SCOPES:
             obs = inv.get("observation") or {}
             if obs.get("status") != "active" or not obs.get("path"):
                 raise PermissionDenied("this invocation's read-only observation workspace has been retired",

@@ -320,6 +320,7 @@ AEW_LIVE_OPENCODE_MODEL=<provider/model> python -m pytest --live tests/live -n 4
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
 AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # unscripted: also AEW_LIVE_PROVIDER_KEY_ENV (costs money)
 AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
+AEW_LIVE_LEAD_SKILLS_MODEL=<provider/model> AEW_LIVE_PROVIDER_KEY_ENV=<VARIABLE> AEW_LIVE_RESULTS=lead-skills.jsonl \n  python -m pytest --live tests/live/test_lead_skills_live.py -p no:xdist -q   # the Lead's skills (E161): the listing needs no model; the model test costs money
 ```
 
 The paid dogfood (M3 step 9) is not a test lane. It is an evaluation with its own driver, fixtures, hidden tests and pre-registered rubric in `eval/m3/dogfood/` (see its README), reported in `m3-dogfood-report.md`.
@@ -402,6 +403,21 @@ supersessions retain their job IDs and do not count as failed test runs. A verif
 covers sibling jobs with no annotation of their own, such as the matrix jobs GitHub creates unrendered after the job
 that defines their matrix was cancelled, both in the completed run and in assurance, which reads its run before it
 concludes.
+
+A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
+The lane supervisor at the signal, on either platform, or the cancellation collection, then records
+`runner-resources-before-tests.txt`, but only from positive observations: no watchdog header or running name, and each
+session either still starting, as an xdist session whose registered workers' lifecycle receipts, read from their live
+writers, stand before their first test, or finished after a graceful interrupt, with every worker's receipt short of
+execution and the lane report showing no test ran. No session registered at all is recorded too: that reading of an
+absence holds while every lane command passes `--session-deadline` with its hang directory the lane root or one level
+under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The evidence check types
+such a lane `before tests` and accepts the record as its death evidence only while every session, worker (by pid and
+start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out; anything else is a
+`[before-tests]` defect. The proof's start-up control cancels a lane whose workers hold their collection and requires
+that typing with no defect, and its `verify` job ablates the rule on each `normal` plant. A serial session that has not
+finished, whose controller runs its tests itself and keeps no lifecycle receipt, is never recorded this way, so its gap
+stays a defect.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The

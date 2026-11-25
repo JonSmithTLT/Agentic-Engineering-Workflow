@@ -12,7 +12,7 @@ Hypothesis: Reduce consequential invented requirements and redundant questions w
 
 Primary outcome: Correct identification and resolution request for the decision that changes behavior, with sourced criteria and no invented policy.
 
-Compare the same target worker with and without the frozen skill using the shared evaluation guide (`docs/skills/evaluation-guide.md` in this repository). Record model/settings, source and runtime-file digests, task/environment identity, outcomes, total input/output tokens including skill text, tool calls, elapsed time, and human questions. Freeze correctness floors, regression margins, and economic limits before trials. Unauthorized actions or fabricated evidence veto adoption. Equal quality with added cost is not a demonstrated quality gain.
+Compare the same target worker with and without the frozen skill using the shared [evaluation guide](../../../evaluation-guide.md). Record model/settings, source and runtime-file digests, task/environment identity, outcomes, total input/output tokens including skill text, tool calls, elapsed time, and human questions. Freeze correctness floors, regression margins, and economic limits before trials. Unauthorized actions or fabricated evidence veto adoption. Equal quality with added cost is not a demonstrated quality gain.
 
 Use [cases](cases.yaml), [rubric](rubric.md), and [research rationale](sources.md). Public cases are development material, never unseen holdouts. Author and sequester fresh variants for adoption decisions. Structural validation and author inspection are not worker trials.
 

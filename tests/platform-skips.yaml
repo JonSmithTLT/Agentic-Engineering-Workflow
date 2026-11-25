@@ -8,6 +8,10 @@ evidence_proof_skips:
     oom: Linux cgroup v2 supplies an isolated, swap-free memory limit and an oom_kill counter.
 skipped:
   win32:
+    tests/integration/test_hang_autopsy.py::test_a_start_up_interrupted_gracefully_is_typed_before_tests_from_its_real_bundle[at the signal]: >-
+      A graceful interrupt is SIGINT to the session's process group, POSIX's. Covered on Linux; the hosted start-up control in evidence-proof cancels a real Windows lane during start-up.
+    tests/integration/test_hang_autopsy.py::test_a_start_up_interrupted_gracefully_is_typed_before_tests_from_its_real_bundle[at the collection]: >-
+      A graceful interrupt is SIGINT to the session's process group, POSIX's. Covered on Linux; the hosted start-up control in evidence-proof cancels a real Windows lane during start-up.
     tests/unit/test_evidence_states.py::test_hosted_warning_attach_records_only_process_outcomes: >-
       The hosted Linux sampler retries py-spy through sudo. Linux exercises both routes with real subprocesses.
     tests/integration/test_relay_status.py::test_direct_relay_connect_destinations_match_the_receiver_and_report: >-
@@ -667,6 +671,10 @@ skipped:
       Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
       client read runs on every platform through a real broker in
       tests/integration/test_relayed_file_arguments_through_a_broker.py. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_contained_session.py::test_a_lead_copy_changed_after_delivery_is_never_bound_and_its_record_says_copy_failed: >-
+      Linux bubblewrap containment of the Lead's session: the re-check guards the contained Lead's read-only bind, and
+      the Windows Lead runs labelled not contained, with no bind (E161). Covered on Linux (CI and the Rocky 8 lane);
+      the check itself (aew.skills.verify) runs on every platform in tests/unit/test_lead_skills.py.
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.
@@ -1134,6 +1142,11 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/unit/test_hang_autopsy_units.py::test_a_job_the_lane_named_holds_a_member_by_identity_and_its_name_is_never_joined_twice: >-
+      membership of a job object is Windows'; the cancellation collection's admission by it is tested on every platform
+      against a modelled job membership (test_a_worker_too_new_for_its_first_sample_is_attached_when_its_session_job_holds_it and
+      test_a_never_sampled_worker_outside_its_session_job_is_never_attached in tests/unit/test_evidence_states.py).
+      Covered on Windows.
     tests/integration/test_opencode_lead.py::test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session: >-
       the Lead runs contained on Linux: test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session
       covers this path there.

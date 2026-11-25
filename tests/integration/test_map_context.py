@@ -162,7 +162,7 @@ def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(
     assert second["root"] != first["root"]
     again = regenerate(p, inv)
     assert again["matches_recorded"] and f"map {first['root'][:12]}" in pack_text(p, inv)
-    # A pinned artifact that is gone is rebuilt from its commit (PR #143 review, M1): the same pack, not a mismatch.
+    # A pinned artifact that is gone changes nothing (PR #143 review, M1; register E293: the pinned body is used).
     text = pack_text(p, inv)
     (p.root / ".aew" / store.artifact_rel(first["root"])).unlink()
     assert regenerate(p, inv)["matches_recorded"] and pack_text(p, inv) == text

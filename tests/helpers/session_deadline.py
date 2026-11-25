@@ -115,13 +115,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
+from evidence_files import ARMED_NOTE, WORKER_COUNT, WORKER_PHASES, stacks_ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
 SUPERVISOR_CUTOFF_EXIT = 71  # the Windows regression step's outer cutoff
 HOST_RESOURCES_EXIT = 72  # the lane step stopped early for the Windows host's resources (register E3)
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
+# The name the lane step gives its session's job object. The lane action sets it in the environment of the lane and of
+# its collection step, which opens the job by it to admit a worker the job holds (register E3). The controller takes it
+# out of its environment, so a nested session names its job as a local run does.
+JOB_NAMESPACE_ENV = "AEW_SESSION_JOB_NAMESPACE"
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere
 WORKER_KEY = "aew_session_deadline"
@@ -131,7 +135,6 @@ STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
-WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -188,6 +191,25 @@ def recorded_processes(root: Path):
                 continue
 
 
+@contextlib.contextmanager
+def session_job(directory: Path, *, named_by_lane: bool = False):
+    """One recorded session's job object, or None: off Windows, or when it cannot be opened. ``named_by_lane`` opens
+    only the job the lane step named (``JOB_NAMESPACE_ENV``), and only for the session whose marker records that name;
+    otherwise the job the session's marker names. The handle is closed on exit."""
+    job = None
+    if proctree.IS_WINDOWS:  # pragma: windows-only
+        with contextlib.suppress(OSError):
+            recorded = marker(directory, "session-job").read_text().strip()
+            name = os.environ.get(JOB_NAMESPACE_ENV) if named_by_lane else recorded
+            if name and name == recorded:
+                job = proctree.Job.open(name)
+    try:
+        yield job
+    finally:
+        if job is not None:  # pragma: windows-only
+            job.close()
+
+
 def collect_leftovers(root: Path) -> None:
     """End the session's recorded identities and their members before publication begins."""
     recorded = list(recorded_processes(root))
@@ -196,11 +218,10 @@ def collect_leftovers(root: Path) -> None:
     table = proctree.table()
     members = {identity for _, identity in recorded}
     for directory, identity in recorded:
-        job_file = marker(directory, "session-job")
-        if proctree.IS_WINDOWS and job_file.is_file():
-            with contextlib.suppress(OSError):
-                job = proctree.Job.open(job_file.read_text().strip())
-                members.update(proc.identity for proc in job.members(command_lines=False))
+        with session_job(directory) as job:
+            if job is not None:  # pragma: windows-only
+                with contextlib.suppress(OSError):
+                    members.update(proc.identity for proc in job.members(command_lines=False))
         members.update(proc.identity for proc in proctree.descendants(identity, table))
     members = {identity for identity in members if identity[0] != os.getpid()}
     end_members([proctree.Proc(pid, 0, start) for pid, start in members])
@@ -445,10 +466,17 @@ class Controller:
         if self.distributed:
             self.config.option.maxworkerrestart = "0"  # a worker that exits ends the run (the lanes pin it as well)
         job_name = None
+        named = os.environ.pop(JOB_NAMESPACE_ENV, None)  # this session's only: never a nested session's
         if proctree.IS_WINDOWS:  # pragma: windows-only
             self.job_note = proctree.outer_job()
             job_name = f"aew-session-{os.getpid()}-{secrets.token_hex(6)}"
-            self.job = proctree.Job(job_name)
+            if named:
+                try:
+                    self.job, job_name = proctree.Job(named, exclusive=True), named
+                except OSError as exc:  # a job of that name already exists: never join one this session did not make
+                    self.job_note += f"; the lane's job name was taken ({exc.__class__.__name__})"
+            if self.job is None:
+                self.job = proctree.Job(job_name)
             _write(self.dir, "session-job", job_name + "\n")
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
@@ -639,7 +667,7 @@ class Controller:
     def pytest_xdist_setupnodes(self, config: Any, specs: list[Any]) -> None:
         # The final lane report may disappear if GitHub interrupts controller shutdown.
         # Pin the expected worker roster before any of its tests start.
-        _write(self.dir, "worker-count", f"{len(specs)}\n")
+        _write(self.dir, WORKER_COUNT, f"{len(specs)}\n")
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_configure_node(self, node: Any) -> None:

@@ -119,14 +119,32 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.event_spool:Reader.retire`
     - `aew.harness.event_spool:_open_append`
     - `aew.harness.event_spool:append`
-- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`
+- `local/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.opencode.lead`: `deliver_lead_skills`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`; `aew.skills`: `real_dir`
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.doctor_relay:lead_rows`
+    - `aew.harness.opencode.lead:deliver_lead_skills`
 - `local/harness/lead` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_DIR`; read by `aew.harness.opencode.lead`: `ContainedLead._inside`
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.opencode.lead:serve_spec`
+- `local/harness/lead-skills` (git-ignored, masked by containment); named by `aew.harness.opencode.lead`: `LEAD_SKILLS_DIR`; read by `aew.harness.opencode.lead`: `deliver_lead_skills`; `aew.skills`: `deliver`, `real_dir`
+  - Written by
+    - `aew.harness.opencode.lead:deliver_lead_skills`
+    - `aew.skills:deliver`
+- `local/harness/lead-skills/{}-{}` (git-ignored, masked by containment); read by `aew.skills`: `deliver`, `real_dir`, `root_problems`
+  - Written by
+    - `aew.harness.opencode.lead:deliver_lead_skills`
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/lead-skills/{}-{}/skills` (git-ignored, masked by containment); read by `aew.skills`: `real_dir`, `root_problems`
+  - Written by
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
+- `local/harness/lead-skills/{}-{}/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_matches`, `real_dir`, `root_problems`
+  - Written by
+    - `aew.skills:_remove`
+    - `aew.skills:deliver`
 - `local/harness/lead/server` (git-ignored, masked by containment); read by `aew.harness.opencode.lead_wake`: `url_of`
   - Written by
     - `aew.harness.opencode.lead:serve_spec`
@@ -152,7 +170,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.doctor_relay:lead_rows`
     - `aew.harness.lead_broker:lead_run_dir`
     - `aew.harness.model_list:read`
-- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_age`, `take_requests`
+- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_age`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -163,22 +181,24 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.runlog:beat`
     - `aew.harness.runlog:write_record`
     - `aew.harness.supervisor:Supervisor.start`
+    - `aew.skills:deliver`
 - `local/harness/runs/R-{}-{}/git` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.containment.layout:private_git`
     - `aew.harness.containment.layout:retire_private_git`
-- `local/harness/runs/R-{}-{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
+- `local/harness/runs/R-{}-{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `real_dir`, `root_problems`
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.containment.probe:_self_test`
     - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:_remove`
     - `aew.skills:deliver`
-- `local/harness/runs/R-{}-{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
+- `local/harness/runs/R-{}-{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `real_dir`, `root_problems`
   - Written by
     - `aew.harness.supervisor:Supervisor._deliver_skills`
     - `aew.skills:_remove`
     - `aew.skills:deliver`
-- `local/harness/runs/R-{}-{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+- `local/harness/runs/R-{}-{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_matches`, `real_dir`, `root_problems`
   - Written by
     - `aew.skills:_remove`
     - `aew.skills:deliver`
@@ -324,7 +344,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`
+- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -339,22 +359,24 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.runlog:write_record`
     - `aew.harness.runlog:write_returned`
     - `aew.harness.supervisor:Supervisor.start`
+    - `aew.skills:deliver`
 - `local/harness/runs/{}/git` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.containment.layout:private_git`
     - `aew.harness.containment.layout:retire_private_git`
-- `local/harness/runs/{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `root_problems`
+- `local/harness/runs/{}/harness` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `deliver`, `real_dir`, `root_problems`
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.containment.probe:_self_test`
     - `aew.harness.supervisor:Supervisor._deliver_skills`
+    - `aew.skills:_remove`
     - `aew.skills:deliver`
-- `local/harness/runs/{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `_remove`, `deliver`, `root_problems`
+- `local/harness/runs/{}/harness/skills` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.skills`: `real_dir`, `root_problems`
   - Written by
     - `aew.harness.supervisor:Supervisor._deliver_skills`
     - `aew.skills:_remove`
     - `aew.skills:deliver`
-- `local/harness/runs/{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_remove`, `deliver`, `root_problems`
+- `local/harness/runs/{}/harness/skills/{}` (git-ignored, masked by containment); read by `aew.skills`: `_matches`, `real_dir`, `root_problems`
   - Written by
     - `aew.skills:_remove`
     - `aew.skills:deliver`
@@ -628,7 +650,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.g3client`: `read_token` (Path.read_text)
 - `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_once` (Path.is_file), `run_once` (shutil.copyfile)
 - `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open), `public_snapshot` (open)
-- `aew.harness.containment.layout`: `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolution` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `display_files` (os.path.isfile), `for_run` (Path.exists), `for_run` (os.path.isdir), `interpreter_binds` (os.path.isdir), `lead_trusted_code_exposed` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2), `trusted_code` (Path.is_dir), `trusted_code` (Path.is_symlink), `trusted_code` (os.path.exists), `trusted_code` (os.scandir)
+- `aew.harness.containment.layout`: `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolution` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `display_files` (os.path.isfile), `for_run` (Path.exists), `for_run` (os.path.isdir), `for_run` (os.path.islink), `interpreter_binds` (os.path.isdir), `lead_trusted_code_exposed` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2), `trusted_code` (Path.is_dir), `trusted_code` (Path.is_symlink), `trusted_code` (os.path.exists), `trusted_code` (os.scandir)
 - `aew.harness.containment.netns`: `_shim_source` (open)
 - `aew.harness.containment.probe`: `_row5` (Path.exists), `_row5` (Path.read_bytes), `_self_test` (Path.exists), `_self_test` (Path.is_dir), `_self_test` (Path.read_bytes), `_stores` (os.path.isdir)
 - `aew.harness.containment.sockets`: `_comm` (open), `_fds` (os.listdir), `_lines` (open), `_owner` (os.stat), `_socket_files` (Path.stat), `_socket_files` (os.scandir), `_stat` (os.lstat)
@@ -651,12 +673,13 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.knowledge.evidence`: `read` (Path.read_text)
 - `aew.knowledge.records`: `read_record` (Path.read_text)
 - `aew.knowledge.render`: `views` (Path.exists), `views` (Path.read_text)
+- `aew.maps.query`: `_lexical` (Path.is_dir)
 - `aew.maps.rules`: `load` (Path.read_bytes)
 - `aew.maps.store`: `find_structural` (Path.stat)
 - `aew.policy.execution`: `load` (Path.exists), `load` (Path.read_bytes)
 - `aew.roles`: `archetype` (Path.read_text), `builtin_cards` (Path.iterdir), `builtin_cards` (Path.read_text), `load_catalog` (Path.glob), `load_catalog` (Path.is_dir), `load_catalog` (Path.read_bytes)
 - `aew.schemas`: `_load` (Path.read_text)
-- `aew.skills`: `_read` (Path.read_bytes), `manifest` (Path.read_text)
+- `aew.skills`: `_matches` (Path.read_bytes), `_matches` (os.lstat), `_read` (Path.read_bytes), `manifest` (Path.read_text), `real_dir` (os.lstat), `root_problems` (Path.is_file), `root_problems` (Path.is_symlink), `root_problems` (Path.iterdir), `root_problems` (Path.rglob)
 - `aew.snapshot.fingerprint`: `_staged_index` (Path.exists), `_staged_index` (shutil.copy2), `_working_index` (Path.exists), `_working_index` (shutil.copy2), `relevant_inputs_fingerprint` (Path.exists)
 - `aew.stg02.adopted`: `load` (Path.read_bytes)
 - `aew.stg02.g3_overlay`: `_document` (Path.read_text)

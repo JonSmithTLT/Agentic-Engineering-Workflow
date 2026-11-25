@@ -494,6 +494,10 @@ class SteeringLoop:
                                           "(A1 §3)", episode=act.id)
         ctx = self._ctx()
         project, units = self._project(self.engine, ctx, state)
+        # A stage can be chosen from an earlier Ticket state than the one its live guards read. A blocker from
+        # that mixed projection is no more current than an action: retry before recording a stop or waking the Lead.
+        if self._revision() != state["revision"]:
+            return {"stale": True}
         picked = select(project, units, PRIORITY.order(state))
         self._selected = selection(picked)
         if isinstance(picked, Stop):

@@ -68,7 +68,8 @@ def _strip_maps(p) -> bool:
     if "\n# Project maps" not in text:
         return False
     assert text.count("\n# Project maps") == 1
-    assert text.rstrip().endswith(f"pack_slices: {X.NEW_PROJECT_PACK_SLICES}")
+    # the maps block closes the template: its pack slices, then the worker's map reads (register F15.8)
+    assert text.rstrip().endswith(f"pack_slices: {X.NEW_PROJECT_PACK_SLICES}\n  reads: {X.NEW_PROJECT_MAPS_READS}")
     policy.write_text(text[:text.index("\n# Project maps") + 1], encoding="utf-8", newline="\n")
     return True
 

@@ -156,14 +156,16 @@ systems:
   depends_on: []
   switch:
     key: containment.mode (execution policy)
-    default: required on Linux; allow_weaker on Windows, even when required is set explicitly
-    default_evidence: 'src/aew/harness/containment/__init__.py:76 (Linux: explicit value or REQUIRED); :77-78 (win32 returns
-      ALLOW_WEAKER)'
+    default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then
+      refuses every launch
+    default_evidence: 'src/aew/harness/containment/__init__.py:85 (Linux: explicit value or REQUIRED); :86 (elsewhere:
+      REQUIRED only when explicit, else ALLOW_WEAKER)'
     owner: operator
     turning_on_changes: Already on by default on Linux. Setting allow_weaker on Linux still contains every launch that
       can be contained; only a launch whose containment fails then runs labelled workdir_separation_only, entered in the
       register of weaker contexts, instead of being refused (and aew lead session runs uncontained instead of being refused).
-      After E100, an explicit required on a host that cannot meet it refuses the launch instead of running weaker.
+      An explicit required on a host that cannot meet it, Windows included, refuses the launch instead of running weaker
+      (E100).
   state:
     board_state: partly_built
     built: partly
@@ -206,33 +208,36 @@ systems:
   recommendation: finish
   who: designer (E118's mechanism), then Lead (E118, E100, E92, E247)
   reason: 'The Linux core is on, used and gating every launch. What is left is small: E100 and E92, unfrozen on 2026-11-25,
-    and E118''s server move once the designer chooses its mechanism (its other two parts are built). The code confirms
-    E100 is still owed (containment/__init__.py:77) and that the egress refuses plain http:// naming the https form (E92''s
-    work). E247 is small and POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change,
-    so they are design work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm,
-    not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
+    and E118''s server move once the designer chooses its mechanism (its other two parts are built). E100 is built
+    by its pull request (an explicit required refuses the launch on every platform, containment/__init__.py:84-86), and
+    its slice comes off remaining when its row closes; so is E92 (plain http:// forwarded through the egress under
+    CONNECT''s host check, egress.py:602-647,649), whose slice comes off remaining when its row closes. E247 is small and
+    POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
+    work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
     Lead; it may belong with SYS-05.'
   evidence:
-  - src/aew/harness/containment/__init__.py:59-61 supported() is Linux only
-  - 'src/aew/harness/containment/__init__.py:70-79 mode(): Linux returns the explicit value or required (:76); win32 returns
-    allow_weaker even for an explicit required (:77-78), which is E100''s work'
-  - 'src/aew/harness/containment/__init__.py:168-172,202-208 establish(): under allow_weaker a launch is still contained
+  - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
+  - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
+    platform, Windows included, returns required only when it is explicit (:86), and establish() then refuses the launch
+    with reason unsupported_platform (:179-181; E100''s work)'
+  - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
-  - src/aew/harness/containment/__init__.py:101 the label records weaker_because
-  - src/aew/harness/containment/egress.py:1,416-421 the egress proxy serves CONNECT only and refuses plain http:// naming
-    the https form (E92's work)
+  - src/aew/harness/containment/__init__.py:108 the label records weaker_because
+  - 'src/aew/harness/containment/egress.py:1-2,26-45 the egress proxy tunnels CONNECT and forwards plain http://; :602-647
+    the plain request checked before any DNS, :649 the host check both share (E92''s work)'
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before
     the harness starts
   - src/aew/engine/validation_ops.py:196,201,266,281,487 validation runs read containment.mode under the execution policy
     and establish a sandbox
   - src/aew/policy/checks.py:105-110 a check that would run with no sandbox under required is refused
   - src/aew/engine/evidence_ops.py:848 aew check run (_check_run_direct, :831) establishes its sandbox
-  - src/aew/harness/lead_broker.py:763-766 aew lead session is refused under required and points to aew opencode
+  - src/aew/harness/lead_broker.py:1018-1027 aew lead session is refused under required; on Linux the refusal points to
+    aew opencode, and off Linux both Lead routes are refused with reason unsupported_platform
   - src/aew/harness/opencode/lead.py:492 aew opencode establishes the Lead's sandbox, self-tested before the TUI starts
   - 'src/aew/doctor.py:29,42 doctor prints Windows: UNQUALIFIED'
   - 'grep pinhole/setpriority/os.nice over src/aew: no hits'
   - src/aew/knowledge/manifest.py has no containment key, so the generator that reads switch defaults from manifest.py
-    needs containment/__init__.py:76-77 as a second source
+    needs containment/__init__.py:84-86 as a second source
   - 'docs/implementation/future-work.yaml (the Now list''s E118 line, at c11a61ea) E118 is on it, the contained Lead''s
     two fixes; :1422-1427 its row (harness ruling 11, When: Now)'
   - src/aew/harness/opencode/login.py:137 clear_saved_permissions, called at src/aew/harness/opencode/lead.py:822, a failed
@@ -4524,19 +4529,35 @@ systems:
   - F15.8
   - E162
   - E163
-  as_built: []
+  as_built:
+  - modules:aew.maps.query
+  - cli-commands:map search
   touches:
+  - src/aew/maps/query.py
+  - src/aew/harness/supervisor.py
+  - src/aew/cli/map_commands.py
   - src/aew/surface/contract.py
   - src/aew/surface/lead_text.py
   - src/aew/harness/bridge.py
   - docs/implementation/surface-map.md
   depends_on:
   - SYS-06
+  switch:
+    key: maps.reads
+    default: 'off'
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: structural
+    owner: operator
+    turning_on_changes: structural offers each worker run whose role reads context `aew map show` and `aew map search`
+      through its run's bridge (map.show, map.search), answered by aew.maps.query at the invocation's base, and one
+      preamble line naming them; a run reads it once, into its launch snapshot. A new project holds structural (`aew
+      init`'s template; the operator, 2026-11-25, O1); an existing one without the key reads off and keeps it
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: partly_built
+    built: partly
+    wired:
+    - cli:map search
+    on_by_default: true
     used_in_default_flow: 'no'
   finish_line: F15.3's aew-run server gives a worker whoami, check.run and submit as typed in-sandbox tools over the existing
     bridge, with aew-knowledge beside it; F15.8's read half serves the map and evidence reads; the Lead families still
@@ -4549,11 +4570,16 @@ systems:
       tools; the supervisor keeps the credential). Held in HOLD-06 until the designer''s match and the operator''s placement'
     row: F15.3
     estimate: 1-2 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation).
-      Waits on typed map and evidence reads'
+  - slice: 'F15.8''s map reads, unfrozen by the operator after E293 (2026-11-25: "unfreeze 15.8 after E293"): the shared
+      query module, `aew map search` and the worker bridge rows map.show and map.search are built (the mapping series''
+      PR A); the Lead''s typed map tool (PR A2) and outline, symbol, callers and callees over F22.4''s facts (PR C)
+      remain'
     row: F15.8
-    estimate: 2-3 PRs (estimate, census)
+    estimate: 2 PRs (the mapping series' plan, revision 2)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F15.8''s other items: evidence.show, check.suggest, tools.presentation and the in-sandbox aew-run server'
+    row: F15.8
+    estimate: 1-2 PRs (estimate, census)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       aew-knowledge as its own capability namespace over the shared transport library: part of F15.3''s text, so held
       with it in HOLD-06; what it serves waits on K-01''s increment'
@@ -4584,15 +4610,19 @@ systems:
     estimate: 1 PR (estimate)
   decision: 'decided: moved here from SYS-06, which finished by recording HOLD-06 as staying held (the operator, 2026-11-25:
     "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen
-    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
-  recommendation: keep
+    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6, apart
+    from F15.8''s map reads, which the operator unfroze after E293 (2026-11-25: "unfreeze 15.8 after E293"), with
+    maps.reads on for new projects (O1)'
+  recommendation: finish
   who: operator (placing F15.3 and F15.8 after first use, and the frozen Lead text work); then Lead
-  reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Not built: the worker side is three bridge operations
-    reached through the aew CLI, not MCP tools, and aew-run and aew-knowledge appear only in a comment. E162 and E163
-    are frozen on this board by the reset, but both are targeted Now and named in one item of the register''s Now list:
-    starting either moves this system to finish, partly built, and into the count, unless the operator rules they stay
-    frozen. Until then it is kept, not counted, until the operator places it.'
+  reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Partly built: F15.8''s map reads, which the operator
+    unfroze after E293, are built (aew.maps.query, `aew map search`, the worker bridge rows map.show and map.search, on
+    for new projects), so the system is partly built and counted, as this row said starting a slice would. The rest
+    stays as it was: the aew-run server and aew-knowledge appear only in a comment, F15.8''s other items stay frozen, and
+    E162 and E163 stay frozen by the reset unless the operator rules otherwise.'
   evidence:
+  - 'src/aew/maps/query.py: the shared map query module; src/aew/harness/bridge.py MAP_OPERATIONS: map.show and map.search;
+    src/aew/policy/execution.py maps.reads, written structural by `aew init`'
   - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
     through the aew CLI, not MCP tools'
   - 'src/aew/surface/__init__.py:14: SERVER_NAME = "aew-lead"; aew-run and aew-knowledge appear only in this comment (grep

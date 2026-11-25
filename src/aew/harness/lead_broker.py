@@ -58,6 +58,7 @@ from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
 from aew.harness.contract import EXPECT_REV
+from aew.maps.query import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -147,7 +148,8 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("resume", ("json",)),
     ("harness status", ("invocation",)),
     ("harness wait", ("run", "any_", "timeout")),
-    ("map show", ("commit", "root", "section", "json")),
+    ("map show", ("commit", "root", "section", "scope", "work", "json")),
+    ("map search", ("text", "kind", "limit", "commit", "json")),  # register F15.8: a read of the map and listing
     ("map diff", ("operands", "json")),
     # F25 R6: a provisional run's usage is read from its run directory under `.aew/local`, which the sandbox masks
     ("usage show", ("target", "all", "since", "until", "json")),
@@ -164,6 +166,8 @@ _NAME = (re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*"), "an id or name, with no pat
 RELAYED_VALUES: dict[str, tuple[re.Pattern[str], str]] = {
     "root": (re.compile(r"[0-9a-f]{64}"), "a stored map is named by its sha256"),
     "commit": (re.compile(r"[^-\x00][^\x00]*"), "a revision that is not an option"),
+    "text": (re.compile(rf"[^-\x00][^\x00]{{0,{TEXT_MAX - 1}}}"),
+             f"search text: at most {TEXT_MAX} characters, not an option, no NUL"),
 }
 _LOCAL = "a read of committed state, which the sandbox shows read-only: it runs there, lock-free"
 _HERE = "it reports on the environment it runs in: in the sandbox, the sandbox's"
@@ -1019,10 +1023,12 @@ class WeakerLead:
         from aew.harness import containment
 
         policy, _ = self.engine.execution_policy()
-        if containment.mode(policy) == containment.REQUIRED:
-            raise errors.ContainmentUnavailable(UNCONTAINED_LEAD if self.kind == "lead_session" else
-                                                containment.unsupported_message(), reason="lead_uncontained",
-                                                instead="aew opencode")
+        if containment.mode(policy) != containment.REQUIRED:
+            return
+        if not containment.supported():  # no contained Lead here either, so `aew opencode` is no way on (E100)
+            raise errors.ContainmentUnavailable(containment.unsupported_message(),
+                                                reason=containment.UNSUPPORTED_PLATFORM, platform=sys.platform)
+        raise errors.ContainmentUnavailable(UNCONTAINED_LEAD, reason="lead_uncontained", instead="aew opencode")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> Harness:
         from aew.harness import containment, weaker_register

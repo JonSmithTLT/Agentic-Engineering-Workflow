@@ -1,7 +1,7 @@
 """The general Lead command under G3 addendum 7, ruling 1 (register E112): under ``required`` it is refused before any
-credential is read and before any seat moves; where the policy allows a weaker run (and on Windows) it runs labelled not
-contained, with its ``label.json`` naming the session's process and its entry in the register of weaker contexts live
-while it runs. ``run_session``'s ``contained`` is every caller's to give."""
+credential is read and before any seat moves; where the policy allows a weaker run (and, with the mode unset, off
+Linux) it runs labelled not contained, with its ``label.json`` naming the session's process and its entry in the
+register of weaker contexts live while it runs. ``run_session``'s ``contained`` is every caller's to give."""
 
 from __future__ import annotations
 

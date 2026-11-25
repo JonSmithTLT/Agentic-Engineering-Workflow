@@ -1496,14 +1496,34 @@ commands:
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: map show
-    home: diagnostic
-    users: [operator, lead]
+    home: product
+    users: [operator, lead, worker]
     journeys: []
     mutates: "no"
-    mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [map, show]
+    mutates_basis: "a read: its handler only reads the committed state, the map store and Git objects (aew.maps.query
+      writes nothing); in a worker's run it is the bridge's map.show, which reads the same way"
+    probe: [[map, show], [map, show, --section, languages, --json], [map, show, --scope, ticket, --work, "{ticket}",
+      --commit, HEAD, --json]]
     relayed: contained-lead
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    refusals: [NOT_FOUND, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "register F15.8 (the mapping series' PR A): product, since a worker's normal workflow now reads the map
+      through its run's bridge (`map.show`, offered while its launch snapshot has `maps.reads` on); --scope ticket is
+      the Ticket's own directories past the map's global cap. PERMISSION_DENIED and STALE_AUTHORITY are the worker
+      bridge's (an operation its run does not offer, or authority ended)"
+  - name: map search
+    home: product
+    users: [operator, lead, worker]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: exact paths from the listing of a commit's Git objects, then a lexical search of the
+      workspace by the capability register's provider, bounded and killed at its limit (aew.maps.query); it writes
+      nothing, and in a worker's run it is the bridge's map.search"
+    probe: [[map, search, README.md], [map, search, core.py, --kind, path, --limit, "5", --commit, HEAD, --json]]
+    relayed: contained-lead
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "register F15.8 (the mapping series' PR A): every hit is a candidate, labelled with its observation
+      (structural or lexical) and evidence class; the lexical fallback answers NOT_SUPPORTED with the register's cause
+      when its provider is not usable"
   - name: map diff
     home: diagnostic
     users: [operator, lead]

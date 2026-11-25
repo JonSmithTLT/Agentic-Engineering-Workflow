@@ -6,7 +6,6 @@ field-value rule; time bounds on the body and the response. Anything else is ref
 reason. HTTP/1's rules have one owner, `containment/http1.py`, shared with the relay (#582, which this carries and which
 merges first).
 
-**Left:** SYS-02's `reason` and its egress `evidence` line in `systems.yaml` still say the egress refuses plain
-`http://`. #578 (E100) edits the lines around them, so they are updated after #578 merges, or when this row closes.
-F28's design §7 ("serves `CONNECT` only") is the designer's text and is left as it stands; the ADR amendment records
-the change.
+**Left:** E92's slice stays on SYS-02's `remaining` until this row closes; its `reason` and egress `evidence` in
+`systems.yaml` now say it is built. F28's design §7 ("serves `CONNECT` only") is the designer's text and is left as it
+stands; the ADR amendment records the change.

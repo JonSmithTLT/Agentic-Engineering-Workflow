@@ -54,6 +54,7 @@ from aew.harness import contract as K
 from aew.harness import delivery as L
 from aew.harness import progress as P
 from aew.harness.base import LAUNCH_REFUSALS, RELAY_FAMILY_SHOWN
+from aew.harness.bridge import MAP_OPERATIONS
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
@@ -212,6 +213,7 @@ class Harness:
             runs.append(run_record)
             if self.coordination.project_switch(state) == X.MESSAGING_ENABLED:
                 runs[-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+            runs[-1].update(maps_launch_snapshot(self.k))
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
@@ -367,7 +369,39 @@ class Harness:
         runs = inv.get("runs") or []
         if runs and run_messaging_snapshot(runs[-1]) == X.MESSAGING_ENABLED:
             ops |= {"message.reply", "message.read", "message.wait"}
+        # The map reads ride context.read (register F15.8): a role that reads context, in a run launched with them on
+        if runs and "context.read" in ops and K.run_maps_reads(runs[-1]) == X.MAPS_READS_STRUCTURAL:
+            ops |= set(MAP_OPERATIONS)
         return sorted(ops)
+
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        """What a worker's map read answers at (register F15.8): its invocation's workspace and base commit
+        (``invocation_workspace``, the one owner), the Ticket's effective scope paths, and who asks. The credential is
+        checked for ``context.read``, the operation the map reads ride. Reads the state; writes nothing."""
+        state = self.k.store.current()
+        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read",
+                                            archived=self.archive.archived_credential)
+        workspace, _, base = self.invocations.invocation_workspace(state, inv)
+        if not base:
+            raise IllegalTransition(f"{inv_id} has no base commit to read the map at", invocation=inv_id)
+        scope: list[str] | None
+        try:
+            scope = list((self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths")
+                         or [])
+        except Exception:  # noqa: BLE001 - a record that cannot be read: the answer says its scope is unknown (m9)
+            scope = None
+        return {"workspace": str(workspace), "base": base, "scope_paths": scope,
+                "recipient": {"kind": "worker", "invocation": inv_id, "role": inv["role"],
+                              "work_unit": inv["work_unit"]}}
+
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        """A work unit's effective scope paths, read lock-free from committed state, for the Lead's and the operator's
+        ``aew map show --scope ticket --work`` (register F15.8)."""
+        state = self.k.store.read_committed()
+        unit = state["work"].get(work_id)
+        if unit is None:
+            raise NotFound(f"no work unit {work_id}", work_id=work_id)
+        return list((self.gates.record_meta(unit).get("scope") or {}).get("paths") or [])
 
     def harness_contract(self, state: dict[str, Any], inv_id: str, run: str) -> K.LaunchContract:
         inv = state["invocations"][inv_id]
@@ -376,7 +410,9 @@ class Harness:
             raise IllegalTransition(f"{inv_id}'s context pack no longer matches the pack pinned at dispatch")
         workspace, _, base = self.invocations.invocation_workspace(state, inv)
         runs = inv.get("runs") or []
+        messaging = any(r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs)
         continuation = None
+        carried = None
         if len(runs) > 1:
             mine = [e for e in E.scan(self.k.aew_root, inv["work_unit"])[0] if e["producer"]["invocation"] == inv_id]
             changed = None
@@ -399,6 +435,12 @@ class Harness:
 
             continuation = {"previous_runs": [r["run"] for r in runs[:-1]],
                             "evidence": [entry(e) for e in mine], "changed_paths": changed}
+            if messaging:
+                carried, omitted, thread_lines = self.coordination.continuation_messages(state, inv_id)
+                if carried:
+                    continuation.update(messages=[message["id"] for message in carried], messages_omitted=omitted,
+                                        message_categories={message["id"]: message["category"] for message in carried},
+                                        message_thread_lines=thread_lines)
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])
@@ -421,6 +463,7 @@ class Harness:
             expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
             pack_path=str(self.k.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
             continuation=continuation, run_dir=str(runlog.run_dir(self.k.aew_root, run)),
+            coordination_text=tuple(message["text"] for message in carried or []),
             scratch=str(runlog.run_dir(self.k.aew_root, run) / "scratch"),
             # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
             # variables the harness server needs (never their values; the policy's current list, not a pin). `skills`
@@ -432,8 +475,7 @@ class Harness:
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or []),
-                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
-                       r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
+                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if messaging else {}),
                    K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base,
                    **(self.k.check_cache_inputs() if base else {})})
 
@@ -1101,6 +1143,17 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 # A request file is read up to runlog.MAX_RECORD_BYTES (16 MiB); a character is at most 12 bytes once JSON-escaped (a
 # surrogate pair), so a message this long always arrives (#138 review, F1).
 MAX_SEND_CHARS = 1 << 20
+
+
+def maps_launch_snapshot(k: Kernel) -> dict[str, Any]:
+    """A new run entry's ``maps.reads`` launch snapshot (register F15.8), from the adopted execution policy the
+    recording transaction holds (``contract.maps_reads_snapshot``): ``harness launch`` and a dispatch's ``--launch``
+    both record it here. A policy that cannot be read turns nothing on."""
+    try:
+        policy, _ = k.execution_policy()
+    except Exception:  # noqa: BLE001 - an unreadable policy offers no map reads, as an absent key reads
+        return {}
+    return K.maps_reads_snapshot(policy)
 
 
 def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:

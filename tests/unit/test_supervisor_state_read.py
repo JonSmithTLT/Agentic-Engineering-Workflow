@@ -23,6 +23,7 @@ from aew.harness import contract as K
 from aew.harness import runlog
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.supervisor import REQUEST_ORDER_WAIT_TICKS, Supervisor
+from aew.harness.worker_messages import WorkerMessages
 from aew.util import sha256_text
 
 INV, RUN, TOKEN = "INV-0001", "R-INV-0001-1", "tok-1"
@@ -63,6 +64,7 @@ def stand_in(tmp_path: Path, store: LockFreeOnly) -> Supervisor:
     sup._unread_reported, sup._request_order_waits = set(), {}
     sup._control_seen, sup.stop_reason, sup._watching = None, None, threading.Event()
     sup.deadline_s = None  # the deadline start() decides at custody: none for these runs
+    sup.messaging = False  # start() would supply the adopted launch snapshot
     sup.engine = SimpleNamespace(store=store, aew_root=tmp_path,
                                  run_authority_problem=lambda s, inv, run, tok: s["problem"])
     return sup
@@ -292,6 +294,77 @@ def test_a_hung_steering_call_lets_the_heartbeat_go_stale_after_its_bound(tmp_pa
     sup.adapter = SimpleNamespace(STEERING_BOUND_S=1.0, send=send, inspect=lambda: {"alive": False})
     monkeypatch.setattr(sup, "_finish_exited", lambda status: None)
     sup.watch()
+
+
+def test_a_messaging_control_write_never_holds_the_supervisors_heartbeat(tmp_path, monkeypatch):
+    sup = stand_in(tmp_path, LockFreeOnly([state()]))
+    sup.messaging, sup._credential = True, TOKEN
+    sup.messages = WorkerMessages(sup)
+    sup.record["coordination_delivery"] = "live_pending"
+    blocked = threading.Event()
+    release = threading.Event()
+    heartbeats = []
+    until = time.monotonic() + 7
+
+    def take_message(**kwargs):
+        blocked.set()
+        assert release.wait(5), "the heartbeat stopped while the thread awaited the coordination writer"
+        return {"message": None, "refused": []}
+
+    def beat(_directory):
+        if blocked.is_set() and not release.is_set():
+            heartbeats.append(time.monotonic())
+            if len(heartbeats) == 2:
+                release.set()
+
+    sup.engine.message_next_post = take_message
+    sup.adapter = SimpleNamespace(coordination_live=True,
+                                  inspect=lambda: {"alive": not release.is_set() and time.monotonic() < until,
+                                                   "turn": "running"})
+    monkeypatch.setattr(runlog, "beat", beat)
+    monkeypatch.setattr(runlog, "HEARTBEAT_S", 0)
+    ended = []
+    monkeypatch.setattr(sup, "_finish_exited", ended.append)
+    try:
+        sup.watch()
+    finally:
+        release.set()
+        sup.messages.stop()
+    assert len(heartbeats) == 2 and ended == [{"alive": False, "turn": "running"}]
+
+
+def test_a_messaging_drain_never_changes_an_observed_exit_to_a_hard_deadline(tmp_path, monkeypatch):
+    from aew.harness import supervisor
+
+    sup = stand_in(tmp_path, LockFreeOnly([state()]))
+    sup.messaging, sup.deadline_s = True, 1
+    sup.record["coordination_delivery"] = "live_pending"
+    drained = iter([False, False, True])
+    sup.messages = SimpleNamespace(start=lambda deadline: None, drained=lambda: next(drained))
+    status = {"alive": False, "exit_code": 0}
+    sup.adapter = SimpleNamespace(coordination_live=True, inspect=lambda: status)
+    clocks = iter([0, 0.5, 1.5, 2.5])
+    monkeypatch.setattr(supervisor, "time", SimpleNamespace(monotonic=lambda: next(clocks), sleep=lambda _: None))
+    ended = []
+    monkeypatch.setattr(sup, "_finish_exited", ended.append)
+    sup.watch()
+    assert ended == [status]
+
+
+@pytest.mark.parametrize("messaging, posted", [(False, False), (True, False)])
+def test_a_revoked_run_without_posted_messages_stops_without_an_admission_check(tmp_path, monkeypatch,
+                                                                                 messaging, posted):
+    sup = stand_in(tmp_path, LockFreeOnly([state(problem="superseded")]))
+    sup.messaging = messaging
+    sup._lock = threading.Lock()
+    sup.messages = SimpleNamespace(stop=lambda: None, has_posted=posted,
+                                   capture_final_admissions=lambda: pytest.fail("there is no recorded offer to check"))
+    monkeypatch.setattr(sup, "_start_overdue", lambda: False)
+    monkeypatch.setattr(sup, "_background_beats", lambda *args, **kwargs: threading.Event())
+    ended = []
+    monkeypatch.setattr(sup, "_end", lambda *args, **kwargs: ended.append((args, kwargs)))
+    sup._finish(K.TERMINATED, "authority ended: superseded")
+    assert ended == [((K.TERMINATED, "authority ended: superseded", None), {"final_admissions": None})]
 
 
 def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):

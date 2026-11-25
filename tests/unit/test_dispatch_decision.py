@@ -38,7 +38,7 @@ NOT_DISPATCHING = {
     "stage abandon", "stage continue",
     "work dispose",  # the `resolve` tool's disposition (M4-E E5b): one record, never a dispatch
     "lead takeover", "manifest adopt",
-    "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
+    "map diff", "map generate", "map search", "map select-architecture", "map show",  # derived map state (F22.1)
     "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
     "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",

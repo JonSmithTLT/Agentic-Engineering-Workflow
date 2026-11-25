@@ -510,7 +510,7 @@ entries:
   lane: integration
   platforms:
   - linux
-  status: open
+  status: closed
   class: product budget
   cause: >-
     The catch-up judged its elapsed-time budget after taking an entry, so a build whose time ran out as it took the
@@ -521,6 +521,11 @@ entries:
     Judge the time budget and the deadline before an entry, once one is taken, so a build stops only while an entry
     remains; proved by a zero time budget in
     test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete. Closure awaits the fix PR number.
+  closure:
+    pr: 560
+    cause: Judge the catch-up's time budget and deadline before an entry, once one is taken.
+    test: tests/integration/test_history_search.py::test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete
+    proof: fault injection
   evidence:
   - run: 45519626008
     job: 138889880114

@@ -24,7 +24,7 @@ sys.path.insert(0, str(HELPERS))
 import bounds  # noqa: E402
 import proctree  # noqa: E402
 import worker_evidence  # noqa: E402
-from evidence_files import CANCEL_COLLECTION, HOST_STOP_FILE, open_observation, stacks_ablated  # noqa: E402
+from evidence_files import CANCEL_COLLECTION, HOST_STOP_FILE, WARNING, open_observation, stacks_ablated  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
 from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
 from session_deadline import collect_leftovers as collect  # noqa: E402
@@ -149,7 +149,7 @@ def snapshot(root: Path, *, all_workers: bool = False, seen: set[tuple[int, str]
                 if after and after.groups() == header.groups() and proctree.same(known[pid][1]):
                     worker = worker_evidence.Worker(known[pid][0], pid, known[pid][1][1], node, float(started),
                                                     float(limit))
-                    worker_evidence.save_sample(root, worker, time.time(), elapsed, *result, reason="warning")
+                    worker_evidence.save_sample(root, worker, time.time(), elapsed, *result, reason=WARNING)
         except (OSError, ValueError):
             continue
 
@@ -361,7 +361,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     if before_signal and active:
                         alive = {worker.identity: proctree.same(worker.identity) for worker in active}
                         if not stacks_ablated():
-                            worker_evidence.capture(root, active, attach, reason="warning", allowed=scope())
+                            worker_evidence.capture(root, active, attach, reason=WARNING, allowed=scope())
                         for worker in active:
                             worker_evidence.record(root, worker, "interrupted", time.time(),
                                                    collect_at=at, alive_when_observed=alive[worker.identity])
@@ -450,7 +450,7 @@ def main(argv: list[str]) -> int:
                 sample.get("pid") == worker.pid and sample.get("start") == worker.start
                 for sample, _ in worker_evidence.read_ring(args.root, worker))}
             worker_evidence.capture(args.root, active, functools.partial(attach, allow_sudo=False),
-                                    reason=CANCEL_COLLECTION, allowed=allowed)
+                                    reason=CANCEL_COLLECTION, allowed=allowed, collect_at=at)
             for worker in active:
                 worker_evidence.record(args.root, worker, "cancelled" if cancelled else "interrupted",
                                        time.time(), collect_at=at, alive_when_observed=alive[worker.identity])

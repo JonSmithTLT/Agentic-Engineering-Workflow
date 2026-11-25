@@ -18,15 +18,19 @@ from evidence_files import (  # noqa: E402
     NOT_SAMPLED,
     OUTSIDE_CALL,
     PREFIX,
+    SAMPLING_POLICY,
+    WARNING,
     WATCHDOG_HEADER,
     cancel_outcome,
     entries,
     failure_overflow,
     owner,
+    policy_samples,
     priority,
     publishable,
     pytest_phase,
     report_json,
+    sampling_failures,
     stack_file,
     state,
     test_frame,
@@ -35,13 +39,19 @@ from evidence_files import (  # noqa: E402
 
 def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) -> bool:
     """A live worker owes no interruption stack only by a typed cancellation outcome the bundle bears out (register
-    E3): never sampled in the owned tree, with no sample of its identity retained, or in setup, teardown or between
-    tests, by the frames its cancellation collection retained. A worker inside its test's call always owes one."""
-    for row in rows_named(texts, cancel_outcome(observed["pid"], observed["start"])):
-        if (row.get("pid"), row.get("start"), row.get("node")) != (
-                observed["pid"], observed["start"], observed["node"]):
+    E3), and only for the observation that outcome belongs to: a worker the lane's sampling policy excludes, with no
+    retained sample of its identity and no failed sampling attach of it, or one in setup, teardown or between tests by
+    the frames its cancellation collection retained. A worker inside its test's call always owes one."""
+    pid, start = observed["pid"], observed["start"]
+    policies = list(rows_named(texts, SAMPLING_POLICY))
+    failed = any(path.name == sampling_failures(pid, start) for path in texts)
+    for row in rows_named(texts, cancel_outcome(pid, start)):
+        if ((row.get("pid"), row.get("start"), row.get("node")) != (pid, start, observed["node"])
+                or observed.get("collect_at") is None or row.get("collect_at") != observed["collect_at"]):
             continue
-        if row.get("outcome") == NOT_SAMPLED and not sampled:
+        if (row.get("outcome") == NOT_SAMPLED and not sampled and not failed and policies
+                and type(row.get("controller")) is bool
+                and not any(policy_samples(policy, row["controller"]) for policy in policies)):
             return True
         if row.get("outcome") in OUTSIDE_CALL and any(
                 reason == CANCEL_COLLECTION and pytest_phase(frames) == row["outcome"] for reason, frames in stacks):
@@ -335,7 +345,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     for sample, frames in entries(text):
                         pid, birth = sample.get("pid"), sample.get("start")
                         watched = current.get(pid)
-                        if (not watched or (pid, birth) not in births or sample.get("reason") != "warning"
+                        if (not watched or (pid, birth) not in births or sample.get("reason") != WARNING
                                 or sample.get("node") != watched[0] or sample.get("test_began") != watched[1]
                                 or node not in {watched[0], watched[0].split("[", 1)[0]}):
                             continue

@@ -64,14 +64,21 @@ FRAME = re.compile(
 
 FRESH_S = 60
 PREFIX = "worker snapshot "
+WARNING = "warning"
 CANCEL_COLLECTION = "cancel collection"
 # The sample reasons taken at an interruption: the Linux supervisor's pre-signal warning and the cancellation
 # collection (lane_step --collect). Both retry inside one shared budget, and their stacks answer evidence_problems'
 # live-stack check (register E3).
-INTERRUPTION_REASONS = frozenset({"warning", CANCEL_COLLECTION})
-# A cancellation-collection outcome that owes no stack: the collection attaches only to a worker already sampled in the
-# supervisor's owned tree, so it never attaches to one it did not sample (register E3).
+INTERRUPTION_REASONS = frozenset({WARNING, CANCEL_COLLECTION})
+# worker_evidence.Monitor records the lane's periodic sampling policy here; the cancellation collection and the
+# evidence check read it back through policy_samples (register E3).
+SAMPLING_POLICY = "runner-resources-sampling.txt"
+# Cancellation-collection outcomes for a worker with no sample in the owned tree. Only NOT_SAMPLED, a worker the lane's
+# sampling policy excludes, owes no stack, and only while no sampling attach of it failed: a worker the policy samples
+# but that has no sample is a sampling gap, which still owes its stack (register E3; review of #561, M1). Whether a
+# policy-excluded worker, such as the Windows serial controller, may go without a stack awaits the operator's decision.
 NOT_SAMPLED = "not sampled in the owned tree"
+SAMPLING_GAP = "never sampled although its lane's policy samples it"
 # The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
 # accepts only these, and only when the retained frames themselves classify so (register E3).
 OUTSIDE_CALL = ("setup", "teardown", "between tests")
@@ -107,6 +114,17 @@ def pytest_phase(frames: str) -> str:
     if "pytest_runtest_setup" in called:
         return "setup"
     return "indeterminate"
+
+
+def policy_samples(policy: dict, controller: bool) -> bool:
+    """Whether the lane's periodic sampling policy samples a worker: all of them, or only xdist workers. An unknown
+    or unreadable policy samples every worker, so it never excuses a missing stack."""
+    return not (policy.get("periodic") is False or (policy.get("xdist_only") is True and controller))
+
+
+def sampling_failures(pid: int, start: int) -> str:
+    """The snapshots file keeping the first failed periodic or pressure attach of one worker identity."""
+    return f"{pid}-{start}-sampling-failures.txt"
 
 
 def cancel_outcome(pid: int, start: int) -> str:

@@ -25,12 +25,17 @@ from evidence_files import (
     NOT_SAMPLED,
     OUTSIDE_CALL,
     PREFIX,
+    SAMPLING_GAP,
+    SAMPLING_POLICY,
+    WARNING,
     WATCHDOG_HEADER,
     cancel_outcome,
     entries,
     is_link,
     open_observation,
+    policy_samples,
     pytest_phase,
+    sampling_failures,
     test_frame,
 )
 
@@ -277,70 +282,86 @@ def _marker(root: Path, path: Path, fallback: Path | None, text: str) -> None:
             output.write(text)
 
 
+CAPTURE_BUDGET_S = 3  # the shared window for one capture's attaches, however many workers it has
+# PR 554's unavailable marker falls back to a per-identity file named for the interruption it answers.
+UNAVAILABLE_FALLBACK = {WARNING: "warning", CANCEL_COLLECTION: "cancel"}
+
+
 def _unavailable(root: Path, worker: Worker, reason: str, failures: list[str]) -> None:
-    # PR 554's marker. The fallback is named for the reason ("warning", "cancel") so the two never collide.
     path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
-    fallback = path.with_name(f"{worker.pid}-{worker.start}-{reason.split()[0]}-unavailable.txt")
+    fallback = path.with_name(f"{worker.pid}-{worker.start}-{UNAVAILABLE_FALLBACK[reason]}-unavailable.txt")
     attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
     _marker(root, path, fallback, f"evidence defect: py-spy unavailable for {worker.node}{attempts}\n")
 
 
-def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str]) -> None:
-    """Name why the cancellation collection kept no test stack for this worker (register E3)."""
-    row = {"reason": CANCEL_COLLECTION, "pid": worker.pid, "start": worker.start, "node": worker.node,
-           "outcome": outcome, "attempts": failures}
+def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
+    row = {"reason": reason, "pid": worker.pid, "start": worker.start, "node": worker.node, **facts,
+           "attempts": failures}
+    return json.dumps(row, ensure_ascii=True) + "\n"
+
+
+def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None) -> None:
+    """Name why the cancellation collection kept no test stack for this worker, at this observation (register E3)."""
     path = ring_path(root, worker).with_name(cancel_outcome(worker.pid, worker.start))
-    _marker(root, path, None, json.dumps(row, ensure_ascii=True) + "\n")
+    _marker(root, path, None, _row(worker, CANCEL_COLLECTION, failures, outcome=outcome, collect_at=collect_at,
+                                   controller=worker.controller))
 
 
-def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed) -> set[tuple[int, int]]:
+def sampling_policy(root: Path) -> dict:
+    try:
+        policy = json.loads((root / SAMPLING_POLICY).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return policy if isinstance(policy, dict) else {}
+
+
+def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
+            collect_at: float | None = None) -> set[tuple[int, int]]:
     # A slow or inaccessible worker cannot multiply the pre-cleanup wait by the number of workers.
     # All attaches have their own three-second subprocess cutoff. After this common window expires,
     # queued workers are skipped; four concurrent readers bound the runner load.
-    until = time.monotonic() + 3
+    until = time.monotonic() + CAPTURE_BUDGET_S
+    retried = reason in INTERRUPTION_REASONS
+    # The cancellation collection names every worker it kept no test stack for (register E3).
+    typed = reason == CANCEL_COLLECTION
+    policy = sampling_policy(root) if typed else {}
 
     def sample(worker: Worker):
-        warning = reason == "warning"
-        retried = reason in INTERRUPTION_REASONS
-        # The cancellation collection names every worker it kept no test stack for (register E3).
-        typed = reason == CANCEL_COLLECTION
         failures: list[str] = []
-        if worker.identity not in allowed:
+
+        def outcome(name: str) -> None:
             if typed:
-                _outcome(root, worker, NOT_SAMPLED, failures)
+                _outcome(root, worker, name, failures, collect_at)
+
+        if worker.identity not in allowed:
+            outcome(SAMPLING_GAP if policy_samples(policy, worker.controller) else NOT_SAMPLED)
             return None
         if not proctree.same(worker.identity):
-            if typed:
-                _outcome(root, worker, "exited before its attach", failures)
+            outcome("exited before its attach")
             return None
-
-        def straddled():
-            if typed:
-                gone = not proctree.same(worker.identity)
-                _outcome(root, worker, "exited during its attach" if gone else "straddled a test change", failures)
-
         last = None
-        matched = False
+        matched = moved = False
         for attempt in range(3 if retried else 1):
             if retried and (worker not in workers(root) or not proctree.same(worker.identity)):
-                return straddled()
+                moved = True
+                break
             remaining = until - time.monotonic()
             if remaining <= 0:
                 if attempt == 0:
-                    if typed:
-                        _unavailable(root, worker, reason, ["shared budget spent before its first attach"])
-                    return None
+                    failures.append("shared budget spent before its first attach")
                 break
             at = time.time()
             elapsed = time.monotonic() - worker.began
-            result = attach(worker.pid, timeout=remaining, failures=failures) if retried else attach(worker.pid)
+            limit = {"timeout": remaining} if retried else {}
+            result = attach(worker.pid, failures=failures, **limit)
             # A stack straddling a test boundary has no trustworthy node label.
             if worker not in workers(root) or not proctree.same(worker.identity):
-                return straddled()
+                moved = True
+                break
             if result:
                 # Nonblocking dumps may omit a live Python frame. Retry only
                 # this invocation inside the original shared budget.
-                if retried and not FRAME.search(result[1]):
+                if not FRAME.search(result[1]):
                     failures.append(f"{result[0]}: dump has no Python frames")
                     continue
                 last = (at, elapsed, result)
@@ -350,9 +371,12 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
                 failures.append(f"{result[0]}: dump has no active test frame")
                 if typed and pytest_phase(result[1]) in OUTSIDE_CALL:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
-        if retried and not matched and last is None:
+        if moved:
+            # An earlier dump of this attach was taken inside the same test, so it is kept (review of #561, m3).
+            outcome("straddled a test change" if proctree.same(worker.identity) else "exited during its attach")
+        elif retried and not matched and last is None:
             _unavailable(root, worker, reason, failures)
-        elif warning and not matched:
+        elif reason == WARNING and not matched:
             path = ring_path(root, worker).with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
             attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
             _marker(root, path, path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt"),
@@ -360,7 +384,11 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
         elif typed and not matched and last is not None:
             # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
             # the call without the test's frame stays a live-stack defect.
-            _outcome(root, worker, pytest_phase(last[2][1]), failures)
+            outcome(pytest_phase(last[2][1]))
+        if not retried and not matched and not moved:
+            # A failed sampling attach refuses the not-sampled excuse to this identity (review of #561, M1).
+            path = ring_path(root, worker).with_name(sampling_failures(worker.pid, worker.start))
+            _marker(root, path, None, _row(worker, reason, failures))
         if last is None:
             return None
         # Retain a support-only stack as evidence of what was actually running.
@@ -439,8 +467,13 @@ class Monitor:
         mode = os.environ.get("AEW_WORKER_SNAPSHOTS")
         # The hosted cancellation control exercises the production switch.
         proof = plant in PROOF_KINDS and (plant != "cancel" or mode is None)
-        self.periodic = (proof or mode in {"1", "xdist"}) and not ablated("ring")
+        sampled = proof or mode in {"1", "xdist"}
+        self.periodic = sampled and not ablated("ring")
         self.xdist_only = mode == "xdist" and not proof
+        # The policy, not its ablation: the cancellation collection and the evidence check read it back (E3).
+        self.policy = {"periodic": sampled, "xdist_only": self.xdist_only}
+        with contextlib.suppress(OSError):
+            (root / SAMPLING_POLICY).write_text(json.dumps(self.policy) + "\n", encoding="utf-8")
         self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
         self.group = cgroup() if sys.platform == "linux" else None
         proof_group = os.environ.get("AEW_PROOF_OOM_GROUP")
@@ -451,6 +484,9 @@ class Monitor:
         self.members = set()
         self.high = False
         self.pressure_seen = False
+
+    def samples(self, worker: Worker) -> bool:
+        return self.periodic and policy_samples(self.policy, worker.controller)
 
     def poll(self, *, final: bool = False) -> None:
         now = time.monotonic()
@@ -477,8 +513,7 @@ class Monitor:
             if crossed:
                 self.high = False  # the first worker can still see pressure that began during startup
             return
-        due = [w for w in observed if self.periodic and not (self.xdist_only and w.controller)
-               and now >= self.next_sample.get(w.identity, 0)]
+        due = [w for w in observed if self.samples(w) and now >= self.next_sample.get(w.identity, 0)]
         if not crossed and not due:
             return
         allowed = self.scope()

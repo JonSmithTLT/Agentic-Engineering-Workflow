@@ -326,7 +326,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E231's next part, E233, E241)
+**Who:** Lead (E231's next part, E233, E241, E367, E368)
 
 **Now:** 44
 

@@ -5195,12 +5195,12 @@ sections:
   - '#': E329
     Work: 'The revision check''s PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without
       its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`,
-      takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is accepted and ignored for one release, then
-      removed; open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists
-      (the specification''s WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface,
-      crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation`
-      for every A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit
-      order, the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
+      takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is removed outright (the operator, 2026-11-25);
+      open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification''s
+      WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded
+      recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every
+      A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit order,
+      the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
     Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
       parts 2, 4 and 5; the operator''s yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"'
     When: '**Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking
@@ -5556,13 +5556,15 @@ sections:
     Notes: Filed by the Lead. SYS-48 owns it, outside its finish line
 
   - '#': E366
-    Work: 'The plan assessor''s pack says what is true at its scope. At `plan_assessment` scope, and for a reviewer at observation
-      and parent scope, the pack renders the reviewer archetype''s text (`src/aew/roles/archetypes/reviewer.yaml:7-19`,
-      through `knowledge/context.py`) unchanged: it tells the assessor to report "findings about the change", to read a
-      "diff and check output" and to state which earlier findings are resolved. At those scopes there is no change, diff
-      or earlier review, and an assessor that follows the text is refused by `evidence.schema.json`. Fix: the archetype''s
-      text is fitted to the scope it is rendered at, and a pack-truth test holds that no pack tells a role to do what its
-      scope''s record kind refuses (scope fit)'
+    Work: 'The plan assessor''s pack says what is true at its scope. The pack renders the reviewer archetype''s text (`src/aew/roles/archetypes/reviewer.yaml:7-19`,
+      through `knowledge/context.py`) unchanged at every scope. At `plan_assessment` scope it tells the assessor to report
+      "findings about the change", to read a "diff and check output" and to state which earlier findings are resolved; there
+      is no change, diff or earlier review, and an assessor that follows the text is refused by `evidence.schema.json`.
+      At observation scope the same text asks for a diff the reviewer does not have, though its `review` is accepted. Fix:
+      the archetype''s text is fitted to the scope it is rendered at, and a pack-truth test holds that no pack tells a role
+      to do what its scope cannot give or its record kind refuses (scope fit). Both scopes are in this row and on SYS-43,
+      since one change to the archetype''s text serves both. Parent scope is not in it: its pack carries each child''s integrated
+      diff and the aggregate diffstat'
     Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the worker packs,
       the plan assessor''s pack at `plan_assessment` scope'
     When: '**Now**, first in the always-sent context work (the operator''s order of 2026-11-25)'
@@ -5575,7 +5577,9 @@ sections:
       `message_send`''s `when: turn-end`, which is always refused. The rewrite saves about 4.4 KB per request and needs
       no ruling. The typed `status` and `resume` results get a compact payload, about 3.9 KB less per status call. A Lead-text
       truth test checks each claim the text makes against the parser, `lead_broker` and the enums. For the designer: four
-      schema changes worth about 3.1 KB, and whether the MCP server''s instructions count in the Lead''s pool'
+      schema changes worth about 3.1 KB, and whether the MCP server''s instructions count in the Lead''s pool. Related:
+      E162 (the Lead text fixes, frozen on SYS-51), which this row does not absorb: it corrects and shortens the lines the
+      Lead is told today, and E162''s additions stay E162''s, whose unfreezing is the operator''s'
     Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the Lead''s
       system text, guide and tool list'
     When: '**Now**, after the Lead guide''s core plus pointers (E231''s next part, on branch `feat/e231-guide-core-pointers`);
@@ -6499,7 +6503,7 @@ sections:
     Closed: '2026-11-12'
     By: '#447 (`a41a0866`): plain `aew opencode` takes a vacant seat or resumes an eligible held one on the same host and
       user, carrying the active invocations, with one terminal confirmation when work is carried or processes are left;
-      the vertical driver starts it on the held seat; ADR-0005''s E330 amendment'
+      the vertical driver starts it on the held seat; the E330 amendments of ADR-0005 and ADR-0009'
 
   - '#': E337
     Was: 'A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may

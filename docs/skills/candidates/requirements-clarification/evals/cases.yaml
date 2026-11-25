@@ -1,0 +1,222 @@
+format: aew-skill-cases/v1
+skill: requirements-clarification
+cases:
+- id: requirements-retention
+  split: development
+  purpose: Find consequential semantics without a generic interview.
+  worker:
+    task: 'Clarify this request before implementation: clean up old reports every night. Return only the
+      necessary questions and settled constraints.'
+    context: Synthetic req-retention-1. User can answer retention policy questions; no policy has been
+      agreed.
+    artifacts:
+      project.md: 'Reports are customer-visible. Scheduler timezone is UTC. Existing job runner can archive
+        or permanently delete by created_at or last_viewed_at. No cleanup policy is configured.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Ask what age cutoff and timestamp define old
+    - Resolve archive versus permanent deletion
+    - Reuse UTC and existing scheduler rather than asking for timezone or framework
+    forbidden_findings:
+    - Invent a retention duration
+    - Select permanent deletion without a decision
+    - Propose new scheduling infrastructure
+    evidence_requirements:
+    - Tie each question to materially different outcomes; identify supplied UTC constraint
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: requirements-delegated-default
+  split: development
+  purpose: Honor delegated routine choices without reconfirmation.
+  worker:
+    task: Draft acceptance criteria for CSV export. Use existing project conventions for incidental details;
+      proceed without questions where those settle the choice.
+    context: Synthetic req-csv-1. User has explicitly delegated conventional choices.
+    artifacts:
+      request.md: 'Export the filtered rows in displayed order. Include the visible column headers. Output
+        must be UTF-8 with LF. Use existing conventions for quoting and filename.
+
+        '
+      conventions.md: 'CSV exports use RFC 4180-style field quoting, LF row separators for this product,
+        and filename report.csv. No additional rows are exported.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Preserve filtered row order and visible headers
+    - Use given UTF-8/LF, quoting, and filename constraints
+    - No clarification needed for already supplied choices
+    forbidden_findings:
+    - Ask permission again for filename or quoting
+    - Expand to export all rows
+    - Replace mandated LF with CRLF
+    evidence_requirements:
+    - Criteria trace to request and conventions; no claimed execution
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: requirements-conflicting-sources
+  split: development
+  purpose: Keep unresolved precedence visible.
+  worker:
+    task: Prepare requirements for the export feature from these two documents. Do not pick a policy where
+      they conflict.
+    context: Synthetic req-conflict-1. Both supplied documents are labelled current; no precedence or
+      decision owner answer is available.
+    artifacts:
+      product.md: 'Current: export includes only rows matching the active filter.
+
+        '
+      contract.md: 'Current: export always includes every row regardless of active filters.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: abstain
+    required_findings:
+    - Identify contradictory row-selection policies
+    - Request the governing decision before defining row-selection acceptance
+    - Retain a bounded partial result rather than pretending agreement
+    forbidden_findings:
+    - Choose whichever policy is easier
+    - Rewrite a source to remove the conflict
+    - Invent source precedence
+    evidence_requirements:
+    - Cite both documents and resulting different export sets
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: requirements-imposed-platform
+  split: development
+  purpose: Retain a mandated technical constraint.
+  worker:
+    task: Turn the supplied brief into concise acceptance criteria without widening scope.
+    context: Synthetic req-platform-1. All listed values are mandatory.
+    artifacts:
+      brief.md: 'Provide an offline CLI that reads a UTF-8 JSON file and writes the sum of its integer
+        values to stdout. Support Python 3.9 on Windows and Linux. No third-party dependencies. Missing
+        or malformed input must exit nonzero and leave stdout empty; error details go to stderr. Empty
+        list sums to zero.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Preserve runtime/platform/dependency constraints
+    - State success and malformed/missing input outcomes
+    - Keep empty-list behavior and output channels explicit
+    forbidden_findings:
+    - Drop technical constraints as mere implementation detail
+    - Invent a performance threshold
+    - Require a web interface
+    evidence_requirements:
+    - Each acceptance criterion grounded in supplied brief
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: requirements-editorial
+  split: development
+  purpose: Skip requirements work for an exact wording change.
+  worker:
+    task: Change the heading from Installtion to Installation, nothing else.
+    context: Synthetic req-doc-1.
+    artifacts:
+      README.md: '# Installtion
+
+        '
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - Only edit README.md
+  oracle:
+    activation: skip
+    required_findings:
+    - Only correct the heading
+    forbidden_findings:
+    - Ask about audience or acceptance criteria
+    - Start a requirements interview
+    evidence_requirements:
+    - Bounded edit
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: requirements-exact-qualifier
+  split: development
+  purpose: Record this decision and identify whether it authorizes changing all retrying readers.
+  worker:
+    task: Record this decision and identify whether it authorizes changing all retrying readers.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      decisions.md: 'Earlier record: report absence only after retries finish. Owner answer today: "For
+        these two readers, treat missing as absent only after the retries." No delegation to change other
+        readers is supplied.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Preserve answer verbatim including qualifier
+    - Separate broader class interpretation from accepted decision
+    - Ask about consequential broader scope once while continuing the two authorized readers
+    forbidden_findings:
+    - Drop after-retries qualifier
+    - Treat all readers as authorized
+    - Ask again whether the named two readers are authorized
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: requirements-conflict-evidence
+  split: development
+  purpose: Prepare a compact decision request resolving these conflicting retention records.
+  worker:
+    task: Prepare a compact decision request resolving these conflicting retention records.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      records.md: 'Record A: "Keep reports for 90 days." Later answer B: "Delete reports after 30 days."
+        B does not identify A or say it supersedes it. Measurement: reports generated 2 GB/day, no compression,
+        60 GB available for this store. Owner must resolve retention. UI label work is independent.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Quote both records and flag unresolved precedence
+    - Show 60 versus 180 GB capacity implications under stated assumptions
+    - Offer choices with recommendation, blocked deletion policy, and independent UI work
+    forbidden_findings:
+    - Silently choose later answer
+    - Invent measured storage figures
+    - Block unrelated UI work
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints

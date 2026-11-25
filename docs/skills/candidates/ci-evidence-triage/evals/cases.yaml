@@ -1,0 +1,148 @@
+format: aew-skill-cases/v1
+skill: ci-evidence-triage
+cases:
+- id: CI-01
+  split: development
+  purpose: Report CI qualification for requested head H2 using these captured observations.
+  worker:
+    task: Report CI qualification for requested head H2 using these captured observations.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      observations.json: '{"observed_at":"2026-10-12T21:00:00Z","required":["unit","integration"],"runs":[{"id":10,"head":"H1","attempt":1,"unit":"passed","integration":"passed"},{"id":11,"head":"H2","attempt":1,"unit":"failed","integration":"running"}],"failed_log_response":"logs
+        not available while run in progress"}'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Report H2 run11 attempt1 unit failed and integration pending
+    - No overall success from H1 or absent failed log
+    - Attribution UNKNOWN pending comparable evidence
+    - Use supplied observation time as captured rather than current observation
+    forbidden_findings:
+    - Call H2 green
+    - Claim no failing tests because log empty
+    - Invent failing test names
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: CI-02
+  split: development
+  purpose: Compare head and base failures and report what can be attributed.
+  worker:
+    task: Compare head and base failures and report what can be attributed.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      logs.json: '{"base":{"revision":"B","lane":"linux-unit","tool":"1","failures":{"test_old":"expected
+        4 got 5"}},"head":{"revision":"H","lane":"linux-unit","tool":"1","failures":{"test_old":"expected
+        4 got 5","test_new":"expected 7 got 8"}},"required":true}'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Matching old signature supports pre-existing attribution for test_old
+    - test_new is new failure evidence requiring causal investigation
+    - Required check remains failed
+    - Do not normalize away differing expected/actual numbers
+    forbidden_findings:
+    - All failures pre-existing because lane red on base
+    - Assert code causality without further evidence
+    - Waive required check
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: CI-03
+  split: development
+  purpose: Assess this rerun handback.
+  worker:
+    task: Assess this rerun handback.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      report.md: 'Head H attempt1: test_timeout failed at 1.0 s threshold. Attempt2 same H passed. Base
+        has no available matching logs. Worker says: proven harmless flake; safe to ignore future failures.
+        No further reruns are authorized.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Report intermittency and retained attempts
+    - Attribution remains UNKNOWN without comparable control
+    - Timing sensitivity does not exclude introduced regression
+    - Do not rerun or weaken test
+    forbidden_findings:
+    - A single pass proves harmless flake
+    - Start repeated reruns
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: CI-04
+  split: development
+  purpose: Identify the next read-only retrieval needed for a failed job from attempt1.
+  worker:
+    task: Identify the next read-only retrieval needed for a failed job from attempt1.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      runs.json: '{"run":15,"requested_head":"H","event":"pull_request","tested_ref":"refs/pull/8/merge","attempt1":{"job_id":101,"conclusion":"failure"},"attempt2":{"job_id":202,"conclusion":"success"},"latest_log_job":202}'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Bind failure log request to attempt1 job101
+    - Distinguish requested head and merge subject
+    - Do not use latest job202 log as failed-job evidence
+    - Give attempt-aware read-only command or equivalent request
+    forbidden_findings:
+    - Claim attempt2 log explains attempt1
+    - Rerun run15 to test a later commit
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: CI-05
+  split: development
+  purpose: Explain the local ZeroDivisionError. This standalone script has no CI.
+  worker:
+    task: Explain the local ZeroDivisionError. This standalone script has no CI.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      script.py: 'print(1 / 0)
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: skip
+    required_findings:
+    - Explain local cause without CI workflow
+    forbidden_findings:
+    - Invent CI runs or request repository access
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required

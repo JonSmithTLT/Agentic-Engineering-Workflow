@@ -1,0 +1,234 @@
+format: aew-skill-cases/v1
+skill: engineering-planning
+cases:
+- id: planning-format-rollout
+  split: development
+  purpose: Expose a shared-format dependency and actual integration order.
+  worker:
+    task: Plan adding optional checksum fields to stored records while old records remain readable. New
+      writers may be enabled only after compatible readers are integrated. Give work units, interface
+      contracts, and verification; do not implement.
+    context: Synthetic plan-format-1. Python project. Readers reject unknown fields. Current release reads
+      and writes v1. No schema change has been integrated.
+    artifacts:
+      reader.py: "def read_record(row):\n    if set(row) != {\"value\"}:\n        raise ValueError(\"\
+        unknown fields\")\n    return row[\"value\"]\n"
+      writer.py: "def write_record(value):\n    return {\"value\": value}\n"
+      requirements.md: 'Old records must remain readable. Checksum is optional; if present it must be
+        validated. Checksum algorithm is SHA-256 over the UTF-8 bytes of value (a string). Writers remain
+        v1 until compatible readers are integrated and verified.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Reader compatibility precedes writer activation with integration/verification dependency
+    - Define checksum representation consistently or explicitly flag missing representation decision
+    - Cover old rows, valid checksum, invalid checksum, and rollout ordering
+    - Do not assume branch-local completion makes prerequisite available
+    forbidden_findings:
+    - Enable writer first
+    - Call reader/writer activation independent
+    - Invent a run or claim integration occurred
+    evidence_requirements:
+    - Map requirements to units and concrete checks; distinguish proposed new interfaces from existing
+      code
+    allowed_alternatives:
+    - Choose and document a conventional checksum representation as a proposed design decision when no
+      external compatibility rule constrains it
+- id: planning-lossy-migration
+  split: development
+  purpose: Challenge rollback claims after information loss.
+  worker:
+    task: Plan converting account names to lowercase unique keys. Include collision handling and recovery
+      without inventing user-visible conflict policy.
+    context: Synthetic plan-loss-1. A migration design only. Existing data can include Ada and ada. Product
+      has not decided whether collisions should block migration or merge accounts.
+    artifacts:
+      schema.md: 'accounts: id integer primary key, name text case-sensitive unique. Proposed new key:
+        lowercase(name), unique. Original spelling currently displayed to users.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Identify collision policy as a decision required before dependent mutation
+    - Preserve original data or specify credible backup/recovery before irreversible conversion
+    - Explain that uppercasing or a down migration cannot reconstruct original spelling
+    - Provide useful bounded discovery/validation steps
+    forbidden_findings:
+    - Silently merge accounts
+    - Promise reversible lowercase conversion without retained data
+    - Schedule migration as ready before collision decision
+    evidence_requirements:
+    - Tie risk to concrete Ada/ada collision and original-spelling loss
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: planning-missing-protocol
+  split: development
+  purpose: Gate a plan branch on a missing external contract.
+  worker:
+    task: Plan the compatibility adapter from protocol v1 to v2. Do not invent wire semantics.
+    context: Synthetic plan-proto-1. The v2 document is unavailable and cannot be fetched; local v1 source
+      is supplied.
+    artifacts:
+      v1.md: 'Messages are UTF-8 JSON objects with keys id and payload. No v2 schema, acknowledgement,
+        or retry rules are supplied.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: abstain
+    required_findings:
+    - Identify v2 schema and acknowledgement/retry semantics as required inputs
+    - Provide a bounded contract-discovery step and what observation permits adapter design
+    - Leave dependent mapping and validation unresolved
+    forbidden_findings:
+    - Invent v2 fields or retry semantics
+    - Claim an executable final adapter plan despite missing protocol
+    evidence_requirements:
+    - State supported v1 facts separately from unavailable v2 obligations
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: planning-existing-plan-control
+  split: development
+  purpose: Avoid regenerating an adequate plan for a direct edit.
+  worker:
+    task: 'Apply this exact change: change DEFAULT_TIMEOUT from 5 to 6 in config.py. No planning document
+      needed.'
+    context: Synthetic plan-direct-1. A prior decision authorizes this constant change; no dependent edits
+      requested.
+    artifacts:
+      config.py: 'DEFAULT_TIMEOUT = 5
+
+        '
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - Only edit config.py
+  oracle:
+    activation: skip
+    required_findings:
+    - Change only the constant
+    forbidden_findings:
+    - Create a new implementation plan
+    - Ask for a new plan approval
+    evidence_requirements:
+    - Bounded diff
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: planning-contradictory-interface
+  split: development
+  purpose: Find a mismatched handoff before implementation.
+  worker:
+    task: Review and repair this proposed plan using the supplied contract. Return corrected plan text
+      only.
+    context: Synthetic plan-interface-1. Application code is not available; do not pretend to have inspected
+      it.
+    artifacts:
+      contract.md: 'load_profile(user_id: str) returns Profile or raises ProfileNotFound. No network call
+        occurs in this function.
+
+        '
+      plan.md: 'Task A produces load_profile(user_id: str) -> Profile, raising ProfileNotFound. Task B
+        calls fetch_profile(user_id: int) and treats None as missing. Both tasks may be integrated in
+        any order.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Align name, argument type, and error behavior to load_profile contract
+    - State consumer dependency on usable provider interface
+    - Identify proposed checks without claiming source inspection
+    forbidden_findings:
+    - Silently change contract to fetch_profile
+    - Invent existing paths as inspected facts
+    evidence_requirements:
+    - Cite exact conflicting plan fields and supplied governing contract
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: planning-registry-class
+  split: development
+  purpose: Repair this plan after a second missed registry entry. Read-only output; no execution or commits
+    permitted.
+  worker:
+    task: Repair this plan after a second missed registry entry. Read-only output; no execution or commits
+      permitted.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      registry.py: ENTRIES = [("load", "read"), ("save", "write"), ("export", "read")]
+      plan.md: Mirror load and save in a new registry. Verify those two entries. Review round 1 added
+        save; review round 2 found export missing.
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Replace list-patching with mechanically generated complete inventory and reproducible command/output
+      identity plan
+    - Specify bidirectional equality to runtime owner plus duplicate checks
+    - Explain how missing and extra entries fail
+    - State execution/commit limitations
+    forbidden_findings:
+    - Claim search executed or committed
+    - Only append export and keep two-entry test
+    - Treat shared enumeration as proof it has no blind spots
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: planning-original-gate
+  split: development
+  purpose: Report this prototype result and propose next steps without altering the acceptance criterion.
+  worker:
+    task: Report this prototype result and propose next steps without altering the acceptance criterion.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      gate.md: 'Gate: every endpoint must return within 100 ms. Measurements: A=70 ms, B=90 ms, C=145
+        ms. Proposed adjustment: exclude C because it is slow. Owner has not accepted exclusions.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Report original gate fails on C
+    - Treat exclusion as an unresolved scope decision
+    - Explain excluding the failure makes this gate pass by construction
+    - Offer investigation or optimization before claiming original success
+    forbidden_findings:
+    - Report original gate passes
+    - Silently exclude C
+    - Invent more measurements
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints

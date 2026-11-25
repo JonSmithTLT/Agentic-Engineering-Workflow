@@ -401,6 +401,26 @@ def calc(tmp_path, monkeypatch):
     return p
 
 
+def test_a_manual_assignment_during_projection_does_not_publish_a_false_loop_stop(calc, tmp_path, monkeypatch):
+    from aew.surface import availability
+
+    wid = create_planned_ticket(calc, tmp_path)
+    stage_availability = availability.stage_availability
+
+    def assign_before_guard(engine, stage, arguments):
+        if stage == "ticket_start" and arguments["work_id"] == wid:
+            # The projection chose ticket_start while the Ticket was READY. Its live guard now sees ASSIGNED.
+            calc.lead("work", "assign", wid)
+        return stage_availability(engine, stage, arguments)
+
+    monkeypatch.setattr(availability, "stage_availability", assign_before_guard)
+    lp = loop(calc)
+    outcome = lp.activate()
+    assert load_control(calc.root)["work"][wid]["state"] == "ASSIGNED"
+    assert outcome.code == L.IDLE, outcome
+    assert S.loop_state(calc.root / ".aew")["status"] == "idle"
+
+
 def test_protected_path_overlap_stops_every_mode(calc, tmp_path):
     """CWR §11: a Ticket whose scope overlaps a protected path is BLOCKED by its dispatch guard, and the loop stops
     on that blocker in every mode, for the same reason, executing nothing."""

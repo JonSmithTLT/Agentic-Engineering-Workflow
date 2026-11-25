@@ -491,6 +491,27 @@ def test_a_forged_row_in_a_history_larger_than_the_budget_rebuilds_within_the_bu
     assert ids(out) == [built["record"]]
 
 
+def test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete(built, tmp_path, monkeypatch):
+    # CI run 45519626008: on a loaded runner the time budget ran out as the build took the last entry, and that call
+    # said "budget" through the head; the next said complete with the same watermark. A zero time budget is spent
+    # after every entry, so each call takes exactly one entry, and only a call that leaves one behind may say "budget".
+    p, engine = copy_of(built, tmp_path)
+    for suffix in ("", "-wal", "-shm"):  # a build from nothing
+        (p.root / ".aew" / (recall.SUBSTRATE_REL + suffix)).unlink(missing_ok=True)
+    monkeypatch.setattr(recall, "BUILD_BUDGET_S", 0)
+    seen = []
+    for _ in range(50):
+        out = search(engine, "Quokkafacts")
+        cov = out["coverage"]
+        seen.append((cov["indexed_through"], out["coverage_incomplete"]))
+        assert out["coverage_incomplete"] == (cov["indexed_through"] < cov["history_entries"])
+        if not out["coverage_incomplete"]:
+            break
+        assert cov["reasons"] == ["budget"]
+    assert seen == [(n, n < cov["history_entries"]) for n in range(1, cov["history_entries"] + 1)]
+    assert ids(out) == [built["record"]]
+
+
 def test_a_tampered_document_file_fails_authentication(built, tmp_path):
     p, engine = copy_of(built, tmp_path)
     complete(engine, "Quokkafacts")

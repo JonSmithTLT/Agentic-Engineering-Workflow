@@ -61,24 +61,62 @@ def target_run(repo, workflow, parent, head, branch, title):
 # Leave time for dispatch and delivery before pytest switches to collection.
 CANCEL_PLANT_SECONDS = 360
 TRIGGER_RESERVE_SECONDS = 60
+# A target plant holds its deadline step until its twin has a runner, for at most this long, so one platform's runner
+# queueing does not spend the other's window before both can be live (target runs 45513035294 and 45547533341, where
+# the Windows plant started 5 min 22 s and 5 min 23 s after its Linux twin). The workflow's barrier step states it.
+TWIN_BARRIER_SECONDS = 600
+RUNNER_ALLOCATION_SECONDS = 20 * 60
+PLANT_LABELS = tuple(f"plant ({runner}, cancel, none)" for runner in ("ubuntu-24.04", "windows-latest"))
+
+
+class PlantQueued(RuntimeError):
+    """A plant's runner queued past its twin's live window: runner allocation, not the evidence under test.
+
+    It is never a pass, and never the overlap failure: both plants were never live together, so nothing was triggered.
+    """
+
+    code = "plant-queued"
 
 
 def wait_for_workers(repo, ident):
-    labels = [f"plant ({runner}, cancel, none)" for runner in ("ubuntu-24.04", "windows-latest")]
+    labels = PLANT_LABELS
 
     def jobs():
         return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
 
-    # GitHub can accept the dispatch while neither child has a runner. Start the
-    # existing nine-minute readiness clock only once the first target actually starts.
-    def assigned():
-        return any(job["name"] in labels and (job.get("runner_id") or job.get("conclusion"))
-                   for job in jobs())
+    def runner(job):
+        return job is not None and bool(job.get("runner_id") or job.get("conclusion"))
 
-    poll(assigned, 20 * 60, "a hosted runner to be assigned to a controlled lane")
+    # GitHub can accept the dispatch while neither child has a runner. Start the existing nine-minute readiness
+    # clock only once the later target has one: each plant's own window counts from its own deadline step.
+    def assigned():
+        named = {job["name"]: job for job in jobs()}
+        return all(runner(named.get(label)) for label in labels)
+
+    try:
+        poll(assigned, RUNNER_ALLOCATION_SECONDS, "a hosted runner to be assigned to both controlled lanes")
+    except RuntimeError as exc:
+        named = {job["name"]: job for job in jobs()}
+        if any(runner(named.get(label)) for label in labels):
+            late = [label for label in labels if not runner(named.get(label))]
+            raise PlantQueued(f"a plant's runner queued past its deadline: {', '.join(late)} had no runner "
+                              f"{RUNNER_ALLOCATION_SECONDS} s after dispatch while its twin ran") from exc
+        raise
+
+    def ended(job):
+        lane = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), {})
+        return bool(job.get("conclusion")) or lane.get("status") == "completed"
 
     def live():
         attempt = jobs()
+        named = {job["name"]: job for job in attempt}
+        # A twin so late that the early plant's lane already ended at its session deadline is the same queueing, not
+        # a target that finished early or lost its execution window (#564 review).
+        for label, twin in zip(labels, reversed(labels), strict=True):
+            job, other = named.get(label), named.get(twin)
+            if job and ended(job) and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S))):
+                raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not live before "
+                                  f"{label}'s lane ended")
         active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]
         for job in filter(None, active):
             steps = {step["name"]: step for step in job["steps"]}
@@ -88,6 +126,11 @@ def wait_for_workers(repo, ident):
                 raise RuntimeError("controlled pytest lane has no active execution window")
             opened = datetime.fromisoformat(deadline_step["started_at"]).timestamp()
             if time.time() >= opened + CANCEL_PLANT_SECONDS - TRIGGER_RESERVE_SECONDS:
+                if not all(active):
+                    # The twin is not yet live, so its runner or setup came too late for this window: name it.
+                    late = [label for label, other in zip(labels, active, strict=True) if not other]
+                    raise PlantQueued(f"a plant's runner queued past its deadline: {', '.join(late)} was not live "
+                                      f"before {job['name']} reached its trigger reserve")
                 raise RuntimeError("controlled pytest lanes have no overlapping time before collection")
         return active if all(active) else None
 
@@ -191,4 +234,8 @@ def main(scenario):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    try:
+        main(sys.argv[1])
+    except PlantQueued as exc:
+        print(f"::error title={exc.code}::{exc}")
+        raise SystemExit(1) from exc

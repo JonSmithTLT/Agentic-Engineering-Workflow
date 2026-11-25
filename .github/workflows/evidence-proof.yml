@@ -76,6 +76,25 @@ jobs:
       group: evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}-${{ matrix.kind }}-${{ matrix.ablate }}
       cancel-in-progress: true
     steps: &plant-steps
+      # A controlled target's plants start their deadline clocks together: one platform's runner queueing must not
+      # spend its twin's window before both can be live (prove_cancel_evidence.TWIN_BARRIER_SECONDS).
+      - name: Wait for the twin plant's runner
+        if: matrix.kind == 'cancel' && inputs.probe_origin
+        timeout-minutes: 11
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TWIN: plant (${{ matrix.os == 'ubuntu-24.04' && 'windows-latest' || 'ubuntu-24.04' }}, cancel, none)
+        run: |
+          bound=600
+          until=$(( $(date +%s) + bound ))
+          jobs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100"
+          while [ "$(date +%s)" -lt "$until" ]; do
+            assigned=$(gh api "$jobs" --jq '[.jobs[] | select(.name == env.TWIN and ((.runner_id // 0) > 0 or .conclusion))] | length' || echo 0)
+            if [ "${assigned:-0}" -gt 0 ]; then exit 0; fi
+            sleep 5
+          done
+          echo "::warning::$TWIN had no runner after $bound s; this plant's deadline starts without it"
       - name: The job's deadline
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 360 ))" >> "$GITHUB_ENV"

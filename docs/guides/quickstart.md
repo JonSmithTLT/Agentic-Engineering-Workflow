@@ -134,7 +134,9 @@ A project whose CI selects the tests a change affects can declare the selector a
 or lanes. The selector receives the changed paths in `{changed_paths_file}` and writes one UTF-8 item per line to
 `{selection_out}`. Both files are outside its disposable copy of the integration candidate. Validation accepts up to
 1 MiB of selector output. A larger file leaves the selection unknown (`selector_no_output`). The selector timeout
-covers preparing the copy, running the command and retiring the copy. The validation checks keep their own deadline.
+bounds how long validation waits for the copy and its result. On expiry, validation asks the process supervisor to
+stop the selector and proceeds within the checks' separate deadline. The CLI may stay open while the copy owner
+finishes pending setup or cleanup.
 List the selector code and configuration under `inputs` so validation reports the selection as unknown when a change
 touches them. When `inputs` is omitted, the selector's project-file arguments are its declared inputs. An empty
 selection in validation is known only when `may_select_none` is true and the command writes an empty output file.

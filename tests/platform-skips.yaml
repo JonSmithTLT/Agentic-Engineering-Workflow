@@ -301,7 +301,11 @@ skipped:
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project: >-
+    tests/integration/test_containment.py::test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project[implementer]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project[reviewer]: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
       tests/unit/test_containment_layout.py.

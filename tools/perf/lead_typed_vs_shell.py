@@ -169,7 +169,10 @@ def fixture_env(base: Path, home: Path, host: dict[str, str] | None = None) -> d
     create a TLS context without SYSTEMROOT, and `aew init` makes one (PR #589's Windows integration lane)."""
     env = {key: value for key, value in (os.environ if host is None else host).items()
            if not key.upper().startswith(("AEW_", "GIT_")) and key.upper() not in DESKTOP_VARIABLES}
+    # Git's own variables are dropped above; these two are then set so the child's git reads no system, global or
+    # XDG config (a host's commit.gpgsign would otherwise stop the fixture's commit: review of #589, m1).
     env.update({"HOME": str(home), "LANG": "C.UTF-8", "PYTHONPATH": str(ROOT / "src"), "PYTHONDONTWRITEBYTECODE": "1",
+                "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
                 capability_store.base_variable(): str(base / "capability"),
                 "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z"})
     return env
@@ -296,7 +299,7 @@ def break_even(fixed_delta: float, use_delta: float, requests: int, round_trips:
     return fixed_delta * requests / saving_per_use
 
 
-def table(reads: list[dict[str, Any]], shares: dict[str, int], request_bytes: int, typed_overhead: int,
+def table(reads: list[dict[str, Any]], shares: dict[str, int], request_bytes: int, typed_over_shell_result: int,
           sessions: tuple[int, ...] = SESSION_REQUESTS) -> list[dict[str, Any]]:
     rows_out = []
     for read in reads:
@@ -306,9 +309,11 @@ def table(reads: list[dict[str, Any]], shares: dict[str, int], request_bytes: in
                          - read["shell_call_bytes"] - read["shell_result_bytes"])
             typed_guide = 0
         else:
-            # A2 is not built: its result is estimated as the shell's output plus the typed text's measured wrapping.
+            # A2 is not built. Its per-use difference is estimated as the smallest typed-over-shell result-item
+            # difference among the built reads. The call-item difference (typed is the smaller: -41 B for work_show)
+            # is left out, so the estimate errs against the typed row.
             options = [(f"A2 map ({size} B)", size) for size in A2_ROW_BYTES]
-            use_delta = typed_overhead
+            use_delta = typed_over_shell_result
             typed_guide = read["shell_guide_line_bytes"]  # the A2 guide line, taken as the same length
         for label, size in options:
             fixed_delta = size + typed_guide - read["shell_guide_line_bytes"]
@@ -329,8 +334,9 @@ def measure(sessions: tuple[int, ...] = SESSION_REQUESTS) -> dict[str, Any]:
     shares = rows(MESSAGING_ON)
     with tempfile.TemporaryDirectory(prefix="aew-e231-") as base:
         reads = measure_reads(Fixture(Path(base)), guide)
-    wrapped = [r["typed_result_bytes"] - r["shell_result_bytes"] for r in reads if r["typed_tool"] is not None]
-    typed_overhead = min(wrapped)
+    # The result items only: the typed result less the shell's, smallest over the built reads (A2's estimate).
+    typed_over_shell_result = min(r["typed_result_bytes"] - r["shell_result_bytes"] for r in reads
+                                  if r["typed_tool"] is not None)
     record = load_yaml(POOL_RECORD.read_text(encoding="utf-8"), source=str(POOL_RECORD))
     return {
         "schema": "aew/e231-typed-vs-shell/v1",
@@ -344,10 +350,10 @@ def measure(sessions: tuple[int, ...] = SESSION_REQUESTS) -> dict[str, Any]:
         "reads": reads,
         "model": {"session_requests": list(sessions), "extra_round_trips_per_use": list(EXTRA_ROUND_TRIPS),
                   "round_trip_bytes": on["total"], "round_trip_pools": list(ROUND_TRIP_POOLS),
-                  "a2_typed_wrapping_bytes": typed_overhead,
+                  "a2_typed_over_shell_result_bytes": typed_over_shell_result,
                   "round_trip_note": "Q=1x is a lower bound: the pool alone, without OpenCode's own text, tools or "
                                      "context"},
-        "break_even": table(reads, shares, on["total"], typed_overhead, sessions),
+        "break_even": table(reads, shares, on["total"], typed_over_shell_result, sessions),
     }
 
 

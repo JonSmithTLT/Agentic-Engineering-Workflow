@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 import pytest
 
@@ -52,3 +53,5 @@ def test_the_fixture_keeps_the_hosts_environment_but_not_a_credential_git_or_a_d
     assert not {"AEW_LEAD_TOKEN", "aew_invocation_token", "GIT_DIR", "DBUS_SESSION_BUS_ADDRESS",
                 "XDG_RUNTIME_DIR"} & set(env)
     assert env["GIT_AUTHOR_DATE"] == env["GIT_COMMITTER_DATE"]
+    # No system, global or XDG Git config reaches the fixture's git (review of #589, m1).
+    assert env["GIT_CONFIG_GLOBAL"] == os.devnull and env["GIT_CONFIG_NOSYSTEM"] == "1"

@@ -159,8 +159,9 @@ For each Q, the four figures are k = 0, k = ¼, k = ½ and k = 1 extra shell req
 
 How to read the A2 rows:
 - A2 is one tool for both map reads, so u counts map show and map search together.
-- Its D is an estimate: the shell result, plus the smallest typed-over-shell difference measured on a built read
-  (`work_show`'s 413 B).
+- Its D is an estimate: the smallest typed-over-shell difference in result items measured on a built read
+  (`work_show`'s 413 B). The call-item difference, where the typed call is 41 B smaller, is left out, so the estimate
+  errs against A2.
 - Its guide line is taken as the same length as the shell route's line, so the two cancel in F. A2 still needs a guide
   line of about 105 to 266 B from the pool on top of its row.
 

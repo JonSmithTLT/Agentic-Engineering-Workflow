@@ -301,6 +301,10 @@ skipped:
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
+      tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
@@ -542,6 +546,9 @@ skipped:
     tests/integration/test_network_shim.py::test_a_ctty_step_that_cannot_take_the_terminal_stops_the_harness_from_starting: >-
       the shim's ctty step is POSIX's and serves only the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs
       labelled not contained. Covered on Linux.
+    tests/integration/test_lead_containment.py::test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in

@@ -65,6 +65,10 @@ LEXICAL_FILE_MAX = "1M"
 LEXICAL_COLUMNS = 200
 # A record's identifying fields, which a one-section view of it keeps (``aew map show --section``).
 ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "generator", "artifact_sha256")
+# Who reads through the CLI: the Lead or the operator, and the answer cannot tell which (a CLI process's own account
+# of its session is no authority), so it names the route, never a principal. A Lead's relayed read and its shell's
+# read print the same bytes (the relayed reads' condition 2). A worker's reads name its invocation.
+CLI_RECIPIENT = {"kind": "cli", "who": "the Lead or the operator (not authenticated by a read)"}
 NEXT_SOURCE = {"step": "read the source in your workspace with your own tools (your editor, `rg`, `grep -rn`)",
                "cost": "unbounded by AEW: you choose what to read"}
 

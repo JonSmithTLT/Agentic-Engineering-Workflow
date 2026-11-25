@@ -28,7 +28,7 @@ MAPS = Path(".aew") / store.MAPS_REL
 def contract(operations: list[str], extra: dict[str, Any] | None = None) -> K.LaunchContract:
     return K.LaunchContract(
         run="R-INV-0001-1", invocation="INV-0001", work_unit="T-0001", role="investigator", scope="observation",
-        card={"id": "investigator", "version": 1, "sha256": "0" * 64}, execution_profile={"harness": "opencode"},
+        card={"id": "investigator", "version": 1, "sha256": "0" * 64}, execution_profile={"harness": "fake"},
         workspace="/w/obs", expected_kinds=["discovery_record"], operations=operations, pack_path="/p",
         pack_sha256="1" * 64, pack_text="PACK", continuation=None, run_dir="/r", extra=extra or {},
         scratch="/r/scratch")
@@ -70,9 +70,10 @@ def test_map_ops_are_offered_only_when_the_launch_snapshot_turns_them_on(tmp_pat
 
 
 # The worker preamble before map reads existed (origin/main at 2962f12e), for an investigator and for a reviewer with
-# messaging on: with the switch off a run's prompt is these bytes exactly, so M4-H's treatment is unchanged.
+# messaging on: with the switch off a run's prompt is these bytes exactly, so M4-H's treatment is unchanged. The
+# harness is one with no measured wait, so the messaging line is the same on every platform (`preamble_wait_supported`).
 PREAMBLE_SHA256 = ("98ab21a18807467b887c8f09912a78ea896dd8f30c095ddc37f452f758ca7376",
-                   "5bd26e446e02927a065bb5d1d6f3d75695f86c9ca0ee153a21ba46563018be8d")
+                   "d5f53501542bfa2d0da969aca8d9eac777b16e4e10c4b91838487bcaaec5babc")
 
 
 def test_with_the_switch_off_the_worker_prompt_and_operations_are_byte_identical(tmp_path):

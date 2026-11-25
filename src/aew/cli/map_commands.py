@@ -58,14 +58,12 @@ def _in_worker_run(a: argparse.Namespace, *flags: str) -> bool:
 
 def _context(a: argparse.Namespace, engine: Any, *, scope_paths: tuple[str, ...] = ()) -> Any:
     """The Lead's or the operator's read context: ``--commit``, else the authoritative head, from this project."""
-    from aew import lead_credential
     from aew.maps import query, service
 
     commit = a.commit or service._default_commit(engine)
-    kind = "lead" if lead_credential.session_kind() == "lead" else "operator"
     return query.Context(repo_root=engine.repo_root, aew_root=engine.aew_root, commit=commit,
                          chosen_by=query.EXPLICIT if a.commit else query.AUTHORITATIVE_HEAD,
-                         recipient={"kind": kind}, workspace=engine.repo_root, scope_paths=scope_paths)
+                         recipient=query.CLI_RECIPIENT, workspace=engine.repo_root, scope_paths=scope_paths)
 
 
 def _show(a: argparse.Namespace) -> Any:

@@ -334,7 +334,6 @@ None.
 - `aew.cli.commands`
 - `aew.errors`
 - `aew.harness.bridge`
-- `aew.lead_credential`
 - `aew.maps.query`
 - `aew.maps.service`
 - `aew.util`

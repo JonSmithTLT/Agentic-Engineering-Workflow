@@ -857,24 +857,27 @@ INIT_POLICY_SHA256 = {
     # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR);
     # its steering comment reworded when init began recording that mode (#432's merge check, N1), and again for the
     # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1): comments only; and
-    # `maps.pack_slices: structural`, a new project's default (ADR-0015, amended 2026-11-11)
-    "policy/execution.yaml": "acea008c8e49c4a6f13b7f382c1d50a140ca0369a0d59f868ee81b8be902c996",
+    # `maps.pack_slices: structural`, a new project's default (ADR-0015, amended 2026-11-11); and `maps.reads:
+    # structural`, the worker's map reads, a new project's default (register F15.8; the operator, 2026-11-25, O1)
+    "policy/execution.yaml": "af6422ad80c6522b0681ed81d5ca3a8e237ca04ef833af5a741ff2a7a7fb2cc0",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
 # What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
 # (register E228's third PR): the standing crawl mode and the shipped notifier; and maps on (ADR-0015, amended
-# 2026-11-11).
+# 2026-11-11), the worker's map reads with them (register F15.8, 2026-11-25).
 INIT_EXECUTION_PARSED = {"schema": "aew/execution/v1", "configured": False, "harness": "opencode", "profiles": {},
                          "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}},
                          "provider_env": [], "steering": {"mode": "crawl"},
-                         "notify": {"command": ["aew", "notify", "desktop"]}, "maps": {"pack_slices": "structural"}}
+                         "notify": {"command": ["aew", "notify", "desktop"]}, "maps": {"pack_slices": "structural",
+                                                                                     "reads": "structural"}}
 INIT_POLICY_DIGESTS = {
     # gates.yaml's cap, and maps.pack_slices, legality-affecting, on for a new project (ADR-0015, amended 2026-11-11)
     "legality_digest": "sha256:44effcd55a0b3ed573217ea37eb7151dad57e8f3f90043cf8efccfd389900c13",
-    # moved by the template's standing crawl mode and notifier, both operational (register E228's third PR)
-    "operational_digest": "sha256:b171d55f4bfaed0d117731cc4d2435834b54537c4a0e30629cd3467706bc1bef",
+    # moved by the template's standing crawl mode and notifier, both operational (register E228's third PR), and by
+    # maps.reads, operational, on for a new project (register F15.8)
+    "operational_digest": "sha256:9715d986f159282b61e6ef8b6732522bbec2a09242b6d436418e61aed80a63ee",
 }
 
 

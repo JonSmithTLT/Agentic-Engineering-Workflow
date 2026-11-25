@@ -367,7 +367,7 @@ def test_the_lead_and_operator_cli_search_and_scope_answer_through_the_shared_mo
     head = g("rev-parse", "HEAD", cwd=project.root)
     found = project.ok("map", "search", "core.py", "--kind", "path", "--limit", "5", "--commit", head, "--json")
     assert found["schema"] == query.SCHEMA and [i["path"] for i in found["items"]] == ["calc/core.py"]
-    assert found["basis"]["chosen_by"] == query.EXPLICIT and found["basis"]["recipient"] == {"kind": "operator"}
+    assert found["basis"]["chosen_by"] == query.EXPLICIT and found["basis"]["recipient"] == query.CLI_RECIPIENT
     scoped = project.ok("map", "show", "--scope", "ticket", "--work", wid, "--json")
     assert scoped["subject"]["scope_paths"] == ["calc/**"] and "calc" in [i["path"] for i in scoped["items"]]
     assert scoped["basis"]["chosen_by"] == query.AUTHORITATIVE_HEAD

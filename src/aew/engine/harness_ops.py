@@ -384,11 +384,12 @@ class Harness:
         workspace, _, base = self.invocations.invocation_workspace(state, inv)
         if not base:
             raise IllegalTransition(f"{inv_id} has no base commit to read the map at", invocation=inv_id)
+        scope: list[str] | None
         try:
             scope = list((self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths")
                          or [])
-        except Exception:  # noqa: BLE001 - a record that cannot be read gives no scope; the answer says unrestricted
-            scope = []
+        except Exception:  # noqa: BLE001 - a record that cannot be read: the answer says its scope is unknown (m9)
+            scope = None
         return {"workspace": str(workspace), "base": base, "scope_paths": scope,
                 "recipient": {"kind": "worker", "invocation": inv_id, "role": inv["role"],
                               "work_unit": inv["work_unit"]}}

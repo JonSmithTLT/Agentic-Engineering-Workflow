@@ -179,3 +179,88 @@ def test_a_worker_read_never_changes_selection_and_agrees_with_the_leads_read_at
         assert [i["path"] for i in lead_found["items"]] == ["calc/core.py"]
     finally:
         lab.cleanup()
+
+
+# ------------------------------------------------------------------------------------------- the supervisor's handler
+
+
+def test_the_supervisors_map_read_holds_no_serialization_while_it_answers(tmp_path, monkeypatch):
+    """m5 of #576's review: `Supervisor._map_read` takes the bridge's serialization only for the credential check and
+    the state read, so while a map read is still answering (here `query.serve` blocks), `check run` is served. The
+    proof fails if the query runs inside `bridge.serialized()`."""
+    from types import SimpleNamespace
+
+    from aew.engine import api
+    from aew.harness import supervisor
+
+    store = SimpleNamespace(read_committed=lambda: {})
+    engine = SimpleNamespace(
+        store=store, repo_root=tmp_path, aew_root=tmp_path, run_authority_problem=lambda *a: None,
+        map_read_basis=lambda **kw: {"workspace": str(tmp_path), "base": "HEAD", "scope_paths": [],
+                                     "recipient": {"kind": "worker"}},
+        check_run=lambda **kw: {"op": "check.run"})
+    monkeypatch.setattr(api, "Engine", lambda repo_root, aew_root: engine)
+    monkeypatch.setattr(supervisor, "token_id_of", lambda credential: "tok-1")
+    sup = supervisor.Supervisor(tmp_path, {"run": "R-INV-0001-1", "invocation": "INV-0001", "credential": "tok-1",
+                                           "repo_root": str(tmp_path), "aew_root": str(tmp_path)}, ack=None)
+    started, release = threading.Event(), threading.Event()
+
+    def blocking(ctx: Any, op: str, args: dict[str, Any]) -> Any:
+        started.set()
+        assert release.wait(30)
+        return {"op": op}
+
+    monkeypatch.setattr(query, "serve", blocking)
+    offered, cooperative = bridge_tables(["check.run", "context.read", *bridge.MAP_OPERATIONS], messaging=False)
+    sup.bridge = bridge.BridgeServer(sup.handle, operations=offered, cooperative=cooperative)
+    sup.bridge.start()
+    call = {"endpoint": sup.bridge.address, "key": sup.bridge.key_hex}
+    try:
+        reader = threading.Thread(target=lambda: bridge.call("map.show", {"section": "", "scope": ""}, **call))
+        reader.start()
+        assert started.wait(30)
+        checked: dict[str, Any] = {}
+        check = threading.Thread(target=lambda: checked.update(bridge.call("check.run", {"check_id": "unit"}, **call)))
+        check.start()
+        check.join(10)
+        assert checked == {"op": "check.run"}, "check run waited for a map read"
+    finally:
+        release.set()
+        reader.join(30)
+        sup.bridge.close()
+        sup.bridge.wait_stopped()
+
+
+# ------------------------------------------------------------------------------------------- a dispatch's --launch
+
+
+@pytest.mark.parametrize("reads", ["structural", "off"])
+def test_a_dispatch_launch_records_the_maps_snapshot_and_an_off_run_names_why_it_has_no_reads(tmp_path, reads):
+    """m7 and m8 of #576's review: a dispatch's `--launch` records the run's `maps.reads` snapshot exactly when the
+    switch is on; and in a run launched with it off, a worker's `aew map show` and `aew map search` are refused with
+    the cause and the next step, typed (PERMISSION_DENIED, reason maps_reads_off)."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path,
+                            policy={**POLICY, "maps": {"pack_slices": "structural", "reads": reads}})
+    try:
+        p = lab.project
+        wid = create_investigation(p, tmp_path)
+        lab.script("default", [{"do": "aew", "args": ["map", "show", "--json"]},
+                               {"do": "aew", "args": ["map", "search", "core.py", "--json"]}])
+        run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
+        assert lab.wait(run)["status"] == "ended_without_evidence"
+        inv = next(i for i in Engine.discover(p.root).store.read()["invocations"].values() if i["work_unit"] == wid)
+        [entry] = inv["runs"]
+        shown, searched = lab.step(run, 0), lab.step(run, 1)
+        if reads == "structural":
+            assert entry["maps"] == {"reads": "structural"}
+            assert shown["exit"] == 0 and shown["stdout_json"]["schema"] == query.SCHEMA
+        else:
+            assert "maps" not in entry
+            for refused in (shown, searched):
+                error = (refused.get("stderr_json") or refused.get("stdout_json") or {})["error"]
+                assert refused["exit"] != 0 and error["code"] == "PERMISSION_DENIED"
+                assert error["details"]["reason"] == "maps_reads_off"
+                assert "launched with maps.reads off" in error["message"]
+                assert "read the source in your workspace, or ask the Lead" in error["message"]
+    finally:
+        lab.cleanup()

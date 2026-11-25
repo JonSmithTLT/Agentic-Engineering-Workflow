@@ -9,8 +9,11 @@ basis and a lexical fallback; later PRs extend this module, never a second imple
   (the commit, its tree, how it was chosen and for whom), its evidence class (``AGENT_REACHABLE_DERIVED``, E293), how it
   observed (``structural`` or ``lexical``), what it searched (``coverage``), the structural map's freshness against the
   basis, its items with their locators, what it left out and why (``omitted``: by a cap, by the byte budget, by scope),
-  its limits, and the next, wider step and its cost (P01-29). ``NOT_FOUND`` only when the searched domain was complete:
-  an omission is never an absence (P01-12, P01-18). A map that is UNAVAILABLE or STALE still answers, and says so.
+  its limits, and the next, wider step and its cost (P01-29). Each omitted count is an integer; ``omitted.lower_bound``
+  names the counts that are only lower bounds (a search cut at its limit knows of one more hit, not how many), and
+  ``omitted.unknown`` those that could not be established at all (a search stopped by its time bound). ``NOT_FOUND``
+  only when the searched domain was complete: an omission is never an absence (P01-12, P01-18). A map that is
+  UNAVAILABLE or STALE still answers, and says so.
 * **Reads only.** Nothing here writes ``local/maps/`` or changes a selection: a worker's read never refreshes a map, a
   STALE one included (only a Lead's dispatch does: ``service.refresh_at_dispatch``).
 * **The basis is the caller's** (``Context``): a worker's is always its invocation's base, which no bridge argument
@@ -84,7 +87,8 @@ class Context:
     chosen_by: str
     recipient: dict[str, Any]
     workspace: Path | None = None
-    scope_paths: tuple[str, ...] = field(default=())
+    # None: the Ticket's scope could not be read, which an answer says, never as "not restricted" (#576's review, m9)
+    scope_paths: tuple[str, ...] | None = field(default=())
 
 
 # ------------------------------------------------------------------------------------------- the envelope
@@ -146,9 +150,10 @@ def _locator(item: dict[str, Any]) -> dict[str, Any] | None:
 
 def _answer(ctx: Context, op: str, subject: dict[str, Any], terminal: str, *, basis: dict[str, Any],
             record: dict[str, Any] | None, why: str | None, fresh: dict[str, Any], observation: str,
-            coverage: dict[str, Any], items: list[dict[str, Any]], omitted: dict[str, int] | None = None,
+            coverage: dict[str, Any], items: list[dict[str, Any]], omitted: dict[str, Any] | None = None,
             limits: dict[str, Any] | None = None) -> dict[str, Any]:
-    """One answer, cut to MAX_ANSWER_BYTES from the end of its items (counted in ``omitted.by_budget``)."""
+    """One answer, cut to MAX_ANSWER_BYTES from the end of its items (counted in ``omitted.by_budget``). ``omitted``
+    may add ``lower_bound`` and ``unknown``, each a list of the count names it qualifies (the module docstring)."""
     omitted = {"by_cap": 0, "by_budget": 0, "by_scope": 0, **(omitted or {})}
     items = list(items)
 
@@ -208,7 +213,7 @@ def status(ctx: Context) -> dict[str, Any]:
     basis, record, why, fresh = _read(ctx)
     return _answer(ctx, "map.show", subject, SATISFIED, basis=basis, record=record, why=why, fresh=fresh,
                    observation=STRUCTURAL, items=[{"capabilities": capabilities(),
-                                                   "scope_paths": [render_text(p) for p in ctx.scope_paths]}],
+                                                   "scope_paths": _scope_view(ctx.scope_paths)}],
                    coverage={"domain": "the selected structural map's identity and freshness", "complete": True})
 
 
@@ -236,8 +241,8 @@ def scope(ctx: Context) -> dict[str, Any]:
     """The Ticket's own directories: E293's scoped rows (``slices.scoped_rows``), read from the map's own source tree
     when the record's global cap cut any, so a small task directory is never dropped before the scope applies (an
     external audit's Finding 3, CMA-05). When they cannot be listed, the count is a lower bound, never an absence."""
-    paths = list(ctx.scope_paths)
-    subject = {"read": "scope", "scope_paths": [render_text(p) for p in paths]}
+    paths = list(ctx.scope_paths or ())
+    subject = {"read": "scope", "scope_paths": _scope_view(ctx.scope_paths)}
     basis, record, why, fresh = _read(ctx)
     if record is None:
         return _no_map(ctx, "map.show", subject, basis, why, fresh)
@@ -253,12 +258,17 @@ def scope(ctx: Context) -> dict[str, Any]:
         count, complete = len(rows), not d.get("rows_omitted")
         unmatched = slices.unmatched_prefixes(prefixes, {r["path"] for r in d["rows"]}, d["max_depth"]) \
             if restricted and complete else []
+    unread = ctx.scope_paths is None
     coverage: dict[str, Any] = {
         "domain": (f"the directories at depth <= {d['max_depth']} of the map's commit {record['source_revision']}"
-                   + (" in the Ticket's scope" if restricted else " (scope not restricted)")),
+                   + (" (the Ticket's scope could not be read, so every row is shown)" if unread
+                      else " in the Ticket's scope" if restricted else " (scope not restricted)")),
         "complete": complete, "in_scope": count, "directories": d["rows_total"],
         "unmatched": [render_text(p, 120) for p in unmatched]}
-    if not complete:
+    if unread:
+        coverage["complete"] = False
+        coverage["incomplete"] = SCOPE_UNREAD
+    elif not complete:
         coverage["incomplete"] = (unlisted or f"the map keeps its {len(d['rows'])} largest of {d['rows_total']} "
                                   "directories") + ": a directory in scope that is not shown is not absent"
     if unmatched:
@@ -271,6 +281,13 @@ def scope(ctx: Context) -> dict[str, Any]:
                    omitted={"by_cap": max(0, count - len(items)),
                             "by_scope": max(0, d["rows_total"] - count) if restricted and complete else 0},
                    limits={"rows": SCOPE_ROWS, "depth": d["max_depth"]})
+
+
+SCOPE_UNREAD = "the Ticket's scope could not be read"
+
+
+def _scope_view(paths: tuple[str, ...] | None) -> list[str] | str:
+    return SCOPE_UNREAD if paths is None else [render_text(p) for p in paths]
 
 
 def record_section(record: dict[str, Any], name: str | None) -> dict[str, Any]:
@@ -385,8 +402,11 @@ def _provider() -> tuple[str | None, str | None]:
 
 
 def lexical_argv(executable: str, text: str, limit: int) -> list[str]:
-    """The fixed argv (the plan's §3.5): no configuration file, fixed strings, never following a symlink, bounded per
-    file and per line, JSON out, and never AEW's own state. The text follows ``--``, so it is never an option."""
+    """The fixed argv (the plan's §3.5): no configuration file, fixed strings, never following a symlink, at most
+    ``limit`` matches per file, JSON out, and never AEW's own state. The text follows ``--``, so it is never an option.
+    What bounds an answer's bytes is ``--max-filesize`` with each hit's ``render_text(..., 200)``: ripgrep ignores
+    ``--max-columns`` under ``--json`` (one event was measured at 990,772 bytes; the review of #576, n1), so that flag
+    is kept for a provider that honours it, not relied on."""
     return [executable, "--no-config", "--json", "--fixed-strings", "--no-follow", "--path-separator", "/",
             "--max-filesize", LEXICAL_FILE_MAX, "--max-count", str(limit), "--max-columns", str(LEXICAL_COLUMNS),
             "--glob", "!.aew/**", "--", text, "."]
@@ -401,16 +421,31 @@ def _inside(path: str) -> str | None:
     return norm
 
 
+NOT_ESTABLISHED = "NOT_ESTABLISHED"
+
+
 def _lexical(ctx: Context, text: str, limit: int, subject: dict[str, Any], basis: dict[str, Any],
              record: dict[str, Any] | None, why: str | None, fresh: dict[str, Any]) -> dict[str, Any]:
+    """The lexical fallback's answer. How each ending reads (P01-12, P01-18; the review of #576, m1 to m3):
+
+    * ran to its end with every match reported: SATISFIED with the hits, or NOT_FOUND, over a complete domain;
+    * a match it could not report (a path not plainly inside the workspace, or not UTF-8) and no hit: SATISFIED with
+      none, ``absence: NOT_ESTABLISHED``, never NOT_FOUND;
+    * cut at ``limit``: it reads one match past it, so ``omitted.by_cap`` is at least 1, a lower bound;
+    * stopped at LEXICAL_S: the hits so far, or EXHAUSTED_BUDGET with none, and how many more is unknown;
+    * the provider could not start: NOT_SUPPORTED with the cause;
+    * the provider ended with an error: with hits, SATISFIED and incomplete; with none, NOT_SUPPORTED, since nothing
+      was observed (no budget ran out, so EXHAUSTED_BUDGET would name the wrong cause), with ``absence:
+      NOT_ESTABLISHED``."""
     lexical_basis = {**basis, "workspace_edits": "reflected: lexical hits are of the workspace at query time"}
     domain: dict[str, Any] = {
         "domain": "the workspace's text files at query time (not ignored, not hidden, at most "
                   f"{LEXICAL_FILE_MAX}B each), after exact path resolution found nothing", "complete": False}
 
-    def answer(terminal: str, items: list[dict[str, Any]], **cover: Any) -> dict[str, Any]:
+    def answer(terminal: str, items: list[dict[str, Any]], omitted: dict[str, Any] | None = None,
+               **cover: Any) -> dict[str, Any]:
         return _answer(ctx, "map.search", subject, terminal, basis=lexical_basis, record=record, why=why, fresh=fresh,
-                       observation=LEXICAL, items=items, coverage={**domain, **cover},
+                       observation=LEXICAL, items=items, coverage={**domain, **cover}, omitted=omitted,
                        limits={"limit": limit, "seconds": LEXICAL_S, "columns": LEXICAL_COLUMNS})
 
     if ctx.workspace is None or not Path(ctx.workspace).is_dir():
@@ -418,23 +453,44 @@ def _lexical(ctx: Context, text: str, limit: int, subject: dict[str, Any], basis
     executable, cause = _provider()
     if executable is None:
         return answer(NOT_SUPPORTED, [], unsupported=[f"lexical search: {cause}"])
-    hits, ended, skipped = _run_lexical(lexical_argv(executable, text, limit), Path(ctx.workspace), limit)
-    if ended == "timeout":
-        return answer(EXHAUSTED_BUDGET if not hits else SATISFIED, hits, incomplete=f"the search was stopped after "
-                      f"{LEXICAL_S:g} s", skipped=skipped)
-    if ended == "limit":
-        return answer(SATISFIED, hits, incomplete=f"the search stopped at {limit} hits: there may be more",
-                      skipped=skipped)
-    if ended == "error":
-        return answer(SATISFIED, hits, incomplete="the search reported errors for some files", skipped=skipped,
-                      absence="NOT_ESTABLISHED")
-    return answer(SATISFIED if hits else NOT_FOUND, hits, complete=True, skipped=skipped)
+    run = _run_lexical(lexical_argv(executable, text, limit + 1), Path(ctx.workspace), limit + 1)
+    hits, skipped = run.hits[:limit], run.skipped
+    if run.ended == "spawn_failed":
+        return answer(NOT_SUPPORTED, [], unsupported=[f"lexical search: the provider could not start ({run.detail})"])
+    if run.ended == "timeout":
+        return answer(SATISFIED if hits else EXHAUSTED_BUDGET, hits, omitted={"unknown": ["by_cap"]},
+                      incomplete=f"the search was stopped after {LEXICAL_S:g} s", skipped=skipped,
+                      absence=NOT_ESTABLISHED)
+    if len(run.hits) > limit:
+        return answer(SATISFIED, hits, omitted={"by_cap": 1, "lower_bound": ["by_cap"]},
+                      incomplete=f"the search stopped past {limit} hits: there are more", skipped=skipped)
+    if run.ended == "error":
+        if not hits:
+            return answer(NOT_SUPPORTED, [], skipped=skipped, absence=NOT_ESTABLISHED,
+                          unsupported=[f"lexical search: the provider ended with an error ({run.detail}) and "
+                                       "reported nothing"])
+        return answer(SATISFIED, hits, incomplete=f"the provider ended with an error ({run.detail})",
+                      skipped=skipped, absence=NOT_ESTABLISHED)
+    if skipped and not hits:
+        return answer(SATISFIED, [], skipped=skipped, absence=NOT_ESTABLISHED,
+                      incomplete=f"{skipped} match(es) could not be reported (a path not plainly inside the "
+                                 "workspace, or not UTF-8)")
+    return answer(SATISFIED if hits else NOT_FOUND, hits, complete=not skipped, skipped=skipped)
 
 
-def _run_lexical(argv: list[str], workspace: Path, limit: int) -> tuple[list[dict[str, Any]], str, int]:
-    """Run the search in a process tree of its own, killed at LEXICAL_S or once ``limit`` hits are read. Returns the
-    hits, how it ended (``done``, ``limit``, ``timeout`` or ``error``) and how many hits were not reportable (a path
-    that is not plainly inside the workspace, or not UTF-8)."""
+@dataclass(frozen=True)
+class LexicalRun:
+    """How one lexical search ended: ``done``, ``limit``, ``timeout``, ``error`` (with ``detail``, the exit status) or
+    ``spawn_failed`` (with ``detail``, why); its reportable hits, and how many it could not report."""
+
+    hits: list[dict[str, Any]]
+    ended: str
+    skipped: int = 0
+    detail: str = ""
+
+
+def _run_lexical(argv: list[str], workspace: Path, limit: int) -> LexicalRun:
+    """Run the search in a process tree of its own, killed at LEXICAL_S or once ``limit`` hits are read."""
     from aew.harness import procs
 
     hits: list[dict[str, Any]] = []
@@ -447,9 +503,9 @@ def _run_lexical(argv: list[str], workspace: Path, limit: int) -> tuple[list[dic
     try:
         proc = tree.spawn(argv, cwd=str(workspace), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.DEVNULL)
-    except OSError:
+    except OSError as exc:
         tree.close()
-        return [], "error", 0
+        return LexicalRun([], "spawn_failed", detail=f"{type(exc).__name__}: {render_text(str(exc), 200)}")
 
     def read() -> None:
         nonlocal skipped
@@ -491,10 +547,12 @@ def _run_lexical(argv: list[str], workspace: Path, limit: int) -> tuple[list[dic
         proc.wait(1.0)
     tree.close()
     if full.is_set():
-        return hits[:limit], "limit", skipped
+        return LexicalRun(hits[:limit], "limit", skipped)
     if timed_out:
-        return list(hits[:limit]), "timeout", skipped
-    return hits, "error" if proc.returncode not in (0, 1) else "done", skipped
+        return LexicalRun(list(hits[:limit]), "timeout", skipped)
+    if proc.returncode not in (0, 1):
+        return LexicalRun(hits, "error", skipped, detail=f"exit status {proc.returncode}")
+    return LexicalRun(hits, "done", skipped)
 
 
 # ------------------------------------------------------------------------------------------- the bridge rows

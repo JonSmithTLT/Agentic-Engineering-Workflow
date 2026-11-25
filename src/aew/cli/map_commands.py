@@ -56,6 +56,25 @@ def _in_worker_run(a: argparse.Namespace, *flags: str) -> bool:
     return True
 
 
+MAPS_READS_OFF = ("this run was launched with maps.reads off, so its bridge offers no map reads: read the source in "
+                  "your workspace, or ask the Lead (register F15.8)")
+
+
+def _bridge_read(op: str, args: dict[str, Any]) -> Any:
+    """A worker's map read through its run's bridge. A run launched with the switch off offers no map operation; its
+    refusal says why and what to do instead (the review of #576, m8), never only that the bridge "does not offer" it."""
+    from aew.errors import PermissionDenied
+    from aew.harness import bridge
+
+    try:
+        return bridge.call(op, args)
+    except PermissionDenied as exc:
+        offered = (exc.details or {}).get("offered")
+        if isinstance(offered, list) and op not in offered:
+            raise PermissionDenied(MAPS_READS_OFF, reason="maps_reads_off", operation=op) from None
+        raise
+
+
 def _context(a: argparse.Namespace, engine: Any, *, scope_paths: tuple[str, ...] = ()) -> Any:
     """The Lead's or the operator's read context: ``--commit``, else the authoritative head, from this project."""
     from aew.maps import query, service
@@ -70,9 +89,7 @@ def _show(a: argparse.Namespace) -> Any:
     from aew.maps import query, service
 
     if _in_worker_run(a, "commit", "root", "work"):
-        from aew.harness import bridge
-
-        return _text(bridge.call("map.show", {"section": a.section or "", "scope": a.scope or ""}), a.json)
+        return _text(_bridge_read("map.show", {"section": a.section or "", "scope": a.scope or ""}), a.json)
     if a.scope == "ticket":
         if a.root or not a.work:
             raise UsageError("--scope ticket reads a Ticket's scope: give --work T-n (and not --root; --commit sets "
@@ -90,9 +107,7 @@ def _search(a: argparse.Namespace) -> Any:
 
     args = {"text": a.text, "kind": a.kind, "limit": str(a.limit) if a.limit is not None else ""}
     if _in_worker_run(a, "commit"):
-        from aew.harness import bridge
-
-        return _text(bridge.call("map.search", args), a.json)
+        return _text(_bridge_read("map.search", args), a.json)
     return _text(query.serve(_context(a, _engine(a)), "map.search", args), a.json)
 
 

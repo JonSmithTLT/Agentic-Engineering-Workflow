@@ -400,7 +400,8 @@ class Supervisor:
             raise
         ctx = query.Context(repo_root=self.engine.repo_root, aew_root=self.engine.aew_root, commit=basis["base"],
                             chosen_by=query.INVOCATION_BASE, recipient=basis["recipient"],
-                            workspace=Path(basis["workspace"]), scope_paths=tuple(basis["scope_paths"]))
+                            workspace=Path(basis["workspace"]),
+                            scope_paths=None if basis["scope_paths"] is None else tuple(basis["scope_paths"]))
         return query.serve(ctx, op, args)
 
     # ------------------------------------------------------------------ lifecycle

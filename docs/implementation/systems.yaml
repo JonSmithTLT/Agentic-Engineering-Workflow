@@ -210,11 +210,11 @@ systems:
   reason: 'The Linux core is on, used and gating every launch. What is left is small: E100 and E92, unfrozen on 2026-11-25,
     and E118''s server move once the designer chooses its mechanism (its other two parts are built). E100 is built
     by its pull request (an explicit required refuses the launch on every platform, containment/__init__.py:84-86), and
-    its slice comes off remaining when its row closes; so is E92 (plain http:// forwarded through the egress under
-    CONNECT''s host check, egress.py:602-647,649), whose slice comes off remaining when its row closes. E247 is small and
-    POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
-    work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
-    Lead; it may belong with SYS-05.'
+    so is E92 (plain http:// forwarded through the egress under CONNECT''s host check, egress.py:616-656,663); each
+    slice comes off remaining when its row closes. E247 is small and POSIX, so it rides along. The addenda have no rows
+    and may overlap SYS-42''s Lead small change, so they are design work, not finish work; they and the Windows work
+    wait in SYS-49. Readings for the designer to confirm, not rulings: E118 (harness ruling 11) is placed here because
+    no other entry claims it and it changes the contained Lead; it may belong with SYS-05.'
   evidence:
   - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
   - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
@@ -223,8 +223,8 @@ systems:
   - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
   - src/aew/harness/containment/__init__.py:108 the label records weaker_because
-  - 'src/aew/harness/containment/egress.py:1-2,26-45 the egress proxy tunnels CONNECT and forwards plain http://; :602-647
-    the plain request checked before any DNS, :649 the host check both share (E92''s work)'
+  - 'src/aew/harness/containment/egress.py:1-2,27-49 the egress proxy tunnels CONNECT and forwards plain http://; :616-656
+    the plain request checked before any DNS, :663 the host check both share (E92''s work)'
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before
     the harness starts
   - src/aew/engine/validation_ops.py:196,201,266,281,487 validation runs read containment.mode under the execution policy

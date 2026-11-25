@@ -2230,17 +2230,21 @@ the Lead only; a worker's sandbox still has none.
   (`bad_header`); `Upgrade` (501, `upgrade`); an `Expect` other than `100-continue` (417, `expectation`); a body framed
   more than one way, a `Content-Length` repeated or of other than ASCII digits, a `Transfer-Encoding` other than
   exactly `chunked` or on HTTP/1.0 (`bad_framing`); a body over `egress.MAX_BODY` (413, `body_too_large`).
-- **What is forwarded:** an origin-form target, `Host` set to the URL's authority, every hop-by-hop header
-  (`http1.HOP_BY_HOP`), every `Proxy-*` header and what `Connection` names left out, the framing as checked, and
-  `Connection: close`. The proxy answers `100-continue` itself. A chunked body's size lines and trailer fields are held
-  to the field-value rule, as the relay's are (`bad_chunk`, `bad_header`), and a refused line is never sent. The proxy
-  holds no credential and adds none.
+- **What is forwarded:** an origin-form target with the client's own HTTP version (so an HTTP/1.0 client is never sent
+  a chunked response), `Host` set to the URL's authority, every hop-by-hop header (`http1.HOP_BY_HOP`), every
+  `Proxy-*` header, `Connection` and what it names left out, the framing as checked, and `Connection: close`. The proxy
+  answers `100-continue` itself. A chunked body's size lines and trailer fields are held to the field-value rule, as the
+  relay's are (`bad_chunk`, `bad_header`); a trailer leaves out the fields the head leaves out, and one carrying
+  `Host`, `Content-Length` or `Transfer-Encoding` is refused (`bad_header`; RFC 9110 §6.5.1). A refused line is never
+  sent. The proxy holds no credential and adds none.
 - **One request per connection.** The answer says `Connection: close` (`http1.close_head`), and whatever the client
   sends after its one request, pipelined or after the answer, is read and dropped, never forwarded.
 - **Bounds** (implementation bounds, not policy): the request head as before (`MAX_HEADER`, `HEADER_TIMEOUT`), a pause
   in the body (`BODY_TIMEOUT`), the response head (`MAX_RESPONSE_HEAD`), and a response with no byte either way for
-  `RESPONSE_IDLE_TIMEOUT`. A response that never begins is answered 502 (`no_response`, or `upstream_broken`), saying
-  the request may have arrived and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
+  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that answers and closes before
+  it has taken the whole request has that answer relayed; one that closes without answering is answered 502
+  (`upstream_closed`), and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the
+  request may have arrived and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
 - **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
   which the relay and the egress proxy both import.
 - **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a

@@ -274,7 +274,12 @@ def _read_metadata(tree: Tree, r: dict[str, Any]) -> _Facts:
 # ------------------------------------------------------------------------------------------- the sections
 
 
-def _directories(files: list[Entry], gitlinks: list[Entry], r: dict[str, Any]) -> dict[str, Any]:
+def directory_rows(entries: tuple[Entry, ...] | list[Entry], r: dict[str, Any]) -> list[dict[str, Any]]:
+    """The root's row and every directory's at depth <= DIRECTORY_DEPTH, by file count (most first) and then path: the
+    section's rows before its cap. A slice reads the rows of a Ticket's scope from here when the cap left some of
+    them out of the record (register E293: the cap bounds the global view, never the Ticket's own directories)."""
+    files = [e for e in entries if e.type == "blob"]
+    gitlinks = [e for e in entries if e.gitlink]
     count: Counter[str] = Counter()
     langs: defaultdict[str, set[str]] = defaultdict(set)
     every_language: set[str] = set()
@@ -294,6 +299,12 @@ def _directories(files: list[Entry], gitlinks: list[Entry], r: dict[str, Any]) -
     rows += [{"path": d, "depth": d.count("/") + 1, "files": count[d], "languages": sorted(langs[d]),
               "label": labels.get(_name(d).lower(), "unknown")} for d in names]
     rows.sort(key=lambda row: (-row["files"], row["path"]))
+    return rows
+
+
+def _directories(entries: tuple[Entry, ...], r: dict[str, Any]) -> dict[str, Any]:
+    rows = directory_rows(entries, r)
+    gitlinks = [e for e in entries if e.gitlink]
     shown, omitted = _capped(rows, CAPS["directories"])
     subs, subs_omitted = _capped([{"path": g.path, "object": g.oid} for g in sorted(gitlinks, key=lambda g: g.path)],
                                  CAPS["submodules"])
@@ -442,11 +453,10 @@ def generate(tree: Tree, rules: Rules) -> dict[str, Any]:
     r = rules.data
     files = [e for e in tree.entries if e.type == "blob"]  # regular files and symlinks
     regular = [e for e in files if e.regular]
-    gitlinks = [e for e in tree.entries if e.gitlink]
     facts = _read_metadata(tree, r)
     under = _under(files)
     sections: dict[str, Any] = {
-        "directories": _directories(files, gitlinks, r),
+        "directories": _directories(tree.entries, r),
         "languages": _languages(regular, r),
         "build_descriptors": _build_descriptors(files, r, facts),
         "entry_point_candidates": _entry_points(regular, r, facts),

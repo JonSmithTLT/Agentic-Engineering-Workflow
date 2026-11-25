@@ -49,12 +49,14 @@ runs:
         SOURCE: ${{ inputs.source }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
-        # Hosted Windows CI and its cancellation control sample xdist workers only.
+        # Hosted CI samples every worker periodically, a serial lane's controller included; on Windows, the ci workflow
+        # and its cancellation control. Every attach is --nonblocking, so it never suspends its target (operator,
+        # 2026-11-25, register E3; a Windows serial lane regression reverts it).
         AEW_WORKER_SNAPSHOTS: >-
           ${{ env.AEW_WORKER_SNAPSHOTS ||
               (runner.environment == 'github-hosted' && (!env.AEW_EVIDENCE_PLANT || env.AEW_EVIDENCE_PLANT == 'cancel') &&
-               (runner.os == 'Linux' && '1' ||
-                runner.os == 'Windows' && (github.workflow == 'ci' || env.AEW_EVIDENCE_PLANT == 'cancel') && 'xdist'))
+               (runner.os == 'Linux' ||
+                runner.os == 'Windows' && (github.workflow == 'ci' || env.AEW_EVIDENCE_PLANT == 'cancel')) && '1')
               || '0' }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
         AEW_LANE_STEP: ${{ inputs.artifact }}

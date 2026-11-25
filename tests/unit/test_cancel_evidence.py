@@ -207,8 +207,75 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
         assert now() == queue_seconds + 10 + prove.SENTINEL_READY_S
     else:
         expected = {"allocation": "runner to be assigned", "finished": "target finished",
-                    "staggered": "no overlapping time", "collected": "no active execution window"}[outcome]
+                    "staggered": "runner queued past its deadline", "collected": "no active execution window"}[outcome]
         with pytest.raises(RuntimeError, match=expected):
+            prove.wait_for_workers("x/y", 42)
+
+
+@pytest.mark.parametrize("late", [0, 322, 323, -322, 900, 1000, -1000, 1050, 1100, -1100, 1300])
+def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(monkeypatch, late):
+    # Target runs 45513035294 and 45547533341: the Windows plant's runner came 322 s and 323 s after its Linux twin's,
+    # which spent the Linux window before both were live. The plants now hold their deadline steps for their twin.
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    import cancel_evidence_plant
+
+    prove = _load("prove_cancel_evidence")
+    steps = yaml.safe_load((ROOT / ".github/workflows/evidence-proof.yml").read_text())["jobs"]["cancel-plant"]["steps"]
+    names = [step.get("name") for step in steps]
+    barrier = steps[names.index("Wait for the twin plant's runner")]
+    assert names.index("Wait for the twin plant's runner") < names.index("The job's deadline")
+    assert barrier["if"] == "matrix.kind == 'cancel' && inputs.probe_origin"
+    assert f"bound={prove.TWIN_BARRIER_SECONDS}\n" in barrier["run"]
+    assert barrier["timeout-minutes"] * 60 > prove.TWIN_BARRIER_SECONDS
+    waits = []
+
+    def now():
+        return sum(waits)
+
+    clock = SimpleNamespace(monotonic=now, time=now, sleep=waits.append)
+    monkeypatch.setattr(prove, "time", clock)
+    monkeypatch.setattr(cancel_evidence_plant, "time", clock)
+    dispatched = 60
+    runners = {"ubuntu-24.04": dispatched + max(0, -late), "windows-latest": dispatched + max(0, late)}
+    setup = {"ubuntu-24.04": 25, "windows-latest": 40}  # checkout, setup-aew and tools, from the observed runs
+
+    def timeline(os_name):
+        twin = runners["windows-latest" if os_name == "ubuntu-24.04" else "ubuntu-24.04"]
+        own = runners[os_name]
+        opened = max(own, min(twin, own + prove.TWIN_BARRIER_SECONDS)) + 5  # the barrier's poll interval
+        return own, opened, opened + setup[os_name]
+
+    def jobs(repo, endpoint):
+        rows = []
+        for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
+            own, opened, lane = timeline(os_name)
+            at = now()
+            # The lane ends at its session deadline and the job concludes after it, as in target run 45547533341.
+            row = {"id": index + 1, "name": f"plant ({os_name}, cancel, none)", "runner_id": 7 if at >= own else 0,
+                   "conclusion": "failure" if at >= opened + 390 else None, "steps": []}
+            if at >= opened:
+                row["steps"].append({"name": "The job's deadline",
+                                     "started_at": datetime.fromtimestamp(opened, UTC).isoformat()})
+            if at >= lane:
+                row["steps"].append({"name": "Real planted lane",
+                                     "status": "in_progress" if at < opened + 370 else "completed",
+                                     "started_at": datetime.fromtimestamp(lane, UTC).isoformat()})
+            rows.append(row)
+        return {"jobs": rows}
+
+    monkeypatch.setattr(prove, "_api", jobs)
+    if abs(late) <= 600:
+        assert [job["id"] for job in prove.wait_for_workers("x/y", 42)] == [1, 2]
+        trigger = now()
+        for os_name in runners:  # the trigger falls inside both plants' live windows
+            _own, opened, lane = timeline(os_name)
+            assert lane + prove.SENTINEL_READY_S <= trigger
+            assert trigger < opened + prove.CANCEL_PLANT_SECONDS - prove.TRIGGER_RESERVE_SECONDS
+    else:
+        late_plant = "windows-latest" if late > 0 else "ubuntu-24.04"
+        with pytest.raises(prove.PlantQueued, match=rf"queued past its deadline: plant \({late_plant}, cancel"):
             prove.wait_for_workers("x/y", 42)
 
 

@@ -187,10 +187,11 @@ systems:
     stays held in HOLD-06 outside the release gate unless the operator places it, so Windows keeps its label and doctor''s
     UNQUALIFIED line.'
   remaining:
-  - slice: 'E118: the contained Lead''s saved permissions cleared at start, and the Lead''s server moved out of the shell''s
-      reach (on the Now list, before first use)'
+  - slice: 'E118: the Lead''s server moved out of the shell''s reach, after the designer''s choice of mechanism (on the Now
+      list, before first use). Its other two parts are built: every contained start clears the Lead''s saved permissions,
+      and the login seed checks the credential table''s columns first (E118''s note of 2026-11-24)'
     row: E118
-    estimate: 1 small PR (estimate; BOARD v2 §0)
+    estimate: 1 small PR (estimate; BOARD v2 §0), after the designer's choice
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       E100: change mode()''s win32 branch so an explicit required refuses the launch on every platform'
     row: E100
@@ -263,6 +264,9 @@ systems:
     containment/__init__.py:76-77 as a second source
   - 'docs/implementation/future-work.yaml (the Now list''s E118 line, at c11a61ea) E118 is on it, the contained Lead''s
     two fixes; :1422-1427 its row (harness ruling 11, When: Now)'
+  - 'src/aew/harness/opencode/login.py:137 clear_saved_permissions, called at src/aew/harness/opencode/lead.py:822, a
+    failed clear refused CONTAINMENT_UNAVAILABLE reason saved_permissions (:827); login.py:95-108 the column check;
+    tests/unit/test_lead_contained.py (E118''s built two parts)'
   - 'map v1.20:87 (design workspace): CS-4 done 2026-10-30 after the operator''s trial; addenda 12 to 14 open'
   - docs/implementation/future-work.yaml (row STG-05, at c11a61ea) STG-05 CS-1 to CS-4 merged
   - docs/implementation/future-work.yaml (row HOLD-06, at c11a61ea) F48 held in HOLD-06; Windows is outside the release
@@ -636,16 +640,12 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: 'OpenCode kept current and qualified: E35''s probe and seams built (HarnessAdapter.capabilities(), the named
+  finish_line: 'OpenCode kept current and qualified: E35''s probe (done) and seams built (HarnessAdapter.capabilities(), the named
     LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 re-probes compaction
     (C1) on the pinned OpenCode 2.2.6, whose TESTED_VERSIONS entry and token-semantics row are in place, H-2 and H-3 land, and the qualified
     version runs the default flow in a real run. E149 and E150 once placed. A second adapter (F24) is outside this finish
     line until HOLD-06 releases it.'
   remaining:
-  - slice: 'E35''s probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known
-      layer (on the Now list, before first use)'
-    row: E35
-    estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       E35''s seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute
       and browser denies, the ''nothing else loaded'' conformance scenario, tool_output limits (on the Now list)'
@@ -683,13 +683,17 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: 'Lead (E35''s probe; H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06
+  who: 'Lead (H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06
     after the designer''s match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)'
   reason: 'The OpenCode adapter is on and used every run; what is left (E35, H-1 to H-3) is on the Now list in the Lead''s
     order, and the version ''pin'' is a label, not a gate (BOARD v2 §6), so currency work matters before a newer binary
     is picked up unqualified. Partly built, not staged: its OpenCode adapter is on and used in every run (BOARD v2 §5);
     the census''s ''staged'' described only the further adapters.'
   evidence:
+  - 'tests/live/test_opencode_project_config_live.py, E35''s probe, measured 2026-11-24 on OpenCode 2.2.6 and 2.0.18: the
+    project-config switch excludes the project''s .opencode/ layers, plugins included, and no project path feeds the remote
+    .well-known layer (merged at f5912317; E35''s note of 2026-11-24); AEW sets both of OpenCode''s project-config switches
+    from capabilities.FIXED_SWITCHES (merged at 61f22f3e)'
   - src/aew/harness/registry.py:19-29 (BUILTIN names only opencode; AEW_HARNESS_ADAPTERS, read from the launching Lead's
     environment per :3-5, adds others; no CLI, tool or dashboard surface registers one)
   - src/aew/harness/supervisor.py:75, :332 (registry.load at every launch)
@@ -1094,8 +1098,8 @@ systems:
   - SYS-06
   - SYS-39
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - cli:lead mcp
     - cli:lead tool
@@ -1107,23 +1111,20 @@ systems:
     used_in_default_flow: partly
   finish_line: 'Every stage the Lead''s main path takes ends in a typed result it can act on: no publish stranded after
     a STALE_REVISION (E137, done), no escaping defect without its class and stage result (E138, done), a typed exit from
-    REVIEW_PASSED, VERIFIED and COMMIT_READY (E133, done), and the auto-run set declared and pinned (E83), each exercised
-    in a real Lead run. Dispositions are done as built: the review half of `requires_disposition` marks a listed non-required
+    REVIEW_PASSED, VERIFIED and COMMIT_READY (E133, done), and the auto-run set declared and pinned (E83, done), each
+    exercised in a real Lead run. Dispositions are done as built: the review half of `requires_disposition` marks a listed non-required
     finding and is tested; its verification half was dropped by AIR-08 (2026-10-11). The custody publish (E6b) lapsed into
     STG-14.'
-  remaining:
-  - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test
-      that classify.auto_runnable''s set equals it; it rides the scheduler''s PR 4 (E228)'
-    row: E83
-    estimate: 1 small PR (estimate)
+  remaining: []
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); E138 unfrozen into the finish (the operator, 2026-11-11: "yes unfreeze E138")'
   recommendation: finish
-  who: Lead (E83)
+  who: operator (the real Lead run, then the sign-off)
   reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log. E133, E137 and E138 have
-    merged, leaving E83. E83''s behaviour already holds in code (only ticket_start and ticket_request_review are POLICY_RESOLVED
-    progression rows, and a call that supplies `execution` is promoted to JUDGMENT_BEARING); its gap is the declaration
-    and the pinning test. "Under RUN only" is the steering loop''s mode gate, not classify''s. D4 blocks nothing: AIR-08
+    merged, and E83 merged with the scheduler''s fourth PR (E228): classify.py declares AUTO_RUN and a test holds the
+    set the contract derives equal to it, so nothing is left to build. What is left is the finish line''s "each exercised
+    in a real Lead run", the operator''s check before the sign-off. "Under RUN only" is the steering loop''s mode gate,
+    not classify''s. D4 blocks nothing: AIR-08
     dropped the verification half on 2026-10-11, and removing its dead readers is E359, outside the finish line, the operator''s
     to place once this system has finished (the designer''s ruling of 2026-11-11). HOLD-10 closed on 2026-11-06. E7d''s
     custodian half is E349. The custody refusal does not block publishing: the Lead''s integration_publish publishes a
@@ -1137,7 +1138,9 @@ systems:
     AVAILABLE, not JUDGMENT_BEARING)'
   - 'src/aew/harness/steering_loop.py:69,405-406: no steering mode in force, the loop does nothing; :24-27 CONFIRMATION_UNAVAILABLE;
     :437 the RUN branch'
-  - grep over src and tests finds no declared auto-run set (E83 open)
+  - 'src/aew/surface/classify.py:47 AUTO_RUN (ticket_start, ticket_request_review), :50 auto_run_set derived from the
+    contract by calling auto_runnable (E83, merged at 5c51e388)'
+  - tests/unit/test_surface_contract.py:258 test_only_the_two_declared_steps_auto_run_each_called_without_execution (E83)
   - 'src/aew/engine/base.py:440-445 and src/aew/engine/authority.py:245-251: custody publish refused with reason no_publication_envelope
     (E6b)'
   - 'src/aew/engine/validation_ops.py:757-762: a custodian''s validation releases the entry VALIDATED for the Lead''s later
@@ -1149,7 +1152,7 @@ systems:
   - 'src/aew/surface/mcp.py:180-189: an unexpected exception is answered INTERNAL_ERROR (-32603, :46) naming where it failed
     and its class; src/aew/surface/run.py:280-288 the runner''s defect and its stage result; src/aew/harness/defects.py:68
     the local defects record (E138, closed)'
-  - docs/implementation/future-work.yaml (row E83) (E83, open; rows E133, E137 and E138 closed)
+  - 'docs/implementation/future-work.yaml (row E83): closed 2026-11-25; rows E133, E137 and E138 closed'
   - 'docs/implementation/future-work.yaml (row HOLD-10): closed on 2026-11-06, every member matched'
   - 'src/aew/surface/contract.py:298-309: ticket_start and ticket_request_review are POLICY_RESOLVED, each promoted by
     `execution`; classify.py:33-34 promotes over each primitive''s class'
@@ -1225,33 +1228,29 @@ systems:
     used_in_default_flow: partly
   finish_line: 'Linux only: the whole base bundle (ripgrep, fd, jq, yq, ast-grep, Universal Ctags) is shipped as records
     and bound into every contained Linux context; an agent and the Lead are told when a tool is missing; the operator''s
-    fetch exists, and `aew init` can decline every download up front (E191); role-card capabilities resolve against the
-    register instead of printing ''workbench resolution pending''; the code''s text says what main does (E196); exercised
+    fetch exists, and `aew init` can decline every download up front (E191, done); role-card capabilities resolve against the
+    register instead of printing ''workbench resolution pending''; the code''s text says what main does (E196, done); exercised
     in a real contained run. The Windows bind waits for Windows containment (E358), outside this finish line.'
   remaining:
-  - slice: '`aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered'
-    row: E191
-    estimate: part of 1 small PR with E196 (estimate)
-  - slice: 'The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings
-      only'
-    row: E196
-    estimate: part of 1 small PR with E191 (estimate)
   - slice: 'Later: MCP servers and SPT''s records (A-54, SPB), host placement and network; designed only'
     row: STG-15
     estimate: unsized (estimate)
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
     the finish line is Linux only (the operator, 2026-11-11: "Yes linux only for now until we get time for windos contaiment")'
   recommendation: finish
-  who: Lead (E191 with E196, placed on 2026-11-11 for the near-finish push); the operator for the real contained run
+  who: the operator for the real contained run; Lead for the later records
   reason: CAP-1 PR 1 to PR 3 are merged, and the first bundle's six tools are shipped as records and bound into every contained
     Linux launch. The tool-consent prompt and the operator's fetch (E171) are merged, agents are told their tools by name,
-    and card capabilities resolve against the shipped map. What is left on Linux is E191 and E196 in one small PR, a real
+    and card capabilities resolve against the shipped map. E191 and E196 merged together, closed 2026-11-25. What is left on Linux is a real
     contained run with all six tools (the operator's yes of 2026-11-10), and the later records. Windows contexts get no
     tools until Windows containment (E358).
   evidence:
   - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
     six shipped records'
-  - src/aew/capability/__init__.py:8-10 docstring still says the bind 'comes in the next' PR (stale)
+  - 'src/aew/capability/__init__.py:8-9 docstring says what main does: contained runs bind the payloads read-only (E196,
+    merged at 83d68093)'
+  - 'src/aew/cli/commands.py:110-112 `aew init --fetch-tool none` (E191, merged at 83d68093); tests/unit/test_capability_consent.py,
+    tests/unit/test_first_configuration.py, tests/integration/test_init_first_configuration.py'
   - src/aew/harness/containment/layout.py:1116 _tool_fields binds the register; win32 returns {} at :1126
   - src/aew/harness/containment/layout.py:1248 every contained layout calls _tool_fields
   - 'src/aew/harness/containment/__init__.py:70 mode(), containment defaults to required on Linux, allow_weaker on Windows'
@@ -1564,9 +1563,6 @@ systems:
       it wakes early on a failing test, an out-of-scope file or a worker''s message. It takes SYS-11''s live-sample reader'
     row: row owed
     estimate: 1-2 PRs (estimate; the designer's reading, the reset record)
-  - slice: 'MS4+MS6: worker reply/read/wait, launch snapshot, one Lead wake and local told-ID consumption'
-    row: E175
-    estimate: 1 PR
   - slice: 'MS5: live delivery and continuation'
     row: E175
     estimate: 1 PR
@@ -1585,9 +1581,11 @@ systems:
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
-  reason: 'MS3 builds the typed record-only send and compact on-catalog; delivery and reply/attention are still unbuilt,
-    and harness send refuses every send while messaging is on. The operator placed E131/E175 and withdrew the consult
-    gate on 2026-11-10: finish the remaining three implementation slices with default-on at MS5b. Required Linux
+  reason: 'MS3 builds the typed record-only send and compact on-catalog. MS4 and MS6 merged together (at bb59e60c), still
+    off by default: worker reply/read/wait through the run''s bridge, the enabled-only launch snapshot, and the Lead''s
+    attention and wakes (F9''s and E175''s notes of 2026-11-11). Live delivery (MS5) is unbuilt, and harness send refuses
+    every send while messaging is on until MS5b. The operator placed E131/E175 and withdrew the consult gate on 2026-11-10:
+    finish the implementation slices with default-on at MS5b. Required Linux
     qualification can hold the affected implementation and usable release; Windows qualification remains held/not run.'
   evidence:
   - src/aew/policy/execution.py:138,149-150 (coordination.messaging and surface.presentation enums)
@@ -1599,10 +1597,10 @@ systems:
   - src/aew/engine/api.py (message_record_lead/worker, message_mark_shown and messaging_enabled passthroughs)
   - src/aew/engine/primitives.py:136,176-177 (message.send declared, listed in NOT_STEPS)
   - src/aew/engine/harness_ops.py:562 (harness_send, the HS1 path)
-  - src/aew/engine/harness_ops.py:827-838 (SNAPSHOT_RECORDED = False; run_messaging_snapshot always returns disabled)
-  - 'src/aew/engine/harness_ops.py:841-866 (send_route: with messaging on, project and snapshot always disagree, so :850-859
-    refuses MESSAGING_SNAPSHOT_MISMATCH with the ''cannot yet launch a run with coordination messaging on'' remedy at :855;
-    the HARNESS_SEND_NEEDS_STORE raise at :860-863 is unreachable until MS4)'
+  - 'src/aew/engine/harness_ops.py:1106 run_messaging_snapshot reads the run''s recorded launch snapshot (MS4, merged at
+    bb59e60c); :1113 send_route: with messaging on and a matching snapshot, every send is refused HARNESS_SEND_NEEDS_STORE
+    until MS5b'
+  - src/aew/harness/worker_messages.py (MS4, the worker's own-thread wait through the run's bridge)
   - src/aew/engine/store.py:313,320-375 (the seal check; acts only where a thread file exists, :331)
   - src/aew/engine/api.py:542-544 (coordination.finalize among the commit finalizers)
   - src/aew/cli/commands.py:150-153 and src/aew/cli/main.py:84 (aew message registered only while messaging is on or a thread
@@ -2130,10 +2128,11 @@ systems:
       the two lists its record now says are not known'
     row: E120
     estimate: 1-2 PRs (estimate)
-  - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 1 (the coverage declaration,
-      the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor)'
+  - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 2, the selector in the validation
+      executor. PR 1 (the coverage declaration in checks policy, frozen with each validation, doctor rows, the guide)
+      merged at a31c6118 (E243''s note of 2026-11-11)'
     row: E243
-    estimate: 2 PRs (estimate)
+    estimate: 1 PR (estimate)
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); unfrozen for the drop of artifact_digests and working_diff, and E243 placed inside the finish line (the operator,
     2026-11-11: "1. sire. 2. yup if it knows it tehn yes statre it", the Lead''s reading: "sure" and "state")'
@@ -2141,9 +2140,11 @@ systems:
   who: Lead (E120, E243)
   reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
     closed, and the two loose ends are gone (artifact_digests dropped from the engine, working_diff removed, ADR-0002 amended).
-    E243's contract is the designer's, about 2 PRs to first use. The
-    remote provider stays Designed only.
+    E243's contract is the designer's, about 2 PRs to first use, and its first has merged. The remote provider stays
+    Designed only.
   evidence:
+  - 'src/aew/engine/coverage.py, src/aew/policy/checks.py, src/aew/schemas/checks.schema.json: the operator-adopted CI
+    coverage declaration (E243 PR 1, merged at a31c6118); tests/unit/test_validation_coverage.py and tests/integration/test_validation_coverage_disclosure.py'
   - src/aew/snapshot/fingerprint.py:383 (evaluated_snapshot carries no artifact_digests); :31 working_diff removed (2026-11-11,
     no caller; packs diff the snapshot tree)
   - src/aew/engine/workspace_ops.py:54 (its only caller)

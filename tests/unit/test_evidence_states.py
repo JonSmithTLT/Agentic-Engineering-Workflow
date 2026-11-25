@@ -708,8 +708,37 @@ def test_an_incomplete_phase_write_revokes_the_worker_receipt(tmp_path, failed_p
     assert ev.phases_at_signal(tmp_path, session_deadline.time.monotonic_ns())[0]["phase"] == "indeterminate"
 
 
-@pytest.mark.parametrize("fault", [None, "unavailable", "changed-node", "support-frame",
-                                   "partial-first", "lost-record"])
+def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypatch):
+    import sys
+
+    if sys.platform != "linux":
+        pytest.skip("hosted Linux attach routes")
+    lane = _load("lane_step")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    failures = []
+    assert lane.attach(42, failures=failures) is None
+    assert failures == ["py-spy executable missing"]
+    spy = tmp_path / "py-spy"
+    spy.write_text("#!/bin/sh\necho 'private argument (os error 13)' >&2\nexit 1\n")
+    spy.chmod(0o700)
+    failures.clear()
+    assert lane.attach(42, failures=failures) is None
+    assert failures == ["unelevated: exit 1 (os error 13)", "sudo -n: launch error 2"]
+    sudo = tmp_path / "sudo"
+    sudo.write_text("#!/bin/sh\nexit 0\n")
+    sudo.chmod(0o700)
+    failures.clear()
+    assert lane.attach(42, failures=failures) is None
+    assert failures == ["unelevated: exit 1 (os error 13)", "sudo -n: empty dump"]
+    sudo.write_text("#!/bin/sh\nexec /bin/sleep 2\n")
+    failures.clear()
+    assert lane.attach(42, timeout=0.2, failures=failures) is None
+    assert failures[-1] == "sudo -n: timed out"
+
+
+@pytest.mark.parametrize("fault", [None, "unavailable", "prior-unavailable", "changed-node", "support-frame",
+                                   "empty-then-error", "support-then-error", "partial-first", "lost-record"])
 def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):
     import signal
     import sys
@@ -735,13 +764,22 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
 
     calls = dict.fromkeys(pids, 0)
 
-    def attach(pid, *, timeout):
+    def attach(pid, *, timeout, failures):
         assert not signals and 0 < timeout <= 3
         calls[pid] += 1
         if calls[pid] == 1:
             together.wait(timeout=2)
         if pid == pids[0]:
-            if fault == "unavailable":
+            if fault in {"empty-then-error", "support-then-error"}:
+                if calls[pid] == 1:
+                    dump = "Process 101: private argv"
+                    if fault == "support-then-error":
+                        dump += "\n    support (tests/helpers/support.py:4)"
+                    return "unelevated", dump
+                failures.append("sudo -n: exit 1 (os error 3)")
+                return None
+            if fault in {"unavailable", "prior-unavailable"}:
+                failures.append("sudo -n: exit 1 (os error 3)")
                 return None
             if fault == "changed-node":
                 (tmp_path / f"hang-gw0-{pid}.txt").write_text(
@@ -769,6 +807,10 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     monkeypatch.setattr(lane, "memory_used", lambda: None)
     monkeypatch.setattr(lane, "attach", attach)
     monkeypatch.setattr(ev, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    first = tmp_path / "snapshots/101-unavailable.txt"
+    if fault == "prior-unavailable":
+        first.parent.mkdir()
+        first.write_text("prior timeout snapshot failure\n")
     assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 143
     assert signals == [signal.SIGTERM]
     if fault == "lost-record":
@@ -776,13 +818,29 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     failures = verify.observe_cancel(tmp_path, "Linux", [])
     if fault == "lost-record":
         assert failures == ["Linux: cancellation did not observe all four registered workers alive"]
-    elif fault in {"unavailable", "changed-node", "support-frame"}:
+    elif fault in {"unavailable", "prior-unavailable", "changed-node", "support-frame",
+                  "empty-then-error", "support-then-error"}:
         assert failures == ["Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]"]
     else:
         assert failures == []
     if fault == "partial-first":
         assert calls == {101: 2, 102: 1, 103: 1, 104: 1}
-    assert (tmp_path / "snapshots/101-unavailable.txt").exists() == (fault == "unavailable")
+    assert first.exists() == (fault in {"unavailable", "prior-unavailable", "empty-then-error"})
+    if fault in {"unavailable", "prior-unavailable"}:
+        if fault == "prior-unavailable":
+            assert first.read_text() == "prior timeout snapshot failure\n"
+            [first] = first.parent.glob("101-*-warning-unavailable.txt")
+        note = first.read_text()
+        assert note.count("sudo -n: exit 1 (os error 3)") == calls[101]
+        assert len(note.splitlines()) == 1
+    if fault in {"empty-then-error", "support-then-error"}:
+        if fault == "support-then-error":
+            [first] = first.parent.glob("101-*-warning-attach.txt")
+            assert "support.py:4" in (first.parent / "101.txt").read_text()
+        note = first.read_text()
+        assert "private argv" not in note
+        assert ("dump has no Python frames" if fault == "empty-then-error" else "dump has no active test frame") in note
+        assert note.count("sudo -n: exit 1 (os error 3)") == 2
 
 
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):

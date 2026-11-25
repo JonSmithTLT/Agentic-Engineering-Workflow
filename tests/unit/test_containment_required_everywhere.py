@@ -97,6 +97,7 @@ def test_every_launch_route_refuses_an_explicit_required_off_linux_before_anythi
     with pytest.raises(ContainmentUnavailable) as check:
         commands._check_run_direct({"command": ["true"]}, tmp_path / "ws", {"role": "implementer", "scope": "ticket"})
     assert "Nothing ran" in check.value.message
+    assert check.value.message.count(C.ALLOW_WEAKER_REMEDY) == 1, "its remedy is given once (review of #578, m1)"
     # Both Lead routes, at the refusal they make before any credential is read or any seat moves
     engine = SimpleNamespace(execution_policy=lambda: (REQUIRED, None))
     leads = []

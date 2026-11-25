@@ -978,6 +978,9 @@ class EvidenceCommands:
                 scratch=str(run_dir / "scratch"), bridge_dir=None, policy=policy, project=str(self.k.repo_root))
         except ContainmentUnavailable as exc:
             shutil.rmtree(run_dir, ignore_errors=True)  # nothing ran in it
+            if exc.details.get("reason") == containment.UNSUPPORTED_PLATFORM:  # its own refusal and remedy, once
+                raise ContainmentUnavailable(f"`aew check run` runs the check in a sandbox. Nothing ran: {exc.message}",
+                                             **exc.details) from None
             raise ContainmentUnavailable(
                 f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
                 f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None

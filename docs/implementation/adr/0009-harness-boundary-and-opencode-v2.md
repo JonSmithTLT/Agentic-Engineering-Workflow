@@ -1677,6 +1677,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **Where the policy allows it, and on Windows, the general command runs labelled not contained**, through the same
   `label.json` writer as `aew opencode` (in a `lead-<UTC>-<hex>` run directory), which now names the session's own
   process by pid and start id. Off Linux, `aew opencode`'s label says why it is weaker.
+  *Amended by the amendment of 2026-11-25 (E100): an explicit `required` refuses on Windows too.*
 - **The register of weaker contexts** (ruling 2; `aew.harness.weaker_register`): per host and per operator account,
   in AEW's host state beside the capability register, outside every project and every sandbox's writable binds. Every
   agent context whose label is weaker than a self-tested sandbox on a network of its own is entered there by its
@@ -2188,7 +2189,9 @@ the rest of AEW's import path, such as an editable install's source tree, was no
 
 The designer's decision of 2026-10-25, unfrozen by the operator on 2026-11-25 as SYS-02's slice. It replaces the
 Windows sentence of "Other platforms" in the M4-B amendment above, under which Windows always ran labelled
-`workdir_separation_only`, even under an explicit `containment.mode: required`.
+`workdir_separation_only`, even under an explicit `containment.mode: required`, and the amendment of 2026-11-01's
+"and on Windows" for the general Lead command, which ran labelled not contained there under an explicit `required`
+too.
 
 - **An explicit `required` on a host that cannot meet it refuses the launch, on every platform, Windows included.**
   `containment.mode` returns `required` wherever the policy says so; off Linux, `containment.establish` then refuses

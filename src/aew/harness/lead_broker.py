@@ -95,8 +95,9 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
                        frozenset({"authority", "accept"}): ("decided_by", "operator")}
 # The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
 # through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
-# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
-# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4). `notify desktop`
+# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). The endpoint has no grant,
+# `confirm` or relaunch breaker reset, so no client command for one is here (E7c and E6b lapsed; E8b's relaunch is
+# register F15.6's; register E183). `notify desktop`
 # and `notify file` are the endpoint's notifiers: what they show or write for the operator is never an agent's text
 # (A-44).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
@@ -229,9 +230,12 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
                 "the operator's, approved at the operator endpoint in their own terminal; a Lead session cannot run "
                 "it: `aew capability list` shows the register, and the operator makes the change")
     if any(p <= path for p in OPERATOR_ENDPOINT):
+        # What works (register E183): a request grants nothing, and a lower needs a mode the operator raised.
         return (f"`aew {command_name(ns)}` is the operator's, through the operator endpoint in their own terminal; a "
                 "Lead session can neither raise its own steering mode nor reach the endpoint: request a raise with "
-                "the `steering` tool (action request_raise), or lower the mode with `aew lead mode lower`")
+                "the `steering` tool (action request_raise), which grants nothing until the operator raises it. A "
+                "lower (`aew lead mode lower`) works only once the operator's raise is in force; in crawl and walk "
+                "you take each step yourself")
     if path == frozenset({"init"}):  # `aew init` stays the operator's own; its first configuration is at the console
         from aew.engine.first_configuration import FLAGS
 

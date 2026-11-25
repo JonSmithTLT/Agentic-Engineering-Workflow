@@ -120,10 +120,21 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
 
 # The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
-STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
-STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale", "prior_value")),
-                      "request_raise": (("mode", "rationale"), ("mode", "rationale")),
-                      "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
+# The one owner of the tool's actions: the advertised enum and the schema's properties are derived from it, and the
+# runner checks a call's arguments against it. `request_confirmation` is not here: no confirmation exists for it to
+# ask for, so the catalog hides it and `request_raise` stays (register E183; the operator, 2026-11-06 and 2026-11-10).
+STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "prior_value", "rationale")),
+                      "request_raise": (("mode", "rationale"), ("mode", "rationale"))}
+STEERING_ACTIONS = tuple(STEERING_ARGUMENTS)
+STEERING_ARGUMENT_SCHEMAS = {"mode": {"enum": ["crawl", "walk", "run"]}, "prior_value": {"type": "string"},
+                             "rationale": TEXT}
+# What works, as a run receives it (register E183; the designer's ruling of 2026-11-11 on the tool's text): a lower
+# needs an effective mode above its target, and walk or run is effective only by the operator's raise at the endpoint
+# (``engine.steering``); a project whose policy names no `steering.mode` refuses every action (SteeringNotConfigured);
+# and in crawl and walk the loop stops at each step it could take, which stays the Lead's (``steering_loop``).
+STEERING_TEXT = ("Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and walk "
+                 "you take each step yourself. Lowering needs the operator's raise first; with no steering.mode in "
+                 "policy, every action is refused.")
 
 # The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
 # claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).
@@ -250,15 +261,10 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("checkpoint",), mutates=True),
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
-    Tool("steering", STAGE, MECHANICAL,
-         "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. Requests grant "
-         "nothing.",
-         _obj({"expect_rev": EXPECT_REV,
-               "action": {"enum": list(STEERING_ACTIONS)},
-               "mode": {"enum": ["crawl", "walk", "run"]},
-               "action_ref": {"type": "string", "minLength": 1},
-               "prior_value": {"type": "string"},
-               "rationale": TEXT},
+    Tool("steering", STAGE, MECHANICAL, STEERING_TEXT,
+         _obj({"expect_rev": EXPECT_REV, "action": {"enum": list(STEERING_ACTIONS)},
+               **{name: STEERING_ARGUMENT_SCHEMAS[name] for name in dict.fromkeys(
+                   name for _, allowed in STEERING_ARGUMENTS.values() for name in allowed)}},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),
     # ---- the Lead's explicit resolution of what `resume` or a stop lists (M4-E E3c; §3.4 rule 8): continue runs an

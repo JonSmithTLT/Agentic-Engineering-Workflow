@@ -856,9 +856,10 @@ INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
     # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR);
     # its steering comment reworded when init began recording that mode (#432's merge check, N1), and again for the
-    # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1): comments only; and
+    # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1), and again when that stop became the
+    # Lead's own step (register E183): comments only; and
     # `maps.pack_slices: structural`, a new project's default (ADR-0015, amended 2026-11-11)
-    "policy/execution.yaml": "acea008c8e49c4a6f13b7f382c1d50a140ca0369a0d59f868ee81b8be902c996",
+    "policy/execution.yaml": "d0ad4a66b2b08134a89d7ff05a0336d06d5a9915dc945a0e1cea9a30ce45b01f",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",

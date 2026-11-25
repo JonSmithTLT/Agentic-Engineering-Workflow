@@ -20,10 +20,11 @@ from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
-# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved).
-OFF_LIST_SHA = {"normal": "1cbf05fd48612ec63c0d8970a29353cbe94f7743a9834878f677c7324d5c2cd9",
-                "recovery": "5cda7fe4022141324922406bad1ef39ce3403911d4d170f13aab43288bbd0b79"}
-OFF_CLI_SHA = "23ffb31e822a53f8e058aa909136de7b50d9a0891611b0ee5a66537a02e78004"
+# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); and E183's `steering`
+# row, which offers `lower` and `request_raise` only and says what works.
+OFF_LIST_SHA = {"normal": "52cf583001d4460b6997a2c7954118d1394ce6888b1de89743868acc0b817a06",
+                "recovery": "2bd21cf9ccc307f745de926141e7128425e99d7b5c5b816a56671ac07da44d15"}
+OFF_CLI_SHA = "fde19b21896575d7088957988da3d528b231a5e281db60f2d3a894ac2a9e14a3"
 
 
 def digest(value):
@@ -195,8 +196,10 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
     expected = {
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
-        "steering": "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. "
-                    "Requests grant nothing.",
+        # E183: what works, and no confirmation request.
+        "steering": "Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and "
+                    "walk you take each step yourself. Lowering needs the operator's raise first; with no "
+                    "steering.mode in policy, every action is refused.",
         # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and its description names it.
         "resolve": "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "

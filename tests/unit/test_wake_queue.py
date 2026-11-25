@@ -697,11 +697,12 @@ def test_a_stopped_loop_wakes_the_lead_once_in_the_wakes_own_slot_with_no_run(la
     assert len(lab.poster.posts) == 1
 
 
-def test_until_e7c_a_confirmation_stop_wakes_no_one_and_any_other_stop_still_does(lab):
-    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c): ``CONFIRMATION_UNAVAILABLE`` is held
-    from the Lead's wake until E7c (``steering_loop.HELD_UNTIL_E7C``), since nothing can act on it before then. The
-    hold is that code's only: the next stop, another reason on the same Ticket, is posted as ``loop_waiting``."""
-    lab.loop("CONFIRMATION_UNAVAILABLE", message="ticket_start on T-1 needs a confirmation")
+def test_the_leads_own_step_wakes_no_one_and_any_other_stop_still_does(lab):
+    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c), kept by register E183:
+    ``CONFIRMATION_UNAVAILABLE`` is the Lead's own step, which nothing but the Lead acts on, so it is kept from the
+    Lead's wake (``steering_loop.LEADS_OWN_STEP``). That is the code's only: the next stop, another reason on the same
+    Ticket, is posted as ``loop_waiting``."""
+    lab.loop("CONFIRMATION_UNAVAILABLE", message="`ticket_start` on T-1 is your step")
     q = lab.queue()
     q.tick()
     assert q.doc["wake"] is None and lab.poster.posts == []

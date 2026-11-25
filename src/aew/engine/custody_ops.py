@@ -169,8 +169,10 @@ REGISTER_READ = "`aew capability list` reads the register here"
 LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {
     ("capability", "check"): REGISTER_READ,
     ("capability", "fetch"): REGISTER_READ,
-    ("g3", "request"): "a Lead asks through steering's request_confirmation, naming the action; the operator's client "
-                       "submits it",
+    # No typed tool asks for a confirmation (register E183: the steering tool hides `request_confirmation`), so a
+    # Lead names what it needs approved in its own reply.
+    ("g3", "request"): "no tool asks for it: name the action you need approved in your reply, and the operator's "
+                       "client submits it",
 }
 
 

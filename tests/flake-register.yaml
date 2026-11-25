@@ -1450,7 +1450,7 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: closed
+  status: open
   class: autopsy evidence
   cause: >-
     A Windows xdist worker alive at the cancellation collection had no interruption stack (evidence_problems'
@@ -1459,14 +1459,9 @@ entries:
     in fixture setup or teardown has no test-function frame.
   owner: CI flake triage
   row: E3
-  closure:
-    pr: 561
-    cause: >-
-      The cancellation collection now retries a failed or frameless attach inside the shared budget, decides liveness
-      before its capture, and names each worker it keeps no test stack for with a typed outcome the evidence check
-      verifies.
-    test: tests/unit/test_evidence_states.py::test_a_windows_cancel_collection_retries_an_attach_that_failed
-    proof: fault injection
+  planned_fix: >-
+    #561 retries and types the collection's attaches; closure awaits a sighting bundle or the first superseded runs
+    after merge establishing the cause.
   evidence:
   - run: 45338188607
     job: 138255795565

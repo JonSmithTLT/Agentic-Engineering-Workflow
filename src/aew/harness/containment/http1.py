@@ -15,7 +15,7 @@ import re
 # RFC 9110 §5.6.2: a method and a field name.
 TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Hop-by-hop (RFC 9110 §7.6.1), plus Expect, which the relay and the egress proxy each answer themselves (a 100 Continue
-# before the body): never forwarded either way.
+# before the body, to HTTP/1.1 only): never forwarded either way.
 HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate",
                         "te", "trailer", "upgrade", "expect"})
 # RFC 9110 §5.5: what a field value may not hold. HTAB (\x09) is allowed; every other C0 control and DEL are not.

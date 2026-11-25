@@ -32,7 +32,8 @@ policy decides only what is asked; R-6 then judges every address, under either p
   userinfo part (``user@``), a fragment or a control character in it is refused;
 - it carries exactly one ``Host``, naming the URL's ``host:port`` (RFC 9112 §3.2);
 - its header lines are fields as :mod:`aew.harness.containment.http1` reads them (no control character but HTAB in a
-  value); no ``Upgrade``; ``Expect`` only ``100-continue``, which the proxy answers itself;
+  value); no ``Upgrade``; ``Expect`` only ``100-continue``, which the proxy answers itself on HTTP/1.1 and ignores on
+  HTTP/1.0 (RFC 9110 §10.1.1);
 - its body is framed one way only (RFC 9112 §6.3): one ``Content-Length`` of ASCII digits, or one
   ``Transfer-Encoding`` of exactly ``chunked`` on HTTP/1.1, never both; within :data:`MAX_BODY`, chunk lines and
   trailer fields held to the field-value rule, and a trailer carrying ``Host``, ``Content-Length`` or
@@ -741,7 +742,9 @@ class EgressProxy(Service):
         try:
             # The client's own version (RFC 9112 §2.3): an HTTP/1.0 client is never sent a chunked response
             send(head(f"{plain.method} {plain.path} {plain.version}", out))
-            if plain.expect_continue and kind != "none":
+            # Only to HTTP/1.1: no 1xx goes to an HTTP/1.0 client, which ignores the expectation (RFC 9110 §15.2,
+            # §10.1.1; the quick check of #584, m7)
+            if plain.expect_continue and kind != "none" and plain.version == "HTTP/1.1":
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             self._send_body(conn, send, plain.framing, early, named)
         except _UpstreamClosed:

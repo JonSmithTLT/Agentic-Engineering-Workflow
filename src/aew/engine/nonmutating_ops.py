@@ -365,7 +365,8 @@ class NonMutating:
                 "attempt": execution.get("attempt"), "executor": inv_id,
                 "executor_status": (state["invocations"].get(inv_id or "") or {}).get("status"),
                 "records_submitted": [e["id"] for e in records if inv_id and e["producer"]["invocation"] == inv_id],
-                "next": "records of an ended attempt are history; continue with `aew work redispatch`"}
+                "next": "records of an ended attempt are history; continue with "
+                        f"`{transitions.operation_command('work.redispatch', work_id)}`"}
 
     def _executor_card(self, state: dict[str, Any], work_id: str, card: str | None) -> tuple[Any, str]:
         chosen = self.roles.resolve_card(state, work_id, "execute", card_id=card, role=None)
@@ -449,7 +450,7 @@ class NonMutating:
             st = unit["state"]
             if st in EXECUTE_STATES:
                 raise IllegalTransition(f"{work_id}'s executor is dispatched per attempt (one active executor per "
-                                        f"attempt): use `aew work redispatch {work_id} --reason <reason> {EXPECT_REV}`")
+                                        f"attempt): use `{transitions.operation_command('work.redispatch', work_id)}`")
             slot = {"REVIEW_PENDING": "review", "VERIFY_PENDING": "verify"}.get(st)
             if slot is None:
                 raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
@@ -654,7 +655,7 @@ class NonMutating:
         fresh = F.record_freshness(self.k.repo_root, ev, commit)
         if fresh.get("source_bound") and fresh["status"] != F.CURRENT:
             return {"status": G.STALE, "evidence": rec["id"], "freshness": fresh,
-                    "action": f"`aew work redispatch {work_id} --reason <reason> {EXPECT_REV}` for a record of the "
+                    "action": f"`{transitions.operation_command('work.redispatch', work_id)}` for a record of the "
                               "current source"}
         return {"status": G.CURRENT, "evidence": rec["id"], "freshness": fresh}
 

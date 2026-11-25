@@ -369,7 +369,8 @@ def test_a_diagnostic_run_abandoned_at_its_commit_keeps_the_containment_it_had(c
                         lambda self, state, work_id, unit, run: ("LEASE_LOST", "the lease moved (a stand-in)"))
     out = validate(calc, wid, diagnostic=True)
     assert out["abandoned"] == "LEASE_LOST" and not out["ok"] and len(started) == 1, out
-    assert out["containment"] == weaker and f"`aew integrate validate {wid} --diagnostic`" in out["next"], out
+    assert out["containment"] == weaker and out["next"] == VO.next_steps(wid)["abandoned_diagnostic"], out
+    assert f"`{VO.validate_command(wid, '--diagnostic')}`" in out["next"]  # whole, so it runs as given (E140)
     run = integ(calc, wid)["diagnostic_run"]
     assert run["state"] == "abandoned" and run["containment"] == weaker, run
     assert record_of(calc, run)["containment"] == weaker
@@ -423,7 +424,7 @@ def test_a_diagnostic_run_whose_executor_died_keeps_the_containment_it_had(calc,
     monkeypatch.setattr(VO, "executor_alive", lambda run: False)
     out = validate(calc, wid, diagnostic=True)
     assert out["abandoned"] == "VALIDATION_INTERRUPTED" and out["containment"] == weaker, out
-    assert out["next"] == f"`aew integrate validate {wid} --diagnostic` starts a new run", out
+    assert out["next"] == f"`{VO.validate_command(wid, '--diagnostic')}` starts a new run", out
     run = integ(calc, wid)["diagnostic_run"]
     assert run["state"] == "abandoned" and run["containment"] == record_of(calc, run)["containment"] == weaker
     assert_control_invariants(calc)

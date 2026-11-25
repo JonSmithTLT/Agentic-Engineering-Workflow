@@ -164,23 +164,33 @@ _COMMANDS = {  # each a complete command once its placeholders are filled (ITEMS
     "plan.accept": f"aew plan accept {{w}} --revision <n> {EXPECT_REV}",
     "integrate.publish": f"aew integrate publish {{w}} {EXPECT_REV}",
     "accept": f"aew work accept {{w}} {EXPECT_REV}",
+    # Not a transition's own operation, but printed as one in the engine's next steps (E140's O-CMD flip): each is read
+    # through `operation_command`, so a hint never restates it.
+    "evidence.ingest": f"aew evidence ingest {{w}} --evidence <id> {EXPECT_REV}",
+    "integrate.validate": f"aew integrate validate {{w}} {EXPECT_REV}",
+    "integrate.requeue": f"aew integrate requeue {{w}} --reason <reason> {EXPECT_REV}",
+    "work.redispatch": f"aew work redispatch {{w}} --reason <reason> --launch {EXPECT_REV}",
 }
 _NOTES = {"accept": " (non-mutating Tickets)"}
 # The dispatch of a fresh invocation for a role, launched: the Lead's guide and the engine's hints both name it, and
 # both read it here (#547 review M1: a hint that dropped `--launch` made an invocation with no run).
-_DISPATCH = f"aew invoke create {{w}} --role {{role}} --launch {EXPECT_REV}"
+_DISPATCH = f"aew invoke create {{w}} {{who}} --launch {EXPECT_REV}"
 
 
-def dispatch_command(work_id: str, role: str) -> str:
-    """The command that dispatches and launches a fresh ``role`` invocation for ``work_id`` (``role`` may be the
-    alternatives a reader picks from, ``reviewer|verifier``)."""
-    return _DISPATCH.format(w=work_id, role=role)
+def dispatch_command(work_id: str, role: str | None = None, *, card: str | None = None) -> str:
+    """The command that dispatches and launches a fresh invocation for ``work_id``: of ``role`` (which may be the
+    alternatives a reader picks from, ``reviewer|verifier``), or of the named ``card`` (#547 quick check n2: a re-verify
+    with a card, printed without `--launch`, made an invocation with no run)."""
+    if bool(role) == bool(card):  # an empty name is no name (#555 review n1): never `--card None`
+        raise ValueError("a dispatch names one role or one card")
+    return _DISPATCH.format(w=work_id, who=f"--role {role}" if role else f"--card {card}")
 
 
-def operation_command(via: str, work_id: str, evidence: str = "<id>") -> str:
-    """``via``'s command (an ingest, or the publish) for ``work_id``, with the report named where there is one: read
-    from ``_COMMANDS``, never a copy of it (#547 review m2)."""
-    return _COMMANDS[via].format(w=work_id).replace("<id>", evidence)
+def operation_command(via: str, work_id: str, evidence: str = "<id>", *, flags: str = "") -> str:
+    """``via``'s command for ``work_id``, with the report named where there is one and any optional ``flags`` before
+    its revision: read from ``_COMMANDS``, never a copy of it (#547 review m2)."""
+    text = _COMMANDS[via].format(w=work_id).replace("<id>", evidence)
+    return text.replace(f" {EXPECT_REV}", f" {flags} {EXPECT_REV}") if flags else text
 
 
 # The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and

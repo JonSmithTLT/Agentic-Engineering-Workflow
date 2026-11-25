@@ -386,6 +386,22 @@ def relay_operations(provider: str | None, policy: Mapping[str, Any] | None, *,
     return entries
 
 
+def relay_body_fields(provider: str | None, policy: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The model-call body fields the policy's ``relay_body_fields.<provider>`` opts in for the provider's relay, which
+    refuses a model call whose body uses any other the relay holds bodies to (``relay.body_fields``; register E361).
+    Only the operator's adopted execution policy, read here on the host at the relay's start, can opt one in: never a
+    request or the sandbox. Raises ``ContainmentUnavailable`` on an entry the relay does not know."""
+    configured = settings(policy).get("relay_body_fields") or {}
+    entries = configured.get(provider or "") if isinstance(configured, dict) else None
+    entries = tuple(entries) if isinstance(entries, list) else ()
+    try:
+        relay.opted_body_fields(entries)
+    except AEWError as exc:
+        raise ContainmentUnavailable(f"containment.network.relay_body_fields.{provider}: {exc.message}",
+                                     provider=provider, reason="bad_relay_body_field") from None
+    return entries
+
+
 def relay_tls(provider: str | None,
               policy: Mapping[str, Any] | None) -> tuple[ssl.SSLContext | None, client_cert.ClientCert | None]:
     """The relay's upstream TLS context for ``provider``: its client certificate's, read now, at the relay's start
@@ -519,6 +535,7 @@ class RunNetwork:
                 resolver, initial = plan
                 target = relay.Upstream(REFRESHING_UPSTREAMS[resolver.integration])
                 allowed = relay_operations(resolver.integration, policy, resolved=True)
+                fields = relay_body_fields(resolver.integration, policy)
                 token = relay.sentinel()
                 net._values[f"{resolver.integration} login"] = initial.secret
                 net.login_sentinels[resolver.integration] = token
@@ -532,10 +549,11 @@ class RunNetwork:
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record,
                     route=resolver.integration, login="oauth", issued=(token,), sources={token: "saved_oauth"},
                     login_headers=tuple(login.LOGIN_HEADERS.get(resolver.integration, {})),
-                    operations=allowed, policy_sha256=policy_sha256).start()
+                    operations=allowed, body_fields=fields, policy_sha256=policy_sha256).start()
             elif relay_needed:
                 target = upstream(provider, policy)
                 allowed = relay_operations(provider, policy)
+                fields = relay_body_fields(provider, policy)
                 if stored is not None and stored_key_candidate(provider, names, env, policy, on_relay_route=True):
                     variable = PROVIDER_KEY_ENV[provider or ""]
                     net._values[variable] = values[variable] = stored.secret
@@ -552,7 +570,7 @@ class RunNetwork:
                     listener=listen(os.path.join(layout.net_dir, RELAY)), record=record, route=provider,
                     login="key" if keyed else "none",
                     sources={sentinels[n]: "saved_key" if n == net.stored_key_variable else export_source(n)
-                             for n in relayed_names if values[n]}, operations=allowed,
+                             for n in relayed_names if values[n]}, operations=allowed, body_fields=fields,
                     policy_sha256=policy_sha256).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
                 if net.key_relayed:
@@ -598,6 +616,7 @@ class RunNetwork:
                 resolve = resolvers.get(provider)
                 target = relay.Upstream(REFRESHING_UPSTREAMS[provider]) if resolve else upstream(provider, policy)
                 allowed = relay_operations(provider, policy, resolved=resolve is not None)
+                fields = relay_body_fields(provider, policy)
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:
@@ -608,7 +627,7 @@ class RunNetwork:
                 if resolve is None and provider not in keys:  # a client certificate alone: nothing to swap in
                     served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
                                                  record=record, route=provider, login="none", operations=allowed,
-                                                 policy_sha256=policy_sha256)
+                                                 body_fields=fields, policy_sha256=policy_sha256)
                 elif resolve is None:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
@@ -616,7 +635,8 @@ class RunNetwork:
                                                  tls=tls, client=client, record=record, route=provider, login="key",
                                                  sources={token: export_source(PROVIDER_KEY_ENV[provider])
                                                           if PROVIDER_KEY_ENV[provider] in names else "saved_key"},
-                                                 operations=allowed, policy_sha256=policy_sha256)
+                                                 operations=allowed, body_fields=fields,
+                                                 policy_sha256=policy_sha256)
                 else:
                     net.login_sentinels[provider] = token
                     try:  # what the login holds now, for the leak check; one already expired has nothing to leak
@@ -628,7 +648,8 @@ class RunNetwork:
                                                  route=provider, login="oauth", issued=(token,),
                                                  sources={token: "saved_oauth"},
                                                  login_headers=tuple(login.LOGIN_HEADERS.get(provider, {})),
-                                                 operations=allowed, policy_sha256=policy_sha256)
+                                                 operations=allowed, body_fields=fields,
+                                                 policy_sha256=policy_sha256)
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
                                             listener=listen(os.path.join(layout.net_dir, EGRESS))).start()

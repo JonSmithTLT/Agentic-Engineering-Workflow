@@ -14,7 +14,6 @@ import json
 import os
 import sqlite3
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -159,10 +158,11 @@ def test_renewing_and_relaunching_the_printed_invocation_clears_the_steering_sto
     runlog.write_record(directory, {"status": K.CRASHED, "cause": "plan_login_expired", "reason": "worker failed"})
     with sqlite3.connect(db) as con:
         con.execute("UPDATE credential SET value = ?", (json.dumps(oauth(0)),))
-    loop = SimpleNamespace(aew_root=lab.aew_root, engine=engine, _closed=threading.Event(),
-                           _snapshot=lambda: None, _authority_lost=lambda: None)
+    lead = engine.store.current()["lead"]
+    loop = steering_loop.SteeringLoop(engine, generation=lead["generation"], session_label=lead["session_label"],
+                                      token=lambda: lab.project.token, poll_s=1, projector=lambda *_: ({}, []))
     monkeypatch.setattr(steering_loop.S, "effective", lambda _: {"mode": "run"})
-    stopped = steering_loop.SteeringLoop.tick(loop, SimpleNamespace())
+    stopped = loop.activate()
     assert stopped.code == steering_loop.PLAN_LOGIN_FAILED
     assert "opencode auth login openai" in stopped.message
     command = next(line for line in stopped.message.split("`") if line.startswith("aew harness launch "))
@@ -171,12 +171,7 @@ def test_renewing_and_relaunching_the_printed_invocation_clears_the_steering_sto
         con.execute("UPDATE credential SET value = ?", (json.dumps(oauth(120)),))
     relaunched = engine.harness_launch(token=lab.project.token, expect_rev=lab.project.rev(), invocation=target)
     assert target == inv and relaunched["superseded"] == first["run"]
-    monkeypatch.setattr(loop.engine, "policy_digests", lambda: {})
-    loop._ctx = lambda: None
-    loop._clock = lambda: 0
-    loop._project = lambda *_: ({}, [])
-    resumed = steering_loop.SteeringLoop.tick(loop, SimpleNamespace(last_own_rev=None, actions=0, started=0))
-    assert resumed.code != steering_loop.PLAN_LOGIN_FAILED
+    assert loop.activate().code == steering_loop.IDLE
 
 
 def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:

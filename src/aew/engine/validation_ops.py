@@ -147,8 +147,39 @@ def executor_alive(run: dict[str, Any]) -> bool:
     return procs.same_process(ex.get("host_pid"), procs.recorded(ex.get("start_id"), ex.get("start_time")))
 
 
-def stuck_run(run: dict[str, Any] | None) -> str | None:
-    """The next action for a validation run left ``running`` whose executor is gone or past its deadline, or None."""
+def validate_command(work_id: str, flags: str = "") -> str:
+    """``aew integrate validate`` for ``work_id``, whole: read from the transition table's commands, never restated
+    (E140's O-CMD flip: a next step naming it without its revision did not parse)."""
+    return transitions.operation_command("integrate.validate", work_id, flags=flags)
+
+
+def next_steps(work_id: str) -> dict[str, str]:
+    """Every ``next`` a validation result gives for ``work_id``, by case. A ``next`` is offered to be run as given, so
+    each command is whole, read from the transition table's (E140's O-CMD flip: publish and classify without their
+    revision, and `requeue` bare or with only its Ticket, did not parse); and all of them are here, so one test judges
+    each (``tests/unit/test_lead_text.py``)."""
+    publish = transitions.operation_command("integrate.publish", work_id)
+    requeue = transitions.operation_command("integrate.requeue", work_id)
+    diagnostic = validate_command(work_id, "--diagnostic")
+    return {
+        "pass": f"`{publish}`",
+        "pass_by_custodian": f"the candidate is kept, VALIDATED and unleased: publish it with `integration_publish` "
+                             f"(`{publish}`)",
+        "fail": f"classify the failure (`{transitions.operation_command('verify.classify', work_id)}`)",
+        "inconclusive": f"the entry waits for your disposition (`{requeue}` once settled)",
+        "abandoned": f"`{validate_command(work_id)}` starts a run under the current identity",
+        "abandoned_diagnostic": f"`{diagnostic}` starts a run under the current identity",
+        "abandoned_by_bound": f"`{validate_command(work_id)}` starts a new run within the attempt bound",
+        "abandoned_diagnostic_run": f"`{diagnostic}` starts a new run",
+        "diagnostic_unavailable": f"fix what the detail names, then run `{diagnostic}` again",
+        "unavailable": f"fix the environment, then `{requeue}`; or defer it. Independent entries behind it integrate "
+                       "meanwhile",
+    }
+
+
+def stuck_run(run: dict[str, Any] | None, work_id: str) -> str | None:
+    """The next action for ``work_id``'s validation run left ``running`` whose executor is gone or past its deadline,
+    or None."""
     if not run or run.get("state") != "running":
         return None
     if _past(run.get("deadline_at")):
@@ -157,8 +188,8 @@ def stuck_run(run: dict[str, Any] | None) -> str | None:
         why = "lost its executor"
     else:
         return None
-    return (f"validation run {run['id']} {why}: `aew integrate validate` settles it (ingests finished results without "
-            "re-running, or abandons it)")
+    return (f"validation run {run['id']} {why}: `{validate_command(work_id)}` settles it (ingests finished results "
+            "without re-running, or abandons it)")
 
 
 class Validation:
@@ -291,8 +322,9 @@ class Validation:
                            f"of the checks starts here, diagnostic or not: {containment.NO_CONTAINMENT_REMEDY}")
                 then = containment.NO_CONTAINMENT_REMEDY
             else:
-                message = (f"{why}. Validate this Ticket with the post-integration verifier, or run `aew integrate "
-                           "validate --diagnostic` for advisory results that never satisfy validation")
+                message = (f"{why}. Validate this Ticket with the post-integration verifier, or run "
+                           f"`{validate_command(work_id, '--diagnostic')}` for advisory results that never satisfy "
+                           "validation")
                 then = "dispatch the post-integration verifier"
             raise ValidationContainmentUnavailable(message, filesystem=label["filesystem"], next=then)
         rev = expect_rev
@@ -343,7 +375,7 @@ class Validation:
             if not wait:
                 raise ValidationRunning(
                     f"{run['id']} is validating {work_id}'s candidate (pid {run['executor'].get('host_pid')}): wait "
-                    f"for it (`aew integrate validate {work_id} --wait`)", run=run["id"],
+                    f"for it (`{validate_command(work_id, '--wait')}`)", run=run["id"],
                     pid=run["executor"].get("host_pid"), deadline_at=run["deadline_at"])
             from aew.engine.outbox import wait_for
 
@@ -399,8 +431,7 @@ class Validation:
                         "coverage": self._returned_coverage(work_id, run["id"]),
                         "detail": outcome.get("detail") or "", "containment": self._recorded_label(run["id"]),
                         "revision": self._rev(),
-                        "next": f"{doctor}fix what the detail names, then run `aew integrate validate {work_id} "
-                                "--diagnostic` again"}
+                        "next": doctor + next_steps(work_id)["diagnostic_unavailable"]}
             current = (self.k.store.current()["work"][work_id].get("integration") or {}).get(CURRENT)
             return self._release_unavailable(who, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
@@ -684,9 +715,8 @@ class Validation:
                                if current.get("id") == run["id"] else CV.not_validated(result="abandoned"),
                                "revision": ctx.session.committed_revision}
         if abandoned:
-            flag = " --diagnostic" if run.get("diagnostic") else ""
             out.update(abandoned=abandoned[0], detail=abandoned[1],
-                       next=f"`aew integrate validate {work_id}{flag}` starts a run under the current identity")
+                       next=next_steps(work_id)["abandoned_diagnostic" if run.get("diagnostic") else "abandoned"])
             if run.get("diagnostic"):
                 out.update(diagnostic=True, containment=self._recorded_label(run["id"]))
             return out
@@ -698,12 +728,9 @@ class Validation:
         out.update(result=current["result"], evidence=evidence_ids, transition=change,
                    integration=integ.get("status"), queue=Q.entry_of(ctx.state, work_id)[1])
         out["ok"] = current["result"] == "pass"
-        out["next"] = {"pass": (f"the candidate is kept, VALIDATED and unleased: publish it with `integration_publish` "
-                                f"(`aew integrate publish {work_id}`)" if who.kind == CUSTODIAN
-                                else f"`aew integrate publish {work_id}`"),
-                       "fail": f"classify the failure (`aew verify classify {work_id}`)",
-                       "inconclusive": "the entry waits for your disposition (`aew integrate requeue` once settled)"
-                       }[current["result"]]
+        result = current["result"]
+        out["next"] = next_steps(work_id)["pass_by_custodian" if result == "pass" and who.kind == CUSTODIAN
+                                          else result]
         return out
 
     def _pin_problem(self, state: dict[str, Any], work_id: str, unit: dict[str, Any],
@@ -928,11 +955,11 @@ class Validation:
                     "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy()),
                     "detail": detail, "containment": current["containment"],
                     "revision": ctx.session.committed_revision,
-                    "next": f"`aew integrate validate {work_id} --diagnostic` starts a new run"}
+                    "next": next_steps(work_id)["abandoned_diagnostic_run"]}
         return {"ok": False, "work_id": work_id, "run": run_id, "abandoned": reason, "detail": detail,
                 "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy()),
                 "revision": ctx.session.committed_revision,
-                "next": f"`aew integrate validate {work_id}` starts a new run within the attempt bound"}
+                "next": next_steps(work_id)["abandoned_by_bound"]}
 
     def _end_infra(self, who: Principal, work_id: str, run_id: str, code: str, detail: str) -> bool:
         """Record an infrastructure failure: the run ``unavailable``, the breaker updated. Returns whether the breaker
@@ -973,8 +1000,7 @@ class Validation:
                 "coverage": CV.load(self.k.aew_root, run.get("coverage") or CV.legacy()) if run
                 else CV.not_validated(result="unavailable (validation did not start)"),
                 "queue": Q.entry_of(ctx.state, work_id)[1], "revision": ctx.session.committed_revision,
-                "next": f"fix the environment, then `aew integrate requeue {work_id}`; or defer it. Independent "
-                        "entries behind it integrate meanwhile"}
+                "next": next_steps(work_id)["unavailable"]}
 
     # ------------------------------------------------------------------ the circuit breaker
 

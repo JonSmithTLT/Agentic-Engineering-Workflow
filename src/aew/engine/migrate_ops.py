@@ -33,6 +33,7 @@ closure as unrecorded (independent P3 re-review, P3-R2). Its bundle is never rew
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import hierarchy as H
@@ -51,12 +52,11 @@ if TYPE_CHECKING:
     from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort, SteeringPort
 
 
+@dataclass
 class _NoMigrationNeeded(Exception):
     """Another invocation completed the migration before this transaction acquired the lock."""
 
-    def __init__(self, revision: int) -> None:
-        super().__init__(revision)
-        self.revision = revision
+    revision: int
 
 
 def _already_current(revision: int) -> dict[str, Any]:

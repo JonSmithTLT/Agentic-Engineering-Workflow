@@ -223,12 +223,15 @@ def test_a_pending_steer_never_prevents_an_interrupted_session_from_being_held(t
     assert [item["id"] for item in queued] == adapter.sent[1:]
 
 
-def test_a_successor_carries_only_unanswered_messages_and_records_only_its_confirmed_prompt(worker):
+def test_a_successor_omits_received_and_answered_messages_and_records_only_its_confirmed_prompt(worker):
     w, keys = worker
     delivery, session, first = transport(worker)
     w.send("Earlier unconfirmed")
     delivery.tick(select=True)
     replied = w.send("Omit this answered message")["message"]["id"]
+    received = []
+    w.e.message_deliver_wait(invocation_token=keys[first], after="", send=received.append)
+    assert [message["id"] for message in received[0]["messages"]] == [replied]
     w.reply(replied, invocation_token=keys[first])
     pending = w.send("Current undelivered")["message"]["id"]
     next_run = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
@@ -241,7 +244,7 @@ def test_a_successor_carries_only_unanswered_messages_and_records_only_its_confi
     assert "Earlier unconfirmed" not in str(context.to_record())
     w.e.message_confirm_delivery(credential=keys[next_run], run=next_run,
                                  ids=context.continuation["messages"], via="continuation", transport_ref="msg_launch")
-    assert "DELIVERED" not in facts(w)[1]
+    assert facts(w)[1].count("DELIVERED") == 1
     assert all("DELIVERED" in facts(w)[index] for index in (0, 3))
 
 

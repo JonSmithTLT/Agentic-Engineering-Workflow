@@ -53,6 +53,9 @@ SHARED = (
     # The surface map: its probes are what a worker's agent can run, which the non-writer and containment integration
     # tests run (tests/helpers/worker_surface.py; review of #231, m7).
     "docs/implementation/surface-map.yaml",
+    # The Lead's context pool record: its containment fixture is the input of E231's typed-versus-shell measurement
+    # (tools/perf/lead_typed_vs_shell.py), whose run is an integration test.
+    "docs/implementation/lead-context-pool.yaml",
 )
 # A Markdown file under one of these is not documentation. `eval/` joined in plan v7 (§3.3, V3-4): the dogfood
 # regression reads eval/m3/dogfood, Markdown included.

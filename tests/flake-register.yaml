@@ -1487,10 +1487,10 @@ entries:
   owner: CI flake triage
   row: E3
   planned_fix: >-
-    #561 retries and types the collection's attaches and follows a straddled worker into its next test. The next E3
-    PR admits to the collection a worker its session's job holds when the collection runs, membership checked with the
-    OS, so a worker born too shortly before a cancel to have a periodic sample is attached rather than refused as never
-    sampled (integration 7/14, job 139072636221). Closure awaits the first superseded runs after that merge.
+    #561 retries and types the collection's attaches and follows a straddled worker into its next test. #573 admits to
+    the collection a worker its session's job holds when the collection runs, membership checked with the OS, so a
+    worker born too shortly before a cancel to have a periodic sample is attached rather than refused as never sampled
+    (integration 7/14, job 139072636221). Closure awaits the first superseded runs after #573 merges.
   evidence:
   - run: 45338188607
     job: 138255795565
@@ -1594,7 +1594,7 @@ entries:
     note: >-
       integration 6/8 (ubuntu), job 139072636094, of superseded ci run 45575360924 (PR 571): live-stack for
       interrupted-2439, with no unavailable marker, so the pre-signal warning left by an untyped path (a straddle, an
-      exit during the attach or a dump without the test's frame), which the next E3 PR types.
+      exit during the attach or a dump without the test's frame), which #573 types.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

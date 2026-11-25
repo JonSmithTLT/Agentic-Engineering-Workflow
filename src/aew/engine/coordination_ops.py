@@ -571,9 +571,10 @@ class Coordination:
                 self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": mid, "via": via,
                                                   "run": run, "at": utc_now(), "transport_ref": transport_ref})
 
-    def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str]) -> None:
+    def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str],
+                            lock_timeout: float | None = None) -> None:
         """The supervisor settles its own observed admissions once after revocation, while the thread is open."""
-        with self.k.store.session() as s:
+        with self.k.store.session(lock_timeout=lock_timeout) as s:
             token_id, token = lookup(s.state["tokens"], credential)
             inv_id = (token.get("scope") or {}).get("invocation_id")
             if not isinstance(inv_id, str):
@@ -602,11 +603,11 @@ class Coordination:
                     ids.append(mid)
             self._append_fact_line(thread, {"type": "final_check", "run": run, "delivered": ids})
 
-    def continuation_messages(self, state: dict[str, Any], inv_id: str) -> tuple[list[dict[str, Any]], int]:
+    def continuation_messages(self, state: dict[str, Any], inv_id: str) -> tuple[list[dict[str, Any]], int, int]:
         """D-29: carry pending text, unconfirmed posts and failed turns before bounded older context."""
         inv = state["invocations"][inv_id]
         if inv.get("scope") == CONFIRMER_SCOPE or self.project_switch(state) != X.MESSAGING_ENABLED:
-            return [], 0
+            return [], 0, 0
         thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
         replied = {m["in_reply_to"] for m in thread.messages if not _is_lead(m)}
         current, recovery, earlier = [], [], []
@@ -621,7 +622,7 @@ class Coordination:
             posted = next((f for f in reversed(facts) if f["kind"] == L.POSTED), None)
             if not delivered and not posted:
                 if self._lead_revision_holds(state, message):
-                    current.append({"id": mid, "category": "pending", "text": lead_message(message)["rendered"]})
+                    current.append({"id": mid, "category": "never_posted", "text": lead_message(message)["rendered"]})
                 continue
             if not delivered:
                 label, category, target = "sent to an earlier run; delivery unconfirmed", "unconfirmed", recovery
@@ -632,7 +633,8 @@ class Coordination:
                 label, category, target = "delivered to an earlier run", "unresolved", earlier
             target.append({"id": mid, "category": category,
                            "text": f"({label})\n" + lead_message(message)["rendered"]})
-        return current + recovery + earlier[-_CARRY_UNRESOLVED:], max(0, len(earlier) - _CARRY_UNRESOLVED)
+        carried = current + recovery + earlier[-_CARRY_UNRESOLVED:]
+        return carried, max(0, len(earlier) - _CARRY_UNRESOLVED), thread.lines
 
     def _completed_message_step(self, fact: dict[str, Any], runs: set[str],
                                 logs: dict[str, list[dict[str, Any]]]) -> bool:
@@ -650,16 +652,20 @@ class Coordination:
                 logs[run] = []
         events = logs[run]
         ended = "opencode.session.step.ended"
+        second = fact["at"][:19]
         if via != "wait":
             for index, event in enumerate(events):
                 if event.get("event") == "opencode.session.inbox.delivered" and event.get("inboxID") == ref:
                     return any(row.get("event") == ended for row in events[index + 1:])
-            return any(row.get("event") == ended and str(row.get("at", "")) > fact["at"] for row in events)
-        started = False
+            return any(row.get("event") == ended and str(row.get("at", ""))[:19] > second for row in events)
+        started: set[str] = set()
         for row in events:
-            if row.get("event") == "opencode.session.step.started":
-                started = str(row.get("at", "")) > fact["at"]
-            elif started and row.get("event") == ended:
+            step = row.get("assistantMessageID")
+            if not isinstance(step, str):
+                continue
+            if row.get("event") == "opencode.session.step.started" and str(row.get("at", ""))[:19] > second:
+                started.add(step)
+            elif row.get("event") == ended and step in started:
                 return True
         return False
 

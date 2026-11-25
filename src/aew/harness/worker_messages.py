@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from aew import errors
+from aew.coordination.layout import MAX_UNDELIVERED_LEAD
 from aew.harness import bridge, wait_binding
 
 if TYPE_CHECKING:
@@ -185,14 +186,17 @@ class WorkerMessages:
         sup = self.owner
         adapter = sup.adapter
         deadline = time.monotonic() + _FINAL_CHECK_S
-        offers = list(self._offers.values())
+        offers = list(self._offers.values())[:MAX_UNDELIVERED_LEAD]
         admitted: dict[str, str] = {}
         results = threading.Lock()
         interrupt_confirmed = False
 
         def collect() -> None:
             nonlocal interrupt_confirmed
-            interrupt_confirmed = adapter.coordination_halt(_FINAL_CHECK_S)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            interrupt_confirmed = adapter.coordination_halt(remaining)
             for item in offers:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -210,9 +214,10 @@ class WorkerMessages:
         sup.events({"event": "message_final_admission_check", "interrupt_confirmed": interrupt_confirmed,
                     "observed": len(snapshot)})
         try:
-            sup.engine.message_final_check(credential=sup._credential, run=sup.run, admitted=snapshot)
-        except errors.AEWError as exc:
-            sup.events({"event": "message_final_admission_refused", "code": exc.code})
+            sup.engine.message_final_check(credential=sup._credential, run=sup.run, admitted=snapshot,
+                                           lock_timeout=max(0.0, deadline - time.monotonic()))
+        except (errors.AEWError, OSError) as exc:
+            sup.events({"event": "message_final_admission_refused", "code": getattr(exc, "code", type(exc).__name__)})
 
     def _confirm(self, ids: list[str], via: str, prompt: str) -> None:
         if self._stop.is_set():

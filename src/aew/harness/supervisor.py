@@ -618,6 +618,7 @@ class Supervisor:
         if self.messaging:
             self.messages.start(deadline)
         last_beat = last_poll = 0.0
+        exited = None
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
@@ -625,6 +626,11 @@ class Supervisor:
             if now - last_beat >= runlog.HEARTBEAT_S:
                 runlog.beat(self.run_dir)
                 last_beat = now
+            if exited is not None:
+                if self.messages.drained():
+                    return self._finish_exited(exited)
+                time.sleep(TICK_S)
+                continue
             if self.stop_reason:
                 return self._finish(*self.stop_reason)
             for req in self._authorized_requests():
@@ -666,7 +672,8 @@ class Supervisor:
             if not status.get("alive"):
                 if not self.messaging or self.messages.drained():
                     return self._finish_exited(status)
-            if deadline is not None and now >= deadline:
+                exited = status  # receipt draining cannot change an already-observed exit into a deadline or stop
+            elif deadline is not None and now >= deadline:
                 spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
                 # A low anomaly the next Lead commit records (M4-E E7b; plan v3 §2.4, A1 §3.2): this process commits
                 # nothing, so it leaves a worker-side signal, as a refused report does.
@@ -832,12 +839,14 @@ class Supervisor:
             until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
             ending = self._background_beats("aew-ending-heartbeat", until=until)
             try:
-                if self.messaging:
-                    self.messages.stop()
-                    if self.messages.has_posted and self.authority_problem():
-                        self.messages.final_check()
-                faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
-                self._end(status, reason, reason_code)
+                try:
+                    if self.messaging:
+                        self.messages.stop()
+                        if self.messages.has_posted and self.authority_problem():
+                            self.messages.final_check()
+                finally:
+                    faults.pause("harness.supervisor.finishing")  # tests: a run slow to end
+                    self._end(status, reason, reason_code)
             finally:
                 ending.set()
 

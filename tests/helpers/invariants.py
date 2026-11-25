@@ -28,7 +28,7 @@ from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control, retry_lock_free
 from aew.engine.workspace_ops import mutating_cap
-from aew.harness import seat
+from aew.harness import runlog, seat
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -1161,6 +1161,65 @@ def _thread_lines(raw: bytes, invocation: str) -> tuple[list[dict[str, Any]], in
     return entries, verified, None
 
 
+def _failed_turn_violations(aew: Path, runs: list[str], entries: list[dict[str, Any]]) -> list[str]:
+    """C5 checks a failed-turn category against the messages known when the successor built its continuation."""
+    problems = []
+    event_logs: dict[str, list[dict[str, Any]] | None] = {}
+    for index, run in enumerate(runs[1:], 1):
+        record = runlog.read_record(runlog.run_dir(aew, run)) or {}
+        continuation = (record.get("contract") or {}).get("continuation") or {}
+        categories = continuation.get("message_categories", {})
+        failed = [mid for mid, category in categories.items() if category == "failed_turn"]
+        if not failed:
+            continue
+        cutoff = continuation.get("message_thread_lines")
+        if not isinstance(cutoff, int) or isinstance(cutoff, bool) or not 0 < cutoff <= len(entries):
+            problems.append(f"56: {run}'s failed-turn continuation has no verifiable thread position")
+            continue
+        prefix = entries[:cutoff]
+        replies = {e["message"].get("in_reply_to") for e in prefix if e.get("type") == "message"
+                   and e["message"]["sender"].startswith("invocation:")}
+        delivered = {f["message"]: f for e in prefix if e.get("type") == "fact"
+                     and (f := e["fact"])["kind"] == "DELIVERED"}
+        for mid in failed:
+            fact = delivered.get(mid)
+            if fact is None or mid in replies or mid not in continuation.get("messages", []):
+                problems.append(f"56: {mid}'s failed-turn entry in {run} has no unanswered delivery")
+                continue
+            source = fact.get("transport_ref") if fact.get("via") == "wait" else fact.get("run")
+            if source not in runs[:index]:
+                problems.append(f"56: {mid}'s failed-turn entry in {run} has no earlier delivering run")
+                continue
+            if source not in event_logs:
+                try:
+                    raw = runlog.read_regular(runlog.run_dir(aew, source) / "events.jsonl")
+                    event_logs[source] = [row for line in raw.splitlines() if isinstance(row := json.loads(line), dict)]
+                except (OSError, ValueError):
+                    event_logs[source] = None
+            events = event_logs[source]
+            if events is None:
+                problems.append(f"56: {mid}'s failed-turn entry in {run} is unverifiable without {source}'s event log")
+            elif _oracle_step_after_delivery(events, fact):
+                problems.append(f"56: {mid}'s failed-turn entry in {run} follows a completed worker step")
+    return problems
+
+
+def _oracle_step_after_delivery(events: list[dict[str, Any]], fact: dict[str, Any]) -> bool:
+    ends = [(n, row) for n, row in enumerate(events) if row.get("event") == "opencode.session.step.ended"]
+    second = fact["at"][:19]
+    if fact.get("via") == "wait":
+        return any(
+            start.get("event") == "opencode.session.step.started" and str(start.get("at", ""))[:19] > second
+            and isinstance(handle := start.get("assistantMessageID"), str)
+            and any(n > i and row.get("assistantMessageID") == handle for n, row in ends)
+            for i, start in enumerate(events)
+        )
+    for i, row in enumerate(events):
+        if row.get("event") == "opencode.session.inbox.delivered" and row.get("inboxID") == fact.get("transport_ref"):
+            return any(n > i for n, _ in ends)
+    return any(str(row.get("at", ""))[:19] > second for _, row in ends)
+
+
 def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any], *,
                             fallback_allowed: bool = False) -> list[str]:
     """52-58 (F9-A plan v4 §7, C1 to C7), over every thread on disk and the full state (hot and archived units):
@@ -1266,12 +1325,39 @@ def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         if len(keys) != len(set(keys)):
             problems.append(f"55: {where} holds two messages with one (sender, idempotency id)")
         recorded: set[str] = set()
+        posted_by_run: dict[str, set[str]] = {}
+        live_delivered_by_run: dict[str, set[str]] = {}
+        final_checks: set[str] = set()
         for e in entries:
             if e.get("type") == "message":
                 recorded.add(e["message"]["id"])
-            elif e["fact"]["message"] not in recorded:
-                problems.append(f"56: {where}: a {e['fact']['kind']} fact precedes the message it names")
+            elif e.get("type") == "fact":
+                fact = e["fact"]
+                mid, run = fact["message"], fact.get("run")
+                if mid not in recorded:
+                    problems.append(f"56: {where}: a {fact['kind']} fact precedes the message it names")
+                if isinstance(run, str) and fact["kind"] == "POSTED":
+                    posted_by_run.setdefault(run, set()).add(mid)
+                if isinstance(run, str) and fact["kind"] == "DELIVERED" and fact.get("via") == "live":
+                    live_delivered_by_run.setdefault(run, set()).add(mid)
+            elif e.get("type") == "final_check":
+                run, delivered = e.get("run"), e.get("delivered")
+                if not isinstance(run, str) or not isinstance(delivered, list) or not all(
+                    isinstance(mid, str) for mid in delivered
+                ):
+                    problems.append(f"56: {where}: a final admission check is malformed")
+                    continue
+                posted_ids = posted_by_run.get(run, set())
+                confirmed = posted_ids & live_delivered_by_run.get(run, set())
+                if not posted_ids or run in final_checks or len(delivered) != len(set(delivered)) or not (
+                    set(delivered) <= confirmed
+                ):
+                    problems.append(f"56: {where}: {run}'s final admission check repeats or names unconfirmed offers")
+                final_checks.add(run)
+            else:
+                problems.append(f"56: {where}: unknown coordination entry {e.get('type')!r}")
         posted = {e["fact"]["message"] for e in entries if e.get("type") == "fact" and e["fact"]["kind"] == "POSTED"}
+        problems += _failed_turn_violations(aew, [r["run"] for r in inv.get("runs") or []], entries)
         for u in (seal or {}).get("undeliverable") or []:
             if u["message"] in posted or not by_id.get(u["message"], {}).get("sender", "").startswith("lead:"):
                 problems.append(f"56: {u['message']} is undeliverable but was posted, or is not a Lead message")

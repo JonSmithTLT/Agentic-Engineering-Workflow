@@ -402,9 +402,11 @@ class Harness:
             continuation = {"previous_runs": [r["run"] for r in runs[:-1]],
                             "evidence": [entry(e) for e in mine], "changed_paths": changed}
             if messaging:
-                carried, omitted = self.coordination.continuation_messages(state, inv_id)
+                carried, omitted, thread_lines = self.coordination.continuation_messages(state, inv_id)
                 if carried:
-                    continuation.update(messages=[message["id"] for message in carried], messages_omitted=omitted)
+                    continuation.update(messages=[message["id"] for message in carried], messages_omitted=omitted,
+                                        message_categories={message["id"]: message["category"] for message in carried},
+                                        message_thread_lines=thread_lines)
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])

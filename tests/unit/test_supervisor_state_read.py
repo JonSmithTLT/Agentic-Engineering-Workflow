@@ -333,6 +333,40 @@ def test_a_messaging_control_write_never_holds_the_supervisors_heartbeat(tmp_pat
     assert len(heartbeats) == 2 and ended == [{"alive": False, "turn": "running"}]
 
 
+def test_a_messaging_drain_never_changes_an_observed_exit_to_a_hard_deadline(tmp_path, monkeypatch):
+    from aew.harness import supervisor
+
+    sup = stand_in(tmp_path, LockFreeOnly([state()]))
+    sup.messaging, sup.deadline_s = True, 1
+    sup.record["coordination_delivery"] = "live_pending"
+    drained = iter([False, False, True])
+    sup.messages = SimpleNamespace(start=lambda deadline: None, drained=lambda: next(drained))
+    status = {"alive": False, "exit_code": 0}
+    sup.adapter = SimpleNamespace(coordination_live=True, inspect=lambda: status)
+    clocks = iter([0, 0.5, 1.5, 2.5])
+    monkeypatch.setattr(supervisor, "time", SimpleNamespace(monotonic=lambda: next(clocks), sleep=lambda _: None))
+    ended = []
+    monkeypatch.setattr(sup, "_finish_exited", ended.append)
+    sup.watch()
+    assert ended == [status]
+
+
+@pytest.mark.parametrize("messaging, posted", [(False, False), (True, False)])
+def test_a_revoked_run_without_posted_messages_stops_without_an_admission_check(tmp_path, monkeypatch,
+                                                                                 messaging, posted):
+    sup = stand_in(tmp_path, LockFreeOnly([state(problem="superseded")]))
+    sup.messaging = messaging
+    sup._lock = threading.Lock()
+    sup.messages = SimpleNamespace(stop=lambda: None, has_posted=posted,
+                                   final_check=lambda: pytest.fail("there is no recorded offer to check"))
+    monkeypatch.setattr(sup, "_start_overdue", lambda: False)
+    monkeypatch.setattr(sup, "_background_beats", lambda *args, **kwargs: threading.Event())
+    ended = []
+    monkeypatch.setattr(sup, "_end", lambda *args: ended.append(args))
+    sup._finish(K.TERMINATED, "authority ended: superseded")
+    assert ended == [(K.TERMINATED, "authority ended: superseded", None)]
+
+
 def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):
     """A supervisor's deadline is UNDECIDED until ``start`` decides it at custody, and ``watch`` refuses it rather than
     read it as no deadline (the review of E228's fourth PR, n3, and its quick check, QC-2): no run is watched

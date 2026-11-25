@@ -1966,6 +1966,7 @@ None.
 
 ### `aew.harness.worker_messages`
 
+- `aew.coordination.layout`
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.harness.supervisor`

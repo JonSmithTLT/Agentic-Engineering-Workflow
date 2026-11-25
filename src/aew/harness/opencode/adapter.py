@@ -407,6 +407,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.events: EventStream | None = None
         self.session: str | None = None
         self.sent: list[str] = []
+        self._coordination_prompts: set[str] = set()
         self._staged_coordination: list[str] = []
         self._coordination_input_lock = threading.Lock()
         self._coordination_launch_id: str | None = None
@@ -1030,6 +1031,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn == "ended":
                 return "session_lost"
             staged = self.turn == "held" or self._lead_interrupted or (retry and self.turn != "running")
+            self._coordination_prompts.add(prompt_id)
             if not staged and prompt_id not in self.sent:
                 self.sent.append(prompt_id)
                 self._idle_seen = None
@@ -1082,6 +1084,7 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def coordination_abandon(self, prompt_id: str) -> None:
         with self._lock:
+            self._coordination_prompts.discard(prompt_id)
             if prompt_id in self.sent:
                 self.sent.remove(prompt_id)
             if prompt_id in self._staged_coordination:
@@ -1264,6 +1267,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn != "running" or not self.sent:
                 return
             last = self.sent[-1]
+            may_be_parked = self._lead_interrupted and last in self._coordination_prompts
         active = (self.client.get("/api/session/active") or {}).get("data") or {}
         if self.session in active:
             self._idle_seen = None
@@ -1274,27 +1278,38 @@ class OpenCodeAdapter(HarnessAdapter):
             if exc.status == 404:  # still queued: not delivered yet
                 if self._session_missing(exc):
                     self._end(1, f"the OpenCode session {self.session} disappeared")
-                self._idle_seen = None
-                return
-            raise
+                    return
+                if not may_be_parked:
+                    self._idle_seen = None
+                    return
+                delivered = None
+            else:
+                raise
         newest = (self.client.get(f"/api/session/{self.session}/message", {"order": "desc", "limit": "1"})
                   or {}).get("data") or []
         idle = newest[0] if newest else {}
-        if idle.get("type") != "idle" or _created(idle) < _created(delivered):
+        if idle.get("type") != "idle" or (delivered is not None and _created(idle) < _created(delivered)):
             self._idle_seen = None
             return
         inbox = (self.client.get(f"/api/session/{self.session}/inbox") or {}).get("data") or []
+        queued = {item.get("id") for item in inbox}
         with self._lock:
-            if not self.sent or self.sent[-1] != last or any(item.get("id") in self.sent for item in inbox):
+            interrupted = self._lead_interrupted and idle.get("outcome") == "interrupted"
+            # resume=false leaves pending coordination in the inbox. It belongs to the next wake, so it cannot keep
+            # this interrupted turn running while the very prompt it waits on is parked.
+            parked = ([mid for mid in self.sent if mid in queued and mid in self._coordination_prompts]
+                      if interrupted else [])
+            if (not self.sent or self.sent[-1] != last or (delivered is None and last not in parked)
+                    or any(mid in queued and mid not in parked for mid in self.sent)):
                 self._idle_seen = None
                 return
             if self._idle_seen != idle.get("id"):
                 self._idle_seen = idle.get("id")  # confirm on the next poll: a queue boundary can reopen the turn
                 self._wake.set()
                 return
-        self._turn_over(str(idle.get("outcome")), last, _created(delivered))
+        self._turn_over(str(idle.get("outcome")), last, _created(delivered or {}), parked=parked)
 
-    def _turn_over(self, outcome: str, last: str, since: float = 0.0) -> None:
+    def _turn_over(self, outcome: str, last: str, since: float = 0.0, *, parked: list[str] | None = None) -> None:
         """Close the turn whose last prompt was ``last`` (delivered at ``since``), unless a newer prompt arrived since
         the poll decided."""
         self._meter_wake.set()  # F25 L2: a turn's end is sampled at once, by the meter's own thread
@@ -1305,6 +1320,10 @@ class OpenCodeAdapter(HarnessAdapter):
                 return
             if outcome == "interrupted" and self._lead_interrupted:
                 self._lead_interrupted = False
+                if parked:
+                    parked = [mid for mid in parked if mid in self.sent]
+                    self.sent = [mid for mid in self.sent if mid not in parked]
+                    self._staged_coordination = list(dict.fromkeys(parked + self._staged_coordination))
                 self.turn = "held"  # the Lead interrupted: the session waits for `send`, a stop or the deadline
                 self.emit({"event": "opencode.held", "outcome": outcome})
                 return

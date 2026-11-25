@@ -1,9 +1,10 @@
 """Skills reach workers by their card's fit (register E127; the designer's rulings of 2026-11-03 §3 and 2026-11-04).
 
-AEW's own install ships eight skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
-a run may reach. The supervisor copies what is exposed into the run's own folder, the projection lets the ``skill`` tool
-list exactly those, and the agent is told, from the plan, which to load. The record says what was offered, exposed,
-delivered and loaded. Nothing here runs a model: the live test is ``tests/live/test_skills_live.py``, on the VM.
+AEW's own install ships eleven skills with a manifest of hashes (three of them the Lead's: ``test_lead_skills.py``). A
+card's ``skills:`` and ``optional_skills`` decide what a run may reach. The supervisor copies what is exposed into the
+run's own folder, the projection lets the ``skill`` tool list exactly those, and the agent is told, from the plan,
+which to load. The record says what was offered, exposed, delivered and loaded. Nothing here runs a model: the live
+test is ``tests/live/test_skills_live.py``, on the VM.
 """
 
 from __future__ import annotations
@@ -27,8 +28,9 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-EIGHT = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
-         "debugging-root-cause-analysis", "python-development", "security-review"]
+ELEVEN = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
+          "debugging-root-cause-analysis", "delegation-handoffs", "engineering-planning", "python-development",
+          "requirements-clarification", "security-review"]
 UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
 
@@ -60,8 +62,8 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 # ---------------------------------------------------------------------------------------------- the install
 
 
-def test_the_eight_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
-    assert sorted(skills.shipped()) == EIGHT
+def test_the_eleven_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
+    assert sorted(skills.shipped()) == ELEVEN
     for name, entry in skills.entries().items():
         on_disk = {p.relative_to(SHIPPED / name).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                    for p in (SHIPPED / name).rglob("*") if p.is_file()}

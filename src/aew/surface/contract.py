@@ -132,9 +132,11 @@ STEERING_ARGUMENT_SCHEMAS = {"mode": {"enum": ["crawl", "walk", "run"]}, "prior_
 # needs an effective mode above its target, and walk or run is effective only by the operator's raise at the endpoint
 # (``engine.steering``); a project whose policy names no `steering.mode` refuses every action (SteeringNotConfigured);
 # and in crawl and walk the loop stops at each step it could take, which stays the Lead's (``steering_loop``).
-STEERING_TEXT = ("Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and walk "
-                 "you take each step yourself. Lowering needs the operator's raise first; with no steering.mode in "
-                 "policy, every action is refused.")
+# The crawl and walk step is the Lead's: said in the tool's text and in the Lead's system text, from here.
+STEERING_STEP = "In crawl and walk you take each step yourself."
+STEERING_TEXT = ("Lower your steering mode, or ask the operator to raise it; requests grant nothing. "
+                 f"{STEERING_STEP} Lowering needs the operator's raise first; with no steering.mode in policy, every "
+                 "action is refused.")
 
 # The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
 # claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).

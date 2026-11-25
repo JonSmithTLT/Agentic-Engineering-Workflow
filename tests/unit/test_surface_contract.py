@@ -537,12 +537,17 @@ def test_the_steering_tool_never_offers_request_confirmation_and_request_raise_s
 
 
 def test_the_steering_text_says_what_works_as_a_run_receives_it():
-    """Register E183 (the designer's ruling of 2026-11-11 on the tool's text), in the tool's text and in the Lead's
-    refusal of the raise command, which sends it to the tool: a lower needs the operator's raise first, a project with
-    no `steering.mode` refuses every action, and in crawl and walk the step is the Lead's own; nothing offers a
-    confirmation."""
+    """Register E183 (the designer's ruling of 2026-11-11 on the tool's text), in the tool's text, the Lead's system
+    text and the Lead's refusal of the raise command, which sends it to the tool: a lower needs the operator's raise
+    first, a project with no `steering.mode` refuses every action, and in crawl and walk the step is the Lead's own;
+    nothing offers a confirmation."""
     from aew.cli.main import build_parser
     from aew.harness import lead_broker
+    from aew.harness.opencode import projection
+
+    # The Lead's system text names the crawl and walk step as its own, from the one owner the tool's text uses too.
+    assert f"- Steering: {contract.STEERING_STEP}" in projection.LEAD_SYSTEM
+    assert contract.STEERING_STEP in contract.STEERING_TEXT and "you take each step" in contract.STEERING_STEP
 
     refusal = lead_broker.refuses_locally(build_parser().parse_args(["lead", "mode", "raise", "walk"]))
     assert refusal is not None and "request_raise" in refusal and "confirm" not in refusal, refusal

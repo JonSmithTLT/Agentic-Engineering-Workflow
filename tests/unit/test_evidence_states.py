@@ -1004,20 +1004,18 @@ def test_a_dump_taken_before_a_later_attempt_straddles_a_test_change_is_retained
     assert defects == [LIVE_STACK.format(101)]
 
 
-@pytest.mark.parametrize("controller,policy", [(False, {"periodic": False, "xdist_only": False}),
-                                               (True, {"periodic": True, "xdist_only": True})])
-def test_a_worker_never_sampled_in_the_ring_gets_a_typed_marker_not_a_demand(tmp_path, monkeypatch,
-                                                                            controller, policy):
+@pytest.mark.parametrize("controller", [False, True])
+def test_a_worker_never_sampled_in_the_ring_gets_a_typed_marker_not_a_demand(tmp_path, monkeypatch, controller):
     import worker_evidence as ev
     from evidence_files import NOT_SAMPLED
 
     calls = []
     records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, lambda pid, **_: calls.append(pid),
-                                                    sampled=(), controller=controller, policy=policy)
+                                                    sampled=(), controller=controller, policy={"periodic": False})
     assert calls == [] and records[101]["alive_when_observed"]
     assert outcomes == {101: {"reason": "cancel collection", "pid": 101, "start": 202,
                               "node": "tests/test_a.py::test_case[101]", "outcome": NOT_SAMPLED,
-                              "collect_at": records[101]["collect_at"], "controller": controller, "attempts": []}}
+                              "collect_at": records[101]["collect_at"], "attempts": []}}
     assert defects == []
     # The excuse answers only its own observation.
     record = tmp_path / "autopsy/session-test/cancelled-101.txt"
@@ -1036,7 +1034,7 @@ def test_a_worker_its_lane_samples_but_never_sampled_still_owes_its_stack(tmp_pa
     from evidence_files import SAMPLING_GAP
 
     records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, lambda pid, **_: None, sampled=(),
-                                                    policy={"periodic": True, "xdist_only": True})
+                                                    policy={"periodic": True})
     assert outcomes[101]["outcome"] == SAMPLING_GAP and defects == [LIVE_STACK.format(101)]
     # A not-sampled claim the lane's recorded policy contradicts is refused.
     _forge(tmp_path, 101, SAMPLING_GAP, "not sampled in the owned tree")
@@ -1060,7 +1058,7 @@ def test_a_worker_due_for_periodic_sampling_whose_attaches_all_failed_still_rais
     assert failure["reason"] == "periodic" and failure["attempts"] == ["unelevated: exit 1 (os error 5)"]
     assert defects == [LIVE_STACK.format(101)]
     # Even under a policy that excludes the worker, a failed sampling attach refuses the not-sampled excuse.
-    (tmp_path / "runner-resources-sampling.txt").write_text(json.dumps({"periodic": False, "xdist_only": False}))
+    (tmp_path / "runner-resources-sampling.txt").write_text(json.dumps({"periodic": False}))
     _forge(tmp_path, 101, outcomes[101]["outcome"], "not sampled in the owned tree")
     assert _live_stack(tmp_path) == [LIVE_STACK.format(101)]
     (tmp_path / "snapshots/101-202-sampling-failures.txt").unlink()
@@ -1198,10 +1196,24 @@ def test_no_xdist_controller_is_the_worker_only_while_its_own_watchdog_is_active
     assert serial.identity == (pid, birth) and serial.node == node and serial.controller
 
 
-@pytest.mark.parametrize("plant,mode,expected", [(None, "xdist", [2]), ("cancel", "xdist", [2]),
-                                                 ("cancel", "0", []), (None, "1", [1, 2])])
-def test_periodic_sampling_selects_the_same_workers_in_ci_and_its_cancel_control(
-        tmp_path, monkeypatch, plant, mode, expected):
+def _lane_snapshot_mode(os_name, workflow, plant=None, explicit=None):
+    """Evaluate the lane action's AEW_WORKER_SNAPSHOTS expression (its one owner) for a hosted runner."""
+    import re
+
+    import yaml
+
+    action = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text(encoding="utf-8"))
+    step = next(step for step in action["runs"]["steps"] if step.get("id") == "pytest")
+    expression = " ".join(step["env"]["AEW_WORKER_SNAPSHOTS"].split()).removeprefix("${{").removesuffix("}}")
+    # GitHub's && and || return an operand, as Python's and/or do; an unset env value is null, so falsy.
+    expression = re.sub(r"!(?!=)", " not ", expression.replace("&&", " and ").replace("||", " or "))
+    context = {"env": SimpleNamespace(AEW_WORKER_SNAPSHOTS=explicit, AEW_EVIDENCE_PLANT=plant),
+               "runner": SimpleNamespace(environment="github-hosted", os=os_name),
+               "github": SimpleNamespace(workflow=workflow)}
+    return eval(expression, {"__builtins__": {}}, context)  # noqa: S307 - the repository's own action, no input
+
+
+def _periodically_sampled(tmp_path, monkeypatch, mode, plant=None):
     import worker_evidence as ev
 
     if plant:
@@ -1221,7 +1233,28 @@ def test_periodic_sampling_selects_the_same_workers_in_ci_and_its_cancel_control
 
     monkeypatch.setattr(ev, "capture", capture)
     ev.Monitor(tmp_path, None, lambda: {w.identity for w in candidates}).poll()
-    assert sampled == expected
+    return sampled
+
+
+@pytest.mark.parametrize("os_name,workflow,plant,explicit,expected", [
+    ("Windows", "ci", None, None, [1, 2]), ("Windows", "evidence-proof", "cancel", None, [1, 2]),
+    ("Linux", "ci", None, None, [1, 2]), ("Linux", "evidence-proof", "cancel", None, [1, 2]),
+    ("Windows", "evidence-proof", "cancel", "0", []), ("Windows", "nightly", None, None, []),
+])
+def test_periodic_sampling_selects_the_same_workers_in_ci_and_its_cancel_control(
+        tmp_path, monkeypatch, os_name, workflow, plant, explicit, expected):
+    mode = _lane_snapshot_mode(os_name, workflow, plant, explicit)
+    assert _periodically_sampled(tmp_path, monkeypatch, mode, plant) == expected
+
+
+def test_hosted_windows_ci_samples_its_serial_controller_periodically(tmp_path, monkeypatch):
+    import json
+
+    # Operator, 2026-11-25 (register E3): every attach is --nonblocking, so the serial controller is sampled too.
+    mode = _lane_snapshot_mode("Windows", "ci")
+    assert mode == _lane_snapshot_mode("Linux", "ci") == "1"
+    assert 1 in _periodically_sampled(tmp_path, monkeypatch, mode), "worker 1 is the serial lane's controller"
+    assert json.loads((tmp_path / "runner-resources-sampling.txt").read_text()) == {"periodic": True}
 
 
 @pytest.mark.parametrize("victim,expected", [(101, {101}), ("unavailable", set()), ("no matching worker", set())])

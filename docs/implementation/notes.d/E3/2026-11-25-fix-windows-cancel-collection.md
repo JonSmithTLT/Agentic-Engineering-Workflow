@@ -17,15 +17,18 @@ bound to that observation's `collect_at`: #554's unavailable marker, or a typed 
 (`snapshots/<pid>-<start>-cancel-outcome.txt`) for a worker with no sample in the owned tree, one that exited before or
 during its attach or straddled a test change (an earlier dump of the same test is kept), or a dump without its test
 frame classified by its pytest frames (setup, teardown, between tests, call, indeterminate). A worker with no sample is
-`not sampled` only when the lane's sampling policy excludes it (`AEW_WORKER_SNAPSHOTS=0`, or the controller of an xdist
-lane), which the supervisor's sampler records (`runner-resources-sampling.txt`); otherwise it is a sampling gap and owes
-its stack, and the sampler now keeps its first failed attach of each identity (`<pid>-<start>-sampling-failures.txt`,
-with #554's attempt outcomes). The evidence check excuses a live worker only by a not-sampled outcome that the recorded
-policy bears out, with no retained sample and no failed sampling attach of its identity, or by a setup, teardown or
-between-tests outcome that the retained cancel-collection frames themselves classify so; a worker inside its test's call
-still owes its stack. That a policy-excluded worker, such as the Windows serial controller mid-test, owes no stack is
-the current behaviour pending the operator's decision, not a settled policy. The flake entry `windows-cancel-live-stack`
-stays open, with the Windows lanes of four more superseded runs and this PR as its planned fix: closure awaits a
-sighting bundle, or the first superseded runs after merge, that establishes the cause. The Linux lanes of those runs
-open `linux-cancel-live-stack`, whose cause is the pre-signal warning attach that #554 types, so its next sighting names
-why.
+`not sampled` only in a lane whose periodic sampling is off (`AEW_WORKER_SNAPSHOTS=0`), which the supervisor's sampler
+records (`runner-resources-sampling.txt`); in a lane that samples it is a sampling gap and owes its stack, and the
+sampler now keeps its first failed attach of each identity (`<pid>-<start>-sampling-failures.txt`, with #554's attempt
+outcomes). The evidence check excuses a live worker only by a not-sampled outcome that the recorded policy bears out,
+with no retained sample and no failed sampling attach of its identity, or by a setup, teardown or between-tests outcome
+that the retained cancel-collection frames themselves classify so; a worker inside its test's call still owes its stack.
+Hosted Windows CI now samples its serial lane's controller periodically, as hosted Linux already did (operator,
+2026-11-25): every attach is `py-spy dump --nonblocking`, which never suspends its target, and #528 left the controller
+out only because its overhead comparison covered xdist workers, not because of a found risk. So the Windows serial
+controller owes its stack like any worker. The qualifying evidence is this PR's own Windows serial and xdist lanes in
+CI, whose wall time the PR compares with the last three green `main` runs; a regression there reverts the switch. The
+flake entry `windows-cancel-live-stack` stays open, with the Windows lanes of four more superseded runs and this PR as
+its planned fix: closure awaits a sighting bundle, or the first superseded runs after merge, that establishes the cause.
+The Linux lanes of those runs open `linux-cancel-live-stack`, whose cause is the pre-signal warning attach that #554
+types, so its next sighting names why.

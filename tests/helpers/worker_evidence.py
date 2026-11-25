@@ -303,8 +303,7 @@ def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
 def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None) -> None:
     """Name why the cancellation collection kept no test stack for this worker, at this observation (register E3)."""
     path = ring_path(root, worker).with_name(cancel_outcome(worker.pid, worker.start))
-    _marker(root, path, None, _row(worker, CANCEL_COLLECTION, failures, outcome=outcome, collect_at=collect_at,
-                                   controller=worker.controller))
+    _marker(root, path, None, _row(worker, CANCEL_COLLECTION, failures, outcome=outcome, collect_at=collect_at))
 
 
 def sampling_policy(root: Path) -> dict:
@@ -334,7 +333,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                 _outcome(root, worker, name, failures, collect_at)
 
         if worker.identity not in allowed:
-            outcome(SAMPLING_GAP if policy_samples(policy, worker.controller) else NOT_SAMPLED)
+            outcome(SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED)
             return None
         if not proctree.same(worker.identity):
             outcome("exited before its attach")
@@ -467,11 +466,10 @@ class Monitor:
         mode = os.environ.get("AEW_WORKER_SNAPSHOTS")
         # The hosted cancellation control exercises the production switch.
         proof = plant in PROOF_KINDS and (plant != "cancel" or mode is None)
-        sampled = proof or mode in {"1", "xdist"}
+        sampled = proof or mode == "1"
         self.periodic = sampled and not ablated("ring")
-        self.xdist_only = mode == "xdist" and not proof
         # The policy, not its ablation: the cancellation collection and the evidence check read it back (E3).
-        self.policy = {"periodic": sampled, "xdist_only": self.xdist_only}
+        self.policy = {"periodic": sampled}
         with contextlib.suppress(OSError):
             (root / SAMPLING_POLICY).write_text(json.dumps(self.policy) + "\n", encoding="utf-8")
         self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
@@ -484,9 +482,6 @@ class Monitor:
         self.members = set()
         self.high = False
         self.pressure_seen = False
-
-    def samples(self, worker: Worker) -> bool:
-        return self.periodic and policy_samples(self.policy, worker.controller)
 
     def poll(self, *, final: bool = False) -> None:
         now = time.monotonic()
@@ -513,7 +508,7 @@ class Monitor:
             if crossed:
                 self.high = False  # the first worker can still see pressure that began during startup
             return
-        due = [w for w in observed if self.samples(w) and now >= self.next_sample.get(w.identity, 0)]
+        due = [w for w in observed if self.periodic and now >= self.next_sample.get(w.identity, 0)]
         if not crossed and not due:
             return
         allowed = self.scope()

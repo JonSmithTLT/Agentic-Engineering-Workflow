@@ -73,10 +73,10 @@ INTERRUPTION_REASONS = frozenset({WARNING, CANCEL_COLLECTION})
 # worker_evidence.Monitor records the lane's periodic sampling policy here; the cancellation collection and the
 # evidence check read it back through policy_samples (register E3).
 SAMPLING_POLICY = "runner-resources-sampling.txt"
-# Cancellation-collection outcomes for a worker with no sample in the owned tree. Only NOT_SAMPLED, a worker the lane's
-# sampling policy excludes, owes no stack, and only while no sampling attach of it failed: a worker the policy samples
-# but that has no sample is a sampling gap, which still owes its stack (register E3; review of #561, M1). Whether a
-# policy-excluded worker, such as the Windows serial controller, may go without a stack awaits the operator's decision.
+# Cancellation-collection outcomes for a worker with no sample in the owned tree. Only NOT_SAMPLED, in a lane whose
+# periodic sampling is off (AEW_WORKER_SNAPSHOTS=0), owes no stack, and only while no sampling attach of it failed: in a
+# lane that samples, a worker with no sample is a sampling gap and still owes its stack (register E3; review of #561,
+# M1). Hosted CI samples every worker, a serial lane's controller included (operator, 2026-11-25).
 NOT_SAMPLED = "not sampled in the owned tree"
 SAMPLING_GAP = "never sampled although its lane's policy samples it"
 # The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
@@ -116,10 +116,10 @@ def pytest_phase(frames: str) -> str:
     return "indeterminate"
 
 
-def policy_samples(policy: dict, controller: bool) -> bool:
-    """Whether the lane's periodic sampling policy samples a worker: all of them, or only xdist workers. An unknown
-    or unreadable policy samples every worker, so it never excuses a missing stack."""
-    return not (policy.get("periodic") is False or (policy.get("xdist_only") is True and controller))
+def policy_samples(policy: dict) -> bool:
+    """Whether the lane's periodic sampling policy samples its workers. An unknown or unreadable policy counts as
+    sampling, so it never excuses a missing stack."""
+    return policy.get("periodic") is not False
 
 
 def sampling_failures(pid: int, start: int) -> str:

@@ -39,7 +39,7 @@ from evidence_files import (  # noqa: E402
 
 def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) -> bool:
     """A live worker owes no interruption stack only by a typed cancellation outcome the bundle bears out (register
-    E3), and only for the observation that outcome belongs to: a worker the lane's sampling policy excludes, with no
+    E3), and only for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no
     retained sample of its identity and no failed sampling attach of it, or one in setup, teardown or between tests by
     the frames its cancellation collection retained. A worker inside its test's call always owes one."""
     pid, start = observed["pid"], observed["start"]
@@ -50,8 +50,7 @@ def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) ->
                 or observed.get("collect_at") is None or row.get("collect_at") != observed["collect_at"]):
             continue
         if (row.get("outcome") == NOT_SAMPLED and not sampled and not failed and policies
-                and type(row.get("controller")) is bool
-                and not any(policy_samples(policy, row["controller"]) for policy in policies)):
+                and not any(policy_samples(policy) for policy in policies)):
             return True
         if row.get("outcome") in OUTSIDE_CALL and any(
                 reason == CANCEL_COLLECTION and pytest_phase(frames) == row["outcome"] for reason, frames in stacks):

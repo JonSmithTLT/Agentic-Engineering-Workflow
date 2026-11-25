@@ -118,7 +118,8 @@ def pin(root: Path) -> None:
     (root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
 
 
-def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False) -> World:
+def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False,
+          model: str | None = None) -> World:
     root = make_git_repo(tmp_path / "repo", CP.FILES)
     Engine.initialize(root, project_id="calc")
     if checks:
@@ -136,7 +137,7 @@ def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = F
                    contract=["changes stay in calc/ and tests/"])["id"]
     w.lead("plan_propose", no_assurance=True, work_id=w.wid, body=CP.PLAN, affected_paths=["calc/core.py"])
     w.lead("plan_accept", work_id=w.wid, revision=1)
-    out = w.lead("work_assign", work_id=w.wid)
+    out = w.lead("work_assign", work_id=w.wid, execution_profile={"model": model} if model else None)
     w.lead("work_transition", work_id=w.wid, to="RUNNING")
     w.inv, w.worker, w.workspace = out["invocation"], out["invocation_token"], Path(out["workspace"]["path"])
     return w
@@ -958,11 +959,14 @@ def test_legality_modules_never_import_coordination():
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
     # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
+    # MS5: the supervisor uses the leaf bound to limit the number of final admission reads.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
-                         "aew/harness/told_messages.py"}
+                         "aew/harness/told_messages.py", "aew/harness/worker_messages.py"}
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
+    assert {m for m in _imports(src / "aew/harness/worker_messages.py") if _is_coordination(m)} == {
+        "aew.coordination.layout", "aew.coordination.layout.MAX_UNDELIVERED_LEAD"}
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
                       "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",

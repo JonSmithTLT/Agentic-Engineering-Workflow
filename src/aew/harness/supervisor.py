@@ -462,6 +462,10 @@ class Supervisor:
             if self.weaker is not None:
                 self.weaker.started()
             info = self.adapter.launch(contract, dict(self.agent_env))
+            if self.messaging:
+                self.record["coordination_delivery"] = ("live_pending" if self.adapter.coordination_live
+                                                        else "unsupported")
+                self.messages.launched(contract.continuation)
             self.record["launch"] = info
             relay_family = relay_family_of(info)
             if relay_family is not None:  # the label says what the launch could check of its model (register E143)
@@ -642,7 +646,10 @@ class Supervisor:
         self._watching.set()
         deadline_s = self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
+        if self.messaging:
+            self.messages.start(deadline)
         last_beat = last_poll = 0.0
+        exited = None
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
@@ -650,6 +657,11 @@ class Supervisor:
             if now - last_beat >= runlog.HEARTBEAT_S:
                 runlog.beat(self.run_dir)
                 last_beat = now
+            if exited is not None:
+                if self.messages.drained():
+                    return self._finish_exited(exited)
+                time.sleep(TICK_S)
+                continue
             if self.stop_reason:
                 return self._finish(*self.stop_reason)
             for req in self._authorized_requests():
@@ -681,9 +693,18 @@ class Supervisor:
                 if read:
                     last_poll = now
             status = self.adapter.inspect()
+            if self.messaging:
+                outcome = self.record["coordination_delivery"]
+                if self.adapter.coordination_live:
+                    outcome = "held" if status.get("turn") == "held" else "live_pending"
+                if outcome != self.record["coordination_delivery"]:
+                    self.record["coordination_delivery"] = outcome
+                    self._save()
             if not status.get("alive"):
-                return self._finish_exited(status)
-            if deadline is not None and now >= deadline:
+                if not self.messaging or self.messages.drained():
+                    return self._finish_exited(status)
+                exited = status  # receipt draining cannot change an already-observed exit into a deadline or stop
+            elif deadline is not None and now >= deadline:
                 spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
                 # A low anomaly the next Lead commit records (M4-E E7b; plan v3 §2.4, A1 §3.2): this process commits
                 # nothing, so it leaves a worker-side signal, as a refused report does.
@@ -848,13 +869,21 @@ class Supervisor:
             # until its final record.
             until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
             ending = self._background_beats("aew-ending-heartbeat", until=until)
+            final_admissions = None
             try:
-                faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
-                self._end(status, reason, reason_code)
+                try:
+                    if self.messaging:
+                        self.messages.stop()
+                        if self.messages.has_posted and self.authority_problem():
+                            final_admissions = self.messages.capture_final_admissions()
+                finally:
+                    faults.pause("harness.supervisor.finishing")  # tests: a run slow to end
+                    self._end(status, reason, reason_code, final_admissions=final_admissions)
             finally:
                 ending.set()
 
-    def _end(self, status: str, reason: str, reason_code: str | None = None) -> None:
+    def _end(self, status: str, reason: str, reason_code: str | None = None, *,
+             final_admissions: worker_messages.FinalAdmissions | None = None) -> None:
         self._ending.set()
         # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
         # request is still in flight starts nothing, and the private state is retired only once they have returned.
@@ -873,6 +902,10 @@ class Supervisor:
         # the stop still running and its private directory left (E128). Bounded by the stop's own bound.
         if self.bridge is not None and not self.bridge.wait_stopped():
             self._event("bridge_stop_timeout", bound_s=bridge.STOP_BOUND_S)
+        if final_admissions is not None:
+            # Recovery and disk writes may take longer than control-lock acquisition. The worker and its bridge
+            # have already been stopped, so this optional receipt cannot extend their lifetime.
+            self.messages.record_final_admissions(final_admissions)
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

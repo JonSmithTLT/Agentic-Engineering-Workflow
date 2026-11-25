@@ -437,16 +437,17 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
-    def control_lock(self, operation: str) -> FileLock:
+    def control_lock(self, operation: str, *, timeout: float | None = None) -> FileLock:
         """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
         here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
         ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
         process_kind.require_writer(operation)
-        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout if timeout is None else timeout)
 
     @contextmanager
-    def session(self) -> Iterator[Session]:
-        with self.control_lock("ControlStore.session") as lock:
+    def session(self, *, lock_timeout: float | None = None) -> Iterator[Session]:
+        lock_options = {} if lock_timeout is None else {"timeout": lock_timeout}
+        with self.control_lock("ControlStore.session", **lock_options) as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
             try:

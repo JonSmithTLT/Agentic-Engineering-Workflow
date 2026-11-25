@@ -749,6 +749,7 @@ None.
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.runlog`
 - `aew.harness.told_messages`
 - `aew.harness.wake_queue`
 - `aew.history.manifest`
@@ -1977,6 +1978,7 @@ None.
 
 ### `aew.harness.worker_messages`
 
+- `aew.coordination.layout`
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.harness.supervisor`

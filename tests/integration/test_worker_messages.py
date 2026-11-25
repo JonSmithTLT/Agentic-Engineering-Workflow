@@ -32,12 +32,13 @@ def lab(tmp_path):
     assert not credential_hits(tmp_path)
 
 
-def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, **knobs):
+def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False, live=False, **knobs):
     enable_messaging(lab)
     cls = "FakeWaitOpenCodeAdapter" if qualified else "UnsupportedWaitOpenCodeAdapter"
     if qualified and wait_barrier:
         cls = "BoundWaitOpenCodeAdapter"
-    lab.env["AEW_HARNESS_ADAPTERS"] = f"opencode={HELPERS / 'message_wait_adapter.py'}:{cls}"
+    if not live:
+        lab.env["AEW_HARNESS_ADAPTERS"] = f"opencode={HELPERS / 'message_wait_adapter.py'}:{cls}"
     sync = sync_dir(tmp_path)
     lab.script("R-INV-0001-1", {"steps": [
         {"do": "touch", "path": str(sync / "ready")},

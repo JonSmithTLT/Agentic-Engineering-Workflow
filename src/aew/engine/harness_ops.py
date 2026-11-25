@@ -410,7 +410,9 @@ class Harness:
             raise IllegalTransition(f"{inv_id}'s context pack no longer matches the pack pinned at dispatch")
         workspace, _, base = self.invocations.invocation_workspace(state, inv)
         runs = inv.get("runs") or []
+        messaging = any(r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs)
         continuation = None
+        carried = None
         if len(runs) > 1:
             mine = [e for e in E.scan(self.k.aew_root, inv["work_unit"])[0] if e["producer"]["invocation"] == inv_id]
             changed = None
@@ -433,6 +435,12 @@ class Harness:
 
             continuation = {"previous_runs": [r["run"] for r in runs[:-1]],
                             "evidence": [entry(e) for e in mine], "changed_paths": changed}
+            if messaging:
+                carried, omitted, thread_lines = self.coordination.continuation_messages(state, inv_id)
+                if carried:
+                    continuation.update(messages=[message["id"] for message in carried], messages_omitted=omitted,
+                                        message_categories={message["id"]: message["category"] for message in carried},
+                                        message_thread_lines=thread_lines)
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])
@@ -455,6 +463,7 @@ class Harness:
             expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
             pack_path=str(self.k.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
             continuation=continuation, run_dir=str(runlog.run_dir(self.k.aew_root, run)),
+            coordination_text=tuple(message["text"] for message in carried or []),
             scratch=str(runlog.run_dir(self.k.aew_root, run) / "scratch"),
             # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
             # variables the harness server needs (never their values; the policy's current list, not a pin). `skills`
@@ -466,8 +475,7 @@ class Harness:
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or []),
-                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
-                       r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
+                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if messaging else {}),
                    K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base,
                    **(self.k.check_cache_inputs() if base else {})})
 

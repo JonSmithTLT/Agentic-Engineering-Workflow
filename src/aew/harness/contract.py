@@ -332,11 +332,13 @@ class LaunchContract:
     # The run's private directory for files the agent keeps outside the workspace (reports, notes, scratch work).
     # Without a named place, models guessed one: one wrote into the operator's own repository (M3 step 8).
     scratch: str = ""
+    coordination_text: tuple[str, ...] = ()
 
     def to_record(self) -> dict[str, Any]:
         """The contract as recorded in the run record (the pack text is referenced, not copied)."""
         out = asdict(self)
         out.pop("pack_text")
+        out.pop("coordination_text")
         return out
 
     @property
@@ -426,6 +428,10 @@ def continuation_text(c: LaunchContract) -> str | None:
     if changed is not None:
         lines.append("- Workspace changes relative to the dispatch base: "
                      + (", ".join(changed[:50]) + (" …" if len(changed) > 50 else "") if changed else "none"))
+    if c.coordination_text:
+        lines.extend(("", "### Coordination since launch", "", *c.coordination_text))
+        if cont["messages_omitted"]:
+            lines.append(f"{cont['messages_omitted']} earlier unresolved messages omitted.")
     return "\n".join(lines) + "\n"
 
 

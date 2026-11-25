@@ -565,8 +565,9 @@ def test_a_protocol_upgrade_is_refused_with_what_to_do_instead():
 def test_a_chunked_request_body_reaches_the_upstream_whole_and_nothing_after_it():
     body = b"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
     seam = Seam()
-    with relayed(seam) as (_, client, _):
-        client.sendall(b"POST /v1/responses HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" + body + b"GET /x HTTP/1.1")
+    with relayed(seam, operations=("POST /embeddings",)) as (_, client, _):
+        client.sendall(b"POST /v1/embeddings HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" + body
+                       + b"GET /x HTTP/1.1")
         upstream = seam.upstream()
         head, rest = read_head(upstream)
         while not rest.endswith(b"0\r\n\r\n"):
@@ -1271,7 +1272,7 @@ def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_p
         return json.dumps(data).encode()
 
     assert execution.parse(policy(["POST /embeddings"]), source="t")["containment"]["network"]["relay_operations"]
-    for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b"):
+    for bad in ("DELETE", "post /embeddings", "POST https://x/a", "POST /a b", "POST /embeddings/", "POST /"):
         with pytest.raises(ValidationFailed):
             execution.parse(policy([bad]), source="t")
 
@@ -1279,6 +1280,9 @@ def test_the_execution_policy_takes_a_relay_operation_only_as_method_and_exact_p
 # ---------------------------------------------------------------------------------------------- bounds and outcome
 
 MODEL_CALL = b"POST /v1/responses HTTP/1.1\r\n"
+# An operation the policy lists, whose body the relay streams as it comes (a model call's it reads whole: E361)
+STREAMED_CALL = b"POST /v1/embeddings HTTP/1.1\r\n"
+STREAMED = ("POST /embeddings",)
 
 
 def test_a_body_over_the_relays_bound_is_refused_413_and_nothing_is_connected():
@@ -1296,8 +1300,8 @@ def test_a_body_over_the_relays_bound_is_refused_413_and_nothing_is_connected():
 
 def test_a_body_at_the_relays_bound_is_forwarded_whole():
     seam = Seam()
-    with relayed(seam, max_body=1024) as (_, client, _):
-        client.sendall(MODEL_CALL + b"Content-Length: 1024\r\n\r\n" + b"x" * 1024)
+    with relayed(seam, max_body=1024, operations=STREAMED) as (_, client, _):
+        client.sendall(STREAMED_CALL + b"Content-Length: 1024\r\n\r\n" + b"x" * 1024)
         upstream = seam.upstream()
         _, body = read_head(upstream)
         while len(body) < 1024:
@@ -1314,8 +1318,8 @@ def test_a_chunked_body_over_the_relays_bound_is_refused_and_the_upstream_never_
     """A chunked body is counted as it comes: the chunk that passes the bound is refused at its size line, which is
     not sent, so the upstream never gets the last chunk (never a request it could accept)."""
     seam, records = Seam(), []
-    with relayed(seam, record=records.append, max_body=1024) as (service, client, _):
-        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + b"200\r\n" + b"x" * 512 + b"\r\n"
+    with relayed(seam, record=records.append, max_body=1024, operations=STREAMED) as (service, client, _):
+        client.sendall(STREAMED_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + b"200\r\n" + b"x" * 512 + b"\r\n"
                        + b"201\r\n" + b"y" * 513 + b"\r\n0\r\n\r\n")
         answer = read_all(client)
         upstream = seam.upstream()
@@ -1477,8 +1481,8 @@ def _chunked_refused(body: bytes, max_body: int) -> tuple[bytes, bytes, list[dic
     """A chunked request ``body`` through a relay bounded at ``max_body``: what the client got, what the upstream got
     after the request head, and the records."""
     seam, records = Seam(), []
-    with relayed(seam, record=records.append, max_body=max_body) as (_, client, _):
-        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
+    with relayed(seam, record=records.append, max_body=max_body, operations=STREAMED) as (_, client, _):
+        client.sendall(STREAMED_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
         answer = read_all(client)
         upstream = seam.upstream()
         got = read_all(upstream).partition(b"\r\n\r\n")[2]
@@ -1510,8 +1514,8 @@ def test_each_chunks_crlf_counts_against_the_body_bound():
     answer, got, _ = _chunked_refused(body, 14)
     assert answer.startswith(b"HTTP/1.1 413 ") and got == body[:-2]  # all but the line that ends the request
     seam = Seam()
-    with relayed(seam, max_body=15) as (_, client, _):
-        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
+    with relayed(seam, max_body=15, operations=STREAMED) as (_, client, _):
+        client.sendall(STREAMED_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + body)
         upstream = seam.upstream()
         _, rest = read_head(upstream)
         while not rest.endswith(b"0\r\n\r\n"):
@@ -1554,11 +1558,494 @@ def test_an_unexpected_error_after_the_request_went_upstream_is_outcome_unknown(
     def boom(*_: Any) -> None:
         raise ValueError("synthetic: an unexpected fault in the body relay")
 
-    with relayed(seam, record=records.append) as (service, client, _):
+    with relayed(seam, record=records.append, operations=STREAMED) as (service, client, _):
         service._send_body = boom  # type: ignore[method-assign]
-        client.sendall(MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+        client.sendall(STREAMED_CALL + b"Content-Length: 0\r\n\r\n")
         answer = read_all(client)
     assert answer.startswith(b"HTTP/1.1 502 ") and b"X-AEW-Refusal: upstream_outcome_unknown" in answer
     [row] = records
     assert row["outcome"] == "unknown" and row["upstream_headers_written"] is True
     assert service.counts()["relay_error"] == 1
+
+
+# ------------------------------------------------------------------------------------- a model call's body (E361)
+
+# What each model-call route's body carries, in the provider packages' request shapes, with a tool call's own
+# arguments and a function tool's parameters naming keys the relay holds bodies to (which they never are there).
+# These are written here, not recorded: the relay-operations fixture records each call's method and path alone, and
+# the live lane (tests/live/test_opencode_live.py) confirms that no request a real session relays is refused for its
+# body.
+TINY_PNG = "data:image/png;base64,iVBORw0KGgo="
+FUNCTION_PARAMETERS = {"type": "object", "properties": {"file_id": {"type": "string"}, "container": {"type": "string"},
+                                                       "user_id": {"type": "string"}, "userId": {"type": "string"}}}
+ROUTE_BODIES: dict[str, dict[str, Any]] = {
+    "responses": {
+        "model": "gpt-5", "stream": True, "store": False, "include": ["reasoning.encrypted_content"],
+        "reasoning": {"effort": "medium", "summary": "auto"}, "text": {"verbosity": "medium"},
+        "prompt_cache_key": "ses_1", "max_output_tokens": 32000, "tool_choice": "auto",
+        "instructions": "You are a coding agent.",
+        "input": [
+            {"role": "developer", "content": "Follow the project's rules."},
+            {"role": "user", "content": [
+                {"type": "input_text", "text": "Read the attached file."},
+                {"type": "input_image", "image_url": TINY_PNG, "detail": "auto"},
+                {"type": "input_file", "filename": "a.pdf", "file_data": "data:application/pdf;base64,JVBERi0="}]},
+            {"type": "reasoning", "id": "rs_1", "encrypted_content": "opaque", "summary": []},
+            {"type": "function_call", "call_id": "c1", "name": "read", "arguments": '{"file_id": "x"}'},
+            {"type": "function_call_output", "call_id": "c1", "output": "the file's text"}],
+        "tools": [{"type": "function", "name": "read", "description": "Read a file", "strict": False,
+                   "parameters": FUNCTION_PARAMETERS}]},
+    "chat": {
+        "model": "gpt-4.1", "stream": True, "stream_options": {"include_usage": True}, "max_tokens": 4096,
+        "messages": [
+            {"role": "system", "content": "You are a coding agent."},
+            {"role": "user", "content": [{"type": "text", "text": "Look."},
+                                         {"type": "image_url", "image_url": {"url": TINY_PNG}}]},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "read", "arguments": '{"file_id": "x"}'}}]},
+            {"role": "tool", "tool_call_id": "c1", "content": "the file's text"}],
+        "tools": [{"type": "function", "function": {"name": "read", "parameters": FUNCTION_PARAMETERS}}]},
+    "messages": {
+        "model": "claude-sonnet-4-5", "max_tokens": 4096, "stream": True,
+        "thinking": {"type": "enabled", "budget_tokens": 1024}, "tool_choice": {"type": "auto"},
+        "system": [{"type": "text", "text": "You are a coding agent.", "cache_control": {"type": "ephemeral"}}],
+        "messages": [
+            {"role": "user", "content": [
+                {"type": "text", "text": "Read the attached file."},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo="}},
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                                "data": "JVBERi0="}}]},
+            {"role": "assistant", "content": [
+                {"type": "thinking", "thinking": "...", "signature": "opaque"},
+                {"type": "tool_use", "id": "t1", "name": "read", "input": {"file_id": "x", "container": "y"}}]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "the text"}]}]}],
+        "tools": [{"name": "read", "description": "Read a file", "input_schema": FUNCTION_PARAMETERS,
+                   "cache_control": {"type": "ephemeral"}}]},
+    "gemini": {
+        "systemInstruction": {"parts": [{"text": "You are a coding agent."}]},
+        "contents": [
+            {"role": "user", "parts": [{"text": "Look."},
+                                       {"inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="}}]},
+            {"role": "model", "parts": [{"functionCall": {"name": "read", "args": {"fileData": "x"}}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "read",
+                                                             "response": {"cachedContent": "x"}}}]}],
+        "tools": [{"functionDeclarations": [{"name": "read", "parameters": FUNCTION_PARAMETERS}]}],
+        "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+        "generationConfig": {"maxOutputTokens": 4096, "thinkingConfig": {"includeThoughts": True}}},
+}
+ROUTE_TARGETS = {"responses": "/v1/responses", "chat": "/v1/chat/completions", "messages": "/v1/messages",
+                 "gemini": "/v1/models/gemini-2.5-pro:streamGenerateContent?alt=sse"}
+
+
+def _with(route: str, **extra: Any) -> dict[str, Any]:
+    return {**ROUTE_BODIES[route], **extra}
+
+
+def _user_part(route: str, part: dict[str, Any]) -> dict[str, Any]:
+    """The route's body with one more content part in a user turn."""
+    body = json.loads(json.dumps(ROUTE_BODIES[route]))
+    if route == "responses":
+        body["input"][1]["content"].append(part)
+    elif route == "chat":
+        body["messages"][1]["content"].append(part)
+    elif route == "messages":
+        body["messages"][0]["content"].append(part)
+    else:
+        body["contents"][0]["parts"].append(part)
+    return body
+
+
+def _tools(route: str, tool: dict[str, Any]) -> dict[str, Any]:
+    body = json.loads(json.dumps(ROUTE_BODIES[route]))
+    body["tools"].append(tool)
+    return body
+
+
+def model_call(route: str, body: bytes, *, extra_headers: bytes = b"", target: str | None = None) -> bytes:
+    return (f"POST {target or ROUTE_TARGETS[route]} HTTP/1.1\r\n".encode() + extra_headers
+            + f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+
+
+def refused_call(request: bytes, **kw: Any) -> tuple[bytes, Seam, list[dict[str, Any]]]:
+    """``request`` through a relay that must refuse it: what the client got, the seam, the records."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, **kw) as (_, client, _):
+        client.sendall(request)
+        answer = read_all(client)
+    return answer, seam, records
+
+
+def forwarded(request: bytes, **kw: Any) -> tuple[bytes, bytes, bytes, list[dict[str, Any]]]:
+    """``request`` through a relay to an upstream that reads the request whole (its ``Content-Length``) before it
+    answers ``OK``: (the head and the body the upstream got, what the client got, the records)."""
+    seam, records = Seam(), []
+    with relayed(seam, record=records.append, **kw) as (_, client, _):
+        client.sendall(request)
+        upstream = seam.upstream()
+        got_head, body = read_head(upstream)
+        length = int(dict(headers(got_head))["content-length"])
+        while len(body) < length:
+            data = upstream.recv(65536)
+            assert data, body
+            body += data
+        upstream.sendall(OK)
+        upstream.close()
+        answer = read_all(client)
+    return got_head, body, answer, records
+
+
+OUTSIDE_FIELDS = [
+    ("responses", _with("responses", previous_response_id="resp_1"), "previous_response_id"),
+    ("responses", _with("responses", conversation="conv_1"), "conversation"),
+    ("responses", _with("responses", prompt={"id": "pmpt_1"}), "prompt"),
+    ("responses", _user_part("responses", {"type": "input_file", "file_id": "file_1"}), "file_id"),
+    ("responses", _user_part("responses", {"type": "input_file", "file_url": "https://x.example/a.pdf"}), "file_url"),
+    ("responses", _user_part("responses", {"type": "input_image", "file_id": "file_1"}), "file_id"),
+    ("responses", _tools("responses", {"type": "file_search", "vector_store_ids": ["vs_1"]}), "tools.file_search"),
+    ("responses", _tools("responses", {"type": "mcp", "server_label": "x", "server_url": "https://x.example"}),
+     "tools.mcp"),
+    ("responses", _tools("responses", {"type": "web_search"}), "tools.web_search"),
+    ("chat", _with("chat", web_search_options={}), "web_search_options"),
+    ("chat", _user_part("chat", {"type": "file", "file": {"file_id": "file_1"}}), "file_id"),
+    ("chat", _tools("chat", {"type": "web_search"}), "tools.web_search"),
+    ("messages", _with("messages", mcp_servers=[{"type": "url", "url": "https://x.example", "name": "x"}]),
+     "mcp_servers"),
+    ("messages", _with("messages", container="container_1"), "container"),
+    ("messages", _user_part("messages", {"type": "document", "source": {"type": "file", "file_id": "file_1"}}),
+     "file_id"),
+    ("messages", _tools("messages", {"type": "web_search_20250305", "name": "web_search"}), "tools.web_search"),
+    ("gemini", _with("gemini", cachedContent="cachedContents/1"), "cached_content"),
+    ("gemini", _user_part("gemini", {"fileData": {"fileUri": "files/1", "mimeType": "text/plain"}}), "file_data"),
+    ("gemini", _tools("gemini", {"googleSearch": {}}), "tools.google_search"),
+    ("gemini", _user_part("gemini", {"functionResponse": {"name": "r", "response": {}, "parts": [
+        {"fileData": {"fileUri": "files/1", "mimeType": "text/plain"}}]}}), "file_data"),
+    ("responses", _tools("responses", {"name": "read"}), "tools.untyped"),
+    ("responses", _tools("responses", {"type": "function", "name": "x", "Type": "web_search"}), "tools.web_search"),
+    ("messages", _tools("messages", {"type": "custom", "name": "x", "Type": "web_search_20250305"}),
+     "tools.web_search"),
+]
+
+
+@pytest.mark.parametrize("route,body,field", OUTSIDE_FIELDS,
+                         ids=[f"{route}-{field}-{i}" for i, (route, _, field) in enumerate(OUTSIDE_FIELDS)])
+def test_a_model_call_whose_body_uses_a_field_outside_its_policy_is_refused_naming_it_and_sends_nothing_upstream(
+        route, body, field):
+    """Register E361: a model call's body is held to the provider's allowed operations as its path is. A body that
+    uses a field the policy does not opt in is refused 403, naming the field, recorded ``refused``, and nothing is
+    connected, so not one byte of it goes upstream."""
+    answer, seam, records = refused_call(model_call(route, json.dumps(body).encode()))
+    assert answer.startswith(b"HTTP/1.1 403 ") and b"X-AEW-Refusal: body_field_not_permitted" in answer
+    assert field.encode() in answer and b"containment.network.relay_body_fields.openai" in answer
+    assert seam.calls == []
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == relay.BODY_FIELD_NOT_PERMITTED
+    assert row["body_fields"] == [field] and row["upstream_headers_written"] is False
+
+
+@pytest.mark.parametrize("route", sorted(ROUTE_BODIES))
+def test_a_model_call_with_only_the_fields_of_the_call_itself_is_forwarded_as_it_was_sent(route):
+    """Each route's ordinary body, with a tool call's arguments and a function's parameters naming held keys (which
+    are the model's and the tool's, never the provider's), passes, and the upstream gets it byte for byte."""
+    body = json.dumps(ROUTE_BODIES[route]).encode()
+    head, rest, answer, _ = forwarded(model_call(route, body))
+    assert answer.endswith(b"ok") and rest == body and ("content-length", str(len(body))) in headers(head)
+
+
+@pytest.mark.parametrize("spelling", ["previousResponseId", "PREVIOUS_RESPONSE_ID", "previous-response-id"])
+def test_a_held_field_is_refused_in_any_spelling_an_upstream_might_read_as_it(spelling):
+    """An upstream's parser may take a key in another case, or in camel case (Google's takes both), so the relay
+    matches a held key without its case, ``_`` or ``-``."""
+    answer, seam, _ = refused_call(model_call("responses", json.dumps(_with("responses", **{spelling: "r"})).encode()))
+    assert b"X-AEW-Refusal: body_field_not_permitted" in answer and seam.calls == []
+    answer, seam, _ = refused_call(model_call("gemini", json.dumps(_with("gemini", cached_content="c")).encode()))
+    assert b"cached_content" in answer and seam.calls == []
+
+
+def test_a_field_the_adopted_policy_opts_in_for_the_provider_is_forwarded_and_no_other_is():
+    """``body_fields`` (the policy's ``relay_body_fields.<provider>``) opts in a field, and a tool by its type; one
+    opted in passes whole, and a body that also uses another is still refused, naming only that one."""
+    body = json.dumps(_tools("responses", {"type": "web_search"}) | {"previous_response_id": "r"}).encode()
+    _, rest, answer, _ = forwarded(model_call("responses", body),
+                                   body_fields=("previous_response_id", "tools.web_search"))
+    assert answer.endswith(b"ok") and rest == body
+    answer, seam, records = refused_call(model_call("responses", body), body_fields=("previous_response_id",))
+    assert b"X-AEW-Refusal: body_field_not_permitted" in answer and seam.calls == []
+    assert records[0]["body_fields"] == ["tools.web_search"]
+
+
+def test_a_request_cannot_opt_its_own_body_field_in():
+    """Only the policy the relay was started from opts a field in: a header, a query or the body itself naming the
+    policy's setting changes nothing."""
+    body = _with("responses", previous_response_id="r", relay_body_fields={"openai": ["previous_response_id"]})
+    for request in (
+            model_call("responses", json.dumps(body).encode(),
+                       extra_headers=b"X-AEW-Relay-Body-Fields: previous_response_id\r\n"),
+            model_call("responses", json.dumps(body).encode(),
+                       target="/v1/responses?relay_body_fields=previous_response_id")):
+        answer, seam, _ = refused_call(request)
+        assert b"X-AEW-Refusal: body_field_not_permitted" in answer and seam.calls == []
+
+
+def test_a_chunked_model_call_is_read_whole_held_to_its_scope_and_sent_framed_by_its_length():
+    """A chunked body is held to the same scope: refused with nothing connected when it uses a held field, and
+    otherwise sent as its data, framed by its length, with no chunked framing passed on."""
+    data = json.dumps(ROUTE_BODIES["responses"]).encode()
+    chunked = b"".join(f"{len(part):x}\r\n".encode() + part + b"\r\n"
+                       for part in (data[:100], data[100:])) + b"0\r\n\r\n"
+    head, rest, answer, _ = forwarded(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + chunked)
+    assert answer.endswith(b"ok") and rest == data
+    assert ("content-length", str(len(data))) in headers(head) and "transfer-encoding" not in dict(headers(head))
+    held = json.dumps(_with("responses", previous_response_id="r")).encode()
+    answer, seam, records = refused_call(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n"
+                                         + f"{len(held):x}\r\n".encode() + held + b"\r\n0\r\n\r\n")
+    assert b"X-AEW-Refusal: body_field_not_permitted" in answer and seam.calls == []
+    assert records[0]["body_fields"] == ["previous_response_id"]
+
+
+@pytest.mark.parametrize("body", [
+    b"{", b"[]", b'"text"', b'{"model": "m", "model": "n"}', b'{"max_tokens": NaN}', b"\xef\xbb\xbf{}",
+    b'{"model": "\xff"}', b"[" * 100_000, b"{} {}"],
+    ids=["truncated", "array", "string", "repeated-key", "nan", "bom", "not-utf8", "too-deep", "two-documents"])
+def test_a_model_call_body_the_relay_cannot_read_as_one_json_object_is_refused_and_sends_nothing(body):
+    """A body the relay cannot hold to its scope is refused 400 ``body_unreadable``, never sent on for an upstream to
+    read its own way: not one JSON object, not UTF-8, a key given twice (parsers differ on which they keep)."""
+    answer, seam, records = refused_call(model_call("responses", body))
+    assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: body_unreadable" in answer
+    assert seam.calls == [] and records[0]["outcome"] == "refused"
+
+
+def test_a_compressed_model_call_body_is_refused_and_an_empty_one_goes_as_it_came():
+    """A ``Content-Encoding`` the relay would have to undo to read the body is refused before it is read; an empty
+    body has no field to hold, and goes as it came (the provider answers it)."""
+    answer, seam, _ = refused_call(model_call("responses", b"\x1f\x8b", extra_headers=b"Content-Encoding: gzip\r\n"))
+    assert b"X-AEW-Refusal: body_unreadable" in answer and seam.calls == []
+    got, answer, _ = exchange(Seam(), MODEL_CALL + b"Content-Length: 0\r\n\r\n")
+    assert answer.endswith(b"ok") and ("content-length", "0") in headers(got.partition(b"\r\n\r\n")[0])
+
+
+def test_the_model_call_bodies_a_relay_holds_at_once_are_bounded_and_released():
+    """Register E361: reading model-call bodies whole costs memory, so the relay holds at most ``max_held`` bytes for
+    them at once. A body that would pass it beside the others is refused 503 ``relay_busy``, and one that would pass
+    it alone 413 ``request_too_large``, with nothing connected: by its ``Content-Length`` before it is read (before a
+    ``100 Continue``) and, chunked, at the chunk that would pass it. What a request held is released once its body has
+    gone upstream, before its response (#551's review, m5)."""
+    big = json.dumps({"model": "m", "input": "x" * 2000}).encode()
+    answer, seam, _ = refused_call(model_call("responses", big, extra_headers=b"Expect: 100-continue\r\n"),
+                                   max_held=1024)
+    assert answer.startswith(b"HTTP/1.1 413 ") and b"X-AEW-Refusal: request_too_large" in answer
+    assert b"100 Continue" not in answer and seam.calls == []
+    chunked = b"".join(f"{len(big[i:i + 500]):x}\r\n".encode() + big[i:i + 500] + b"\r\n"
+                       for i in range(0, len(big), 500)) + b"0\r\n\r\n"
+    seam = Seam()
+    with relayed(seam, max_held=1024) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Transfer-Encoding: chunked\r\n\r\n" + chunked)
+        answer = read_all(client)
+    assert b"X-AEW-Refusal: request_too_large" in answer and seam.calls == [] and service._held == 0
+    seam = Seam()
+    with relayed(seam, max_held=1000) as (service, client, _):
+        client.sendall(MODEL_CALL + b"Content-Length: 600\r\n\r\n{")  # held while its body arrives
+        deadline = time.monotonic() + TIMEOUT
+        while service._held < 600 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        second, served = socket.socketpair()
+        second.settimeout(TIMEOUT)
+        with closing(second):
+            thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+            thread.start()
+            second.sendall(model_call("responses", b"{" + b" " * 498 + b"}"))
+            busy = read_all(second)
+            thread.join(TIMEOUT)
+        assert busy.startswith(b"HTTP/1.1 503 ") and b"X-AEW-Refusal: relay_busy" in busy and seam.calls == []
+    small = json.dumps(ROUTE_BODIES["chat"]).encode()
+    seam = Seam()
+    with relayed(seam) as (service, client, _):
+        client.sendall(model_call("chat", small))
+        upstream = seam.upstream()
+        _, got = read_head(upstream)
+        while len(got) < len(small):
+            got += upstream.recv(65536)
+        deadline = time.monotonic() + TIMEOUT
+        while service._held and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert service._held == 0  # sent, its response not yet come
+        upstream.sendall(OK)
+        upstream.close()
+        read_all(client)
+    assert service._held == 0
+
+
+def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_parsed():
+    """#551's review, m3: parsing a body holds more than the body, most of all for many small values. The relay holds
+    its estimate (``relay._scan``) within ``max_held`` before it parses, so a body that is small but would parse
+    large is refused 413 with nothing connected, and the estimate is above what the scan and the parse hold. What the
+    scan alone holds is within what the relay holds before it starts (``relay._scan_hold``), whatever the body:
+    #551's quick check, q2 and q3. A compact object of many short unique keys whose values are each a new number
+    object, sized just past a dict's resize, the costliest shape per value measured (q1, q4), keeps a margin of a
+    tenth on the interpreter that runs it."""
+    import itertools
+    import string
+    import tracemalloc
+
+    dense = json.dumps({"model": "m", "input": [{}] * 2000}).encode()
+    answer, seam, _ = refused_call(model_call("responses", dense), max_held=64 * 1024)
+    assert b"X-AEW-Refusal: request_too_large" in answer and seam.calls == []
+    shapes = [dense, json.dumps({"input": [[]] * 5000}).encode(), json.dumps({"a": "x" * 50_000}).encode(),
+              json.dumps({"a": "\U0001F600" * 5000}, ensure_ascii=False).encode(),
+              json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode(),
+              json.dumps(["ab"] * 5000).encode().replace(b"[", b'{"a": [', 1) + b"}"]
+    names = ("".join(t) for k in (1, 2, 3, 4) for t in itertools.product(string.ascii_letters, repeat=k))
+    resized = 2 * 2 ** 19 // 3 + 1  # a dict of this many keys has just grown
+    compact = ("{" + ",".join(f'"{name}":-9' for name in itertools.islice(names, resized)) + "}").encode()
+    deep = b'{"a":' + b"[" * 200_000 + b"]" * 200_000 + b"}"
+    for body in [*shapes, compact, deep]:
+        held = bytearray(body)  # as the relay holds it, before the scan starts
+        tracemalloc.start()
+        cost, depth = relay._scan(held)
+        scanned = tracemalloc.get_traced_memory()[1]
+        if depth <= relay.MAX_NESTING:
+            relay._document(held)
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        assert scanned <= relay._scan_hold(len(held)), (body[:40], scanned, relay._scan_hold(len(held)))
+        assert peak * (1.1 if body is compact else 1) <= cost, (body[:40], peak, cost)
+
+
+def _reset_mid_body(request: bytes, **kw: Any) -> tuple[Seam, list[dict[str, Any]]]:
+    """``request`` sent over TCP, then the connection reset (an RST, not a close) before its body is whole."""
+    seam, records = Seam(), []
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+                            body_timeout=TIMEOUT, record=records.append, route="openai", **kw)
+    client, served = tcp_pair(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(request)
+        if "operations" in kw:
+            seam.upstream()  # a streamed body: its head has gone upstream
+        # A held body: the relay is reading its head or its body, and either way the request is not whole
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
+        client.close()
+        thread.join(TIMEOUT)
+    finally:
+        client.close()
+        service.close()
+        if seam.far is not None:
+            seam.far.close()
+    assert not thread.is_alive()
+    return seam, records
+
+
+def test_a_client_that_resets_its_connection_mid_body_is_recorded_refused_incomplete():
+    """#542's quick check, m6: a client that resets mid-body never sent the request whole, so its record is
+    ``refused`` (``incomplete``), not ``unknown``: for a streamed body whose head went upstream, and for a model
+    call's, which the relay was still reading, with nothing connected."""
+    seam, records = _reset_mid_body(STREAMED_CALL + b"Content-Length: 100\r\n\r\n" + b"x" * 10,
+                                    operations=STREAMED)
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "incomplete" and row["upstream_headers_written"] is True
+    seam, records = _reset_mid_body(MODEL_CALL + b"Content-Length: 100\r\n\r\n{")
+    [row] = records
+    assert row["outcome"] == "refused" and row["reason"] == "incomplete" and seam.calls == []
+
+
+def test_every_model_call_opencode_relays_passes_the_body_scope_with_its_ordinary_body():
+    """Each call of the relay-operations fixture (OpenCode's calls through the relay, by provider and route), with
+    its route's ordinary body (``ROUTE_BODIES``), is forwarded by a relay whose policy opts nothing in: the body scope
+    refuses none of OpenCode's real calls."""
+    fixture = json.loads((Path(__file__).parents[1] / "fixtures" / "opencode" / "relay-operations-2.2.6.json")
+                         .read_text(encoding="utf-8"))
+    routes = {"/responses": "responses", "/chat/completions": "chat", "/messages": "messages"}
+    for call in fixture["calls"]:
+        path = call["path"]
+        route = routes.get(path.partition("?")[0]) or ("gemini" if path.startswith("/models/") else None)
+        body = json.dumps(ROUTE_BODIES[route]).encode() if route else b""
+        request = (f"{call['method']} {call['base']}{path} HTTP/1.1\r\n".encode()
+                   + f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+        _, _, answer, records = forwarded(request, upstream=f"http://provider.example{call['base']}")
+        assert answer.endswith(b"ok"), (call, answer)
+        assert records[0]["outcome"] == "forwarded" and records[0]["operation"] == call["operation"], call
+
+
+def test_the_adopted_policy_opts_body_fields_in_per_provider_and_a_bad_entry_refuses_the_relays_start(
+        tmp_path, monkeypatch):
+    """``RunNetwork.start`` reads ``relay_body_fields.<provider>`` from the execution policy on the host, at the
+    relay's start: its own provider's entries alone. An entry the relay does not know refuses the start, typed, so a
+    misspelt one never opts nothing in silently; the execution policy takes the setting."""
+    import yaml
+
+    from aew.policy import execution
+
+    monkeypatch.setattr(netns, "listen", lambda _: None)
+    monkeypatch.setattr(ProviderRelay, "start", lambda self: self)
+    layout = SimpleNamespace(network=netns.PROXY_ONLY, net_dir=str(tmp_path / "net"))
+
+    def network(policy: dict[str, Any] | None) -> netns.RunNetwork:
+        return netns.RunNetwork.start(layout, provider="openai", provider_env=["OPENAI_API_KEY"], policy=policy,
+                                      env={"OPENAI_API_KEY": SECRET}, relay_needed=True)
+
+    opted = {"containment": {"network": {"relay_body_fields": {"openai": ["previous_response_id"],
+                                                                "anthropic": ["mcp_servers"]}}}}
+    widened, plain = network(opted), network(None)
+    try:
+        assert widened.relay is not None and widened.relay.opted == {"previous_response_id"}
+        assert plain.relay is not None and plain.relay.opted == frozenset()
+    finally:
+        widened.close()
+        plain.close()
+    with pytest.raises(netns.ContainmentUnavailable) as caught:
+        network({"containment": {"network": {"relay_body_fields": {"openai": ["previous_responseid"]}}}})
+    assert caught.value.details["reason"] == "bad_relay_body_field"
+    with pytest.raises(ValidationFailed):
+        ProviderRelay(Upstream(UPSTREAM), {}, body_fields=("tools.Web Search",))
+    data = yaml.safe_load(execution.TEMPLATE)
+    data.setdefault("containment", {}).setdefault("network", {})["relay_body_fields"] = {"openai": ["tools.mcp"]}
+    parsed = execution.parse(json.dumps(data).encode(), source="t")
+    assert parsed["containment"]["network"]["relay_body_fields"] == {"openai": ["tools.mcp"]}
+
+
+def _nested(depth: int) -> bytes:
+    """A Responses body nested ``depth`` levels deep, its top-level object the first, ``[`` and ``]`` in a string
+    besides (a string's brackets are not nesting)."""
+    inner = depth - 1
+    return b'{"model": "m[[[", "input": ' + b"[" * inner + b"]" * inner + b"}"
+
+
+def test_a_body_at_the_relays_nesting_bound_is_walked_and_one_past_it_refused_on_every_interpreter():
+    """#551's review, m4, and its CI at 04c50cce: the relay bounds a body's nesting itself (``relay.MAX_NESTING``),
+    before parsing it, so a deep body is answered the same on every interpreter, never by the parser's own recursion
+    limit (CPython 3.11's is about 1000 levels, 3.12's far deeper). A body at the bound is forwarded; one past it is
+    refused 400 ``body_unreadable``, naming the bound, with nothing connected; and the walk over a document at the
+    bound is iterative, so it holds under a recursion limit far below the bound."""
+    import sys
+    import traceback
+
+    at_bound = _nested(relay.MAX_NESTING)
+    assert relay._scan(at_bound)[1] == relay.MAX_NESTING
+    _, rest, answer, records = forwarded(model_call("responses", at_bound))
+    assert answer.endswith(b"ok") and rest == at_bound and records[0]["outcome"] == "forwarded"
+    for past in (_nested(relay.MAX_NESTING + 1), _nested(2000), _nested(20_000)):
+        answer, seam, records = refused_call(model_call("responses", past))
+        assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: body_unreadable" in answer
+        assert f"deeper than {relay.MAX_NESTING}".encode() in answer and seam.calls == []
+    document = json.loads(at_bound)
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(len(traceback.extract_stack()) + 30)  # far below the bound's depth
+    try:
+        found = relay.body_fields("/responses", document)
+    finally:
+        sys.setrecursionlimit(limit)
+    assert found == set()
+
+
+def test_a_policy_cannot_list_a_model_call_and_so_take_its_body_out_of_scope():
+    """#551's review, m6, and its quick check: a model call or the model list in ``relay_operations``, in any letter
+    case, and an entry whose path ends in ``/``, refuse the relay's start; and a model call is recognized as one
+    whatever the policy lists, so its body is always held to its scope."""
+    for entry in ("POST /responses", "POST /messages", "POST /models/g:generateContent", "GET /models",
+                  "POST /Responses", "POST /MODELS/g:GENERATECONTENT", "GET /Models", "POST /responses/",
+                  "POST /embeddings/"):
+        with pytest.raises(ValidationFailed) as caught:
+            ProviderRelay(Upstream(UPSTREAM), {}, operations=(entry,))
+        assert caught.value.details["reason"] == "bad_relay_operation"
+    assert relay._operation("POST", "/v1/responses", "/v1", {("POST", "/responses")}) == "model"

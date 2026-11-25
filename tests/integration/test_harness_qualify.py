@@ -78,7 +78,7 @@ def test_worker_plan_qualification_wires_the_fake_upstream_and_records_no_creden
         path = "/v1/responses" if mode == "refused" else url.path + "/responses"
         for _ in range(2):
             with closing(http.client.HTTPConnection(url.hostname, url.port, timeout=5)) as conn:
-                conn.request("POST", path, '{"input":"test","tools":[{"name":"read"}]}',
+                conn.request("POST", path, '{"input":"test","tools":[{"type":"function","name":"read"}]}',
                              {"Authorization": f"Bearer {sentinel}", "Content-Type": "application/json"})
                 answer = conn.getresponse()
                 body = answer.read()

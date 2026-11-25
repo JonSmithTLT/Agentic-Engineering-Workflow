@@ -4189,6 +4189,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E363/`, oldest first (`python tools/register.py show E363`).*
 
+### E364
+
+**Work:** One owner for the untrusted-JSON nesting bound: `util.JSON_MAX_DEPTH` with a linear `json_too_deep(text)`, beside `util.YAML_MAX_DEPTH` (a different fact), from which the Lead MCP server (`surface/mcp.py` `MAX_DEPTH`, #556), the provider relay (`relay.MAX_NESTING`, #551) and the Lead broker derive the bound. The broker's `lead_broker._serve_tool` decodes `lead.tool` `arguments` catching only `ValueError`, so a value nested past the decoder's limit reaches the bridge's catch-all as `BRIDGE_ERROR`, and one between the interpreters' limits is decoded on 3.12+: it gets the same pre-decode bound, answered `INVALID_ARGUMENTS`, with a test. The other untrusted-JSON readers that rely on the decoder's `RecursionError` are listed in #556's hand-off and are checked against the owner in the same pull request
+
+**Source:** #556's review, F2 and F3, and its quick check, F4 (2026-11-25); the F15.1 note `2026-11-24-fix-mcp-parse-depth.md`
+
+**When:** **Unscheduled**, after #551 and #556 merge; the operator places it
+
+**Notes:** Filed by #556
+
+*Later notes: `notes.d/E364/`, oldest first (`python tools/register.py show E364`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

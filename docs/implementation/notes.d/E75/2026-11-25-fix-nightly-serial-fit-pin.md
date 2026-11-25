@@ -1,4 +1,4 @@
-**The serial lane's fit pin is built (2026-11-25, branch `fix/nightly-serial-fit-pin`).** It is the pin this row's
+**The serial lane's fit pin is built (2026-11-25, #595).** It is the pin this row's
 note of 2026-10-29 called for (plan v6, G3a-r2 item 3). `tests/unit/test_repetition_fit.py`, in the fast lane, fails
 when a nightly session that runs in one process without `--shard` no longer fits the recorded time of its tests:
 the race-and-kill job's ten serial passes and its racing writers, and the crash job's iterations. It reads each budget

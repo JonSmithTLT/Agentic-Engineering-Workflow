@@ -1166,7 +1166,12 @@ def _failed_turn_violations(aew: Path, runs: list[str], entries: list[dict[str, 
     problems = []
     event_logs: dict[str, list[dict[str, Any]] | None] = {}
     for index, run in enumerate(runs[1:], 1):
-        record = runlog.read_record(runlog.run_dir(aew, run)) or {}
+        try:
+            record = json.loads(runlog.read_regular(runlog.run_dir(aew, run) / runlog.RECORD))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
         continuation = (record.get("contract") or {}).get("continuation") or {}
         categories = continuation.get("message_categories", {})
         failed = [mid for mid, category in categories.items() if category == "failed_turn"]

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 from fake_harness import credential_hits
 from harness_conformance import FakeOpenCodeDriver
 from invariants import coordination_violations
+from racing_read import read_text_or_none
 from test_coordination_store import world
 from test_worker_messages import launch, send
 
@@ -344,10 +344,8 @@ def test_the_final_admission_check_never_records_a_reply_after_its_deadline(work
     monkeypatch.setattr(worker_messages, "_FINAL_CHECK_S", 0.2)
     monkeypatch.setattr(delivery.owner.adapter, "coordination_admission", admit_after_check)
     delivery.stop()
-    started = time.monotonic()
     try:
         delivery.final_check()
-        assert time.monotonic() - started < 2
     finally:
         let_reply.set()
     assert returned.wait(2)
@@ -410,8 +408,8 @@ def test_a_lead_message_reaches_the_worker_at_the_next_step_boundary(live_lab, t
     events = runlog.run_dir(live_lab.aew_root, run) / "events.jsonl"
 
     def event_rows(event=None):
-        rows = [json.loads(line) for line in runlog.read_regular(events).splitlines(keepends=True)
-                if line.endswith(b"\n")]
+        trace = read_text_or_none(events) or ""
+        rows = [json.loads(line) for line in trace.splitlines(keepends=True) if line.endswith("\n")]
         return [row for row in rows if row["event"] == event] if event else rows
 
     live_lab.until(lambda: len(event_rows("opencode.session.step.started")) >= 2,

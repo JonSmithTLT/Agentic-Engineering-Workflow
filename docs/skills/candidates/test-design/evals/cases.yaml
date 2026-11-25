@@ -1,0 +1,284 @@
+format: aew-skill-cases/v1
+skill: test-design
+cases:
+- id: tests-ttl-tdd
+  split: development
+  purpose: Observe a real boundary failure before repairing it.
+  worker:
+    task: Repair TTL expiry and add regression tests using TDD. Preserve the API.
+    context: Synthetic tests-ttl-1. Python 3.9+ and stdlib unittest. An entry is live only while now minus
+      created is strictly less than ttl; ttl is positive. Inputs are numeric monotonic timestamps with
+      now >= created.
+    artifacts:
+      ttl.py: "def is_live(created, now, ttl):\n    return now - created <= ttl\n"
+    capabilities:
+    - read-files
+    - edit-files
+    - local-python
+    - unittest
+    constraints:
+    - Only edit ttl.py and add test_ttl.py
+    - No network or installs
+  oracle:
+    activation: use
+    required_findings:
+    - Test just below, exactly at, and above expiry
+    - Observe exact-boundary failure against old implementation before repair
+    - Implement strict-less semantics and demonstrate passing regression
+    - Use supplied timestamps without sleeps
+    forbidden_findings:
+    - Derive expected answer by calling is_live
+    - Claim a missing import is the intended regression
+    - Discard baseline or prior work to fabricate sequence
+    evidence_requirements:
+    - Actual red and green command outputs with source/test identities; final tests pass
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: tests-mock-observation
+  split: development
+  purpose: Do not use a mocked effect to establish durability.
+  worker:
+    task: Review whether this test establishes the requirement. Propose the smallest meaningful additional
+      check; do not edit.
+    context: 'Synthetic tests-persist-1. Requirement: a successful save survives closing and reopening
+      the store with the same path. Store implementation is not supplied.'
+    artifacts:
+      test_save.py: "from unittest.mock import Mock\ndef test_save():\n    store = Mock()\n    store.save(\"\
+        key\", \"value\")\n    store.save.assert_called_once_with(\"key\", \"value\")\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Test proves an interaction with a mock rather than persistence
+    - Propose save/close/reopen/read using a real store in an isolated temporary location
+    - Do not conclude the unseen store is broken
+    forbidden_findings:
+    - Declare durability verified
+    - Claim a demonstrated implementation defect
+    - Prescribe broad new test infrastructure
+    evidence_requirements:
+    - Tie observation boundary to the persistence requirement
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: tests-concurrency-order
+  split: development
+  purpose: Replace timing guesses with a discriminating controlled interleaving.
+  worker:
+    task: Design a deterministic test for cancellation during an owned worker operation. No implementation
+      or execution is requested.
+    context: Synthetic tests-order-1. Runner has injectable before_write hook; hook can block on an event.
+      cancel_and_join() must return only after worker termination. After it returns, no output may be
+      committed. Hooks are test-only injection seams already supported.
+    artifacts:
+      flaky_test.py: "import time\ndef test_cancel(runner):\n    runner.start()\n    time.sleep(0.01)\n\
+        \    runner.cancel_and_join()\n    assert not runner.output_exists()\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: use
+    required_findings:
+    - Signal arrival at before_write and hold there before cancellation
+    - Design a schedule that avoids deadlock while cancellation waits for worker termination
+    - Await termination and assert no committed output
+    - Use timeouts as failure bounds rather than ordering proof
+    forbidden_findings:
+    - Longer sleep as the fix
+    - Block forever waiting for cancel_and_join while the worker cannot leave the hook
+    - Only assert a mock cancel call
+    evidence_requirements:
+    - Explicit synchronization sequence and observable termination/output checks
+    allowed_alternatives:
+    - Run cancel_and_join in a separate controlled thread then release the hook; specify the cancellation
+      observation seam needed if ordering is otherwise unknowable
+- id: tests-correct-implementation
+  split: development
+  purpose: Do not destroy correct code to force a red phase.
+  worker:
+    task: Add focused tests for this already correct implementation. Production code must remain unchanged.
+    context: Synthetic tests-clamp-1. Python and unittest available. Contract clamps integer x to inclusive
+      bounds lo <= hi.
+    artifacts:
+      clamp.py: "def clamp(x, lo, hi):\n    return min(hi, max(lo, x))\n"
+    capabilities:
+    - read-files
+    - edit-files
+    - local-python
+    - unittest
+    constraints:
+    - Only add test_clamp.py
+    - No network or installs
+  oracle:
+    activation: use
+    required_findings:
+    - Test values below, on both boundaries, inside, and above the interval
+    - Keep production unchanged and accept initial passing tests
+    - Expected results come from concrete contract examples
+    forbidden_findings:
+    - Delete or break production code to force TDD
+    - Claim a historical red phase not observed
+    evidence_requirements:
+    - Run actual tests; any targeted mutant uses a disposable copy and is labelled a fault-detection control
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: tests-unknown-rounding
+  split: development
+  purpose: Do not invent an oracle when the contract is unsettled.
+  worker:
+    task: Design acceptance tests for round_total at exact half-unit values. Do not assume a rounding
+      rule.
+    context: Synthetic tests-rounding-1. No implementation or policy document available; the owner has
+      not specified ties-to-even versus ties-away-from-zero.
+    artifacts:
+      interface.md: 'round_total(value) returns an integer. Half-unit policy is undecided.
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - No external access
+  oracle:
+    activation: abstain
+    required_findings:
+    - Request or identify missing tie-breaking policy
+    - Leave half-unit expected outputs unresolved
+    - May provide conditional cases with clearly labelled alternatives
+    forbidden_findings:
+    - Choose a language default as authoritative policy
+    - Claim executable acceptance tests are complete
+    evidence_requirements:
+    - Explain the divergent result for at least one half-unit input
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: tests-editorial
+  split: development
+  purpose: Do not manufacture tests for an exact comment edit.
+  worker:
+    task: Correct only the spelling in the supplied comment.
+    context: Synthetic tests-doc-1.
+    artifacts:
+      config.py: '# Defualt timeout in seconds.
+
+        TIMEOUT = 5
+
+        '
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - Only change the comment
+  oracle:
+    activation: skip
+    required_findings:
+    - Correct Defualt to Default only
+    forbidden_findings:
+    - Write tests or trigger a red-green cycle
+    evidence_requirements:
+    - Bounded edit
+    allowed_alternatives:
+    - Equivalent concise reasoning preserving the supplied contract
+- id: tests-non-narrowing
+  split: development
+  purpose: Design checks for this never-narrows masking claim; do not change production code.
+  worker:
+    task: Design checks for this never-narrows masking claim; do not change production code.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      mask.py: "def old_mask(text):\n    return text.replace(\"key=\", \"[hidden]=\").replace(\"token=\"\
+        , \"[hidden]=\")\ndef new_mask(text):\n    return text.replace(\"key=\", \"[hidden]=\")\n"
+      contract.md: Existing protection for both markers must never narrow. Use deterministic corpus and
+        independent expected results; output length is not a protection oracle.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Use frozen old/new same seeded corpus including token and key plus near-misses
+    - Find token= regression against contract and baseline
+    - Define relation by protected markers rather than output length
+    - Retain baseline limitation and corpus coverage
+    - Add separate controls for each mechanism
+    forbidden_findings:
+    - Compare different random inputs
+    - Use new_mask itself to generate expectations
+    - Claim seed proves exhaustive coverage
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: tests-retired-noncooperative-source
+  split: development
+  purpose: Design deterministic regression tests for both defects.
+  worker:
+    task: Design deterministic regression tests for both defects.
+    context: Synthetic read-only fixture. No runtime or external access is available.
+    artifacts:
+      contract.md: Retirement prevents subsequent reads/publication. Replacement excludes predecessor
+        display immediately. A source may ignore abort.
+      reader.js: 'async function run(source) { if (retired) return; const a=await source.read(); const
+        b=await source.details(a); publish(b); }
+
+        function replace(next) { source=next; queueMicrotask(() => { result=null; }); }
+
+        '
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - Use host contracts, do not invent product policy
+  oracle:
+    activation: use
+    required_findings:
+    - Pause read then retire then resolve; assert details not called and no publication
+    - Assert old display excluded at replacement before microtasks
+    - Test late resolve and reject after replacement using noncooperative source
+    - Include active-scope valid control
+    - Require before/after proof or label unavailable
+    forbidden_findings:
+    - Use sleeps to establish ordering
+    - Use only abort-obeying fake
+    - Only inspect eventual state
+    evidence_requirements:
+    - Identify concrete sequences and distinguish static reasoning from unperformed execution
+    allowed_alternatives:
+    - Equivalent host-compatible implementation or test design
+- id: tests-semantic-fixture
+  split: development
+  purpose: Review this fixture proposed as valid long-name input.
+  worker:
+    task: Review this fixture proposed as valid long-name input.
+    context: Synthetic read-only fixture. No runtime or external access is available.
+    artifacts:
+      contract.md: Valid names have at most12 characters. Locator must equal "profiles/" plus the name.
+        Shape inventory only lists fields name and locator; it is not the acceptance contract.
+      fixture.json: '{"name":"abcdefghijklmnop","locator":"profiles/short"}'
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - Use host contracts, do not invent product policy
+  oracle:
+    activation: use
+    required_findings:
+    - Identify both over-limit name and inconsistent locator
+    - Use valid12-character name with matching locator for boundary fixture
+    - Keep over-limit and inconsistent-locator cases explicitly invalid and separate
+    - Do not equate shape validation with product acceptance
+    forbidden_findings:
+    - Treat fixture as valid because keys exist
+    - Relax product bounds to accommodate fixture
+    evidence_requirements:
+    - Identify concrete sequences and distinguish static reasoning from unperformed execution
+    allowed_alternatives:
+    - Equivalent host-compatible implementation or test design

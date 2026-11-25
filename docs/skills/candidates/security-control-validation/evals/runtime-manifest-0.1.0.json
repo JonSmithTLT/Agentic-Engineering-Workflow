@@ -1,0 +1,9 @@
+{
+  "skill": "security-control-validation",
+  "version": "0.1.0",
+  "sha256": {
+    "SKILL.md": "a3581fc8813727ea59b364a25e27cc598a20f14c071ed661b0e3a64d5b3df7ff",
+    "references/aew-validation.md": "f1dd8b9d1ddf99912443e97abb02ced1e85c1ad26db6e463f63a35a9224847ed",
+    "references/agent-trials.md": "896eadd8faabfd7a39d010ff40e5fca1e89b6e62aa0fb21b215e0b0919eb5a4d"
+  }
+}

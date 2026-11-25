@@ -1,0 +1,10 @@
+{
+  "skill": "test-design",
+  "version": "0.3.0",
+  "sha256": {
+    "SKILL.md": "83922d560d746b50077ae76ce5bddcff2f2a03eb6ced4f78e44b3c2f4922aab7",
+    "references/async-lifecycle.md": "5d54ab7b3318182ed48ec1830f32c77c5d82245055ccf9dc9cdc67a0960c200d",
+    "references/seeded-differentials.md": "ca532619ccdeed39fcc5d70659398826ccae71a2d77ef78a3389c89c53d7cdc3",
+    "references/tdd.md": "6b239dd2ffe635d2f0593b42da1a16291c4fd6e72049cdb2dfe5fc40192082e6"
+  }
+}

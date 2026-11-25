@@ -1,0 +1,180 @@
+format: aew-skill-cases/v1
+skill: mechanical-enumeration
+cases:
+- id: ME-01
+  split: development
+  purpose: Inventory values passed to emit in scanner.py. Resolve straight-line values; keep conditional
+    values explicit. Source reasoning only.
+  worker:
+    task: Inventory values passed to emit in scanner.py. Resolve straight-line values; keep conditional
+      values explicit. Source reasoning only.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      scanner.py: "def collect(flag, dynamic):\n    code = \"OLD\"\n    code: str = \"READY\"\n    emit(code)\n\
+        \    if flag:\n        code = \"FAIL\"\n    emit(code)\n    emit({\"code\": code})\n    emit(dynamic())\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - First emit is READY, not OLD
+    - Second and dict-value emits can carry READY or FAIL
+    - Dynamic return is unknown, not absent
+    - Report source positions and control-flow limits
+    forbidden_findings:
+    - Resolve every read to the last textual assignment FAIL
+    - Drop dict values or unknown call
+    - Claim runtime reproduction
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: ME-02
+  split: development
+  purpose: Assess this enforced inventory result; state whether completeness is established.
+  worker:
+    task: Assess this enforced inventory result; state whether completeness is established.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      results.json: '{"universe":["a.py","b.py","c.py"],"detector_A":{"members":["a.py:4"],"errors":["c.py
+        parse failed"]},"detector_B":{"members":["a.py:4"],"errors":["c.py parse failed"]},"implementation":"Both
+        detectors wrap the same parser and binding resolver; b.py contains an unsupported imported alias."}'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Mark c.py and b.py coverage unknown
+    - Agreement is not independent confirmation
+    - Require distinct detection/control for alias and parse failure
+    - Reject full completeness claim
+    forbidden_findings:
+    - Both returned one so all covered
+    - Drop errors from denominator
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: ME-03
+  split: development
+  purpose: Review this cross-parse join and registry gate. Propose discriminating controls.
+  worker:
+    task: Review this cross-parse join and registry gate. Propose discriminating controls.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      check.py: "import ast\ndef sites(source):\n    return {id(n) for n in ast.walk(ast.parse(source))\
+        \ if isinstance(n, ast.Call)}\ndef same(source):\n    return sites(source) == sites(source)\n\
+        STATIC = [(\"load\", \"read\"), (\"load\", \"read\")]\nRUNTIME = [(\"load\", \"read\"), (\"save\"\
+        , \"write\")]\nassert set(dict(STATIC)) <= set(dict(RUNTIME))\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Reject id across parses and propose stable identity with collision handling
+    - Find duplicate load before dict collapse and missing save
+    - Require equality in both directions and relevant values
+    - Plant valid, extra, missing and duplicate controls
+    forbidden_findings:
+    - Object id establishes source-site identity
+    - Subset proves model equality
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: ME-04
+  split: development
+  purpose: Review the inventory retry strategy and acceptance exception.
+  worker:
+    task: Review the inventory retry strategy and acceptance exception.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      method.md: Round 1 raw grep missed alias writes. Round 2 will rerun the same grep and append the
+        alias manually. Gate accepts every keyword argument as trusted provenance. Tests include only
+        one trusted positional and one trusted keyword input.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Strengthen search to cover aliases and keyword/dict writing positions
+    - Generate whole scope output instead of append-by-hand
+    - Add invalid keyword near-miss to accepting branch
+    - State unsupported binding forms as unknown
+    forbidden_findings:
+    - Treat positive keyword case as proof of provenance
+    - Require unrelated new tools solely because round number changed
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: ME-05
+  split: development
+  purpose: Locate the definition of build_label in this file. No complete inventory requested.
+  worker:
+    task: Locate the definition of build_label in this file. No complete inventory requested.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      labels.py: "def build_label():\n    return \"Label\"\n"
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: skip
+    required_findings:
+    - Give bounded definition locator
+    forbidden_findings:
+    - Demand two scanners or whole-repository inventory
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: ME-06
+  split: development
+  purpose: Assess whether the source-only scan proves no clause-start imperative reaches the rendered
+    output.
+  worker:
+    task: Assess whether the source-only scan proves no clause-start imperative reaches the rendered output.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      render.py: "def render(text):\n    return \"\\n- \" + text\n"
+      report.md: The source field contains "Remove stale entries". The source-only checker says it is
+        not at a clause start because a template prefix is assumed to precede it. Runtime rendering inserts
+        a newline and list marker.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Inspect final rendered boundary as well as source field
+    - Identify newline/list-marker changes to clause context
+    - Reject source-only complete claim
+    forbidden_findings:
+    - Treat source string check as final rendered proof
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required

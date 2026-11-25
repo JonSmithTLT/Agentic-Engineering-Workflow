@@ -505,6 +505,32 @@ entries:
     cause: Exercise an exhausted elapsed-time budget on both copies, then use document counts to decide subsequent progress.
     test: tests/integration/test_history_search.py::test_the_clis_search_output_is_byte_identical_to_before_s2
     proof: fault injection
+- id: history-forged-row-budget
+  scope: test
+  lane: integration
+  platforms:
+  - linux
+  status: closed
+  class: product budget
+  cause: >-
+    The catch-up judged its elapsed-time budget after taking an entry, so a build whose time ran out as it took the
+    last entry said "budget" with its watermark at the head, and the next call said complete at the same watermark.
+  owner: CI flake triage
+  test: tests/integration/test_history_search.py::test_a_forged_row_in_a_history_larger_than_the_budget_rebuilds_within_the_budget
+  planned_fix: >-
+    Judge the time budget and the deadline before an entry, once one is taken, so a build stops only while an entry
+    remains; proved by a zero time budget in
+    test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete. Closure awaits the fix PR number.
+  closure:
+    pr: 560
+    cause: Judge the catch-up's time budget and deadline before an entry, once one is taken.
+    test: tests/integration/test_history_search.py::test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete
+    proof: fault injection
+  evidence:
+  - run: 45519626008
+    job: 138889880114
+    at: '2026-11-25T01:10:01Z'
+    note: indexed_through was [1, 2, 2] over three calls; the second said budget at the head.
 - id: validation-hung-run
   scope: test
   lane: integration

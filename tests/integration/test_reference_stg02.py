@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 
 from aew import g3client as G3
 from aew.stg02 import adopted as A
@@ -49,7 +50,7 @@ def _tool_modules():
 
 
 C, K, KT, S, ST = _tool_modules()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 T0 = datetime(2026, 10, 19, 12, 0, 0, tzinfo=UTC)
 
 

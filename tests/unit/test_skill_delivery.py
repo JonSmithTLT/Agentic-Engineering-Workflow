@@ -1,6 +1,6 @@
 """Skills reach workers by their card's fit (register E127; the designer's rulings of 2026-11-03 §3 and 2026-11-04).
 
-AEW's own install ships six skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
+AEW's own install ships eight skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
 a run may reach. The supervisor copies what is exposed into the run's own folder, the projection lets the ``skill`` tool
 list exactly those, and the agent is told, from the plan, which to load. The record says what was offered, exposed,
 delivered and loaded. Nothing here runs a model: the live test is ``tests/live/test_skills_live.py``, on the VM.
@@ -27,8 +27,8 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-SIX = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "python-development",
-       "security-review"]
+EIGHT = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
+         "debugging-root-cause-analysis", "python-development", "security-review"]
 UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
 
@@ -60,8 +60,8 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 # ---------------------------------------------------------------------------------------------- the install
 
 
-def test_the_six_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
-    assert sorted(skills.shipped()) == SIX
+def test_the_eight_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
+    assert sorted(skills.shipped()) == EIGHT
     for name, entry in skills.entries().items():
         on_disk = {p.relative_to(SHIPPED / name).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                    for p in (SHIPPED / name).rglob("*") if p.is_file()}
@@ -85,23 +85,40 @@ def test_each_shipped_skill_names_itself_by_its_folder_states_its_version_and_sa
         assert description and re.search(r"\b(skip|not)\b", description.group(1), re.I), name
 
 
+# Code is not prose: a fenced block or an inline code span holds no link (E136: an example's
+# ``HANDLERS[path](record)``). A backtick fence's info string holds no backtick, so a line that opens with three
+# backticks and holds another is not a fence (CommonMark; E136's review, m2).
+CODE = re.compile(r"^ {0,3}(```(?![^\n]*`)|~~~).*?^ {0,3}\1[^\n]*$|`[^`\n]+`", re.M | re.S)
+INLINE = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
+
+
+def link_targets(text: str) -> list[str]:
+    """Every link a Markdown file's prose holds, inline or reference-style, raw (fragment and all); an inline ``](``
+    the pattern cannot read fails rather than being skipped."""
+    prose = CODE.sub("", text)
+    found = INLINE.findall(prose)
+    assert len(found) == prose.count("]("), "an inline link the pattern cannot read"
+    return found + DEFINITION.findall(prose)
+
+
 def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links_every_one():
     """The pointer rule (E142): a step moved to ``references/`` or ``examples/`` is read only through its link, so a
     broken link loses the step silently. ``specification.md``: each runtime resource has an explicit link from the
     entrypoint. Every link form is read: inline with a ``#fragment``, a ``"title"`` or ``<angle brackets>``, and a
     reference-style definition; an inline ``](`` the pattern cannot read fails rather than being skipped (E142's
-    review). A link to a fragment of the same file names no file and is left out."""
-    inline = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
-    definition = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
+    review). A link to a fragment of the same file names no file and is left out. Code holds no link
+    (:data:`CODE`).
+
+    Known limits, none met by a shipped file: an indented (four-space) code block is read as prose; a code span of
+    two or more backticks, or one that crosses a line, is not recognised; a fence of four or more backticks or tildes
+    closes at the first three; HTML anchors and ``<autolinks>`` are not read."""
     for name, entry in skills.entries().items():
         listed = set(entry["files"])
         linked_from_skill_md: set[str] = set()
         for rel in listed:
             here = PurePosixPath(rel).parent
-            text = (SHIPPED / name / rel).read_text(encoding="utf-8")
-            found = inline.findall(text)
-            assert len(found) == text.count("]("), (name, rel, "an inline link the pattern cannot read")
-            for raw in found + definition.findall(text):
+            for raw in link_targets((SHIPPED / name / rel).read_text(encoding="utf-8")):
                 target = raw.split("#", 1)[0]
                 if not target and raw.startswith("#"):
                     continue
@@ -111,6 +128,14 @@ def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links
                 if rel == skills.SKILL_FILE:
                     linked_from_skill_md.add(resolved)
         assert linked_from_skill_md == listed - {skills.SKILL_FILE}, name
+
+
+def test_a_line_opening_with_backticks_that_holds_another_is_no_fence_so_the_link_after_it_is_read():
+    """E136's review (m2): taken as a fence, the line would hide every link up to the next fence, so a broken link
+    after it would pass."""
+    planted = "```not`a fence\nSee [the step](references/missing.md).\n\n```\ncode\n```\n"
+    assert "references/missing.md" in link_targets(planted)
+    assert link_targets("```text\nSee [x](hidden.md).\n```\n") == []  # a real fence still hides its contents
 
 
 def test_the_package_data_ships_every_file_the_manifest_lists():
@@ -219,10 +244,47 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     cards = roles.builtin_cards()
     assert cards["code_reviewer"].meta["skills"] == ["adversarial-review"]
     assert cards["verifier"].meta["skills"] == ["acceptance-verification"]
-    assert cards["engineer"].meta["optional_skills"] == ["python-development", "c-development"]
+    assert cards["engineer"].meta["optional_skills"] == ["python-development", "c-development",
+                                                         "debugging-root-cause-analysis"]
     # code_reviewer is at 3: register E126 gave it the guide's three lines on test work, after the skills moved it to 2.
-    assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer")} == {
-        "code_reviewer": 3, "verifier": 2, "engineer": 2}
+    # engineer is at 3, and the four others at 2: E136's first batch added their optional skills.
+    assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer", "python_engineer",
+                                                  "c_engineer", "investigator", "planner")} == {
+        "code_reviewer": 3, "verifier": 2, "engineer": 3, "python_engineer": 2, "c_engineer": 2, "investigator": 2,
+        "planner": 2}
+
+
+# E136's first batch: the two candidates whose text is public in this repository, on the cards they fit, as
+# optional_skills only (a card's skills: loads in every run, so a foundational skill there waits for its cost measured).
+BATCH_1 = {
+    "investigator": ["codebase-investigation", "debugging-root-cause-analysis"],
+    "planner": ["codebase-investigation"],
+    "engineer": ["debugging-root-cause-analysis"],
+    "python_engineer": ["debugging-root-cause-analysis"],
+    "c_engineer": ["debugging-root-cause-analysis"],
+}
+
+
+@pytest.mark.parametrize("card, batch", sorted(BATCH_1.items()))
+def test_the_first_e136_batch_is_offered_on_its_cards_delivered_and_listed_never_requested(tmp_path, card, batch):
+    meta = roles.builtin_cards()[card].meta
+    assert not set(batch) & set(meta.get("skills") or [])
+    planned = skills.plan(meta.get("skills") or [], meta.get("optional_skills"))
+    assert set(batch) <= set(planned["offered"]) and set(batch) <= set(planned["exposed"])
+    assert (planned["unavailable"], planned["reasons"]) == ([], {})
+    delivered = skills.deliver(planned, tmp_path / "skills")
+    assert delivered["exposed"] == planned["exposed"]
+    assert skills.root_problems(tmp_path / "skills", delivered["exposed"]) == []
+    listed = next(line for line in lines(delivered) if line.startswith("- The `skill` tool lists "))
+    assert all(f"`{name}`" in listed for name in batch), listed
+
+
+def test_no_card_outside_the_first_e136_batch_is_offered_its_skills():
+    """Fit is per card and judged in review (E136): a card gains one of these only by a re-hash PR that names it."""
+    batch = {name for names in BATCH_1.values() for name in names}
+    for card in roles.builtin_cards().values():
+        named = set(card.meta.get("skills") or []) | set(card.meta.get("optional_skills") or [])
+        assert named & batch <= set(BATCH_1.get(card.id, [])), card.id
 
 
 # ---------------------------------------------------------------------------------------------- the copy
@@ -456,7 +518,7 @@ def test_the_pack_offers_optional_skills_conditionally_and_renders_nothing_from_
     before = card_lines(engineer)
     assert "Skills to load (how the work is done): none" in before
     assert ("Optional skills (load one only if the `skill` tool lists it and your task matches): python-development, "
-            "c-development") in before
+            "c-development, debugging-root-cause-analysis") in before
     monkeypatch.setattr(skills, "entries", lambda: {})
     monkeypatch.setattr(skills, "check", lambda name: (skills.NOT_SHIPPED, {}))
     assert card_lines(engineer) == before
@@ -464,7 +526,7 @@ def test_the_pack_offers_optional_skills_conditionally_and_renders_nothing_from_
 
 def test_a_card_without_optional_skills_renders_as_before():
     """A pinned card from before the field, or one whose optional names are all in ``skills:``: no new line."""
-    old = {k: v for k, v in roles.builtin_cards()["python_engineer"].meta.items()}
+    old = {k: v for k, v in roles.builtin_cards()["python_engineer"].meta.items() if k != "optional_skills"}
     both = {**old, "optional_skills": ["python-development"]}
     assert card_lines(old) == card_lines(both)
     assert not any(s.startswith("Optional skills") for s in card_lines(old))
@@ -558,7 +620,23 @@ def test_the_lead_is_told_to_staff_by_language_from_the_cards_and_the_install(mo
     for card in ("python_engineer", "c_engineer"):
         meta = roles.builtin_cards()[card].meta
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text
-    assert "Otherwise the default, `engineer`, whose run may load `python-development` or `c-development`" in text
+    assert ("Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its "
+            "task matches.") in text
+
+
+def test_the_staffing_line_names_what_every_implementer_card_offers_apart_from_the_language(monkeypatch):
+    """E136's review (m1): a skill every implementer card offers is not about the language, so the default's clause
+    names only what a language card requests, and one more sentence names the rest: the intersection of the
+    implementer cards' ``optional_skills``, derived, never restated."""
+    text = guide.staffing_text()
+    every = "Every implementer card's run may also load `debugging-root-cause-analysis` when its task matches."
+    assert text.endswith(every) and text.count("debugging-root-cause-analysis") == 1
+    cards = dict(roles.builtin_cards())
+    c = cards["c_engineer"]
+    cards["c_engineer"] = roles.Card(c.id, {**c.meta, "optional_skills": []}, c.source, c.path, c.sha256)
+    monkeypatch.setattr(roles, "builtin_cards", lambda: cards)
+    fewer = guide.staffing_text()
+    assert "Every implementer card" not in fewer and "debugging-root-cause-analysis" not in fewer
     monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
     fewer = guide.staffing_text()
     assert "c_engineer" not in fewer and "`c-development`" not in fewer
@@ -577,7 +655,8 @@ def test_role_list_shows_optional_skills_and_validate_names_unshipped_ones_witho
         "optional_skills: [c-development, not-yet]\n", encoding="utf-8")
     ops = Roles(K(), units=None)  # type: ignore[arg-type]
     listed = {c["id"]: c for c in ops.role_list()["cards"]}
-    assert listed["engineer"]["optional_skills"] == ["python-development", "c-development"]
+    assert listed["engineer"]["optional_skills"] == ["python-development", "c-development",
+                                                     "debugging-root-cause-analysis"]
     assert listed["mine"]["optional_skills"] == ["c-development", "not-yet"]
     whole = ops.role_validate()
     assert whole["ok"] is True and whole["optional_unshipped"] == {"mine": ["not-yet"]}

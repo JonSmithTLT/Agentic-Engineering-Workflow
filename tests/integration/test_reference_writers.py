@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import reference_render
 
 from aew import process_kind
 
@@ -46,14 +47,14 @@ def _tools():
 
 C, W, F, R, K, T = _tools()
 TABLE = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 
 
 def program(ctx=CTX):
     return F.Program.of({n: (s.tree, s.is_package) for n, s in ctx.sources().items() if s.tree is not None})
 
 
-PROGRAM = program()
+PROGRAM = F.program_of(CTX)
 ANALYSIS = W.analyse(PROGRAM, frozenset(W.TOP_LEVEL), R.roots_of(CTX, set(TABLE)), TABLE, R.cli_of(CTX, PROGRAM))
 
 

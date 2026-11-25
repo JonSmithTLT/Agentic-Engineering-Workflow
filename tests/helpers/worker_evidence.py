@@ -255,6 +255,8 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
             return None
         warning = reason == "warning"
         last = None
+        failures = []
+        matched = False
         for attempt in range(3 if warning else 1):
             if warning and (worker not in workers(root) or not proctree.same(worker.identity)):
                 return None
@@ -265,27 +267,42 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
                 break
             at = time.time()
             elapsed = time.monotonic() - worker.began
-            result = attach(worker.pid, timeout=remaining) if warning else attach(worker.pid)
+            result = attach(worker.pid, timeout=remaining, failures=failures) if warning else attach(worker.pid)
             # A stack straddling a test boundary has no trustworthy node label.
             if worker not in workers(root) or not proctree.same(worker.identity):
                 return None
             if result:
-                last = (at, elapsed, result)
                 # Nonblocking dumps may omit a live Python frame. Retry only
                 # this invocation inside the original shared pre-signal budget.
+                if warning and not FRAME.search(result[1]):
+                    failures.append(f"{result[0]}: dump has no Python frames")
+                    continue
+                last = (at, elapsed, result)
                 if not warning or test_frame(worker.node, result[1]):
+                    matched = True
                     break
-        if last is None:
-            if not warning:
-                return None
+                failures.append(f"{result[0]}: dump has no active test frame")
+        if warning and not matched:
             path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
+            message = f"evidence defect: py-spy unavailable for {worker.node}"
+            if last is not None:
+                path = path.with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
+                message = f"py-spy sampled support frames for {worker.node}"
             with contextlib.suppress(OSError):
                 if is_link(root):
                     return None
                 path.parent.mkdir(exist_ok=True)
                 if not is_link(path.parent):
-                    with path.open("x", encoding="utf-8") as stream:
-                        stream.write(f"evidence defect: py-spy unavailable for {worker.node}\n")
+                    try:
+                        output = path.open("x", encoding="utf-8")
+                    except FileExistsError:
+                        # An earlier timeout snapshot may already have recorded a failure for this PID.
+                        output = path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt").open(
+                            "x", encoding="utf-8")
+                    with output:
+                        attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
+                        output.write(f"{message}{attempts}\n")
+        if last is None:
             return None
         # Retain a support-only stack as evidence of what was actually running.
         # The normal checker still reports a missing live test frame.

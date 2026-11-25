@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 
 from aew.engine import hierarchy
 from aew.engine import transitions as T
@@ -45,7 +46,7 @@ def _tool_modules():
 
 
 C, M = _tool_modules()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 
 
 @cache

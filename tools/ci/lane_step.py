@@ -72,20 +72,35 @@ def note(directory: Path, name: str, text: str) -> None:
         pass
 
 
-def attach(pid: int, *, allow_sudo: bool = True, timeout: float = SPY_TIMEOUT_S) -> tuple[str, str] | None:
+def attach(pid: int, *, allow_sudo: bool = True, timeout: float = SPY_TIMEOUT_S,
+           failures: list[str] | None = None) -> tuple[str, str] | None:
     binary = shutil.which("py-spy")
     if binary is None:
+        if failures is not None:
+            failures.append("py-spy executable missing")
         return None
     hosted_linux = sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true"
     prefixes = [[], ["sudo", "-n"]] if allow_sudo and hosted_linux else [[]]
     until = time.monotonic() + min(SPY_TIMEOUT_S, timeout)
     for prefix in prefixes:
-        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+        via = "sudo -n" if prefix else "unelevated"
+        try:
             result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--full-filenames", "--pid", str(pid)],
                                     capture_output=True, text=True, timeout=max(0, until - time.monotonic()),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode == 0 and result.stdout.strip():
-                return ("sudo -n" if prefix else "unelevated"), result.stdout
+                return via, result.stdout
+            if failures is not None:
+                # py-spy can include the target's command line in diagnostics. Keep only its exit and OS error codes.
+                code = re.search(r"\bos error ([0-9]{1,10})\b", result.stderr or "")
+                outcome = f"exit {result.returncode}" if result.returncode else "empty dump"
+                failures.append(f"{via}: {outcome}" + (f" (os error {code[1]})" if code else ""))
+        except subprocess.TimeoutExpired:
+            if failures is not None:
+                failures.append(f"{via}: timed out")
+        except OSError as exc:
+            if failures is not None:
+                failures.append(f"{via}: launch error {exc.errno}")
     return None
 
 

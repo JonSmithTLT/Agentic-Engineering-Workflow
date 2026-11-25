@@ -22,6 +22,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import reference_render
 
 from aew import process_kind
 
@@ -41,7 +42,7 @@ def _tool_modules():
 
 C, E, T, M = _tool_modules()
 TABLE = dict(process_kind.ENTRY_POINTS)
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 
 
 def tree_sites(ctx=CTX):

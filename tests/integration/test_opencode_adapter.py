@@ -1123,7 +1123,8 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     ran = lab.record("R-INV-0001-1")["launch"]["skills"]  # one plan: what the run got is what config shows
     assert ran["copy"] in ("read_only_bind", "rules_only") and {k: v for k, v in ran.items() if k != "copy"} == shown[
         "skills"]
-    assert shown["skills"]["exposed"] == ["c-development", "python-development"] == sorted(
+    exposed = ["c-development", "debugging-root-cause-analysis", "python-development"]
+    assert shown["skills"]["exposed"] == exposed == sorted(
         p.name for p in (harness_dir(lab) / "skills").iterdir())
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
     assert shown["server_env"]["provider_variables"] == ["OPENAI_API_KEY"]

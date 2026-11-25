@@ -94,6 +94,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import faulthandler
+import gc
 import json
 import os
 import re
@@ -614,6 +615,14 @@ class Controller:
             _write(self.dir, AFTER_FINISH_SIGNAL_READY, _stamp("the Linux controller armed its stack request"))
         atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
+        # Nothing the session made is collected at exit: interpreter finalization runs full collections, and over a
+        # serial session's heap they outlasted the margin, so the sentinel ended sessions that had finished (the
+        # nightly's Linux reference shards, 2026-11-17 to 11-22: ``Garbage-collecting``, no Python frame; register
+        # E3). Frozen objects are skipped by every later collection; the process's memory goes back as it ends. Its
+        # limit: frozen cyclic garbage is never finalized, so its ``__del__`` and weakref callbacks never run. Nothing
+        # here flushes that way (coverage saves at ``atexit``, the lane report at sessionfinish); a writer that did
+        # would lose its tail (review of #553, n2).
+        gc.freeze()
 
     def since_deadline(self) -> str:
         """Where this moment sits against the deadline and the sentinel's: margin pressure shows before it bites."""

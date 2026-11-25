@@ -299,8 +299,10 @@ def _grouped(paths: dict[str, Any]) -> list[tuple[str, list[str]]]:
 def staffing_text() -> str:
     """Which implementer card to staff, so a language card's skills load (the designer's ruling of 2026-11-04, §6: the
     Lead had only the cards' ``use_when``). Derived, never a list here: from the built-in implementer cards whose
-    ``skills:`` AEW ships, each with its first ``use_when``, and the archetype's default card with the shipped skills
-    its run is offered (``optional_skills``). Empty when no card has a shipped skill."""
+    ``skills:`` AEW ships, each with its first ``use_when``; the archetype's default card with the shipped skills its
+    run is offered (``optional_skills``) that a language card requests; and the shipped skills every implementer card
+    offers (the intersection of their ``optional_skills``), which are not about the language (E136's review, m1). Empty
+    when no card has a shipped skill."""
     from aew import roles, skills
 
     shipped = skills.shipped()
@@ -311,12 +313,16 @@ def staffing_text() -> str:
         return ""
     picks = "; ".join(f"`{c.id}` when {c.meta['use_when'][0]}, so its run loads {', '.join(f'`{n}`' for n in names)}"
                       for c, names in loads)
+    by_language = {n for _, names in loads for n in names}
     default = roles.builtin_cards().get(roles.default_card("implementer") or "")
-    offered = [s for s in (default.meta.get("optional_skills") or []) if s in shipped] if default else []
+    offered = [s for s in (default.meta.get("optional_skills") or []) if s in by_language] if default else []
     rest = (f" Otherwise the default, `{default.id}`, whose run may load "
             f"{' or '.join(f'`{n}`' for n in offered)} when its task matches." if default and offered else "")
+    every = sorted(frozenset.intersection(*(frozenset(c.meta.get("optional_skills") or []) for c in cards)) & shipped)
+    also = (f" Every implementer card's run may also load {' or '.join(f'`{n}`' for n in every)} when its task "
+            "matches." if every else "")
     return ("Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each "
-            f"card's `use_when` and skills): {picks}.{rest}")
+            f"card's `use_when` and skills): {picks}.{rest}{also}")
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage], *,

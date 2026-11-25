@@ -227,18 +227,18 @@ starts:
     list (register E153), which share it
   contained_by: [src/aew/harness/supervisor.py::contain_launch]
   weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
-- site: src/aew/harness/check_changes.py::run_once
+- site: src/aew/harness/check_changes.py::run_copy
   call: establish
   classes: [contained]
-  reason: a check for `aew doctor --run-checks`, run once on a disposable copy, in a worker's sandbox (register E153)
-  contained_by: [src/aew/harness/check_changes.py::run_once]
-  weaker_registered_by: [src/aew/harness/check_changes.py::run_once]
-- site: src/aew/harness/check_changes.py::run_once
+  reason: a doctor check or the E243 selector runs once on a disposable copy in a worker's sandbox (E153, E243)
+  contained_by: [src/aew/harness/check_changes.py::run_copy]
+  weaker_registered_by: [src/aew/harness/check_changes.py::run_copy]
+- site: src/aew/harness/check_changes.py::run_copy
   call: run
   classes: [contained]
-  reason: that check, in the sandbox run_once establishes; nothing starts when it is not established
-  contained_by: [src/aew/harness/check_changes.py::run_once]
-  weaker_registered_by: [src/aew/harness/check_changes.py::run_once]
+  reason: the check or selector uses the sandbox run_copy establishes
+  contained_by: [src/aew/harness/check_changes.py::run_copy]
+  weaker_registered_by: [src/aew/harness/check_changes.py::run_copy]
 - site: src/aew/harness/model_list.py::read
   call: ProcessTree
   classes: [contained]
@@ -253,18 +253,18 @@ starts:
     CLI; the capability register's pinned, checked provider with a fixed argv (no configuration, fixed strings, no
     symlink followed), bounded and killed at its limit. It reads the workspace's files as data; nothing an agent wrote
     runs. The plan's residual is that it runs host-side
-- site: src/aew/policy/checks.py::run
+- site: src/aew/policy/checks.py::_run
   call: ProcessTree
   classes: [contained]
   reason: a check, in its caller's layout; under required one with no layout is refused before anything starts, and
     the tree requires one (DV-4's backstop)
   contained_by: [src/aew/engine/validation_ops.py::Validation.establish,
                  src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
-                 src/aew/harness/check_changes.py::run_once,
+                 src/aew/harness/check_changes.py::run_copy,
                  src/aew/harness/supervisor.py::contain_launch]
   weaker_registered_by: [src/aew/engine/validation_ops.py::Validation._execute,
                          src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
-                         src/aew/harness/check_changes.py::run_once,
+                         src/aew/harness/check_changes.py::run_copy,
                          src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/workspace/git.py::CatFileBatch.__enter__
   call: Popen
@@ -445,7 +445,7 @@ ast_only:
   call: run
   count: 1
   reason: '`C.run(`, as above'
-- site: src/aew/harness/check_changes.py::run_once
+- site: src/aew/harness/check_changes.py::run_copy
   call: run
   count: 1
   reason: '`C.run(`, as above'
@@ -481,21 +481,21 @@ handlers:
 - site: src/aew/engine/validation_ops.py::Validation._one_check
   catches: [ContainmentUnavailable]
   does: returns
-- site: src/aew/harness/check_changes.py::run_once
+- site: src/aew/harness/check_changes.py::run_copy
   catches: [ContainmentUnavailable]
   does: returns
-  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
-    spawn), and nothing runs after
-- site: src/aew/harness/check_changes.py::run_once
+  reason: the doctor check or selector records the refusal to start (no sandbox, no register entry, or refusal
+    at spawn)
+- site: src/aew/harness/check_changes.py::run_copy
   catches: [ContainmentUnavailable]
   does: returns
-  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
-    spawn), and nothing runs after
-- site: src/aew/harness/check_changes.py::run_once
+  reason: the doctor check or selector records the refusal to start (no sandbox, no register entry, or refusal
+    at spawn)
+- site: src/aew/harness/check_changes.py::run_copy
   catches: [ContainmentUnavailable]
   does: returns
-  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
-    spawn), and nothing runs after
+  reason: the doctor check or selector records the refusal to start (no sandbox, no register entry, or refusal
+    at spawn)
 - site: src/aew/harness/containment/__init__.py::establish
   catches: [ContainmentUnavailable]
   does: returns

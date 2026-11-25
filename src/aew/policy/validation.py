@@ -23,6 +23,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import math
 from typing import Any
 
 from aew.errors import ContainmentUnavailable
@@ -107,9 +108,14 @@ def custody_register_s(post: dict[str, Any]) -> int:
     return int(post.get("custody_register_s") or CUSTODY_REGISTER_S)
 
 
+def selector_allowance_s(selector: dict[str, Any] | None) -> int:
+    """The whole selector phase reserves its own budget, only for a declaration already verified at its pin."""
+    return math.ceil(selector.get("timeout_s", C.DEFAULT_TIMEOUT_S)) if selector is not None else 0
+
+
 def deadline_s(post: dict[str, Any], checks_policy: dict[str, Any]) -> int:
-    """The run's hard deadline: ``validation_deadline_s`` when policy sets it, otherwise the sum of the checks'
-    timeouts plus the orchestration allowance; capped either way."""
+    """The hard check budget: ``validation_deadline_s`` when set, otherwise the checks' timeouts plus orchestration.
+    Both forms are capped."""
     explicit = post.get("validation_deadline_s")
     if explicit:
         return min(int(explicit), DEADLINE_CAP_S)

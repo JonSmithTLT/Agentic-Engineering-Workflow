@@ -46,7 +46,7 @@ ROUTES = {
         "test_under_allow_weaker_the_general_command_runs_labelled_with_its_label_and_a_live_entry",
     "src/aew/harness/opencode/lead.py::ContainedLead.__call__":
         "tests/unit/test_lead_contained.py::test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_runs",
-    "src/aew/harness/check_changes.py::run_once":
+    "src/aew/harness/check_changes.py::run_copy":
         "tests/unit/test_doctor_check_register.py::"
         "test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker",
     # A run's supervisor and doctor's read of the model list share it (register E153). `model_list.read` is not an owner

@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path, PureWindowsPath
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from aew.engine import faults
@@ -24,6 +25,7 @@ from aew.workspace import git
 
 BUILTIN = {"guardrails"}
 DEFAULT_TIMEOUT_S = 900
+SELECTION_FILE = "{selection_file}"
 PYTEST_CACHES = ("__pycache__/", "*.pyc", ".pytest_cache/")
 _CACHE_PROBES = (b"x", b"a/b", b"a/b.py", b"a/b.txt")
 
@@ -248,8 +250,31 @@ def allowlist_env(layout: Any) -> dict[str, str]:
     return env
 
 
+def takes_selection(cfg: dict[str, Any]) -> bool:
+    return any(SELECTION_FILE in part for part in cfg.get("command") or ())
+
+
 def run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, env: dict[str, str] | None = None,
-        layout: Any = None, trees: Any = None) -> dict[str, Any]:
+        layout: Any = None, trees: Any = None, paths_file: Path | None = None, selection_out: Path | None = None,
+        selected: list[str] | None = None) -> dict[str, Any]:
+    """Substitute the declared file channels. A check without known selection gets the project's full-scope marker."""
+    files = {name: path for name, path in (("{changed_paths_file}", paths_file), ("{selection_out}", selection_out))
+             if path is not None}
+    if not takes_selection(cfg):
+        return _run(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees, files=files)
+    # The layout's cache lives under the run's own writable scratch bind (containment.layout.for_run).
+    cache = getattr(layout, "env", {}).get("XDG_CACHE_HOME")
+    with TemporaryDirectory(prefix="selection-", dir=Path(cache).parent if cache else None,
+                            ignore_cleanup_errors=True) as directory:
+        path = Path(directory) / "items.txt"
+        path.write_text("".join(f"{item}\n" for item in (selected if selected is not None else ["*"])),
+                        encoding="utf-8", newline="\n")
+        return _run(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees,
+                    files={**files, SELECTION_FILE: path})
+
+
+def _run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, env: dict[str, str] | None,
+         layout: Any, trees: Any, files: dict[str, Path]) -> dict[str, Any]:
     """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
     after-snapshot describes everything the check did (independent audit I2). With ``layout`` (a contained run's
     sandbox) the tree starts the check inside it (M4-B), with no network unless the check's ``network: shared`` and the
@@ -266,6 +291,8 @@ def run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, 
     from aew.harness.procs import ProcessTree
 
     command = [part.replace("{python}", sys.executable) for part in cfg["command"]]
+    for name, path in files.items():
+        command = [part.replace(name, str(path)) for part in command]
     cwd = (workspace / cfg.get("cwd", ".")).resolve()
     timeout = cfg.get("timeout_s", DEFAULT_TIMEOUT_S)
     started = time.monotonic()
@@ -282,10 +309,12 @@ def run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, 
     faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
     exit_code: int | None = None
     outcome, spawn_errno = "ran", None
+    # A selector's diagnostics are independent of its UTF-8 selection file.
+    decoding: dict[str, Any] = {"errors": "replace"} if "{selection_out}" in files else {}
     try:
         try:
             proc = tree.spawn(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              stdin=subprocess.DEVNULL, env=env, text=True)
+                              stdin=subprocess.DEVNULL, env=env, text=True, **decoding)
         except OSError as exc:
             outcome, spawn_errno = "spawn_failed", exc.errno
             log = f"$ {' '.join(command)}\nfailed to start: {exc}"

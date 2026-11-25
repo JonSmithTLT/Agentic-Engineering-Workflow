@@ -89,7 +89,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
                    help="read the harness's model list again instead of the cached one")
     p.add_argument("--run-checks", action="store_true",
                    help="run the project's checks once on a disposable copy of the project, contained as a worker's "
-                        "check, and name each path they change")
+                        "check, name each path they change, and probe the adopted affected-test selector")
     p.set_defaults(handler=_doctor)
 
     p = sub.add_parser("init", help="initialize AEW in the current git repository")

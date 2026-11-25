@@ -1231,6 +1231,15 @@ None.
 - `aew.engine.base`
 - `aew.errors`
 
+### `aew.engine.selection`
+
+- `aew.errors`
+- `aew.harness.check_changes`
+- `aew.harness.procs`
+- `aew.policy.checks`
+- `aew.schemas`
+- `aew.util`
+
 ### `aew.engine.stage_intents`
 
 - `aew.engine.approval`
@@ -1321,6 +1330,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
 - `aew.engine.scope_ops`
+- `aew.engine.selection`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.containment`
@@ -1440,6 +1450,8 @@ None.
 
 ### `aew.harness.check_changes`
 
+- `aew.engine.coverage`
+- `aew.engine.selection`
 - `aew.errors`
 - `aew.harness.containment`
 - `aew.harness.procs`

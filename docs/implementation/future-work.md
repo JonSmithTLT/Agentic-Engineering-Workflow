@@ -2763,11 +2763,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E243
 
-**Work:** A project-owned source for E120's two lists, the affected tests and the CI tools another project runs: no generic source exists, so E120's record says "not known" with a reason for both. The input contract is the designer's, and AEW's own CI selector is the first case (one selector, 2026-10-24). AEW's search of CI files may propose a starting list the project confirms and adjusts, but it's a proposal and never proof. Doctor's first and third warnings need the same source: they wait for it or say "not known", never silent
+**Work:** A project-owned source for E120's two lists, the affected tests and the CI tools another project runs. At filing, E120's record could only say "not known" with a reason for both. The input contract is the designer's, and AEW's own CI selector is the first case (one selector, 2026-10-24). AEW's search of CI files may propose a starting list the project confirms and adjusts, but it's a proposal and never proof. Doctor's first and third warnings need the same source: they wait for it or say "not known", never silent
 
 **Source:** The Lead's answer to E120's builder, 2026-11-09, with the designer's check; the operator's framing, 2026-11-09: "the user would have to procvide it and/or adjust what the search finds"
 
-**When:** **Unscheduled**, placed by the operator inside SYS-19's finish line, 2026-11-11: "yup if it knows it tehn yes statre it". The designer's input contract holds it to about 2 PRs to first use; PR 1 briefed, fixes in progress
+**When:** **Unscheduled**, placed by the operator inside SYS-19's finish line, 2026-11-11: "yup if it knows it tehn yes statre it". Both slices of that input contract landed and E120 is closed. The Notes cell records E120's original partial delivery. The later E243 notes track the work that remains unscheduled.
 
 **Notes:** Filed by the week's register PR. E120 is a partial delivery of the operator's decision of 2026-10-30 and must not read as closed: it says AEW couldn't look, not what was missed
 
@@ -4867,7 +4867,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-25
 
-**By:** #397 (`e1941dbe`) and #408 (`c363e59c`) return bounded failure diagnostics and show undelivered skills. #416 (`8a3810b6`) adds the shared coverage record. E243 supplies the adopted project inventories through #570 (`35f05077`). The closeout note records the checks and the operator's first use.
+**By:** #397 (`e1941dbe`) and #408 (`c363e59c`) return bounded failure diagnostics and show undelivered skills. #416 (`8a3810b6`) adds the shared coverage record. E243 supplies the adopted project inventories through #570 (`35f05077`). The closeout note records the checks and the instructions for the operator's first use.
 
 *Later notes: `notes.d/E120/`, oldest first (`python tools/register.py show E120`).*
 

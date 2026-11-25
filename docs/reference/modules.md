@@ -1666,6 +1666,7 @@ None.
 - `aew.surface.context`
 - `aew.surface.contract`
 - `aew.surface.errors`
+- `aew.surface.lead_text`
 - `aew.surface.run`
 - `aew.surface.validate`
 - `aew.util`
@@ -2447,6 +2448,7 @@ None.
 ### `aew.surface.contract`
 
 - `aew.coordination.layout`
+- `aew.knowledge.evidence`
 - `aew.priority_levels`
 - `aew.surface.context`
 - `aew.surface.presentation`
@@ -2458,6 +2460,7 @@ None.
 ### `aew.surface.lead_text`
 
 - `aew.engine.guide`
+- `aew.knowledge.evidence`
 - `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
@@ -2537,6 +2540,7 @@ None.
 - `aew.engine.stage_intents`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.surface.availability`
 - `aew.surface.classify`
 - `aew.surface.contract`

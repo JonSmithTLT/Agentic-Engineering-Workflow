@@ -50,6 +50,7 @@ from aew.engine import stage_intents as SI
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import COVERED_BY_PREVIOUS, spec_for
 from aew.harness.contract import redact
+from aew.knowledge import evidence as E
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, effective_class
@@ -663,6 +664,26 @@ def add_scope(c: Call) -> dict[str, Any]:
     return out
 
 
+def assess_plan(c: Call) -> dict[str, Any]:
+    """The ``resolve`` tool for a unit's accepted plan, subject ``<W>#plan`` (register E160 slice 2b): it dispatches an
+    independent assessor of the plan (``plan.assess``) and launches its run in the same commit (``dispatch.launch``),
+    the run's supervisor taking the credential. One transaction, so no stage intent (like a disposition)."""
+    a = c.a
+    work_id, item, rest = a["subject"].partition(E.PLAN_ITEM)
+    if not item or rest or not work_id:
+        raise errors.UsageError(f"resolve: the assess_plan choice takes the subject `<W>{E.PLAN_ITEM}`, the unit whose "
+                                f"accepted plan is assessed; {a['subject']!r} is not one", reason="plan_subject",
+                                subject=a["subject"])
+    out = c.engine.plan_assess(token=c.token(), work_id=work_id, launch=True,
+                               reason=a["rationale"])
+    c.subject = work_id
+    # Recorded before the launch, so a launch that fails after the commit still reports what committed (#586 review,
+    # m2): its run is recorded, and the error's `committed` says so.
+    c.committed("plan.assess", out, f"{out['invocation']} ({out['role_card']}) dispatched to assess {work_id}'s plan "
+                f"v{out['plan_revision']['revision']}", [out["invocation"]])
+    return c.engine.launch_dispatched(out)
+
+
 def resolve_stage(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a stage: the current Lead's explicit continue or abandon (rule 8).
 
@@ -684,6 +705,8 @@ def resolve_stage(c: Call) -> dict[str, Any]:
         return replace_gate(c)
     if a["choice"] in contract.SCOPE_CHOICES:
         return add_scope(c)
+    if a["choice"] in contract.PLAN_CHOICES:
+        return assess_plan(c)
     sid = a["subject"]
     si = c.engine.stage_intent(sid)
     c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])

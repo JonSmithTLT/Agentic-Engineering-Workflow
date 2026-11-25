@@ -7,14 +7,16 @@ with the Lead credential."""
 
 from __future__ import annotations
 
+import json
 import shlex
+import sys
 from pathlib import Path
 
 import printed_commands as P
 import pytest
 from aewflow import Role, create_planned_ticket, create_unit, implement, plan_unit, sample_project
 from conftest import run_aew
-from fake_harness import HarnessLab
+from fake_harness import AGENT, HarnessLab
 from invariants import assert_control_invariants
 
 from aew.engine import gate_ops
@@ -230,34 +232,100 @@ def test_after_an_assessors_run_the_printed_step_ends_it_and_the_assessment_stil
     assert_control_invariants(p)
 
 
-def test_an_assessor_of_a_replaced_revision_is_dispatched_again_by_following_the_refusal(lab, tmp_path):
-    """#581 review, F4: `plan_revision_changed` prints the dispatch of a new assessor, which assesses the new one."""
-    p = lab.project
+def in_lead_session(lab, tmp_path, name, steps):
+    """Run ``steps`` as a Lead session's model would, through its own shell (`aew lead session`), and return the
+    transcript: what each command answered."""
+    script, transcript = tmp_path / f"{name}.json", tmp_path / f"{name}.jsonl"
+    script.write_text(json.dumps(steps), encoding="utf-8")
+    res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
+                  "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    return [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+
+
+def typed_step(p, command, arguments):
+    """A Lead session's model running a printed typed call, ``arguments`` on stdin with its last result's revision."""
+    head, _ = P.split(command, False)
+    return {"do": "aew", "args": shlex.split(head)[1:], "stdin": json.dumps(arguments)}
+
+
+def answered(entry):
+    return json.loads(entry["result"]["stdout"])
+
+
+@pytest.fixture
+def lead_lab(tmp_path):
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, lead_session=True)
+    yield lab
+    lab.cleanup()
+
+
+def test_an_assessor_of_a_replaced_revision_is_dispatched_again_from_a_lead_session_as_the_refusal_says(
+        lead_lab, tmp_path):
+    """#586 review, m1: `plan_revision_changed` names the Lead's typed dispatch and its arguments, which a Lead
+    session runs as printed; the new assessor assesses the revision now accepted."""
+    lab, p = lead_lab, lead_lab.project
     wid = create_planned_ticket(p, tmp_path)
     role, _ = assess(p, wid)
     plan_unit(p, tmp_path, wid, "A revised plan.\n", reason="revised")
     res = role.submit(E.PLAN_ASSESSMENT, assessment(), expect_ok=False)
+    error = res.error
+    assert error["details"]["reason"] == "plan_revision_changed"
     lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
-    again = follow(p, *printed(res.error["message"], "plan assess"), env=lab.env)
-    assert again["plan_revision"]["revision"] == 2
-    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+    command, _ = printed(error["message"], "lead tool")
+    [entry] = in_lead_session(lab, tmp_path, "again", [typed_step(p, command, error["details"]["arguments"])])
+    out = answered(entry)
+    assert out["ok"], out["stopped"]
+    assert out["result"]["plan_revision"]["revision"] == 2
+    assert lab.wait(out["result"]["launch"]["run"])["status"] == "ended_with_evidence"
 
 
-def test_an_assessor_whose_pack_drifted_is_dispatched_again_by_following_its_commands(lab, tmp_path):
-    """#581 review, F4: `redispatch_commands` for an assessor, followed as printed: cancel, then a new assessor."""
-    p = lab.project
+def test_an_assessor_whose_pack_drifted_is_dispatched_again_from_a_lead_session_by_its_commands(lead_lab, tmp_path):
+    """#586 review, m1: the commands that re-dispatch an assessor, followed as printed from a Lead session: the
+    cancellation through its shell, then the typed dispatch with the entry's arguments."""
+    lab, p = lead_lab, lead_lab.project
     wid = create_planned_ticket(p, tmp_path)
     _, out = assess(p, wid)
     current = Engine.discover(p.root)._k.store.current()  # the state the commands are printed from
-    inv = current["invocations"][out["invocation"]]
-    cancel, dispatch = gate_ops.redispatch_commands(current, out["invocation"], inv)
-    follow(p, cancel, False, env=lab.env, stdin="reason: its pack drifted\n")
-    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
-    again = follow(p, dispatch, False, env=lab.env)
+    entry = gate_ops.redispatch_entry(current, out["invocation"], current["invocations"][out["invocation"]],
+                                      "its pack drifted")
+    cancel, dispatch = entry["commands"]
+    assert "operator" not in entry  # the built-in card: the typed route dispatches it
+    head, _ = P.split(cancel, False)
+    args = shlex.split(head.replace("<revision from aew status>", str(p.rev())))[1:]
+    [cancelled] = in_lead_session(lab, tmp_path, "cancel", [
+        {"do": "aew", "args": args, "stdin": "".join(f"{k}: {v}\n" for k, v in entry["fields"].items())}])
+    assert cancelled["result"]["exit"] == 0, cancelled
     assert p.ok("invoke", "show", out["invocation"])["status"] == "cancelled"
-    assert again["role_card"] == E.ASSESSOR_CARD and again["scope"] == E.ASSESSMENT_SCOPE
-    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    [again] = in_lead_session(lab, tmp_path, "dispatch", [typed_step(p, dispatch, entry["arguments"])])
+    result = answered(again)["result"]
+    assert result["role_card"] == E.ASSESSOR_CARD and result["scope"] == E.ASSESSMENT_SCOPE
+    assert lab.wait(result["launch"]["run"])["status"] == "ended_with_evidence"
     assert_control_invariants(p)
+
+
+def test_an_assessor_of_another_card_is_dispatched_again_by_the_operator(lab, tmp_path):
+    """#586 review, m1: the typed route takes no card, so the entry says the operator runs the `--card` form, and that
+    form runs as printed at the operator's own terminal."""
+    from aew import roles
+
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    built_in = (Path(roles.__file__).parent / "cards" / f"{E.ASSESSOR_CARD}.yaml").read_text(encoding="utf-8")
+    catalog = p.root / ".aew" / "roles"
+    catalog.mkdir(parents=True, exist_ok=True)
+    (catalog / "custom_assessor.yaml").write_text(
+        built_in.replace(f"role: {E.ASSESSOR_CARD}", "role: custom_assessor"), encoding="utf-8")
+    _, out = assess(p, wid, "--card", "custom_assessor")
+    current = Engine.discover(p.root)._k.store.current()
+    entry = gate_ops.redispatch_entry(current, out["invocation"], current["invocations"][out["invocation"]], "drift")
+    [operator_form] = P.commands(entry["operator"])
+    p.lead("invoke", "cancel", out["invocation"], "--reason", "drift")
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    again = follow(p, *operator_form, env=lab.env)
+    assert again["role_card"] == "custom_assessor"
+    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
 
 
 def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_assessment(tmp_path):
@@ -279,3 +347,217 @@ def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_
     me = reviewer.ok("whoami")
     assert "submit.review" in me["operations"] and f"submit.{E.PLAN_ASSESSMENT}" not in me["operations"]
     assert me["expected_kinds"] == ["review"]
+
+
+def resolve_assess(p, env, subject, rationale="the plan rests on code I have not read"):
+    """The Lead's typed route (E160 slice 2b): `resolve`, choice `assess_plan`, through `aew lead tool`."""
+    arguments = {"subject": subject, "choice": "assess_plan", "rationale": rationale}
+    return run_aew("-C", str(p.root), "lead", "tool", "resolve", "--arguments", "-", input=json.dumps(arguments),
+                   env={**env, "AEW_LEAD_TOKEN": p.token})
+
+
+def test_the_leads_typed_route_dispatches_and_launches_an_assessor_of_the_accepted_plan(lab, tmp_path):
+    """`resolve` with `assess_plan` on `<W>#plan` dispatches through the `plan.assess` entrypoint with the typed
+    channel's provenance and launches the run in the same commit; the run's supervisor holds the credential, so the
+    result carries none. The same refusals hold: a second assessor of a revision that is assessed is refused."""
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    res = resolve_assess(p, lab.env, f"{wid}{E.PLAN_ITEM}")
+    assert res.returncode == 0, res.stderr or res.stdout
+    out = res.json
+    assert out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["plan.assess"]
+    assert "aew1." not in res.stdout  # no credential reaches the Lead
+    inv = p.ok("work", "show", wid)["control"]["invocations"][-1]
+    shown = p.ok("invoke", "show", inv)
+    assert shown["scope"] == E.ASSESSMENT_SCOPE and shown["dispatch"]["entrypoint"] == "plan.assess"
+    run = shown["runs"][-1]["run"]
+    assert shown["runs"][-1]["dispatch"]["covered_by"] == "plan.assess"
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    # The call's rationale is the dispatch's recorded reason (#586 review, m3).
+    [entry] = [t for t in Engine.discover(p.root).history_log(since=0)["transitions"] if t["op"] == "plan.assess"]
+    assert entry["reason"] == "the plan rests on code I have not read"
+    again = resolve_assess(p, lab.env, f"{wid}{E.PLAN_ITEM}")
+    assert again.returncode != 0 and again.json["stopped"]["error"]["details"]["reason"] == "plan_revision_assessed"
+    assert_control_invariants(p)
+
+
+def test_the_typed_route_takes_only_a_plan_subject(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    rev = p.rev()
+    for subject in (wid, f"{wid}#plan:1", "#plan"):
+        res = resolve_assess(p, {}, subject)
+        assert res.returncode != 0 and res.json["stopped"]["error"]["details"]["reason"] == "plan_subject", subject
+    assert p.rev() == rev
+
+
+def test_a_lead_session_assesses_a_plan_through_resolve_and_never_through_its_shell(tmp_path):
+    """E160 slice 2b, in a real Lead session: the typed `resolve` call over the `aew-lead` MCP transport dispatches the
+    assessor with the session's channel, while the same command relayed from the session's shell is refused (TYPED_ONLY)
+    and changes nothing."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, lead_session=True)
+    try:
+        p = lab.project
+        wid = create_planned_ticket(p, tmp_path)
+        lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+        probe = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
+        script, transcript = tmp_path / "mcp.json", tmp_path / "mcp.jsonl"
+        script.write_text(json.dumps([
+            {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
+            {"call": "status", "arguments": {}},
+            {"call": "resolve", "arguments": {"subject": f"{wid}{E.PLAN_ITEM}",
+                                              "choice": "assess_plan", "rationale": "the plan rests on unread code"}},
+        ]), encoding="utf-8")
+        res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
+                      "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": p.token}, timeout=600)
+        assert res.returncode == 0, res.stderr
+        steps = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+        result = steps[3]["reply"]["result"]["structuredContent"]
+        assert result["ok"], result["stopped"]
+        inv = p.ok("invoke", "show", result["result"]["invocation"])
+        assert inv["dispatch"]["entrypoint"] == "plan.assess" and inv["dispatch"]["channel"] == "lead_mcp"
+        assert lab.wait(inv["runs"][-1]["run"])["status"] == "ended_with_evidence"
+        rev = p.rev()
+        shell = tmp_path / "shell.json"
+        shell.write_text(json.dumps([{"do": "lead", "args": ["plan", "assess", wid, "--launch"]}]), encoding="utf-8")
+        res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(shell),
+                      "--transcript", str(tmp_path / "shell.jsonl"), env={**lab.env, "AEW_LEAD_TOKEN": p.token},
+                      timeout=600)
+        relayed = json.loads((tmp_path / "shell.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        assert "use its typed route" in json.dumps(relayed), relayed
+        assert p.rev() == rev
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+def test_a_launch_that_fails_after_the_dispatch_still_reports_the_committed_step(lab, tmp_path, monkeypatch):
+    """#586 review, m2: the dispatch commits, then the launch fails; the result names the committed step, so a Lead
+    that trusts `completed_steps` does not call again for a second assessor."""
+    from aew import errors
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    p = lab.project  # its execution policy pins a harness, so the dispatch commits its run
+    for name, value in lab.env.items():  # in this process, as the CLI would run: the lab's harness adapter
+        monkeypatch.setenv(name, value)
+    wid = create_planned_ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+
+    def fails(out):
+        raise errors.HarnessLaunchFailed("the run's supervisor did not take custody", run="R-INV-0001-1",
+                                         committed=True)
+
+    monkeypatch.setattr(engine, "launch_dispatched", fails)
+    rev = p.rev()
+    out = run.run_tool(engine, SurfaceContext.outside_session(), "resolve",
+                       {"subject": f"{wid}{E.PLAN_ITEM}", "choice": "assess_plan",
+                        "rationale": "r"}, token=p.token)
+    assert [s["primitive"] for s in out["completed_steps"]] == ["plan.assess"], out["stopped"]
+    assert out["completed_steps"][0]["revision"] == rev + 1 == p.rev()
+    assert out["stopped"]["boundary"] == "launch_failed"
+    assert out["stopped"]["error"]["code"] == "HARNESS_LAUNCH_FAILED"
+
+
+def custom_assessor_card(p):
+    """A project card of the assessor archetype other than the built-in one (the typed route cannot dispatch it)."""
+    from aew import roles
+
+    built_in = (Path(roles.__file__).parent / "cards" / f"{E.ASSESSOR_CARD}.yaml").read_text(encoding="utf-8")
+    catalog = p.root / ".aew" / "roles"
+    catalog.mkdir(parents=True, exist_ok=True)
+    (catalog / "custom_assessor.yaml").write_text(
+        built_in.replace(f"role: {E.ASSESSOR_CARD}", "role: custom_assessor"), encoding="utf-8")
+    return "custom_assessor"
+
+
+def follow_the_assessors_entry(lab, tmp_path, entry, card):
+    """#586 quick check, M-a: the stale-invocation entry a correction recorded for an active plan assessor, followed
+    to its outcome: the cancellation from a Lead session's shell, then the built-in card's typed dispatch from the
+    session, or another card's `--card` form at the operator's own terminal."""
+    p = lab.project
+    cancel = entry["commands"][0]
+    head, _ = P.split(cancel, False)
+    args = shlex.split(head.replace("<revision from aew status>", str(p.rev())))[1:]
+    [cancelled] = in_lead_session(lab, tmp_path, f"cancel-{card}", [
+        {"do": "aew", "args": args, "stdin": "".join(f"{k}: {json.dumps(v)}\n" for k, v in entry["fields"].items())}])
+    assert cancelled["result"]["exit"] == 0, cancelled
+    assert p.ok("invoke", "show", entry["invocation"])["status"] == "cancelled"
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    if card == E.ASSESSOR_CARD:
+        assert "operator" not in entry
+        [again] = in_lead_session(lab, tmp_path, f"dispatch-{card}", [typed_step(p, entry["commands"][1],
+                                                                                 entry["arguments"])])
+        result = answered(again)["result"]
+    else:
+        [operator_form] = P.commands(entry["operator"])
+        result = follow(p, *operator_form, env=lab.env)
+    assert result["role_card"] == card and result["scope"] == E.ASSESSMENT_SCOPE
+    assert lab.wait(result["launch"]["run"])["status"] == "ended_with_evidence"
+
+
+@pytest.mark.parametrize("custom", [False, True], ids=["built-in card", "custom card"])
+def test_a_scope_add_with_an_active_plan_assessor_is_recorded_and_its_entry_is_followed(lead_lab, tmp_path, custom):
+    """#586 quick check, M-a: a real `resolve` `add_scope` while the Ticket's plan assessor is active is recorded (the
+    correction's schema takes the assessor's entry), and the entry it names re-dispatches the assessor."""
+    import yaml
+    from aewflow import assign
+
+    from aew.engine import scope_ops as SC
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    lab, p = lead_lab, lead_lab.project
+    wid = create_planned_ticket(p, tmp_path, scope=("calc/core.py",))
+    card = custom_assessor_card(p) if custom else E.ASSESSOR_CARD
+    _, out = assess(p, wid, *(("--card", card) if custom else ()))
+    assign(p, wid)
+    arguments = {"subject": SC.item_id(wid, "tests/test_core.py"), "choice": SC.CHOICE,
+                 "rationale": "the change to core needs its existing test extended"}
+    added = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
+                         token=p.token)
+    assert added["ok"], added["stopped"]
+    unit = Engine.discover(p.root)._k.store.current()["work"][wid]
+    doc = yaml.safe_load((p.root / ".aew" / unit[SC.UNIT_KEY][-1]["record"]).read_text(encoding="utf-8"))
+    [entry] = [s for s in doc["stale_invocations"] if s["invocation"] == out["invocation"]]
+    assert entry["arguments"]["subject"] == f"{wid}{E.PLAN_ITEM}" and ("operator" in entry) == custom
+    follow_the_assessors_entry(lab, tmp_path, entry, card)
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("custom", [False, True], ids=["built-in card", "custom card"])
+def test_a_gate_replacement_with_an_active_plan_assessor_is_recorded_and_its_entry_is_followed(lead_lab, tmp_path,
+                                                                                               custom):
+    """#586 quick check, M-a: a real `resolve` `replace_gate` on a Story whose child's plan assessor is active is
+    recorded, and the entry it names re-dispatches the assessor."""
+    import yaml
+
+    from aew.engine.store import Transition
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    lab, p = lead_lab, lead_lab.project
+    story = create_unit(p, "story", "Objective")
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    card = custom_assessor_card(p) if custom else E.ASSESSOR_CARD
+    _, out = assess(p, child, *(("--card", card) if custom else ()))
+    prose = "the targeted tests pass and the module stays under 300 lines"
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:  # a parent written before ITEMS 55 holds a gate no unit type can satisfy
+        s.state["work"][story]["policy"] = {"mandatory_gates": [prose], "min_descendant_class": None,
+                                            "rationale": None}
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="a parent written before ITEMS 55"))
+    subject = gate_ops.item_id(story, prose)
+    shown = next(item for item in engine.gate_items(story) if item["id"] == subject)
+    arguments = {"subject": subject, "choice": "replace_gate", "replacement": "check:unit",
+                 "approval_digest": shown["approval_subjects"]["check:unit"]["digest"],
+                 "rationale": "the targeted check is that standard"}
+    replaced = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
+                            token=p.token)
+    assert replaced["ok"], replaced["stopped"]
+    [entry] = [s for s in replaced["result"]["stale_invocations"] if s["invocation"] == out["invocation"]]
+    pointer = Engine.discover(p.root)._k.store.current()["work"][story]["policy"]["corrections"][-1]
+    record = yaml.safe_load((p.root / ".aew" / pointer["path"]).read_text(encoding="utf-8"))
+    assert entry in record["stale_invocations"] and ("operator" in entry) == custom
+    follow_the_assessors_entry(lab, tmp_path, entry, card)

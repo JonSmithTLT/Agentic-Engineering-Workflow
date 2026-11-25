@@ -59,7 +59,9 @@
           "work_id": {"type": "string"},
           "role": {"type": ["string", "null"]},
           "commands": {"type": "array", "items": {"type": "string"}},
-          "fields": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}}
+          "fields": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
+          "arguments": {"description": "E160: a plan assessor's typed re-dispatch, the arguments `aew lead tool resolve --arguments -` reads on stdin", "type": "object"},
+          "operator": {"description": "E160: for an assessor of another card than the built-in one, the operator's --card form of the re-dispatch, which the typed route cannot take", "type": "string"}
         }
       }
     }

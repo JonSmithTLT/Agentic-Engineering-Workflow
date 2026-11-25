@@ -1592,7 +1592,7 @@ def lead_kept_out(name: str, e: dict[str, Any]) -> str | None:
     never the label. Until A4 takes `aew` off the Lead's PATH, closing the shell door is what honours the rest."""
     ds = dests(name)
     if "token" in ds:
-        return "it takes the Lead credential: lead_broker classifies it (LEAD_REACHABLE or OPERATOR_ONLY)"
+        return "it takes the Lead credential: lead_broker classifies it (LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY)"
     if operator_only(name):
         return "lead_broker.OPERATOR_ONLY refuses it in a Lead session"
     if frozenset(name.split()) in transports() & set(lead_broker.NOT_RELAYED):

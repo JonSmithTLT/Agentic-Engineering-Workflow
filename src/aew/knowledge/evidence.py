@@ -30,6 +30,12 @@ PLAN_ASSESSMENT = "plan_assessment"
 ASSESSOR_ARCHETYPE = "reviewer"
 ASSESSMENT_SCOPE = "plan_assessment"
 ASSESSOR_CARD = "plan_assessor"
+# The Lead's typed route to a plan assessor (E160 slice 2b): the tool, its choice and the subject that names a unit's
+# accepted plan, `<W>#plan`. The catalog's choice is this one (``contract.RESOLVE_CHOICE_PRIMITIVE``), and the engine's
+# next steps, which never import the surface, print the call from here (``assessor_call``).
+ASSESS_TOOL = "resolve"
+ASSESS_CHOICE = "assess_plan"
+PLAN_ITEM = "#plan"
 # The invocation scopes that hold their own read-only observation of the source (ADR-0008): a non-mutating Ticket's
 # executor and its reviewers and verifiers, a parent's acceptance roles, and a plan assessor.
 OBSERVER_SCOPES = frozenset({"observation", "parent", ASSESSMENT_SCOPE})
@@ -152,6 +158,13 @@ def one_of(values: dict[str, str | None]) -> str:
     """``pass (complete) or blocked``: a report field's allowed values, in prose."""
     words = [f"{value} ({means})" if means else value for value, means in values.items()]
     return ", ".join(words[:-1]) + " or " + words[-1]
+
+
+def assessor_call(work_id: str, rationale: str) -> tuple[str, dict[str, Any]]:
+    """The Lead's call that dispatches an assessor of ``work_id``'s accepted plan: the command, and the arguments it
+    reads on stdin as JSON."""
+    return (f"aew lead tool {ASSESS_TOOL} --arguments -",
+            {"subject": f"{work_id}{PLAN_ITEM}", "choice": ASSESS_CHOICE, "rationale": rationale})
 
 
 def kinds_for(role: str, scope: str | None) -> set[str]:

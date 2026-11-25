@@ -1117,8 +1117,8 @@ class Engine:
                      kind: str = "lead_acquire") -> dict[str, Any]:
         return self._lead.lead_acquire(session_label=session_label, kind=kind)
 
-    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False) -> str:
-        return self._resume.lead_guide(stages, messaging=messaging)
+    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False, plan_assessment: str | None = None) -> str:
+        return self._resume.lead_guide(stages, messaging=messaging, plan_assessment=plan_assessment)
 
     def lead_handoff_accept(self, *, offer: str, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, session_label=session_label)
@@ -1262,9 +1262,10 @@ class Engine:
                                    no_assurance=no_assurance)
 
     def plan_assess(self, *, token: str, work_id: str, card: str | None = None,
-                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                    reason: str | None = None) -> dict[str, Any]:
         return self._nm.plan_assess(token=token, work_id=work_id, card=card,
-                                    execution_profile=execution_profile, launch=launch)
+                                    execution_profile=execution_profile, launch=launch, reason=reason)
 
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aew.engine import stage_intents
+from aew.engine import stage_intents, stage_migration
 from aew.engine.api import Engine
 from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.store import Transition
@@ -126,3 +126,46 @@ def test_an_unrelated_commit_never_stales_a_lead_mutation(project, tmp_path, op,
             ctx.summary = f"{op} {variant or ''} can enter the transaction at the current revision"
         assert e.store.current()["last_transition"]["op"] == op
         assert project.rev() == intervening + 1
+
+
+@pytest.mark.parametrize("tool", sorted(stage_migration._CONTRACTS))
+def test_recognized_stage_migration_targets_the_current_contract(tool):
+    current = contract.catalog(contract.ALL_SWITCHES)[tool]
+    previous, upgraded = stage_migration._CONTRACTS[tool]
+    assert previous != upgraded == stage.contract_digest(current)
+
+
+@pytest.mark.parametrize("old_prior", [None, "RUNNING"], ids=["prior-derived-from-assignment", "contradictory-prior"])
+def test_migration_recovers_the_prior_state_only_from_the_journals_assignment(tmp_path, old_prior):
+    from aewflow import create_planned_ticket, sample_project
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    e = Engine.discover(p.root)
+    tool = contract.catalog(contract.ALL_SWITCHES)["ticket_start"]
+    args = {"work_id": wid}
+    sid = e.stage_open(
+        token=p.token, tool=tool.name, contract_digest=stage.contract_digest(tool), arguments=args,
+        judgment_inputs=list(tool.required_judgments), base_class=tool.base_class, effective_class=tool.base_class,
+        plan=stage.plan_for(e, tool.name, args), subject=wid, ingress="test",
+    )["intent"]
+    with e.store.session() as session:
+        old = session.state["stage_intents"][sid]
+        old["contract_digest"] = stage_migration._CONTRACTS[tool.name][0]
+        old["opened"]["expect_rev"] = old["arguments"]["expect_rev"] = old["opened"]["rev"] - 1
+        old["arguments_digest"] = stage_intents.digest(old["arguments"])
+        transition = old["plan"][-1]["args"]
+        if old_prior is None:
+            del transition["prior_value"]
+        else:
+            transition["prior_value"] = old_prior
+        session.commit(Transition(op="test.fixture", actor={"kind": "test"}, summary="predecessor start journal"))
+    asserted = e.migrate(token=p.token)["stage_intents"]
+    assert asserted == {sid: old_prior is None}
+    current = e.stage_intent(sid)
+    assert not current["steps"] and not stage_migration.needs_upgrade(current)
+    if old_prior is None:
+        assert current["plan"][-1]["args"]["prior_value"] == "ASSIGNED"
+        assert stage.assess(e, current)["safe_to_continue"]
+    else:
+        assert not stage.assess(e, current)["safe_to_continue"]

@@ -39,7 +39,7 @@ allocations:
   E160:
     bytes: 300
     kind: estimate
-    source: "Register E160. A short paragraph for plan assessment guidance."
+    source: "Register E160. A short paragraph for plan assessment guidance. Slice 2b, measured: resolve's assess_plan choice and its description, MCP +14 B with messaging on (the compact description) and +38 B off, and the guide's one line naming the route, +107 B; so +121 B on and +145 B off. The estimate stands until slice 4's staffing text lands, which spends the rest."
   E162:
     bytes: 500
     kind: estimate
@@ -56,7 +56,7 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# E329 measured 38,728 B on main ee89c341 and 36,933 B after the cutover with messaging on.
+# E329 measured 38,849 B on main 162389cd and 37,054 B after the cutover with messaging on.
 # The system dropped 33 B, the guide 755 B and the MCP list 1,007 B. The baseline and cap both drop 1,795 B.
 # Existing allocation and approval history are retained.
 approval:

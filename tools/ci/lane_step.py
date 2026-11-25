@@ -26,7 +26,13 @@ import proctree  # noqa: E402
 import worker_evidence  # noqa: E402
 from evidence_files import CANCEL_COLLECTION, HOST_STOP_FILE, WARNING, open_observation, stacks_ablated  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
-from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
+from session_deadline import (  # noqa: E402
+    HOST_RESOURCES_EXIT,
+    SUPERVISOR_CUTOFF_EXIT,
+    marker,
+    session_directories,
+    session_job,
+)
 from session_deadline import collect_leftovers as collect  # noqa: E402
 from session_deadline import recorded_processes as identities  # noqa: E402
 from watchdog import running_names  # noqa: E402
@@ -362,14 +368,17 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     if before_signal and active:
                         alive = {worker.identity: proctree.same(worker.identity) for worker in active}
                         if not stacks_ablated():
-                            worker_evidence.capture(root, active, attach, reason=WARNING, allowed=scope())
+                            worker_evidence.capture(root, active, attach, reason=WARNING, allowed=scope(),
+                                                    collect_at=at)
                         for worker in active:
                             worker_evidence.record(root, worker, "interrupted", time.time(),
                                                    collect_at=at, alive_when_observed=alive[worker.identity])
                     else:
                         for worker in active:
                             worker_evidence.record(root, worker, "interrupted", at)
-                    with contextlib.suppress(OSError):
+                    # Windows' Popen.send_signal takes only SIGTERM and the console events: SIGINT raises
+                    # ValueError there. The lane's job is ended below, after the collection, either way.
+                    with contextlib.suppress(OSError, ValueError):
                         child.send_signal(signal.Signals[interrupted[0]])
                 if not before_signal:
                     snapshot(root, all_workers=True)
@@ -414,6 +423,12 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
             signal.signal(sig, handler)
 
 
+def in_session_job(worker: worker_evidence.Worker) -> bool:
+    """Whether the job the lane step named for this worker's session holds the worker's identity now."""
+    with session_job(worker.directory, named_by_lane=True) as job:
+        return job is not None and job.holds(worker.identity)
+
+
 def main(argv: list[str]) -> int:
     if argv == ["--probe"]:
         print(probe())
@@ -446,17 +461,24 @@ def main(argv: list[str]) -> int:
             # worker that exits during the capture is still owed its stack, and its typed outcome says why there is
             # none (register E3).
             alive = {worker.identity: proctree.same(worker.identity) for worker in active}
-            # Only attach to a live worker whose identity was sampled inside the supervisor's owned tree.
+            # Only attach to a live worker whose identity was sampled inside the supervisor's owned tree, or that its
+            # session's job holds now. A hosted cancel kills the supervisor outright, so a worker born in the seconds
+            # before has no periodic sample yet (integration 7/14, job 139072636221); membership is checked with the
+            # OS, on the worker's identity, in the job the lane step named (register E3).
             allowed = {worker.identity for worker in active if any(
                 sample.get("pid") == worker.pid and sample.get("start") == worker.start
                 for sample, _ in worker_evidence.read_ring(args.root, worker))}
+            admitted = {worker.identity for worker in active if worker.identity not in allowed
+                        and in_session_job(worker)}
             sampled = worker_evidence.capture(args.root, active, functools.partial(attach, allow_sudo=False),
-                                              reason=CANCEL_COLLECTION, allowed=allowed, collect_at=at)
+                                              reason=CANCEL_COLLECTION, allowed=allowed | admitted, collect_at=at)
             for worker in active:
                 # A worker whose first dump straddled a test change is recorded for the test its retained sample
                 # labels, so the observation and its stack name one test (register E3).
                 held = sampled.get(worker.identity, worker)
                 moved = {"straddled_from": worker.node} if held.node != worker.node else {}
+                if worker.identity in admitted:
+                    moved["admitted_by"] = "session job"
                 worker_evidence.record(args.root, held, "cancelled" if cancelled else "interrupted",
                                        time.time(), collect_at=at, alive_when_observed=alive[worker.identity],
                                        **moved)

@@ -1134,6 +1134,11 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/unit/test_hang_autopsy_units.py::test_a_job_the_lane_named_holds_a_member_by_identity_and_its_name_is_never_joined_twice: >-
+      membership of a job object is Windows'; the cancellation collection's admission by it is tested on every platform
+      against a modelled job membership (test_a_worker_too_new_for_its_first_sample_is_attached_when_its_session_job_holds_it and
+      test_a_never_sampled_worker_outside_its_session_job_is_never_attached in tests/unit/test_evidence_states.py).
+      Covered on Windows.
     tests/integration/test_opencode_lead.py::test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session: >-
       the Lead runs contained on Linux: test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session
       covers this path there.

@@ -1739,6 +1739,7 @@ None.
 - `aew.lead_credential`
 - `aew.policy.execution`
 - `aew.process_kind`
+- `aew.skills`
 - `aew.surface.context`
 - `aew.surface.lead_text`
 - `aew.switch_offer`

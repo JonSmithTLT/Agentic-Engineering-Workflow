@@ -350,28 +350,29 @@ systems:
     row: E148
     estimate: 1 PR (estimate)
   - slice: '/attention answering from the typed surface''s action projection instead of 403 (TLS-25''s dashboard half):
-      rides on SYS-17''s E18, which tracks it; E101''s correction of the stale 403 reason is SYS-21''s, frozen there'
+      E18 tracks it; E101''s correction of the stale 403 reason is SYS-21''s, frozen there'
     row: E18
-    estimate: rides on SYS-17's E18 (no estimate of its own)
-  - slice: 'F20.7''s event endpoint, merged into E18 as a note by the hold match: rides on SYS-17''s E18'
+    estimate: not sized (estimate)
+  - slice: 'F20.7''s event endpoint: tracked by a note on E18 (the hold match merged it there as a note, adding no scope
+      to E18''s build), outside that row''s build; it waits on S11''s adoption, and SYS-17 is signed off'
     row: E18
-    estimate: rides on SYS-17's E18 (no estimate of its own)
-  - slice: 'F20.6''s browser acceptance against a real project''s live state, merged into E103 as a note by the hold match:
-      rides on SYS-21''s E103 (the web developer''s, frozen there)'
+    estimate: not sized; outside E18's build (estimate)
+  - slice: 'F20.6''s browser acceptance against a real project''s live state: tracked by a note on E103 (the hold match
+      merged it there as a note, adding no scope to E103''s build), outside that row''s build; the web developer''s'
     row: E103
-    estimate: rides on SYS-21's E103 (no estimate of its own)
+    estimate: an acceptance run, not sized (estimate)
   decision: 'decided: keep, not counted, until after V-01 (the operator, 2026-11-25: "yes to the recommendations", on
     the Lead''s finish plan of that day, finish-plan.md); kept, not frozen, by the operator''s earlier "Keep the dashboard"
     (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: keep
-  who: web developer (E94, after V-01 by its row; E148, theirs to place); the finish line's other items ride on SYS-17's
-    E18 and SYS-21's E103
+  who: web developer (E94, after V-01 by its row; E148 and F20.6's acceptance, theirs to place); the Lead for /attention's
+    dashboard half and F20.7, once placed
   reason: 'Built and working on demand, but nothing the Lead can build finishes it: E94 is the web developer''s and waits
     until after V-01 by its row, E148 is theirs to place, and the rest rides on other systems'' rows. A board gap, found
     by the lag sweep and stated here: the finish line names /attention, F20.7''s event endpoint and F20.6''s browser acceptance,
-    but until 2026-11-25 no slice carried them. They are now slices riding on their owners'' rows (SYS-17''s E18 for /attention''s
-    dashboard half and F20.7; SYS-21''s E103 for F20.6), with no estimate here. /attention is blocked by a stale reason,
-    not a missing source: the typed surface''s projection module exists.'
+    but until 2026-11-25 no slice carried them. They are now slices: /attention''s dashboard half is tracked by SYS-17''s
+    E18, and F20.7 and F20.6 by the hold match''s notes on E18 and E103, outside those rows'' builds. /attention is blocked
+    by a stale reason, not a missing source: the typed surface''s projection module exists.'
   evidence:
   - 'src/aew/dashboard/: 14 modules, 4,760 lines (wc -l at c11a61ea)'
   - src/aew/cli/dashboard_commands.py:32-57 the dashboard serve, open and status parsers (serve on 127.0.0.1)
@@ -1051,12 +1052,12 @@ systems:
     set the contract derives equal to it, so nothing the finish line names is left to build. E349 (E7d''s custodian half),
     an open Unscheduled row this entry owns, is not named by the finish line either: the designer''s ruling of 2026-11-11
     on SYS-04''s held items made it custody''s row and not steering''s, but places it neither inside nor outside this
-    finish line, so its placement is pending the designer. What is left is the finish line''s "each exercised in a real
-    Lead run", the operator''s check before the sign-off. "Under RUN only" is the steering loop''s mode gate, not classify''s.
-    D4 blocks nothing: AIR-08 dropped the verification half on 2026-10-11, and removing its dead readers is E359, outside
-    the finish line, the operator''s to place once this system has finished (the designer''s ruling of 2026-11-11). HOLD-10
-    closed on 2026-11-06. The custody refusal does not block publishing: the Lead''s integration_publish publishes a VALIDATED
-    entry outside custody.'
+    finish line, so its placement is pending the designer, as the decisions-due item on E349 records. What is left is
+    the finish line''s "each exercised in a real Lead run", the operator''s check before the sign-off. "Under RUN only"
+    is the steering loop''s mode gate, not classify''s. D4 blocks nothing: AIR-08 dropped the verification half on 2026-10-11,
+    and removing its dead readers is E359, outside the finish line, the operator''s to place once this system has finished
+    (the designer''s ruling of 2026-11-11). HOLD-10 closed on 2026-11-06. The custody refusal does not block publishing:
+    the Lead''s integration_publish publishes a VALIDATED entry outside custody.'
   evidence:
   - src/aew/surface/contract.py:259 (resolve), :285-335 (ticket_draft to integration_publish), the stage and decision
     tools
@@ -1174,7 +1175,8 @@ systems:
     so nothing the finish line names is left to build. What is left is the operator''s check, a real contained run with
     all six tools (the operator''s yes of 2026-11-10). STG-15''s later records stay on its row, outside this finish line
     (E197: no MCP servers for now, since SPT isn''t ready), and Windows contexts get no tools until Windows containment
-    (E358).'
+    (E358). Whether serves_claims keeps the SPT records closing work (SPB), now outside this finish line, is the designer''s,
+    recorded as the decisions-due item on STG-15.'
   evidence:
   - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
     six shipped records'
@@ -4412,7 +4414,8 @@ systems:
     approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen by
     the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: keep
-  who: operator (placing it); designer (the addenda's rows, and addendum 14 against SYS-42); then Lead
+  who: 'operator (places F48 and the Windows work, E222 and E250); Lead (places E113 when a headless Lead is needed);
+    designer (the CS-4 addenda 12 to 14: their rows, and addendum 14 against SYS-42)'
   reason: 'Split from SYS-02 by the operator''s decision of 2026-11-25. None of it is built: Windows runs labelled allow_weaker
     with doctor''s UNQUALIFIED line, the addenda have no rows, and E113 is the Lead''s to place when a headless Lead is
     needed. Addendum 14 may overlap SYS-42''s Lead small change, to settle when its row is filed. Kept, not counted, until
@@ -4572,9 +4575,13 @@ systems:
     row: E162
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      Lead text fixes (E162), and a typed `plan accept` (E163)'
+      Lead text fixes'
     row: E162
-    estimate: 1-2 PRs (estimate)
+    estimate: 1 PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      a typed `plan accept` on the Lead''s MCP server, with its surface-map entry'
+    row: E163
+    estimate: 1 PR (estimate)
   decision: 'decided: moved here from SYS-06, which finished by recording HOLD-06 as staying held (the operator, 2026-11-25:
     "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen
     by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
@@ -4582,8 +4589,9 @@ systems:
   who: operator (placing F15.3 and F15.8 after first use, and the frozen Lead text work); then Lead
   reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Not built: the worker side is three bridge operations
     reached through the aew CLI, not MCP tools, and aew-run and aew-knowledge appear only in a comment. E162 and E163
-    are frozen on this board by the reset, whatever their place in the register''s order. Kept, not counted, until the
-    operator places it.'
+    are frozen on this board by the reset, but both are targeted Now and named in one item of the register''s Now list:
+    starting either moves this system to finish, partly built, and into the count, unless the operator rules they stay
+    frozen. Until then it is kept, not counted, until the operator places it.'
   evidence:
   - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
     through the aew CLI, not MCP tools'

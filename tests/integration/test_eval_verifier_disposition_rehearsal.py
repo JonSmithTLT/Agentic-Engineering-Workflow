@@ -156,8 +156,7 @@ def test_both_arms_see_the_same_candidate_with_their_own_exposure_and_are_graded
         assert SKILL not in offered and sorted(withheld["harness"]["exposure"]["exposed"]) == offered
         assert sorted(exposed["harness"]["exposure"]["exposed"]) == sorted([SKILL, *offered])
         assert {d["name"]: d["sha256"] for d in exposed["harness"]["exposure"]["delivered"]}[SKILL] == manifest_sha
-        assert sorted(set(exposed["harness"]["skill_files"]) - set(withheld["harness"]["skill_files"])) == [
-            f"{SKILL}/SKILL.md"]
+        assert set(exposed["harness"]["skill_files"]) == set(withheld["harness"]["skill_files"]) | {f"{SKILL}/SKILL.md"}
         assert not any(f.startswith(f"{SKILL}/") for f in withheld["harness"]["skill_files"])
         grades = []
         for record in (withheld, exposed):

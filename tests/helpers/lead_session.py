@@ -230,8 +230,9 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
 
             def changed(engine):
                 planned, at = deliver(engine)
-                for name in planned["exposed"][:1]:
-                    (Path(at.folder) / name / "SKILL.md").write_text("changed after delivery")
+                if not planned["exposed"]:  # nothing to change: the test would pass on a plain copy failure
+                    raise RuntimeError("change_lead_copy: the start delivered no skill to change")
+                (Path(at.folder) / planned["exposed"][0] / "SKILL.md").write_text("changed after delivery")
                 return planned, at
 
             lead.deliver_lead_skills = changed

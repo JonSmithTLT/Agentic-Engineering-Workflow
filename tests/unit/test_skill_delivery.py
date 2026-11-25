@@ -246,8 +246,7 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     cards = roles.builtin_cards()
     assert cards["code_reviewer"].meta["skills"] == ["adversarial-review"]
     assert cards["verifier"].meta["skills"] == ["acceptance-verification"]
-    assert cards["engineer"].meta["optional_skills"] == ["python-development", "c-development",
-                                                         "debugging-root-cause-analysis", "test-design"]
+    assert cards["engineer"].meta["optional_skills"] == OFFERED["engineer"]
     # code_reviewer went to 3 for register E126's three lines on test work, after the skills moved it to 2. E136's
     # first batch moved engineer to 3 and the four others it touched to 2; its second batch moves each card it offers
     # a skill to one more: code_reviewer and engineer to 4, the other five to 3.

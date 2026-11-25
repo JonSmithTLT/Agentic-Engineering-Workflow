@@ -612,7 +612,7 @@ class NonMutating:
             if inv.get("status") != "active" or execution.get("ended"):
                 problems["executor"] = f"the attempt's executor is {inv.get('status')}; its records are history"
             plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
+            if ev.get("plan_revision") != E.plan_binding(plan):
                 problems["plan"] = {"record": ev.get("plan_revision"), "accepted": plan.get("accepted")}
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != (inv.get("snapshot") or {}).get(
                     "relevant_inputs_fingerprint"):
@@ -882,7 +882,7 @@ class NonMutating:
                 raise GateUnsatisfied(f"{evidence_id} evaluated {ev.get('subject')}, not {work_id}'s current record "
                                       f"{record.get('id')} (stale)")
             plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
+            if ev.get("plan_revision") != E.plan_binding(plan):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
             self.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":

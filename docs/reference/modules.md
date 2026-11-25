@@ -1341,6 +1341,7 @@ None.
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.knowledge.records`
 - `aew.profile`
 - `aew.util`

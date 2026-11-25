@@ -212,7 +212,7 @@ def test_cancel_control_times_runner_allocation_separately_from_running_workers(
             prove.wait_for_workers("x/y", 42)
 
 
-@pytest.mark.parametrize("late", [0, 322, 323, -322, 1000, -1000, 1300])
+@pytest.mark.parametrize("late", [0, 322, 323, -322, 900, 1000, -1000, 1050, 1100, -1100, 1300])
 def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(monkeypatch, late):
     # Target runs 45513035294 and 45547533341: the Windows plant's runner came 322 s and 323 s after its Linux twin's,
     # which spent the Linux window before both were live. The plants now hold their deadline steps for their twin.
@@ -228,6 +228,7 @@ def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(m
     assert names.index("Wait for the twin plant's runner") < names.index("The job's deadline")
     assert barrier["if"] == "matrix.kind == 'cancel' && inputs.probe_origin"
     assert f"bound={prove.TWIN_BARRIER_SECONDS}\n" in barrier["run"]
+    assert barrier["timeout-minutes"] * 60 > prove.TWIN_BARRIER_SECONDS
     waits = []
 
     def now():
@@ -251,13 +252,15 @@ def test_a_plant_whose_runner_queues_late_still_overlaps_or_is_named_as_queued(m
         for index, os_name in enumerate(("ubuntu-24.04", "windows-latest")):
             own, opened, lane = timeline(os_name)
             at = now()
+            # The lane ends at its session deadline and the job concludes after it, as in target run 45547533341.
             row = {"id": index + 1, "name": f"plant ({os_name}, cancel, none)", "runner_id": 7 if at >= own else 0,
-                   "conclusion": None, "steps": []}
+                   "conclusion": "failure" if at >= opened + 390 else None, "steps": []}
             if at >= opened:
                 row["steps"].append({"name": "The job's deadline",
                                      "started_at": datetime.fromtimestamp(opened, UTC).isoformat()})
             if at >= lane:
-                row["steps"].append({"name": "Real planted lane", "status": "in_progress",
+                row["steps"].append({"name": "Real planted lane",
+                                     "status": "in_progress" if at < opened + 370 else "completed",
                                      "started_at": datetime.fromtimestamp(lane, UTC).isoformat()})
             rows.append(row)
         return {"jobs": rows}

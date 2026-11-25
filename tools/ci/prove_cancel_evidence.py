@@ -103,8 +103,20 @@ def wait_for_workers(repo, ident):
                               f"{RUNNER_ALLOCATION_SECONDS} s after dispatch while its twin ran") from exc
         raise
 
+    def ended(job):
+        lane = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), {})
+        return bool(job.get("conclusion")) or lane.get("status") == "completed"
+
     def live():
         attempt = jobs()
+        named = {job["name"]: job for job in attempt}
+        # A twin so late that the early plant's lane already ended at its session deadline is the same queueing, not
+        # a target that finished early or lost its execution window (#564 review).
+        for label, twin in zip(labels, reversed(labels), strict=True):
+            job, other = named.get(label), named.get(twin)
+            if job and ended(job) and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S))):
+                raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not live before "
+                                  f"{label}'s lane ended")
         active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]
         for job in filter(None, active):
             steps = {step["name"]: step for step in job["steps"]}

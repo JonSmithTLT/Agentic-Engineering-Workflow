@@ -92,7 +92,8 @@ def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
 
 
 def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
-    """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
+    """Read only positive transitions from the same registered worker on the phase clock, whose owner is
+    ``session_deadline.phase_clock_ns``."""
     from session_deadline import session_directories
 
     rows = []

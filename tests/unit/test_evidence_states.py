@@ -618,6 +618,10 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", read_phases)
     monkeypatch.setattr(lane, "collect", lambda _root: None)
     monkeypatch.setattr(lane, "identities", lambda _root: [(tmp_path, (123, 456))])
+    # The signal is stamped on the workers' phase receipts' clock, never time.monotonic: on Windows before CPython 3.13
+    # the two differ, and a monotonic stamp misread the phases (review of #575, minor 1).
+    sentinel = 987_654_321
+    monkeypatch.setattr(lane, "phase_clock_ns", lambda: sentinel)
 
     assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == (0 if late else 143)
     assert signals == ([] if late else [signal.SIGTERM])
@@ -625,7 +629,7 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
     observation = record["xdist_at_first_signal"]
-    assert observation["monotonic_ns"] > 0
+    assert observation["monotonic_ns"] == sentinel
     if late:
         assert observation["status"] == "unavailable"
     else:

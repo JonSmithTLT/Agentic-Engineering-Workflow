@@ -257,6 +257,7 @@ def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
 
 
 def interrupt_phases(root: Path, at_ns: int) -> dict:
+    # The persisted `monotonic_ns` key keeps its name but holds the phase clock (session_deadline.phase_clock_ns).
     result = {"monotonic_ns": at_ns, "status": "unavailable"}
 
     def read():

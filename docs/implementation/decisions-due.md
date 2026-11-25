@@ -17,6 +17,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### E367
+
+**Due by:** Now · **Owner:** designer · **Needs:** decision
+
+**What:** For the Lead's always-sent text: whether to make the four schema changes the audit of 2026-11-25 found worth about 3.1 KB per request, and whether the Lead MCP server's instructions count in the Lead's pool
+
+**Blocks:** -
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design

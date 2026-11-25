@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import unicodedata
+from types import SimpleNamespace
 
 import pytest
 from discovery import allowed, capture, modes, rules, static
@@ -861,6 +862,18 @@ def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output,
     else:
         assert plugin._loss_details() == []
         assert snapshot["findings"]["O-CMD x"]["count"] == 1 and snapshot["outputs"] == 2
+
+
+def test_a_synthetic_crash_item_never_replaces_the_last_report_from_the_lost_worker():
+    plugin = capture.CapturePlugin(None, None)  # type: ignore[arg-type]
+    node = SimpleNamespace(gateway=SimpleNamespace(id="gw3"))
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="setup", outcome="passed"))
+    plugin.pytest_testnodedown(node, "Not properly terminated")
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="???", outcome="failed"))
+    [loss] = plugin._loss_details()
+    assert loss["last_report"] == {"test": "test_worker.py::test_example", "phase": "setup", "outcome": "passed"}
 
 
 def test_o_ids_still_reads_a_line_that_does_not_parse():

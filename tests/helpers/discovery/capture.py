@@ -188,7 +188,7 @@ class CapturePlugin:
         self.tool_output = tool_output
         self._undo: list[tuple[Any, str, Any]] = []
         self._last_reports: dict[str, dict[str, str]] = {}
-        self._worker_losses: list[tuple[Any, bool]] = []
+        self._worker_losses: list[tuple[Any, bool, dict[str, str] | None]] = []
 
     # ------------------------------------------------------------------ hooks into the product and subprocess
 
@@ -269,9 +269,10 @@ class CapturePlugin:
         try:
             theirs = (getattr(node, "workeroutput", None) or {}).get(WORKER_KEY)
             if error is not None or theirs is None:
-                self._worker_losses.append((node, theirs is not None))
                 name = getattr(node, "gateway", None)
                 worker = getattr(name, "id", None) or "a worker"
+                # xdist may emit its own synthetic crash report after this hook. It is not a report from the worker.
+                self._worker_losses.append((node, theirs is not None, self._last_reports.get(worker)))
                 self.recorder.error(RuntimeError(f"{worker} went down without its findings"
                                                  + (f" ({str(error)[:120]})" if error is not None else "")))
             if theirs:
@@ -283,7 +284,7 @@ class CapturePlugin:
         # xdist has already torn down its gateways by our trylast hook. Poll the original child handle rather
         # than guessing from the remote error string or looking up a PID that may already have been reused.
         rows = []
-        for node, handed_off in self._worker_losses:
+        for node, handed_off, last_report in self._worker_losses:
             gateway = getattr(node, "gateway", None)
             worker = getattr(gateway, "id", None)
             process = getattr(getattr(gateway, "_io", None), "popen", None)
@@ -292,7 +293,7 @@ class CapturePlugin:
             except OSError:
                 exit_code = None
             rows.append({"worker": worker, "pid": getattr(process, "pid", None), "exit_code": exit_code,
-                         "findings_received": handed_off, "last_report": self._last_reports.get(worker)})
+                         "findings_received": handed_off, "last_report": last_report})
         return rows
 
     @pytest.hookimpl(trylast=True)

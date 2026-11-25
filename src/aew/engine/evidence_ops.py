@@ -697,8 +697,7 @@ class Gates:
         its own.
         """
         inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
-        plan = unit.get("plan") or {}
-        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        accepted = E.plan_binding(unit.get("plan"))
         problems: dict[str, Any] = {}
         if ev.get("plan_revision") != accepted:
             problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}

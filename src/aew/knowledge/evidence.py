@@ -186,12 +186,12 @@ def plan_assessment_binding(work_id: str, plan: dict[str, Any] | None, submitted
         raise ValidationFailed(f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the "
                                "accepted revision, so accept a plan first", reason="no_accepted_plan", work_id=work_id)
     raw = submitted.get("assessment")
-    if isinstance(raw, dict):  # ``required`` defaults as a review's does, before the shape is checked
-        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f
-                                   for f in raw.get("findings") or []]}
+    # ``required`` defaults as a review's does, before the shape is checked; findings that are missing or not a list
+    # reach the schema as they are, and are refused there.
+    if isinstance(raw, dict) and isinstance(raw.get("findings"), list):
+        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f for f in raw["findings"]]}
     validate_property("evidence", "assessment", raw, source="submission")
-    checked = cast(dict[str, Any], raw)  # the schema requires an object
-    assessment = {**checked, "findings": [dict(f) for f in checked["findings"]]}
+    assessment = cast(dict[str, Any], raw)  # the schema requires an object; it is already a fresh copy
     ids = [f["id"] for f in assessment["findings"]]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:

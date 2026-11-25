@@ -4,9 +4,12 @@ later pull requests of the series."""
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
 from aew import roles
+from aew.cli.main import build_parser
 from aew.engine.authority import ROLE_OPERATIONS
 from aew.errors import ValidationFailed
 from aew.knowledge import evidence as E
@@ -77,6 +80,9 @@ def test_no_credential_may_submit_a_plan_assessment_before_the_assessor_entrypoi
     assert all(E.PLAN_ASSESSMENT not in kinds for kinds in E.ROLE_KINDS.values())
     assert all(E.PLAN_ASSESSMENT not in roles.archetype(a)["evidence_kinds"] for a in roles.ARCHETYPES
                if "evidence_kinds" in roles.archetype(a))
+    top = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    submit = next(a for a in top.choices["submit"]._actions if "--kind" in a.option_strings)
+    assert submit.choices and E.PLAN_ASSESSMENT not in submit.choices and "review" in submit.choices
 
 
 def test_there_is_nothing_to_assess_without_an_accepted_plan():
@@ -89,6 +95,8 @@ def test_there_is_nothing_to_assess_without_an_accepted_plan():
 @pytest.mark.parametrize("section", [
     None,
     {"premises_challenged": [], "findings": []},                         # no requirement trace
+    {k: v for k, v in assessment().items() if k != "findings"},         # no findings field
+    assessment(findings={"id": "A1", "severity": "minor", "summary": "s"}),  # findings that are not a list
     assessment(requirement_trace=[]),                                    # a trace of nothing
     assessment(findings=[{"id": "A1", "severity": "fatal", "summary": "x"}]),
     assessment(premises_challenged=[{"premise": "p", "source": "hearsay", "challenge": "c", "outcome": "holds"}]),

@@ -24,6 +24,7 @@ from evidence_files import (
     INTERRUPTION_REASONS,
     NOT_SAMPLED,
     OUTSIDE_CALL,
+    OUTSIDE_TREE,
     PREFIX,
     SAMPLING_GAP,
     SAMPLING_POLICY,
@@ -37,6 +38,7 @@ from evidence_files import (
     pytest_phase,
     sampling_failures,
     test_frame,
+    warning_outcome,
 )
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
@@ -300,10 +302,14 @@ def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
     return json.dumps(row, ensure_ascii=True) + "\n"
 
 
-def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None) -> None:
-    """Name why the cancellation collection kept no test stack for this worker, at this observation (register E3)."""
-    path = ring_path(root, worker).with_name(cancel_outcome(worker.pid, worker.start))
-    _marker(root, path, None, _row(worker, CANCEL_COLLECTION, failures, outcome=outcome, collect_at=collect_at))
+OUTCOME_FILES = {CANCEL_COLLECTION: cancel_outcome, WARNING: warning_outcome}
+
+
+def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None,
+             reason: str) -> None:
+    """Name why an interruption's capture kept no test stack for this worker, at this observation (register E3)."""
+    path = ring_path(root, worker).with_name(OUTCOME_FILES[reason](worker.pid, worker.start))
+    _marker(root, path, None, _row(worker, reason, failures, outcome=outcome, collect_at=collect_at))
 
 
 def sampling_policy(root: Path) -> dict:
@@ -322,9 +328,12 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
     # queued workers are skipped; four concurrent readers bound the runner load.
     until = time.monotonic() + CAPTURE_BUDGET_S
     retried = reason in INTERRUPTION_REASONS
-    # The cancellation collection names every worker it kept no test stack for (register E3).
-    typed = reason == CANCEL_COLLECTION
-    policy = sampling_policy(root) if typed else {}
+    # Both interruptions name every worker they kept no test stack for (register E3): the cancellation collection in an
+    # outcome the evidence check reads, the Linux pre-signal warning in one that only says why, so its next sighting
+    # names a straddle, an exit or a dump without the test's frame (#561's quick check).
+    typed = reason in OUTCOME_FILES
+    collection = reason == CANCEL_COLLECTION
+    policy = sampling_policy(root) if collection else {}
 
     def sample(worker: Worker):
         failures: list[str] = []
@@ -333,7 +342,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
 
         def outcome(name: str, of: Worker) -> None:
             if typed:
-                _outcome(root, of, name, failures, collect_at)
+                _outcome(root, of, name, failures, collect_at, reason)
 
         def live(candidate: Worker) -> bool:
             return candidate in workers(root) and proctree.same(candidate.identity)
@@ -343,7 +352,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             # the test the worker is in now, and records its observation for that test, so a stack of one test never
             # answers an observation of another (register E3, the Windows cancel plant of 2026-11-24).
             nonlocal current
-            if not typed or not proctree.same(worker.identity):
+            if not collection or not proctree.same(worker.identity):
                 return False
             fresh = next((w for w in workers(root) if w.identity == worker.identity and w != current), None)
             if fresh is None:
@@ -354,7 +363,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             return True
 
         if worker.identity not in allowed:
-            outcome(SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED, worker)
+            outcome((SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED) if collection else OUTSIDE_TREE, worker)
             return None
         if not proctree.same(worker.identity):
             outcome("exited before its attach", worker)
@@ -392,7 +401,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-                if typed and pytest_phase(result[1]) in OUTSIDE_CALL:
+                if collection and pytest_phase(result[1]) in OUTSIDE_CALL:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
         # The observation stands for the test of the retained dump, or the one first observed when none is kept.
         held = last[3] if last is not None else worker
@@ -407,6 +416,8 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
             _marker(root, path, path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt"),
                     f"py-spy sampled support frames for {worker.node}{attempts}\n")
+            if last is not None:
+                outcome(pytest_phase(last[2][1]), held)
         elif typed and not matched and last is not None:
             # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
             # the call without the test's frame stays a live-stack defect.

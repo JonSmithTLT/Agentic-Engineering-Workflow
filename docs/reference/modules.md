@@ -1341,6 +1341,7 @@ None.
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.knowledge.records`
 - `aew.profile`
 - `aew.util`
@@ -2144,6 +2145,7 @@ None.
 - `aew.engine.freshness`
 - `aew.errors`
 - `aew.knowledge.evidence`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
@@ -2154,6 +2156,8 @@ None.
 
 ### `aew.maps.slices`
 
+- `aew.errors`
+- `aew.maps`
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`

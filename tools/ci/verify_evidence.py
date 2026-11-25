@@ -15,7 +15,7 @@ from pathlib import Path
 
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
-from evidence_files import CANCEL_COLLECTION, FRAME, WARNING, entries, state, test_frame
+from evidence_files import CANCEL_COLLECTION, FRAME, WARNING, entries, state, test_frame, warning_outcome
 from evidence_problems import evidence_problems
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
@@ -191,6 +191,18 @@ def abrupt_twins(root: Path, kind: str, job: dict) -> list[str]:
     return failures
 
 
+def warning_why(root: Path, row: dict) -> str:
+    """The warning's typed outcome for this observation, so a missing pre-signal stack says why (register E3)."""
+    for path in root.rglob(f"snapshots/{warning_outcome(row['pid'], row['start'])}"):
+        try:
+            outcome = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(outcome, dict) and outcome.get("collect_at") == row.get("collect_at"):
+            return f" ({outcome.get('outcome')})"
+    return ""
+
+
 def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: str | None = None) -> list[str]:
     observed = [json.loads(path.read_text()) for glob in ("cancelled-*.txt", "interrupted-*.txt")
                 for path in root.rglob(glob)]
@@ -209,7 +221,8 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: s
                        and sample.get("start") == row["start"] and sample.get("node") == row["node"]
                        and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]
                        and test_frame(row["node"], frames) for sample, frames in captures):
-                return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"]
+                return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"
+                        + warning_why(root, row)]
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
         ended = trigger_at or ready.get("completed_at")

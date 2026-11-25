@@ -70,7 +70,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
 | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
-| 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+| 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
 | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 
@@ -2137,18 +2137,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E182
-
-**Work:** The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned, and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:** `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator's decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy. **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and the Lead's tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository, and lanes. Done when CI fails on an unowned row, a line citation or a count above N
-
-**Source:** The operator's decision of 2026-11-06, the build board's generator placed now (design workspace `7040a55`): "Now, PR 1 first"; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the Lead's audit of the hand-kept board, 2026-11-06
-
-**When:** **Now.** Item 39 of the Now list. PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use
-
-**Notes:** Filed by the Lead. Until PR 2 renders the board, it stays hand-kept, citing register row ids, never line numbers
-
-*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
-
 ### E183
 
 **Work:** The steering text and stop fix, with the `request_confirmation` hide, in one small PR: the steering tool's text and the Lead's say what works (lower needs an endpoint raise first; a project with no `steering.mode` refuses every action; in crawl and walk the Lead takes each step itself); the loop's crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's action enum and schema, and the texts that point the Lead at it (`cli/g3_commands.py`, the custody refusal) are reworded; comments that promise E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum once nothing emits them. `request_raise` stays advertised. Done when a test holds the normal catalog's steering actions to `lower` and `request_raise`, and the text to what works as a run receives it
@@ -4165,6 +4153,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E364/`, oldest first (`python tools/register.py show E364`).*
 
+### E365
+
+**Work:** The systems generator's later work, split from E182 when it closed: derive `serves` from each system's `serves_claims` and `as_built` against the requirements trace, and compute lanes from `touches` and `depends_on` (per slice, once each slice carries its own `touches` and `after`, as the board's format owes)
+
+**Source:** E182's **Later** clause; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops it from SYS-48's finish line
+
+**When:** **Unscheduled**, once the requirements trace is in the repository
+
+**Notes:** Filed by the Lead. SYS-48 owns it, outside its finish line
+
+*Later notes: `notes.d/E365/`, oldest first (`python tools/register.py show E365`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -5036,6 +5036,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #384 (`039a281e`), with its review's follow-ons on #391. What it does not reach is in this row's note
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
+
+### E182
+
+**Was:** The systems generator: `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane (PR 1), the rendered board (PR 2), and state read from the code with the N = 12 check (PR 3). Its later work, `serves` once the requirements trace is in the repository and lanes, is E365
+
+**Closed:** 2026-11-25
+
+**By:** #346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`): its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops serves and lanes from SYS-48's finish line and files them as E365
+
+*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
 
 ### E191
 

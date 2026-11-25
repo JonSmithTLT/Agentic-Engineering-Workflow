@@ -21,11 +21,12 @@ from aew.surface.validate import AdapterInputError
 SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
 # description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
-# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`; nothing else moved); and E183's `steering`
-# row, which offers `lower` and `request_raise` only and says what works.
-OFF_LIST_SHA = {"normal": "f5a5e0b35171423e7c9dc2f8e69af73ced83fc432870ee047ca93acfa9faf79d",
-                "recovery": "055e82ff87ba4e896f0b25c02157f2ee9dce6f169c2176ba41b784fc759f76ea"}
-OFF_CLI_SHA = "fde19b21896575d7088957988da3d528b231a5e281db60f2d3a894ac2a9e14a3"
+# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`); E160 slice 2b's `assess_plan` choice in
+# `resolve`'s enum and its description naming it (`dispatches` is not advertised); and E183's `steering` row, which
+# offers `lower` and `request_raise` only and says what works (nothing else moved).
+OFF_LIST_SHA = {"normal": "3a447dc1feed23ca0e6747c9809fb03e25fe46879fa54932152843cbec1b7acb",
+                "recovery": "4d9953ff4642884992c913f01c593b8e95aab7c0068ea818b9b5925b3a1a38be"}
+OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
 
 
 def digest(value):
@@ -203,8 +204,10 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
         "steering": "Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and "
                     "walk you take each step yourself. Lowering needs the operator's raise first; with no "
                     "steering.mode in policy, every action is refused.",
-        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and its description names it.
-        "resolve": "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
+        # E126 adds the scope add to `resolve` (`add_scope`, `add_scope_signed`), and E160 the plan assessor's dispatch
+        # (`assess_plan`); its description names both.
+        "resolve": "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan "
+                   "(W#plan).",
         "ticket_draft": "Create a Ticket from your proposition and, if given, propose its plan "
                         "(proposed, not accepted).",
         "ticket_start": "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",

@@ -17,7 +17,8 @@ to the per-call typed-tool log (``aew.harness.tool_calls``; M4-E E5a). The broke
   operator-only ones (``OPERATOR_ONLY``: commands that would print a credential, offer secret or session URL, so Lead
   acquisition, handoff, takeover and release stay operator actions at the operator's own terminal; commands the
   operator confirms there; and the operator's own decisions, which the Lead must not make for them), the typed
-  surface's own transports (``NOT_RELAYED``), and any command nobody has classified yet (fail closed). The same
+  surface's own transports (``NOT_RELAYED``), the commands a Lead reaches through a typed tool only (``TYPED_ONLY``),
+  and any command nobody has classified yet (fail closed). The same
   check runs in the ``aew`` client and in the broker, for a shell command and for the typed ``cli`` escape alike;
 * dispatches without ``--launch`` (they print an invocation credential into the Lead's transcript);
 * an explicit ``--token`` (the session never needs one) and any project other than its own.
@@ -110,18 +111,20 @@ OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator"
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
                      frozenset({"capability", "remove"}), frozenset({"capability", "host-copies"}))
-# A Lead command whose Lead route is a typed tool not yet built, so only the operator runs it until then: `plan assess`
-# (E160 slice 2a; its typed tool is slice 2b, as the surface map's standing rule requires of a new Lead command).
-TYPED_PENDING = (frozenset({"plan", "assess"}),)
-# Commands only the operator runs, at their own terminal: never relayed, and never a typed tool (A1 §1), except those
-# in TYPED_PENDING, which are the operator's only until their typed tool is built and leave this list with it.
+# Lead commands whose Lead route is typed only (the surface map's standing rule for a new Lead command: disposition
+# `typed`): a Lead session reaches each through its typed tool, which runs the engine call with the held credential, and
+# never relays the command from its shell or the `cli` escape. The operator may still run it at their own terminal.
+# Each maps to the primitive its typed route runs; the refusal names the route as the catalog gives it
+# (``lead_text.typed_route``): `plan assess` is `resolve`'s `assess_plan` (E160 slice 2b).
+TYPED_ONLY: dict[frozenset[str], str] = {frozenset({"plan", "assess"}): "plan.assess"}
+# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
-                 + (CREDENTIAL_REPORT,) + TYPED_PENDING)
+                 + (CREDENTIAL_REPORT,))
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
-# here and from OPERATOR_ONLY is refused until someone classifies it (a test walks the parser).
+# here, from OPERATOR_ONLY and from TYPED_ONLY is refused until someone classifies it (a test walks the parser).
 LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "checkpoint", "evidence ingest", "gate waive", "harness interrupt",
     "harness launch", "harness send", "harness stop", "history audit", "history load", "integrate defer",
@@ -140,7 +143,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
 ))
-# `plan assess` is not Lead-reachable yet (TYPED_PENDING), but it prints a credential like every dispatch, so a relay
+# `plan assess` is typed only (TYPED_ONLY), never relayed, but it prints a credential like every dispatch, so a relay
 # would need --launch too.
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
               frozenset({"invoke", "create"}), frozenset({"plan", "assess"}))
@@ -271,16 +274,18 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "
                 "operator's, which only the operator confirms, at their own terminal: run it without that flag "
                 "(as the Lead's), or ask the operator")
-    if any(p <= path for p in TYPED_PENDING):
-        return (f"`aew {command_name(ns)}` reaches a Lead session through its typed tool, which is not built yet; "
-                "until it is, ask the operator to run it at their own terminal")
+    if path in TYPED_ONLY:
+        from aew.surface import lead_text  # local: the catalog's text, read only for this refusal
+
+        route = lead_text.typed_route(TYPED_ONLY[path]) or "its typed tool"
+        return f"`aew {command_name(ns)}` is not run from a Lead session's shell: use its typed route, {route}"
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
                 "operator actions at the operator's own terminal")
     if hasattr(ns, "token") and path not in LEAD_REACHABLE and path not in NOT_RELAYED:
         return (f"`aew {command_name(ns)}` is not classified as reachable from a Lead session; it is refused "
-                "until it is (lead_broker.LEAD_REACHABLE or OPERATOR_ONLY)")
+                "until it is (lead_broker.LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY)")
     return None
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.engine import guide
+from aew.knowledge import evidence as E
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.context import NORMAL
@@ -74,7 +75,24 @@ def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
     """The guide for a policy, core and sections, with the normal profile's stages and tools for the supplied
     switches."""
     return guide.document(gates_policy, checks_policy, stages(switches=switches),
-                          messaging=contract.MESSAGING in switches, uses=uses(switches=switches))
+                          messaging=contract.MESSAGING in switches, uses=uses(switches=switches),
+                          plan_assessment=plan_assessment(switches=switches))
+
+
+def typed_route(primitive: str, profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """How a Lead reaches ``primitive`` through a `resolve` choice, from the catalog: the tool, the choice and the
+    subject it takes, or None when the profile offers no such route. Today only the plan assessor's (E160 slice 2b)."""
+    choices = [c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if p == primitive]
+    subject = {"plan.assess": f"<W>{E.PLAN_ITEM}"}.get(primitive)
+    for t in contract.exposed(profile, switches):
+        if primitive in t.expands_to and choices and subject:
+            return f"`{t.name}`, choice `{choices[0]}`, subject `{subject}`"
+    return None
+
+
+def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """The typed route to a plan assessor (E160 slice 2b), or None when the profile offers none."""
+    return typed_route("plan.assess", profile, switches)
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
@@ -89,6 +107,7 @@ def document_for(engine: Any, *, switches: frozenset[str] | None = None) -> guid
 
     selected = switches_for(engine) if switches is None else switches
     return engine.lead_guide_document(stages(switches=selected), uses=uses(switches=selected),
+                                      plan_assessment=plan_assessment(switches=selected),
                                       **({"messaging": True} if contract.MESSAGING in selected else {}))
 
 

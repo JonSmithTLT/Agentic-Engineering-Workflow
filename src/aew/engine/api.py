@@ -1119,8 +1119,9 @@ class Engine:
                      kind: str = "lead_acquire") -> dict[str, Any]:
         return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label, kind=kind)
 
-    def lead_guide_document(self, stages: Sequence[Any], *, messaging: bool = False, uses: Sequence[Any] = ()) -> Any:
-        return self._resume.lead_guide_document(stages, messaging=messaging, uses=uses)
+    def lead_guide_document(self, stages: Sequence[Any], *, messaging: bool = False, uses: Sequence[Any] = (),
+                            plan_assessment: str | None = None) -> Any:
+        return self._resume.lead_guide_document(stages, messaging=messaging, uses=uses, plan_assessment=plan_assessment)
 
     def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)
@@ -1264,9 +1265,10 @@ class Engine:
                                    no_assurance=no_assurance)
 
     def plan_assess(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
-                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                    reason: str | None = None) -> dict[str, Any]:
         return self._nm.plan_assess(token=token, expect_rev=expect_rev, work_id=work_id, card=card,
-                                    execution_profile=execution_profile, launch=launch)
+                                    execution_profile=execution_profile, launch=launch, reason=reason)
 
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)

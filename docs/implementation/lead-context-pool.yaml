@@ -14,7 +14,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 9020
-  guide_bytes: 8521
+  guide_bytes: 8522
   join_bytes: 2
   mcp_bytes: 11900
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -39,7 +39,7 @@ allocations:
   E160:
     bytes: 300
     kind: estimate
-    source: "Register E160. A short paragraph for plan assessment guidance."
+    source: "Register E160. A short paragraph for plan assessment guidance. Slice 2b, measured: resolve's assess_plan choice and its description, MCP +14 B with messaging on (the compact description) and +38 B off, and the guide's one line naming the route, +107 B; so +121 B on and +145 B off. The estimate stands until slice 4's staffing text lands, which spends the rest."
   E162:
     bytes: 500
     kind: estimate
@@ -58,14 +58,14 @@ allocations:
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
 # Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then adds
 # its 200 B. E231's guide core and pointers (2026-11-25) sends the guide's core only: measured with the pool gate's own
-# render at main ee89c341, the guide is 17338 B -> 9447 B with messaging on (system 9380, join 2, MCP 12008: 38728 B ->
-# 30837 B) and 17160 B -> 9224 B off (system 9121, MCP 12029: 38312 B -> 30376 B). The 7891 B messaging-on saving lowers the baseline's guide bytes
-# (16412 - 7891 = 8521) and the cap (42971 - 7891 = 35080) by the same amount, under the rule above; the allocations
+# render at main 5649d832, the guide is 17445 B -> 9555 B with messaging on (system 9380, join 2, MCP 12022: 38849 B ->
+# 30959 B) and 17267 B -> 9332 B off (system 9121, MCP 12067: 38457 B -> 30522 B). The 7890 B messaging-on saving lowers the baseline's guide bytes
+# (16412 - 7890 = 8522) and the cap (42971 - 7890 = 35081) by the same amount, under the rule above; the allocations
 # stay as recorded (the maps entry's line is now behind a pointer, inside this saving). The operator approves the new
 # cap or allocates part of the saving; until then the drop applies.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
-  ceiling_bytes: 35080
+  ceiling_bytes: 35081
   operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
   date: '2026-11-15'
 # The approved drop after PR 3 still applies.
@@ -92,9 +92,9 @@ approval_history:
 # A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
 guide_core:
   measured: '2026-11-25'
-  messaging_on: {before: 17338, after: 9447}
-  messaging_off: {before: 17160, after: 9224}
-  saving_bytes: 7891
+  messaging_on: {before: 17445, after: 9555}
+  messaging_off: {before: 17267, after: 9332}
+  saving_bytes: 7890
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:
 #   count: <approved byte ceiling>

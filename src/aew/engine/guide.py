@@ -627,8 +627,10 @@ def _tool_rules() -> list[Rule]:
 
 
 def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage], *,
-             messaging: bool = False, uses: Sequence[ToolUse] = ()) -> Guide:
-    """The guide for a project's policy: its core and its sections, from one source (E231)."""
+             messaging: bool = False, uses: Sequence[ToolUse] = (), plan_assessment: str | None = None) -> Guide:
+    """The guide for a project's policy: its core and its sections, from one source (E231). ``plan_assessment``: the
+    typed route that dispatches an assessor of a unit's accepted plan, as the surface names it (E160 slice 2b; the
+    engine never imports the surface), or None where the profile offers none; the core's map of the tools carries it."""
     paths = gates_policy.get("risk_paths") or {}
     local = gates_policy.get("local_checks") or []
     checks = ", ".join(f"`{c}`" for c in local) or "none configured"
@@ -683,8 +685,10 @@ def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages
         moves = _moves(state, stages)
         if moves:
             lines.append(f"- **{state}** → " + "; ".join(moves))
-    if uses:
-        lines += ["", "Whatever the state:", "", *(f"- `{u.tool}`: {u.when}." for u in uses)]
+    if uses or plan_assessment:
+        lines += ["", "Whatever the state:", "", *(f"- `{u.tool}`: {u.when}." for u in uses),
+                  *([f"- An independent assessment of a unit's accepted plan: {plan_assessment}."]
+                    if plan_assessment else [])]
     lines += ["", "## Rules that always hold", "", *(f"- {rule}" for rule in rules)]
     if coordination:
         lines += ["", "## Coordination messages", "", *(f"- {rule}" for rule in coordination)]
@@ -695,6 +699,7 @@ def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage], *,
-           messaging: bool = False, uses: Sequence[ToolUse] = ()) -> str:
+           messaging: bool = False, uses: Sequence[ToolUse] = (), plan_assessment: str | None = None) -> str:
     """The guide's core: what the Lead's system text carries on every request."""
-    return document(gates_policy, checks_policy, stages, messaging=messaging, uses=uses).core
+    return document(gates_policy, checks_policy, stages, messaging=messaging, uses=uses,
+                    plan_assessment=plan_assessment).core

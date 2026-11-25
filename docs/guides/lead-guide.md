@@ -41,6 +41,7 @@ Whatever the state:
 - `harness_wait`: to wait on runs; never poll.
 - `checkpoint`: before a pause or a handoff.
 - `steering`: to lower your steering mode, or to ask the operator to raise it or to confirm an action.
+- An independent assessment of a unit's accepted plan: `resolve`, choice `assess_plan`, subject `<W>#plan`.
 
 ## Rules that always hold
 

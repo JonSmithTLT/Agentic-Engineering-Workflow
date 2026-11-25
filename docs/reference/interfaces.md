@@ -53,7 +53,7 @@ A named switch must be enabled in adopted policy when the row is registered; ses
 | `harness_wait` | wait | MECHANICAL | built | - | no | no | - |
 | `integration_publish` | decision | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
 | `message_send` | stage | MECHANICAL | built | `coordination.messaging` | yes | no | `message.send` |
-| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace`, `work.scope_add` |
+| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | yes | `stage.resolve`, `work.dispose`, `work.gate_replace`, `work.scope_add`, `plan.assess`, `dispatch.launch` |
 | `resume` | query | MECHANICAL | built | - | no | no | - |
 | `status` | query | MECHANICAL | built | - | no | no | - |
 | `steering` | stage | MECHANICAL | built | - | yes | no | `steering` |

@@ -19,6 +19,8 @@ wip_limit: 12
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
   E363: the test suite's own hygiene (shared setup and the module heap guard), CI tooling rather than a product system
+  E369: the recurring audit of the always-sent context, a standing process the operator schedules; its findings become
+    rows on the systems they touch
 systems:
 - id: SYS-01
   name: Evaluation instrument (F19, M4-H)
@@ -711,6 +713,8 @@ systems:
   - E231
   - E233
   - E241
+  - E367
+  - E368
   as_built:
   - modules:aew.surface
   - modules:aew.surface.contract
@@ -761,7 +765,9 @@ systems:
     exercised in a real run. Finished by this finish line''s own alternative: the operator leaves HOLD-06 held, and this
     entry records it (2026-11-25). The work restored from it, F15.3''s aew-run server with aew-knowledge and F15.8''s
     read half, with the typed Lead rows for maps, history, settings, usage and g3, the catalog''s DESIGNED loose end and
-    the Lead text fixes with a typed plan accept (E162, E163), are SYS-51''s, outside this finish line.'
+    the Lead text fixes with a typed plan accept (E162, E163), are SYS-51''s, outside this finish line. With the operator''s
+    always-sent work order (2026-11-25): the always-sent text made true and smaller, the Lead''s system text and tool list
+    (E367) and the worker packs (E368), each with its truth test.'
   remaining:
   - slice: The Lead's tool budget, decided before E158
     row: E231
@@ -772,15 +778,24 @@ systems:
   - slice: The worker route's size check
     row: E241
     estimate: 1 small PR (estimate)
+  - slice: 'The Lead''s system text and tool list made true and smaller, with a Lead-text truth test, after the guide''s
+      core plus pointers (the operator, 2026-11-25)'
+    row: E367
+    estimate: 1-2 PRs (estimate)
+  - slice: 'Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator,
+      2026-11-25)'
+    row: E368
+    estimate: 2 PRs (estimate)
   decision: 'decided: finished by the finish line''s own alternative, HOLD-06 recorded as staying held (the operator,
     2026-11-25: "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); the worker-side
     role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen
     by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E231's next part, E233, E241)
+  who: Lead (E231's next part, E233, E241, E367, E368)
   reason: 'The Lead''s catalog is on and used and needs nothing to work (BOARD v2 §5). What is left inside the finish
     line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief), E233''s exits and E241''s
-    size check. The unbuilt worker half (F15.3, F15.8) stays held, as HOLD-06 placed it after first use (BOARD v2 §3),
+    size check, then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
+    then the worker packs (E368). The unbuilt worker half (F15.3, F15.8) stays held, as HOLD-06 placed it after first use (BOARD v2 §3),
     and moved to SYS-51 with the other frozen slices. F15.3 changes the form of what workers already have through the
     bridge (whoami, check.run, submit over the aew CLI), not the capability.'
   evidence:
@@ -4028,6 +4043,7 @@ systems:
   - designer-decisions-2026-11-06-planner-staffing-and-plan-assessor-v2.md
   register:
   - E160
+  - E366
   as_built: []
   touches:
   - src/aew/knowledge/evidence.py
@@ -4063,9 +4079,6 @@ systems:
     a `plan_assessor` card; the Lead's staffing text names the two planner triggers, tested in the text a run receives;
     exercised in a real class 1 run. The Lead-change route is exempt at class 1.
   remaining:
-  - slice: the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule
-    row: E160
-    estimate: about 1 PR (estimate; same source)
   - slice: the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with
       the waiver refusal, and the operator's dismissal
     row: E160
@@ -4073,6 +4086,11 @@ systems:
   - slice: the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from`
     row: E160
     estimate: about 1 PR (estimate; same source)
+  - slice: 'the plan assessor''s pack fitted to its scope: the reviewer archetype''s text rendered at plan_assessment scope
+      asks for a change''s findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator,
+      2026-11-25)'
+    row: E366
+    estimate: 1 small PR (estimate)
   decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
     whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
     pointer on item 4)'
@@ -4670,3 +4688,61 @@ systems:
   - src/aew/cli/work_commands.py:502 (aew harness interrupt, the interim path)
   - src/aew/policy/execution.py:179-182 (presentation(); grep finds no caller of presentation() in src)
   - 'docs/implementation/future-work.yaml (row E248): Unscheduled'
+- id: SYS-53
+  name: Per-operation revision check (replacing the project-wide expect_rev)
+  purpose: 'Replace the project-wide revision compare that every control mutation carries (`expect_rev`) with a check per
+    operation: the engine''s guards (class A), the prior value the caller read (class B) or the digest of what the approver
+    was shown (class C), so an unrelated commit never stales a legal change.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/implementation/adr/0005-authority-credentials-operator.md
+  register:
+  - E326
+  - E327
+  - E328
+  - E329
+  - E330
+  as_built:
+  - modules:aew.engine.primitives
+  touches:
+  - src/aew/engine/primitives.py
+  - src/aew/engine/base.py
+  - src/aew/engine/lead_ops.py
+  - src/aew/harness/lead_broker.py
+  - src/aew/harness/contract.py
+  - src/aew/errors.py
+  depends_on: []
+  state:
+    board_state: partly_built
+    built: partly
+    wired: []
+    on_by_default: true
+    used_in_default_flow: partly
+  finish_line: 'Every class B and C binding required and a B or C operation without its binding refused; the project-wide
+    compare dropped at every site; `expect_rev` removed outright, with no release of grace (the operator, 2026-11-25:
+    "Yup. ill have it removed outright"); open stage intents migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
+    staling a Lead mutation, tested for every class A operation and exercised in a real run.'
+  remaining:
+  - slice: 'The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated,
+      and the amendments'
+    row: E329
+    estimate: 1 PR (the designer's ruling of 2026-11-10)
+  decision: 'decided: finish, so that `expect_rev` goes away entirely (the operator, 2026-11-25: "my goal was expect rev
+    goes away entirely. Aew knows what revision is taking place and expect rev doesnt really save us from anything")'
+  recommendation: finish
+  who: Lead
+  reason: 'The designer''s decision of 2026-11-10 (design workspace ab975c1), decided by the operator the same day ("Yes,
+    all three"), split the replacement into four PRs and seat resume. The specs and guards (E326), the class C bindings
+    (E327), the class B bindings with CHANGED_SINCE_READ (E328) and seat resume (E330) are built, all optional beside the
+    project-wide check, which stays in force until the switch-on (E329). Recorded on the board when the operator placed
+    E329 on 2026-11-25; it was partly built and unrecorded before.'
+  evidence:
+  - 'src/aew/engine/primitives.py CONTROL_OP_SPECS: a revision class and binding for each checked control operation'
+  - 'src/aew/errors.py ChangedSinceRead: code CHANGED_SINCE_READ, the class B and C refusal'
+  - 'src/aew/harness/contract.py EXPECT_REV: still printed in next steps (src/aew/engine/base.py, src/aew/harness/lead_broker.py)'
+  - 'docs/implementation/adr/0005-authority-credentials-operator.md: every control mutation still requires --expect-rev;
+    its E330 amendment'
+  - 'docs/implementation/future-work.yaml (rows E326, E327, E328, E330): closed; E329 open'

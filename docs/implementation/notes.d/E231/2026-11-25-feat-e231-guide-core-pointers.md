@@ -6,10 +6,11 @@ typed tools and when to use each, and one pointer per section. The core also nam
 which the system text's "as the guide says" pointed to with nothing behind it. `aew guide` is a relayed read for the
 contained Lead, so it adds no tool and no bytes to the tool list.
 
-**Measured with the pool gate's own render.** With messaging on, the guide went from 17,338 B to 9,447 B, a saving of
-7,891 B. With messaging off, it went from 17,160 B to 9,224 B. Under the pool's rule, the baseline's guide bytes
-dropped from 16,412 B to 8,521 B and the cap from 42,971 B to 35,080 B. The operator approves that cap, or records an
-allocation from the saving.
+**Measured with the pool gate's own render**, at main 5649d832, where E160's plan-assessment line, now in the core,
+is part of the guide. With messaging on, the guide went from 17,445 B to 9,555 B, a saving of 7,890 B. With messaging
+off, it went from 17,267 B to 9,332 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
+8,522 B and the cap from 42,971 B to 35,081 B. The operator approves that cap, or records an allocation from the
+saving.
 
 **The failure criterion's counters.** Each line of the broker's typed-tool log now names its Lead session and
 generation. The same log also holds a line for each relayed `aew guide` read and each `--help` lookup the Lead's shell

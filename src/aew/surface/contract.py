@@ -22,6 +22,7 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
+from aew.knowledge import evidence as E
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -155,13 +156,20 @@ GATE_SUBJECTS = ("gate",)
 # A Ticket's scope, `<T>#scope:<path>` (register E126): `add_scope` adds one exact test path on the record, and
 # `add_scope_signed` does when the rationale carries the sign-off a stop asks for.
 SCOPE_SUBJECTS = ("scope",)
+# A unit's accepted plan, `<W>#plan` (register E160 slice 2b): `assess_plan` dispatches an independent assessor of it
+# and launches its run, so `resolve` dispatches (it expands to the launch too, ``RESOLVE_LAUNCH``).
+PLAN_SUBJECTS = ("plan",)
 RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
     **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
     **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
        for kind in DISPOSITION_SUBJECTS},
     **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
     **{(choice, kind): "work.scope_add" for choice in ("add_scope", "add_scope_signed") for kind in SCOPE_SUBJECTS},
+    **{(E.ASSESS_CHOICE, kind): "plan.assess" for kind in PLAN_SUBJECTS},
 }
+# The launch a dispatching choice's call starts in its own commit (``dispatch.launch``, covered by its decision): the
+# run's supervisor takes custody of the new credential, as every typed dispatch's does.
+RESOLVE_LAUNCH = ("dispatch.launch",)
 
 
 def _choices_running(*primitives: str) -> tuple[str, ...]:
@@ -173,6 +181,7 @@ STAGE_CHOICES = _choices_running("stage.resolve")
 DISPOSITION_CHOICES = _choices_running("work.dispose")
 GATE_CHOICES = _choices_running("work.gate_replace")
 SCOPE_CHOICES = _choices_running("work.scope_add")
+PLAN_CHOICES = _choices_running("plan.assess")
 RESOLVE_CHOICES = _choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
@@ -274,7 +283,7 @@ TOOLS: dict[str, Tool] = _catalog(
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
+         "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan (W#plan).",
          _obj({"expect_rev": EXPECT_REV,
                "subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
@@ -286,9 +295,10 @@ TOOLS: dict[str, Tool] = _catalog(
               ("expect_rev", "subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
-         expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
-         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction"),
-         mutates=True, progression=True),
+         expands_to=(*dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values()), *RESOLVE_LAUNCH),
+         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction",
+                             "plan_assessment_dispatch"),
+         dispatches=True, mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",

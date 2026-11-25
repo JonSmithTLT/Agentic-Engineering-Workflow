@@ -54,6 +54,9 @@ RESUME_ORDER = [
     "open_review_findings", "verification_failures", "authority_and_guardrails", "derived_knowledge",
     "next_actions",
 ]
+# A pending handoff's next step, in words: its whole command would carry the offer secret, which goes on no command line
+# a hint prints, and a bare command in a next action is offered to be run as given (D2's O-CMD; E140's flip).
+HANDOFF_ACCEPT = "the successor accepts it with the offer secret the outgoing Lead gave it (`lead handoff accept`)"
 # The ways onto a vacant seat: one text, for `aew status` and `aew resume` both (review of #329, F3).
 VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no credential shown, or `aew lead acquire "
                f"{EXPECT_REV}` shows one for the edit-and-adopt route. {HELD_SEAT}")
@@ -114,7 +117,7 @@ class Resume:
         if lead["status"] == "vacant":
             actions.append(f"no Lead holds the seat: {VACANT_SEAT}")
         elif lead["status"] == "handoff_pending":
-            actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
+            actions.append(f"a Lead handoff is pending: {HANDOFF_ACCEPT}")
         if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
             actions.append("migrate the control state to v2 (finished work leaves the hot state): the operator runs "
                            f"`aew migrate {EXPECT_REV}` at their own terminal (a Lead session is refused it)")
@@ -183,7 +186,8 @@ class Resume:
             out.append(f"an ancestor's plan changed after this plan was accepted: `{reconfirm}` or a new plan revision")
         if self.units.dispatch_binding_problem(state, wid):
             out.append("this attempt was dispatched with other dependencies than the Ticket now has: a new dispatch "
-                       "is required (REPLAN_REQUIRED and a plan revision, or `aew work redispatch` if non-mutating)")
+                       "is required (REPLAN_REQUIRED and a plan revision, or "
+                       f"`{T.operation_command('work.redispatch', wid)}` if non-mutating)")
         if u["state"] in {"READY", "ASSIGNED", "RUNNING"}:
             for i in self.inputs.input_status(state, wid):
                 if i["blocks_dispatch"]:
@@ -211,7 +215,7 @@ class Resume:
             if st == "VERIFIED":
                 actions = [f"accept the record (`{accept}`)"]
             if st == "INTERRUPTED":
-                actions.append("then start a new attempt (`aew work redispatch`)")
+                actions.append(f"then start a new attempt (`{T.operation_command('work.redispatch', wid)}`)")
             return actions
         if st == "READY":
             return [f"dispatch it (`aew work dispatch {wid} --launch {EXPECT_REV}`); the executor card is pinned "
@@ -231,10 +235,10 @@ class Resume:
             if executor.get("status") == "active":
                 pending = self._submitted(state, wid, u, execution.get("expected_kind") or "")
                 if pending:
-                    return [f"ingest record {e} (`aew evidence ingest`)" for e in pending]
+                    return [f"ingest record {e} (`{T.operation_command('evidence.ingest', wid, e)}`)" for e in pending]
                 return [f"executor {execution['invocation']} (attempt {execution['attempt']}) in progress"]
-            return [f"no live executor for the current attempt: start a new one (`aew work redispatch {wid} --reason "
-                    f"<reason> {EXPECT_REV}`)"]
+            return [f"no live executor for the current attempt: start a new one "
+                    f"(`{T.operation_command('work.redispatch', wid)}`)"]
         if st == "VERIFIED":
             return [f"accept the record (`{accept}`)"]
         return []
@@ -363,7 +367,7 @@ class Resume:
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
             status = (u.get("integration") or {}).get("status")
-            stuck = next((s for s in (VO.stuck_run((u.get("integration") or {}).get(slot)) for slot in VO.SLOTS)
+            stuck = next((s for s in (VO.stuck_run((u.get("integration") or {}).get(slot), wid) for slot in VO.SLOTS)
                           if s), None)
             if stuck:  # a checks-mode validation run left running (M4-D5): settle it before anything else
                 return [stuck]
@@ -382,8 +386,7 @@ class Resume:
                 "prepared": (self._custodian_validates(state, wid) if checks_mode
                              else self._integration_verifier(state, wid)),
                 "validation_unavailable": "post-integration validation could not run (infrastructure): fix the "
-                                          f"environment, then `aew integrate requeue {wid} --reason <reason> "
-                                          f"{EXPECT_REV}`",
+                                          f"environment, then `{T.operation_command('integrate.requeue', wid)}`",
                 "validation_inconclusive": "resolve the post-integration verification blocker, then run "
                                            f"{prepare} (a new candidate) and verify it",
                 "validated": f"publish: {self._publish(state, wid)}",
@@ -451,7 +454,7 @@ class Resume:
         if worker:
             return said
         return said + (" (recovery, while no custody worker has registered for it: "
-                       f"`aew integrate validate {wid} {EXPECT_REV}`)")
+                       f"`{T.operation_command('integrate.validate', wid)}`)")
 
     @staticmethod
     def _queue_wait(state: dict[str, Any], wid: str) -> str | None:

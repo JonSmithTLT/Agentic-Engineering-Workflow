@@ -46,20 +46,12 @@ def test_a_fields_block_keeps_yaml_quotes_backslashes_and_controls_distinct():
 # edits move its line: a failing site in these files that is not pinned fails the check, and a pinned one that is gone
 # or now parses fails the liveness test (#319 review F3).
 B3 = "deferred: B3's file (E112, fix/e112-weaker-contexts)"
-EVIDENCE, VALIDATION = "src/aew/engine/evidence_ops.py", "src/aew/engine/validation_ops.py"
+EVIDENCE = "src/aew/engine/evidence_ops.py"
 BROKER, SUPERVISOR = "src/aew/harness/lead_broker.py", "src/aew/harness/supervisor.py"
 DEFERRED = {
     (EVIDENCE, "aew plan reconfirm {work_id} --reason ..."): B3,
     (EVIDENCE, "aew plan reconfirm <id> --reason ..."): B3,
     (EVIDENCE, "aew integrate publish {work_id} --expect-rev N"): f"{B3}; #312 F3 (an already-ingested refusal)",
-    (VALIDATION, "aew integrate validate --diagnostic"): B3,
-    (VALIDATION, "aew integrate validate {work_id} --wait"): B3,
-    (VALIDATION, "aew integrate validate {work_id} --diagnostic"): B3,
-    (VALIDATION, "aew integrate validate {work_id}{flag}"): B3,
-    (VALIDATION, "aew integrate publish {work_id}"): B3,
-    (VALIDATION, "aew verify classify {work_id}"): B3,
-    (VALIDATION, "aew integrate validate {work_id}"): B3,
-    (VALIDATION, "aew integrate requeue {work_id}"): B3,
     (BROKER, "aew {command_name(ns)}"): f"{B3}; with the bare names #311 F3 named",
     (BROKER, "aew {name}"): f"{B3}; with the bare names #311 F3 named",
     (SUPERVISOR, "aew harness launch {inv} {rev}"): B3,
@@ -111,17 +103,14 @@ LEGACY_BARE_SPANS = {
     ("engine/nonmutating_ops.py", "aew work acknowledge-input"): 1,
     ("engine/nonmutating_ops.py", "aew work close"): 1,
     ("engine/nonmutating_ops.py", "aew work dispatch"): 2,
-    ("engine/nonmutating_ops.py", "aew work redispatch"): 3,
+    ("engine/nonmutating_ops.py", "aew work redispatch"): 2,
     ("engine/queue_ops.py", "aew integrate prepare"): 1,
     ("engine/reasons.py", "aew work reclassify"): 1,
-    ("engine/resume_ops.py", "aew evidence ingest"): 1,
-    ("engine/resume_ops.py", "aew lead handoff accept"): 2,
+    ("engine/resume_ops.py", "aew lead handoff accept"): 1,
     ("engine/resume_ops.py", "aew lead takeover"): 1,
-    ("engine/resume_ops.py", "aew work redispatch"): 2,
     ("engine/stage_intents.py", "aew stage continue|abandon"): 1,
     ("engine/steering.py", "aew lead mode lower"): 1,
-    ("engine/validation_ops.py", "aew integrate requeue"): 1,
-    ("engine/validation_ops.py", "aew integrate validate"): 2,
+    ("engine/validation_ops.py", "aew integrate validate"): 1,
     ("engine/validation_ops.py", "aew migrate"): 1,
     ("engine/work_ops.py", "aew work redispatch"): 1,
     ("harness/contract.py", "aew lead release"): 1,

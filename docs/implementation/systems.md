@@ -278,7 +278,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 31
 
-**Own slices left:** 4 — the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160); the plan assessor's pack fitted to its scope: the reviewer archetype's text rendered at plan_assessment scope asks for a change's findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator, 2026-11-25) (E366) — **Next:** the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule — E160 — about 1 PR (estimate; same source)
+**Own slices left:** 3 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160); the plan assessor's pack fitted to its scope: the reviewer archetype's text rendered at plan_assessment scope asks for a change's findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator, 2026-11-25) (E366) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
 
 **Wired:** none
 

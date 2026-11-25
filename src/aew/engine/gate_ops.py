@@ -138,9 +138,25 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
     under = set(H.descendants(state, work_id))
     why = f"{work_id}'s mandatory gate `{gate}` was replaced on the record, so this invocation's context pack changed"
     return [{"invocation": inv_id, "work_id": inv["work_unit"], "role": inv.get("role"),
-             "commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
+             **redispatch_entry(state, inv_id, inv, why)}
             for inv_id, inv in sorted(state["invocations"].items())
             if inv.get("status") == "active" and inv.get("work_unit") in under]
+
+
+def redispatch_entry(state: dict[str, Any], inv_id: str, inv: dict[str, Any], why: str) -> dict[str, Any]:
+    """``redispatch_commands`` with what they read: ``fields`` for each `--fields -` (the cancellation's reason), and,
+    for a plan assessor, the ``arguments`` its typed dispatch reads on stdin, to which the Lead adds ``expect_rev``
+    (#586 review, m1). The typed route takes no card: an assessor of another card is dispatched again by the operator,
+    at their own terminal (``operator``)."""
+    entry: dict[str, Any] = {"commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
+    if inv.get("scope") == E.ASSESSMENT_SCOPE:
+        entry["arguments"] = E.assessor_call(inv["work_unit"], why)[1]
+        card = (inv.get("card") or {}).get("id")
+        if card != E.ASSESSOR_CARD:
+            entry["operator"] = (f"the typed route dispatches the built-in {E.ASSESSOR_CARD}; to dispatch {card} "
+                                 f"again, the operator runs `aew plan assess {inv['work_unit']} --card {card} --launch "
+                                 f"{EXPECT_REV}` at their own terminal instead")
+    return entry
 
 
 def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any]) -> list[str]:
@@ -153,8 +169,8 @@ def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any])
     if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
         return [f"aew work redispatch {wid} --launch {rev} --fields -"]
     card = (inv.get("card") or {}).get("id")
-    if inv.get("scope") == E.ASSESSMENT_SCOPE:  # a plan assessor is dispatched again by its own entrypoint (E160)
-        return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew plan assess {wid} --card {card} --launch {rev}"]
+    if inv.get("scope") == E.ASSESSMENT_SCOPE:  # a plan assessor: the Lead's typed dispatch, its arguments on stdin
+        return [f"aew invoke cancel {inv_id} {rev} --fields -", E.assessor_call(wid, "")[0]]
     pick = f"--card {card}" if card else f"--role {inv['role']}"
     scope = " --scope integration" if inv.get("scope") == "integration" else ""
     return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew invoke create {wid} {pick}{scope} --launch {rev}"]

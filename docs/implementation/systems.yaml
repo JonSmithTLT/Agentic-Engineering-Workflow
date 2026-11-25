@@ -4079,9 +4079,6 @@ systems:
     a `plan_assessor` card; the Lead's staffing text names the two planner triggers, tested in the text a run receives;
     exercised in a real class 1 run. The Lead-change route is exempt at class 1.
   remaining:
-  - slice: the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule
-    row: E160
-    estimate: about 1 PR (estimate; same source)
   - slice: the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with
       the waiver refusal, and the operator's dismissal
     row: E160

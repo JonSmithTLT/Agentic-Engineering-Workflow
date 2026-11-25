@@ -115,7 +115,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
+from evidence_files import ARMED_NOTE, WORKER_PHASES, stacks_ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
@@ -135,7 +135,6 @@ STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
-WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25

@@ -729,3 +729,204 @@ def test_a_failed_gh_read_names_gh_s_own_error(monkeypatch):
     with pytest.raises(subprocess.CalledProcessError, match=r"exit status 1: gh: Server Error \(HTTP 502\)") as raised:
         flake_register._gh_read("repos/o/r/actions/runs/1/attempts/1/jobs")
     assert raised.value.stderr == b"gh: Server Error (HTTP 502)\n"  # _pages still reads the raw text
+
+
+# A lane cancelled while its sessions start (register E3): superseded CI run 45590135545 cancelled ten lanes 37 to 96 s
+# into their pytest step, each with "[death-record] cancel: no pre-cleanup worker observation" and "[running] missing
+# running test name", since no worker was in a test to observe or name.
+BEFORE = "integration 8/8 (ubuntu-latest)"
+
+
+def _starting_lane(raw, layout):
+    """A lane root as a cancellation finds it while its sessions start. ``layout`` names the sessions' state."""
+    raw.mkdir(parents=True, exist_ok=True)
+    (raw / "runner-resources-job.txt").write_text(json.dumps({"job_label": BEFORE}))
+    if layout == "no session":
+        return []
+    session = raw / "autopsy/session-42-abc"
+    session.mkdir(parents=True)
+    (session / "session-started.txt").write_text("started")
+    (session / "controller-pid.txt").write_text("42")
+    (session / "controller-start.txt").write_text("4200")
+    if layout == "serial":
+        return []
+    (session / "worker-count.txt").write_text("2\n")
+    rows = []
+    phase = {"collecting": "collecting", "collection ended": "collection-ended", "executing": "execution-started",
+             "finished": "collection-ended", "workers not up": None}[layout]
+    for index, pid in enumerate((101, 102) if phase else ()):
+        (session / f"worker-gw{index}-pid.txt").write_text(f"{pid}\n")
+        (session / f"worker-gw{index}-start.txt").write_text(f"{pid * 2}\n")
+        (session / f"worker-{pid}-{pid * 2}-lifecycle.txt").write_text(
+            "".join(f"{stamp} {name} 7\n" for stamp, name in enumerate(
+                ("collecting", "collection-ended", "execution-started")[:("collecting", "collection-ended",
+                                                                         "execution-started").index(phase) + 1],
+                start=10)))
+        rows.append({"session": session.name, "worker": f"worker-gw{index}", "pid": pid, "start": pid * 2,
+                     "phase": phase})
+    if layout == "finished":
+        (session / "session-finished.txt").write_text("2026-11-25 10:02:37 pid 42: the session finished (exit 1);")
+    return rows
+
+
+def _published(tmp_path, raw, monkeypatch):
+    stage = _load("stage_evidence")
+    monkeypatch.setattr(stage, "scan", lambda *args: {})
+    root = tmp_path / "published"
+    root.mkdir()
+    # As the lane action publishes: the running names, the priority (watchdog) bundle, the reports and the full bundle.
+    priority = tmp_path / "evidence-before-attempt-1-watchdog-input"
+    _load("evidence_inputs").prepare(raw, priority, job=BEFORE)
+    (tmp_path / "evidence-before-attempt-1-names").rename(root / "evidence-before-attempt-1-running")
+    stage.stage(priority, root / "evidence-before-attempt-1-watchdog")
+    stage.stage(raw, root / "evidence-before-attempt-1")
+    stage.stage(raw, root / "lane-report-evidence-before-attempt-1", reports_only=True)
+    return root
+
+
+def _cancelled_lane_job():
+    return {"id": 139124033808, "name": BEFORE, "conclusion": "cancelled", "steps": [],
+            "cancel_reason": CANCEL.classify(OLD, {"id": 139124033808}, NOTES, [NEW])}
+
+
+def _collect(raw, rows, monkeypatch):
+    import sys
+
+    lane = _load("lane_step")
+    monkeypatch.setenv("AEW_LANE_JOB_STATUS", "cancelled")
+    monkeypatch.setenv("AEW_LANE_JOB_LABEL", BEFORE)
+    monkeypatch.setattr(sys.modules["cancel_evidence"], "collect_reason", lambda *_: None)
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", lambda root, at_ns: rows)
+    assert lane.main(["--collect", "--root", str(raw)]) == 0
+
+
+@pytest.mark.parametrize("layout", ["no session", "workers not up", "collecting", "collection ended"])
+def test_a_lane_cancelled_before_any_test_started_has_complete_typed_evidence(tmp_path, monkeypatch, layout):
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, layout), monkeypatch)
+    record = json.loads((raw / "runner-resources-before-tests.txt").read_text())
+    assert record["outcome"] == "cancelled before any test started" and record["observed_by"] == "cancel collection"
+    assert [len(s["workers"]) for s in record["sessions"]] == {"no session": [], "workers not up": [0]}.get(layout, [2])
+    check = _load("check_evidence_run")
+    rows = []
+    assert check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows) == []
+    assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
+
+
+@pytest.mark.parametrize("layout", ["serial", "executing", "finished"])
+def test_a_cancelled_lane_whose_tests_may_have_begun_is_never_typed_before_tests(tmp_path, monkeypatch, layout):
+    # A serial controller runs its own tests and keeps no lifecycle receipt; a worker past its first test, or a finished
+    # session, has begun its tests. None of them is shown to stand before its first test, so the gap stays a defect.
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, layout), monkeypatch)
+    assert not (raw / "runner-resources-before-tests.txt").exists()
+    check = _load("check_evidence_run")
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()])
+    assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects)
+    assert any("[running] missing running test name" in d for d in defects)
+
+
+@pytest.mark.parametrize("contradiction", ["execution started", "unlisted session", "unlisted worker", "running name",
+                                           "torn record", "finished", "test result", "collection error"])
+def test_a_before_tests_record_the_bundle_contradicts_is_a_defect(tmp_path, monkeypatch, contradiction):
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, "collecting"), monkeypatch)
+    session = raw / "autopsy/session-42-abc"
+    if contradiction == "execution started":
+        with (session / "worker-101-202-lifecycle.txt").open("a") as receipt:
+            receipt.write("30 collection-ended 7\n40 execution-started 7\n")
+    elif contradiction == "unlisted session":
+        other = raw / "autopsy/session-77-def"
+        other.mkdir()
+        (other / "session-started.txt").write_text("started")
+    elif contradiction == "unlisted worker":
+        (session / "worker-gw2-pid.txt").write_text("103\n")
+    elif contradiction == "running name":
+        (raw / "running-101.txt").write_text("tests/integration/test_a.py::test_case\n")
+    elif contradiction in {"test result", "collection error"}:
+        phase = "collect" if contradiction == "collection error" else "call"
+        failure = {"phase": phase, "longrepr": "E   ValueError: cause", "crash": "test_a.py:5: ValueError: cause"}
+        (raw / "report.json").write_text(json.dumps({
+            "schema": "aew/lane-report/v1", "complete": False, "exitstatus": None,
+            "results": {"tests/test_a.py::test_a": {"outcome": "failed", "failures": [failure]}}}))
+    elif contradiction == "torn record":
+        (raw / "runner-resources-before-tests.txt").write_text('{"outcome": "cancelled before any test started"}\n')
+    else:
+        (session / "session-finished.txt").write_text("finished")
+    check = _load("check_evidence_run")
+    rows = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows)
+    if contradiction == "collection error":
+        # Collection fails before any test starts, so it never contradicts the record; the failure is still reported.
+        assert not any("[before-tests]" in d for d in defects) and rows[0]["failed_nodes"]
+    elif contradiction == "running name":
+        # A running name is a death marker: the cancellation is checked as one that interrupted a test.
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']})" and defects
+    else:
+        assert any("[before-tests]" in d for d in defects) and rows[0]["A2"] == "no"
+
+
+def test_the_linux_supervisor_records_a_cancel_before_tests_at_the_signal(tmp_path, monkeypatch):
+    import signal
+    import sys
+    from types import SimpleNamespace
+
+    lane = _load("lane_step")
+    rows = _starting_lane(tmp_path, "collecting")
+    handlers, signals = {}, []
+    process = SimpleNamespace(poll=lambda: None, send_signal=signals.append, kill=lambda: None, wait=lambda **_: None)
+    monkeypatch.setattr(lane, "sys", SimpleNamespace(platform="linux", stdout=sys.stdout, stderr=sys.stderr))
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane.proctree, "identity", lambda pid: (pid, 1))
+    monkeypatch.setattr(lane.proctree, "table", lambda: {})
+    monkeypatch.setattr(lane.proctree, "descendants", lambda *_: [])
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", lambda *_args, **_kw: handlers[signal.SIGINT](signal.SIGINT, None))
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane, "memory_used", lambda: None)
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", lambda root, at_ns: rows)
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_: None))
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 130
+    assert signals == [signal.SIGINT]
+    record = json.loads((tmp_path / "runner-resources-before-tests.txt").read_text())
+    assert record["observed_by"] == "warning"
+    assert [(w["worker"], w["phase"]) for w in record["sessions"][0]["workers"]] == [
+        ("worker-gw0", "collecting"), ("worker-gw1", "collecting")]
+
+
+@pytest.mark.parametrize("sign", ["watchdog header", "running name"])
+def test_a_before_tests_record_is_never_written_while_a_test_is_in_flight(tmp_path, sign):
+    from types import SimpleNamespace
+
+    import watchdog
+    import worker_evidence
+
+    rows = _starting_lane(tmp_path, "collecting")
+    if sign == "watchdog header":
+        guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+        (tmp_path / "hang-gw0-101.txt").write_text(guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_a")))
+    else:
+        (tmp_path / "running-101.txt").write_text("tests/test_a.py::test_a\n")
+    assert not worker_evidence.before_tests(tmp_path, 1.0, rows, observer="cancel collection")
+    assert not (tmp_path / "runner-resources-before-tests.txt").exists()
+
+
+@pytest.mark.parametrize("ran", ["lane report", "finished session"])
+def test_the_hosted_twin_finds_a_lane_whose_tests_ran_claimed_as_cancelled_before_them(tmp_path, monkeypatch, ran):
+    verify = _load("verify_evidence")
+    raw = tmp_path / "raw"
+    _starting_lane(raw, "finished" if ran == "finished session" else "no session")
+    if ran == "lane report":
+        (raw / "report.json").write_text(json.dumps({"schema": "aew/lane-report/v1", "complete": True, "exitstatus": 0,
+                                                      "results": {"tests/test_a.py::test_a": {"outcome": "passed"}}}))
+    root = _published(tmp_path, raw, monkeypatch)
+    assert verify.before_tests_twin(root) == []
+    for path in root.rglob("report.json"):
+        path.unlink()
+    for path in root.rglob("session-finished.txt"):
+        path.unlink()
+    # With nothing left that shows a test ran, the claim stands: the twin reports that its ablation survived.
+    [survived] = verify.before_tests_twin(root)
+    assert survived.startswith("before-tests: before-tests ablation survived:") and "[before-tests]" not in survived

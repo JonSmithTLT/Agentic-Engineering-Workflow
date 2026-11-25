@@ -88,6 +88,16 @@ OUTSIDE_CALL = ("setup", "teardown", "between tests")
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
+# An xdist worker's lifecycle receipt (session_deadline.Worker): its phases, in order. A worker runs no test before it
+# records the last one, which it writes on entering its first test's protocol.
+WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
+BEFORE_EXECUTION = WORKER_PHASES[:-1]
+# A lane cancelled while its sessions were still starting has no test running and no worker in a test, so it has no
+# worker observation or running name to give. worker_evidence.before_tests records that, from positive observations
+# only, and evidence_problems accepts it as the cancellation's complete death evidence once the bundle bears it out
+# (register E3: cancelled CI runs 45590135545, 45591135734, 45571060413 and 45570390239).
+BEFORE_TESTS = "runner-resources-before-tests.txt"
+BEFORE_TESTS_OUTCOME = "cancelled before any test started"
 STUCK_MARKER = "stuck-after-finish.txt"  # session_deadline's STUCK marker, as written (its test pins the two)
 
 

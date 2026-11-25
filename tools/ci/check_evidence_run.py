@@ -17,7 +17,7 @@ from cancel_evidence import attach_reasons, valid
 from evidence_problems import FAILURE_PHASES, evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from evidence_files import HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
+from evidence_files import BEFORE_TESTS, HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
 from flake_register import _api, _gh_read, _pages, _started_pytest, check_annotations  # noqa: E402
 
 
@@ -242,7 +242,11 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     finished_tests([path for path in found if bundle_prefix(path.name) == name], name in completed,
                                    report_exits=reports_by_prefix[name], steps_passed=all_steps_passed)
                     for name in prefixes)
-                kind = "cancel-after-tests" if after_tests else "cancel"
+                # With no death marker, a lane step's record that no session had started a test types the
+                # cancellation; evidence_problems checks the bundle bears it out (register E3).
+                before_tests = not death_marker and Path(BEFORE_TESTS).stem in markers
+                kind = ("cancel-after-tests" if after_tests else "cancel-before-tests" if before_tests
+                        else "cancel")
             elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
                 kind = "oom"
             elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
@@ -267,6 +271,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             nodes = sorted({node for _, node, _ in recorded | observed})
             row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
                            else f"{cancelled_as} after tests" if kind == "cancel-after-tests"
+                           else f"{cancelled_as} before tests" if kind == "cancel-before-tests"
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":

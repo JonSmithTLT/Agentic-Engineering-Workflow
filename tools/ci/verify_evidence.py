@@ -15,7 +15,17 @@ from pathlib import Path
 
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
-from evidence_files import CANCEL_COLLECTION, FRAME, WARNING, entries, state, test_frame, warning_outcome
+from evidence_files import (
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
+    CANCEL_COLLECTION,
+    FRAME,
+    WARNING,
+    entries,
+    state,
+    test_frame,
+    warning_outcome,
+)
 from evidence_problems import evidence_problems
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
@@ -31,7 +41,7 @@ JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ab
 OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
                "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
                "missing-counter": "oom-event", "missing-peak": "pressure", "wrong-bundle": "file-class",
-               "live": "live-stack", "annotations-off": "cancel-reason"}
+               "live": "live-stack", "annotations-off": "cancel-reason", "before-tests": "before-tests"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
 FAILURE_TWINS = {"invalid-json": "failure-report", "missing-exception": "failure-text",
                  "missing-result": "failure-report"}
@@ -145,6 +155,29 @@ def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
                 failures.extend(expect_rule("missing-kind", JOB_TWINS["missing-kind"],
                                             check_jobs(twin, [job], include_success=True)))
     return failures
+
+
+def before_tests_twin(root: Path) -> list[str]:
+    """A lane whose tests ran, claimed as cancelled before any test started, is a before-tests defect: the record lists
+    the bundle's own sessions and workers, so only what the hosted lane really did (its tests begun, its session
+    finished) contradicts it (register E3)."""
+    with tempfile.TemporaryDirectory() as temporary:
+        twin = Path(temporary) / "twin"
+        shutil.copytree(root, twin)
+        sessions = {}
+        for pid_file in twin.rglob("autopsy/session-*/worker-gw*-pid.txt"):
+            sessions.setdefault(pid_file.parent.name, []).append({
+                "worker": pid_file.stem.removesuffix("-pid"), "pid": int(pid_file.read_text().strip()),
+                "phase": "collecting"})
+        record = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": CANCEL_COLLECTION, "at": 0,
+                  "sessions": [{"session": name, "worker_count": len(rows), "workers": rows}
+                               for name, rows in sessions.items()]}
+        inventory = next(twin.glob("*-watchdog/inventory.txt"))
+        path = inventory.parent / BEFORE_TESTS
+        path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        label(inventory, path, "lane_step")
+        return expect_rule("before-tests", OTHER_TWINS["before-tests"],
+                           evidence_problems(twin, kind="cancel-before-tests"))
 
 
 def job_twins(root: Path, job: dict) -> list[str]:
@@ -421,6 +454,7 @@ def main(root: Path) -> int:
                 failures.extend(abrupt_twins(merged, ABRUPT[kind], job))
             if kind == "normal":
                 failures.extend(checker_twins(merged))
+                failures.extend(before_tests_twin(merged))
             elif needs_stack and ablate == "none" and kind != "failure-in-death":
                 failures.extend(death_twins(merged, kind, job))
                 if kind == "deadline":

@@ -18,6 +18,9 @@ from tempfile import NamedTemporaryFile
 
 import proctree
 from evidence_files import (
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
     FRAME,
     FRESH_S,
@@ -30,6 +33,7 @@ from evidence_files import (
     SAMPLING_POLICY,
     WARNING,
     WATCHDOG_HEADER,
+    WORKER_PHASES,
     cancel_outcome,
     entries,
     is_link,
@@ -85,7 +89,7 @@ def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
 
 def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
     """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
-    from session_deadline import WORKER_PHASES, session_directories
+    from session_deadline import session_directories
 
     rows = []
     for directory in session_directories(root):
@@ -133,6 +137,49 @@ def workers(root: Path):
                                  controller=worker == "controller")
             except (OSError, ValueError):
                 continue
+
+
+def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: str) -> bool:
+    """Record that the lane was cancelled before any of its sessions started a test, and return whether it was.
+
+    A lane cancelled while its sessions start has no worker in a test and no running name, so it has no worker
+    observation to give (register E3: superseded CI run 45590135545, ten lanes 37 to 96 s into their pytest step). The
+    claim rests on positive observations only: no registered process is in a test (no in-flight watchdog header) and no
+    running name is left; no session has finished; and every session is an xdist session, whose controller runs no
+    test, each of whose registered workers' lifecycle receipts, read from its live writer (``phases``, from
+    ``phases_at_signal``), stands before its first test. Anything else writes nothing, so the missing evidence stays a
+    defect. No session at all is recorded as such: pytest had not registered one under the lane root."""
+    from session_deadline import FINISHED, marker, session_directories
+    from watchdog import running_names
+
+    if next(workers(root), None) is not None or running_names(root):
+        return False
+    rows = phases or []
+    sessions = []
+    for directory in session_directories(root):
+        if marker(directory, FINISHED).is_file():
+            return False
+        try:
+            count = int(marker(directory, "worker-count").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return False  # not shown to be an xdist session: a serial controller runs its tests itself
+        registered = sorted(path.stem.removesuffix("-pid") for path in directory.glob("worker-gw*-pid.txt"))
+        mine = [row for row in rows if row.get("session") == directory.name]
+        if (len(registered) > count or sorted(row.get("worker") for row in mine) != registered
+                or any(row.get("phase") not in BEFORE_EXECUTION for row in mine)):
+            return False
+        sessions.append({"session": directory.relative_to(root).as_posix(), "worker_count": count,
+                         "workers": [{key: row.get(key) for key in ("worker", "pid", "start", "phase")}
+                                     for row in mine]})
+    row = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": observer, "at": at, "sessions": sessions}
+    try:
+        with (root / BEFORE_TESTS).open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, ensure_ascii=True, sort_keys=True) + "\n")
+    except FileExistsError:
+        pass  # the first observation stands: the Linux supervisor's, at the signal, before its collection's
+    except OSError:
+        return False
+    return True
 
 
 def ring_path(root: Path, worker: Worker) -> Path:

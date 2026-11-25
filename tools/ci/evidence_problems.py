@@ -6,11 +6,14 @@ import json
 import math
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
 from bounds import CHEAP_FILE  # noqa: E402
 from evidence_files import (  # noqa: E402
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
     FRAME,
     FRESH_S,
@@ -21,6 +24,7 @@ from evidence_files import (  # noqa: E402
     SAMPLING_POLICY,
     WARNING,
     WATCHDOG_HEADER,
+    WORKER_PHASES,
     cancel_outcome,
     entries,
     failure_overflow,
@@ -69,6 +73,63 @@ def rows_named(texts: dict, name: str):
                 continue
 
 
+def before_tests_problems(texts: dict, running: set) -> list[str]:
+    """Where the bundle contradicts or lacks its record that the lane was cancelled before any test started (register
+    E3). The record stands in for a worker observation and a running name only when every copy agrees, and when no
+    session, worker, watchdog header or running name in the bundle shows a test begun."""
+    problems = []
+    copies = {json.dumps(row, sort_keys=True) for row in rows_named(texts, BEFORE_TESTS)}
+    record = json.loads(copies.pop()) if len(copies) == 1 else {}
+    sessions = record.get("sessions")
+    if record.get("outcome") != BEFORE_TESTS_OUTCOME or not isinstance(sessions, list) or not all(
+            isinstance(row, dict) and isinstance(row.get("workers"), list) for row in sessions):
+        return ["no single readable before-tests observation"]
+    listed = {}
+    for row in sessions:
+        for worker in row["workers"]:
+            if not isinstance(worker, dict) or worker.get("phase") not in BEFORE_EXECUTION:
+                problems.append(f"{row.get('session')}: a worker not recorded before its first test")
+            else:
+                listed[(PurePosixPath(str(row.get("session"))).name, worker.get("worker"))] = worker.get("pid")
+    names = {PurePosixPath(str(row.get("session"))).name for row in sessions}
+    for path, text in texts.items():
+        session = path.parent.name
+        if path.suffix == ".json":
+            try:
+                doc = json.loads(text)
+            except ValueError:
+                continue
+            results = doc.get("results") if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT else None
+            # A collection error is reported before any test; any other result is a test that ran.
+            if isinstance(results, dict) and any(
+                    not isinstance(result, dict) or not result.get("failures")
+                    or any(not isinstance(f, dict) or f.get("phase") != "collect" for f in result["failures"])
+                    for result in results.values()):
+                problems.append(f"{path.name}: the lane report has a test's result")
+            continue
+        if not (session.startswith("session-") and path.parent.parent.name == "autopsy"):
+            if path.name.startswith("hang-") and WATCHDOG_HEADER.match(text):
+                problems.append(f"{path.name}: a test was in flight")
+            elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
+                problems.append(f"{path.name}: a worker was observed in a test")
+            continue
+        if session not in names:
+            problems.append(f"{session}: a session the observation does not list")
+        elif path.name == "session-finished.txt":
+            problems.append(f"{session}: the session had finished")
+        elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
+            problems.append(f"{session}/{path.name}: a worker was observed in a test")
+        elif (ident := re.fullmatch(r"(worker-gw[0-9]+)-pid", path.stem)) and (
+                listed.get((session, ident[1])) != (int(text) if text.strip().isdecimal() else None)):
+            problems.append(f"{session}: {ident[1]} is not recorded before its first test")
+        elif path.name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
+            problems.append(f"{session}/{path.name}: a worker had started its tests")
+    if running:
+        problems.append("a running test name was published")
+    return problems
+
+
+LANE_REPORT = "aew/lane-report/v1"
 ELISION = re.compile(r"Use -v+ to (?:get more diff|show)|Omitting \d+ identical items|Skipping \d+ identical leading")
 FAILURE_PHASES = ("collect", "setup", "call", "teardown")
 
@@ -142,7 +203,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
 
     files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
     texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
-    if kind in {"cancel", "cancel-after-tests"}:
+    if kind in {"cancel", "cancel-after-tests", "cancel-before-tests"}:
         from cancel_evidence import REASON_FILE, valid
 
         if not valid(cancel_reason):
@@ -185,7 +246,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 except ValueError:
                     report("failure-report", f"{relative}: unreadable scanned JSON")
                 else:
-                    if isinstance(doc, dict) and doc.get("schema") == "aew/lane-report/v1":
+                    if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT:
                         defects.extend(failure_problems(path, doc))
             if owner(relative) is None:
                 report("writer-path", f"{relative}: unlisted writer")
@@ -304,7 +365,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                         for sample, frames in entries(text)) for worker in peak["top_workers"]
                 ):
                     report("pressure", "observed high-water crossing has no RSS list or pressure sample")
-    if kind == "cancel" and any(path.stem in {"cutoff", "session-deadline"} for path in files):
+    if kind in {"cancel", "cancel-before-tests"} and any(path.stem in {"cutoff", "session-deadline"}
+                                                          for path in files):
         report("false-cutoff", "cancel: a local cutoff or session deadline also fired")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
@@ -331,6 +393,10 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     current[int(ident[1])] = (match[1], float(match[4]))
         elif path.name.startswith("running-"):
             running.update(text.splitlines())
+    if kind == "cancel-before-tests":
+        # It stands in for the cancellation's worker observation and running name only as the bundle bears it out.
+        for problem in before_tests_problems(texts, running):
+            report("before-tests", problem)
     if require_stacks or kind in {"cancel", "sigkill", "deadline", "time-limit", "hang"}:
         if not running or "<unrecognized test>" in running:
             report("running", "missing running test name")

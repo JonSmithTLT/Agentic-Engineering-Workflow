@@ -133,6 +133,29 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         lab.cleanup()
 
 
+def test_a_lead_copy_changed_after_delivery_is_never_bound_and_its_record_says_copy_failed(tmp_path):
+    """E161, the copy checked again just before the contained Lead's layout binds it (``ContainedLead.__call__``;
+    #565's quick check, m3): a copy whose file changed after delivery is not bound, the start goes on contained, and
+    its ``label.json`` reports every skill of the list ``copy_failed``, as a copy that failed would."""
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([]))
+        done = at_the_terminal(lab, home, change_lead_copy=True)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        label = done["result"]["containment"]
+        assert label["filesystem"] == "os_readonly_roots"
+        assert label["layout"]["skills_binds"] == []
+        failed = {name: skills.COPY_FAILED for name in skills.lead()}
+        assert (label["skills"]["exposed"], label["skills"]["reasons"]) == ([], failed)
+        assert "copy" not in label["skills"]  # nothing bound, so nothing to say of how a copy was kept
+        run_dir = lab.aew_root / "local" / "harness" / "runs" / label["session"]
+        assert json.loads((run_dir / "label.json").read_text())["skills"] == label["skills"]
+    finally:
+        lab.cleanup()
+
+
 def test_a_relayed_file_argument_is_read_where_the_client_runs(tmp_path):
     """The client reads a file argument and sends its text. A file it can read is taken; one it can't is refused by the
     client, and the broker stores nothing of it."""

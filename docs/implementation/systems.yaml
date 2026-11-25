@@ -2400,16 +2400,18 @@ systems:
   recommendation: finish
   who: Lead
   reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
-    E136's first batch adds two optional ones, so eight ship (as of 9930f167). The system stays staged for the rest of
-    the rollout; E136's other nine optional skills follow, and E135's evaluation runner is still owed; its qualification
+    E136's first batch adds two optional ones, E161 the Lead's three and E136's second batch two more, so thirteen ship
+    (as of a66de36f). The system stays staged for the rest of the rollout; E136's other five optional skills follow, and
+    E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
-    lists eight as of 9930f167, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
-    python-development, E142''s c-review and security-review, and E136''s codebase-investigation and debugging-root-cause-analysis),
+    lists thirteen as of a66de36f, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
+    python-development, E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis,
+    test-design and mechanical-enumeration, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills

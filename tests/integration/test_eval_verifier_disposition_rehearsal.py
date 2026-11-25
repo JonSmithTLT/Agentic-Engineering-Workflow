@@ -143,6 +143,7 @@ def test_both_arms_see_the_same_candidate_with_their_own_exposure_and_are_graded
         by_case.setdefault(record["case"]["id"], {})[record["arm"]["id"]] = record
     expected = grader.load_expected()
     manifest_sha = skills.entries()[SKILL]["sha256"]
+    offered = sorted(adapter.projection([])["skills"]["exposed"])  # the verifier card's own offer, derived
     for case_id, pair in by_case.items():
         withheld, exposed = pair["inaccessible"], pair["exposed"]
         # The same candidate artifact, at the same bytes, to both arms.
@@ -151,10 +152,12 @@ def test_both_arms_see_the_same_candidate_with_their_own_exposure_and_are_graded
         # The projections differ in the skill list alone, and the delivery matches each arm.
         p_w, p_e = withheld["harness"]["projection"], exposed["harness"]["projection"]
         assert p_w["card_sha256"] == p_e["card_sha256"] and p_w["applied_sha256"] != p_e["applied_sha256"]
-        assert withheld["harness"]["exposure"]["exposed"] == [] and withheld["harness"]["skill_files"] == []
-        assert exposed["harness"]["exposure"]["exposed"] == [SKILL]
-        assert [d["sha256"] for d in exposed["harness"]["exposure"]["delivered"]] == [manifest_sha]
-        assert exposed["harness"]["skill_files"] == [f"{SKILL}/SKILL.md"]
+        # Withheld means acceptance-verification only: what the card offers (`optional_skills`, E136) both arms get.
+        assert SKILL not in offered and sorted(withheld["harness"]["exposure"]["exposed"]) == offered
+        assert sorted(exposed["harness"]["exposure"]["exposed"]) == sorted([SKILL, *offered])
+        assert {d["name"]: d["sha256"] for d in exposed["harness"]["exposure"]["delivered"]}[SKILL] == manifest_sha
+        assert set(exposed["harness"]["skill_files"]) == set(withheld["harness"]["skill_files"]) | {f"{SKILL}/SKILL.md"}
+        assert not any(f.startswith(f"{SKILL}/") for f in withheld["harness"]["skill_files"])
         grades = []
         for record in (withheld, exposed):
             observation = adapter.from_run(record, frozen)

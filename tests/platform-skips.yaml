@@ -671,6 +671,10 @@ skipped:
       Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
       client read runs on every platform through a real broker in
       tests/integration/test_relayed_file_arguments_through_a_broker.py. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_contained_session.py::test_a_lead_copy_changed_after_delivery_is_never_bound_and_its_record_says_copy_failed: >-
+      Linux bubblewrap containment of the Lead's session: the re-check guards the contained Lead's read-only bind, and
+      the Windows Lead runs labelled not contained, with no bind (E161). Covered on Linux (CI and the Rocky 8 lane);
+      the check itself (aew.skills.verify) runs on every platform in tests/unit/test_lead_skills.py.
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.

@@ -1,6 +1,6 @@
 """Skills reach workers by their card's fit (register E127; the designer's rulings of 2026-11-03 §3 and 2026-11-04).
 
-AEW's own install ships eleven skills with a manifest of hashes (three of them the Lead's: ``test_lead_skills.py``). A
+AEW's own install ships its skills with a manifest of hashes (the Lead's list among them: ``test_lead_skills.py``). A
 card's ``skills:`` and ``optional_skills`` decide what a run may reach. The supervisor copies what is exposed into the
 run's own folder, the projection lets the ``skill`` tool list exactly those, and the agent is told, from the plan,
 which to load. The record says what was offered, exposed, delivered and loaded. Nothing here runs a model: the live
@@ -28,9 +28,9 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-ELEVEN = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
-          "debugging-root-cause-analysis", "delegation-handoffs", "engineering-planning", "python-development",
-          "requirements-clarification", "security-review"]
+SHIPS = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
+         "debugging-root-cause-analysis", "delegation-handoffs", "engineering-planning", "mechanical-enumeration",
+         "python-development", "requirements-clarification", "security-review", "test-design"]
 UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
 
@@ -62,8 +62,8 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 # ---------------------------------------------------------------------------------------------- the install
 
 
-def test_the_eleven_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
-    assert sorted(skills.shipped()) == ELEVEN
+def test_the_shipped_skills_ship_with_a_manifest_that_hashes_exactly_their_allow_listed_files():
+    assert sorted(skills.shipped()) == SHIPS
     for name, entry in skills.entries().items():
         on_disk = {p.relative_to(SHIPPED / name).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                    for p in (SHIPPED / name).rglob("*") if p.is_file()}
@@ -246,14 +246,14 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     cards = roles.builtin_cards()
     assert cards["code_reviewer"].meta["skills"] == ["adversarial-review"]
     assert cards["verifier"].meta["skills"] == ["acceptance-verification"]
-    assert cards["engineer"].meta["optional_skills"] == ["python-development", "c-development",
-                                                         "debugging-root-cause-analysis"]
-    # code_reviewer is at 3: register E126 gave it the guide's three lines on test work, after the skills moved it to 2.
-    # engineer is at 3, and the four others at 2: E136's first batch added their optional skills.
+    assert cards["engineer"].meta["optional_skills"] == OFFERED["engineer"]
+    # code_reviewer went to 3 for register E126's three lines on test work, after the skills moved it to 2. E136's
+    # first batch moved engineer to 3 and the four others it touched to 2; its second batch moves each card it offers
+    # a skill to one more: code_reviewer and engineer to 4, the other five to 3.
     assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer", "python_engineer",
                                                   "c_engineer", "investigator", "planner")} == {
-        "code_reviewer": 3, "verifier": 2, "engineer": 3, "python_engineer": 2, "c_engineer": 2, "investigator": 2,
-        "planner": 2}
+        "code_reviewer": 4, "verifier": 3, "engineer": 4, "python_engineer": 3, "c_engineer": 3, "investigator": 3,
+        "planner": 3}
 
 
 # E136's first batch: the two candidates whose text is public in this repository, on the cards they fit, as
@@ -281,12 +281,42 @@ def test_the_first_e136_batch_is_offered_on_its_cards_delivered_and_listed_never
     assert all(f"`{name}`" in listed for name in batch), listed
 
 
-def test_no_card_outside_the_first_e136_batch_is_offered_its_skills():
-    """Fit is per card and judged in review (E136): a card gains one of these only by a re-hash PR that names it."""
-    batch = {name for names in BATCH_1.values() for name in names}
+# E136's second batch, the planning and testing group, by the operator's mapping of 2026-11-25: optional_skills only.
+# `engineering-planning` and `requirements-clarification` already ship for the Lead (E161); a card reads the same copy.
+BATCH_2 = {
+    "planner": ["engineering-planning", "requirements-clarification"],
+    "investigator": ["requirements-clarification", "mechanical-enumeration"],
+    "engineer": ["test-design"],
+    "python_engineer": ["test-design"],
+    "c_engineer": ["test-design"],
+    "verifier": ["test-design", "mechanical-enumeration"],
+    "code_reviewer": ["mechanical-enumeration"],
+}
+# Every built-in card's offered list, whole: E127's language skills on the default implementer, then E136's batches.
+OFFERED = {card: ([] if card != "engineer" else ["python-development", "c-development"])
+           + BATCH_1.get(card, []) + BATCH_2.get(card, []) for card in {"engineer", *BATCH_1, *BATCH_2}}
+
+
+@pytest.mark.parametrize("card, batch", sorted(BATCH_2.items()))
+def test_the_second_e136_batch_is_offered_on_its_cards_delivered_and_listed_never_requested(tmp_path, card, batch):
+    meta = roles.builtin_cards()[card].meta
+    assert not set(batch) & set(meta.get("skills") or [])
+    planned = skills.plan(meta.get("skills") or [], meta.get("optional_skills"))
+    assert set(batch) <= set(planned["offered"]) and set(batch) <= set(planned["exposed"])
+    assert (planned["unavailable"], planned["reasons"]) == ([], {})
+    delivered = skills.deliver(planned, tmp_path / "skills")
+    assert delivered["exposed"] == planned["exposed"]
+    assert sorted(p.name for p in (tmp_path / "skills").iterdir()) == delivered["exposed"]
+    assert skills.root_problems(tmp_path / "skills", delivered["exposed"]) == []
+    listed = next(line for line in lines(delivered) if line.startswith("- The `skill` tool lists "))
+    assert all(f"`{name}`" in listed for name in batch), listed
+
+
+def test_every_built_in_card_is_offered_exactly_its_mapped_skills_and_nothing_else():
+    """Fit is per card and judged in review (E136): a card gains or loses an offered skill only by a re-hash PR that
+    names it, so each card's ``optional_skills`` is exactly its mapping, in order, and a card with none has none."""
     for card in roles.builtin_cards().values():
-        named = set(card.meta.get("skills") or []) | set(card.meta.get("optional_skills") or [])
-        assert named & batch <= set(BATCH_1.get(card.id, [])), card.id
+        assert (card.meta.get("optional_skills") or []) == OFFERED.get(card.id, []), card.id
 
 
 # ---------------------------------------------------------------------------------------------- the copy
@@ -519,8 +549,8 @@ def test_the_pack_offers_optional_skills_conditionally_and_renders_nothing_from_
     engineer = roles.builtin_cards()["engineer"].meta
     before = card_lines(engineer)
     assert "Skills to load (how the work is done): none" in before
-    assert ("Optional skills (load one only if the `skill` tool lists it and your task matches): python-development, "
-            "c-development, debugging-root-cause-analysis") in before
+    assert ("Optional skills (load one only if the `skill` tool lists it and your task matches): "
+            + ", ".join(engineer["optional_skills"])) in before  # the card's own list, in its order
     monkeypatch.setattr(skills, "entries", lambda: {})
     monkeypatch.setattr(skills, "check", lambda name: (skills.NOT_SHIPPED, {}))
     assert card_lines(engineer) == before
@@ -624,6 +654,11 @@ def test_the_lead_is_told_to_staff_by_language_from_the_cards_and_the_install(mo
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text
     assert ("Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its "
             "task matches.") in text
+    monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
+    fewer = guide.staffing_text()
+    assert "c_engineer" not in fewer and "`c-development`" not in fewer
+    monkeypatch.setattr(skills, "shipped", lambda: frozenset())
+    assert guide.staffing_text() == ""
 
 
 def test_the_staffing_line_names_what_every_implementer_card_offers_apart_from_the_language(monkeypatch):
@@ -631,19 +666,15 @@ def test_the_staffing_line_names_what_every_implementer_card_offers_apart_from_t
     names only what a language card requests, and one more sentence names the rest: the intersection of the
     implementer cards' ``optional_skills``, derived, never restated."""
     text = guide.staffing_text()
-    every = "Every implementer card's run may also load `debugging-root-cause-analysis` when its task matches."
-    assert text.endswith(every) and text.count("debugging-root-cause-analysis") == 1
+    every = ("Every implementer card's run may also load `debugging-root-cause-analysis` or `test-design` when its "
+             "task matches.")
+    assert text.endswith(every) and text.count("debugging-root-cause-analysis") == text.count("`test-design`") == 1
     cards = dict(roles.builtin_cards())
     c = cards["c_engineer"]
     cards["c_engineer"] = roles.Card(c.id, {**c.meta, "optional_skills": []}, c.source, c.path, c.sha256)
     monkeypatch.setattr(roles, "builtin_cards", lambda: cards)
     fewer = guide.staffing_text()
     assert "Every implementer card" not in fewer and "debugging-root-cause-analysis" not in fewer
-    monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
-    fewer = guide.staffing_text()
-    assert "c_engineer" not in fewer and "`c-development`" not in fewer
-    monkeypatch.setattr(skills, "shipped", lambda: frozenset())
-    assert guide.staffing_text() == ""
 
 
 def test_role_list_shows_optional_skills_and_validate_names_unshipped_ones_without_failing(tmp_path, monkeypatch):
@@ -657,8 +688,7 @@ def test_role_list_shows_optional_skills_and_validate_names_unshipped_ones_witho
         "optional_skills: [c-development, not-yet]\n", encoding="utf-8")
     ops = Roles(K(), units=None)  # type: ignore[arg-type]
     listed = {c["id"]: c for c in ops.role_list()["cards"]}
-    assert listed["engineer"]["optional_skills"] == ["python-development", "c-development",
-                                                     "debugging-root-cause-analysis"]
+    assert listed["engineer"]["optional_skills"] == roles.builtin_cards()["engineer"].meta["optional_skills"]
     assert listed["mine"]["optional_skills"] == ["c-development", "not-yet"]
     whole = ops.role_validate()
     assert whole["ok"] is True and whole["optional_unshipped"] == {"mine": ["not-yet"]}

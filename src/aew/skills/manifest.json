@@ -123,6 +123,20 @@
     "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   },
+  "mechanical-enumeration": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "f2859b5ba47e39de466c6df075bfbeb36f3c0f5824ea5bef164b0db902cdb66d",
+   "files": {
+    "references/semantic-search.md": "d8dab22027afdc359cd1cf6537d4d4a7d8187c745f6e7c2db1bcf35358aec148",
+    "SKILL.md": "3b56d432ea3a57bce0c4c8f379109cc3ae0aca698be6ebf325538dd834be1116"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/mechanical-enumeration",
+    "snapshot": "mechanical-enumeration-0.1.0-3b56d432",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
   "python-development": {
    "version": "0.4.0",
    "label": "unevaluated",
@@ -167,6 +181,22 @@
     "candidate": "docs/skills/candidates/security-review",
     "snapshot": "security-review-0.1.0-cec1178e",
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 3-5 (cryptography, secret lifetime, untrusted input) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
+   }
+  },
+  "test-design": {
+   "version": "0.3.0",
+   "label": "unevaluated",
+   "sha256": "f722c105ebbbf944832a52ea36b5d9a285932920e9f6e8c1151262cef27b552d",
+   "files": {
+    "references/async-lifecycle.md": "5d54ab7b3318182ed48ec1830f32c77c5d82245055ccf9dc9cdc67a0960c200d",
+    "references/seeded-differentials.md": "ca532619ccdeed39fcc5d70659398826ccae71a2d77ef78a3389c89c53d7cdc3",
+    "references/tdd.md": "6b239dd2ffe635d2f0593b42da1a16291c4fd6e72049cdb2dfe5fc40192082e6",
+    "SKILL.md": "83922d560d746b50077ae76ce5bddcff2f2a03eb6ced4f78e44b3c2f4922aab7"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/test-design",
+    "snapshot": "test-design-0.3.0-83922d56",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   }
  },

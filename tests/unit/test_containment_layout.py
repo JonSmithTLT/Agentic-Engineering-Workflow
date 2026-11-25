@@ -182,6 +182,19 @@ def test_each_lead_start_binds_only_its_own_skills_copy_read_only(tmp_path, fake
     assert not Path(at.folder).is_relative_to(os.path.realpath(engine.aew_root / lead.LEAD_DIR))
 
 
+def test_a_skills_folder_that_is_a_link_to_a_directory_is_never_bound(tmp_path, fake_bwrap):
+    """E161 (#565's quick check, m3): the layout binds a skills copy only where ``skills_dir`` is a directory of its
+    own; a link to one is never followed, so nothing is bound and nothing protected in its name."""
+    target = tmp_path / "elsewhere"
+    (target / "engineering-planning").mkdir(parents=True)
+    link = tmp_path / "skills-link"
+    link.symlink_to(target, target_is_directory=True)
+    layout = lead_layout(tmp_path, skills_dir=str(link))
+    real = os.path.realpath(target)
+    assert layout.skills_binds == ()
+    assert real not in layout.readonly and real not in layout.protected
+
+
 def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):
     """Ruling R-2 (CS-4 outcome 2): the Lead writes its working tree, which holds the store; `.aew` and the git
     metadata are re-bound read-only after it, so the role-bind check passes by its second clause (CB-07)."""

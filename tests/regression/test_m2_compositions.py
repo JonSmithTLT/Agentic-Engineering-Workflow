@@ -46,7 +46,7 @@ def err(p, *args):
 
 def handoff(p):
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer)["token"]
 
 
 def main_commit(p):

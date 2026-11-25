@@ -136,7 +136,7 @@ def test_superseded_lead_cannot_publish(calc, tmp_path):
     prepare_and_validate(calc, wid)
     old = calc.token
     offer = calc.lead("lead", "handoff", "offer")["offer"]
-    calc.token = calc.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    calc.token = calc.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     before = main_commit(calc)
     res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": old})
     assert res.error["code"] == "STALE_AUTHORITY"

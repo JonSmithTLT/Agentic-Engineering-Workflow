@@ -169,7 +169,7 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     assert init(root, *GOOD).returncode == 0
     classify = [a for a in actions(root) if a.startswith("classify authority candidates")]
     assert classify and "aew lead release" in classify[0]
-    token = run_aew("-C", str(root), "lead", "acquire", ).json["token"]
+    token = run_aew("-C", str(root), "lead", "acquire").json["token"]
     env = {"AEW_LEAD_TOKEN": token}
     accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation",
                        "--decided-by", "lead", env=env)
@@ -374,7 +374,7 @@ def test_a_first_configured_project_raises_to_run_as_its_template_says(tmp_path,
 
     root = repo(tmp_path)
     assert init(root, *GOOD).returncode == 0
-    assert run_aew("-C", str(root), "lead", "acquire", ).returncode == 0
+    assert run_aew("-C", str(root), "lead", "acquire").returncode == 0
     engine = Engine.discover(root)
     policy, _ = engine.execution_policy()
     assert policy["notify"]["command"] == ["aew", "notify", "desktop"] and policy["steering"]["mode"] == "crawl"

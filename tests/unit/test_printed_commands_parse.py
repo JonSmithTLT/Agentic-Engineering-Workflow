@@ -147,8 +147,7 @@ def test_every_exemption_and_deferral_is_still_live() -> None:
 
 
 OWNER = "src/aew/harness/contract.py"
-# A placeholder spelled out after `--expect-rev` (` ` or `=`: `<revision...>`, `N`, `REV`...), or the owner's text
-# itself anywhere, so that a copy split across literals or in an argv list is caught too (#319 quick check, F7).
+# Reject the retired flag in current guidance, including a literal in generated argv.
 RETIRED_REVISION = re.compile(r"--expect-rev\b")
 
 

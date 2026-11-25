@@ -210,7 +210,7 @@ def test_a_raise_lasts_only_for_the_generation_it_was_granted_to(project):
     assert record["revision"] == out["revision"] == engine.store.read()["revision"]
     assert record["by"]["principal"]["endpoint"]["pid"] == os.getpid()
     project.ok("lead", "release", env={"AEW_LEAD_TOKEN": project.token})
-    project.token = project.ok("lead", "acquire", )["token"]
+    project.token = project.ok("lead", "acquire")["token"]
     view = engine.steering_view()
     assert view["effective"] == "crawl" and view["ended_override"]["mode"] == "walk"
     assert_control_invariants(project)
@@ -291,7 +291,7 @@ def test_a_lead_lowers_its_mode(project):
                        token=project.token)
     assert not refused["ok"] and refused["stopped"]["error"]["code"] == "ILLEGAL_TRANSITION"
     res = run_aew("-C", str(project.root), "lead", "mode", "lower", "walk",
-                  env={"AEW_LEAD_TOKEN": project.token})
+                  "--prior-value", view["override_record"], env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode != 0 and "is not lower" in res.stderr
     assert_control_invariants(project)
 

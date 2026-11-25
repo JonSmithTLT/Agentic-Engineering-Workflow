@@ -59,7 +59,7 @@ def test_existing_authority_project_is_referenced_not_duplicated(tmp_path):
     cands = {c["path"]: c for c in p.ok("init")["authority_candidates"]}
     contracts = cands["docs/contracts/"]
     assert contracts["suggested_class"] == "contracts" and contracts["confidence"] == "high"
-    p.token = p.ok("lead", "acquire", )["token"]
+    p.token = p.ok("lead", "acquire")["token"]
     p.lead("authority", "accept", cands["docs/contracts/"]["id"], "--class", "contracts", "--decided-by", "lead")
     p.lead("authority", "accept", cands["docs/adr/"]["id"], "--class", "decisions", "--decided-by", "lead")
     r = p.ok("resume", "--json")

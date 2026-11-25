@@ -17,7 +17,8 @@ def digest(value: Any) -> str:
 PRIOR_LOG_WINDOW = 64
 
 
-def prior_state(op: str, subject: str, expected: str, current: str, *, root: Path, state: dict[str, Any]) -> None:
+def prior_state(op: str, subject: str, expected: str | None, current: str, *,
+                root: Path, state: dict[str, Any]) -> None:
     prior(op, subject, "state", expected, current, root=root, state=state,
           event=lambda row: row["kind"] == "work.state" and row["id"] == subject)
 

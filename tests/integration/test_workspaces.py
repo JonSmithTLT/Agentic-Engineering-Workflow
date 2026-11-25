@@ -96,7 +96,7 @@ def test_handoff_without_carry_interrupts_and_reconcile_is_bounded(project, tmp_
     wid = planned_ticket(project, tmp_path)
     project.lead("work", "assign", wid)
     offer = project.lead("lead", "handoff", "offer")["offer"]
-    project.token = project.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    project.token = project.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     control = project.ok("work", "show", wid)["control"]
     assert control["state"] == "INTERRUPTED" and control["interrupted_from"] == "ASSIGNED"
     res = project.aew("work", "reconcile", wid, "--to", "RUNNING", "--reason", "looks fine",

@@ -347,7 +347,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
         lead.lead_acquire()
     state["lead"]["status"] = "active"
     with pytest.raises(ReachedTransaction):
-        lead.lead_handoff_accept(offer="synthetic", )
+        lead.lead_handoff_accept(offer="synthetic")
     with pytest.raises(ReachedTransaction):
         lead.lead_takeover(reason="synthetic")
 
@@ -363,7 +363,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
                                       steering=steering)
     monkeypatch.setattr(migration, "discard_unreachable", lambda: [])
     with pytest.raises(ReachedTransaction):
-        migration.migrate(token="synthetic", )
+        migration.migrate(token="synthetic")
 
     writer = coordination_ops.Coordination(k, archive=archive)
     monkeypatch.setattr(coordination_ops, "require_lead", lambda *a, **kw: {"generation": 1})

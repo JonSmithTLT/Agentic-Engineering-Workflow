@@ -347,8 +347,8 @@ def test_a_path_with_a_control_character_is_never_offered_as_an_add(running, mon
 
 def test_with_messaging_on_a_live_implementer_gets_a_message_send_that_runs_as_printed(running, monkeypatch):
     """PR #545 quick check, m6: with the project's messaging adopted, `harness send` is refused, so the add names
-    `message_send` to the implementer's invocation, with arguments its schema admits as printed (`expect_rev` is the
-    revision the add commits). The message is recorded; its delivery is not built yet."""
+    `message_send` to the implementer's invocation, with arguments its schema admits as printed. The message is
+    recorded; its delivery is not built yet."""
     import copy
 
     from test_coordination_store import OPERATOR, set_messaging

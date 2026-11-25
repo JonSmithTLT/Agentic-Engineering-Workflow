@@ -187,7 +187,7 @@ SILENTLY_CHANGED = {  # what the YAML layer stored for each, before this fix
     "comment after a value": "goal: Finish #1 with $5.00\n",            # "Finish"
     "comment after a list item": "goal:\n  - one # two\n",               # "one"
     "duplicate key": "goal: first\ngoal: second\n",                      # "second" only
-    "two spellings of one option": "expect_rev: 1\nexpect-rev: 2\n",     # "2" only
+    "two spellings of one option": "acceptance_check: one\nacceptance-check: two\n",  # "two" only
     "anchor": "goal: &1 is the first case\n",                            # "is the first case"
     "alias": "title: &t x\ngoal: [*t]\n",                                # a copy of another value
     "tag": "goal: !x value\n",                                           # "value"

@@ -158,8 +158,8 @@ class Resume:
                      if si["generation"] != lead["generation"] else "")
             actions.append(f"{wid + ': ' if wid else ''}stage {si['tool']} ({sid}) is unfinished after "
                            f"{len(si['steps'])} of {len(si['plan'])} step(s){owner}: resolve it, continue or abandon "
-                           f"with a rationale (`resolve`, or `aew stage continue|abandon {sid} --rationale <reason> "
-                           f"`); `aew resume` says whether it is safe to continue")
+                           f"with a rationale (`resolve` or `aew stage continue|abandon`). "
+                           f"`aew resume` shows the approval digest for continuing and whether it is safe")
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         audit = self.history.audit_status(state)
         if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)
@@ -255,7 +255,7 @@ class Resume:
         if st in {"PLANNING", "OPEN"}:
             out.append(f"plan it and create its children (`aew plan propose {wid} --file - "
                        f"--assurance none|--review <card>|--verify <card>`, "
-                       f"`aew plan accept {wid} --revision <n>`, "
+                       f"`aew plan accept {wid} --revision <n> --approval-digest <shown digest>`, "
                        f"`aew work create ticket --parent {wid} --title <title> --class <0-4>`)")
         elif st == "IN_PROGRESS" and u.get("blocked_descendants"):
             out.append("every open descendant is BLOCKED: check their dependencies")
@@ -306,7 +306,8 @@ class Resume:
                 if b["kind"] == "plan_not_accepted":
                     out.append(f"propose and accept a plan (`aew plan propose {wid} --file - "
                                f"--assurance none|--review <card>|--verify <card>`, the plan "
-                               f"in a quoted heredoc, then `aew plan accept {wid} --revision <n>`)")
+                               f"in a quoted heredoc, then `aew plan accept {wid} --revision <n> "
+                               "--approval-digest <shown digest>`)")
                 elif b["kind"] == "plan_binding_stale":
                     reconfirm = _bound_command(f"aew plan reconfirm {wid} --reason <reason>",
                                        approval.digest(self.units.ancestor_plan_snapshot(state, wid)))
@@ -317,7 +318,7 @@ class Resume:
         if st == "READY":
             return [f"{self._led(state, wid, 'READY', 'ASSIGNED', f'aew work assign {wid} --launch')}, "
                     f"after staffing it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} "
-                    f"--execute <card>`)"]
+                    f"--execute <card> --prior-value {approval.role_plan_digest(u)}`)"]
         implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
@@ -476,7 +477,7 @@ class Resume:
                     "a new implementation attempt, or REPLAN_REQUIRED")
         if entry["state"] == "DEFERRED":
             return (f"its queue entry {qid} is deferred by the Lead: `aew integrate requeue {wid} --reason <reason> "
-                    f" --prior-value DEFERRED` returns it to its "
+                    "--prior-value DEFERRED` returns it to its "
                     "place")
         if lease and lease["entry"] != qid:
             holder = (entries.get(lease["entry"]) or {}).get("work")

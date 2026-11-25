@@ -19,13 +19,9 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-# Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
-# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
-# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`); E160 slice 2b's `assess_plan` choice in
-# `resolve`'s enum and its description naming it (`dispatches` is not advertised); and E183's `steering` row, which
-# offers `lower` and `request_raise` only and says what works (nothing else moved).
-OFF_LIST_SHA = {"normal": "3a447dc1feed23ca0e6747c9809fb03e25fe46879fa54932152843cbec1b7acb",
-                "recovery": "4d9953ff4642884992c913f01c593b8e95aab7c0068ea818b9b5925b3a1a38be"}
+# E329 removes the global input and advertises the scoped inputs on the full catalogs with messaging off.
+OFF_LIST_SHA = {"normal": "258b782a6e1737eff0a1f5686d5a0b9f6cf4fb1110118289125a4e1cf8d84c0d",
+                "recovery": "473afe5071386dce34d908e0a7247b0be36d8807e2b78a69ea3c43cb7be46172"}
 OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
 
 

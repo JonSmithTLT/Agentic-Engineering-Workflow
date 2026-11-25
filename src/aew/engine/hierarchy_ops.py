@@ -469,7 +469,7 @@ class Hierarchy:
                 and (unit.get("plan") or {}).get("accepted") == pv.get("plan_revision"):
             return (f"{failed} was classified {cls}. Propose a new parent plan with "
                     f"`aew plan propose {work_id} --file <file> --reason <reason>`, then accept it with "
-                    f"`aew plan accept {work_id} --revision <n>`.")
+                    f"`aew plan accept {work_id} --revision <n> --approval-digest <shown digest>`.")
         if cls == "ENVIRONMENT_OR_EVIDENCE_BLOCKED":
             retry = gc["classification_retry"]
             if not retry:

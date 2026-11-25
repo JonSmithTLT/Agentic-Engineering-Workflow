@@ -87,7 +87,8 @@ LIVE_RUN = (K.STARTING, K.RUNNING)  # a launching step's run its supervisor stil
 OK, NOT_APPLICABLE = "ok", "not_applicable"
 CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
 OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, and what a later step may name
-REFERENCE = "$from"  # a planned argument {"$from": [m, field]}: the one id step m recorded under field
+REFERENCE = "$from"  # a planned argument {"$from": [m, field]} reads the journal's step m
+STEP_STATE = "state"  # a later transition may bind the subject state that step m committed
 ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # judgments that accept a report
 
 
@@ -689,18 +690,18 @@ def _check_automation(state: dict[str, Any], digests: dict[str, str], attributio
 
 def _check_references(n: int, args: dict[str, Any]) -> None:
     """Refuse a step ``n`` whose argument names what no earlier step of the plan can record: only ``{"$from": [m,
-    field]}`` with an integer ``1 <= m < n`` and ``field`` one of :data:`OUTPUTS`. Checked when the intent opens, so a
-    bad plan commits nothing, and a continued stage (E3c) resolves only a plan this check accepted (#142 review,
-    finding 4)."""
+    field]}`` with an integer ``1 <= m < n``. It can name one recorded output ID or the recorded subject state for
+    ``prior_value``. A bad plan commits nothing, and continuation resolves only an admitted plan."""
     for name, value in args.items():
         if not (isinstance(value, dict) and REFERENCE in value):
             continue
         ref = value[REFERENCE]
         m, field = ref if isinstance(ref, list | tuple) and len(ref) == 2 else (None, None)
-        if set(value) != {REFERENCE} or isinstance(m, bool) or not isinstance(m, int) or field not in OUTPUTS:
+        fields = (*OUTPUTS, STEP_STATE) if name == "prior_value" else OUTPUTS
+        if set(value) != {REFERENCE} or isinstance(m, bool) or not isinstance(m, int) or field not in fields:
             raise UsageError(f"step {n}'s argument {name} is not a step reference: a reference is "
                              f"{{{REFERENCE!r}: [m, field]}}, with m an earlier step's number and field one of "
-                             f"{', '.join(OUTPUTS)}", reason="malformed_reference", step=n, argument=name)
+                             f"{', '.join(fields)}", reason="malformed_reference", step=n, argument=name)
         if not 1 <= m < n:
             raise UsageError(f"step {n}'s argument {name} comes from step {m}, which is not an earlier step: a step "
                              "uses only what the steps before it recorded", reason="reference_not_earlier", step=n,

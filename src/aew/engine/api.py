@@ -1123,16 +1123,16 @@ class Engine:
     def lead_handoff_accept(self, *, offer: str, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, session_label=session_label)
 
-    def lead_handoff_cancel(self, *, token: str, ) -> dict[str, Any]:
-        return self._lead.lead_handoff_cancel(token=token, )
+    def lead_handoff_cancel(self, *, token: str) -> dict[str, Any]:
+        return self._lead.lead_handoff_cancel(token=token)
 
     def lead_handoff_offer(self, *, token: str, note: str = "",
                            carry_invocations: list[str] | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_offer(token=token, note=note,
                                              carry_invocations=carry_invocations)
 
-    def lead_release(self, *, token: str, ) -> dict[str, Any]:
-        return self._lead.lead_release(token=token, )
+    def lead_release(self, *, token: str) -> dict[str, Any]:
+        return self._lead.lead_release(token=token)
 
     def lead_resume(self, *, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_resume(session_label=session_label)
@@ -1562,7 +1562,7 @@ class Engine:
 
     def history_audit(self, *, full: bool = False, token: str | None = None,
                       ) -> dict[str, Any]:
-        return self._history.history_audit(full=full, token=token, )
+        return self._history.history_audit(full=full, token=token)
 
     def history_reindex(self) -> dict[str, Any]:
         return self._history.history_reindex()
@@ -1588,8 +1588,8 @@ class Engine:
                                                       enabled=enabled, fts5=fts5, fence_token=fence_token,
                                                       clock=clock)
 
-    def migrate(self, *, token: str, ) -> dict[str, Any]:
-        return self._migration.migrate(token=token, )
+    def migrate(self, *, token: str) -> dict[str, Any]:
+        return self._migration.migrate(token=token)
 
     # ---------------------------------------------------------------- read collaborators (the dashboard, F20.2)
     # The dashboard projects committed state through the same collaborators every command reads with; it never

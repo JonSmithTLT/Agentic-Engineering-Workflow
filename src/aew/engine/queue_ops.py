@@ -269,7 +269,8 @@ class Queue:
             why = (entry.get("disposition") or {}).get("reason")
             return blocker_from(IllegalTransition(
                 f"{work_id}'s queue entry {qid} is {entry['state']}" + (f" ({why})" if why else "")
-                + f": the Lead disposes of it first (`aew integrate requeue {work_id} --reason <reason>` "
+                + f": the Lead disposes of it first (`aew integrate requeue {work_id} --reason <reason> "
+                  f"--prior-value {entry['state']}` "
                   "once the cause is settled, the "
                 "Ticket back to RUNNING for a new implementation attempt, or REPLAN_REQUIRED)", entry=qid,
                 state=entry["state"]))
@@ -280,7 +281,8 @@ class Queue:
             return blocker_from(IllegalTransition(
                 f"{work_id}'s queue entry {qid} is VALIDATED: its candidate validated clean and is kept. Publish it "
                 "with `integration_publish` (a fresh lease; a moved head is rebuilt and revalidated), or requeue it "
-                f"to build a new candidate (`aew integrate requeue {work_id} --reason <reason>`)",
+                f"to build a new candidate (`aew integrate requeue {work_id} --reason <reason> "
+                "--prior-value VALIDATED`)",
                 entry=qid, state=entry["state"]))
         for other_id, other in sorted(queue["entries"].items(), key=lambda kv: kv[1]["seq"]):
             if other["seq"] >= entry["seq"]:

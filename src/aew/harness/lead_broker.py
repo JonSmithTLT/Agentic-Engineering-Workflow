@@ -1207,7 +1207,7 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
     left = seat.remaining(previous, survivors, ownership)
     if not (keep_seat or active or left is None or left) and state["lead"]["status"] == "active":
-        engine.lead_release(token=token, )
+        engine.lead_release(token=token)
         return "released"
     if opencode:
         seat.write_leftovers(engine.aew_root, generation, left)

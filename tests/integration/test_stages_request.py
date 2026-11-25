@@ -709,7 +709,7 @@ def test_self_healing_housekeeping_is_never_recorded_as_an_anomaly(tmp_path):
     _role, out = dispatch(p, wid)
     path = Path(out["observation"]["path"])
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     assert path.exists()  # retired, pruned later
     p.lead("checkpoint", "--next", "the new Lead's first commit")
     assert "anomalies" not in control(p)

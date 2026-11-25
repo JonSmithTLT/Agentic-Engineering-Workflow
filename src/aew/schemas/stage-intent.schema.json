@@ -70,7 +70,7 @@
           "primitive": {"$ref": "#/$defs/name"},
           "operation_class": {"$ref": "#/$defs/operation_class"},
           "key": {"$ref": "#/$defs/step_key"},
-          "args": {"type": "object", "description": "The step's bound arguments; a value may be {\"$from\": [m, field]}, resolved from step m's recorded outputs."}
+          "args": {"type": "object", "description": "The step's bound arguments; a value may be {\"$from\": [m, field]}, resolved from step m's recorded outputs or subject state."}
         }
       }
     },

@@ -219,8 +219,8 @@ class NonMutating:
         "`aew work redispatch`": "a mutating Ticket gets a new implementer with "
                                  f"`{transitions.dispatch_command('{w}', 'implementer')}`",
         "`aew evidence ingest`": "a mutating Ticket's implementation report is accepted by its transition, "
-                                 "`aew work transition {w} --to REVIEW_PENDING` (or VERIFY_PENDING "
-                                 "or COMMIT_READY, "
+                                 "`aew work transition {w} --to REVIEW_PENDING --prior-value <current state>` (or "
+                                 "VERIFY_PENDING or COMMIT_READY, "
                                  "as its gates allow); reviews and verifications use `aew review ingest` and "
                                  "`aew verify ingest`",
     }
@@ -486,7 +486,7 @@ class NonMutating:
                     f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the accepted "
                     f"revision, so propose a plan (`aew plan propose {work_id} --file <file> --assurance none "
                     f"`, or with its review and verification cards) and accept it (`aew plan accept "
-                    f"{work_id} --revision <n>`) first",
+                    f"{work_id} --revision <n> --approval-digest <shown digest>`) first",
                     reason="no_accepted_plan", work_id=work_id)
             facts["plan_revision"] = binding
             facts["base"] = self.k.authoritative_commit()

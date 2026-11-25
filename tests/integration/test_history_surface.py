@@ -377,7 +377,7 @@ def test_a_loaded_lead_record_keeps_its_verifiers_out_of_packs(tmp_path):
     """Review P2c-2: a pack shows a loaded record redacted, as `history show` does."""
     p = sample_project(tmp_path)
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     raw = load_yaml((p.root / ".aew/history/lead/000001.yaml").read_text(encoding="utf-8"))
     verifiers = [tok["verifier"] for tok in raw["tokens"].values()]
     assert verifiers and all(verifiers)

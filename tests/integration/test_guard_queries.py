@@ -781,8 +781,9 @@ def test_guard_query_matches_execute_integrate_publish(tmp_path):
         answer["blocking_conditions"][0]["message"])
     check()
     p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
+    candidate = engine.store.read()["work"][wid]["integration"]["candidate"]
     explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
-                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+                                                    "arguments": {"prepared_candidate": candidate}})["result"]
     assert explained["availability"] == AVAILABLE
     args: dict[str, Any] = {}
     equivalent(engine, "integrate.publish", wid, args, _publish(engine, p, wid))
@@ -815,8 +816,9 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
     # `explain`, the projection's blockers beside the PUBLISH decision, and `resume`'s recheck.
     assert answer["disposition"] == "rebuild"
     assert answer["blocking_conditions"][0]["details"]["disposition"] == "rebuild"
+    candidate = engine.store.read()["work"][wid]["integration"]["candidate"]
     explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
-                                                    "arguments": {"prepared_candidate": "c"}})["result"]
+                                                    "arguments": {"prepared_candidate": candidate}})["result"]
     # The publish is step 2 since E6a, after the acceptance of a named integration verification (unplanned here).
     assert explained["availability"] == BLOCKED and explained["steps"][1]["disposition"] == "rebuild"
     projected = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]

@@ -109,7 +109,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     elif op == "lead.resume":
         from aew.harness import procs, seat
 
-        engine.lead_release(token=project.token, )
+        engine.lead_release(token=project.token)
         old = engine.lead_acquire(kind=seat.VACANT_START)
         generation = old["generation"]
         seat.write_leftovers(engine.aew_root, generation, None)
@@ -119,7 +119,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
 
         def replace_shown_holder(prompt):
             assert f"generation     : {generation} -> {generation + 1}" in prompt
-            engine.lead_release(token=old["token"], )
+            engine.lead_release(token=old["token"])
             engine.lead_acquire(kind=seat.VACANT_START)
             after_writer.append((project.rev(), control_bytes(project)))
             return {"authorized_by": "operator-tty"}

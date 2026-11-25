@@ -202,10 +202,15 @@ class WorkUnits:
 
         def check() -> None:
             unit = self.unit(state, work_id)
+            if "prior_value" in args:
+                approval.prior_state("work.transition", work_id, args["prior_value"], unit["state"],
+                                     root=self.k.aew_root, state=state)
             if unit["kind"] != "ticket":
                 raise IllegalTransition(f"Story/Epic state is derived from child work (WC §8); the Lead closes one "
-                                        f"with `aew work close {work_id} --reason <reason>` and cancels "
-                                        f"one with `aew work cancel {work_id} --reason <reason>`")
+                                        f"with `aew work close {work_id} --reason <reason> "
+                                        "--approval-digest <shown digest>` "
+                                        f"and cancels one with `aew work cancel {work_id} --reason <reason> "
+                                        "--approval-digest <shown digest>`")
             rule = transitions.check(unit["state"], str(to), "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{unit['state']} -> {to} requires --reason")
@@ -436,9 +441,10 @@ class WorkUnits:
         """No executor starts under an accepted plan whose ancestor plans changed since (ADR-0007, fail closed)."""
         problem = self.plan_binding_problem(state, work_id)
         if problem:
+            shown = approval.digest(self.ancestor_plan_snapshot(state, work_id))
             raise GateUnsatisfied(f"{work_id}'s accepted plan is stale under its ancestors' current plans; "
-                                  f"`aew plan reconfirm {work_id} --reason <reason>` or a new plan "
-                                  "revision first",
+                                  f"`aew plan reconfirm {work_id} --reason <reason> --approval-digest {shown}` "
+                                  "or a new plan revision first",
                                   binding=problem)
 
     def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
@@ -812,12 +818,8 @@ class WorkCommands:
     def work_transition(self, *, token: str, work_id: str, to: str,
                         reason: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, "work.transition", reason=reason) as ctx:
-            unit = self.units.view(ctx.state, work_id)
-            approval.prior("work.transition", work_id, "state", prior_value, unit["state"],
-                           root=self.k.aew_root, state=ctx.state,
-                           event=lambda e: e["kind"] == "work.state" and e["id"] == work_id)
-            # The guard's query, then the rule's guard (its own query first, then its effects): M4-E E4.
-            args: dict[str, Any] = {"to": to, "reason": reason}
+            # The guard's query checks the scoped prior and the rule; the rule's effects follow (M4-E E4).
+            args: dict[str, Any] = {"to": to, "reason": reason, "prior_value": prior_value}
             require(self.units.transition_rule_query(ctx.state, work_id, args))
             unit = ctx.state["work"][work_id]
             frm = unit["state"]

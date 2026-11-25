@@ -215,7 +215,7 @@ def test_first_resume_after_manifest_crash_exposes_recovered_authority(tmp_path)
     p = Project(repo)
     candidates = p.ok('init')['authority_candidates']
     candidate = next(c for c in candidates if c['path'] == 'docs/adr/')
-    p.token = p.ok('lead', 'acquire', )['token']
+    p.token = p.ok('lead', 'acquire')['token']
     result = p.aew('authority', 'accept', candidate['id'], '--class', 'decisions', "--decided-by", "lead",
                    env={"AEW_LEAD_TOKEN": p.token, 'AEW_FAULT': 'txn.after_replace'})
     assert result.returncode == 86

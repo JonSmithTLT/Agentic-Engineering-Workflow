@@ -912,7 +912,7 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     w = world(tmp_path / "migrated", messaging=None)
     policy = {p: p.read_bytes() for p in (w.root / ".aew/policy").glob("*.yaml")}
     (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
-    w.e.migrate(token=w.token, )
+    w.e.migrate(token=w.token)
     assert load_control(w.root)["schema"] == "aew/control/v2"
     assert {p: p.read_bytes() for p in (w.root / ".aew/policy").glob("*.yaml")} == policy
     assert not (w.root / ".aew" / L.COORDINATION_DIR).exists()

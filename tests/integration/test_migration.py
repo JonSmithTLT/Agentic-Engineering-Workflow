@@ -86,7 +86,7 @@ def test_a_v1_project_refuses_the_leads_mutations_until_it_is_migrated(tmp_path)
     # Reads work, and so do what the Lead needs to reach the migration: the seat, and ending work in flight.
     assert aew(t, "status", "--json").returncode == 0 and aew(t, "work", "tree").returncode == 0
     inv = next(i for i, v in read(t)["invocations"].items() if v["work_unit"] == "T-0003" and v["status"] == "active")
-    cancelled = aew(t, "invoke", "cancel", inv, "--reason", "not needed", )
+    cancelled = aew(t, "invoke", "cancel", inv, "--reason", "not needed")
     assert cancelled.returncode == 0, cancelled.stderr
     assert_control_invariants(t)
 
@@ -170,7 +170,7 @@ def test_a_crash_while_a_migration_seals_a_segment(tmp_path):
 
 def handoff(t: CP.Template) -> None:
     """A cooperative handoff, allowed on v1: the seat's credentials end, so a Lead record has new content."""
-    offer = aew(t, "lead", "handoff", "offer", )
+    offer = aew(t, "lead", "handoff", "offer")
     assert offer.returncode == 0, offer.stderr
     accepted = run_aew("-C", str(t.root), "lead", "handoff", "accept", "--offer", offer.json["offer"],
                        )
@@ -277,7 +277,7 @@ def test_parent_evidence_bound_before_the_migration_stays_current_until_the_chil
     assert gates(Engine.discover(t.root), story) == before
     assert_control_invariants(t)
     # Closing it relies on that evidence; a new child would have made it stale instead.
-    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed", )
+    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed")
     assert closed.returncode == 0, closed.stderr
     assert story not in load_control(t.root)["work"]
     assert_control_invariants(t)
@@ -315,6 +315,6 @@ def test_a_classified_parent_failure_still_needs_a_new_child_after_the_migration
     assert migrate(t).returncode == 0
     t.lead("review_ingest", work_id=story, evidence_id=parent_review(t, story))
     t.lead("verify_ingest", work_id=story, evidence_id=parent_verification(t, story))
-    refused = aew(t, "work", "close", story, "--reason", "gates passed", )
+    refused = aew(t, "work", "close", story, "--reason", "gates passed")
     assert refused.returncode != 0 and "remediation child" in refused.error["message"], refused.stderr
     assert_control_invariants(t)

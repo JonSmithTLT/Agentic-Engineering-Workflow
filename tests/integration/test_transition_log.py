@@ -217,7 +217,7 @@ def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they
     p = sample_project(tmp_path)
     old_lead = p.token.split(".")[1]
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    accepted = p.ok("lead", "handoff", "accept", "--offer", offer, )
+    accepted = p.ok("lead", "handoff", "accept", "--offer", offer)
     events = transfer_events(p, accepted["revision"])
     assert {"kind": "decision.recorded", "id": accepted["decision"], "type": "authority_transfer"} in events
     revoked = {e["id"] for e in events if e["kind"] == "credential.revoked"}

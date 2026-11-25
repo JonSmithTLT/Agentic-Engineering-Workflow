@@ -348,7 +348,7 @@ def test_an_unadopted_checks_edit_is_named_as_such_in_the_next_actions(project):
 
 
 def test_acquire_only_when_vacant(project):
-    res = project.aew("lead", "acquire", )
+    res = project.aew("lead", "acquire")
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     # Register V2: the refusal names the holder and the way on when the holding session is gone.
     assert "aew lead takeover" in res.error["message"] and "interrupts nothing" in res.error["message"]
@@ -365,7 +365,7 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     assign(p, wid)  # an implementer is active
-    res = p.aew("lead", "acquire", )
+    res = p.aew("lead", "acquire")
     details = res.error["details"]
     assert res.error["code"] == "PERMISSION_DENIED" and len(details["active_invocations"]) == 1
     assert f"interrupts the active invocation(s) {details['active_invocations'][0]}" in res.error["message"]
@@ -383,14 +383,14 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     wid, _ = to_commit_ready(p, tmp_path)
     p.lead("integrate", "prepare", wid)
     p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
-    res = p.aew("lead", "acquire", )
+    res = p.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [wid], res.error
     assert "integrate reconcile" not in res.error["message"] and "aew resume" in res.error["message"]
 
     q = sample_project(tmp_path / "validated")
     wid2, _ = to_commit_ready(q, tmp_path / "validated")
     prepare_and_validate(q, wid2)
-    res = q.aew("lead", "acquire", )
+    res = q.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
     assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
 
@@ -535,7 +535,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> tuple[dict, str]:
 def test_operator_authorized_takeover_supersedes_everyone(project):
     a_token = project.token
     offer = project.lead("lead", "handoff", "offer")["offer"]
-    b_token = project.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    b_token = project.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     rev = project.rev()
     result, screen = _pty_takeover(project.root, rev, "lead-c")
     assert result["generation"] == 3

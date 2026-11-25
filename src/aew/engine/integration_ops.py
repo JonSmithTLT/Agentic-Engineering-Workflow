@@ -303,7 +303,7 @@ class Integration:
             if lost:
                 raise IllegalTransition(f"{work_id}'s VALIDATED candidate lost its integration worktree "
                                         f"({integ['workspace']}): requeue it (`aew integrate requeue {work_id} "
-                                        f"--reason <reason>`) to "
+                                        "--reason <reason> --prior-value VALIDATED`) to "
                                         "build a new candidate", workspace=integ["workspace"])
             return
         # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the

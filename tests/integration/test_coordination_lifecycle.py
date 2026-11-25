@@ -257,7 +257,7 @@ def test_release_and_migrate_end_no_invocation(w):
     with pytest.raises(IllegalTransition):
         w.lead("lead_release")
     before = {i: v["status"] for i, v in state(w)["invocations"].items()}
-    w.e.migrate(token=w.token, )
+    w.e.migrate(token=w.token)
     assert {i: v["status"] for i, v in state(w)["invocations"].items()} == before
     assert pointer(w, w.wid, w.inv) is None and "coordination" not in state(w)["work"][w.wid]
     assert_control_invariants(w)
@@ -1097,7 +1097,7 @@ def test_migrating_a_v1_project_that_adopted_messaging_registers_it(tmp_path):
     w.e.manifest_adopt(token=w.token, reason="messaging on, while v1", authorization=OPERATOR,
                              binding=w.e.manifest_approval())
     assert "coordination_store" not in state(w)
-    out = w.e.migrate(token=w.token, )
+    out = w.e.migrate(token=w.token)
     assert state(w)["coordination_store"] == {"since_rev": out["revision"], "decision": None, "via": "migrate"}
     assert w.send()["ok"]
     assert next(c for c in w.e.doctor_checks() if c["check"] == "coordination")["status"] == "PASS"
@@ -1133,7 +1133,7 @@ def test_migrating_a_v1_project_records_its_adopted_steering_default_so_a_raise_
     w.e.manifest_adopt(token=w.token, reason="while v1", authorization=OPERATOR,
                              binding=w.e.manifest_approval())
     assert "steering" not in state(w)
-    out = w.e.migrate(token=w.token, )
+    out = w.e.migrate(token=w.token)
     now = S.effective(state(w))
     assert state(w)["steering"]["default"] == "crawl" and (now["mode"], now["source"]) == ("crawl", S.STANDING_DEFAULT)
     record = next(r for r in _steering_records(w) if r["id"] == now["record"])

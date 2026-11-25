@@ -11,7 +11,7 @@ def _audit(a: argparse.Namespace):
     """Advisory unless it is recorded: recording is a Lead mutation, so it needs the Lead credential."""
     if not a.record:
         return _engine(a).history_audit(full=a.full)
-    return _engine(a).history_audit(full=a.full, token=_lead_token(a), )
+    return _engine(a).history_audit(full=a.full, token=_lead_token(a))
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:

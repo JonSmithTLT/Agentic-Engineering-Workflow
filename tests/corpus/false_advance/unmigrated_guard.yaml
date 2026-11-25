@@ -6,7 +6,7 @@ description: >-
   call commits nothing a guard refuses
 seed: non_mutating_running
 stage: ticket_request_review
-arguments: {work_id: $work_id}
+arguments: {work_id: $work_id, prior_value: RUNNING}
 expect:
   availability: BLOCKED
   reason_codes: [GUARD_NOT_QUERYABLE, ILLEGAL_TRANSITION]

@@ -194,7 +194,11 @@ def _plan_start(a: dict[str, Any]) -> list[dict[str, Any]]:
     execution = {"execution": a["execution"]} if "execution" in a else {}
     return [{"primitive": "work.assign", "args": {**(assign or {}), **execution}},
             {"primitive": "dispatch.launch", "args": launch},
-            {"primitive": "work.transition", "args": transition}]
+            {"primitive": "work.transition", "args": _transition_from(transition)}]
+
+
+def _transition_from(args: dict[str, Any] | None) -> dict[str, Any]:
+    return {**(args or {}), "prior_value": {SI.REFERENCE: [1, SI.STEP_STATE]}}
 
 
 def _per_card(a: dict[str, Any], dispatch: dict[str, Any] | None, launch: dict[str, Any] | None,
@@ -226,7 +230,8 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
     effective gates require, each launched. From REVIEW_PASSED (``shape``, E133) the review is already accepted."""
     ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
     accept = [{"primitive": "review.ingest", "args": ingest}] if (shape or {}).get(1, True) else []
-    return [*accept, {"primitive": "work.transition", "args": transition},
+    return [*accept, {"primitive": "work.transition",
+                      "args": _transition_from(transition) if accept else transition},
             *_per_card(a, dispatch, launch, cards)]
 
 
@@ -237,11 +242,13 @@ def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> li
     steps starts after them (``shape``, E133)."""
     shape = shape or {}
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
-    plan: list[dict[str, Any]] = [*([{"primitive": "verify.ingest", "args": ingest}] if shape.get(1, True) else []),
-                                  *([{"primitive": "work.transition",
-                                      "args": transition}] if shape.get(2, True)
-                                    else []),
-                                  {"primitive": "integrate.prepare", "args": prepare}]
+    plan: list[dict[str, Any]] = []
+    if shape.get(1, True):
+        plan.append({"primitive": "verify.ingest", "args": ingest})
+        transition = _transition_from(transition)
+    if shape.get(2, True):
+        plan.append({"primitive": "work.transition", "args": transition})
+    plan.append({"primitive": "integrate.prepare", "args": prepare})
     if shape.get(4):
         execution = {"execution": a["execution"]} if "execution" in a else {}
         plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True, **execution}},
@@ -260,8 +267,8 @@ def _plan_publish(a: dict[str, Any], shape: dict[int, bool] | None = None) -> li
     if ingest is not None and shape.get(1):
         plan.append({"primitive": "verify.ingest.integration", "args": ingest})
     if shape.get(2):
-        plan.append({"primitive": "integrate.publish", "args": {**(publish or {}), "candidate": a.get(
-            "prepared_candidate"), **({"rebuild": True} if shape.get(3) else {})}})
+        plan.append({"primitive": "integrate.publish", "args": {**(publish or {}),
+                                                                 **({"rebuild": True} if shape.get(3) else {})}})
     if shape.get(3):
         plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True}},
                  {"primitive": "dispatch.launch", "args": launch}]
@@ -430,17 +437,24 @@ def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_args(engine: Any, intent: str, args: dict[str, Any]) -> dict[str, Any]:
-    """``args`` with each ``{"$from": [m, field]}`` replaced by the one id step ``m`` recorded under ``field``."""
+    """Resolve step references to the bound ID or subject state from the completed predecessor's journal."""
     out: dict[str, Any] = {}
     for name, value in args.items():
         if isinstance(value, dict) and set(value) == {"$from"}:
             m, field = value["$from"]  # its form and order were checked when the intent opened
             steps = engine.stage_intent(intent)["steps"]
-            ids = steps[m - 1]["outputs"][field] if 0 < m <= len(steps) else []
-            if len(ids) != 1:
-                raise errors.IllegalTransition(f"{name} comes from step {m}'s {field}, which recorded {len(ids)} "
-                                               "id(s), not one", reason="unresolved_argument", step=m, field=field)
-            value = ids[0]
+            record = steps[m - 1] if 0 < m <= len(steps) else None
+            if field == SI.STEP_STATE:
+                value = ((record or {}).get("subject_after") or {}).get("state")
+                if not isinstance(value, str):
+                    raise errors.IllegalTransition(f"{name} needs the subject state recorded by step {m}",
+                                                   reason="unresolved_argument", step=m, field=field)
+            else:
+                ids = record["outputs"][field] if record is not None else []
+                if len(ids) != 1:
+                    raise errors.IllegalTransition(f"{name} comes from step {m}'s {field}, which recorded {len(ids)} "
+                                                   "id(s), not one", reason="unresolved_argument", step=m, field=field)
+                value = ids[0]
         out[name] = value
     return out
 

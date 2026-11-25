@@ -332,7 +332,7 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      f"with `aew harness launch {inv_id}` "
+                                      f"with `aew harness launch {inv_id} --prior-value {run}` "
                                       "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
@@ -857,8 +857,8 @@ class Harness:
                     raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
                 if status not in K.LIVE_RUNS:
                     raise IllegalTransition(
-                        f"{run} is {status}; relaunch with `aew harness launch {inv_id}` to continue "
-                        "its invocation")
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} --prior-value {run}` "
+                        "to continue its invocation")
             entry = next(r for r in inv["runs"] if r["run"] == run)
             name, text = self._record_request(entry, kind, payload)
             revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
@@ -997,7 +997,7 @@ class Harness:
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id}`, or "
+                          f"relaunch with `aew harness launch {inv_id} --prior-value {run}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
@@ -1005,7 +1005,7 @@ class Harness:
                 cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "harness run ended")
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"` (its credential rotates) or cancel it with:"
+                          f"--prior-value {run}` (its credential rotates) or cancel it with:"
                           f"\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
@@ -1070,14 +1070,14 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to}`"
+            step = f"`aew work transition {wid} --to {to} --prior-value RUNNING`"
             stage = self.gates.stage_for(state, wid, "RUNNING", to)
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
-            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as "
-                    "its gates require)")
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY "
+                    "--prior-value RUNNING` (as its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING --prior-value ASSIGNED`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:

@@ -324,7 +324,7 @@ class Lead:
             ctx.summary = "Lead handoff offered"
         return {"ok": True, "offer": offer, "handoff_record": path, "revision": ctx.session.committed_revision}
 
-    def lead_handoff_cancel(self, *, token: str, ) -> dict[str, Any]:
+    def lead_handoff_cancel(self, *, token: str) -> dict[str, Any]:
         with self.k.lead_txn(token, "lead.handoff.cancel", allow_pending=True) as ctx:
             lead = ctx.state["lead"]
             if lead["status"] != "handoff_pending":

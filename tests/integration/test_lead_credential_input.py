@@ -33,7 +33,7 @@ def test_a_token_value_on_the_command_line_is_refused_before_anything_runs(proje
     variable, and the command does not run: the revision is unchanged."""
     rev = project.rev()
     token = project.token if value == "project-token" else value
-    res = project.aew(*CHECKPOINT, "--token", token, )  # a --token value, refused
+    res = project.aew(*CHECKPOINT, "--token", token)  # a --token value, refused
     assert res.returncode == 2 and res.error["code"] == "USAGE", res.stderr
     assert res.error["details"]["reason"] == "token_on_command_line"
     assert "hidden prompt" in res.error["message"] and lead_credential.ENV in res.error["message"]
@@ -63,7 +63,7 @@ def test_off_a_terminal_a_command_without_the_credential_refuses_with_the_per_se
     """No terminal (as a harness tool call runs, and as every test's CLI runs): the refusal says how to give the
     credential safely, each form with the shell it is for, and why only for the session; nothing ran."""
     rev = project.rev()
-    res = project.aew(*CHECKPOINT, )
+    res = project.aew(*CHECKPOINT)
     assert res.returncode == 2 and res.error["details"]["reason"] == "lead_credential_required", res.stderr
     _forms_given(res.error)
     assert lead_credential.PER_SESSION_WHY in res.error["message"]

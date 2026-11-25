@@ -378,8 +378,8 @@ class Roles:
         if pinned and card.id not in pinned:
             raise PermissionDenied(
                 f"the operator pinned {pinned} for {work_id}'s execute slot; to dispatch {card.id}, change the role "
-                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason>` (a "
-                "recorded decision)",
+                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason> "
+                f"--prior-value {approval.role_plan_digest(unit)}` (a recorded decision)",
                 pinned=pinned, requested=card.id)
 
     @staticmethod

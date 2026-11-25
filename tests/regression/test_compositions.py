@@ -181,7 +181,7 @@ def test_repeated_replan_and_interruption_cycles_keep_the_serial_boundary(tmp_pa
     res = p.aew("work", "assign", first, env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "CONCURRENCY_LIMIT"
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     assert unit(p, second)["state"] == "INTERRUPTED"
     assert impl2.aew("check", "run", "guardrails").returncode != 0
     p.lead("work", "reconcile", second, "--to", "RUNNING", "--reason", "inspected the workspace; continue")
@@ -211,7 +211,7 @@ def test_invocation_is_never_retargeted_to_another_workspace(tmp_path):
 
 def handoff(p):
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    p.token = p.ok("lead", "handoff", "accept", "--offer", offer, )["token"]
+    p.token = p.ok("lead", "handoff", "accept", "--offer", offer)["token"]
 
 
 def test_interruption_keeps_a_review_failure_and_revokes_the_sibling_reviewer(tmp_path):
@@ -312,7 +312,7 @@ def _authority_project(tmp_path):
     repo = make_git_repo(tmp_path / "repo", {"README.md": "# fixture\n", "docs/adr/0001.md": "# decision\n"})
     proj = Project(repo)
     candidates = proj.ok("init")["authority_candidates"]
-    proj.token = proj.ok("lead", "acquire", )["token"]
+    proj.token = proj.ok("lead", "acquire")["token"]
     return proj, next(c for c in candidates if c["path"] == "docs/adr/")
 
 

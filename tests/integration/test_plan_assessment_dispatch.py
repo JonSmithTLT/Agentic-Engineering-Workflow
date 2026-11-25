@@ -44,12 +44,9 @@ def lab(tmp_path):
 
 
 def follow(p, printed, fenced, *, env=None, stdin=None, **values):
-    """Run a command exactly as the product printed it: its placeholders filled as a reader fills them (the revision
-    from `aew status`, and ``values``, e.g. ``file=...``), its heredoc (or ``stdin``, for a `--fields -` the reader
-    writes) as stdin, with the Lead credential."""
+    """Follow the printed command with observed values and its heredoc or supplied stdin, as the Lead would."""
     head, body = P.split(printed, fenced)
     body = stdin if body is None else body
-    head = head.replace("<revision from aew status>", str(p.rev()))
     for name, value in values.items():
         head = head.replace(f"<{name}>", value)
     head, body = P.fill(head), (P.fill(body) if body is not None else None)
@@ -208,7 +205,9 @@ def test_a_ticket_with_no_plan_is_assessed_by_following_the_refusals_steps(tmp_p
     plan.write_text("1. Change calc/core.py.\n", encoding="utf-8")
     # as_posix: the reader's shell line is split as a POSIX shell splits it, where a backslash is an escape
     proposed = follow(p, *printed(error["message"], "plan propose"), file=plan.as_posix())
-    follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]))
+    shown = Engine.discover(p.root).status(wid)["work_unit"]["plans"][-1]
+    follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]),
+           **{"shown digest": shown["sha256"]})
     assert assess(p, wid)[1]["plan_revision"]["revision"] == proposed["revision_number"]
 
 

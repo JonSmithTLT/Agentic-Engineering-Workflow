@@ -32,7 +32,7 @@ GOLDEN = ROOT / "tests/fixtures/baseline/messaging-off-outputs.json"
 
 @pytest.mark.autopsy(children_only=True)
 @pytest.mark.parametrize("messaging", [None, "disabled"])
-def test_never_enabled_seeded_outputs_match_mains_json_text_and_projection_pin(tmp_path, messaging):
+def test_never_enabled_seeded_outputs_match_the_json_text_and_projection_pin(tmp_path, messaging):
     w = world(tmp_path, messaging=messaging)
     before = worker_surface.snapshot(w.root / ".aew")
     output = snapshot_process.run(ROOT / "tests/helpers/messaging_off_snapshot.py", [str(w.root), w.wid],

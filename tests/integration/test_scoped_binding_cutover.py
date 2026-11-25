@@ -6,6 +6,7 @@ from aew.engine import stage_intents, stage_migration
 from aew.engine.api import Engine
 from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.store import Transition
+from aew.errors import ChangedSinceRead
 from aew.surface import contract, stage
 from aew.surface.context import SurfaceContext
 from aew.surface.errors import AdapterInputError
@@ -165,7 +166,32 @@ def test_migration_recovers_the_prior_state_only_from_the_journals_assignment(tm
     current = e.stage_intent(sid)
     assert not current["steps"] and not stage_migration.needs_upgrade(current)
     if old_prior is None:
-        assert current["plan"][-1]["args"]["prior_value"] == "ASSIGNED"
+        assert current["plan"][-1]["args"]["prior_value"] == {stage_intents.REFERENCE: [1, stage_intents.STEP_STATE]}
         assert stage.assess(e, current)["safe_to_continue"]
     else:
         assert not stage.assess(e, current)["safe_to_continue"]
+
+
+def test_a_transition_uses_the_state_the_preceding_stage_step_committed(project):
+    e = Engine.discover(project.root)
+    wid = e.work_create(token=project.token, kind="ticket", title="Observe the state", risk_class=1)["id"]
+    args = {"work_id": wid, "to": "CANCELLED", "reason": "no longer needed",
+            "prior_value": {stage_intents.REFERENCE: [1, stage_intents.STEP_STATE]}}
+    sid = e.stage_open(
+        token=project.token, tool="synthetic_transition", contract_digest="a" * 64, arguments={"work_id": wid},
+        judgment_inputs=[], base_class="MECHANICAL", effective_class="MECHANICAL", subject=wid, ingress="test",
+        plan=[{"primitive": "checkpoint", "args": {}}, {"primitive": "work.transition", "args": args}],
+    )["intent"]
+    with stage_intents.step(sid, 1):
+        e.checkpoint(token=project.token, note="hold this Ticket as observed")
+    recorded = stage._resolve_args(e, sid, args)
+    assert recorded["prior_value"] == e.stage_intent(sid)["steps"][0]["subject_after"]["state"] == "BLOCKED"
+    proposed = e.plan_propose(token=project.token, work_id=wid, body="Review the README.", no_assurance=True)
+    shown = e.status(wid)["work_unit"]["plans"][-1]
+    e.plan_accept(token=project.token, work_id=wid, revision=proposed["revision_number"], binding=shown["sha256"])
+    before = project.rev()
+    preview = e.guard_query("work.transition", wid, dict(recorded))
+    assert preview["availability"] == "BLOCKED" and preview["reason_codes"] == ["CHANGED_SINCE_READ"]
+    with stage_intents.step(sid, 2), pytest.raises(ChangedSinceRead):
+        e.work_transition(token=project.token, **recorded)
+    assert project.rev() == before and len(e.stage_intent(sid)["steps"]) == 1

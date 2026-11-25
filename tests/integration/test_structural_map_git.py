@@ -380,8 +380,8 @@ def test_an_old_git_partial_clone_is_refused_before_any_object_is_resolved_or_re
 
 def _handoff(engine: Any, token: str) -> None:
     """Hand the Lead seat to a new session: the credential the command started with is superseded."""
-    offer = engine.lead_handoff_offer(token=token, )["offer"]
-    engine.lead_handoff_accept(offer=offer, )
+    offer = engine.lead_handoff_offer(token=token)["offer"]
+    engine.lead_handoff_accept(offer=offer)
 
 
 @pytest.mark.parametrize("when", ["during_generation", "after_the_artifact_is_written"])

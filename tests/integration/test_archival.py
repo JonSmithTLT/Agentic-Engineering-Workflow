@@ -84,7 +84,7 @@ def test_a_superseded_lead_credential_is_archived_and_still_stale(tmp_path):
     p = sample_project(tmp_path)
     old = p.token
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    accepted = p.ok("lead", "handoff", "accept", "--offer", offer, )
+    accepted = p.ok("lead", "handoff", "accept", "--offer", offer)
     state = hot(p)
     assert [t["kind"] for t in state["tokens"].values()] == ["lead"]  # only the new Lead's credential stays hot
     assert state["tokens"][accepted["token"].split(".")[1]]["revoked_at"] is None

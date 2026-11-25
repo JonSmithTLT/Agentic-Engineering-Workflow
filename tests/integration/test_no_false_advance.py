@@ -6,8 +6,8 @@ answering AVAILABLE (or auto-runnable) for a stage its own commit would refuse, 
 guard that refuses it, so a Ticket reaches a state its guard forbids.
 
 Each case is a file in ``tests/corpus/false_advance/``: ``seed`` names a builder below, which makes the state on a
-real project; ``stage`` and ``arguments`` are the call (``$work_id`` is the seeded Ticket, ``$stale`` a revision
-behind the current one, ``$evidence`` the report a seed made); ``expect`` is the stage's composed availability now,
+real project. The call takes the seeded Ticket as ``$work_id`` and its report as ``$evidence``.
+The ``expect`` section pins the stage's composed availability now,
 and where the call stops (its boundary, the steps that committed, the Ticket's state after it; a null boundary is a
 call that completes). The projection never offers a case's stage as auto-runnable unless it is AVAILABLE, and a case
 may say it is not (``auto_runnable: false``: an open high anomaly, which adds no guard). The corpus begins with E5a
@@ -182,15 +182,13 @@ def test_the_corpus_is_well_formed():
                                        "unit_state"}, name
 
 
-def _bind(value: Any, wid: str | None, rev: int, evidence: str | None = None) -> Any:
+def _bind(value: Any, wid: str | None, evidence: str | None = None) -> Any:
     if value == "$work_id":
         return wid
-    if value == "$stale":
-        return rev - 1
     if value == "$evidence":
         return evidence
     if isinstance(value, dict):
-        return {k: _bind(v, wid, rev, evidence) for k, v in value.items()}
+        return {k: _bind(v, wid, evidence) for k, v in value.items()}
     return value
 
 
@@ -201,11 +199,9 @@ def test_no_false_advance(tmp_path, monkeypatch, name):
     p, wid, cleanups = SEEDS[case["seed"]](tmp_path, monkeypatch)
     try:
         engine = Engine.discover(p.root)
-        rev = int(engine.store.read()["revision"])
         held = set(engine.store.read().get("stage_intents") or {})  # a seed's own unfinished stage stays as it was
-        arguments = {**_bind(case["arguments"], wid, rev, EVIDENCE.get(str(p.root)))}
-        explain_args = {k: v for k, v in arguments.items() if k != "expect_rev"}
-        explained = R.run_tool(engine, CTX, "explain", {"stage": case["stage"], "arguments": explain_args})
+        arguments = _bind(case["arguments"], wid, EVIDENCE.get(str(p.root)))
+        explained = R.run_tool(engine, CTX, "explain", {"stage": case["stage"], "arguments": arguments})
         assert explained["ok"], explained["stopped"]
         assert explained["result"]["availability"] == expect["availability"], explained["result"]
         if "reason_codes" in expect:

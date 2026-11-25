@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from aew.engine.stage_intents import digest
+from aew.engine.stage_intents import REFERENCE, STEP_STATE, digest
 
 _REVISION = "expect_rev"
 
@@ -46,18 +46,18 @@ def _bind_transitions(intent: dict[str, Any]) -> bool:
     tool, arguments = intent["tool"], intent["arguments"]
     start = (intent["subject"]["start"] or {}).get("state")
     sources = {
-        "ticket_start": ("work.assign", "ASSIGNED"),
-        "ticket_request_verification": ("review.ingest", "REVIEW_PASSED"),
-        "ticket_prepare": ("verify.ingest", "VERIFIED"),
+        "ticket_start": "work.assign",
+        "ticket_request_verification": "review.ingest",
+        "ticket_prepare": "verify.ingest",
     }
-    seen: set[str] = set()
+    seen: dict[str, int] = {}
     for step in intent["plan"]:
         primitive = step["primitive"]
         if primitive == "work.transition":
             args = step.get("args") or {}
             source = sources.get(tool)
-            if source and source[0] in seen:
-                prior = source[1]
+            if source in seen:
+                prior: str | dict[str, Any] = {REFERENCE: [seen[source], STEP_STATE]}
             elif ((tool == "ticket_request_review" and start == "RUNNING")
                   or (tool == "ticket_request_verification" and start == "REVIEW_PASSED")
                   or (tool == "ticket_prepare" and start in {"REVIEW_PASSED", "VERIFIED"})):
@@ -74,7 +74,7 @@ def _bind_transitions(intent: dict[str, Any]) -> bool:
             candidate = arguments.get("prepared_candidate")
             if not candidate or (step.get("args") or {}).get("candidate") != candidate:
                 return False
-        seen.add(primitive)
+        seen[primitive] = step["n"]
     return True
 
 

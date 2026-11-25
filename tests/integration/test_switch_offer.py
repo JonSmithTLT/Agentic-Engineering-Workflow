@@ -1066,7 +1066,7 @@ def test_the_offer_reaches_the_adopt_with_a_token_on_both_acquire_paths(old, at_
     decision, out = start(old)
     e = decision.engine
     if acquire:
-        e.lead_release(token=old.token, )
+        e.lead_release(token=old.token)
         monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
     else:
         monkeypatch.setenv("AEW_LEAD_TOKEN", old.token)

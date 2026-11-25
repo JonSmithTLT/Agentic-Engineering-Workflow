@@ -336,7 +336,7 @@ class HierarchyWalk:
 
     def handoff(self, wid: str) -> None:
         offer = self.lead("lead_handoff_offer")["offer"]
-        out = self.engine.lead_handoff_accept(offer=offer, )
+        out = self.engine.lead_handoff_accept(offer=offer)
         self.token, self.gen = out["token"], out["generation"]
 
     def handoff_cancel(self, wid: str) -> None:

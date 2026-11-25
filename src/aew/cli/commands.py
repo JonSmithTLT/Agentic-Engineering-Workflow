@@ -141,7 +141,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p = sub.add_parser("migrate", help="move a v1 project's control state to v2: finished work leaves the hot state "
                                        "(the operator, at their own terminal; ADR-0011)")
     _add_lead(p)
-    p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), ))
+    p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a)))
 
     _register_lead(sub)
     _register_stage(sub)
@@ -225,7 +225,7 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
 
     q = lsub.add_parser("release", help="vacate the Lead seat cleanly")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a), ))
+    q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a)))
 
     q = lsub.add_parser("session", help="run a Lead harness session that never sees the Lead credential (ADR-0009)")
     q.add_argument("--acquire", action="store_true",

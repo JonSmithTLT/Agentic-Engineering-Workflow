@@ -314,7 +314,7 @@ def test_a_credential_is_never_issued_onto_a_captured_stdout(tmp_path):
     assert res.returncode != 0 and '"USAGE"' in res.stderr and "your terminal" in res.stderr, res.stderr
     assert not contains_credential(res.stdout + res.stderr)
     assert p.ok("lead", "show")["status"] == "vacant"
-    assert contains_credential(p.ok("lead", "acquire", )["token"])  # run_aew opts in
+    assert contains_credential(p.ok("lead", "acquire")["token"])  # run_aew opts in
 
 
 def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
@@ -330,11 +330,11 @@ def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
         {"do": "wait_file", "path": str(sync / "go2"), "timeout": 120},
         {"do": "lead", "args": ["checkpoint", "--next", "after the cancel"]}])
     lab.until((sync / "ready").exists, "wait.condition", what="Lead session ready")
-    Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token, )
+    Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token)
     (sync / "go").touch()
     lab.until((sync / "tried").exists, "wait.condition", what="a request during the offer")
     time.sleep(3 * lead_broker.POLL_S)  # the session's watchdog has seen the pending handoff
-    Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token, )
+    Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token)
     (sync / "go2").touch()
     out, err = proc.communicate(timeout=120)
     steps = _steps(transcript)

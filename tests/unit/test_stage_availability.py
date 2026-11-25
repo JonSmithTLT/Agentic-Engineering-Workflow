@@ -281,7 +281,7 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
         for call in CALLS[name]:
             # A stage whose steps depend on the state (M4-E E6a, `SA.APPLIES`) is planned with every such step in.
             shape = {"shape": {n: True for n in SA.APPLIES[name]}} if name in SA.APPLIES else {}
-            plan = stage_planners[name](dict(call, ), **shape)
+            plan = stage_planners[name](dict(call), **shape)
             # A step availability leaves unplanned for this call (its builder answers None: `ticket_draft` without a
             # plan) is one the planner leaves out too (M4-E E5a); every other step is planned, in contract order.
             planned = [n for n, build in enumerate(SA.STAGES[name], start=1) if build(call) is not None]
@@ -480,7 +480,7 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
     call = CALLS[name][0]
     engine = FakeEngine(_state())
     engine.cards = ["c1", "c2"]
-    plan = stage.plan_for(engine, name, dict(call, ))
+    plan = stage.plan_for(engine, name, dict(call))
     n = SA.CARDS[name][0]
     base = SA.STAGES[name][n - 1](call)
     dispatches = [p for p in plan if p["primitive"] == "invoke.create.mutating"]
@@ -491,11 +491,11 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
 
 
 @pytest.mark.parametrize(("name", "arguments", "shape", "prior"), [
-    ("ticket_start", {}, None, "ASSIGNED"),
+    ("ticket_start", {}, None, {"$from": [1, "state"]}),
     ("ticket_request_review", {"prior_value": "RUNNING"}, None, "RUNNING"),
-    ("ticket_request_verification", {"review_evidence": "EV-0001"}, {1: True}, "REVIEW_PASSED"),
+    ("ticket_request_verification", {"review_evidence": "EV-0001"}, {1: True}, {"$from": [1, "state"]}),
     ("ticket_request_verification", {"prior_value": "REVIEW_PASSED"}, {1: False}, "REVIEW_PASSED"),
-    ("ticket_prepare", {"verification_evidence": "EV-0002"}, {1: True}, "VERIFIED"),
+    ("ticket_prepare", {"verification_evidence": "EV-0002"}, {1: True}, {"$from": [1, "state"]}),
     ("ticket_prepare", {"prior_value": "VERIFIED"}, {1: False}, "VERIFIED"),
     ("ticket_prepare", {"prior_value": "REVIEW_PASSED"}, {1: False}, "REVIEW_PASSED"),
     ("ticket_prepare", {}, {1: False, 2: False}, None),

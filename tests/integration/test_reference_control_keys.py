@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import reference_render
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
@@ -43,7 +44,7 @@ def _tools():
 
 
 C, K, W, F = _tools()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 RECORDS = K.build(CTX).records
 CONTROL = {r.key: r for r in RECORDS if (r.fact or {})["scope"] == "control"}
 UNIT = {r.key.removeprefix("unit:"): r for r in RECORDS if (r.fact or {})["scope"] == K.UNIT}

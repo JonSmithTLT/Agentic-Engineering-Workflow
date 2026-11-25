@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import reference_render
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,7 +36,7 @@ def _tool_modules():
 
 
 C, M, W, X = _tool_modules()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 
 
 def key(s):

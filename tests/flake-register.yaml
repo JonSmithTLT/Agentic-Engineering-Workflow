@@ -232,6 +232,13 @@ entries:
     note: >-
       regression 2/3 (windows-latest), PR 545. Ended failure after 48 minutes with its pytest step in progress,
       no log, no recovery step and no evidence.
+  - run: 44769864900
+    job: 136404550082
+    at: '2026-11-20T17:20:02Z'
+    note: >-
+      full suite 1/8 (windows-latest, py3.11), the nightly's extra matrix entry, not the regression lane (its full
+      suite shards are read as regression). Ended cancelled after 69 minutes (timeout-minutes 64 at ca376e88) with
+      its pytest step in progress, no log and no evidence. Cause unestablished.
 - id: windows-integration-no-response
   scope: session
   lane: integration
@@ -1421,6 +1428,52 @@ entries:
       Windows integration 8/14 on main 188eab22. The first drain and its receipt assertions
       passed. The ten-second drain after a deliberate second read returned false at line 435.
       On 61847d98 the first drain failed at line 370.
+- id: run-progress-digest-wake-reason
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: test failure
+  cause: The poster received a wake for loop_waiting where out_of_scope was expected. Cause unestablished.
+  owner: CI flake triage
+  row: E3
+  test: tests/integration/test_run_progress_digest.py::test_a_real_dispatch_under_a_real_broker_says_end_your_turn_and_the_wake_comes
+  evidence:
+  - run: 44918522356
+    job: 136889331212
+    at: '2026-11-21T15:52:08Z'
+    note: >-
+      full suite 1/8 (windows-latest, py3.11): assert [['loop_waiting']] == [['out_of_scope']]. One sighting.
+- id: windows-cancel-live-stack
+  scope: session
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: autopsy evidence
+  cause: >-
+    A Windows xdist worker alive at the cancellation collection had no interruption stack (evidence_problems'
+    live-stack). Cause unestablished. Leads from the E3 note of 2026-11-24: the collection takes one nonblocking py-spy
+    dump per worker without the warning path's retries, discards a dump that straddles a test boundary, and a worker
+    in fixture setup or teardown has no test-function frame.
+  owner: CI flake triage
+  row: E3
+  evidence:
+  - run: 45338188607
+    job: 138255795565
+    at: '2026-11-24T06:33:34Z'
+    note: >-
+      integration 13/14 (windows-latest), PR 538, cancelled by a newer push. The run's assurance reported
+      [live-stack] for cancelled-7776.txt.
+  - run: 45512199966
+    job: 138862502221
+    at: '2026-11-24T23:44:10Z'
+    note: >-
+      plant (windows-latest, cancel, none), the manual cancel-control target of evidence-proof run 45512141240
+      (PR 553 at bc5492f2), whose run-cancel-control (manual) job 138862288052 reported live-stack for it. The
+      worker's last labelled sample, 23:43:19.53, predated the trigger's lower bound by 16.468 s; the cancellation
+      collection took 0.085 s. The same proof was green at 337ab3c1.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

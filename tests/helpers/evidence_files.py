@@ -67,6 +67,7 @@ PREFIX = "worker snapshot "
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
+STUCK_MARKER = "stuck-after-finish.txt"  # session_deadline's STUCK marker, as written (its test pins the two)
 
 
 def test_frame(node: str, frames: str) -> bool:
@@ -147,6 +148,14 @@ def report_json(path: Path) -> bool:
     # Existing root report/discovery JSON and the dispatch lane's explicitly named child reports.
     return path.suffix == ".json" and (len(path.parts) == 1 or (len(path.parts) == 2 and path.name == "report.json"
                                       and re.fullmatch(r"plants|shard|isolated-[0-9]+", path.parts[0]) is not None))
+
+
+def stuck_marker(path: Path) -> bool:
+    """A session's ``stuck-after-finish`` marker (``session_deadline.STUCK``): the one autopsy file the reports-only
+    bundle carries, so the assurance jobs, which download only reports, can name a session the sentinel ended after it
+    finished (register E3)."""
+    return (len(path.parts) == 3 and path.parts[0] == "autopsy" and path.parts[1].startswith("session-")
+            and path.name == STUCK_MARKER)
 
 
 def failure_or_death(path: Path) -> bool:

@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import reference_render
 from conftest import make_git_repo
 
 from aew import process_kind
@@ -44,8 +45,8 @@ def _tools():
 
 
 C, CO, CT, W, F = _tools()
-CTX = C.Context(ROOT)
-PROGRAM = F.Program.of({n: (s.tree, s.is_package) for n, s in CTX.sources().items() if s.tree is not None})
+CTX = reference_render.context()
+PROGRAM = F.program_of(CTX)
 BUILT = CO.build(CTX)
 RECORDS = {r.key: r for r in BUILT.records}
 OPENER_NAMES = ["control_lock"]

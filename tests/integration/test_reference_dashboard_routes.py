@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 
 from aew.dashboard import projections as P
 from aew.dashboard import server
@@ -39,7 +40,7 @@ def _tool_modules():
 
 
 C, D, T = _tool_modules()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 CONSTANTS = {n: v for n, v in vars(server).items() if isinstance(v, str) and n.isupper()}
 
 

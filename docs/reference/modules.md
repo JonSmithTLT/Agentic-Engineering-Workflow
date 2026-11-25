@@ -1465,6 +1465,10 @@ None.
 - `aew.harness.containment.peer`
 - `aew.http_close`
 
+### `aew.harness.containment.http1`
+
+None.
+
 ### `aew.harness.containment.layout`
 
 - `aew`
@@ -1512,6 +1516,7 @@ None.
 - `aew.errors`
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
+- `aew.harness.containment.http1`
 - `aew.harness.defects`
 - `aew.harness.opencode.lead`
 - `aew.harness.opencode.login`

@@ -126,7 +126,7 @@
       "type": "object",
       "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices structural (what `aew init` writes for a new project) adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. \"off\" (also when absent, as in a project initialized before that default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps. Changing it is the operator's configuration decision: an existing project is offered structural at the operator's terminal (the switch offer).",
       "additionalProperties": false,
-      "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}}
+      "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}, "reads": {"x-aew-class": "operational", "enum": ["off", "structural"], "default": "off", "description": "Worker map reads (register F15.8). structural (what `aew init` writes for a new project) offers each worker run whose role reads context `aew map show` and `aew map search` through its run's bridge, answered from the selected structural map at the run's own base with a lexical fallback over its workspace; every answer is derived, unevaluated navigation data, never authority. \"off\" (also when absent, as in a project initialized before that default) leaves the worker's prompt and bridge operations byte-identical to a project without them. A run reads it once, at its launch. Operational: it changes no dispatch, gate or transition."}}
     },
     "coordination": {
       "type": "object",

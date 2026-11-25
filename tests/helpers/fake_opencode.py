@@ -291,7 +291,9 @@ class FakeOpenCode:
             s.inbox = [i for i in s.inbox if i not in items]
             for item in items:
                 s.messages.append({"id": item["id"], "type": "user", "text": item["payload"]["text"],
-                                   "time": {"created": item["time"]["created"]}})
+                                   "time": {"created": item["time"]["created"]},
+                                   **({"metadata": item["payload"]["metadata"]}
+                                      if "metadata" in item["payload"] else {})})
         for item in items:
             self.emit("session.inbox.delivered", {"sessionID": s.info["id"], "inboxID": item["id"]})
         return len(items)
@@ -461,11 +463,19 @@ class FakeOpenCode:
     def prompt(self, s: Session, body: dict[str, Any]) -> dict[str, Any]:
         item = {"id": body.get("id") or new_id("msg"), "sessionID": s.info["id"], "time": {"created": now_ms()},
                 "type": "user", "payload": {"text": body["text"]}, "delivery": body.get("delivery") or "steer"}
+        if "metadata" in body:
+            item["payload"]["metadata"] = body["metadata"]
         with self.lock:
+            earlier = next((p for p in s.inbox if p["id"] == item["id"]), None)
+            if earlier is not None:
+                return earlier
+            delivered = next((p for p in s.messages if p["id"] == item["id"] and p["type"] == "user"), None)
+            if delivered is not None:
+                return {**item, "time": delivered["time"], "payload": {"text": delivered["text"]}}
             s.inbox.append(item)
             s.prompts.append({"id": item["id"], "delivery": body.get("delivery")})  # as posted: None when absent
-            start = not s.running
-            s.running = True
+            start = not s.running and body.get("resume") is not False
+            s.running = s.running or start
         self.persist()  # a test reads what was posted even when the server is stopped before the turn ends
         self.emit("session.inbox.enqueued", {"sessionID": s.info["id"], "inboxID": item["id"]})
         if start:
@@ -637,7 +647,8 @@ class FakeOpenCode:
         if mm and method == "GET":
             with self.lock:
                 found = next((x for x in s.messages if x["id"] == mm.group(1)), None)
-            return (200, {"data": found}) if found else (404, {"message": "Message not found"})
+            return (200, {"data": found}) if found else (
+                404, {"_tag": "MessageNotFoundError", "message": "Message not found"})
         if (method, rest) == ("GET", "/inbox"):
             with self.lock:
                 return 200, {"data": list(s.inbox)}

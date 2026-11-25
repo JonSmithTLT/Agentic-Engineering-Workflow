@@ -678,9 +678,10 @@ def test_a_switch_the_init_template_sets_is_on_by_default_as_a_new_project_holds
 
 def test_the_real_template_sets_only_the_maps_switch_among_the_table_switches():
     """Which table switches a new project holds otherwise than an absent key, read from the real template: the rule
-    above flips on_by_default only for these (project maps, 2026-11-11)."""
+    above flips on_by_default only for these (project maps, 2026-11-11; the worker's map reads, the operator,
+    2026-11-25, O1)."""
     real = owners_at_head()
-    assert real.new_project == {("maps", "pack_slices"): "structural"}
+    assert real.new_project == {("maps", "pack_slices"): "structural", ("maps", "reads"): "structural"}
 
 
 def test_non_binary_switch_is_checked_without_inventing_an_on_state(own):
@@ -860,10 +861,11 @@ def test_allowance_conditions_are_labelled_not_interpreted():
 
 def test_request_economy_tracks_the_leads_existing_open_row():
     data, own = systems.read_board(ROOT), owners_at_head()
-    e = sys_(data, "SYS-06")
-    slices = [s for s in e["remaining"] if "request-economy" in s["slice"]]
+    # The slice moved from SYS-06 to SYS-51 with E162 (the operator's finish-plan decisions of 2026-11-25); the
+    # guarantee is the row it tracks, wherever the board places it.
+    slices = [s for e in data["systems"] for s in e["remaining"] if "request-economy" in s["slice"]]
     assert len(slices) == 1 and slices[0]["row"] == "E162" and "E162" in own.open_rows
-    assert all(s["row"] != "E139" for s in e["remaining"])
+    assert all(s["row"] != "E139" for e in data["systems"] for s in e["remaining"])
 
 
 def test_unreadable_code_or_reference_is_exit_two_not_no_problem(monkeypatch, tmp_path, capsys):

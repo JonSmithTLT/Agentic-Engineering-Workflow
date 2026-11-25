@@ -697,8 +697,7 @@ class Gates:
         its own.
         """
         inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
-        plan = unit.get("plan") or {}
-        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        accepted = E.plan_binding(unit.get("plan"))
         problems: dict[str, Any] = {}
         if ev.get("plan_revision") != accepted:
             problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}
@@ -960,8 +959,8 @@ class EvidenceCommands:
     def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
         """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,
         with an allow-listed environment. Under ``required`` a sandbox that cannot be established refuses, naming
-        ``allow_weaker``; where the policy allows a weaker run (and on Windows) it runs labelled so, and is entered in
-        the register of weaker contexts while it runs (G3 addendum 7)."""
+        ``allow_weaker``, on every platform (E100); where the policy allows a weaker run (and, with the mode unset, off
+        Linux) it runs labelled so, and is entered in the register of weaker contexts while it runs (G3 addendum 7)."""
         import secrets
         import shutil
         import time
@@ -979,6 +978,9 @@ class EvidenceCommands:
                 scratch=str(run_dir / "scratch"), bridge_dir=None, policy=policy, project=str(self.k.repo_root))
         except ContainmentUnavailable as exc:
             shutil.rmtree(run_dir, ignore_errors=True)  # nothing ran in it
+            if exc.details.get("reason") == containment.UNSUPPORTED_PLATFORM:  # its own refusal and remedy, once
+                raise ContainmentUnavailable(f"`aew check run` runs the check in a sandbox. Nothing ran: {exc.message}",
+                                             **exc.details) from None
             raise ContainmentUnavailable(
                 f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
                 f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None
@@ -1086,7 +1088,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(), "seq": seq,
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
@@ -1162,7 +1164,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **(submitted.get("producer") or {}), **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(),
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "method": submitted.get("method") or {"capability": kind, "provider": "harness-role"},
                 "claim": submitted.get("claim") or kind.replace("_", " "),
                 "evidence": submitted.get("evidence") or [],

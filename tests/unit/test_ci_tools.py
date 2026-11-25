@@ -3081,3 +3081,15 @@ def test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_prob
         "nightly-reference-Linux-1/autopsy/session-2405-439565f5/stuck-after-finish.txt"]
     assert ("nightly-reference-Linux-1/autopsy/session-2405-439565f5: the session finished, but its controller had "
             "not exited") in out
+
+
+def test_the_lane_and_its_collection_name_the_same_session_job():
+    """The collection opens the session's job by the name the lane step gave it, so the two steps must give one name:
+    a copy changed alone would stop the admission silently (register E3; review of #573, m2)."""
+    import session_deadline
+
+    lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    named = {step["id"]: step["env"].get(session_deadline.JOB_NAMESPACE_ENV)
+             for step in lane if step.get("id") in {"pytest", "collect"}}
+    assert set(named) == {"pytest", "collect"} and named["pytest"] == named["collect"]
+    assert named["pytest"] and "${{ inputs.artifact }}" in named["pytest"] and "${{ github.run_id }}" in named["pytest"]

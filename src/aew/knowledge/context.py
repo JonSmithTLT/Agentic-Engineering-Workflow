@@ -242,7 +242,7 @@ def _allowed_values(role: str) -> dict[str, dict[str, str | None]]:
     """The other values each field of ``role``'s report format may take, from what the engine validates against."""
     section = schema("evidence")["properties"]
     review = section["review"]["properties"]
-    severity = review["findings"]["items"]["properties"]["severity"]
+    severity = schema("evidence")["$defs"]["finding"]["properties"]["severity"]
     claim = section["verification"]["properties"]["claims"]["items"]["properties"]["result"]
     return {"implementer": {"result": E.IMPLEMENTATION_RESULTS},
             "planner": {"result": dict.fromkeys(E.RECORD_RESULTS)},  # a plan proposal answers no question

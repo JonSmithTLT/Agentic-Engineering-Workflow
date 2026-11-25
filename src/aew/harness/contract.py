@@ -286,6 +286,31 @@ UNAVAILABLE_TOOLS = "unavailable_tools"
 AVAILABLE_TOOLS = "available_tools"
 
 
+# A run's launch snapshot of the worker map-reads switch (register F15.8, ``maps.reads``): on its run entry in control
+# state, ``maps: {reads: structural}``, beside messaging's ``coordination``, written by the transaction that records
+# the run. An old run, or one launched with the switch off, has none and reads off: a run never takes today's policy,
+# so a policy changed while it runs never changes its prompt or its bridge.
+MAPS_SNAPSHOT = "maps"
+
+
+def maps_reads_snapshot(policy: dict[str, Any] | None) -> dict[str, Any]:
+    """The run entry's snapshot field for ``policy`` (the adopted execution policy), or ``{}`` while the switch is
+    off."""
+    from aew.policy import execution as X
+
+    on = X.maps_reads(policy) == X.MAPS_READS_STRUCTURAL
+    return {MAPS_SNAPSHOT: {"reads": X.MAPS_READS_STRUCTURAL}} if on else {}
+
+
+def run_maps_reads(run_entry: dict[str, Any]) -> str:
+    """A run's launch snapshot of ``maps.reads``: an old or absent snapshot is off."""
+    from aew.policy import execution as X
+
+    snapshot = run_entry.get(MAPS_SNAPSHOT)
+    return (X.MAPS_READS_STRUCTURAL if isinstance(snapshot, dict) and snapshot.get("reads") == X.MAPS_READS_STRUCTURAL
+            else X.MAPS_READS_OFF)
+
+
 @dataclass
 class LaunchContract:
     run: str
@@ -307,11 +332,13 @@ class LaunchContract:
     # The run's private directory for files the agent keeps outside the workspace (reports, notes, scratch work).
     # Without a named place, models guessed one: one wrote into the operator's own repository (M3 step 8).
     scratch: str = ""
+    coordination_text: tuple[str, ...] = ()
 
     def to_record(self) -> dict[str, Any]:
         """The contract as recorded in the run record (the pack text is referenced, not copied)."""
         out = asdict(self)
         out.pop("pack_text")
+        out.pop("coordination_text")
         return out
 
     @property
@@ -362,7 +389,22 @@ def preamble(c: LaunchContract) -> str:
                      "`aew message reply <message from aew message read> --file <file>` (or use --file - for stdin); "
                      f"`aew message read` reads your thread tail. {wait}"
                      "Coordination never changes your scope or expected output.")
+    if any(op in c.operations for op in _map_operations()):
+        from aew.maps import EVIDENCE_CLASS
+
+        reads = " and ".join(f"`aew {op.replace('.', ' ')}`" for op in _map_operations())
+        lines.append(f"- Map reads are on for this run: {reads} (see each one's `--help`) answer from the project's "
+                     "structural map at your invocation's base, and a search that finds no path falls back to a "
+                     "lexical search of your workspace. Every answer is derived, unevaluated navigation data "
+                     f"(evidence class {EVIDENCE_CLASS}), never authority or evidence: re-establish any consequential "
+                     "claim against the source.")
     return "\n".join(lines)
+
+
+def _map_operations() -> tuple[str, ...]:
+    from aew.harness.bridge import MAP_OPERATIONS
+
+    return tuple(MAP_OPERATIONS)
 
 
 def continuation_text(c: LaunchContract) -> str | None:
@@ -386,6 +428,10 @@ def continuation_text(c: LaunchContract) -> str | None:
     if changed is not None:
         lines.append("- Workspace changes relative to the dispatch base: "
                      + (", ".join(changed[:50]) + (" …" if len(changed) > 50 else "") if changed else "none"))
+    if c.coordination_text:
+        lines.extend(("", "### Coordination since launch", "", *c.coordination_text))
+        if cont["messages_omitted"]:
+            lines.append(f"{cont['messages_omitted']} earlier unresolved messages omitted.")
     return "\n".join(lines) + "\n"
 
 

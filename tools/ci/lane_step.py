@@ -91,8 +91,10 @@ def attach(pid: int, *, allow_sudo: bool = True, timeout: float = SPY_TIMEOUT_S,
     for prefix in prefixes:
         via = "sudo -n" if prefix else "unelevated"
         try:
+            # A malformed byte in a diagnostic must not abort the lane supervisor's sampling loop.
             result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--full-filenames", "--pid", str(pid)],
-                                    capture_output=True, text=True, timeout=max(0, until - time.monotonic()),
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                    timeout=max(0, until - time.monotonic()),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode == 0 and result.stdout.strip():
                 return via, result.stdout

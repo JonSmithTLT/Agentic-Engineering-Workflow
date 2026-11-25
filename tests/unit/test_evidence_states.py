@@ -776,6 +776,35 @@ def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypat
     assert failures[-1] == "sudo -n: timed out"
 
 
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_worker_attach_survives_invalid_utf8_in_py_spy_output(monkeypatch, exit_code):
+    import subprocess
+    import sys
+
+    lane = _load("lane_step")
+    run = subprocess.run
+    monkeypatch.setattr(lane.shutil, "which", lambda _name: sys.executable)
+    dump = b"Thread 7 (active)\n    m\xc3\xa9thod (tests/test_sample.py:10)\n"
+    if not exit_code:
+        dump += b"    damaged\xf9\n"
+    error = b"private argument\xf9 (os error 13)\n" if exit_code else b""
+    script = (f"import sys; sys.stdout.buffer.write({dump!r}); sys.stderr.buffer.write({error!r}); "
+              f"sys.exit({exit_code})")
+
+    def py_spy(_argv, **kwargs):
+        return run([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(lane.subprocess, "run", py_spy)
+    failures = []
+    observed = lane.attach(42, allow_sudo=False, failures=failures)
+    if exit_code:
+        assert observed is None
+        assert failures == ["unelevated: exit 1 (os error 13)"]
+    else:
+        assert observed == ("unelevated", "Thread 7 (active)\n    méthod (tests/test_sample.py:10)\n    damaged�\n")
+        assert failures == []
+
+
 @pytest.mark.parametrize("fault", [None, "unavailable", "prior-unavailable", "changed-node", "support-frame",
                                    "empty-then-error", "support-then-error", "partial-first", "lost-record", "exited"])
 def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):

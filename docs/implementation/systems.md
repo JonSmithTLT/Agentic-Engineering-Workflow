@@ -112,7 +112,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 42
 
-**Own slices left:** 1 — The switch-on: bindings required, the project-wide compare dropped, `expect_rev` retired, stage intents migrated, and the amendments (E329) — **Next:** The switch-on: bindings required, the project-wide compare dropped, `expect_rev` retired, stage intents migrated, and the amendments — E329 — 1 PR (the designer's ruling of 2026-11-10)
+**Own slices left:** 1 — The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated, and the amendments (E329) — **Next:** The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated, and the amendments — E329 — 1 PR (the designer's ruling of 2026-11-10)
 
 **Wired:** none
 

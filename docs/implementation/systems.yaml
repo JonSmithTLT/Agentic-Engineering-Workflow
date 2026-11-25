@@ -4724,11 +4724,11 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'Every class B and C binding required and a B or C operation without its binding refused; the project-wide
-    compare dropped at every site; `expect_rev` accepted and ignored for one release, then removed; open stage intents
-    migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
+    compare dropped at every site; `expect_rev` removed outright, with no release of grace (the operator, 2026-11-25:
+    "Yup. ill have it removed outright"); open stage intents migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
     staling a Lead mutation, tested for every class A operation and exercised in a real run.'
   remaining:
-  - slice: 'The switch-on: bindings required, the project-wide compare dropped, `expect_rev` retired, stage intents migrated,
+  - slice: 'The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated,
       and the amendments'
     row: E329
     estimate: 1 PR (the designer's ruling of 2026-11-10)

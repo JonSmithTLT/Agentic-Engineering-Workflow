@@ -2101,18 +2101,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E183
-
-**Work:** The steering text and stop fix, with the `request_confirmation` hide, in one small PR: the steering tool's text and the Lead's say what works (lower needs an endpoint raise first; a project with no `steering.mode` refuses every action; in crawl and walk the Lead takes each step itself); the loop's crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's action enum and schema, and the texts that point the Lead at it (`cli/g3_commands.py`, the custody refusal) are reworded; comments that promise E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum once nothing emits them. `request_raise` stays advertised. Done when a test holds the normal catalog's steering actions to `lower` and `request_raise`, and the text to what works as a run receives it
-
-**Source:** The operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 2: "Hide both, keep lower"; the designer's ruling on the tool's text, in the build board of 2026-11-06; re-decided by the operator's re-cut of SYS-04, 2026-11-10: "yes to both, re-cut it and hide them", and their answers of the same day to the designer's questions: "yyes record SYS-47 that way, 1. yes but tell me about 2 and 3" (request_raise stays advertised) and "yes to 2" (no held system); the designer's ruling of 2026-11-11 on SYS-04's held items (`designer-decisions-2026-11-11-sys04-held-items.md`)
-
-**When:** **Unscheduled**, on SYS-04's finish line beside the scheduler's chain (E228)
-
-**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match, adding no scope to its build
-
-*Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
-
 ### E184
 
 **Work:** `maps.pack_slices` on for every card: every role's pack carries the bounded structural slice, not only the roles whose context names `codebase_map`. The PR measures each card's added pack tokens and records them, as a record and not a gate: every byte of a pack is paid on every request. Done when every card's pack carries the slice, and the tokens it adds are recorded per card
@@ -5040,6 +5028,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`): its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops serves and lanes from SYS-48's finish line and files them as E365
 
 *Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
+
+### E183
+
+**Was:** The steering text and stop fix, with the `request_confirmation` hide: the steering tool's text and the Lead's say what works; the crawl and walk stop keeps its `CONFIRMATION_UNAVAILABLE` code, names the step, joins the quiet stops and is not notified; `request_confirmation` leaves the steering tool's enum and schema, and `request_raise` stays advertised; comments that promised E7c, E6b or E8b say what is built; and `confirmation_pending` and E7d's three PIC event names leave the notify-event enum
+
+**Closed:** 2026-11-25
+
+**By:** #577: the steering tool's actions derived from one owner (`lower`, `request_raise`), its text, the Lead's system text and raise refusal saying what works, the crawl and walk stop quiet and naming the Lead's step (still kept from the Lead's wake, per QC-1 (c), confirmed by the operator on the PR, 2026-11-25), and the notify-event enum trimmed
+
+*Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 
 ### E191
 

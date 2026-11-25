@@ -128,7 +128,7 @@ def pytest_runtest_protocol():
         for gate, phase in checkpoints:
             bounds.bounded_wait("test.inner_started", (proj / f"{gate}-ready").exists,
                                 gone=lambda: proc.poll() is not None)
-            [worker] = worker_evidence.phases_at_signal(hangs, time.monotonic_ns())
+            [worker] = worker_evidence.phases_at_signal(hangs, session_deadline.phase_clock_ns())
             assert worker["worker"] == "worker-gw0" and worker["phase"] == phase
             (proj / f"{gate}-release").touch()
         assert proc.wait(timeout=60) == 0
@@ -172,7 +172,7 @@ def test_never_reached():
     try:
         bounds.bounded_wait("test.inner_started", lambda: len(list(proj.glob("collect-ready-*"))) == 2,
                             gone=lambda: proc.poll() is not None)
-        rows = worker_evidence.phases_at_signal(root, time.monotonic_ns())
+        rows = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
         assert sorted(row["phase"] for row in rows) == ["collecting", "collecting"], rows
         os.killpg(proc.pid, signal.SIGINT)
         if observed == "at the signal":
@@ -188,7 +188,7 @@ def test_never_reached():
     assert '"complete": true' in report and '"results": {}' in report
     if observed == "at the collection":
         # The workers are gone, so their live phases are indeterminate: the finished session's files decide.
-        late = worker_evidence.phases_at_signal(root, time.monotonic_ns())
+        late = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
         assert worker_evidence.before_tests(root, time.time(), late, observer=CANCEL_COLLECTION)
 
     tools = Path(lanes.__file__).resolve().parents[2] / "tools" / "ci"

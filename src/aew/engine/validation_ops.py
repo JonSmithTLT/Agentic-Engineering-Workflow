@@ -281,9 +281,9 @@ class Validation:
     def custody_validate(self, *, credential: str, work_id: str) -> dict[str, Any]:
         """The custodian's checks-mode validation (M4-E E6a; plan v3 §2.3, N2): the same pin, execution and commit,
         each committed through ``custody_txn`` under the lease's custody credential, never the Lead's. A pass routes
-        the result in its commit: the candidate is kept and the entry released to VALIDATED (VALIDATE_ONLY; the PIC
-        publish is E6b's). A fail or an inconclusive result takes M4-D5's paths. Where containment cannot keep the
-        candidate immutable, nothing is pinned: the lease is released to AWAITING_DISPOSITION, for the Lead."""
+        the result in its commit: the candidate is kept and the entry released to VALIDATED (VALIDATE_ONLY; there is
+        no PIC publish: E6b lapsed). A fail or an inconclusive result takes M4-D5's paths. Where containment cannot
+        keep the candidate immutable, nothing is pinned: the lease is released to AWAITING_DISPOSITION, for the Lead."""
         who = Principal(CUSTODIAN, credential)
         state = self.k.store.current()
         self._require_validatable(state, work_id)
@@ -844,9 +844,9 @@ class Validation:
         if overall == "pass":
             integ["status"] = "validated"
             if who.kind == CUSTODIAN:
-                # VALIDATE_ONLY (M4-E E6a; plan v3 §2.3), in the commit transaction: no publication is requested (the
-                # PIC envelope is E6b's), so the custodian ends its own lease and the entry keeps its candidate,
-                # VALIDATED, for the Lead's later `integration_publish` under a fresh lease.
+                # VALIDATE_ONLY (M4-E E6a; plan v3 §2.3), in the commit transaction: no publication is requested (no
+                # PIC envelope exists: E6b lapsed), so the custodian ends its own lease and the entry keeps its
+                # candidate, VALIDATED, for the Lead's later `integration_publish` under a fresh lease.
                 identity = run["identity"]
                 self.queue.release(state, work_id, to="VALIDATED", result="validated", validated=Q.validated_record(
                     integ, mode=V.CHECKS, custodian=run["custodian"], run=run["id"],

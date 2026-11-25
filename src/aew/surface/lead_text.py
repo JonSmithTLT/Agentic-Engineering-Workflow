@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.engine import guide
+from aew.knowledge import evidence as E
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.context import NORMAL
@@ -48,11 +49,27 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
+def typed_route(primitive: str, profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """How a Lead reaches ``primitive`` through a `resolve` choice, from the catalog: the tool, the choice and the
+    subject it takes, or None when the profile offers no such route. Today only the plan assessor's (E160 slice 2b)."""
+    choices = [c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if p == primitive]
+    subject = {"plan.assess": f"<W>{E.PLAN_ITEM}"}.get(primitive)
+    for t in contract.exposed(profile, switches):
+        if primitive in t.expands_to and choices and subject:
+            return f"`{t.name}`, choice `{choices[0]}`, subject `{subject}`"
+    return None
+
+
+def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """The typed route to a plan assessor (E160 slice 2b), or None when the profile offers none."""
+    return typed_route("plan.assess", profile, switches)
+
+
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
            switches: frozenset[str] = frozenset()) -> str:
     """The guide for a policy, with the normal profile's stages for the supplied switches."""
     return guide.render(gates_policy, checks_policy, stages(switches=switches),
-                        messaging=contract.MESSAGING in switches)
+                        messaging=contract.MESSAGING in switches, plan_assessment=plan_assessment(switches=switches))
 
 
 def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
@@ -60,5 +77,5 @@ def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
     from aew.surface.context import switches_for
 
     selected = switches_for(engine) if switches is None else switches
-    return str(engine.lead_guide(stages(switches=selected),
+    return str(engine.lead_guide(stages(switches=selected), plan_assessment=plan_assessment(switches=selected),
                                 **({"messaging": True} if contract.MESSAGING in selected else {})))

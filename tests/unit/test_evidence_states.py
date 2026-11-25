@@ -618,6 +618,10 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", read_phases)
     monkeypatch.setattr(lane, "collect", lambda _root: None)
     monkeypatch.setattr(lane, "identities", lambda _root: [(tmp_path, (123, 456))])
+    # The signal is stamped on the workers' phase receipts' clock, never time.monotonic: on Windows before CPython 3.13
+    # the two differ, and a monotonic stamp misread the phases (review of #575, minor 1).
+    sentinel = 987_654_321
+    monkeypatch.setattr(lane, "phase_clock_ns", lambda: sentinel)
 
     assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == (0 if late else 143)
     assert signals == ([] if late else [signal.SIGTERM])
@@ -625,7 +629,7 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
     record = json.loads((tmp_path / "runner-resources-step-exit.txt").read_text())
     assert record["step_signal"] == ["SIGTERM"]
     observation = record["xdist_at_first_signal"]
-    assert observation["monotonic_ns"] > 0
+    assert observation["monotonic_ns"] == sentinel
     if late:
         assert observation["status"] == "unavailable"
     else:
@@ -749,7 +753,36 @@ def test_an_incomplete_phase_write_revokes_the_worker_receipt(tmp_path, failed_p
     for phase in session_deadline.WORKER_PHASES:
         worker._record_phase(phase)
     assert stream.closed
-    assert ev.phases_at_signal(tmp_path, session_deadline.time.monotonic_ns())[0]["phase"] == "indeterminate"
+    assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())[0]["phase"] == "indeterminate"
+
+
+def test_a_worker_phase_is_read_at_a_later_signal_however_coarse_the_monotonic_tick(tmp_path, monkeypatch):
+    """A transition, the next one and a signal read after it never share a stamp, which would read as indeterminate:
+    here every time.monotonic reading falls in one tick, as within 15.6 ms on Windows before CPython 3.13 (the
+    nightly of 2026-11-25)."""
+    import os
+
+    import proctree
+    import worker_evidence as ev
+
+    tick = session_deadline.time.monotonic_ns()
+    monkeypatch.setattr(session_deadline.time, "monotonic_ns", lambda: tick)
+    pid, birth = proctree.identity(os.getpid())
+    directory = tmp_path / "autopsy/session-test"
+    directory.mkdir(parents=True)
+    (directory / "worker-gw0-pid.txt").write_text(f"{pid}\n")
+    (directory / "worker-gw0-start.txt").write_text(f"{birth}\n")
+    worker = object.__new__(session_deadline.Worker)
+    worker.phase_stream = None
+    worker.lifecycle = directory / f"worker-{pid}-{birth}-lifecycle.txt"
+    try:
+        for phase in session_deadline.WORKER_PHASES:
+            worker._record_phase(phase)
+            assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())[0]["phase"] == phase
+    finally:
+        worker._close_phase()
+    # The runner's own clock, not the simulated tick: a 15.6 ms one fails here on the Windows lanes.
+    assert session_deadline.time.get_clock_info(session_deadline.PHASE_CLOCK).resolution <= 1e-6
 
 
 def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypatch):

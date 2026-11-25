@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 16 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-43, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -92,6 +92,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-43 — Plan assessment gate and planner staffing
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 31
+
+**Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
+
+**Wired:** none
+
 ### SYS-04 — Steering (Crawl/Walk/Run), operator endpoint and notifier
 
 **Board state:** partly_built
@@ -100,7 +112,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
+**Own slices left:** 1 — The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged (E228) — **Next:** The scheduler on: the measured RUN trial, folded into Session B (the operator, 2026-11-11: "yeah thats the better plan that sounds like session B SHOULD be validating that"); PR 4 has merged — E228 — a measured trial inside Session B (estimate)
 
 **Switch:** steering.mode — default: crawl — not read from the code
 
@@ -220,7 +232,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 12 — SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -255,18 +267,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 28
 
 **Own slices left:** 5 — consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1; A-58 CL-R03) (E158); the bounds and the allow-list, the isolation tests, the resume lists and the Lead's text (consult design, Placement, PR 2) (E158); `aew policy model allow <provider/model>` and a profile add, operator-decided, with their surface-map entries (consult design, later pointer); first configuration proposing a profile per named provider (E164); an operator-requested review or verification on a consult or branch review: the obligation-adding request record, its non-waivable mark, its owed dispatch in `next`, the operator's removal (small-changes design §8) (row owed); `--model` held to profiles plus the allow-list, always bounded (E165) — **Next:** consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1; A-58 CL-R03) — E158 — 1 PR (estimate; the designer's reading, consult design Placement: 2 PRs in all)
-
-**Wired:** none
-
-### SYS-43 — Plan assessment gate and planner staffing
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** 31
-
-**Own slices left:** 3 — the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule — E160 — about 1 PR (estimate; same source)
 
 **Wired:** none
 

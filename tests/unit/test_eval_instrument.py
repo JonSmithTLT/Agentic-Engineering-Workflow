@@ -368,6 +368,31 @@ def test_a_retry_is_linked_and_allowed_only_by_the_frozen_policy(tmp_path):
         ledger.register(run_id="demo/r6", cell=other, requested_profile={}, retry_of="demo/r5")
 
 
+@pytest.mark.parametrize("stamps", [
+    ["2026-11-25T09:19:35.158000Z"] * 3,
+    ["2026-11-25T09:19:35.158000Z", "2026-11-25T09:19:34.000000Z", "2026-11-25T09:19:33.000000Z"],
+], ids=["one-clock-tick", "clock-stepped-back"])
+def test_a_cells_latest_attempt_is_its_last_registered_never_its_latest_stamp(tmp_path, monkeypatch, stamps):
+    """Registrations inside one wall-clock tick (15.6 ms on Windows before CPython 3.13, the nightly of 2026-11-25) or
+    across a clock step keep their ledger order: the retry chain continues from its end and never forks."""
+    from aew_eval import ledger as ledger_module
+
+    clock = iter(stamps)
+    monkeypatch.setattr(ledger_module, "_now", lambda: next(clock))
+    rules = copy.deepcopy(plan()["validity_rules"])
+    rules["retry_policy"]["max_retries"] = 2
+    f = frozen(validity_rules=rules)
+    ledger = AttemptLedger(tmp_path, f)
+    cell = f["assignment"]["order"][0]["cell"]
+    ledger.register(run_id="demo/r1", cell=cell, requested_profile={})
+    ledger.register(run_id="demo/r2", cell=cell, requested_profile={}, retry_of="demo/r1")
+    with pytest.raises(Invalid, match=r"latest attempt \(demo/r2\), not demo/r1"):
+        ledger.register(run_id="demo/r3", cell=cell, requested_profile={}, retry_of="demo/r1")
+    ledger.register(run_id="demo/r3", cell=cell, requested_profile={}, retry_of="demo/r2")
+    attempts = ledger.attempts()
+    assert attempts["demo/r1"].retries == ["demo/r2"] and attempts["demo/r2"].retries == ["demo/r3"]
+
+
 def test_a_runner_killed_after_registering_leaves_a_visible_attempt(tmp_path):
     """Completion criterion: killing the runner after launch, before finalization, leaves an unfinished attempt."""
     f = frozen()

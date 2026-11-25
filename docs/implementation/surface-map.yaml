@@ -905,16 +905,22 @@ commands:
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: plan assess
     home: product
-    users: [operator]
+    users: [operator, lead]
     journeys: []
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision), and
                    dispatches a plan assessor with its own observation worktree and credential"
+    door: typed
+    via: [resolve]
+    primitive: plan.assess
+    via_choices: {assess_plan: [plan]}
+    lead_disposition: typed
+    owner: pending (A1)
     refusals: [DISPATCH_REFUSED, GATE_UNSATISFIED, ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED,
                PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "E160 slice 2a: the Lead's route is its typed tool (E160 slice 2b), which decides its lead_disposition; until
-          then it is in lead_broker.TYPED_PENDING, part of OPERATOR_ONLY, so a Lead session's broker refuses it and
-          the operator runs it at their own terminal with the Lead credential"
+    note: "E160 slice 2b: a Lead reaches it only through `resolve`, choice `assess_plan`, subject `<W>#plan`, which
+          launches the assessor's run; lead_broker.TYPED_ONLY keeps the command out of a Lead session's shell and its
+          `cli` escape. The operator may still run it at their own terminal with the Lead credential"
   - name: plan reconfirm
     home: product
     users: [lead]
@@ -1871,6 +1877,7 @@ tools:
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+    note: "offers lower and request_raise only (contract.STEERING_ARGUMENTS; register E183): request_confirmation is hidden"
   - name: resolve
     home: product
     users: [lead]

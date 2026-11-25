@@ -22,6 +22,7 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
+from aew.knowledge import evidence as E
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -120,10 +121,23 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
 
 # The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
-STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
-STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale", "prior_value")),
-                      "request_raise": (("mode", "rationale"), ("mode", "rationale")),
-                      "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
+# The one owner of the tool's actions: the advertised enum and the schema's properties are derived from it, and the
+# runner checks a call's arguments against it. `request_confirmation` is not here: no confirmation exists for it to
+# ask for, so the catalog hides it and `request_raise` stays (register E183; the operator, 2026-11-06 and 2026-11-10).
+STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "prior_value", "rationale")),
+                      "request_raise": (("mode", "rationale"), ("mode", "rationale"))}
+STEERING_ACTIONS = tuple(STEERING_ARGUMENTS)
+STEERING_ARGUMENT_SCHEMAS = {"mode": {"enum": ["crawl", "walk", "run"]}, "prior_value": {"type": "string"},
+                             "rationale": TEXT}
+# What works, as a run receives it (register E183; the designer's ruling of 2026-11-11 on the tool's text): a lower
+# needs an effective mode above its target, and walk or run is effective only by the operator's raise at the endpoint
+# (``engine.steering``); a project whose policy names no `steering.mode` refuses every action (SteeringNotConfigured);
+# and in crawl and walk the loop stops at each step it could take, which stays the Lead's (``steering_loop``).
+# The crawl and walk step is the Lead's: said in the tool's text and in the Lead's system text, from here.
+STEERING_STEP = "In crawl and walk you take each step yourself."
+STEERING_TEXT = ("Lower your steering mode, or ask the operator to raise it; requests grant nothing. "
+                 f"{STEERING_STEP} Lowering needs the operator's raise first; with no steering.mode in policy, every "
+                 "action is refused.")
 
 # The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
 # claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).
@@ -142,13 +156,20 @@ GATE_SUBJECTS = ("gate",)
 # A Ticket's scope, `<T>#scope:<path>` (register E126): `add_scope` adds one exact test path on the record, and
 # `add_scope_signed` does when the rationale carries the sign-off a stop asks for.
 SCOPE_SUBJECTS = ("scope",)
+# A unit's accepted plan, `<W>#plan` (register E160 slice 2b): `assess_plan` dispatches an independent assessor of it
+# and launches its run, so `resolve` dispatches (it expands to the launch too, ``RESOLVE_LAUNCH``).
+PLAN_SUBJECTS = ("plan",)
 RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
     **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
     **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
        for kind in DISPOSITION_SUBJECTS},
     **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
     **{(choice, kind): "work.scope_add" for choice in ("add_scope", "add_scope_signed") for kind in SCOPE_SUBJECTS},
+    **{(E.ASSESS_CHOICE, kind): "plan.assess" for kind in PLAN_SUBJECTS},
 }
+# The launch a dispatching choice's call starts in its own commit (``dispatch.launch``, covered by its decision): the
+# run's supervisor takes custody of the new credential, as every typed dispatch's does.
+RESOLVE_LAUNCH = ("dispatch.launch",)
 
 
 def _choices_running(*primitives: str) -> tuple[str, ...]:
@@ -160,6 +181,7 @@ STAGE_CHOICES = _choices_running("stage.resolve")
 DISPOSITION_CHOICES = _choices_running("work.dispose")
 GATE_CHOICES = _choices_running("work.gate_replace")
 SCOPE_CHOICES = _choices_running("work.scope_add")
+PLAN_CHOICES = _choices_running("plan.assess")
 RESOLVE_CHOICES = _choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
@@ -251,22 +273,17 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("checkpoint",), mutates=True),
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
-    Tool("steering", STAGE, MECHANICAL,
-         "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. Requests grant "
-         "nothing.",
-         _obj({"expect_rev": EXPECT_REV,
-               "action": {"enum": list(STEERING_ACTIONS)},
-               "mode": {"enum": ["crawl", "walk", "run"]},
-               "action_ref": {"type": "string", "minLength": 1},
-               "prior_value": {"type": "string"},
-               "rationale": TEXT},
+    Tool("steering", STAGE, MECHANICAL, STEERING_TEXT,
+         _obj({"expect_rev": EXPECT_REV, "action": {"enum": list(STEERING_ACTIONS)},
+               **{name: STEERING_ARGUMENT_SCHEMAS[name] for name in dict.fromkeys(
+                   name for _, allowed in STEERING_ARGUMENTS.values() for name in allowed)}},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),
     # ---- the Lead's explicit resolution of what `resume` or a stop lists (M4-E E3c; §3.4 rule 8): continue runs an
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
+         "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan (W#plan).",
          _obj({"expect_rev": EXPECT_REV,
                "subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
@@ -278,9 +295,10 @@ TOOLS: dict[str, Tool] = _catalog(
               ("expect_rev", "subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
-         expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
-         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction"),
-         mutates=True, progression=True),
+         expands_to=(*dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values()), *RESOLVE_LAUNCH),
+         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction",
+                             "plan_assessment_dispatch"),
+         dispatches=True, mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",

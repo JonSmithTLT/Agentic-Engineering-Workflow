@@ -30,6 +30,7 @@ from session_deadline import (  # noqa: E402
     HOST_RESOURCES_EXIT,
     SUPERVISOR_CUTOFF_EXIT,
     marker,
+    phase_clock_ns,
     session_directories,
     session_job,
 )
@@ -256,6 +257,7 @@ def relay_heartbeat(stream: BinaryIO, observed: dict) -> None:
 
 
 def interrupt_phases(root: Path, at_ns: int) -> dict:
+    # The persisted `monotonic_ns` key keeps its name but holds the phase clock (session_deadline.phase_clock_ns).
     result = {"monotonic_ns": at_ns, "status": "unavailable"}
 
     def read():
@@ -340,7 +342,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     def forward(signum, frame):
         nonlocal signal_at
         if signal_at is None:
-            signal_at = time.monotonic_ns()
+            signal_at = phase_clock_ns()  # the workers' phase receipts' clock
         interrupted.append(signal.Signals(signum).name)
 
     previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -469,7 +471,7 @@ def main(argv: list[str]) -> int:
                 # Cancelled with no worker in a test: record that no session had started one, where the sessions'
                 # receipts, read from their live writers now, bear that out (register E3).
                 worker_evidence.before_tests(args.root, at, worker_evidence.phases_at_signal(
-                    args.root, time.monotonic_ns()), observer=CANCEL_COLLECTION)
+                    args.root, phase_clock_ns()), observer=CANCEL_COLLECTION)
             # Liveness is decided before the capture, as the Linux supervisor decides it before its warning attach: a
             # worker that exits during the capture is still owed its stack, and its typed outcome says why there is
             # none (register E3).

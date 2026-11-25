@@ -926,6 +926,27 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     assert not (w.root / ".aew" / L.COORDINATION_DIR).exists()
 
 
+def test_shipped_init_template_and_policy_digests_match_the_goldens(tmp_path, monkeypatch):
+    from aew.engine import usage_ops as O
+    from aew.engine.base import policy_files
+    from aew.knowledge.manifest import load_manifest
+    from aew.util import sha256_file
+
+    assert util.load_yaml(X.TEMPLATE) == {**INIT_EXECUTION_PARSED, "coordination": {"messaging": "enabled"}}
+    monkeypatch.setattr(O, "bundled_table", lambda: None)
+    root = make_git_repo(tmp_path / "new", CP.FILES)
+    engine = Engine.initialize(root, project_id="golden", name="golden", branch="main")
+    aew = root / ".aew"
+    assert {rel: sha256_file(aew / rel) for rel in policy_files(load_manifest(aew))} == {
+        **INIT_POLICY_SHA256,
+        "policy/execution.yaml": "0d79c086564339635b23e8715ee6eea70ef8aae1b0eddc5ed7e2d64a50611ae3",
+    }
+    assert engine.policy_digests() == {
+        **INIT_POLICY_DIGESTS,
+        "operational_digest": "sha256:c511ecc64ac65c3769ef734d2f549b5dab5369c1990e56e7ffa32c8b2febd6cd",
+    }
+
+
 def test_a_new_project_can_send_a_message_before_any_policy_adoption(tmp_path):
     w = world(tmp_path, new_project=True)
     assert load_control(w.root)[L.STORE_KEY] == {"since_rev": 0, "decision": None, "via": "init"}

@@ -223,13 +223,6 @@ class TurnEndNeedsMessaging(IllegalTransition):
     code = "TURN_END_NEEDS_MESSAGING"
 
 
-class HarnessSendNeedsStore(IllegalTransition):
-    """``aew harness send`` while coordination messaging is on, before this AEW can record it in the message store
-    (amendment 2 §3.1, G4: with messaging on every send is recorded, and it fails closed). Nothing is written."""
-
-    code = "HARNESS_SEND_NEEDS_STORE"
-
-
 class MessagingSnapshotMismatch(IllegalTransition):
     """``aew harness send`` to a run whose launch snapshot of the messaging switch disagrees with the project's switch
     (amendment 2 §3.1): neither the request-file path nor the store path is safe, so it is refused, nothing is written,

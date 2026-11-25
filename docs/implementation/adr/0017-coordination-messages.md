@@ -23,6 +23,9 @@
 - **Nature:** a new record kind beside control state. Nothing here creates authority: a message moves knowledge, never
   project state (F9 invariant 1), and no gate, transition, dispatch or evidence path reads one.
 
+For current delivery, default activation and result finality, see the
+[MS5b amendment of 2026-11-25](#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).
+
 ## Context
 
 F9-A1 asks for a durable, bounded path between the current Lead generation and an active worker that creates no
@@ -105,8 +108,8 @@ generation, checked_rev}` is to be recorded under the lock immediately before a 
 `DELIVERED {via, at, transport_ref}` when the harness admitted the input (`live`), for exactly the ids a relaunch's
 continuation carried (`continuation`), when `message.wait` returned it (`wait`), or when a Lead result first carried a
 worker message (`lead_result`); `UNDELIVERABLE {reason}` at the seal, for never-posted messages only. A message posted but
-never confirmed stays `POSTED` ("outcome unknown"). `DELIVERED` means admitted, not read. Evidence finality uses these
-facts to tell whether a submission accounts for Lead messages. A superseded generation's never-posted message is never
+never confirmed stays `POSTED` ("outcome unknown"). `DELIVERED` means admitted, not read. No gate, transition, dispatch
+or evidence path reads a fact, apart from D9's provenance. A superseded generation's never-posted message is never
 delivered later (D-14); it shows as `UNDELIVERABLE: sender_superseded`, and the new Lead may re-send it as new.
 
 ### D6. The switch, and off means absent
@@ -115,21 +118,21 @@ delivered later (D-14); it shows as `UNDELIVERABLE: sender_superseded`, and the 
 not a boolean (a YAML boolean is refused at adoption with its cause); classified `operational`, since it gates no
 legality and grants nothing. It is read from the adopted bytes only: the control state's pins must hold the manifest
 and the execution policy, and an edit nobody adopted, an unreadable policy or a project without pins all read as off
-(`MESSAGING_DISABLED`, `details.reason`: `switched_off`, `not_adopted`, `unreadable`). New projects write `enabled` at
-init. Existing projects can turn it on through the operator's `manifest adopt`, which the switch offer proposes only
-for an absent key. The broker snapshots it at session start and each run snapshots it at launch.
+(`MESSAGING_DISABLED`, `details.reason`: `switched_off`, `not_adopted`, `unreadable`). Only the operator's
+`manifest adopt` turns it on. Planned with the slices that read it (not built in MS1): the broker snapshots it at
+session start (MS3) and each run at launch (MS4).
 
-An older project that has never enabled messaging keeps its existing policy and control bytes. While disabled, the
-worker messaging surface stays absent. An explicit `disabled` policy value and a prior registration remain in place.
-New records, live delivery, `message.wait` and the surface additions are gated by
+Off means absent: no catalog row, CLI command, bridge operation, environment variable, prompt line, policy key,
+control-state key or output field. New records, live delivery, `message.wait` and the surface additions are gated by
 the switch (D-31); the seal, `UNDELIVERABLE`, pinning and evidence inputs always run, each a no-op where no thread
 exists, so turning the switch off never orphans a thread. The read projections key on "the switch is on, or any thread
 exists", which is one stat of the project marker `.aew/coordination/marker.yaml` (`aew/coordination-marker/v1`):
 written once, create-exclusive and synced with `.aew/coordination/` and `.aew/`, under the control lock before the
 project's first thread file, and never removed by AEW. A writer that finds it removed while a thread exists
 writes it again with `recreated: true` and the time, so the deletion stays visible. No write-side decision trusts
-it. Existing projects keep their policy bytes on upgrade and migrate, including explicit `disabled` and the frozen
-M4-H treatment.
+it. No default writes the key (D-32):
+`aew init`, the shipped default execution policy and `migrate` never do, so the policy bytes and both policy digests
+stay as they were.
 
 `surface.presentation: standard | compact` (operational, absent means standard) selects the typed surface's compact
 presentation without messaging, so an evaluation arm without messaging can present the same text as one with it
@@ -165,28 +168,35 @@ scripted loopback model, 31 cases, each run twice on Windows and on the Rocky 8 
 layout (124 runs, all agreeing). The F9-A plan v4's amendment 1 (CLEAR at v5) turns it into the rules below (A1 to A7);
 each is built with the slice named.
 
-- **Two timings.** A `queue` input is admitted only when the agent loop would otherwise end, after the model's
-  final, tool-free step. A `steer` input is admitted at the next step boundary. It never aborted or truncated an
-  ongoing tool or model call in the probe. `POST /api/session/{id}/prompt` carries the mode, the deterministic id and
-  metadata identifying the message, thread and timing. `next-step` uses `steer` and is the default.
-- **Ordering and recorded sends.** Either timing preserves order within its own mode. Steer inputs overtake queue
-  inputs (probe `p4-mixed`). Typed `message_send` and `aew harness send` choose the same two timings and share
-  the store when messaging is enabled. Both disabled uses next-step requests and refuses turn-end with
-  `TURN_END_NEEDS_MESSAGING`. A project switch that disagrees with the launch snapshot refuses either timing with
-  `MESSAGING_SNAPSHOT_MISMATCH` and asks the Lead to relaunch.
+- **Steer, and why.** A `queue` input is admitted only when the agent loop would otherwise end, after the model's
+  final, tool-free step: the end of the worker's turn, 1 to 3 further model requests after the step it was posted
+  during. A `steer` input is admitted at the next step boundary, 0.04 to 0.08 s after the running step ends, with no
+  model request between; it never aborted or truncated a running tool or model call, and steer inputs keep their order.
+  So `deliver` posts `POST /api/session/{id}/prompt` with `delivery: "steer"`, the deterministic id and D-23's
+  `metadata`. The capability probe will require `steer`, `resume` and `metadata` on the prompt operation and refuse a
+  release that drops one (MS5).
+- **Until E55 lands, `harness send` stays `queue` (D-30), so its inputs and F9 messages are not ordered with respect
+  to each other:** steer overtakes queue (the probe's `p4-mixed`). *E55 landed 2026-10-10 (slice HS1 of the F9-A
+  plan's amendment 2): `harness send --when next-step|turn-end`, the default `next-step` posting `steer`; with
+  messaging off `turn-end` is refused (`TURN_END_NEEDS_MESSAGING`), and with messaging on every `harness send` is
+  refused (`HARNESS_SEND_NEEDS_STORE`) until MS5b records it in the store.* Until F9-A's amendment 2 is built, F9 messages are always
+  `steer`. **The designer decided on 2026-10-10 (steer vs queue, option B)** that both `aew message send` and
+  `aew harness send` take `--when next-step|turn-end`: `next-step`, the default, is `steer`, and `turn-end` is `queue`.
+  While a `turn-end` input is pending, the run's final result ingest is refused (`PENDING_TURN_END_MESSAGE`), atomically
+  with the message state, until the worker submits again; the refused submission may remain as run telemetry. F9-A's amendment 2 specifies it; register row E55 tracked the
+  `harness send` half and its help text, whose "after its current step" was true only for `steer` (replaced by HS1).
 - **The held case.** An F9 message to a session the Lead's interrupt holds is staged with `resume: false` and never
   wakes it; OpenCode keeps it until the next wake and delivers it first. The staged post leaves the adapter's turn and
-  its watched ids alone, so the run stays `held`. A recorded `harness send` can wake it with either timing.
+  its watched ids alone, so the run stays `held` (MS5).
 - **Duplicates and conflicts** (A2; MS5). Posting an id is idempotent per session: a re-post never gets a 409, but 200
   with the first post's item, whatever text or delivery it carries. So a 200 means OpenCode holds the id for this
-  session, queued or admitted, and records no `DELIVERED`. The supervisor compares the returned text and mode
-  with what it posted. A mismatch is `delivery_mismatch`, and that handle is never confirmed afterwards.
+  session, queued or admitted, and records no `DELIVERED`. The supervisor compares the returned text with what it
+  rendered; a mismatch is a delivery failure, `delivery_mismatch`, and that handle is never confirmed afterwards.
   `DELIVERED via: live` is written only when `GET /api/session/{id}/message/{msgID}` answers 200 (unchanged). A 409
   `ConflictError` means the id belongs to another record: `id_conflict`, never retried. A failure is a bounded
   `message_delivery_failed {message, reason}` event in the run's log, with no text and no fact, and the message stays
   `POSTED`. A post that got no answer is retried once at the next tick, after the GET check (a 200 records `DELIVERED`
-  without posting). An ordinary message's re-post while the turn is held stays staged. A recorded `harness send`
-  keeps its waking semantics on retry.
+  without posting), and a re-post while the turn is not `running` is staged, so it cannot wake a held session.
 - **Session loss** (A5; MS5). A 404 `SessionNotFoundError` is session loss: nothing is recorded, and D-29 carries the
   message as "sent to an earlier run; delivery unconfirmed". A 404 `MessageNotFoundError` means not yet admitted. An
   untagged 404 falls back to the adapter's session check.
@@ -267,7 +277,7 @@ normal surface. So:
 - with messaging on, every normal row is served in a **compact presentation**: shorter tool and argument
   descriptions, with every name, type, enum, pattern, bound, `required` set and annotation unchanged; semantics are
   unchanged;
-- it is a switch variant, so the off configuration and M4-H's treatment stay byte-identical;
+- it is a switch variant, so the off configuration (the shipped default and M4-H's treatment) stays byte-identical;
 - the on configuration, measured over every catalogued normal row, is held to **at most 11,900 bytes and exactly 16
   tools** (M4-E's 15 normal rows after E6, plus `message_send`), with **no tool headroom**: a later normal row makes the
   on configuration 17 tools and fails its own slice's CI, and that slice's plan makes its own budget decision;
@@ -350,9 +360,24 @@ and identify the first drop since the last observed boundary when refusing an un
 
 ## Amendment of 2026-11-25: report finality and turn-end delivery (MS5b)
 
-The run submitted a report while a previously admitted Lead message remained unincorporated into a subsequent worker result.
-This is `PENDING_LEAD_MESSAGE` for either timing. An admitted message was recorded at or before the thread sequence
-the engine saved in `coordination_through` at submission. A later report from the same invocation incorporates it once
+This amendment updates D5, D6, D8, and the default described in the consequences below. The original descriptions
+remain as adopted. It follows the F9-A plan v4 amendment 2 (v10) and the operator's approval of default activation.
+
+**Timing and recording.** `message_send` and `aew harness send` accept `next-step` (OpenCode steer, the default)
+and `turn-end` (OpenCode queue). Each timing keeps its own order. Steer may overtake queue. Both commands record
+through the same coordination store while enabled. An ordinary message sent to a held session stays staged. A
+recorded shell send can wake the session with either timing and keeps that behavior on retry. With both snapshots
+disabled, shell next-step uses the existing request path and turn-end is refused with `TURN_END_NEEDS_MESSAGING`.
+If the project and launch switches disagree, either timing yields `MESSAGING_SNAPSHOT_MISMATCH` and asks the Lead
+to relaunch. Refusals write nothing and the store path never falls back to an unrecorded send.
+
+**Default activation.** Fresh projects write an enabled policy and an init registration. Upgrades and migrations
+preserve existing policy bytes and explicit disabled settings. An older project that has never enabled messaging
+keeps its prior policy and control bytes until the operator adopts the offer. Turning messaging off preserves a
+prior registration and its read-only history. The disabled worker surface and M4-H's treatment stay byte-identical.
+
+**Report finality.** A previously admitted Lead message that remains unincorporated in a worker report triggers
+`PENDING_LEAD_MESSAGE` for either timing. An admitted message was recorded at or before the thread sequence the engine saved in `coordination_through` at submission. A later report from the same invocation incorporates it once
 that report lists it as delivered in `coordination_inputs`. A reply or POST alone does not establish delivery. The guard
 excludes three cases: an unposted line that fails D-36 against the submission's `coordination_rev`, an unposted message
 from a superseded generation, and a superseded POST for which there is no confirmed delivery. A later final admission
@@ -362,16 +387,18 @@ The supervisor checks its tracked POSTs and the continuation launch prompt again
 budget before submission takes the control lock. A reply can free a recording slot before its message is admitted, so
 the check considers all tracked offers up to the thread's existing bound. The submission records confirmed admissions
 for its own run, then snapshots the sequence and revision under that lock. A report without the sequence is treated as
-earlier only if it predates its invocation's first message
-or there is no thread. A timestamp tie is treated conservatively. The comparison on old reports depends on the two
-writers' clocks. Once messaging is on in the project or the run, even a report before the first message records a zero
-sequence. A previously used thread still counts when messaging is switched off.
+earlier only if it predates its invocation's first message or there is no thread. A timestamp tie is treated
+conservatively. The comparison on old reports depends on the two writers' clocks. When messaging is on in the project
+or the run, a report before the first message records a zero sequence. A previously used thread still counts when messaging is switched off.
 
 A message recorded after a report leaves the report valid. If accepting the report ends the invocation, the result
-warns the Lead about the work it may leave behind. `resume` reports recent unadmitted messages using at most 500
-transitions and 20 entries. The read-only `aew message lost` reports the seven-day window with a 10,000-transition cap.
-Both distinguish a missed message from an unconfirmed POST. `message.wait` and its transport hold apply only to
-next-step. A turn-end message carried at relaunch names its after-current-work instruction in the continuation.
+warns the Lead about the work it may leave behind. With messaging on or a retained thread,
+`resume` can read up to 500 newest transitions, stopping at seven days or its 20-entry projection. This is the bounded
+exception in the [ADR-0011 H4 amendment](0011-hot-cold-control-state.md#amendment-of-2026-11-25-bounded-lost-message-recovery-in-resume).
+The cost can rise with the recent window even when output is empty. The read-only `aew message lost` reports the seven-day
+window with a 10,000-transition cap. Both distinguish a missed message from an unconfirmed POST.
+`message.wait` and its transport hold apply only to next-step. A turn-end message carried at relaunch names its
+after-current-work instruction in the continuation.
 A worker can read and reply without a delivery receipt. Those messages remain eligible for delivery so a subsequent
 report can account for them. The recovery rule for an already delivered and answered message is unchanged.
 
@@ -441,5 +468,7 @@ proof of every emitted hint. MS7 live-provider evidence remains pending. The qua
 - Messaging adds no authority path. Its static guarantee is a test: no legality module imports coordination.
 - A thread grows with its conversation, bounded at 200 messages; the hot state gains nothing until the sealing slice,
   and then only bounded keys.
-- For projects that have never enabled messaging and for M4-H's frozen treatment, those surfaces are byte-identical,
+- With messaging off, which is the default and M4-H's treatment, every surface MS1 to MS6 touches is byte-identical,
   proven by disabled-state identity tests in each slice.
+
+The [MS5b amendment](#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b) updates the default and finality.

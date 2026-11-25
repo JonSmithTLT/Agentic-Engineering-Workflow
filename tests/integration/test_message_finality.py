@@ -306,6 +306,39 @@ def test_replying_after_a_read_never_prevents_the_worker_obtaining_a_delivery_re
     assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
 
 
+@pytest.mark.parametrize("when", ["next-step", "turn-end"])
+@pytest.mark.parametrize("delivered", [False, True], ids=["unconfirmed", "delivered-after-report"])
+def test_takeover_releases_only_an_unconfirmed_post(implementation, monkeypatch, when, delivered):
+    import aew.operator
+
+    w = implementation
+    keys = _capture_launch_credentials(w.e, monkeypatch)
+    run = w.lead("harness_launch", invocation=w.inv)["run"]
+    credential = keys[run]
+    mid = w.send(when=when)["message"]["id"]
+    posted = w.e.message_next_post(credential=credential, run=run, permit=lambda: True)
+    assert posted["message"]["id"] == mid
+    first = submit(w, token=credential)
+    assert first["pending_lead_messages"] == 1
+    if delivered:
+        w.e.message_confirm_delivery(credential=credential, run=run, ids=[mid], via="live",
+                                     transport_ref="admitted-transport")
+    monkeypatch.setattr(aew.operator, "authorize", lambda *_args, **_kwargs: OPERATOR)
+    takeover = w.e.lead_takeover(expect_rev=w.rev(), reason="take over the disconnected seat", session_label="next")
+    w.token = takeover["token"]
+    assert w.inv in takeover["interrupted_invocations"]
+    w.lead("work_reconcile", work_id=w.wid, to="RUNNING", reason="inspected the report and workspace")
+    before = w.control_bytes()
+    if delivered:
+        with pytest.raises(PendingLeadMessage) as held:
+            w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")
+        assert held.value.details["report"] == first["evidence"]
+        assert held.value.details["messages"] == [{"id": mid, "when": when, "state": "delivered_after_submission"}]
+        assert w.control_bytes() == before
+    else:
+        assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
+
+
 def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resubmission(implementation, monkeypatch):
     w = implementation
     keys = _capture_launch_credentials(w.e, monkeypatch)

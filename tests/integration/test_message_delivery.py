@@ -19,7 +19,7 @@ from aew.coordination import layout as L
 from aew.engine.api import Engine
 from aew.engine.authority import token_id_of
 from aew.errors import IllegalTransition
-from aew.harness import contract, procs, runlog, worker_messages
+from aew.harness import bridge, contract, procs, runlog, worker_messages
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 from aew.harness.supervisor import Supervisor
@@ -498,21 +498,36 @@ def test_a_waking_send_with_a_lost_response_retries_only_if_not_yet_admitted(wor
     assert ("DELIVERED" in facts(w)[0]) is admitted
 
 
+def _submit_through_run_bridge(w, keys, run, delivery):
+    directory = runlog.run_dir(w.e.aew_root, run)
+    sup = Supervisor(directory, {"run": run, "invocation": w.inv, "credential": keys[run],
+                                 "repo_root": str(w.root), "aew_root": str(w.e.aew_root)}, ack=None)
+    sup.messaging, sup.messages, sup.adapter = True, delivery, delivery.owner.adapter
+    delivery.owner = sup
+    bridge_server = bridge.BridgeServer(sup.handle)
+    sup.bridge = bridge_server
+    bridge_server.start()
+    try:
+        out = bridge.call("submit", {"kind": "implementation_report", "text": CP.submission(CP.REPORT)},
+                          endpoint=bridge_server.address, key=bridge_server.key_hex)
+        assert bridge_server.outcomes == {"submit": {"ok": 1}}
+        return out
+    finally:
+        bridge_server.close()
+        assert bridge_server.wait_stopped()
+
+
 @pytest.mark.parametrize("when", ["next-step", "turn-end"])
 def test_submit_settles_admission_before_the_next_delivery_tick(worker, when):
     w, keys = worker
     delivery, session, run = transport(worker)
-    mid = w.send(when=when)["message"]["id"]
+    w.send(when=when)
     delivery.tick(select=True)
     assert facts(w) == [["RECORDED", "POSTED"]]
     session.admit_all()
-    observed, continued = delivery.submit_admissions()
-    assert list(observed) == [mid]
-    assert continued is None
-    assert session.observations[-1] == "admission" and "interrupt" not in session.observations
-    out = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
-                     admitted=observed | {f"MSG-{w.inv}-2": "an-unposted-id"})
+    out = _submit_through_run_bridge(w, keys, run, delivery)
     assert out["pending_lead_messages"] == 0
+    assert session.observations[-1] == "admission" and "interrupt" not in session.observations
     assert facts(w) == [["RECORDED", "POSTED", "DELIVERED"]]
 
 
@@ -564,10 +579,7 @@ def test_the_first_successor_report_captures_an_admitted_continuation_before_the
     for rel, text in CP.PATCH.items():
         (w.workspace / rel).write_text(text, encoding="utf-8", newline="\n")
     w.e.check_run(invocation_token=keys[run], check_id="unit")
-    admitted, continued = delivery.submit_admissions()
-    assert admitted == {} and continued == ("launch-prompt", [mid])
-    submitted = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
-                           admitted=admitted, continued=continued)
+    submitted = _submit_through_run_bridge(w, keys, run, delivery)
     assert submitted["pending_lead_messages"] == 0
     assert facts(w) == [["RECORDED", "DELIVERED"]]
     assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]

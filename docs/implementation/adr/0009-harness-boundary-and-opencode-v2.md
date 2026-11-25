@@ -689,6 +689,8 @@ organization gateway the relay speaks TLS to; here the Provider Gateway always c
 
 ## Amendment 2026-10-10 — `harness send` takes `--when`, and posts `steer` by default (register E55)
 
+For the current enabled path, see the [MS5b amendment](#amendment-2026-11-25--recorded-harness-send-e175).
+
 The F9-A MS0 probe of OpenCode 2.0.18 ([ADR-0017](0017-coordination-messages.md) D8, its
 [evidence](evidence/f9a-delivery-probe-2026-10-10/probe-results.md)) found that a `queue` input is admitted only when
 the agent's loop would end, after its turn, while `steer` is admitted at the next step boundary. The designer's
@@ -705,8 +707,12 @@ replace this ADR's "queued prompt" with two explicit timings. Built by slice HS1
   run's launch snapshot of it:
   - both off (M4-H's treatment): `next-step` is the recorded request file, as before (1 MiB); `turn-end` is refused
     `TURN_END_NEEDS_MESSAGING`, so no Lead path posts `queue`;
-  - both on: MS5b records both timings in the store. A recorded shell send still wakes a held session;
+  - both on: every send is refused `HARNESS_SEND_NEEDS_STORE` until F9-A's MS5b records it in the store, from which it
+    still wakes a held session;
   - they disagree: refused `MESSAGING_SNAPSHOT_MISMATCH`, before any timing's own refusal; the remedy is a relaunch.
+    With the project switched on, until F9-A's MS4 writes the run's snapshot, every run reads as launched with messaging
+    off, so that refusal says that sending needs messaging switched off rather than advising a relaunch that could not
+    help.
   - Every refusal writes nothing: no request file, no control-state entry, no post.
 - **The held session** after `harness interrupt` is still woken by a `harness send`: `steer` with the default `resume`
   wakes it, as `queue` did.
@@ -2206,3 +2212,11 @@ too.
   amendment of 2026-10-11, register F48), and `aew doctor` still prints it UNQUALIFIED.
 - **Tests:** `tests/unit/test_containment_required_everywhere.py`, with the platform simulated so that both sides run
   on every CI platform.
+
+## Amendment 2026-11-25 — recorded harness send (E175)
+
+The MS5b rules replace the transitional messaging-enabled refusals in HS1. When both the adopted project switch
+and the run's launch snapshot are enabled, `aew harness send` records either timing in the coordination store.
+A recorded shell send can wake a held session. A switch mismatch refuses both timings and asks the Lead to relaunch
+under the adopted policy. When both are disabled, the original next-step request path and the turn-end refusal
+still apply. See the [coordination amendment](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).

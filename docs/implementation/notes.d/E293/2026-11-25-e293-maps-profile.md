@@ -26,3 +26,12 @@ renderer, scope or unlistable tree never changes a pinned pack.
 V-01's route (P-DEC-04) and adding a field changes the dashboard contract, so it waits on that contract's owner. The
 "partly" rows of the profile are V-01's stated limits, owned elsewhere: P01-11's independently qualified recomputation
 (P-DEC-02) and P01-29's typed, cost-bounded map read for workers (F15.8, HOLD-06).
+
+**Follow-ons from the independent review of #567.** The mapping series' PR A, the shared map query module (F15.8),
+fixes all four, since it routes every map read through one module:
+- **m1:** `aew map diff` returns map content without `evidence_class`. PR A adds it to every read, `diff` included, and
+  the labelling test asserts it.
+- **n2:** the planted-code test holds the outcome (plumbing only), not the config neutralisation. Its docstring says so.
+- **n3:** the 5 s listing bound leaves out `safe_config`'s cached `rev-parse` and `config --list` reads, which have no
+  timeout. The comment and the profile name that limit.
+- **n4:** the profile test normalises whitespace before matching the page.

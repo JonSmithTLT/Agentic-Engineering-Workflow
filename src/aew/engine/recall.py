@@ -568,25 +568,28 @@ class Substrate:
         target = {"count": root["count"], "h": root["head_h"]}
         if mark == target or mark["count"] > target["count"]:  # current, or another process indexed a later root
             return {"complete": True, "reason": None, "added": 0, "through": mark["count"]}  # (queries stop at ours)
-        added, batch, batch_docs, reason = 0, [], 0, None
+        added, batch, batch_docs, reason, taken = 0, [], 0, None, False
         walk = self.history.walk(root, mark if mark["count"] else None, tail_raw=tail)
         try:
             for entry in walk:
+                # Every budget is judged before an entry, never after one: a build stops only while an entry remains,
+                # so one that took the last entry as its time ran out reports complete, not a "budget" the next call
+                # contradicts with the same watermark (CI run 45519626008). The first entry is always taken: progress.
+                if taken and budget_s is not None and self._clock() - started >= budget_s:
+                    reason = "budget"
+                    break
+                if taken and self._deadline is not None and self._clock() >= self._deadline:
+                    reason = "time_budget"
+                    break
                 docs = self.documents(entry)
                 if budget_docs is not None and added + batch_docs and added + batch_docs + len(docs) > budget_docs:
                     reason = "budget"
                     break
                 batch.append((entry, docs))
-                batch_docs += len(docs)
+                batch_docs, taken = batch_docs + len(docs), True
                 if batch_docs >= BATCH_DOCS:
                     mark = self._flush(conn, mark, batch)
                     added, batch, batch_docs = added + batch_docs, [], 0
-                if budget_s is not None and self._clock() - started >= budget_s:
-                    reason = "budget"
-                    break
-                if self._deadline is not None and self._clock() >= self._deadline:
-                    reason = "time_budget"
-                    break
         except IntegrityError:
             if not batch and added == 0 and mark["count"]:
                 # The watermark is not on this history's chain: the substrate describes another history. Start over,

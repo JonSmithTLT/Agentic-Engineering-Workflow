@@ -113,8 +113,8 @@ Maps: a dispatch's `codebase_map` gives freshness and `slice_bytes`; the slice i
 
 When reporting validation or completion, quote AEW's recorded coverage and its limitations with the verdict; never compose coverage yourself or drop its unknowns. Validated within its scope is not plain validated. Coverage not recorded is not complete coverage. Status and completion records carry the engine's words.
 
-Finished units leave the active state; `status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> ` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
+Finished units leave the active state; `status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason>` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
 
 ## Every command
 
-In the shell, every change takes ``, the current revision; each command returns the new one. Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `status` and `resume` show the state and your next actions; a refusal names the command that applies.
+Run `aew status` or `aew resume` to see state and next actions. Use the prior value or approval digest shown for a bound change. Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. A refusal names the command that applies.

@@ -41,6 +41,11 @@ def has_retired_argument(arguments: dict[str, Any], plan: list[dict[str, Any]]) 
     return _REVISION in arguments or any(_REVISION in (step.get("args") or {}) for step in plan)
 
 
+def current_inputs(fields: dict[str, Any]) -> dict[str, Any]:
+    """Show the current input shape without changing the historical record being read."""
+    return {key: value for key, value in fields.items() if key != _REVISION}
+
+
 def _bind_transitions(intent: dict[str, Any]) -> bool:
     """Recover only a prior proved by the old opening commit or by a step preceding this transition."""
     tool, arguments = intent["tool"], intent["arguments"]

@@ -1,7 +1,7 @@
 """AEW error taxonomy.
 
 Every rejection carries a stable machine-readable ``code`` so harness adapters can
-react deterministically (for example, re-read status after ``STALE_REVISION``).
+react deterministically (for example, read the affected record after ``CHANGED_SINCE_READ``).
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ class StalePolicy(AEWError):
 
 
 class StaleRevision(AEWError):
-    """The caller's expected control-state revision is not the current one."""
+    """The caller's expected map revision is not the current one."""
 
     code = "STALE_REVISION"
     exit_code = 3

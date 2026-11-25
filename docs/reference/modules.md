@@ -2538,6 +2538,7 @@ None.
 - `aew.engine.guards`
 - `aew.engine.primitives`
 - `aew.engine.stage_intents`
+- `aew.engine.stage_migration`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.knowledge.evidence`

@@ -14,7 +14,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 8987
-  guide_bytes: 15657
+  guide_bytes: 15632
   join_bytes: 2
   mcp_bytes: 10893
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -56,11 +56,11 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# E329 measured 38,849 B on main 162389cd and 37,054 B after the cutover with messaging on.
-# The system dropped 33 B, the guide 755 B and the MCP list 1,007 B. The baseline and cap both drop 1,795 B.
+# E329 measured 38,849 B before the cutover and 37,029 B after it with messaging on.
+# The system dropped 33 B, the guide 780 B and the MCP list 1,007 B. The baseline and cap both drop 1,820 B.
 # Existing allocation and approval history are retained.
 approval:
-  ceiling_bytes: 41176
+  ceiling_bytes: 41151
   operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
   date: '2026-11-15'
 # The approved drop after PR 3 still applies.

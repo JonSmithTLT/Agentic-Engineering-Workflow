@@ -434,8 +434,8 @@ class Kernel:
                     request is not None or (op not in V1_OPS and not self.legacy_v1_writes)
                 ):
                     raise MigrationRequired(
-                        "this project's control state is v1: migrate it first (the operator runs `aew migrate "
-                        "` at their own terminal); until then the Lead can change the seat and cancel "
+                        "this project's control state is v1: migrate it first (the operator runs `aew migrate` "
+                        "at their own terminal); until then the Lead can change the seat and cancel "
                         "invocations, and the operator can adopt the manifest",
                         schema=s.state.get("schema"), next_action="aew migrate")
                 if not _adopting_manifest:

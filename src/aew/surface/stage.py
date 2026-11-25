@@ -49,6 +49,7 @@ from aew import errors
 from aew.engine import stage_intents as SI
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import COVERED_BY_PREVIOUS, spec_for
+from aew.engine.stage_migration import current_inputs
 from aew.harness.contract import redact
 from aew.knowledge import evidence as E
 from aew.surface import availability as SA
@@ -571,7 +572,7 @@ def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] 
         keywords["shape"] = _shape_of(t, [p["primitive"] for p in si["plan"]])
     if si["tool"] in SA.CARDS:
         keywords["cards"] = recorded_cards(si)
-    planned = planner(dict(si["arguments"]), **keywords)
+    planned = planner(current_inputs(si["arguments"]), **keywords)
     plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planned]
     missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
     return contract_digest(t), plan, missing
@@ -612,8 +613,10 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
     disposition = checks["guard"].get("disposition")
     boundary = check["boundary"] or ("refused" if failing else (f"disposition:{disposition}" if disposition else None))
+    if nxt is not None and "args" in nxt:
+        nxt = {**nxt, "args": current_inputs(nxt["args"])}
     return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
-            "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
+            "arguments": current_inputs(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
             "base_class": si["base_class"], "effective_class": si["effective_class"],
             "steps_committed": len(si["steps"]), "steps_planned": len(si["plan"]),
             "safe_to_continue": not failing, "failing": failing,
@@ -622,7 +625,7 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
             "policy": {"legality_digest": si["binding"]["legality_digest"], "status": checks["policy"]["status"]},
             "next_step": nxt, "boundary": boundary, "owner_generation": check["owner_generation"],
             "current_generation": check["current_generation"], "rebind": check["rebind"],
-            "opened": dict(si["opened"]), "rebound": list(si["rebound"]), "stopped": kept_stop(si)}
+            "opened": current_inputs(si["opened"]), "rebound": list(si["rebound"]), "stopped": kept_stop(si)}
 
 
 def kept_stop(si: dict[str, Any]) -> dict[str, Any] | None:

@@ -1,5 +1,7 @@
 """E329's public removal and migration of a real in-flight stage journal."""
 
+from contextlib import contextmanager
+
 import pytest
 
 from aew.engine import stage_intents, stage_migration
@@ -28,8 +30,10 @@ def test_retired_revision_arguments_are_refused_at_each_public_boundary(project)
     assert project.rev() == revision
 
 
-@pytest.mark.parametrize("known", [True, False], ids=["recognized", "unknown-contract"])
-def test_migrating_hot_intents_preserves_committed_steps_and_refuses_unproved_plans(project, known):
+@pytest.mark.parametrize(("known", "concurrent"), [(True, False), (False, False), (True, True)],
+                         ids=["recognized", "unknown-contract", "racing-retry"])
+def test_migrating_hot_intents_preserves_committed_steps_and_refuses_unproved_plans(project, known, concurrent,
+                                                                                  monkeypatch):
     e = Engine.discover(project.root)
     t = contract.catalog(contract.ALL_SWITCHES)["ticket_draft"]
     args = {"title": "An observation", "risk_class": 0, "non_mutating": True,
@@ -46,13 +50,36 @@ def test_migrating_hot_intents_preserves_committed_steps_and_refuses_unproved_pl
         old["contract_digest"] = OLD_DRAFT if known else "f" * 64
         old_revision = old["opened"]["rev"] - 1
         old["opened"]["expect_rev"] = old["arguments"]["expect_rev"] = old_revision
+        old["plan"][-1]["args"]["expect_rev"] = old_revision
         old["arguments_digest"] = stage_intents.digest(old["arguments"])
         session.commit(Transition(op="test.fixture", actor={"kind": "test"}, summary="predecessor stage record"))
 
     preceding = e.stage_intent(sid)
     refused = stage.assess(e, preceding)
     assert not refused["safe_to_continue"] and "`aew migrate`" in refused["checks"]["contract"]["message"]
-    upgraded = e.migrate(token=project.token)
+    assert "expect_rev" not in refused["arguments"] and "expect_rev" not in refused["opened"]
+    assert "expect_rev" not in refused["next_step"]["args"]
+    assert e.stage_intent(sid) == preceding  # the projection did not upgrade or rewrite the journal
+
+    if concurrent:
+        original_txn = e._k.lead_txn
+
+        @contextmanager
+        def after_other_migration(*args, **kwargs):
+            other = Engine.discover(project.root).migrate(token=project.token)
+            raced.append(other)
+            with original_txn(*args, **kwargs) as ctx:
+                yield ctx
+
+        raced = []
+        prior_revision = project.rev()
+        with monkeypatch.context() as race:
+            race.setattr(e._k, "lead_txn", after_other_migration)
+            retry = e.migrate(token=project.token)
+        [upgraded] = raced
+        assert "stage_intents" not in retry and retry["revision"] == prior_revision + 1 == project.rev()
+    else:
+        upgraded = e.migrate(token=project.token)
     assert upgraded["stage_intents"] == {sid: known}
     migrated = e.stage_intent(sid)
     assert migrated["steps"] == preceding["steps"] and migrated["binding"] == preceding["binding"]

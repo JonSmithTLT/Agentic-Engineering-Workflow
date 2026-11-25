@@ -51,6 +51,19 @@ if TYPE_CHECKING:
     from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort, SteeringPort
 
 
+class _NoMigrationNeeded(Exception):
+    """Another invocation completed the migration before this transaction acquired the lock."""
+
+    def __init__(self, revision: int) -> None:
+        super().__init__(revision)
+        self.revision = revision
+
+
+def _already_current(revision: int) -> dict[str, Any]:
+    return {"ok": True, "migrated": False, "schema": V2, "revision": revision,
+            "summary": "the control state is already v2; nothing to migrate"}
+
+
 class Migration:
     """``aew migrate`` (Lead)."""
 
@@ -99,16 +112,22 @@ class Migration:
             require_lead(s.state, token, archived=self.k.archived_credential)
             intents = (s.state.get("stage_intents") or {}).values()
             if not self.archive.legacy_units(s.state) and not any(map(stage_migration.needs_upgrade, intents)):
-                return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
-                        "summary": "the control state is already v2; nothing to migrate"}
-        with self.k.lead_txn(token, "migrate.closure", reason="upgrade legacy history and active stage records") as ctx:
-            closed = self.archive.close_legacy(ctx, self.archive.legacy_units(ctx.state))
-            stages = self._upgrade_stages(ctx)
-            ctx.summary = (f"recorded the cited checks of {len(closed)} unit(s) archived before bundles recorded them "
-                           f"({sum(len(c['cited']) for c in closed)} check(s) pinned)")
-            if stages:
-                ctx.summary += (f"; upgraded {len(stages)} stage intent(s) to scoped bindings "
-                                f"({sum(not rebound for rebound in stages.values())} require abandonment)")
+                return _already_current(s.revision)
+        try:
+            with self.k.lead_txn(token, "migrate.closure",
+                                 reason="upgrade legacy history and active stage records") as ctx:
+                closed = self.archive.close_legacy(ctx, self.archive.legacy_units(ctx.state))
+                stages = self._upgrade_stages(ctx)
+                if not closed and not stages:
+                    raise _NoMigrationNeeded(ctx.session.revision)
+                ctx.summary = (f"recorded the cited checks of {len(closed)} unit(s) "
+                               "archived before bundles recorded them "
+                               f"({sum(len(c['cited']) for c in closed)} check(s) pinned)")
+                if stages:
+                    ctx.summary += (f"; upgraded {len(stages)} stage intent(s) to scoped bindings "
+                                    f"({sum(not rebound for rebound in stages.values())} require abandonment)")
+        except _NoMigrationNeeded as done:
+            return _already_current(done.revision)
         return {"ok": True, "migrated": False, "schema": V2, "revision": ctx.session.committed_revision,
                 "summary": ctx.summary, "closure": closed, **({"stage_intents": stages} if stages else {})}
 
@@ -119,8 +138,7 @@ class Migration:
             actor = require_lead(s.state, token, archived=self.k.archived_credential)
             state = s.state
             if state["schema"] == V2:  # migrated meanwhile
-                return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
-                        "summary": "the control state is already v2; nothing to migrate"}
+                return _already_current(s.revision)
             self.k.check_manifest_pin(state)
             live = self.live_runs(state)
             if live:

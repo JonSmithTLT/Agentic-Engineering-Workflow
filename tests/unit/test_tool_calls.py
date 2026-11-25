@@ -105,3 +105,60 @@ def test_a_line_is_bounded_whatever_the_call_carried(tmp_path):
     assert len(last) + 1 <= T.MAX_LINE
     line = T.read(tmp_path)[-1]
     assert all(line[key] == "t" * T.MAX_FIELD for key in ("exception", "defect", "cause_code"))
+
+
+# --------------------------------------------------------------------------- E231: the failure criterion's counters
+
+
+def test_the_counters_read_typed_misuse_guide_reads_and_help_lookups_per_session(tmp_path):
+    """E231 (the operator, 2026-11-25: a Lead "fails to use typed tools correctly, is using help all the time for shell
+    commands"): per session, its typed calls, each kind of misuse, its guide reads by section and its help lookups by
+    command, read back from the one log."""
+    def call(session, **over):
+        fields = {"tool": "status", "arguments": "{}", "ingress": "mcp", "profile": "normal", "result": None,
+                  "input_error": None, "error": None, "revision_before": 1, "duration_ms": 0, "session": session,
+                  "generation": 2, **over}
+        T.record(tmp_path, **fields)
+
+    call("LS-a", result=_result(ok=True, stopped=None))
+    call("LS-a", result=_result())  # stopped with a code: refused
+    call("LS-a", input_error={"code": "INVALID_ARGUMENTS"})
+    call("LS-a", error={"code": "DEFECT", "details": {}})
+    T.lookup(tmp_path, kind=T.GUIDE, session="LS-a", generation=2, command="guide", section="steps", ok=True)
+    T.lookup(tmp_path, kind=T.GUIDE, session="LS-a", generation=2, command="guide", section=None, ok=True)
+    T.lookup(tmp_path, kind=T.HELP, session="LS-a", generation=2, command="work create")
+    T.lookup(tmp_path, kind=T.HELP, session="LS-b", generation=3, command="")
+    T.append(tmp_path, {"tool": "status", "ok": True})  # a line from before sessions were named
+    counted = T.counters(T.read(tmp_path))
+    a = counted["LS-a"]
+    assert {k: a[k] for k in T.COUNTERS} == {"typed_calls": 4, "refusals": 1, "defects": 1, "invalid_arguments": 1,
+                                             "guide_reads": 2, "help_lookups": 1}
+    assert a["guide_sections"] == {"steps": 1, "(list)": 1} and a["help_commands"] == {"work create": 1}
+    assert (counted["LS-b"]["help_lookups"], counted["LS-b"]["help_commands"]) == (1, {"aew": 1})
+    assert counted[None]["typed_calls"] == 1
+    assert "LS-a, generation 2" in T.render_counters(counted)
+
+
+def test_a_lookup_line_is_bounded_and_never_fails(tmp_path, caplog, monkeypatch):
+    T.lookup(tmp_path, kind=T.HELP, session="s" * 4096, generation=1, command="c" * 4096, ok="yes")
+    [line] = T.read(tmp_path)
+    assert len(line["session"]) == len(line["command"]) == T.MAX_FIELD and line["ok"] is None
+    monkeypatch.setattr(T, "append", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("broken")))
+    with caplog.at_level("WARNING", logger="aew.harness.tool_calls"):
+        T.lookup(tmp_path, kind=T.GUIDE, session=None, generation=None, command="guide")  # no exception
+    assert "dropped a lookup" in caplog.text
+
+
+def test_a_help_lookup_is_recognised_and_names_only_command_words():
+    """What counts as a help lookup, and what of it is kept: the command words, never a value the Lead typed."""
+    from aew.harness import lead_broker as B
+
+    for argv in (["--help"], [], ["help"], ["work", "create", "-h"], ["-C", "x", "work", "show", "--help"]):
+        assert B.is_help_lookup(argv), argv
+    for argv in (["work", "show", "T-1"], ["harness", "send", "R-1", "--", "--help"]):
+        assert not B.is_help_lookup(argv), argv
+    assert B.help_command(["work", "create", "--help"]) == "work create"
+    assert B.help_command(["-C", "/tmp/x", "map", "show", "-h"]) == "map show"
+    assert B.help_command(["help", "work"]) == "work"
+    assert B.help_command(["work", "create", "ticket", "my secret title", "--help"]) == "work create"
+    assert B.help_command(["no", "such", "--help"]) == ""

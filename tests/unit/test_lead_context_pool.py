@@ -143,6 +143,20 @@ def test_the_contained_normal_lead_fits_its_context_pool(record, switches, host_
     check_pool(pool, record, switches=switches)
 
 
+@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+def test_the_guides_core_is_the_size_the_pool_records(record, switches, host_independent_placement):
+    """E231: the guide's core is what the Lead's system text carries, and its bytes, messaging on and off, are the
+    measured `after` figures the record gives, with the saving it lowered the baseline and cap by. A change to the
+    core's bytes fails here until the record says what it measures."""
+    pool = render_pool(record["baseline"]["containment"], switches)
+    measured = record["guide_core"]["messaging_on" if switches else "messaging_off"]
+    assert pool.guide_bytes == measured["after"], (
+        f"the guide's core renders {pool.guide_bytes} B, the record says {measured['after']} B: update "
+        f"{RECORD_PATH} guide_core and the baseline")
+    on = record["guide_core"]["messaging_on"]
+    assert record["guide_core"]["saving_bytes"] == on["before"] - on["after"]
+
+
 def check_tool_count(count: int) -> None:
     assert count <= TOOL_LIMIT, f"normal surface offers {count} tools (limit {TOOL_LIMIT})"
 
@@ -174,8 +188,8 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     estimates = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
     record["approval"]["ceiling_bytes"] = original.total + estimates
     cap = approved_ceiling(record)
-    name, meaning, _example = lead_text.guide.CLASS_TEXT["0"]
-    monkeypatch.setitem(lead_text.guide.CLASS_TEXT, "0", (name, meaning, "x"))
+    # A shorter rule in the guide's core, which the system text carries (a section's text is not in the pool: E231).
+    monkeypatch.setattr(lead_text.guide, "TEST_WORK", "x")
     smaller = render_pool(label, MESSAGING_ON)
     freed = original.guide_bytes - smaller.guide_bytes
     assert freed > 0 and smaller.total == original.total - freed

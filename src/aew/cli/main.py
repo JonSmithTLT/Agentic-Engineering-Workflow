@@ -174,6 +174,11 @@ def _main(argv: list[str]) -> int:
 
 def _run_main(argv: list[str]) -> int:
     _utf8_streams()
+    if os.environ.get("AEW_LEAD_BROKER"):  # a Lead session counts its help lookups (E231's failure criterion)
+        from aew.harness import lead_broker
+
+        if lead_broker.is_help_lookup(argv):
+            lead_broker.note_help_lookup(argv)
     parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv),
                           worker_messaging=bool(os.environ.get("AEW_AGENT_ENDPOINT"))
                           and os.environ.get("AEW_MESSAGING") == "enabled")

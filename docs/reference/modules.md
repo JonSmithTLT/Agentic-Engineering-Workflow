@@ -260,6 +260,7 @@ None.
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
+- `aew.harness.tool_calls`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
@@ -902,6 +903,7 @@ None.
 
 - `aew.engine.transitions`
 - `aew.engine.workspace_ops`
+- `aew.errors`
 - `aew.harness.contract`
 - `aew.roles`
 - `aew.skills`

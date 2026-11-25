@@ -150,7 +150,8 @@ def cases(run: str, invocation: str) -> list[list[str]]:
            ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"],
            ["map", "search", "core.py"], ["map", "search", "calc", "--kind", "path", "--limit", "3", "--json"],
            ["map", "search", "no such text", "--json"],
-           ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation]]
+           ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation],
+           ["guide"], ["guide", "--json"], ["guide", "steps"], ["guide", "core", "--json"], ["guide", "nope"]]
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out
 
@@ -448,6 +449,30 @@ def test_a_relayed_read_whose_wait_fails_is_ended_never_left_running(lab, broker
         assert started and started[0].returncode is not None and not broker._reads
     finally:
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
+
+
+def test_a_guide_read_and_a_help_lookup_are_counted_in_the_sessions_telemetry(lab, broker):
+    """E231's failure criterion, measured: each `aew guide` the Lead's shell runs is relayed to its broker, which
+    records it against this session (with the section, and whether it was printed), and each `--help` lookup its shell
+    makes is counted too, by command words alone. `aew lead telemetry` reads them back per session."""
+    from aew.harness import tool_calls
+
+    assert relayed(lab, broker, "guide", "steps").stdout.startswith("## A mutating Ticket, step by step")
+    refused = relayed(lab, broker, "guide", "nope")
+    assert refused.returncode == 2 and refused.error["details"]["reason"] == "unknown_guide_section"
+    helped = run_aew("work", "create", "--help", cwd=lab.root, env=contained(lab, broker))
+    assert helped.returncode == 0 and "usage: aew work create" in helped.stdout
+    assert broker.server.drain(20)
+    [row] = [r for name, r in tool_calls.counters(tool_calls.read(lab.aew_root)).items()
+             if name == broker.session_id]
+    assert (row["guide_reads"], row["guide_sections"], row["generation"]) == (2, {"steps": 1, "nope": 1},
+                                                                             broker.generation)
+    assert (row["help_lookups"], row["help_commands"]) == (1, {"work create": 1})
+    lines = [x for x in tool_calls.read(lab.aew_root) if x.get("lookup") == tool_calls.GUIDE]
+    assert [x["ok"] for x in lines] == [True, False]
+    shown = direct(lab, "lead", "telemetry", "--json")
+    assert any(s["session"] == broker.session_id and s["help_lookups"] == 1 for s in json.loads(shown.stdout)[
+        "sessions"]), shown.stdout
 
 
 def test_a_relayed_read_runs_on_the_leads_own_project_only(lab, broker, tmp_path):

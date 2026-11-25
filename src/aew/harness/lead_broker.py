@@ -1019,10 +1019,12 @@ class WeakerLead:
         from aew.harness import containment
 
         policy, _ = self.engine.execution_policy()
-        if containment.mode(policy) == containment.REQUIRED:
-            raise errors.ContainmentUnavailable(UNCONTAINED_LEAD if self.kind == "lead_session" else
-                                                containment.unsupported_message(), reason="lead_uncontained",
-                                                instead="aew opencode")
+        if containment.mode(policy) != containment.REQUIRED:
+            return
+        if not containment.supported():  # no contained Lead here either, so `aew opencode` is no way on (E100)
+            raise errors.ContainmentUnavailable(containment.unsupported_message(),
+                                                reason=containment.UNSUPPORTED_PLATFORM, platform=sys.platform)
+        raise errors.ContainmentUnavailable(UNCONTAINED_LEAD, reason="lead_uncontained", instead="aew opencode")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> Harness:
         from aew.harness import containment, weaker_register

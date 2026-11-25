@@ -435,13 +435,14 @@ def test_policy_mode_defaults_to_required_where_containment_exists():
     if C.supported():
         assert C.mode(None) == C.mode({}) == "required"
         assert C.mode({"containment": {"mode": "allow_weaker"}}) == "allow_weaker"
-    else:  # nothing can be required where nothing can contain: the label says what runs have
-        assert C.mode({"containment": {"mode": "required"}}) == "allow_weaker"
+    else:  # unset, nothing is required where nothing can contain; an explicit `required` refuses (E100)
+        assert C.mode(None) == C.mode({}) == "allow_weaker"
+        assert C.mode({"containment": {"mode": "required"}}) == "required"
 
 
 def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(monkeypatch, tmp_path):
     """M4-B review: on a POSIX platform other than Linux, `required` is honoured by refusing, never silently weakened;
-    Windows stays labelled workdir_separation_only (ADR-0009)."""
+    and on Windows too since E100 (``test_containment_required_everywhere``)."""
     monkeypatch.setattr(C, "supported", lambda: False)
     required = {"containment": {"mode": "required"}}
     args = dict(role="implementer", scope="ticket", workspace=str(tmp_path), run_dir=tmp_path / "run",
@@ -453,7 +454,9 @@ def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(mon
     assert C.establish(**args, policy=None)[0] is None
     assert C.doctor(required, "note")[0] == "FAIL"
     monkeypatch.setattr(C.sys, "platform", "win32")
-    assert C.mode(required) == "allow_weaker" and C.establish(**args, policy=required)[0] is None
+    assert C.mode(required) == "required" and C.mode(None) == "allow_weaker"
+    with pytest.raises(ContainmentUnavailable, match=r"this platform \(win32\)"):
+        C.establish(**args, policy=required)
 
 
 def test_a_tree_that_requires_a_layout_refuses_to_spawn_without_one():

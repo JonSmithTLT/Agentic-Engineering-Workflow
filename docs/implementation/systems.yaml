@@ -156,14 +156,16 @@ systems:
   depends_on: []
   switch:
     key: containment.mode (execution policy)
-    default: required on Linux; allow_weaker on Windows, even when required is set explicitly
-    default_evidence: 'src/aew/harness/containment/__init__.py:76 (Linux: explicit value or REQUIRED); :77-78 (win32 returns
-      ALLOW_WEAKER)'
+    default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then
+      refuses every launch
+    default_evidence: 'src/aew/harness/containment/__init__.py:85 (Linux: explicit value or REQUIRED); :86 (elsewhere:
+      REQUIRED only when explicit, else ALLOW_WEAKER)'
     owner: operator
     turning_on_changes: Already on by default on Linux. Setting allow_weaker on Linux still contains every launch that
       can be contained; only a launch whose containment fails then runs labelled workdir_separation_only, entered in the
       register of weaker contexts, instead of being refused (and aew lead session runs uncontained instead of being refused).
-      After E100, an explicit required on a host that cannot meet it refuses the launch instead of running weaker.
+      An explicit required on a host that cannot meet it, Windows included, refuses the launch instead of running weaker
+      (E100).
   state:
     board_state: partly_built
     built: partly
@@ -206,19 +208,21 @@ systems:
   recommendation: finish
   who: designer (E118's mechanism), then Lead (E118, E100, E92, E247)
   reason: 'The Linux core is on, used and gating every launch. What is left is small: E100 and E92, unfrozen on 2026-11-25,
-    and E118''s server move once the designer chooses its mechanism (its other two parts are built). The code confirms
-    E100 is still owed (containment/__init__.py:77) and that the egress refuses plain http:// naming the https form (E92''s
-    work). E247 is small and POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change,
+    and E118''s server move once the designer chooses its mechanism (its other two parts are built). E100 is built
+    by its pull request (an explicit required refuses the launch on every platform, containment/__init__.py:84-86), and
+    its slice comes off remaining when its row closes; the code confirms that the egress refuses plain http:// naming the
+    https form (E92''s work). E247 is small and POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change,
     so they are design work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm,
     not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
     Lead; it may belong with SYS-05.'
   evidence:
-  - src/aew/harness/containment/__init__.py:59-61 supported() is Linux only
-  - 'src/aew/harness/containment/__init__.py:70-79 mode(): Linux returns the explicit value or required (:76); win32 returns
-    allow_weaker even for an explicit required (:77-78), which is E100''s work'
-  - 'src/aew/harness/containment/__init__.py:168-172,202-208 establish(): under allow_weaker a launch is still contained
+  - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
+  - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
+    platform, Windows included, returns required only when it is explicit (:86), and establish() then refuses the launch
+    with reason unsupported_platform (:179-181; E100''s work)'
+  - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
-  - src/aew/harness/containment/__init__.py:101 the label records weaker_because
+  - src/aew/harness/containment/__init__.py:108 the label records weaker_because
   - src/aew/harness/containment/egress.py:1,416-421 the egress proxy serves CONNECT only and refuses plain http:// naming
     the https form (E92's work)
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before
@@ -227,12 +231,13 @@ systems:
     and establish a sandbox
   - src/aew/policy/checks.py:105-110 a check that would run with no sandbox under required is refused
   - src/aew/engine/evidence_ops.py:848 aew check run (_check_run_direct, :831) establishes its sandbox
-  - src/aew/harness/lead_broker.py:763-766 aew lead session is refused under required and points to aew opencode
+  - src/aew/harness/lead_broker.py:1018-1027 aew lead session is refused under required; on Linux the refusal points to
+    aew opencode, and off Linux both Lead routes are refused with reason unsupported_platform
   - src/aew/harness/opencode/lead.py:492 aew opencode establishes the Lead's sandbox, self-tested before the TUI starts
   - 'src/aew/doctor.py:29,42 doctor prints Windows: UNQUALIFIED'
   - 'grep pinhole/setpriority/os.nice over src/aew: no hits'
   - src/aew/knowledge/manifest.py has no containment key, so the generator that reads switch defaults from manifest.py
-    needs containment/__init__.py:76-77 as a second source
+    needs containment/__init__.py:84-86 as a second source
   - 'docs/implementation/future-work.yaml (the Now list''s E118 line, at c11a61ea) E118 is on it, the contained Lead''s
     two fixes; :1422-1427 its row (harness ruling 11, When: Now)'
   - src/aew/harness/opencode/login.py:137 clear_saved_permissions, called at src/aew/harness/opencode/lead.py:822, a failed

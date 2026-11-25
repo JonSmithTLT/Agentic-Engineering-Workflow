@@ -2032,12 +2032,17 @@ systems:
   as_built:
   - modules:aew.snapshot.fingerprint
   - modules:aew.engine.validation_ops
+  - modules:aew.engine.coverage
+  - modules:aew.engine.selection
   - cli-commands:check run
+  - cli-commands:doctor
   - writers:work/{}/validation-runs/{}.yaml
   - schemas:evidence
   - dashboard-routes:/evidence/{id}
   touches:
   - src/aew/engine/validation_ops.py
+  - src/aew/engine/coverage.py
+  - src/aew/engine/selection.py
   - src/aew/engine/evidence_ops.py
   - src/aew/snapshot/fingerprint.py
   - src/aew/engine/workspace_ops.py
@@ -2047,10 +2052,15 @@ systems:
   - docs/implementation/vertical-uat.md
   depends_on: []
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - cli:check run
+    - cli:integrate validate
+    - cli:status
+    - cli:doctor
+    - cli:harness status
+    - cli:harness wait
     - dashboard:/evidence/{id}
     on_by_default: true
     used_in_default_flow: partly
@@ -2059,25 +2069,17 @@ systems:
     lines reach the worker (E120); all exercised by the
     vertical driver and a real run. artifact_digests is dropped from the engine and working_diff removed (done). The remote
     validation provider stays Designed until it has acceptance.'
-  remaining:
-  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), with E243''s source for
-      the two lists its record now says are not known'
-    row: E120
-    estimate: 1-2 PRs (estimate)
-  - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 2, the selector in the validation
-      executor. PR 1 (the coverage declaration in checks policy, frozen with each validation, doctor rows, the guide)
-      merged at a31c6118 (E243''s note of 2026-11-11)'
-    row: E243
-    estimate: 1 PR (estimate)
+  remaining: []
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); unfrozen for the drop of artifact_digests and working_diff, and E243 placed inside the finish line (the operator,
     2026-11-11: "1. sire. 2. yup if it knows it tehn yes statre it", the Lead''s reading: "sure" and "state")'
   recommendation: finish
-  who: Lead (E120, E243)
-  reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
-    closed, and the two loose ends are gone (artifact_digests dropped from the engine, working_diff removed, ADR-0002 amended).
-    E243's contract is the designer's, about 2 PRs to first use, and its first has merged. The remote provider stays
-    Designed only.
+  who: operator (adopt the project's declaration, exercise the real flow and sign off)
+  reason: 'Checks-mode validation records the adopted selector''s affected items and declared CI tools. Status and
+    completion carry the same recorded coverage. The worker sees failing lines, and harness status and wait disclose
+    undelivered skills. E125 and E153 supply the local setup checks. For first use, apply the reviewed declaration to
+    `.aew/policy/checks.yaml`, run `aew manifest adopt`, and exercise the real validation flow for sign-off. The remote
+    validation provider remains Designed.'
   evidence:
   - 'src/aew/engine/coverage.py, src/aew/policy/checks.py, src/aew/schemas/checks.schema.json: the operator-adopted CI
     coverage declaration (E243 PR 1, merged at a31c6118); tests/unit/test_validation_coverage.py and tests/integration/test_validation_coverage_disclosure.py'
@@ -2086,13 +2088,14 @@ systems:
   - src/aew/engine/workspace_ops.py:54 (its only caller)
   - src/aew/dashboard/projections.py:662,678 (the dashboard keeps artifact_digests [] for contract 0.1.3)
   - src/aew/engine/evidence_ops.py:900,1048 (evaluated_snapshot on every evidence record), :1060 (mutated_inputs)
-  - 'src/aew/engine/coverage.py:77-78: affected_tests and ci_tools are {known: false, reason: no_project_source} (E243)'
-  - src/aew/engine/validation_ops.py:50,314,398 (the coverage record E120's slices added)
+  - 'src/aew/engine/selection.py and src/aew/engine/coverage.py: the pinned selector and declaration (E243)'
+  - 'tests/integration/test_validation_coverage_disclosure.py: known gaps and unknowns in the record, status and completion'
+  - 'tests/integration/test_worker_check_disclosure.py: failing check excerpt and unavailable skill across the real bridge'
   - src/aew/engine/workspace_ops.py:269,303 ('readiness' is dependency readiness, not setup readiness)
   - tests/acceptance/test_vertical_path.py:83 (seeded check-changes-snapshot cause), :94-97 (model-not-listed seed), :723
     (V3_CASES), :729 and :731 (the model-not-listed and check-changes-snapshot cases, detected since E153 closed)
   - 'docs/implementation/implementation-status.md:323-327 (Remote validation provider: Designed, no acceptance)'
-  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now)
+  - docs/implementation/future-work.yaml (closed row E120 and its evidence note)
 - id: SYS-20
   name: G3 trusted operator origin (approvals)
   purpose: 'One trusted origin for the operator''s approvals: a PIN typed in a confirmer outside every sandbox approves

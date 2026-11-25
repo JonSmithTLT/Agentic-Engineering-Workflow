@@ -40,7 +40,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 6 | E35 | The probe of what a project can load into the harness. Only this part of E35 is before first use |
 | 7 | STG-15 | CAP-1 PR 2: the read-only ripgrep bind, Q08's rows, the fetch at first launch and the contained health check, merged as #330 (`eb38cd5f`; PR 1 merged as #272, `af951c92`) |
 | 8 | closed: E119 | `aew init` takes the check, model and provider names, with the oracle's row and driver in one PR, closed by #329 |
-| 9 | E120 | Validation's coverage on the record, and failure lines back to the worker |
+| 9 | closed: E120 | Validation coverage, worker failure lines and undelivered skills, closed by #397, #408, #416 and #570 |
 | 10 | closed: E121 | A readable result: a headline per result in chat, closed by #328 |
 | 11 | closed: E122 | The next step while the Lead waits, closed by #352 and #358 |
 | 12 | closed: STG-03 | G3-C, E82 and the G3 install, closed by #363, #365, #374, #386 and #389 and the operator's root session on a Linux host, 2026-11-10 |
@@ -1572,18 +1572,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E118/`, oldest first (`python tools/register.py show E118`).*
-
-### E120
-
-**Work:** Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to the worker. Results also list the skills a run asked for and did not get
-
-**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood findings of 2026-10-31
-
-**When:** **Now.**
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E120/`, oldest first (`python tools/register.py show E120`).*
 
 ### E124
 
@@ -4872,6 +4860,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #329 (`5625b8e1`). E119 §1's seat wording is carried by E171, and first configuration's proposals of keyed, paid profiles and `review_triggers` levels are E166
 
 *Later notes: `notes.d/E119/`, oldest first (`python tools/register.py show E119`).*
+
+### E120
+
+**Was:** Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to the worker. Results also list the skills a run asked for and did not get
+
+**Closed:** 2026-11-25
+
+**By:** #397 (`e1941dbe`) and #408 (`c363e59c`) return bounded failure diagnostics and show undelivered skills. #416 (`8a3810b6`) adds the shared coverage record. E243 supplies the adopted project inventories through #570 (`35f05077`). The closeout note records the checks and the operator's first use.
+
+*Later notes: `notes.d/E120/`, oldest first (`python tools/register.py show E120`).*
 
 ### E121
 

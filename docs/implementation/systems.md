@@ -6,9 +6,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 6 — SYS-08, SYS-09, SYS-19, SYS-39, SYS-47, SYS-48
 
-**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51
+**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-51
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -18,9 +18,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 6 — SYS-08, SYS-09, SYS-19, SYS-39, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22, SYS-43, SYS-51
+**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-22, SYS-43, SYS-51
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -67,18 +67,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
-
-### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
-
-**Board state:** partly_built
-
-**Who:** Lead (E120, E243)
-
-**Now:** 9
-
-**Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 2, the selector in the validation executor. PR 1 (the coverage declaration in checks policy, frozen with each validation, doctor rows, the guide) merged at a31c6118 (E243's note of 2026-11-11) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
-
-**Wired:** cli:check run, dashboard:/evidence/{id}
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -143,6 +131,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
+
+### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
+
+**Board state:** awaiting_signoff
+
+**Who:** operator (adopt the project's declaration, exercise the real flow and sign off)
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** cli:check run, cli:integrate validate, cli:status, cli:doctor, cli:harness status, cli:harness wait, dashboard:/evidence/{id}
 
 ### SYS-30 — Research minimum slice, CNI links and PoCs as linked Tickets
 

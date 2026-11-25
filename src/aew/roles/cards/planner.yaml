@@ -1,7 +1,7 @@
 schema: aew/role/v1
 role: planner
 display_name: Planner / Designer
-version: 1
+version: 2
 extends: planner
 purpose: Convert a requirement and its discovery/research evidence into a proposed plan for the Lead to accept.
 use_when:
@@ -11,4 +11,5 @@ responsibilities:
     required tests and verification, risks and escalation triggers
   - declare affected_paths so the proposal's source basis can be checked for staleness
 skills: []
+optional_skills: [codebase-investigation]
 outputs: [plan_proposal]

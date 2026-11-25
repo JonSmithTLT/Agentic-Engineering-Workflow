@@ -174,7 +174,8 @@ def test_live_the_copy_is_loaded_bound_read_only_and_nothing_else(tmp_path):
         lab.wait(run, timeout=300)
         record = lab.record(run)
         planned = record["contract"]["extra"]["skills"]
-        assert planned["offered"] == ["c-development", "python-development"] == planned["exposed"]
+        offered = ["c-development", "debugging-root-cause-analysis", "python-development"]
+        assert planned["offered"] == offered == planned["exposed"]
         assert record["launch"]["skills"] == planned
         wrote = lab.step(run, 0)
         contained = record["containment"]["filesystem"] == "os_readonly_roots"
@@ -293,7 +294,7 @@ def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path)
             record_result({"test": "listing", "model": model, "card": card, "run": listing[card]})
         finally:
             lab.cleanup()
-    assert listing["engineer"]["exposed"] == ["c-development", "python-development"]
+    assert listing["engineer"]["exposed"] == ["c-development", "debugging-root-cause-analysis", "python-development"]
     assert listing["plain_engineer"]["exposed"] == []
 
     lab = model_lab(tmp_path / "probe", choice)

@@ -273,7 +273,8 @@ def test_a_run_gets_a_copy_of_the_skills_its_card_is_offered_and_its_record_says
     lab.wait(run)
     record = lab.record(run)
     planned = record["contract"]["extra"]["skills"]
-    assert planned["requested"] == [] and planned["offered"] == ["c-development", "python-development"]
+    assert planned["requested"] == []
+    assert planned["offered"] == ["c-development", "debugging-root-cause-analysis", "python-development"]
     assert planned["exposed"] == planned["offered"] and planned["unavailable"] == [] and planned["reasons"] == {}
     assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
     contained = record["containment"]["filesystem"] == "os_readonly_roots"

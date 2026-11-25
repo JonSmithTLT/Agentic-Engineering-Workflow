@@ -65,6 +65,36 @@
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 4-5 (C++ lifetime and unwinding; defined behavior, concurrency and ABI) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   },
+  "codebase-investigation": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "2ae01cacc48964e5347a7dfa2ffcc4f4a2e3dbed87ba5fe3d6be08029651e9f8",
+   "files": {
+    "examples/bad/stale-graph.md": "11e5788346d65aa00a535acd46198fae4e7b15b4876ecb243da64c9e5bb54597",
+    "examples/good/bounded-trace.md": "2aad86ae1e6bb2367438965781510a3d20aff7e4f8e8d1bb50da1f55b38f57a7",
+    "SKILL.md": "dadb040ae7e01e965e04049cf8553065ecd81474e065d96c2733a6661314bd18"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/codebase-investigation",
+    "snapshot": "codebase-investigation-0.1.0-c303f2cc",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, examples/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with examples/ verbatim and without evals/, and SKILL.md without its Evaluation section, which links only evals/ (never runtime resources: docs/skills/specification.md), so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
+   }
+  },
+  "debugging-root-cause-analysis": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "1fe599aa85f576d56a62645ad569d1b4ee43f1bfd7e47997a1f667ea8bce6081",
+   "files": {
+    "examples/bad/symptom-only-fix.md": "a54ccc0fda129e7e64dac35f338cf40732a4bbe8c261f955d849d5fec3308042",
+    "examples/good/discriminating-cache-check.md": "bdddcd1a2376f7eeb9d3b1e4cfafd7dd00308636938713972eb36a6821755ca7",
+    "SKILL.md": "eee16ac049cf8ff5d35ae7fcbf907a0eaa6a466e9364d08c181f312371c1d542"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/debugging-root-cause-analysis",
+    "snapshot": "debugging-root-cause-analysis-0.1.0-299e2998",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, examples/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with examples/ verbatim and without evals/, and SKILL.md without its Evaluation section, which links only evals/ (never runtime resources: docs/skills/specification.md), so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
+   }
+  },
   "python-development": {
    "version": "0.4.0",
    "label": "unevaluated",

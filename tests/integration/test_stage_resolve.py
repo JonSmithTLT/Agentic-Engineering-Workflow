@@ -121,7 +121,10 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     assert [s["intent"] for s in cli["stage_intents"]] == [sid] and cli["stage_intents"][0]["failing"] == ["contract"]
     assert cli["stage_intents"][0]["checks"]["contract"]["status"] == "unknown_stage"
     assert "no longer has a stage probe_notes" in cli["stage_intents"][0]["checks"]["contract"]["message"]
-    assert any(sid in a and "aew stage continue|abandon" in a for a in cli["next_actions"])
+    action = next(a for a in cli["next_actions"] if f"({sid}) is unfinished" in a)
+    assert f"`aew stage continue {sid} --rationale <reason> --approval-digest <shown digest>`" in action
+    assert f"`aew stage abandon {sid} --rationale <reason>`" in action
+    assert "`aew resume --json` shows the approval digest" in action
     assert sid in p.aew("resume").stdout  # the rendered view names it too
     assert_control_invariants(p)
 

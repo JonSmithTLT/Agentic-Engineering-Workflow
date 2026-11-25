@@ -35,6 +35,13 @@ class _Offer:
     outcome: str = "uncertain"
 
 
+@dataclass(frozen=True)
+class FinalAdmissions:
+    admitted: dict[str, str]
+    interrupt_confirmed: bool
+    deadline: float
+
+
 def connected(conn: Any) -> bool:
     """A wait has no second request: EOF, a broken pipe or unexpected further bytes all end its lifetime."""
     try:
@@ -179,12 +186,9 @@ class WorkerMessages:
         return (not self._stop.is_set() and self._drain_until is None
                 and (self._deadline is None or time.monotonic() < self._deadline))
 
-    def final_check(self) -> None:
-        """One bounded snapshot of the still-tracked admissions before ending on revoked authority."""
-        if not self._has_posted:
-            return
-        sup = self.owner
-        adapter = sup.adapter
+    def capture_final_admissions(self) -> FinalAdmissions:
+        """Ask the live adapter for one bounded snapshot before terminating the revoked run."""
+        adapter = self.owner.adapter
         deadline = time.monotonic() + _FINAL_CHECK_S
         offers = list(self._offers.values())[:MAX_UNDELIVERED_LEAD]
         admitted: dict[str, str] = {}
@@ -210,12 +214,16 @@ class WorkerMessages:
         check.start()
         check.join(max(0.0, deadline - time.monotonic()))
         with results:
-            snapshot = admitted.copy()
-        sup.events({"event": "message_final_admission_check", "interrupt_confirmed": interrupt_confirmed,
-                    "observed": len(snapshot)})
+            return FinalAdmissions(admitted.copy(), interrupt_confirmed, deadline)
+
+    def record_final_admissions(self, snapshot: FinalAdmissions) -> None:
+        """Persist the snapshot after teardown, while the supervisor still holds the revoked credential."""
+        sup = self.owner
+        sup.events({"event": "message_final_admission_check", "interrupt_confirmed": snapshot.interrupt_confirmed,
+                    "observed": len(snapshot.admitted)})
         try:
-            sup.engine.message_final_check(credential=sup._credential, run=sup.run, admitted=snapshot,
-                                           lock_timeout=max(0.0, deadline - time.monotonic()))
+            sup.engine.message_final_check(credential=sup._credential, run=sup.run, admitted=snapshot.admitted,
+                                           lock_timeout=max(0.0, snapshot.deadline - time.monotonic()))
         except (errors.AEWError, OSError) as exc:
             sup.events({"event": "message_final_admission_refused", "code": getattr(exc, "code", type(exc).__name__)})
 

@@ -838,19 +838,21 @@ class Supervisor:
             # until its final record.
             until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
             ending = self._background_beats("aew-ending-heartbeat", until=until)
+            final_admissions = None
             try:
                 try:
                     if self.messaging:
                         self.messages.stop()
                         if self.messages.has_posted and self.authority_problem():
-                            self.messages.final_check()
+                            final_admissions = self.messages.capture_final_admissions()
                 finally:
                     faults.pause("harness.supervisor.finishing")  # tests: a run slow to end
-                    self._end(status, reason, reason_code)
+                    self._end(status, reason, reason_code, final_admissions=final_admissions)
             finally:
                 ending.set()
 
-    def _end(self, status: str, reason: str, reason_code: str | None = None) -> None:
+    def _end(self, status: str, reason: str, reason_code: str | None = None, *,
+             final_admissions: worker_messages.FinalAdmissions | None = None) -> None:
         self._ending.set()
         # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
         # request is still in flight starts nothing, and the private state is retired only once they have returned.
@@ -869,6 +871,10 @@ class Supervisor:
         # the stop still running and its private directory left (E128). Bounded by the stop's own bound.
         if self.bridge is not None and not self.bridge.wait_stopped():
             self._event("bridge_stop_timeout", bound_s=bridge.STOP_BOUND_S)
+        if final_admissions is not None:
+            # Recovery and disk writes may take longer than control-lock acquisition. The worker and its bridge
+            # have already been stopped, so this optional receipt cannot extend their lifetime.
+            self.messages.record_final_admissions(final_admissions)
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

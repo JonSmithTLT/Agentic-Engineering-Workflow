@@ -322,7 +322,7 @@ def test_the_final_check_halts_the_session_before_checking(worker, confirmed):
     session.admit_all()
     w.lead("harness_launch", invocation=w.inv, replace=True)
     delivery.stop()
-    delivery.final_check()
+    delivery.record_final_admissions(delivery.capture_final_admissions())
     assert session.observations == ["interrupt", "active", "admission"]
     assert facts(w) == [["RECORDED", "POSTED", "DELIVERED"]]
 
@@ -345,19 +345,20 @@ def test_the_final_admission_check_never_records_a_reply_after_its_deadline(work
     monkeypatch.setattr(delivery.owner.adapter, "coordination_admission", admit_after_check)
     delivery.stop()
     try:
-        delivery.final_check()
+        admissions = delivery.capture_final_admissions()
     finally:
         let_reply.set()
     assert returned.wait(2)
+    delivery.record_final_admissions(admissions)
     assert facts(w) == [["RECORDED", "POSTED"]]
     with pytest.raises(IllegalTransition, match="already recorded"):
         w.e.message_final_check(credential=keys[run], run=run, admitted={})
 
 
-@pytest.mark.parametrize("blocked", ["lock", "storage"])
-def test_a_failed_final_admission_write_never_blocks_the_run_teardown(worker, tmp_path, monkeypatch, blocked):
+@pytest.mark.parametrize("blocked", ["lock", "recovery", "storage"])
+def test_final_admission_persistence_never_delays_run_teardown(worker, tmp_path, monkeypatch, blocked):
     w, keys = worker
-    delivery, _, run = transport(worker)
+    delivery, session, run = transport(worker)
     w.send()
     delivery.tick(select=True)
     w.lead("harness_launch", invocation=w.inv, replace=True)
@@ -365,8 +366,17 @@ def test_a_failed_final_admission_write_never_blocks_the_run_teardown(worker, tm
                                "repo_root": str(w.root), "aew_root": str(w.e.aew_root)}, ack=None)
     sup.messaging, sup.messages, sup.adapter = True, delivery, delivery.owner.adapter
     delivery.owner = sup
-    ended = threading.Event()
-    monkeypatch.setattr(sup, "_end", lambda *_: ended.set())
+    closed, terminated, killed = threading.Event(), threading.Event(), threading.Event()
+    sup.bridge = SimpleNamespace(close=closed.set, wait_stopped=closed.is_set, requests=0, refused=0, outcomes={})
+    sup.record["bridge"] = {}
+    monkeypatch.setattr(sup.adapter, "terminate", terminated.set)
+    kill_tree = sup.tree.kill
+
+    def kill():
+        kill_tree()
+        killed.set()
+
+    monkeypatch.setattr(sup.tree, "kill", kill)
     monkeypatch.setattr(worker_messages, "_FINAL_CHECK_S", 0.2)
 
     if blocked == "storage":
@@ -375,15 +385,38 @@ def test_a_failed_final_admission_write_never_blocks_the_run_teardown(worker, tm
 
         monkeypatch.setattr(sup.engine, "message_final_check", fail_write)
         sup._finish(contract.TERMINATED, "revoked")
-        assert ended.is_set()
-    else:
+    elif blocked == "lock":
         finishing = threading.Thread(target=sup._finish, args=(contract.TERMINATED, "revoked"), daemon=True)
         with w.e.store.session():
             finishing.start()
-            ended_while_locked = ended.wait(2)
-        finishing.join(2)
-        assert ended_while_locked and not finishing.is_alive()
-    assert facts(w) == [["RECORDED", "POSTED"]]
+            killed_while_locked = killed.wait(2)
+            finishing.join(2)
+            assert killed_while_locked and not finishing.is_alive()
+    else:
+        session.admit_all()
+        in_recovery, release = threading.Event(), threading.Event()
+        recover = sup.engine.store._recover
+
+        def slow_recovery():
+            assert sup.engine.store.held
+            in_recovery.set()
+            assert release.wait(5)
+            return recover()
+
+        monkeypatch.setattr(sup.engine.store, "_recover", slow_recovery)
+        finishing = threading.Thread(target=sup._finish, args=(contract.TERMINATED, "revoked"), daemon=True)
+        try:
+            finishing.start()
+            assert in_recovery.wait(3)
+            assert closed.is_set() and terminated.is_set() and killed.is_set()
+        finally:
+            release.set()
+            finishing.join(2)
+        assert not finishing.is_alive()
+    assert closed.is_set() and terminated.is_set() and killed.is_set()
+    assert sup.record["status"] == contract.TERMINATED
+    observed = ["RECORDED", "POSTED", "DELIVERED"] if blocked == "recovery" else ["RECORDED", "POSTED"]
+    assert facts(w) == [observed]
 
 
 def test_a_worker_wait_can_consume_a_message_before_the_transport_is_allowed_to_post_it(worker):

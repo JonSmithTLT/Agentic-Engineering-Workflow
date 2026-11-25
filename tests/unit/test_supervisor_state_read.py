@@ -358,13 +358,13 @@ def test_a_revoked_run_without_posted_messages_stops_without_an_admission_check(
     sup.messaging = messaging
     sup._lock = threading.Lock()
     sup.messages = SimpleNamespace(stop=lambda: None, has_posted=posted,
-                                   final_check=lambda: pytest.fail("there is no recorded offer to check"))
+                                   capture_final_admissions=lambda: pytest.fail("there is no recorded offer to check"))
     monkeypatch.setattr(sup, "_start_overdue", lambda: False)
     monkeypatch.setattr(sup, "_background_beats", lambda *args, **kwargs: threading.Event())
     ended = []
-    monkeypatch.setattr(sup, "_end", lambda *args: ended.append(args))
+    monkeypatch.setattr(sup, "_end", lambda *args, **kwargs: ended.append((args, kwargs)))
     sup._finish(K.TERMINATED, "authority ended: superseded")
-    assert ended == [(K.TERMINATED, "authority ended: superseded", None)]
+    assert ended == [((K.TERMINATED, "authority ended: superseded", None), {"final_admissions": None})]
 
 
 def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):

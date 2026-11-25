@@ -29,6 +29,7 @@ from aew.errors import (
     ValidationFailed,
 )
 from aew.harness.contract import EXPECT_REV, fields_block
+from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
 from aew.util import glob_any, parse_frontmatter, sha256_file, sha256_text, utc_now
 from aew.workspace import git
@@ -112,7 +113,7 @@ class WorkUnits:
     @staticmethod
     def accepted_plan_ref(unit: dict[str, Any]) -> dict[str, Any] | None:
         plan = unit.get("plan") or {}
-        return {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan.get("accepted") else None
+        return E.plan_binding(plan if plan.get("accepted") else None)
 
     def ancestor_plan_snapshot(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         """Every ancestor's accepted plan (or None): what a newly accepted plan is bound to."""

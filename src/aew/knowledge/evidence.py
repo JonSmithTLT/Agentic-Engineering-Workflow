@@ -12,11 +12,11 @@ evidence stays byte-identical.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from aew import profile
 from aew.errors import IntegrityError, PermissionDenied, ValidationFailed
-from aew.schemas import validate
+from aew.schemas import validate, validate_property
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text
 
 ROLE_KINDS = {
@@ -31,8 +31,17 @@ ROLE_KINDS = {
 # The record a non-mutating executor of each archetype must produce (the pinned output contract).
 EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
 EXECUTE_KINDS = frozenset(EXECUTE_KIND.values())
+# E160 (SYS-43; the designer's decision of 2026-11-06 on planner staffing and the plan assessor, Q2): the plan
+# assessment, a record kind of the reviewer archetype that challenges an accepted plan revision: a requirement trace,
+# the premises challenged, and findings. The schema holds its producer to this archetype. No credential may submit one
+# yet: the assessor entrypoint (E160 slice 2) grants it to a plan-assessor dispatch only, never to a reviewer
+# dispatched to review a change, so ``ROLE_KINDS``, the reviewer's operations and a review run's expected kinds are
+# unchanged here.
+PLAN_ASSESSMENT = "plan_assessment"
+ASSESSOR_ARCHETYPE = "reviewer"
 SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check",
-         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
+         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
+         PLAN_ASSESSMENT: "assess"}
 
 # Fields the engine owns. A submission containing any of them is rejected rather than
 # silently overwritten, so forged bindings or control decisions are visible failures.
@@ -56,7 +65,15 @@ SUBMITTER_KEYS = {
     "discovery_record": {"claim", "result", "producer", "method", "evidence", "discovery"},
     "research_record": {"claim", "result", "producer", "method", "evidence", "research"},
     "plan_proposal": {"claim", "result", "producer", "method", "evidence", "proposal"},
+    # No ``result``: the engine derives it from the findings, as it does a review's.
+    PLAN_ASSESSMENT: {"claim", "producer", "method", "evidence", "assessment"},
 }
+
+
+def plan_binding(plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The ``plan_revision`` binding every record carries: the unit's accepted plan revision and its sha256, or None
+    while it has none. The one owner of its shape: records are bound with it and compared against it."""
+    return {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None
 
 
 def evidence_dir(aew_root: Path, work_id: str) -> Path:
@@ -154,3 +171,54 @@ def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
                                fields=[f"producer.{k}" for k in owned])
     if set(producer) - DECLARED_PRODUCER:
         raise ValidationFailed("producer may only declare model, provider and harness")
+
+
+def plan_assessment_binding(work_id: str, plan: dict[str, Any] | None, submitted: dict[str, Any]) -> dict[str, Any]:
+    """The engine's part of a plan assessment of ``work_id``, whose accepted plan is ``plan``: the submitted
+    ``assessment`` checked, its blocker and major findings made required, and the ``result`` they give. The
+    ``plan_revision`` binding is the one every record carries (``plan_binding``), set by the submission path; the schema
+    refuses a plan assessment without it. E160 slice 2's submission path calls this, as it does the review checks.
+
+    Refused, with ``reason`` in the details: no accepted plan (``no_accepted_plan``: there is nothing to assess), a
+    finding id used twice (``duplicate_finding``), and a gap left silent (``gap_without_finding``): a requirement the
+    plan covers only in part or not at all, or a premise that fails, must cite a finding of this assessment."""
+    if plan_binding(plan) is None:
+        raise ValidationFailed(f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the "
+                               "accepted revision, so accept a plan first", reason="no_accepted_plan", work_id=work_id)
+    raw = submitted.get("assessment")
+    if isinstance(raw, dict):  # ``required`` defaults as a review's does, before the shape is checked
+        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f
+                                   for f in raw.get("findings") or []]}
+    validate_property("evidence", "assessment", raw, source="submission")
+    checked = cast(dict[str, Any], raw)  # the schema requires an object
+    assessment = {**checked, "findings": [dict(f) for f in checked["findings"]]}
+    ids = [f["id"] for f in assessment["findings"]]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        raise ValidationFailed(f"finding id(s) {', '.join(duplicates)} are used more than once; give each finding its "
+                               "own id", reason="duplicate_finding", findings=duplicates)
+    silent = [f"requirement {t['requirement']!r} ({t['status']})" for t in assessment["requirement_trace"]
+              if t["status"] != "covered" and t.get("finding") not in ids]
+    silent += [f"premise {p['premise']!r} (fails)" for p in assessment["premises_challenged"]
+               if p["outcome"] == "fails" and p.get("finding") not in ids]
+    if silent:
+        raise ValidationFailed(f"a gap needs a finding: {'; '.join(silent)} cite(s) no finding of this assessment; "
+                               "name the finding's id in its `finding` field", reason="gap_without_finding",
+                               gaps=silent)
+    for f in assessment["findings"]:
+        if f["severity"] in {"blocker", "major"}:
+            f["required"] = True
+    failed = any(f["required"] for f in assessment["findings"])
+    return {"assessment": assessment, "result": "fail" if failed else "pass"}
+
+
+def counting_assessment(records: list[dict[str, Any]], plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The plan assessment that counts for the accepted revision ``plan``: of the sealed records ``scan`` returns, the
+    first one recorded that is bound to that revision and its sha256, or None. One counts per revision: a later
+    assessment of the same revision is history and never replaces it (no assessor shopping), and one bound to another
+    revision, or to the same number with another digest, never counts for this one."""
+    binding = plan_binding(plan)
+    if binding is None:
+        return None
+    bound = [r for r in records if r.get("kind") == PLAN_ASSESSMENT and r.get("plan_revision") == binding]
+    return min(bound, key=lambda r: r.get("seq", 0), default=None)

@@ -398,7 +398,7 @@ class Hierarchy:
                                       f"ones (stale). Cancel {invocation} with:\n\n{cancel}",
                                       dispatched_with=inv.get("dependencies"), current=edges)
             plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
+            if ev.get("plan_revision") != E.plan_binding(plan):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one (stale). "
                                       f"Cancel {invocation} with:\n\n{cancel}")
             if kind != "review" and ev["result"] == "fail":

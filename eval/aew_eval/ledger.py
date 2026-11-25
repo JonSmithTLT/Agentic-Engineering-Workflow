@@ -265,7 +265,10 @@ class AttemptLedger:
         original = attempts.get(retry_of)
         if original is None or original.registered["assignment"]["cell"] != cell:
             raise Invalid(f"{retry_of} is not an attempt of cell {cell}")
-        latest = max(same_cell, key=lambda a: a.registered["at"])
+        # The ledger's own order, never the ``at`` stamps: two registrations inside one wall-clock tick (15.6 ms on
+        # Windows before CPython 3.13) or across a clock step would otherwise name an earlier attempt the latest,
+        # and retrying it would fork the chain (the nightly of 2026-11-25).
+        latest = same_cell[-1]
         if latest.run_id != retry_of:
             raise Invalid(f"retry the cell's latest attempt ({latest.run_id}), not {retry_of}")
         if original.status not in policy["allowed_for"]:

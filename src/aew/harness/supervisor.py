@@ -431,6 +431,10 @@ class Supervisor:
             if self.weaker is not None:
                 self.weaker.started()
             info = self.adapter.launch(contract, dict(self.agent_env))
+            if self.messaging:
+                self.record["coordination_delivery"] = ("live_pending" if self.adapter.coordination_live
+                                                        else "unsupported")
+                self.messages.launched(contract.continuation)
             self.record["launch"] = info
             relay_family = relay_family_of(info)
             if relay_family is not None:  # the label says what the launch could check of its model (register E143)
@@ -625,6 +629,8 @@ class Supervisor:
                 kind = req.get("kind")
                 self._event("request", kind=kind)
                 if kind == "stop":
+                    if self.messages.has_posted and self.authority_problem():
+                        self.messages.final_check()
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
                 bound = self.adapter.STEERING_BOUND_S
                 until = time.monotonic() + bound
@@ -645,11 +651,25 @@ class Supervisor:
             if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
                 read, problem = self._authority()
                 if problem:
+                    self.messages.final_check()
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
                 unread = not read
                 if read:
                     last_poll = now
             status = self.adapter.inspect()
+            if self.messaging:
+                outcome = self.record["coordination_delivery"]
+                if self.adapter.coordination_live:
+                    outcome = "held" if status.get("turn") == "held" else "live_pending"
+                if outcome != self.record["coordination_delivery"]:
+                    self.record["coordination_delivery"] = outcome
+                    self._save()
+                try:
+                    self.messages.tick(select=bool(status.get("alive") and not (deadline and now >= deadline)))
+                except (errors.PermissionDenied, errors.IllegalTransition, errors.StaleAuthority):
+                    pass  # authority or policy changed before the locked delivery check
+                except errors.IntegrityError as exc:
+                    self.messages.report_problem(exc.code)
             if not status.get("alive"):
                 return self._finish_exited(status)
             if deadline is not None and now >= deadline:

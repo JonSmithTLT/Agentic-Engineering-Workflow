@@ -1,6 +1,7 @@
 """Deterministic fake-V2 test adapter: exercise call binding on either host without qualifying Windows runtime.
 
-Never registered by production. It changes only the qualification gate, not call tracking or delivery logic.
+Never registered by production. Wait-specific tests select the continuation-only transport so they can
+stage a message before releasing a worker into its wait.
 """
 
 from aew.harness.opencode.adapter import OpenCodeAdapter
@@ -8,6 +9,7 @@ from aew.harness.opencode.adapter import OpenCodeAdapter
 
 class FakeWaitOpenCodeAdapter(OpenCodeAdapter):
     reports_steps = True
+    coordination_live = False
 
 
 class BoundWaitOpenCodeAdapter(FakeWaitOpenCodeAdapter):
@@ -22,3 +24,4 @@ class BoundWaitOpenCodeAdapter(FakeWaitOpenCodeAdapter):
 
 class UnsupportedWaitOpenCodeAdapter(OpenCodeAdapter):
     reports_steps = False
+    coordination_live = False

@@ -118,7 +118,8 @@ def pin(root: Path) -> None:
     (root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
 
 
-def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False) -> World:
+def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False,
+          model: str | None = None) -> World:
     root = make_git_repo(tmp_path / "repo", CP.FILES)
     Engine.initialize(root, project_id="calc")
     if checks:
@@ -136,7 +137,7 @@ def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = F
                    contract=["changes stay in calc/ and tests/"])["id"]
     w.lead("plan_propose", no_assurance=True, work_id=w.wid, body=CP.PLAN, affected_paths=["calc/core.py"])
     w.lead("plan_accept", work_id=w.wid, revision=1)
-    out = w.lead("work_assign", work_id=w.wid)
+    out = w.lead("work_assign", work_id=w.wid, execution_profile={"model": model} if model else None)
     w.lead("work_transition", work_id=w.wid, to="RUNNING")
     w.inv, w.worker, w.workspace = out["invocation"], out["invocation_token"], Path(out["workspace"]["path"])
     return w

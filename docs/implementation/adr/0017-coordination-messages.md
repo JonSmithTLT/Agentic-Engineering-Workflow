@@ -364,7 +364,7 @@ and identify the first drop since the last observed boundary when refusing an un
 | MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | **Built (2026-10-10)**: the amendment of 2026-10-10 |
 | MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | **Built (2026-11-10)**: record-only result explicitly says delivery is not built yet; turn-end refused until MS5b; standalone off/compact policy mode remains deferred |
 | MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | **Built (2026-11-11)**: own-thread reply/read/wait, enabled-only launch snapshots; qualified Linux 2.2.6 wait binding, deterministic fake/process tests on both hosts; Windows runtime NOT RUN |
-| MS5 | Live delivery and the continuation | Not built |
+| MS5 | Live delivery and the continuation | OpenCode step-boundary delivery, held-session staging and relaunch delivery. The supervisor confirms admission independently of the offer. |
 | MS6 | Lead attention: the wait, `resume`, untrusted rendering | **Built (2026-11-11)**: verified live/sealed overlays, bounded wait/wake bodies, typed durable receipts and generation-local relayed told/wake posted suppression; shared switch-aware guidance |
 | MS7 | F19 hooks, acceptance, live qualification | Not built |
 
@@ -409,7 +409,7 @@ Guide/system/catalog use the broker's one post-offer adopted switch snapshot, in
 authority. On guidance names `messages` as worker data and `message_send` to answer/steer, with the relayed-relisting
 cost line once. Off system/catalog/wake pins remain unchanged. The wire/prose naming oracle and the syntax detector's
 documented limits are in `test_messaging_guidance.py` and `tests/helpers/catalog_reads.py`; neither is a semantic
-proof of every emitted hint. Live worker transport, finality, both timings, recorded harness send, default-on and
+proof of every emitted hint. Finality, both timings, recorded harness send, default-on and
 MS7 provider evidence remain later slices. No default or qualification pin is changed by this build-status update.
 
 ## Consequences

@@ -28,7 +28,15 @@ Hosted Windows CI now samples its serial lane's controller periodically, as host
 out only because its overhead comparison covered xdist workers, not because of a found risk. So the Windows serial
 controller owes its stack like any worker. The qualifying evidence is this PR's own Windows serial and xdist lanes in
 CI, whose wall time the PR compares with the last three green `main` runs; a regression there reverts the switch. The
-flake entry `windows-cancel-live-stack` stays open, with the Windows lanes of four more superseded runs and this PR as
-its planned fix: closure awaits a sighting bundle, or the first superseded runs after merge, that establishes the cause.
-The Linux lanes of those runs open `linux-cancel-live-stack`, whose cause is the pre-signal warning attach that #554
-types, so its next sighting names why.
+cancel plant's sighting (target run 45512199966, job 138862502221, of evidence-proof run 45512141240) has its cause
+established from its bundle: `cancelled-7552.txt` observed `test_death[cancel-8]` alive with `collect_at` 23:43:50.297,
+the watchdog shows `test_death[cancel-9]` starting 30 ms later, and the worker's ring holds only a periodic sample from
+23:43:19 and no cancel-collection sample, so the collection's one dump straddled a test boundary on a plant of
+few-second tests and was dropped without a marker. The collection now follows a worker whose dump straddles a test
+change into its next test, retries inside the shared budget, and records the observation for the test its retained
+sample labels (`straddled_from` names the test first observed), so a stack of one test never answers an observation of
+another; a straddle with no dump kept after it stays a typed straddled outcome that owes its stack. The flake entry
+`windows-cancel-live-stack` stays open, with that bundle as diagnostic evidence, with the Windows lanes of four more
+superseded runs and this PR as its planned fix: closure awaits the first superseded runs after merge, since only the
+cancel plant's sighting has an established cause. The Linux lanes of those runs open `linux-cancel-live-stack`, whose
+cause is the pre-signal warning attach that #554 types, so its next sighting names why.

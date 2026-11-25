@@ -315,7 +315,8 @@ def sampling_policy(root: Path) -> dict:
 
 
 def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
-            collect_at: float | None = None) -> set[tuple[int, int]]:
+            collect_at: float | None = None) -> dict[tuple[int, int], Worker]:
+    """Sample each allowed worker; return each sampled identity's worker as its retained sample labels it."""
     # A slow or inaccessible worker cannot multiply the pre-cleanup wait by the number of workers.
     # All attaches have their own three-second subprocess cutoff. After this common window expires,
     # queued workers are skipped; four concurrent readers bound the runner load.
@@ -327,21 +328,41 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
 
     def sample(worker: Worker):
         failures: list[str] = []
+        current = worker  # the worker as it now runs: the cancellation collection follows it into its next test
+        crossed: list[Worker] = []
 
-        def outcome(name: str) -> None:
+        def outcome(name: str, of: Worker) -> None:
             if typed:
-                _outcome(root, worker, name, failures, collect_at)
+                _outcome(root, of, name, failures, collect_at)
+
+        def live(candidate: Worker) -> bool:
+            return candidate in workers(root) and proctree.same(candidate.identity)
+
+        def follow() -> bool:
+            # A dump that straddled a test change labels neither test. The cancellation collection retries against
+            # the test the worker is in now, and records its observation for that test, so a stack of one test never
+            # answers an observation of another (register E3, the Windows cancel plant of 2026-11-24).
+            nonlocal current
+            if not typed or not proctree.same(worker.identity):
+                return False
+            fresh = next((w for w in workers(root) if w.identity == worker.identity and w != current), None)
+            if fresh is None:
+                return False
+            failures.append(f"straddled a test change; retried against {fresh.node}")
+            current = fresh
+            crossed.append(fresh)
+            return True
 
         if worker.identity not in allowed:
-            outcome(SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED)
+            outcome(SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED, worker)
             return None
         if not proctree.same(worker.identity):
-            outcome("exited before its attach")
+            outcome("exited before its attach", worker)
             return None
         last = None
         matched = moved = False
         for attempt in range(3 if retried else 1):
-            if retried and (worker not in workers(root) or not proctree.same(worker.identity)):
+            if retried and not live(current) and not follow():
                 moved = True
                 break
             remaining = until - time.monotonic()
@@ -350,29 +371,35 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                     failures.append("shared budget spent before its first attach")
                 break
             at = time.time()
-            elapsed = time.monotonic() - worker.began
+            elapsed = time.monotonic() - current.began
             limit = {"timeout": remaining} if retried else {}
-            result = attach(worker.pid, failures=failures, **limit)
+            result = attach(current.pid, failures=failures, **limit)
             # A stack straddling a test boundary has no trustworthy node label.
-            if worker not in workers(root) or not proctree.same(worker.identity):
+            if not live(current):
                 moved = True
+                if follow():
+                    continue
                 break
+            moved = False
             if result:
                 # Nonblocking dumps may omit a live Python frame. Retry only
                 # this invocation inside the original shared budget.
                 if not FRAME.search(result[1]):
                     failures.append(f"{result[0]}: dump has no Python frames")
                     continue
-                last = (at, elapsed, result)
-                if not retried or test_frame(worker.node, result[1]):
+                last = (at, elapsed, result, current)
+                if not retried or test_frame(current.node, result[1]):
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
                 if typed and pytest_phase(result[1]) in OUTSIDE_CALL:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
-        if moved:
-            # An earlier dump of this attach was taken inside the same test, so it is kept (review of #561, m3).
-            outcome("straddled a test change" if proctree.same(worker.identity) else "exited during its attach")
+        # The observation stands for the test of the retained dump, or the one first observed when none is kept.
+        held = last[3] if last is not None else worker
+        if moved or (crossed and last is None):
+            # A straddle with no dump kept after it still owes its stack. An earlier dump of this attach was taken
+            # inside its own test, so it is kept (review of #561, m3).
+            outcome("straddled a test change" if proctree.same(worker.identity) else "exited during its attach", held)
         elif retried and not matched and last is None:
             _unavailable(root, worker, reason, failures)
         elif reason == WARNING and not matched:
@@ -383,7 +410,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
         elif typed and not matched and last is not None:
             # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
             # the call without the test's frame stays a live-stack defect.
-            outcome(pytest_phase(last[2][1]))
+            outcome(pytest_phase(last[2][1]), held)
         if not retried and not matched and not moved:
             # A failed sampling attach refuses the not-sampled excuse to this identity (review of #561, M1).
             path = ring_path(root, worker).with_name(sampling_failures(worker.pid, worker.start))
@@ -392,14 +419,14 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             return None
         # Retain a support-only stack as evidence of what was actually running.
         # The normal checker still reports a missing live test frame.
-        at, elapsed, result = last
+        at, elapsed, result, _ = last
         with contextlib.suppress(OSError):
-            if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
-                return worker.identity
+            if save_sample(root, held, at, elapsed, result[0], result[1], reason=reason):
+                return held
         return None
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        return {identity for identity in pool.map(sample, observed) if identity is not None}
+        return {held.identity: held for held in pool.map(sample, observed) if held is not None}
 
 
 def dmesg_victim() -> int | str:
@@ -470,8 +497,17 @@ class Monitor:
         self.periodic = sampled and not ablated("ring")
         # The policy, not its ablation: the cancellation collection and the evidence check read it back (E3).
         self.policy = {"periodic": sampled}
+        # Written by the supervisor before the lane starts (lane_step.supervise), so before any worker can reach the
+        # root, and replaced whole, so a file an earlier step left there is never read back as this lane's policy.
         with contextlib.suppress(OSError):
-            (root / SAMPLING_POLICY).write_text(json.dumps(self.policy) + "\n", encoding="utf-8")
+            if not is_link(root):
+                with NamedTemporaryFile("w", dir=root, suffix=".tmp", delete=False, encoding="utf-8") as temp:
+                    temp.write(json.dumps(self.policy) + "\n")
+                pending = Path(temp.name)
+                try:
+                    pending.replace(root / SAMPLING_POLICY)
+                finally:
+                    pending.unlink(missing_ok=True)
         self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
         self.group = cgroup() if sys.platform == "linux" else None
         proof_group = os.environ.get("AEW_PROOF_OOM_GROUP")

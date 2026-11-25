@@ -302,6 +302,15 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     watch_heartbeat = os.environ.get("AEW_EVIDENCE_PLANT") == "hang"
     if watch_heartbeat:
         kwargs["stderr"] = subprocess.PIPE
+
+    def scope():
+        if job:
+            return {p.identity for p in job.members(command_lines=False)}
+        supervisor = proctree.identity(os.getpid())
+        return {p.identity for p in proctree.descendants(supervisor, proctree.table())} if supervisor else set()
+
+    # Before the lane starts, so its recorded sampling policy is written before any worker can reach the root (E3).
+    monitor = worker_evidence.Monitor(root, attach, scope)
     child = subprocess.Popen(argv, **kwargs)
     heartbeat: dict | None = None
     relay = None
@@ -316,14 +325,6 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     next_host = 0.
     snapshots_seen: set[tuple[int, str]] = set()
     lane_exit = None
-
-    def scope():
-        if job:
-            return {p.identity for p in job.members(command_lines=False)}
-        supervisor = proctree.identity(os.getpid())
-        return {p.identity for p in proctree.descendants(supervisor, proctree.table())} if supervisor else set()
-
-    monitor = worker_evidence.Monitor(root, attach, scope)
 
     signal_at = None
     worker_phases = None
@@ -449,11 +450,16 @@ def main(argv: list[str]) -> int:
             allowed = {worker.identity for worker in active if any(
                 sample.get("pid") == worker.pid and sample.get("start") == worker.start
                 for sample, _ in worker_evidence.read_ring(args.root, worker))}
-            worker_evidence.capture(args.root, active, functools.partial(attach, allow_sudo=False),
-                                    reason=CANCEL_COLLECTION, allowed=allowed, collect_at=at)
+            sampled = worker_evidence.capture(args.root, active, functools.partial(attach, allow_sudo=False),
+                                              reason=CANCEL_COLLECTION, allowed=allowed, collect_at=at)
             for worker in active:
-                worker_evidence.record(args.root, worker, "cancelled" if cancelled else "interrupted",
-                                       time.time(), collect_at=at, alive_when_observed=alive[worker.identity])
+                # A worker whose first dump straddled a test change is recorded for the test its retained sample
+                # labels, so the observation and its stack name one test (register E3).
+                held = sampled.get(worker.identity, worker)
+                moved = {"straddled_from": worker.node} if held.node != worker.node else {}
+                worker_evidence.record(args.root, held, "cancelled" if cancelled else "interrupted",
+                                       time.time(), collect_at=at, alive_when_observed=alive[worker.identity],
+                                       **moved)
         worker_evidence.record_oom(args.root)
         worker_evidence.controller_loss(args.root)
         collect(args.root)

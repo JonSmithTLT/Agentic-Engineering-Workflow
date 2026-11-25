@@ -986,21 +986,66 @@ def test_a_worker_that_exits_before_its_attach_is_typed_and_still_owes_its_stack
     assert defects == [LIVE_STACK.format(101)]
 
 
+def _change_test(tmp_path, pid, name):
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+    (tmp_path / f"hang-gw0-{pid}.txt").write_text(guard._header(SimpleNamespace(nodeid=f"tests/test_a.py::{name}")))
+
+
 def test_a_dump_taken_before_a_later_attempt_straddles_a_test_change_is_retained(tmp_path, monkeypatch):
     calls = []
 
     def attach(pid, *, live, failures, **_):
         calls.append(pid)
-        if len(calls) == 2:
-            guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
-            (tmp_path / f"hang-gw0-{pid}.txt").write_text(
-                guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_next")))
+        if len(calls) > 1:  # every later attempt straddles a test change, so the budget's attempts run out
+            _change_test(tmp_path, pid, f"test_next_{len(calls)}")
         return "unelevated", PHASE_DUMPS["call"]
 
     records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
-    assert calls == [101, 101] and outcomes[101]["outcome"] == "straddled a test change"
+    assert calls == [101, 101, 101] and outcomes[101]["outcome"] == "straddled a test change"
+    # The kept dump is the first test's, so the observation and the outcome stay that test's.
+    assert records[101]["node"] == outcomes[101]["node"] == "tests/test_a.py::test_case[101]"
     ring = (tmp_path / "snapshots/101.txt").read_text()
     assert '"reason": "cancel collection"' in ring and "pytest_runtest_call" in ring
+    assert defects == [LIVE_STACK.format(101)]
+
+
+def test_a_cancel_collection_that_straddles_a_test_change_retries_against_the_next_test(tmp_path, monkeypatch):
+    from evidence_files import entries
+
+    calls = []
+
+    def attach(pid, *, live, failures, **_):
+        calls.append(pid)
+        if len(calls) == 1:  # the dump straddles: the worker finishes test_case[101] and starts test_next
+            _change_test(tmp_path, pid, "test_next")
+            return "unelevated", "    test_case (tests/test_a.py:4)\n"
+        return "unelevated", "    test_next (tests/test_a.py:9)\n"
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert calls == [101, 101] and outcomes == {} and defects == []
+    assert records[101]["node"] == "tests/test_a.py::test_next"
+    assert records[101]["straddled_from"] == "tests/test_a.py::test_case[101]"
+    collected = [row for row, _ in entries((tmp_path / "snapshots/101.txt").read_text())
+                 if row["reason"] == "cancel collection"]
+    # The straddling dump is never kept: a stack of one test never answers an observation of another.
+    assert [row["node"] for row in collected] == ["tests/test_a.py::test_next"]
+
+
+def test_a_straddle_with_no_dump_of_the_next_test_still_owes_its_stack(tmp_path, monkeypatch):
+    calls = []
+
+    def attach(pid, *, live, failures, **_):
+        calls.append(pid)
+        if len(calls) == 1:
+            _change_test(tmp_path, pid, "test_next")
+            return "unelevated", "    test_case (tests/test_a.py:4)\n"
+        failures.append("unelevated: exit 1 (os error 5)")
+        return None
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert calls == [101, 101, 101] and outcomes[101]["outcome"] == "straddled a test change"
+    assert records[101]["node"] == "tests/test_a.py::test_case[101]" and "straddled_from" not in records[101]
+    assert '"reason": "cancel collection"' not in (tmp_path / "snapshots/101.txt").read_text()
     assert defects == [LIVE_STACK.format(101)]
 
 
@@ -1039,6 +1084,56 @@ def test_a_worker_its_lane_samples_but_never_sampled_still_owes_its_stack(tmp_pa
     # A not-sampled claim the lane's recorded policy contradicts is refused.
     _forge(tmp_path, 101, SAMPLING_GAP, "not sampled in the owned tree")
     assert _live_stack(tmp_path) == [LIVE_STACK.format(101)]
+
+
+def test_a_frameless_periodic_dump_is_recorded_as_a_failed_attach_and_not_kept(tmp_path, monkeypatch):
+    import json
+
+    import worker_evidence as ev
+
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+    (session / "worker-gw0-pid.txt").write_text("101")
+    (session / "worker-gw0-start.txt").write_text("202")
+    (tmp_path / "hang-gw0-101.txt").write_text(guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_case")))
+    monkeypatch.setattr(ev.proctree, "same", lambda identity: identity == (101, 202))
+    [worker] = ev.workers(tmp_path)
+    calls = []
+
+    def attach(pid, *, failures):
+        calls.append(pid)
+        return "unelevated", "Process 101: private argv\nThread 7 (idle)\n"  # py-spy's header, no Python frame
+
+    for reason in ("periodic", "memory pressure"):
+        assert ev.capture(tmp_path, [worker], attach, reason=reason, allowed={worker.identity}) == {}
+    assert calls == [101, 101] and not ev.ring_path(tmp_path, worker).exists()
+    failure = json.loads((tmp_path / "snapshots/101-202-sampling-failures.txt").read_text())
+    assert failure["reason"] == "periodic" and failure["attempts"] == ["unelevated: dump has no Python frames"]
+    assert "private argv" not in (tmp_path / "snapshots/101-202-sampling-failures.txt").read_text()
+
+
+def test_the_sampling_policy_is_recorded_before_the_lane_starts(tmp_path, monkeypatch):
+    import json
+
+    lane = _load("lane_step")
+    monkeypatch.delenv("AEW_EVIDENCE_PLANT", raising=False)
+    monkeypatch.setenv("AEW_WORKER_SNAPSHOTS", "1")
+    monkeypatch.setattr(lane.worker_evidence, "cgroup", lambda: None)
+    policy = tmp_path / "runner-resources-sampling.txt"
+    policy.write_text(json.dumps({"periodic": False}))  # left by an earlier step in the same root
+    seen = []
+
+    def start(*_args, **_kwargs):
+        seen.append(json.loads(policy.read_text()))
+        raise OSError("the lane is not started in this test")
+
+    monkeypatch.setattr(lane.subprocess, "Popen", start)
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="posix", environ={}, getpid=lambda: 99))
+    with pytest.raises(OSError, match="not started"):
+        lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60)
+    assert seen == [{"periodic": True}]
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_a_worker_due_for_periodic_sampling_whose_attaches_all_failed_still_raises_live_stack(tmp_path, monkeypatch):

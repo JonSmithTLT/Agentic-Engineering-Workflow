@@ -1456,12 +1456,13 @@ entries:
     A Windows xdist worker alive at the cancellation collection had no interruption stack (evidence_problems'
     live-stack). Cause unestablished. Leads from the E3 note of 2026-11-24: the collection takes one nonblocking py-spy
     dump per worker without the warning path's retries, discards a dump that straddles a test boundary, and a worker
-    in fixture setup or teardown has no test-function frame.
+    in fixture setup or teardown has no test-function frame. Established for one sighting from its bundle (the cancel
+    plant's, 2026-11-24 23:44): the collection's single dump straddled a test boundary on a plant of few-second tests.
   owner: CI flake triage
   row: E3
   planned_fix: >-
-    #561 retries and types the collection's attaches; closure awaits a sighting bundle or the first superseded runs
-    after merge establishing the cause.
+    #561 retries and types the collection's attaches and follows a straddled worker into its next test; closure awaits
+    the first superseded runs after merge, since only the cancel plant's sighting has an established cause.
   evidence:
   - run: 45338188607
     job: 138255795565
@@ -1502,6 +1503,17 @@ entries:
       evidence job of ci run 45512141007 (PR 553 at bc5492f2, superseded): live-stack defects in Windows fast, serial,
       integration and regression; Windows serial 1/1 also snapshot-age, snapshot-label and snapshot for pid 2160 (with
       Linux fast and integration, entry linux-cancel-live-stack).
+  - run: 45512199966
+    job: 138862502221
+    at: '2026-11-24T23:44:10Z'
+    kind: diagnostic
+    observation: bundle of worker 7552
+    note: >-
+      The cancel plant sighting's evidence bundle establishes its cause. cancelled-7552.txt observed
+      test_death[cancel-8] alive with collect_at 23:43:50.297; the watchdog file hang-gw0-7552.txt shows
+      test_death[cancel-9] started at 23:43:50.328, 30 ms into the collection; snapshots/7552.txt holds only the
+      periodic sample of 23:43:19 for cancel-0 and no cancel-collection sample. The collection's one dump straddled
+      the cancel-8 to cancel-9 boundary and was dropped without a marker.
 - id: linux-cancel-live-stack
   scope: session
   lane: integration

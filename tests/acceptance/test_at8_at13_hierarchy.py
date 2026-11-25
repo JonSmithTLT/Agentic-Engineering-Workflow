@@ -32,6 +32,7 @@ from conftest import git
 from invariants import assert_control_invariants
 from test_at1_serial_lifecycle import operator_takeover
 
+from aew.engine import transitions as T
 from aew.util import parse_frontmatter
 
 
@@ -218,7 +219,9 @@ def test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_
     assert execution["attempt"] == 1 and execution["expected_kind"] == "discovery_record"
     assert work[build]["state"] == "BLOCKED" and work[build]["blocked_by"][0]["id"] == survey
     assert work[later]["blocked_by"][0]["inherited_from"] == later_story
-    assert f"{survey}: ingest record {rec} (`aew evidence ingest`)" in resume["next_actions"]
+    # Whole, so it runs as given (E140's O-CMD flip).
+    assert f"{survey}: ingest record {rec} (`{T.operation_command('evidence.ingest', survey, rec)}`)" \
+        in resume["next_actions"]
     assert resume["contradictions"] == []
 
     p.token = operator_takeover(p, "Lead session destroyed (AT-11)")

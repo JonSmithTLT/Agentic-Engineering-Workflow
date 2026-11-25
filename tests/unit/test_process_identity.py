@@ -317,7 +317,7 @@ def test_a_validation_runs_executor_is_alive_across_a_clock_step(step):
     assert not validation_ops.executor_alive({"executor": {**executor, "start_id": reused(start)}})
     assert not validation_ops.executor_alive({"executor": {**executor, "start_id": 7}})
     assert validation_ops.stuck_run({"id": "IV-1-1", "state": "running", "deadline_at": "2999-01-01T00:00:00Z",
-                                     **new}) is None
+                                     **new}, "T-0001") is None
 
 
 def test_a_custody_worker_is_not_lost_across_a_clock_step(step):

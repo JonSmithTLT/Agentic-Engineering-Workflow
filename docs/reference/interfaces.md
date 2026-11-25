@@ -195,6 +195,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `manifest adopt`
 - `map diff`
 - `map generate`
+- `map search`
 - `map select-architecture`
 - `map show`
 - `message list`
@@ -211,6 +212,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `operator serve`
 - `plan accept`
 - `plan adopt`
+- `plan assess`
 - `plan lint`
 - `plan propose`
 - `plan reconfirm`

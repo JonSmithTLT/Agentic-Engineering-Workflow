@@ -160,6 +160,39 @@ def test_the_slice_shows_the_rows_in_scope_and_their_ancestors():
     assert any("in scope" in line for line in out)
 
 
+def test_an_empty_scoped_answer_names_the_commit_and_depth_it_covers_and_nothing_wider():
+    """A-14 P01-06 and P01-18 (register E293): a scope path no directories row names is said to be no directory of the
+    map's commit at the map's depth, and that commit's tracked paths only, never the worker's workspace; a path deeper
+    than the map's depth (an ancestor row stands for it) or one a row names is not listed. The disclosure domain is
+    the whole tracked tree: V-01's maps hold no recipient-restricted input."""
+    record = sealed({f"d{i:03d}/s{j}/x.py": b"" for i in range(10) for j in range(3)})
+    assert not record["sections"]["directories"]["rows_omitted"]  # every row is in the record: the answer is whole
+    out = slices.render(record, CURRENT, ["d007/s1/**", "newpkg/**", "d001/s0/x/y/**", "README.md"])
+    empty = [line for line in out if line.startswith("no directory of commit")]
+    assert empty == [f"no directory of commit {record['source_revision'][:12]} at depth <= 3 is in scope as: newpkg, "
+                     "README.md. Each may be a file, a path the work adds, or a directory not tracked there; this "
+                     "covers that commit's tracked paths only, never uncommitted changes in your workspace."]
+    assert not any(line.startswith("no directory") for line in slices.render(record, CURRENT, ["d007/**"]))
+    many = slices.render(record, CURRENT, [f"new{i}/**" for i in range(8)])
+    assert any(line.endswith("never uncommitted changes in your workspace.") and "new4 and 3 more." in line
+               for line in many)
+
+
+def test_a_capped_record_rendered_without_its_listing_says_its_rows_in_scope_may_be_missing():
+    """P01-12 (register E293): rendered from the record alone (no listing of its source tree), a scope over a record
+    whose directory cap cut rows gives a lower bound and says a directory it does not show is not absent; a hint cap
+    is named the same way. Neither is said of an unrestricted scope's rows, whose count is the record's own."""
+    files: dict[str, Any] = {f"d{i:03d}/{n}": b"" for i in range(205) for n in ("a.txt", "b.txt")}
+    files |= {"z_task/only.txt": b""} | {f"g{i:03d}/vendor/v.c": b"" for i in range(205)}
+    record = sealed(files)
+    out = slices.render(record, CURRENT, ["z_task/**"])
+    assert any("1 of at least 1 shown" in line for line in out)
+    assert any("may be missing" in line and "not listed for this rendering" in line and "not absent" in line
+               for line in out)
+    assert any("its cap left out" in line for line in out if line.startswith("generated and vendor hints"))
+    assert not any("may be missing" in line for line in slices.render(record, CURRENT, []))
+
+
 def test_the_slice_carries_the_pinned_freshness_with_its_qualification():
     record = sealed(SAMPLE)
     stale = {"status": "STALE", "reasons": ["path_listing", "metadata"], "reason": "path_listing",
@@ -273,9 +306,10 @@ def test_a_built_pack_pins_the_slice_it_rendered(tmp_path: Path, monkeypatch: py
 def test_a_pinned_slice_regenerates_identically_whatever_happened_to_the_map(tmp_path: Path,
                                                                              monkeypatch: pytest.MonkeyPatch,
                                                                              damage: str):
-    """PR #143 review, M1: regenerating a pack is the launch guard, so the pinned slice must come back unchanged. A
-    gone or damaged artifact is rebuilt in memory from the pinned commit (and accepted only if it seals to the pinned
-    sha); when that cannot be done, the slice the entry pinned is used."""
+    """PR #143 review, M1: regenerating a pack is the launch guard, so the pinned slice must come back unchanged. The
+    slice body the entry pinned is used as it is, and nothing is rebuilt or read for it (register E293). An entry
+    pinned without a body is rendered from its artifact, or, gone or damaged, from the record rebuilt in memory from
+    the pinned commit (accepted only if it seals to the pinned sha)."""
     import shutil
 
     entry, built, artifact = pinned_entry(tmp_path, monkeypatch, ["src/**"])
@@ -289,14 +323,36 @@ def test_a_pinned_slice_regenerates_identically_whatever_happened_to_the_map(tmp
     rebuilt: list[str] = []
     real = slices.structural.generate
     monkeypatch.setattr(slices.structural, "generate", lambda tree, r: rebuilt.append("x") or real(tree, r))
-    assert slices.lines(tmp_path, tmp_path, entry, ["src/**"]) == built and rebuilt  # rebuilt from the commit
+    assert slices.lines(tmp_path, tmp_path, entry, ["src/**"]) == built and not rebuilt  # the pinned body
+    assert slices.lines(tmp_path, tmp_path, entry, ["another/**"]) == built  # whatever the scope says now
+    bodiless = {k: v for k, v in entry.items() if k != "slice"}  # an entry pinned before bodies were kept
+    assert slices.lines(tmp_path, tmp_path, bodiless, ["src/**"]) == built and rebuilt  # rebuilt from the commit
     assert damaged == sorted((p.relative_to(tmp_path).as_posix(), p.read_bytes()) for p in tmp_path.rglob("*")
                              if p.is_file())  # regeneration only reads: nothing is written back
-    # The commit's objects are gone: the pinned slice.
-    assert slices.lines(tmp_path, tmp_path, {**entry, "source_revision": "0" * 40}, ["src/**"]) == built
-    # Another generator rebuilds other bytes: never accepted as the pinned map; the pinned slice again.
+    # The commit's objects are gone, or another generator rebuilds other bytes (never accepted as the pinned map), and
+    # the entry pinned no body (or a damaged one): one labelled line that names the recovery, never a raise.
     monkeypatch.setattr(slices.structural, "generate", lambda tree, r: {**real(tree, r), "extra": 1})
-    assert slices.lines(tmp_path, tmp_path, entry, ["src/**"]) == built
-    # Damaged pinned slice and no map: one labelled line that names the recovery, never a raise.
-    gone = slices.lines(tmp_path, tmp_path, {**entry, "source_revision": "0" * 40, "slice": [1, 2]}, ["src/**"])
-    assert "no longer readable" in gone[-1] and "aew map generate --commit" in gone[-1]
+    for gone_entry in ({**bodiless, "source_revision": "0" * 40}, bodiless, {**entry, "source_revision": "0" * 40,
+                                                                             "slice": [1, 2]}):
+        gone = slices.lines(tmp_path, tmp_path, gone_entry, ["src/**"])
+        assert "no longer readable" in gone[-1] and "aew map generate --commit" in gone[-1]
+
+
+def test_the_v01_maps_profile_names_the_built_bounds_and_only_tests_that_exist():
+    """Register E293: the profile states the slice's bounds and the evidence class as the code has them, and every
+    test it cites as holding an obligation exists, so the page cannot drift from what holds it."""
+    from aew.maps import EVIDENCE_CLASS, service
+
+    root = Path(__file__).resolve().parents[2]
+    raw = (root / "docs" / "implementation" / "maps-v01-profile.md").read_text(encoding="utf-8")
+    text = " ".join(raw.split())  # a rewrapped line never fails a fact (the review of #567, n4)
+    for fact in (f"`ROWS` ({slices.ROWS})", f"`HINTS` ({slices.HINTS})",
+                 f"`SLICE_MAX_BYTES` ({slices.SLICE_MAX_BYTES // 1024} KiB)", f"within {slices.SCOPE_LISTING_S:g} s",
+                 f"within {service.REFRESH_S:g} s (`service.REFRESH_S`)",
+                 f"at most {structural.CAPS['directories']} rows", f"`{EVIDENCE_CLASS}`",
+                 "The byte budget is nominal, not a hard ceiling", "`rev-parse` and `config --list`"):
+        assert " ".join(fact.split()) in text, fact
+    defined = {m for f in (root / "tests").rglob("test_*.py")
+               for m in re.findall(r"^def (test_\w+)", f.read_text(encoding="utf-8"), re.M)}
+    cited = set(re.findall(r"`(test_\w+)`", text))
+    assert cited and cited - defined == set()

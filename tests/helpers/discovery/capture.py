@@ -13,6 +13,8 @@ never enters a key: messages carry temporary paths and live ids, and keys are co
 **Activation and output.** On with ``--discovery-out PATH``, or beside a lane report (``--lane-report X.json`` writes
 ``X.discovery.json``), so every CI lane job reports with no change to its command. Under xdist each worker hands its
 findings to the controller (``workeroutput``), which merges them and writes the one file at the end of the session.
+For a worker that fails to hand off, that file also retains the last test report and the local child's exit status
+when xdist can supply them. An absent handoff is still a capture error even after all tests reported.
 """
 
 from __future__ import annotations
@@ -185,6 +187,8 @@ class CapturePlugin:
         self.cli_outputs = cli_outputs
         self.tool_output = tool_output
         self._undo: list[tuple[Any, str, Any]] = []
+        self._last_reports: dict[str, dict[str, str]] = {}
+        self._worker_losses: list[tuple[Any, bool, dict[str, str] | None]] = []
 
     # ------------------------------------------------------------------ hooks into the product and subprocess
 
@@ -252,6 +256,12 @@ class CapturePlugin:
     def pytest_sessionstart(self, session: pytest.Session) -> None:
         self.install()
 
+    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
+        node = getattr(report, "node", None)  # added by xdist to reports received by the controller
+        worker = getattr(getattr(node, "gateway", None), "id", None)
+        if isinstance(worker, str):
+            self._last_reports[worker] = {"test": report.nodeid, "phase": report.when, "outcome": report.outcome}
+
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
         """Merge a worker's findings. A worker that went down with an error, or without handing any findings on, lost
@@ -261,12 +271,30 @@ class CapturePlugin:
             if error is not None or theirs is None:
                 name = getattr(node, "gateway", None)
                 worker = getattr(name, "id", None) or "a worker"
+                # xdist may emit its own synthetic crash report after this hook. It is not a report from the worker.
+                self._worker_losses.append((node, theirs is not None, self._last_reports.get(worker)))
                 self.recorder.error(RuntimeError(f"{worker} went down without its findings"
                                                  + (f" ({str(error)[:120]})" if error is not None else "")))
             if theirs:
                 self.recorder.merge(theirs)
         except Exception as exc:  # noqa: BLE001  (observing only)
             self.recorder.error(exc)
+
+    def _loss_details(self) -> list[dict[str, Any]]:
+        # xdist has already torn down its gateways by our trylast hook. Poll the original child handle rather
+        # than guessing from the remote error string or looking up a PID that may already have been reused.
+        rows = []
+        for node, handed_off, last_report in self._worker_losses:
+            gateway = getattr(node, "gateway", None)
+            worker = getattr(gateway, "id", None)
+            process = getattr(getattr(gateway, "_io", None), "popen", None)
+            try:
+                exit_code = process.poll() if process is not None else None
+            except OSError:
+                exit_code = None
+            rows.append({"worker": worker, "pid": getattr(process, "pid", None), "exit_code": exit_code,
+                         "findings_received": handed_off, "last_report": last_report})
+        return rows
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
@@ -282,6 +310,8 @@ class CapturePlugin:
             data = {"schema": SCHEMA, "platform": sys.platform, "lane": self.config.getoption("aew_lane", None),
                     "shard": self.config.getoption("aew_shard", None),
                     "wall_s": round(time.perf_counter() - self.started, 2), **self.recorder.as_dict()}
+            if self._worker_losses:
+                data["worker_losses"] = self._loss_details()
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         except Exception as exc:  # noqa: BLE001  (observing only: see the docstring)

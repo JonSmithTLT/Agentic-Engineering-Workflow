@@ -42,6 +42,7 @@ from aew.engine.dispatch import Blocker, GuardRegistration, checked
 from aew.engine.guards import require
 from aew.errors import IllegalTransition, NotFound, OperatorAuthorizationRequired, UsageError, ValidationFailed
 from aew.harness.contract import EXPECT_REV
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.schemas import validate
 from aew.util import safe_dump_yaml, sha256_bytes, utc_now
@@ -152,6 +153,8 @@ def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any])
     if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
         return [f"aew work redispatch {wid} --launch {rev} --fields -"]
     card = (inv.get("card") or {}).get("id")
+    if inv.get("scope") == E.ASSESSMENT_SCOPE:  # a plan assessor is dispatched again by its own entrypoint (E160)
+        return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew plan assess {wid} --card {card} --launch {rev}"]
     pick = f"--card {card}" if card else f"--role {inv['role']}"
     scope = " --scope integration" if inv.get("scope") == "integration" else ""
     return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew invoke create {wid} {pick}{scope} --launch {rev}"]

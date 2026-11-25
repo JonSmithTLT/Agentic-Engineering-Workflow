@@ -70,7 +70,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
 | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
-| 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+| 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
 | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 
@@ -1321,18 +1321,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E91/`, oldest first (`python tools/register.py show E91`).*
 
-### E92
-
-**Work:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them. The proxy is CONNECT only, so CS-4 refuses them and names the https form
-
-**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25); its target is the designer's ruling of 2026-10-25 on #280's targets
-
-**When:** **Internal alpha**, now that CS-4 has merged (#283, `da547f9a`): V-01's matrix names no step that needs plain `http://`, and the refusal already names the https form
-
-**Notes:** It restricts nothing the threat model asks for (the designer)
-
-*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
-
 ### E93
 
 **Work:** Serve a stored OpenCode (Zen) key to the contained Lead: map each `opencode/*` model's catalogue address from a pinned copy of the catalogue, never the live one. Each such model carries its own address, so a provider-level override does not catch it, and AEW cannot see the live catalogue
@@ -1416,18 +1404,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
 *Later notes: `notes.d/E99/`, oldest first (`python tools/register.py show E99`).*
-
-### E100
-
-**Work:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An unset mode still runs weaker, and its label's `weaker_because` names the platform
-
-**Source:** The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
-
-**When:** **Internal alpha**, before the Windows trial: a build row, ready for a builder now that CS-4 has merged (#283, `da547f9a`)
-
-**Notes:** Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
-
-*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
 ### E101
 
@@ -2136,18 +2112,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
-
-### E182
-
-**Work:** The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned, and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:** `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator's decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy. **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and the Lead's tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository, and lanes. Done when CI fails on an unowned row, a line citation or a count above N
-
-**Source:** The operator's decision of 2026-11-06, the build board's generator placed now (design workspace `7040a55`): "Now, PR 1 first"; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the Lead's audit of the hand-kept board, 2026-11-06
-
-**When:** **Now.** Item 39 of the Now list. PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use
-
-**Notes:** Filed by the Lead. Until PR 2 renders the board, it stays hand-kept, citing register row ids, never line numbers
-
-*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
 
 ### E183
 
@@ -4165,6 +4129,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E364/`, oldest first (`python tools/register.py show E364`).*
 
+### E365
+
+**Work:** The systems generator's later work, split from E182 when it closed: derive `serves` from each system's `serves_claims` and `as_built` against the requirements trace, and compute lanes from `touches` and `depends_on` (per slice, once each slice carries its own `touches` and `after`, as the board's format owes)
+
+**Source:** E182's **Later** clause; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops it from SYS-48's finish line
+
+**When:** **Unscheduled**, once the requirements trace is in the repository
+
+**Notes:** Filed by the Lead. SYS-48 owns it, outside its finish line
+
+*Later notes: `notes.d/E365/`, oldest first (`python tools/register.py show E365`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -4827,6 +4803,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
 
+### E92
+
+**Was:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them and naming the https form
+
+**Closed:** 2026-11-25
+
+**By:** #584 (`727b74f0`), on #582 (`7c788df8`): the egress proxy forwards an absolute-form `http://` request through CONNECT's host check on the URL's host:port, one request per connection, with every other shape refused before any DNS (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). The quick check of #584's m7, no 100 Continue to an HTTP/1.0 client, is fixed by #587. Tests in `tests/unit/test_egress_proxy.py`
+
+*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
+
+### E100
+
+**Was:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform; an unset mode still runs weaker, its `weaker_because` naming the platform
+
+**Closed:** 2026-11-25
+
+**By:** #578 (`752dc7f4`): an explicit `required` refuses the launch off Linux with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform`, on every launch route (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). `tests/unit/test_containment_required_everywhere.py`
+
+*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
+
 ### E112
 
 **Was:** G3 addendum 7's ruling 1, before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it, with ruling 2's register of weaker contexts, the launch census (DV-2, DV-5) and DV-4
@@ -5036,6 +5032,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #384 (`039a281e`), with its review's follow-ons on #391. What it does not reach is in this row's note
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
+
+### E182
+
+**Was:** The systems generator: `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane (PR 1), the rendered board (PR 2), and state read from the code with the N = 12 check (PR 3). Its later work, `serves` once the requirements trace is in the repository and lanes, is E365
+
+**Closed:** 2026-11-25
+
+**By:** #346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`): its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator's decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops serves and lanes from SYS-48's finish line and files them as E365
+
+*Later notes: `notes.d/E182/`, oldest first (`python tools/register.py show E182`).*
 
 ### E191
 

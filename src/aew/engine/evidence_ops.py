@@ -64,6 +64,7 @@ from aew.errors import (
     ValidationFailed,
     WorkspaceMutated,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
@@ -697,8 +698,7 @@ class Gates:
         its own.
         """
         inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
-        plan = unit.get("plan") or {}
-        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        accepted = E.plan_binding(unit.get("plan"))
         problems: dict[str, Any] = {}
         if ev.get("plan_revision") != accepted:
             problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}
@@ -960,8 +960,8 @@ class EvidenceCommands:
     def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
         """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,
         with an allow-listed environment. Under ``required`` a sandbox that cannot be established refuses, naming
-        ``allow_weaker``; where the policy allows a weaker run (and on Windows) it runs labelled so, and is entered in
-        the register of weaker contexts while it runs (G3 addendum 7)."""
+        ``allow_weaker``, on every platform (E100); where the policy allows a weaker run (and, with the mode unset, off
+        Linux) it runs labelled so, and is entered in the register of weaker contexts while it runs (G3 addendum 7)."""
         import secrets
         import shutil
         import time
@@ -979,6 +979,9 @@ class EvidenceCommands:
                 scratch=str(run_dir / "scratch"), bridge_dir=None, policy=policy, project=str(self.k.repo_root))
         except ContainmentUnavailable as exc:
             shutil.rmtree(run_dir, ignore_errors=True)  # nothing ran in it
+            if exc.details.get("reason") == containment.UNSUPPORTED_PLATFORM:  # its own refusal and remedy, once
+                raise ContainmentUnavailable(f"`aew check run` runs the check in a sandbox. Nothing ran: {exc.message}",
+                                             **exc.details) from None
             raise ContainmentUnavailable(
                 f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
                 f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None
@@ -1086,7 +1089,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(), "seq": seq,
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
@@ -1143,14 +1146,14 @@ class EvidenceCommands:
             state = s.state
             inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}",
                                                     archived=self.archive.archived_credential)
-            E.check_submission(inv["role"], kind, submitted)
+            E.check_submission(inv["role"], kind, submitted, scope=inv.get("scope"))
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).
             workspace, ws_id, _ = self.invocations.invocation_workspace(state, inv)
             # A worker commits no control state: a mutated workspace is a signal the next Lead commit records as an
             # anomaly (M4-E E5b; plan v3 §2.4). The refusal is unchanged.
             with DO.signalled(self.k.aew_root, inv["work_unit"]):
-                if inv.get("scope") in {"observation", "parent"}:
+                if inv.get("scope") in E.OBSERVER_SCOPES:
                     self.nm.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
                 elif inv["role"] in SHARED_WORKSPACE_READERS:
                     self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # M3-B6
@@ -1162,7 +1165,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **(submitted.get("producer") or {}), **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(),
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "method": submitted.get("method") or {"capability": kind, "provider": "harness-role"},
                 "claim": submitted.get("claim") or kind.replace("_", " "),
                 "evidence": submitted.get("evidence") or [],
@@ -1203,6 +1206,16 @@ class EvidenceCommands:
                 meta["result"] = "pass" if review.get("disposition") == "pass" else "fail"
             elif kind == "verification":
                 meta.update(self._verification_binding(state, inv_id, inv, submitted))
+            elif kind == E.PLAN_ASSESSMENT:  # E160 slice 2: only a plan assessor's (``check_submission``)
+                if E.plan_binding(unit.get("plan")) != inv.get("plan_revision"):
+                    raise GateUnsatisfied(
+                        f"{work_id}'s accepted plan changed after {inv_id} was dispatched to assess revision "
+                        f"{(inv.get('plan_revision') or {}).get('revision')}, so this assessment would be of a plan "
+                        f"that is no longer the accepted one; a new assessor is dispatched with "
+                        f"`aew plan assess {work_id} --launch {EXPECT_REV}`", reason="plan_revision_changed",
+                        dispatched_for=inv.get("plan_revision"), accepted=E.plan_binding(unit.get("plan")))
+                meta.update(E.plan_assessment_binding(work_id, unit.get("plan"), submitted))
+                meta["evaluated_snapshot"] = inv["snapshot"]  # the dispatch snapshot: the source it observed
             elif kind in E.EXECUTE_KINDS:
                 meta.update(self.nm.execute_record_binding(state, inv_id, inv, kind, submitted))
             else:

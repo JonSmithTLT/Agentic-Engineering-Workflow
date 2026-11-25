@@ -1,0 +1,18 @@
+schema: aew/role/v1
+role: plan_assessor
+display_name: Plan Assessor
+version: 1
+extends: reviewer
+purpose: Independent assessment of a unit's accepted plan revision before the work it plans is dispatched (E160).
+use_when:
+  - a Ticket's or a Story's or Epic's accepted plan needs an independent assessment before the work it plans starts
+responsibilities:
+  - trace every requirement and acceptance criterion of the unit, and of its ancestors, to the plan, and mark each covered, partial or missing
+  - challenge the plan's load-bearing premises, the ones it declares and the factual premises the request states, against the codebase and the evidence
+  - name consequential reliance the plan omits, and the dependency, integration, feasibility and evidence obligations it leaves without an owner
+  - give every gap and every premise that fails a finding of its own, with a severity
+skills: []
+required_capabilities: [exact_code_search]
+restrict:
+  operations: [submit.plan_assessment, context.read]
+outputs: [plan_assessment]

@@ -168,7 +168,8 @@ NOTE_MAX, NEXT_MAX = 8000, 500
 # The dispatch entrypoints a decision can be asked of: every one that is not covered by another (tested to equal
 # aew.engine.dispatch.ENTRYPOINTS without the covered ones).
 EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.mutating", "invoke.create.non_mutating",
-                      "invoke.create.parent", "work.assign", "work.dispatch", "work.redispatch"))
+                      "invoke.create.parent", "plan.assess", "work.assign", "work.dispatch",
+                      "work.redispatch"))
 
 
 # ---------------------------------------------------------------------------------------------- the catalog
@@ -354,7 +355,7 @@ TOOLS: dict[str, Tool] = _catalog(
     Tool(
         "message_send", STAGE, MECHANICAL,
         "Record a coordination message for an active worker, not a scope change. "
-        "Delivery not built; turn-end refused.",
+        "Deliver at the next step or on relaunch. Turn-end refused.",
         _obj({"expect_rev": EXPECT_REV,
               "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},

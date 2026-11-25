@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import bounds
@@ -135,6 +136,78 @@ def pytest_runtest_protocol():
         for gate in ("collect", "protocol", "call"):
             (proj / f"{gate}-release").touch()
         proc.wait(timeout=60)
+
+
+@pytest.mark.skipif(IS_WINDOWS, reason="a graceful interrupt is SIGINT to the session's process group, POSIX's")
+@pytest.mark.parametrize("observed", ["at the signal", "at the collection"])
+def test_a_start_up_interrupted_gracefully_is_typed_before_tests_from_its_real_bundle(tmp_path, monkeypatch, observed):
+    """A real xdist session interrupted while its workers collect ends gracefully: it writes ``session-finished`` and a
+    complete lane report with no results. Its record that no test started, taken at the signal from the live workers'
+    receipts or at the collection from the finished session's files, is accepted as its complete death evidence from
+    its published bundle (register E3; review of #579, M1)."""
+    import signal
+
+    import worker_evidence
+    from evidence_files import CANCEL_COLLECTION, WARNING
+
+    root = tmp_path / "lane"
+    root.mkdir()
+    module = """
+import os
+import bounds
+from pathlib import Path
+
+Path(f"collect-ready-{os.getpid()}").touch()
+bounds.bounded_wait("inner.worker_phase", Path("never").exists, seconds=60)
+
+def test_never_reached():
+    pass
+"""
+    proj = project(tmp_path, module)
+    proc = subprocess.Popen([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "2",
+                             "--max-worker-restart", "0", "--session-deadline", "120", "--hang-dir", str(root),
+                             f"--lane-report={root / 'report.json'}", "--running-tests-dir", str(root), "tests"],
+                            cwd=proj, env=env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True)
+    try:
+        bounds.bounded_wait("test.inner_started", lambda: len(list(proj.glob("collect-ready-*"))) == 2,
+                            gone=lambda: proc.poll() is not None)
+        rows = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
+        assert sorted(row["phase"] for row in rows) == ["collecting", "collecting"], rows
+        os.killpg(proc.pid, signal.SIGINT)
+        if observed == "at the signal":
+            assert worker_evidence.before_tests(root, time.time(), rows, observer=WARNING)
+        assert proc.wait(timeout=60) != 0
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=60)
+    [session] = (root / "autopsy").glob("session-*")
+    assert (session / "session-finished.txt").is_file()
+    report = (root / "report.json").read_text(encoding="utf-8")
+    assert '"complete": true' in report and '"results": {}' in report
+    if observed == "at the collection":
+        # The workers are gone, so their live phases are indeterminate: the finished session's files decide.
+        late = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
+        assert worker_evidence.before_tests(root, time.time(), late, observer=CANCEL_COLLECTION)
+
+    tools = Path(lanes.__file__).resolve().parents[2] / "tools" / "ci"
+    monkeypatch.syspath_prepend(str(tools))
+    import check_evidence_run
+    import stage_evidence
+
+    name = "integration 1/1 (ubuntu-latest)"
+    (root / "runner-resources-job.txt").write_text(f'{{"job_label": "{name}"}}\n', encoding="utf-8")
+    monkeypatch.setattr(stage_evidence, "scan", lambda *args: {})
+    published = tmp_path / "published"
+    published.mkdir()
+    stage_evidence.stage(root, published / "evidence-real-attempt-1")
+    stage_evidence.stage(root, published / "lane-report-evidence-real-attempt-1", reports_only=True)
+    reason = {"kind": "superseded", "run": 1, "head_sha": "0" * 40, "event": "pull_request"}
+    job = {"id": 1, "name": name, "conclusion": "cancelled", "steps": [], "cancel_reason": reason}
+    rows = []
+    assert check_evidence_run.check_jobs(published, [job], score_rows=rows) == []
+    assert rows[0]["kind"] == "superseded (by run 1) before tests" and rows[0]["A2"] == "yes"
 
 
 def test_an_unwritable_phase_receipt_preserves_a_real_xdist_test_failure(tmp_path):

@@ -432,6 +432,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **`mode: allow_weaker`:** the run launches labelled `workdir_separation_only`, with the reason recorded.
 - **`writable`** adds directories every contained run may write (for example a shared build cache), recorded on each run's label. A root that equals, contains or lies under what containment protects is refused at launch, naming what it would expose and what to list instead (independent review, 2026-10-04): the project's `.aew`, the git directories, the runs directory, this run's bridge directory, the Python environment, a masked secret, or the workspaces root (contains only). For the shared temporary directory, containing it, or reaching one of AEW's own `aew-*` directories in it, is refused; a directory such as `/tmp/cache` is not. **`hide`** masks further secrets.
 - **Other platforms:** Windows always runs labelled `workdir_separation_only` (below). On any other platform without containment, an explicit `mode: required` refuses the launch and `doctor` reports FAIL; without it, runs launch labelled weaker.
+  *Amended for Windows by the amendment of 2026-11-25 below (register E100): an explicit `mode: required` refuses the launch on Windows too; without it, Windows runs launch labelled `workdir_separation_only`.*
 
 ### Labels
 - **Every run record's `containment` is an object** with:
@@ -1676,6 +1677,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **Where the policy allows it, and on Windows, the general command runs labelled not contained**, through the same
   `label.json` writer as `aew opencode` (in a `lead-<UTC>-<hex>` run directory), which now names the session's own
   process by pid and start id. Off Linux, `aew opencode`'s label says why it is weaker.
+  *Amended by the amendment of 2026-11-25 (E100): an explicit `required` refuses on Windows too.*
 - **The register of weaker contexts** (ruling 2; `aew.harness.weaker_register`): per host and per operator account,
   in AEW's host state beside the capability register, outside every project and every sandbox's writable binds. Every
   agent context whose label is weaker than a self-tested sandbox on a network of its own is entered there by its
@@ -2182,3 +2184,85 @@ the rest of AEW's import path, such as an editable install's source tree, was no
   - a writable bind nested inside an import-path directory other than the interpreter's prefix;
   - third-party modules linked from elsewhere by symbolic links;
   - paths on case-insensitive filesystems, which are compared by their spelling.
+
+## Amendment 2026-11-25 — an explicit `required` refuses on every platform (register E100)
+
+The designer's decision of 2026-10-25, unfrozen by the operator on 2026-11-25 as SYS-02's slice. It replaces the
+Windows sentence of "Other platforms" in the M4-B amendment above, under which Windows always ran labelled
+`workdir_separation_only`, even under an explicit `containment.mode: required`, and the amendment of 2026-11-01's
+"and on Windows" for the general Lead command, which ran labelled not contained there under an explicit `required`
+too.
+
+- **An explicit `required` on a host that cannot meet it refuses the launch, on every platform, Windows included.**
+  `containment.mode` returns `required` wherever the policy says so; off Linux, `containment.establish` then refuses
+  with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform` and the `platform`, saying the launch is refused, that
+  the platform has no filesystem containment, and what works instead: run on Linux, or set
+  `containment.mode: allow_weaker`. Nothing of the run starts: the refusal comes before any register entry, network,
+  check process or harness, so a worker run ends `launch_failed` as any refused launch does, and `aew check run`
+  removes its run directory.
+- **Every launch route reads the same mode:** worker runs (the supervisor's `contain_launch`), checks (`aew check run`
+  and a run's checks), checks-mode validation, and both Lead routes. Off Linux, the Lead's refusal (`aew lead session`,
+  and `aew opencode`) gives the same reason and remedy, and does not send the operator to `aew opencode`, which is not
+  contained there either. `aew doctor`'s `containment` line is FAIL under it.
+- **An unset mode still runs weaker** off Linux, labelled `workdir_separation_only`, its `weaker_because` naming the
+  platform; so does an explicit `allow_weaker`. On Linux nothing changes: `required` is the default.
+- **Not changed:** Windows still has no containment (the M3 model above, and the label decided for it in the
+  amendment of 2026-10-11, register F48), and `aew doctor` still prints it UNQUALIFIED.
+- **Tests:** `tests/unit/test_containment_required_everywhere.py`, with the platform simulated so that both sides run
+  on every CI platform.
+
+## Amendment 2026-11-25 — plain `http://` through the egress proxy (register E92)
+
+CS-4's hand-off, addendum 1, §4: the designer accepted the refusal of plain `http://` as a limit for CS-4 on the
+condition that E92 was filed, and the operator unfroze E92 on 2026-11-25 as SYS-02's slice. It replaces two sentences
+above: "`CONNECT` only" in CS-3b's "Egress" section, and the CS-4 "The network" section's "A plain `http://` request is
+refused, and the refusal names the `https://` form to ask for instead". `HTTP_PROXY` still names the egress proxy for
+the Lead only; a worker's sandbox still has none.
+
+- **The same host check as `CONNECT`.** A plain request whose target is an absolute `http://` URL takes `CONNECT`'s
+  path on the URL's `host:port` (port 80 when it names none): the policy (the allowlist before any DNS), one resolve,
+  R-6 and the policy's address rule on every answer, a connect to the literal address, and R-6 again on the connected
+  peer (`egress.EgressProxy._open_upstream`, shared). A refused target is recorded as a `CONNECT`'s is.
+- **Refused before any DNS** (`egress.EgressProxy._plain`, `egress._framing`), each with its own reason: an
+  origin-form or `*` target (`origin_form`), another scheme (`scheme`), a userinfo part (`userinfo`), a fragment or a
+  control character in the URL, a malformed authority (`bad_request`); a missing, repeated or different `Host`
+  (`host_mismatch`); a field line that is not a field, or a value with a control character other than HTAB
+  (`bad_header`); `Upgrade` (501, `upgrade`); an `Expect` other than `100-continue` (417, `expectation`); a body framed
+  more than one way, a `Content-Length` repeated or of other than ASCII digits, a `Transfer-Encoding` other than
+  exactly `chunked` or on HTTP/1.0 (`bad_framing`); a body over `egress.MAX_BODY` (413, `body_too_large`).
+- **What is forwarded:** an origin-form target with the client's own HTTP version (so an HTTP/1.0 client is never sent
+  a chunked response), `Host` set to the URL's authority, every hop-by-hop header (`http1.HOP_BY_HOP`), every
+  `Proxy-*` header, `Connection` and what it names left out, the framing as checked, and `Connection: close`. The proxy
+  answers `100-continue` itself. A chunked body's size lines and trailer fields are held to the field-value rule, as the
+  relay's are (`bad_chunk`, `bad_header`); a trailer leaves out the fields the head leaves out, and one carrying
+  `Host`, `Content-Length` or `Transfer-Encoding` is refused (`bad_header`; RFC 9110 §6.5.1). A refused line is never
+  sent. The proxy holds no credential and adds none.
+- **One request per connection.** The answer says `Connection: close` (`http1.close_head`), and whatever the client
+  sends after its one request, pipelined or after the answer, is read and dropped, never forwarded.
+- **Bounds** (implementation bounds, not policy): the request head as before (`MAX_HEADER`, `HEADER_TIMEOUT`), a pause
+  in the body (`BODY_TIMEOUT`), the response head (`MAX_RESPONSE_HEAD`), and a response with no byte either way for
+  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that stops taking the request
+  (it closes, or takes nothing for `connect_timeout`) has an answer it already sent relayed, where one can still be
+  read (a connection reset can discard it, as Windows does); with none, the client is answered 502 (`upstream_closed`),
+  and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the request may have arrived
+  and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
+- **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
+  which the relay and the egress proxy both import.
+- **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a
+  header value with a control character other than HTAB, 400 `bad_header` (RFC 9110 §5.5); a chunk-size line whose
+  size or extension holds one, 400 `bad_chunk`, and a trailer line that is not such a field, 400 `bad_header`
+  (RFC 9112 §7.1.1, §7.1.2); and a `Content-Length` of other than ASCII digits, 400 `bad_framing`.
+- **Not claimed:** plain `http://` is plaintext beyond the host, as it is without the proxy; the proxy reads no
+  response content.
+- **Tests:** `tests/unit/test_egress_proxy.py`, the plain-http section: the forwarding, R-6 for every host route as
+  `CONNECT` meets it, the allowlist, the connected peer, each refusal, one request per connection, the chunked body's
+  rule and bound, and each time bound.
+
+## Amendment 2026-11-25 — `100-continue` to HTTP/1.1 only (the quick check of #584, m7)
+
+It narrows "The proxy answers `100-continue` itself" in the E92 amendment above: the egress proxy answers a plain
+request's `Expect: 100-continue` only on HTTP/1.1. An HTTP/1.0 client is sent no 1xx response (RFC 9110 §15.2), and its
+expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read and forwarded without one. Test:
+`test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
+The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
+only; the review of #587, m1): `tests/unit/test_provider_relay.py`.

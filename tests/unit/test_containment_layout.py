@@ -182,6 +182,19 @@ def test_each_lead_start_binds_only_its_own_skills_copy_read_only(tmp_path, fake
     assert not Path(at.folder).is_relative_to(os.path.realpath(engine.aew_root / lead.LEAD_DIR))
 
 
+def test_a_skills_folder_that_is_a_link_to_a_directory_is_never_bound(tmp_path, fake_bwrap):
+    """E161 (#565's quick check, m3): the layout binds a skills copy only where ``skills_dir`` is a directory of its
+    own; a link to one is never followed, so nothing is bound and nothing protected in its name."""
+    target = tmp_path / "elsewhere"
+    (target / "engineering-planning").mkdir(parents=True)
+    link = tmp_path / "skills-link"
+    link.symlink_to(target, target_is_directory=True)
+    layout = lead_layout(tmp_path, skills_dir=str(link))
+    real = os.path.realpath(target)
+    assert layout.skills_binds == ()
+    assert real not in layout.readonly and real not in layout.protected
+
+
 def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):
     """Ruling R-2 (CS-4 outcome 2): the Lead writes its working tree, which holds the store; `.aew` and the git
     metadata are re-bound read-only after it, so the role-bind check passes by its second clause (CB-07)."""
@@ -435,13 +448,14 @@ def test_policy_mode_defaults_to_required_where_containment_exists():
     if C.supported():
         assert C.mode(None) == C.mode({}) == "required"
         assert C.mode({"containment": {"mode": "allow_weaker"}}) == "allow_weaker"
-    else:  # nothing can be required where nothing can contain: the label says what runs have
-        assert C.mode({"containment": {"mode": "required"}}) == "allow_weaker"
+    else:  # unset, nothing is required where nothing can contain; an explicit `required` refuses (E100)
+        assert C.mode(None) == C.mode({}) == "allow_weaker"
+        assert C.mode({"containment": {"mode": "required"}}) == "required"
 
 
 def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(monkeypatch, tmp_path):
     """M4-B review: on a POSIX platform other than Linux, `required` is honoured by refusing, never silently weakened;
-    Windows stays labelled workdir_separation_only (ADR-0009)."""
+    and on Windows too since E100 (``test_containment_required_everywhere``)."""
     monkeypatch.setattr(C, "supported", lambda: False)
     required = {"containment": {"mode": "required"}}
     args = dict(role="implementer", scope="ticket", workspace=str(tmp_path), run_dir=tmp_path / "run",
@@ -453,7 +467,9 @@ def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(mon
     assert C.establish(**args, policy=None)[0] is None
     assert C.doctor(required, "note")[0] == "FAIL"
     monkeypatch.setattr(C.sys, "platform", "win32")
-    assert C.mode(required) == "allow_weaker" and C.establish(**args, policy=required)[0] is None
+    assert C.mode(required) == "required" and C.mode(None) == "allow_weaker"
+    with pytest.raises(ContainmentUnavailable, match=r"this platform \(win32\)"):
+        C.establish(**args, policy=required)
 
 
 def test_a_tree_that_requires_a_layout_refuses_to_spawn_without_one():

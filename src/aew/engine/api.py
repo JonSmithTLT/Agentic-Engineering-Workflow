@@ -1086,6 +1086,12 @@ class Engine:
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         return self._harness.invocation_whoami(invocation_token=invocation_token)
 
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        return self._harness.map_read_basis(invocation_token=invocation_token)
+
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        return self._harness.work_scope_paths(work_id)
+
     def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
         return self._evidence.invoke_cancel(token=token, expect_rev=expect_rev, invocation=invocation, reason=reason)
 
@@ -1206,6 +1212,19 @@ class Engine:
     def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
         self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
 
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool]) -> dict[str, Any]:
+        return self._coordination.message_next_post(credential=credential, run=run, permit=permit)
+
+    def message_confirm_delivery(self, *, credential: str, run: str, ids: list[str],
+                                 via: str, transport_ref: str) -> None:
+        self._coordination.message_confirm_delivery(credential=credential, run=run, ids=ids, via=via,
+                                                    transport_ref=transport_ref)
+
+    def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str],
+                            lock_timeout: float | None = None) -> None:
+        self._coordination.message_final_check(credential=credential, run=run, admitted=admitted,
+                                               lock_timeout=lock_timeout)
+
     def message_list(self, work_id: str) -> dict[str, Any]:
         return self._coordination.message_list(work_id)
 
@@ -1243,6 +1262,11 @@ class Engine:
         return self._nm.plan_adopt(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id,
                                    source=source, reason=reason, review=review, verify=verify,
                                    no_assurance=no_assurance)
+
+    def plan_assess(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+        return self._nm.plan_assess(token=token, expect_rev=expect_rev, work_id=work_id, card=card,
+                                    execution_profile=execution_profile, launch=launch)
 
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)

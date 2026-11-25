@@ -11,17 +11,32 @@ evidence stays byte-identical.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from aew import profile
 from aew.errors import IntegrityError, PermissionDenied, ValidationFailed
-from aew.schemas import validate
+from aew.schemas import validate, validate_property
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text
+
+# E160 (SYS-43; the designer's decision of 2026-11-06 on planner staffing and the plan assessor, Q2): the plan
+# assessment, a record kind of the reviewer archetype that challenges an accepted plan revision: a requirement trace,
+# the premises challenged, and findings. The schema holds its producer to this archetype. Only an invocation the
+# assessor entrypoint (`aew plan assess`, E160 slice 2) dispatched submits one: its scope is ``ASSESSMENT_SCOPE``, and
+# a reviewer dispatched to review a change never may (``kinds_for``). The entrypoint's default card is
+# ``ASSESSOR_CARD``; any card of the archetype that lists the kind among its outputs may be named instead.
+PLAN_ASSESSMENT = "plan_assessment"
+ASSESSOR_ARCHETYPE = "reviewer"
+ASSESSMENT_SCOPE = "plan_assessment"
+ASSESSOR_CARD = "plan_assessor"
+# The invocation scopes that hold their own read-only observation of the source (ADR-0008): a non-mutating Ticket's
+# executor and its reviewers and verifiers, a parent's acceptance roles, and a plan assessor.
+OBSERVER_SCOPES = frozenset({"observation", "parent", ASSESSMENT_SCOPE})
 
 ROLE_KINDS = {
     "implementer": {"implementation_report"},
-    "reviewer": {"review"},
+    "reviewer": {"review", PLAN_ASSESSMENT},  # a plan assessment only at its own scope (``kinds_for``)
     "verifier": {"verification"},
     # Non-mutating execute records (ADR-0008): each read-only archetype writes exactly one kind.
     "investigator": {"discovery_record"},
@@ -32,7 +47,8 @@ ROLE_KINDS = {
 EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
 EXECUTE_KINDS = frozenset(EXECUTE_KIND.values())
 SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check",
-         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
+         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
+         PLAN_ASSESSMENT: "assess"}
 
 # Fields the engine owns. A submission containing any of them is rejected rather than
 # silently overwritten, so forged bindings or control decisions are visible failures.
@@ -56,7 +72,15 @@ SUBMITTER_KEYS = {
     "discovery_record": {"claim", "result", "producer", "method", "evidence", "discovery"},
     "research_record": {"claim", "result", "producer", "method", "evidence", "research"},
     "plan_proposal": {"claim", "result", "producer", "method", "evidence", "proposal"},
+    # No ``result``: the engine derives it from the findings, as it does a review's.
+    PLAN_ASSESSMENT: {"claim", "producer", "method", "evidence", "assessment"},
 }
+
+
+def plan_binding(plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The ``plan_revision`` binding every record carries: the unit's accepted plan revision and its sha256, or None
+    while it has none. The one owner of its shape: records are bound with it and compared against it."""
+    return {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None
 
 
 def evidence_dir(aew_root: Path, work_id: str) -> Path:
@@ -130,9 +154,39 @@ def one_of(values: dict[str, str | None]) -> str:
     return ", ".join(words[:-1]) + " or " + words[-1]
 
 
-def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
+def kinds_for(role: str, scope: str | None) -> set[str]:
+    """The evidence kinds an invocation of ``role`` dispatched at ``scope`` may submit: its archetype's, where a plan
+    assessment belongs to the assessor's scope alone. So a plan-assessor dispatch submits a plan assessment and nothing
+    else, and a reviewer of a change never submits one (E160 slice 2). The one owner of what a run is expected to
+    produce, too (``harness_ops.expected_kinds``)."""
+    kinds = set(ROLE_KINDS.get(role, set()))
+    if role == ASSESSOR_ARCHETYPE and scope == ASSESSMENT_SCOPE:
+        return kinds & {PLAN_ASSESSMENT}
+    return kinds - {PLAN_ASSESSMENT}
+
+
+def submit_operations(operations: Iterable[str], role: str, scope: str | None) -> list[str]:
+    """``operations`` less each ``submit.<kind>`` an invocation of ``role`` at ``scope`` may not use (``kinds_for``):
+    what a pack lists and a run's bridge offers, so a reviewer of a change is never told it may submit a plan
+    assessment (#581 review, F1). The grant itself is the archetype's; this narrows only what is offered."""
+    allowed = kinds_for(role, scope)
+    return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
+
+
+def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None) -> None:
     if kind not in ROLE_KINDS.get(role, set()):
         raise PermissionDenied(f"role {role} may not submit {kind} evidence", role=role, kind=kind)
+    if kind not in kinds_for(role, scope):
+        if kind == PLAN_ASSESSMENT:
+            raise PermissionDenied(
+                "only an invocation dispatched to assess the accepted plan may submit a plan assessment; this one was "
+                f"dispatched at scope {scope!r}. A plan assessor is dispatched with the plan assess command, never as "
+                "a reviewer of a change",
+                reason="not_a_plan_assessment_dispatch", role=role, kind=kind, scope=scope)
+        raise PermissionDenied(
+            f"this invocation was dispatched to assess the accepted plan: it submits a {PLAN_ASSESSMENT} "
+            f"(`aew submit --kind {PLAN_ASSESSMENT} --file <file>`), not {kind} evidence",
+            reason="plan_assessment_dispatch", role=role, kind=kind, scope=scope)
     control = sorted(CONTROL_FIELDS & meta.keys())
     if control:
         raise PermissionDenied(
@@ -154,3 +208,54 @@ def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
                                fields=[f"producer.{k}" for k in owned])
     if set(producer) - DECLARED_PRODUCER:
         raise ValidationFailed("producer may only declare model, provider and harness")
+
+
+def plan_assessment_binding(work_id: str, plan: dict[str, Any] | None, submitted: dict[str, Any]) -> dict[str, Any]:
+    """The engine's part of a plan assessment of ``work_id``, whose accepted plan is ``plan``: the submitted
+    ``assessment`` checked, its blocker and major findings made required, and the ``result`` they give. The
+    ``plan_revision`` binding is the one every record carries (``plan_binding``), set by the submission path; the schema
+    refuses a plan assessment without it. E160 slice 2's submission path calls this, as it does the review checks.
+
+    Refused, with ``reason`` in the details: no accepted plan (``no_accepted_plan``: there is nothing to assess), a
+    finding id used twice (``duplicate_finding``), and a gap left silent (``gap_without_finding``): a requirement the
+    plan covers only in part or not at all, or a premise that fails, must cite a finding of this assessment."""
+    if plan_binding(plan) is None:
+        raise ValidationFailed(f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the "
+                               "accepted revision, so accept a plan first", reason="no_accepted_plan", work_id=work_id)
+    raw = submitted.get("assessment")
+    # ``required`` defaults as a review's does, before the shape is checked; findings that are missing or not a list
+    # reach the schema as they are, and are refused there.
+    if isinstance(raw, dict) and isinstance(raw.get("findings"), list):
+        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f for f in raw["findings"]]}
+    validate_property("evidence", "assessment", raw, source="submission")
+    assessment = cast(dict[str, Any], raw)  # the schema requires an object; it is already a fresh copy
+    ids = [f["id"] for f in assessment["findings"]]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        raise ValidationFailed(f"finding id(s) {', '.join(duplicates)} are used more than once; give each finding its "
+                               "own id", reason="duplicate_finding", findings=duplicates)
+    silent = [f"requirement {t['requirement']!r} ({t['status']})" for t in assessment["requirement_trace"]
+              if t["status"] != "covered" and t.get("finding") not in ids]
+    silent += [f"premise {p['premise']!r} (fails)" for p in assessment["premises_challenged"]
+               if p["outcome"] == "fails" and p.get("finding") not in ids]
+    if silent:
+        raise ValidationFailed(f"a gap needs a finding: {'; '.join(silent)} cite(s) no finding of this assessment; "
+                               "name the finding's id in its `finding` field", reason="gap_without_finding",
+                               gaps=silent)
+    for f in assessment["findings"]:
+        if f["severity"] in {"blocker", "major"}:
+            f["required"] = True
+    failed = any(f["required"] for f in assessment["findings"])
+    return {"assessment": assessment, "result": "fail" if failed else "pass"}
+
+
+def counting_assessment(records: list[dict[str, Any]], plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The plan assessment that counts for the accepted revision ``plan``: of the sealed records ``scan`` returns, the
+    first one recorded that is bound to that revision and its sha256, or None. One counts per revision: a later
+    assessment of the same revision is history and never replaces it (no assessor shopping), and one bound to another
+    revision, or to the same number with another digest, never counts for this one."""
+    binding = plan_binding(plan)
+    if binding is None:
+        return None
+    bound = [r for r in records if r.get("kind") == PLAN_ASSESSMENT and r.get("plan_revision") == binding]
+    return min(bound, key=lambda r: r.get("seq", 0), default=None)

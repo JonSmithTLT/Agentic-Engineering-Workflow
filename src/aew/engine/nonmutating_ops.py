@@ -21,6 +21,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew import roles
 from aew.engine import approval, transitions
 from aew.engine import freshness as F
 from aew.engine import gates as G
@@ -49,6 +50,7 @@ from aew.errors import (
     InputStale,
     NotFound,
     ObservationMutated,
+    PermissionDenied,
     UsageError,
     ValidationFailed,
 )
@@ -390,7 +392,10 @@ class NonMutating:
                 DispatchGuard("dependencies", self._g_dependencies),
                 DispatchGuard("card.executor", self._g_card),
                 DispatchGuard("cap.non_mutating", self._g_cap),
-                DispatchGuard("nm.invoke", self._g_invoke)]
+                DispatchGuard("nm.invoke", self._g_invoke),
+                DispatchGuard("assess.unit", self._g_assess_unit),
+                DispatchGuard("assess.card", self._g_assess_card),
+                DispatchGuard("assess.once", self._g_assess_once)]
 
     def _g_kind(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         return checked(lambda: self._require_nm_ticket(state["work"][work_id], work_id,
@@ -465,6 +470,92 @@ class NonMutating:
             facts.update(card=chosen, archetype=chosen.archetype, record=record,
                          evidence=self.inputs.find_unit_evidence(work_id, record["id"]))
         return checked(check)
+
+    # ---- the plan assessor's entrypoint (E160 slice 2; SYS-43): `aew plan assess <W>`, for a Ticket or a parent
+
+    def _g_assess_unit(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """An assessment challenges the unit's accepted plan revision: a live unit with one. The assessor observes the
+        authoritative source as it is now, and is pinned to the revision it assesses."""
+        def check() -> None:
+            unit = state["work"][work_id]
+            if unit["state"] in H.TERMINAL:
+                raise IllegalTransition(f"{work_id} is {unit['state']}; there is no plan left to assess",
+                                        reason="unit_terminal", work_id=work_id)
+            binding = E.plan_binding(unit.get("plan"))
+            if binding is None:
+                raise IllegalTransition(
+                    f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the accepted "
+                    f"revision, so propose a plan (`aew plan propose {work_id} --file <file> --assurance none "
+                    f"{EXPECT_REV}`, or with its review and verification cards) and accept it (`aew plan accept "
+                    f"{work_id} --revision <n> {EXPECT_REV}`) first",
+                    reason="no_accepted_plan", work_id=work_id)
+            facts["plan_revision"] = binding
+            facts["base"] = self.k.authoritative_commit()
+        return checked(check)
+
+    def _g_assess_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """The assessor's card: the one named, else the built-in assessor card. It must be of the assessor archetype and
+        list the plan assessment among its outputs, so a code reviewer's card is never dispatched to assess a plan."""
+        def check() -> None:
+            card = self.roles.role_catalog().get(facts.get("card_id") or E.ASSESSOR_CARD)
+            if card.archetype != E.ASSESSOR_ARCHETYPE or E.PLAN_ASSESSMENT not in (card.meta.get("outputs") or []):
+                raise UsageError(
+                    f"card {card.id} ({card.archetype}) does not assess plans: an assessor's card extends "
+                    f"{E.ASSESSOR_ARCHETYPE} and lists {E.PLAN_ASSESSMENT} among its outputs; omit --card for the "
+                    f"built-in {E.ASSESSOR_CARD}", reason="card_not_an_assessor", card=card.id)
+            if facts.get("role") and facts["role"] != card.archetype:
+                raise UsageError(f"card {card.id} extends {card.archetype}, not {facts['role']}")
+            forbidden = {f["card"] for f in (state["work"][work_id].get("role_plan") or {}).get("forbidden", [])}
+            if card.id in forbidden:
+                raise PermissionDenied(f"{card.id} is forbidden for {work_id}", card=card.id)
+            roles.validate_card(card.meta, source=card.path)  # re-checked at dispatch, as every card is
+            facts.update(card=card, archetype=card.archetype)
+        return checked(check)
+
+    def _g_assess_once(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """No assessor shopping: once an assessment of the accepted revision counts (``evidence.counting_assessment``:
+        the first one recorded, ruling 4 as built), no further assessor of that revision is dispatched. A new plan
+        revision is assessed afresh."""
+        def check() -> None:
+            records, problems = E.scan(self.k.aew_root, work_id)
+            if problems:
+                raise GateUnsatisfied(f"{work_id}'s evidence has integrity problems, so whether its plan revision "
+                                      "is already assessed cannot be read", problems=problems)
+            plan = state["work"][work_id].get("plan")
+            counted = E.counting_assessment(records, plan)
+            if counted is not None:
+                raise IllegalTransition(
+                    f"{work_id}'s accepted plan v{plan['accepted']} is already assessed: {counted['id']} "
+                    f"({counted['result']}) is the assessment that counts for it, and a later one never replaces it. "
+                    "To have the plan assessed again, revise it: propose a new revision (`aew plan propose "
+                    f"{work_id} --file <file> --reason <reason> --assurance none {EXPECT_REV}`, or with its review "
+                    "and verification cards) and accept it; a new revision is assessed afresh",
+                    reason="plan_revision_assessed", work_id=work_id, counting=counted["id"],
+                    result=counted["result"], plan_revision=E.plan_binding(plan))
+        return checked(check)
+
+    def plan_assess(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+        """Dispatch a plan assessor of ``work_id``'s accepted plan revision (a Ticket, Story or Epic): a reviewer
+        invocation at scope ``plan_assessment`` with its own read-only observation of the authoritative source, pinned
+        to the revision it assesses. Its legality is the ``plan.assess`` entrypoint's guards (E160 slice 2)."""
+        with self.k.lead_txn(token, expect_rev, "plan.assess") as ctx:
+            ctx.execution_request, ctx.launch_request = execution_profile, launch
+            state = ctx.state
+            decision = self.dispatch.decide_in(ctx, "plan.assess", work_id, card_id=card)
+            facts = decision.facts
+            chosen = facts["card"]
+            inv_id, inv_token, snapshot = self.dispatch_observer(ctx, work_id, card=chosen, scope=E.ASSESSMENT_SCOPE,
+                                                                 commit=facts["base"])
+            state["invocations"][inv_id]["plan_revision"] = facts["plan_revision"]
+            ctx.summary = (f"{inv_id} ({chosen.id}) dispatched to assess {work_id}'s plan "
+                           f"v{facts['plan_revision']['revision']}")
+        inv = ctx.state["invocations"][inv_id]
+        return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,
+                "role_card": chosen.id, "scope": E.ASSESSMENT_SCOPE, "plan_revision": facts["plan_revision"],
+                "evaluated_snapshot": snapshot, "observation": inv["observation"],
+                "pack": slices.for_lead(inv.get("pack")), "dispatch": decision.to_dict(),
+                "revision": ctx.session.committed_revision}
 
     def _start_attempt(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], facts: dict[str, Any],
                        commit: str) -> tuple[str, str]:
@@ -612,7 +703,7 @@ class NonMutating:
             if inv.get("status") != "active" or execution.get("ended"):
                 problems["executor"] = f"the attempt's executor is {inv.get('status')}; its records are history"
             plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
+            if ev.get("plan_revision") != E.plan_binding(plan):
                 problems["plan"] = {"record": ev.get("plan_revision"), "accepted": plan.get("accepted")}
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != (inv.get("snapshot") or {}).get(
                     "relevant_inputs_fingerprint"):
@@ -882,7 +973,7 @@ class NonMutating:
                 raise GateUnsatisfied(f"{evidence_id} evaluated {ev.get('subject')}, not {work_id}'s current record "
                                       f"{record.get('id')} (stale)")
             plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != ({"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None):
+            if ev.get("plan_revision") != E.plan_binding(plan):
                 raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
             self.require_observation_intact(ev["producer"]["invocation"], inv)
             if kind == "review":

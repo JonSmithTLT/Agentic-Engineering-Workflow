@@ -18,25 +18,35 @@ from tempfile import NamedTemporaryFile
 
 import proctree
 from evidence_files import (
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
     FRAME,
     FRESH_S,
     INTERRUPTION_REASONS,
+    LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
     OUTSIDE_CALL,
+    OUTSIDE_TREE,
     PREFIX,
     SAMPLING_GAP,
     SAMPLING_POLICY,
     WARNING,
     WATCHDOG_HEADER,
+    WORKER_COUNT,
+    WORKER_PHASES,
     cancel_outcome,
     entries,
+    finished_without_tests,
     is_link,
     open_observation,
     policy_samples,
     pytest_phase,
+    receipt_phases,
     sampling_failures,
     test_frame,
+    warning_outcome,
 )
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
@@ -83,7 +93,7 @@ def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
 
 def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
     """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
-    from session_deadline import WORKER_PHASES, session_directories
+    from session_deadline import session_directories
 
     rows = []
     for directory in session_directories(root):
@@ -131,6 +141,83 @@ def workers(root: Path):
                                  controller=worker == "controller")
             except (OSError, ValueError):
                 continue
+
+
+def lane_reports(root: Path) -> list[dict]:
+    """The lane reports under the lane root and one level below it, where the lane commands write them."""
+    reports = []
+    for path in (*root.glob("*.json"), *root.glob("*/*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
+            reports.append(doc)
+    return reports
+
+
+def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: str) -> bool:
+    """Record that the lane was cancelled before any of its sessions started a test, and return whether it was.
+
+    A lane cancelled while its sessions start has no worker in a test and no running name, so it has no worker
+    observation to give (register E3: superseded CI run 45590135545, ten lanes 37 to 96 s into their pytest step). The
+    claim rests on positive observations only: no registered process is in a test (no in-flight watchdog header) and no
+    running name is left; and each session either still starts, as an xdist session (whose controller runs no test)
+    each of whose registered workers' lifecycle receipts, read from its live writer (``phases``, from
+    ``phases_at_signal``), stands before its first test, or has finished, gracefully interrupted, with its own files and
+    the lane report showing that no test began (``evidence_files.finished_without_tests``; review of #579, M1). Anything
+    else writes nothing, so the missing evidence stays a defect.
+
+    No session at all is recorded as such: pytest had not registered one under the lane root. That reading of an
+    absence rests on every lane command passing ``--session-deadline`` with its hang directory the lane root or one
+    level under it, where ``session_directories`` looks; ``test_every_lane_command_keeps_its_sessions_where_the_
+    collection_looks`` pins it (review of #579, m3)."""
+    from session_deadline import FINISHED, marker, session_directories
+    from watchdog import running_names
+
+    if next(workers(root), None) is not None or running_names(root):
+        return False
+    rows = phases or []
+    sessions = []
+    for directory in session_directories(root):
+        session = {"session": directory.relative_to(root).as_posix()}
+        if marker(directory, FINISHED).is_file():
+            files = {}
+            for path in directory.iterdir():
+                with contextlib.suppress(OSError, UnicodeError):
+                    files[path.name] = path.read_text(encoding="utf-8")
+            if finished_without_tests(files, lane_reports(root)) is not None:
+                return False
+            listed = []
+            for name in sorted(files):
+                if re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
+                    worker = name.removesuffix("-pid.txt")
+                    pid, start = int(files[name]), int(files[worker + "-start.txt"])
+                    phase = receipt_phases(files[f"worker-{pid}-{start}-lifecycle.txt"])[-1]
+                    listed.append({"worker": worker, "pid": pid, "start": start, "phase": phase})
+            sessions.append({**session, "finished": True, "workers": listed})
+            continue
+        try:
+            count = int(marker(directory, WORKER_COUNT).read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return False  # not shown to be an xdist session: a serial controller runs its tests itself
+        registered = sorted(path.stem.removesuffix("-pid") for path in directory.glob("worker-gw*-pid.txt"))
+        mine = [row for row in rows if row.get("session") == directory.name]
+        if (len(registered) > count or sorted(row.get("worker") for row in mine) != registered
+                or any(row.get("phase") not in BEFORE_EXECUTION for row in mine)):
+            return False
+        sessions.append({**session, "worker_count": count,
+                         "workers": [{key: row.get(key) for key in ("worker", "pid", "start", "phase")}
+                                     for row in mine]})
+    row = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": observer, "at": at, "sessions": sessions}
+    try:
+        with (root / BEFORE_TESTS).open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, ensure_ascii=True, sort_keys=True) + "\n")
+    except FileExistsError:
+        pass  # the first observation stands: the supervisor's, at the signal, before its collection's
+    except OSError:
+        return False
+    return True
 
 
 def ring_path(root: Path, worker: Worker) -> Path:
@@ -300,10 +387,14 @@ def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
     return json.dumps(row, ensure_ascii=True) + "\n"
 
 
-def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None) -> None:
-    """Name why the cancellation collection kept no test stack for this worker, at this observation (register E3)."""
-    path = ring_path(root, worker).with_name(cancel_outcome(worker.pid, worker.start))
-    _marker(root, path, None, _row(worker, CANCEL_COLLECTION, failures, outcome=outcome, collect_at=collect_at))
+OUTCOME_FILES = {CANCEL_COLLECTION: cancel_outcome, WARNING: warning_outcome}
+
+
+def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None,
+             reason: str) -> None:
+    """Name why an interruption's capture kept no test stack for this worker, at this observation (register E3)."""
+    path = ring_path(root, worker).with_name(OUTCOME_FILES[reason](worker.pid, worker.start))
+    _marker(root, path, None, _row(worker, reason, failures, outcome=outcome, collect_at=collect_at))
 
 
 def sampling_policy(root: Path) -> dict:
@@ -322,9 +413,12 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
     # queued workers are skipped; four concurrent readers bound the runner load.
     until = time.monotonic() + CAPTURE_BUDGET_S
     retried = reason in INTERRUPTION_REASONS
-    # The cancellation collection names every worker it kept no test stack for (register E3).
-    typed = reason == CANCEL_COLLECTION
-    policy = sampling_policy(root) if typed else {}
+    # Both interruptions name every worker they kept no test stack for (register E3): the cancellation collection in an
+    # outcome the evidence check reads, the Linux pre-signal warning in one that only says why, so its next sighting
+    # names a straddle, an exit or a dump without the test's frame (#561's quick check).
+    typed = reason in OUTCOME_FILES
+    collection = reason == CANCEL_COLLECTION
+    policy = sampling_policy(root) if collection else {}
 
     def sample(worker: Worker):
         failures: list[str] = []
@@ -333,7 +427,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
 
         def outcome(name: str, of: Worker) -> None:
             if typed:
-                _outcome(root, of, name, failures, collect_at)
+                _outcome(root, of, name, failures, collect_at, reason)
 
         def live(candidate: Worker) -> bool:
             return candidate in workers(root) and proctree.same(candidate.identity)
@@ -343,7 +437,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             # the test the worker is in now, and records its observation for that test, so a stack of one test never
             # answers an observation of another (register E3, the Windows cancel plant of 2026-11-24).
             nonlocal current
-            if not typed or not proctree.same(worker.identity):
+            if not collection or not proctree.same(worker.identity):
                 return False
             fresh = next((w for w in workers(root) if w.identity == worker.identity and w != current), None)
             if fresh is None:
@@ -354,7 +448,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             return True
 
         if worker.identity not in allowed:
-            outcome(SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED, worker)
+            outcome((SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED) if collection else OUTSIDE_TREE, worker)
             return None
         if not proctree.same(worker.identity):
             outcome("exited before its attach", worker)
@@ -392,7 +486,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-                if typed and pytest_phase(result[1]) in OUTSIDE_CALL:
+                if collection and pytest_phase(result[1]) in OUTSIDE_CALL:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
         # The observation stands for the test of the retained dump, or the one first observed when none is kept.
         held = last[3] if last is not None else worker
@@ -407,6 +501,8 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
             attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
             _marker(root, path, path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt"),
                     f"py-spy sampled support frames for {worker.node}{attempts}\n")
+            if last is not None:
+                outcome(pytest_phase(last[2][1]), held)
         elif typed and not matched and last is not None:
             # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
             # the call without the test's frame stays a live-stack defect.

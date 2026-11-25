@@ -180,7 +180,12 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     cancel = jobs["cancel-plant"]
     assert cancel["if"] == ("github.event_name != 'pull_request' && "
                             "(!inputs.probe_origin || inputs.probe_role == 'target')")
-    assert cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    # The start-up control's target alone runs the start-up plant (register E3; #579, M1).
+    assert cancel["strategy"]["matrix"]["kind"] == ("${{ inputs.probe_scenario == 'start' && "
+                                                    "fromJSON('[\"cancel-start\"]') || fromJSON('[\"cancel\"]') }}")
+    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", "start"]
+    scenarios = proof[True]["workflow_dispatch"]["inputs"]["probe_scenario"]["options"]
+    assert scenarios == ["manual", "supersede", "start"]
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
@@ -627,6 +632,45 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
         assert observation["status"] == "observed" and observation["registered_workers"] == []
 
 
+def test_a_windows_supervisor_interrupted_by_sigint_still_collects_and_ends_its_lanes_job(tmp_path, monkeypatch):
+    import signal
+
+    lane = _load("lane_step")
+    handlers = {}
+    ended = []
+    collected = []
+
+    def send_signal(signum):
+        # Windows' Popen.send_signal: SIGTERM and the console events only.
+        raise ValueError(f"Unsupported signal: {signum}")
+
+    class Job:
+        def __init__(self, name):
+            self.name = name
+
+        def members(self, **_kw):
+            return []
+
+        def pids(self):
+            return []
+
+        def terminate(self, code):
+            ended.append(code)
+
+    process = SimpleNamespace(poll=lambda: None, send_signal=send_signal, kill=lambda: None, wait=lambda **_kw: None)
+    monkeypatch.setattr(lane, "os", SimpleNamespace(name="nt", environ={}, getpid=lambda: 99))
+    monkeypatch.setattr(lane.proctree, "Job", Job, raising=False)
+    monkeypatch.setattr(lane.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(lane.signal, "signal", lambda signum, handler: handlers.setdefault(signum, handler))
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda *_args, **_kw: process)
+    monkeypatch.setattr(lane, "snapshot", lambda *_a, **_kw: handlers[signal.SIGINT](signal.SIGINT, None))
+    monkeypatch.setattr(lane, "host_reading", lambda: None)
+    monkeypatch.setattr(lane.worker_evidence, "Monitor", lambda *_: SimpleNamespace(poll=lambda **_kw: None))
+    monkeypatch.setattr(lane, "collect", collected.append)
+    assert lane.supervise(tmp_path, "bash", tmp_path / "command.sh", lane.time.time() + 60) == 130
+    assert collected == [tmp_path] and ended == [130]
+
+
 def test_a_phase_read_can_outlast_its_budget_without_delaying_cleanup(tmp_path, monkeypatch):
     import threading
 
@@ -766,9 +810,39 @@ def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypat
     assert failures[-1] == "sudo -n: timed out"
 
 
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_worker_attach_survives_invalid_utf8_in_py_spy_output(monkeypatch, exit_code):
+    import subprocess
+    import sys
+
+    lane = _load("lane_step")
+    run = subprocess.run
+    monkeypatch.setattr(lane.shutil, "which", lambda _name: sys.executable)
+    dump = b"Thread 7 (active)\n    m\xc3\xa9thod (tests/test_sample.py:10)\n"
+    if not exit_code:
+        dump += b"    damaged\xf9\n"
+    error = b"private argument\xf9 (os error 13)\n" if exit_code else b""
+    script = (f"import sys; sys.stdout.buffer.write({dump!r}); sys.stderr.buffer.write({error!r}); "
+              f"sys.exit({exit_code})")
+
+    def py_spy(_argv, **kwargs):
+        return run([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(lane.subprocess, "run", py_spy)
+    failures = []
+    observed = lane.attach(42, allow_sudo=False, failures=failures)
+    if exit_code:
+        assert observed is None
+        assert failures == ["unelevated: exit 1 (os error 13)"]
+    else:
+        assert observed == ("unelevated", "Thread 7 (active)\n    méthod (tests/test_sample.py:10)\n    damaged�\n")
+        assert failures == []
+
+
 @pytest.mark.parametrize("fault", [None, "unavailable", "prior-unavailable", "changed-node", "support-frame",
-                                   "empty-then-error", "support-then-error", "partial-first", "lost-record"])
+                                   "empty-then-error", "support-then-error", "partial-first", "lost-record", "exited"])
 def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, monkeypatch, fault):
+    import json
     import signal
     import sys
     import threading
@@ -813,6 +887,9 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
             if fault == "changed-node":
                 (tmp_path / f"hang-gw0-{pid}.txt").write_text(
                     guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_next")))
+            if fault == "exited":
+                participants.pop(pid)
+                return None
             if fault == "support-frame" or (fault == "partial-first" and calls[pid] == 1):
                 return "unelevated", "    support (tests/helpers/support.py:4)"
         return "unelevated", "    test_case (tests/test_a.py:4)"
@@ -848,10 +925,21 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
     if fault == "lost-record":
         assert failures == ["Linux: cancellation did not observe all four registered workers alive"]
     elif fault in {"unavailable", "prior-unavailable", "changed-node", "support-frame",
-                  "empty-then-error", "support-then-error"}:
-        assert failures == ["Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]"]
+                  "empty-then-error", "support-then-error", "exited"}:
+        # The warning's typed outcome says why, bound to this observation (register E3, #561's quick check).
+        why = {"changed-node": " (straddled a test change)", "exited": " (exited during its attach)",
+               "support-frame": " (indeterminate)", "support-then-error": " (indeterminate)"}.get(fault, "")
+        assert failures == [f"Linux: no pre-signal test stack for worker 101 at tests/test_a.py::test_case[101]{why}"]
+        outcome = tmp_path / "snapshots/101-202-warning-outcome.txt"
+        assert outcome.exists() == bool(why)
+        if why:
+            row = json.loads(outcome.read_text())
+            observed = json.loads((session / "interrupted-101.txt").read_text())
+            assert row["reason"] == "warning" and row["collect_at"] == observed["collect_at"]
+            assert row["node"] == "tests/test_a.py::test_case[101]" and "private argv" not in outcome.read_text()
     else:
         assert failures == []
+        assert not list((tmp_path / "snapshots").glob("*-warning-outcome.txt"))
     if fault == "partial-first":
         assert calls == {101: 2, 102: 1, 103: 1, 104: 1}
     assert first.exists() == (fault in {"unavailable", "prior-unavailable", "empty-then-error"})
@@ -888,8 +976,29 @@ PHASE_DUMPS = {
 LIVE_STACK = "evidence defect: [live-stack] cancelled-{}.txt: live worker lacks its interruption stack"
 
 
+LANE_JOB = "aew-session-1-evidence-lane-report-Windows-integration-7"
+
+
+def _session_job(monkeypatch, session, members, *, recorded=LANE_JOB):
+    """The Windows session job, as the OS reports it: ``members`` are the identities it holds now."""
+    opened = []
+
+    class Job:
+        @classmethod
+        def open(cls, name):
+            opened.append(name)
+            return SimpleNamespace(holds=lambda identity: name == LANE_JOB and identity in members,
+                                   close=lambda: None)
+
+    (session / "session-job.txt").write_text(recorded + "\n")
+    monkeypatch.setenv(session_deadline.JOB_NAMESPACE_ENV, LANE_JOB)
+    monkeypatch.setattr(session_deadline.proctree, "IS_WINDOWS", True)
+    monkeypatch.setattr(session_deadline.proctree, "Job", Job, raising=False)
+    return opened
+
+
 def _cancel_collection(tmp_path, monkeypatch, attach, *, pids=(101,), sampled=(101,), controller=False,
-                       policy=None, periodic=None, same=None):
+                       policy=None, periodic=None, same=None, job=None):
     """Run the Windows cancellation collection (lane_step --collect) on Linux, through a fake attach."""
     import json
 
@@ -897,6 +1006,8 @@ def _cancel_collection(tmp_path, monkeypatch, attach, *, pids=(101,), sampled=(1
     ev = lane.worker_evidence
     session = tmp_path / "autopsy/session-test"
     session.mkdir(parents=True)
+    if job is not None:
+        job(monkeypatch, session)
     guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
     live = {(pid, pid * 2) for pid in pids}
     for index, pid in enumerate(pids):
@@ -1078,6 +1189,35 @@ def test_a_straddle_with_no_dump_of_the_next_test_still_owes_its_stack(tmp_path,
     assert defects == [LIVE_STACK.format(101)]
 
 
+def test_a_straddle_is_never_followed_into_another_workers_test(tmp_path, monkeypatch):
+    # #561's quick check, m5: the follow matches the straddling worker's own identity, never another worker's change.
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+    every = "    test_case (tests/test_a.py:4)\n    test_other (tests/test_a.py:11)\n"
+    straddled = []
+
+    def attach(pid, *, live, failures, **_):
+        if pid == 101 and not straddled:
+            straddled.append(pid)
+            # Worker 101 leaves its test with no next one yet, while worker 102 changes test.
+            (tmp_path / "hang-gw0-101.txt").unlink()
+            (tmp_path / "hang-gw1-102.txt").write_text(
+                guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_other")))
+        return "unelevated", every
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach, pids=(101, 102),
+                                                    sampled=(101, 102))
+    assert straddled == [101] and outcomes[101]["outcome"] == "straddled a test change"
+    assert records[101]["node"] == "tests/test_a.py::test_case[101]" and "straddled_from" not in records[101]
+    assert all(row["pid"] == 101 for row, _ in _entries(tmp_path / "snapshots/101.txt"))
+    assert LIVE_STACK.format(101) in defects
+
+
+def _entries(path):
+    from evidence_files import entries
+
+    return list(entries(path.read_text()))
+
+
 @pytest.mark.parametrize("controller", [False, True])
 def test_a_worker_never_sampled_in_the_ring_gets_a_typed_marker_not_a_demand(tmp_path, monkeypatch, controller):
     import worker_evidence as ev
@@ -1113,6 +1253,54 @@ def test_a_worker_its_lane_samples_but_never_sampled_still_owes_its_stack(tmp_pa
     # A not-sampled claim the lane's recorded policy contradicts is refused.
     _forge(tmp_path, 101, SAMPLING_GAP, "not sampled in the owned tree")
     assert _live_stack(tmp_path) == [LIVE_STACK.format(101)]
+
+
+def _pid_problems(root, pid):
+    check = _load("evidence_problems").evidence_problems
+    return [why for why in check(root, kind="cancel")
+            if ("[live-stack]" in why or "[snapshot" in why) and (f"-{pid}.txt" in why or f"pid {pid}:" in why)]
+
+
+def test_a_worker_too_new_for_its_first_sample_is_attached_when_its_session_job_holds_it(tmp_path, monkeypatch):
+    # Integration 7/14, job 139072636221: a hosted cancel killed the supervisor outright, before its periodic sampler
+    # reached workers born seconds earlier, so the collection refused them as never sampled.
+    calls = []
+
+    def attach(pid, *, live, **_):
+        calls.append(pid)
+        return "unelevated", "    test_case (tests/test_a.py:4)\n"
+
+    def job(monkeypatch, session):
+        _session_job(monkeypatch, session, {(101, 202)})
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach, sampled=(),
+                                                    policy={"periodic": True}, job=job)
+    assert calls == [101] and outcomes == {} and records[101]["admitted_by"] == "session job"
+    # Its cancel-collection sample is in the ring before its observation is recorded.
+    assert records[101]["snapshot_node"] == records[101]["node"] and records[101]["age_s"] >= 0
+    assert _pid_problems(tmp_path, 101) == []
+
+
+@pytest.mark.parametrize("case", ["not a member", "another job's marker", "no lane name"])
+def test_a_never_sampled_worker_outside_its_session_job_is_never_attached(tmp_path, monkeypatch, case):
+    from evidence_files import SAMPLING_GAP
+
+    calls = []
+    opened = []
+
+    def job(monkeypatch, session):
+        # Only the OS's answer for the job the lane step named admits a worker: not a marker naming another job.
+        members = set() if case == "not a member" else {(101, 202)}
+        opened.append(_session_job(monkeypatch, session, members,
+                                   recorded="aew-session-other" if case == "another job's marker" else LANE_JOB))
+        if case == "no lane name":
+            monkeypatch.delenv(session_deadline.JOB_NAMESPACE_ENV)
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, lambda pid, **_: calls.append(pid),
+                                                    sampled=(), policy={"periodic": True}, job=job)
+    assert calls == [] and "admitted_by" not in records[101]
+    assert opened[0] == ([LANE_JOB] if case == "not a member" else [])
+    assert outcomes[101]["outcome"] == SAMPLING_GAP and defects == [LIVE_STACK.format(101)]
 
 
 def test_a_frameless_periodic_dump_is_recorded_as_a_failed_attach_and_not_kept(tmp_path, monkeypatch):

@@ -48,6 +48,9 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
                   "expected_revision", "invoke.create.non_mutating"),
     PrimitiveSpec("invoke.create.parent", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
                   "expected_revision", "invoke.create.parent"),
+    # E160 slice 2: a plan assessor of the accepted revision; its card is the built-in assessor's unless one is named.
+    PrimitiveSpec("plan.assess", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
+                  "expected_revision", "plan.assess"),
     PrimitiveSpec("harness.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
                   "expected_revision", "harness.launch"),
     # Run 1 of a dispatch made with `launch` (M4-E E5a; plan v3 §1, E4, E5, N4): recorded in that dispatch's own commit
@@ -253,6 +256,7 @@ CONTROL_OP_SPECS: dict[str, tuple[ControlOpSpec, ...]] = {
     "migrate.closure": (ControlOpSpec("A", "legacy closure pins recomputed under lock"),),
     "plan.accept": (ControlOpSpec("C", "proposed plan SHA"),),
     "plan.adopt": (ControlOpSpec("A", "named accepted evidence and its pinned SHA"),),
+    "plan.assess": (ControlOpSpec("A", "dispatch decision and the revision's counting assessment"),),
     "plan.propose": (ControlOpSpec("A", "append a plan revision", request_id=True),),
     "plan.reconfirm": (ControlOpSpec("C", "ancestor plan snapshot"),),
     "review.ingest": (ControlOpSpec("A", "named evidence and its current input bindings"),),

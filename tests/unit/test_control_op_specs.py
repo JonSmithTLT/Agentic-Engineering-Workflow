@@ -147,7 +147,7 @@ def _static_entries():
 def test_control_op_specs_match_static_entry_sites():
     entries = _static_entries()
     assert entries == P.CONTROL_OP_SPECS.keys()
-    assert len(entries) == 67
+    assert len(entries) == 68
 
 
 def test_the_request_index_accepts_exactly_the_create_ops_that_declare_request_ids():
@@ -189,7 +189,7 @@ def test_control_op_specs_leave_primitive_lookups_at_the_base():
     # 8a3810b6. Include the keys and every PrimitiveSpec field in the snapshot.
     declared = {name: P.spec_for(name) for name in P.SPECS}
     digest = hashlib.sha256(json.dumps(declared, sort_keys=True).encode()).hexdigest()
-    assert digest == "20f3bba49624608fee53c63c3d09276b9dcb766e8fec1bbd38ac6ed14c192658"
+    assert digest == "d097521a5df405d989970ca6677a6f6b3b1fb59314a417524462b59195599236"
     assert declared == P.SPECS
     for name in (P.CONTROL_OP_SPECS.keys() - declared.keys()) | {"unknown.write"}:
         assert P.spec_for(name) == P.PrimitiveSpec(
@@ -222,7 +222,7 @@ TRANSACTION_HANDLERS = {
     ("migrate_ops", "Migration"): "_upgrade_v2",
     ("nonmutating_ops", "NonMutating"): (
         "work_acknowledge_input work_dispatch work_redispatch evidence_ingest work_accept "
-        "invoke_evidence_unit ingest_evidence_unit_report plan_adopt plan_reconfirm"
+        "invoke_evidence_unit ingest_evidence_unit_report plan_adopt plan_assess plan_reconfirm"
     ),
     ("resume_ops", "Resume"): "checkpoint",
     ("role_ops", "Roles"): "work_staff",

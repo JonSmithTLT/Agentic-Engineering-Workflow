@@ -78,11 +78,13 @@ class PlantQueued(RuntimeError):
     code = "plant-queued"
 
 
-def wait_for_workers(repo, ident):
-    labels = PLANT_LABELS
+def ended(job):
+    lane = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), {})
+    return bool(job.get("conclusion")) or lane.get("status") == "completed"
 
-    def jobs():
-        return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
+
+def wait_for_runners(jobs, labels):
+    """Wait for both plants to have a runner, naming a twin that never got one as runner queueing."""
 
     def runner(job):
         return job is not None and bool(job.get("runner_id") or job.get("conclusion"))
@@ -103,9 +105,55 @@ def wait_for_workers(repo, ident):
                               f"{RUNNER_ALLOCATION_SECONDS} s after dispatch while its twin ran") from exc
         raise
 
-    def ended(job):
-        lane = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), {})
-        return bool(job.get("conclusion")) or lane.get("status") == "completed"
+
+# The start-up control (register E3; review of #579, M1): its plants' workers hold their collection for
+# startup.HOLD_S inside the plants' CANCEL_PLANT_SECONDS deadline, which the twin barrier aligns, so the control
+# cancels once both lanes have run this long, when their workers are collecting whichever moment it lands.
+START_LABELS = tuple(f"plant ({runner}, cancel-start, none)" for runner in ("ubuntu-24.04", "windows-latest"))
+START_READY_SECONDS = 90
+START_WINDOW_SECONDS = 12 * 60
+
+
+def wait_for_start_up(repo, ident):
+    def jobs():
+        return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
+
+    wait_for_runners(jobs, START_LABELS)
+
+    def held():
+        attempt = jobs()
+        named = {job["name"]: job for job in attempt}
+        for label, twin in zip(START_LABELS, reversed(START_LABELS), strict=True):
+            if named.get(label) and ended(named[label]):
+                if not ready_job(twin, attempt, START_READY_SECONDS):
+                    raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not held in its "
+                                      f"start-up before {label}'s lane ended")
+                raise RuntimeError(f"{label}'s lane ended before its start-up cancellation")
+        ready = [ready_job(label, attempt, START_READY_SECONDS) for label in START_LABELS]
+        return ready if all(ready) else None
+
+    return poll(held, START_WINDOW_SECONDS, "both start-up lanes to hold their collection")
+
+
+def wait_for_workers(repo, ident):
+    labels = PLANT_LABELS
+
+    def jobs():
+        return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
+
+    wait_for_runners(jobs, labels)
+
+    def reached_reserve(job):
+        # An ended plant is the twin's queueing only once its lane ran to its trigger reserve. One that ended before
+        # it, such as a checkout or setup failure, falls through to the errors that name it (#564's quick check, m1).
+        steps = {step["name"]: step for step in job.get("steps", [])}
+        opened = steps.get("The job's deadline", {}).get("started_at")
+        if not opened:
+            return False
+        stamp = steps.get("Real planted lane", {}).get("completed_at") or job.get("completed_at")
+        finished = datetime.fromisoformat(stamp).timestamp() if stamp else time.time()
+        reserve = datetime.fromisoformat(opened).timestamp() + CANCEL_PLANT_SECONDS - TRIGGER_RESERVE_SECONDS
+        return finished >= reserve
 
     def live():
         attempt = jobs()
@@ -114,7 +162,8 @@ def wait_for_workers(repo, ident):
         # a target that finished early or lost its execution window (#564 review).
         for label, twin in zip(labels, reversed(labels), strict=True):
             job, other = named.get(label), named.get(twin)
-            if job and ended(job) and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S))):
+            if (job and ended(job) and reached_reserve(job)
+                    and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S)))):
                 raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not live before "
                                   f"{label}'s lane ended")
         active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]
@@ -157,7 +206,7 @@ def verify_pretrigger(directory, attempt, trigger_at):
 
 
 def main(scenario):
-    if scenario not in {"manual", "supersede"}:
+    if scenario not in {"manual", "supersede", "start"}:
         raise ValueError("expected a controlled cancellation scenario")
     repo = os.environ["GITHUB_REPOSITORY"]
     parent = int(os.environ["GITHUB_RUN_ID"])
@@ -181,8 +230,8 @@ def main(scenario):
     target = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-target"), 90, "the target run")
     ident = target["id"]
 
-    targets = wait_for_workers(repo, ident)
-    if scenario == "manual":
+    targets = wait_for_start_up(repo, ident) if scenario == "start" else wait_for_workers(repo, ident)
+    if scenario in {"manual", "start"}:
         # A server timestamp taken before requesting cancellation is a conservative, independent lower bound.
         response = _gh_read("--include", "--silent", f"repos/{repo}/actions/runs/{ident}")
         date = next(line.split(b":", 1)[1].decode().strip() for line in response.splitlines()
@@ -205,12 +254,13 @@ def main(scenario):
             return run
         return None
 
-    ended = poll(finished, 360, "the target's canceled run conclusion")
+    concluded = poll(finished, 360, "the target's canceled run conclusion")
     ids = {job["id"] for job in targets}
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        all_rows = inspect_run(repo, ended, directory=root)
-        verify_pretrigger(root, ended["run_attempt"], trigger_at)
+        all_rows = inspect_run(repo, concluded, directory=root)
+        if scenario != "start":
+            verify_pretrigger(root, concluded["run_attempt"], trigger_at)
     gaps = {r["job"]: r["missing"] for r in all_rows if r["missing"]}
     if gaps:
         raise RuntimeError(f"the completed child record has missing evidence: {gaps}")
@@ -219,16 +269,19 @@ def main(scenario):
         raise RuntimeError("the completed run did not retain both canceled target jobs")
     for row in rows:
         reason = row["cancel_reason"]
-        expected = "manual-or-api" if scenario == "manual" else "superseded"
+        expected = "superseded" if scenario == "supersede" else "manual-or-api"
         if reason["kind"] != expected or (replacements and reason.get("run") != replacements[0]["id"]):
             raise RuntimeError(f"completed-run discovery did not establish the planted {scenario} cancel: {reason}")
-        if scenario == "manual" and reason.get("actor") != "github-actions[bot]":
+        if expected == "manual-or-api" and reason.get("actor") != "github-actions[bot]":
             raise RuntimeError("the hosted manual cancellation actor is missing or incorrect")
         if row["A2"] != "yes" or row["missing"] or not row["artifacts"]:
             raise RuntimeError(f"target {row['job']} lacks verifiable worker evidence: {row['missing']}")
+        if scenario == "start" and not row["kind"].endswith(" before tests"):
+            # The accepted side of the before-tests record, on the hosted path (#579, M1): typed, with no defect.
+            raise RuntimeError(f"start-up target {row['job']} was not typed as cancelled before tests: {row['kind']}")
         print(f"Canceled run {ident}, job {row['job']}, reason {json.dumps(reason)}, A2={row['A2']}, "
               f"verified artifact IDs {row['artifacts']}.")
-    blind = classify(ended, targets[0], [], replacements, run_jobs(repo, ident, ended["run_attempt"]))
+    blind = classify(concluded, targets[0], [], replacements, run_jobs(repo, ident, concluded["run_attempt"]))
     if blind["kind"] != "unresolved":
         raise RuntimeError("disabling the annotation fetch retained attribution")
 

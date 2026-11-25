@@ -188,8 +188,12 @@ def test_the_preregistered_arms_differ_only_in_skill_exposure_and_commit_to_the_
     # The exposed arm applies the shipped card unchanged; the other withholds the skill and nothing else.
     assert exposed == shipped and exposed["card_sha256"] == withheld["card_sha256"] == card.sha256
     assert exposed["applied_sha256"] == hashlib.sha256(json.dumps(card.meta, sort_keys=True).encode()).hexdigest()
-    assert withheld["skills"]["exposed"] == [] and withheld["skills"]["unavailable"] == []
-    assert [d["sha256"] for d in exposed["skills"]["delivered"]] == [skills.entries()[SKILL]["sha256"]]
+    # Withheld means acceptance-verification only: what the card offers (`optional_skills`, E136) is the same in both
+    # arms, so the exposures differ by exactly the skill.
+    assert SKILL not in withheld["skills"]["exposed"] and withheld["skills"]["unavailable"] == []
+    assert set(exposed["skills"]["exposed"]) - set(withheld["skills"]["exposed"]) == {SKILL}
+    assert withheld["skills"]["offered"] == exposed["skills"]["offered"]
+    assert {d["name"]: d["sha256"] for d in exposed["skills"]["delivered"]}[SKILL] == skills.entries()[SKILL]["sha256"]
     assert plan["scoring"]["rubric_sha256"] == grader.expected_sha256()
     assert (EXPERIMENT / plan["scoring"]["hidden_channel"]).is_file()
     probe = hashlib.sha256((EXPERIMENT / "probe.py").read_bytes().replace(b"\r\n", b"\n")).hexdigest()

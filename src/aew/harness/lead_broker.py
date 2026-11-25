@@ -110,10 +110,9 @@ OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability
 # Lead commands whose Lead route is typed only (the surface map's standing rule for a new Lead command: disposition
 # `typed`): a Lead session reaches each through its typed tool, which runs the engine call with the held credential, and
 # never relays the command from its shell or the `cli` escape. The operator may still run it at their own terminal.
-# Each maps to the typed route its refusal names: `plan assess` is `resolve`'s `assess_plan` (E160 slice 2b).
-TYPED_ONLY: dict[frozenset[str], str] = {
-    frozenset({"plan", "assess"}): "the `resolve` tool, choice `assess_plan`, subject `<W>#plan`",
-}
+# Each maps to the primitive its typed route runs; the refusal names the route as the catalog gives it
+# (``lead_text.typed_route``): `plan assess` is `resolve`'s `assess_plan` (E160 slice 2b).
+TYPED_ONLY: dict[frozenset[str], str] = {frozenset({"plan", "assess"}): "plan.assess"}
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
@@ -262,15 +261,17 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
                 "operator's, which only the operator confirms, at their own terminal: run it without that flag "
                 "(as the Lead's), or ask the operator")
     if path in TYPED_ONLY:
-        return (f"`aew {command_name(ns)}` is not run from a Lead session's shell: use its typed route, "
-                f"{TYPED_ONLY[path]}")
+        from aew.surface import lead_text  # local: the catalog's text, read only for this refusal
+
+        route = lead_text.typed_route(TYPED_ONLY[path]) or "its typed tool"
+        return f"`aew {command_name(ns)}` is not run from a Lead session's shell: use its typed route, {route}"
     if any(p <= path for p in OPERATOR_ONLY):
         return (f"`aew {command_name(ns)}` would put a Lead credential, offer secret or dashboard session URL "
                 "into this session; Lead acquisition, handoff, takeover and release, and the dashboard's session, are "
                 "operator actions at the operator's own terminal")
     if hasattr(ns, "token") and path not in LEAD_REACHABLE and path not in NOT_RELAYED:
         return (f"`aew {command_name(ns)}` is not classified as reachable from a Lead session; it is refused "
-                "until it is (lead_broker.LEAD_REACHABLE or OPERATOR_ONLY)")
+                "until it is (lead_broker.LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY)")
     return None
 
 

@@ -49,14 +49,20 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
-def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
-    """The typed route to a plan assessor, from the catalog (E160 slice 2b): the tool that runs ``plan.assess``, the
-    `resolve` choice that runs it and the subject it takes, or None when the profile offers none."""
-    choices = [c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if p == "plan.assess"]
+def typed_route(primitive: str, profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """How a Lead reaches ``primitive`` through a `resolve` choice, from the catalog: the tool, the choice and the
+    subject it takes, or None when the profile offers no such route. Today only the plan assessor's (E160 slice 2b)."""
+    choices = [c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if p == primitive]
+    subject = {"plan.assess": f"<W>{E.PLAN_ITEM}"}.get(primitive)
     for t in contract.exposed(profile, switches):
-        if "plan.assess" in t.expands_to and choices:
-            return f"`{t.name}`, choice `{choices[0]}`, subject `<W>{E.PLAN_ITEM}`"
+        if primitive in t.expands_to and choices and subject:
+            return f"`{t.name}`, choice `{choices[0]}`, subject `{subject}`"
     return None
+
+
+def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
+    """The typed route to a plan assessor (E160 slice 2b), or None when the profile offers none."""
+    return typed_route("plan.assess", profile, switches)
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,

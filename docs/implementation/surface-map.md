@@ -22,6 +22,9 @@ finding 2).
 
   Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. `shell_reachable_mutation`
   reports the grandfathered commands that have no such mechanism today.
+- **A new command a Lead uses, with disposition `typed`:** it takes the Lead credential and joins
+  `lead_broker.TYPED_ONLY`, so a Lead session reaches it through its typed tool only, never from its shell or the
+  `cli` escape (E160 slice 2b: `plan assess`, reached by `resolve`'s `assess_plan`).
 
 **A keep-out claim is proved, never stated** (PR 215 third and fourth reviews). A keep-out claim is a
 `lead_kept_out_by`, an `engine-owned` or `forbidden-to-lead` disposition, or an `internal` home.

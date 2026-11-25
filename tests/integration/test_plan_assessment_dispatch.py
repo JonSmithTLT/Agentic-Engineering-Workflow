@@ -232,34 +232,100 @@ def test_after_an_assessors_run_the_printed_step_ends_it_and_the_assessment_stil
     assert_control_invariants(p)
 
 
-def test_an_assessor_of_a_replaced_revision_is_dispatched_again_by_following_the_refusal(lab, tmp_path):
-    """#581 review, F4: `plan_revision_changed` prints the dispatch of a new assessor, which assesses the new one."""
-    p = lab.project
+def in_lead_session(lab, tmp_path, name, steps):
+    """Run ``steps`` as a Lead session's model would, through its own shell (`aew lead session`), and return the
+    transcript: what each command answered."""
+    script, transcript = tmp_path / f"{name}.json", tmp_path / f"{name}.jsonl"
+    script.write_text(json.dumps(steps), encoding="utf-8")
+    res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
+                  "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    return [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+
+
+def typed_step(p, command, arguments):
+    """A Lead session's model running a printed typed call, ``arguments`` on stdin with its last result's revision."""
+    head, _ = P.split(command, False)
+    return {"do": "aew", "args": shlex.split(head)[1:], "stdin": json.dumps({"expect_rev": p.rev(), **arguments})}
+
+
+def answered(entry):
+    return json.loads(entry["result"]["stdout"])
+
+
+@pytest.fixture
+def lead_lab(tmp_path):
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, lead_session=True)
+    yield lab
+    lab.cleanup()
+
+
+def test_an_assessor_of_a_replaced_revision_is_dispatched_again_from_a_lead_session_as_the_refusal_says(
+        lead_lab, tmp_path):
+    """#586 review, m1: `plan_revision_changed` names the Lead's typed dispatch and its arguments, which a Lead
+    session runs as printed; the new assessor assesses the revision now accepted."""
+    lab, p = lead_lab, lead_lab.project
     wid = create_planned_ticket(p, tmp_path)
     role, _ = assess(p, wid)
     plan_unit(p, tmp_path, wid, "A revised plan.\n", reason="revised")
     res = role.submit(E.PLAN_ASSESSMENT, assessment(), expect_ok=False)
+    error = res.error
+    assert error["details"]["reason"] == "plan_revision_changed"
     lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
-    again = follow(p, *printed(res.error["message"], "plan assess"), env=lab.env)
-    assert again["plan_revision"]["revision"] == 2
-    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+    command, _ = printed(error["message"], "lead tool")
+    [entry] = in_lead_session(lab, tmp_path, "again", [typed_step(p, command, error["details"]["arguments"])])
+    out = answered(entry)
+    assert out["ok"], out["stopped"]
+    assert out["result"]["plan_revision"]["revision"] == 2
+    assert lab.wait(out["result"]["launch"]["run"])["status"] == "ended_with_evidence"
 
 
-def test_an_assessor_whose_pack_drifted_is_dispatched_again_by_following_its_commands(lab, tmp_path):
-    """#581 review, F4: `redispatch_commands` for an assessor, followed as printed: cancel, then a new assessor."""
-    p = lab.project
+def test_an_assessor_whose_pack_drifted_is_dispatched_again_from_a_lead_session_by_its_commands(lead_lab, tmp_path):
+    """#586 review, m1: the commands that re-dispatch an assessor, followed as printed from a Lead session: the
+    cancellation through its shell, then the typed dispatch with the entry's arguments."""
+    lab, p = lead_lab, lead_lab.project
     wid = create_planned_ticket(p, tmp_path)
     _, out = assess(p, wid)
     current = Engine.discover(p.root)._k.store.current()  # the state the commands are printed from
-    inv = current["invocations"][out["invocation"]]
-    cancel, dispatch = gate_ops.redispatch_commands(current, out["invocation"], inv)
-    follow(p, cancel, False, env=lab.env, stdin="reason: its pack drifted\n")
-    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
-    again = follow(p, dispatch, False, env=lab.env)
+    entry = gate_ops.redispatch_entry(current, out["invocation"], current["invocations"][out["invocation"]],
+                                      "its pack drifted")
+    cancel, dispatch = entry["commands"]
+    assert "operator" not in entry  # the built-in card: the typed route dispatches it
+    head, _ = P.split(cancel, False)
+    args = shlex.split(head.replace("<revision from aew status>", str(p.rev())))[1:]
+    [cancelled] = in_lead_session(lab, tmp_path, "cancel", [
+        {"do": "aew", "args": args, "stdin": "".join(f"{k}: {v}\n" for k, v in entry["fields"].items())}])
+    assert cancelled["result"]["exit"] == 0, cancelled
     assert p.ok("invoke", "show", out["invocation"])["status"] == "cancelled"
-    assert again["role_card"] == E.ASSESSOR_CARD and again["scope"] == E.ASSESSMENT_SCOPE
-    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    [again] = in_lead_session(lab, tmp_path, "dispatch", [typed_step(p, dispatch, entry["arguments"])])
+    result = answered(again)["result"]
+    assert result["role_card"] == E.ASSESSOR_CARD and result["scope"] == E.ASSESSMENT_SCOPE
+    assert lab.wait(result["launch"]["run"])["status"] == "ended_with_evidence"
     assert_control_invariants(p)
+
+
+def test_an_assessor_of_another_card_is_dispatched_again_by_the_operator(lab, tmp_path):
+    """#586 review, m1: the typed route takes no card, so the entry says the operator runs the `--card` form, and that
+    form runs as printed at the operator's own terminal."""
+    from aew import roles
+
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    built_in = (Path(roles.__file__).parent / "cards" / f"{E.ASSESSOR_CARD}.yaml").read_text(encoding="utf-8")
+    catalog = p.root / ".aew" / "roles"
+    catalog.mkdir(parents=True, exist_ok=True)
+    (catalog / "custom_assessor.yaml").write_text(
+        built_in.replace(f"role: {E.ASSESSOR_CARD}", "role: custom_assessor"), encoding="utf-8")
+    _, out = assess(p, wid, "--card", "custom_assessor")
+    current = Engine.discover(p.root)._k.store.current()
+    entry = gate_ops.redispatch_entry(current, out["invocation"], current["invocations"][out["invocation"]], "drift")
+    [operator_form] = P.commands(entry["operator"])
+    p.lead("invoke", "cancel", out["invocation"], "--reason", "drift")
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    again = follow(p, *operator_form, env=lab.env)
+    assert again["role_card"] == "custom_assessor"
+    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
 
 
 def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_assessment(tmp_path):
@@ -308,6 +374,9 @@ def test_the_leads_typed_route_dispatches_and_launches_an_assessor_of_the_accept
     run = shown["runs"][-1]["run"]
     assert shown["runs"][-1]["dispatch"]["covered_by"] == "plan.assess"
     assert lab.wait(run)["status"] == "ended_with_evidence"
+    # The call's rationale is the dispatch's recorded reason (#586 review, m3).
+    [entry] = [t for t in Engine.discover(p.root).history_log(since=0)["transitions"] if t["op"] == "plan.assess"]
+    assert entry["reason"] == "the plan rests on code I have not read"
     again = resolve_assess(p, lab.env, f"{wid}{E.PLAN_ITEM}")
     assert again.returncode != 0 and again.json["stopped"]["error"]["details"]["reason"] == "plan_revision_assessed"
     assert_control_invariants(p)
@@ -361,3 +430,31 @@ def test_a_lead_session_assesses_a_plan_through_resolve_and_never_through_its_sh
         assert_control_invariants(p)
     finally:
         lab.cleanup()
+
+
+def test_a_launch_that_fails_after_the_dispatch_still_reports_the_committed_step(lab, tmp_path, monkeypatch):
+    """#586 review, m2: the dispatch commits, then the launch fails; the result names the committed step, so a Lead
+    that trusts `completed_steps` does not call again for a second assessor."""
+    from aew import errors
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+
+    p = lab.project  # its execution policy pins a harness, so the dispatch commits its run
+    for name, value in lab.env.items():  # in this process, as the CLI would run: the lab's harness adapter
+        monkeypatch.setenv(name, value)
+    wid = create_planned_ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+
+    def fails(out):
+        raise errors.HarnessLaunchFailed("the run's supervisor did not take custody", run="R-INV-0001-1",
+                                         committed=True)
+
+    monkeypatch.setattr(engine, "launch_dispatched", fails)
+    rev = p.rev()
+    out = run.run_tool(engine, SurfaceContext.outside_session(), "resolve",
+                       {"expect_rev": rev, "subject": f"{wid}{E.PLAN_ITEM}", "choice": "assess_plan",
+                        "rationale": "r"}, token=p.token)
+    assert [s["primitive"] for s in out["completed_steps"]] == ["plan.assess"], out["stopped"]
+    assert out["completed_steps"][0]["revision"] == rev + 1 == p.rev()
+    assert out["stopped"]["boundary"] == "launch_failed"
+    assert out["stopped"]["error"]["code"] == "HARNESS_LAUNCH_FAILED"

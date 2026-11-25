@@ -22,6 +22,7 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
+from aew.knowledge import evidence as E
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -151,7 +152,7 @@ RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
        for kind in DISPOSITION_SUBJECTS},
     **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
     **{(choice, kind): "work.scope_add" for choice in ("add_scope", "add_scope_signed") for kind in SCOPE_SUBJECTS},
-    **{("assess_plan", kind): "plan.assess" for kind in PLAN_SUBJECTS},
+    **{(E.ASSESS_CHOICE, kind): "plan.assess" for kind in PLAN_SUBJECTS},
 }
 # The launch a dispatching choice's call starts in its own commit (``dispatch.launch``, covered by its decision): the
 # run's supervisor takes custody of the new credential, as every typed dispatch's does.

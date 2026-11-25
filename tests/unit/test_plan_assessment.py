@@ -226,19 +226,33 @@ def test_a_lead_session_reaches_plan_assess_through_its_typed_route_only():
     assert not any(p <= path for p in lead_broker.OPERATOR_ONLY)
     assert contract.RESOLVE_CHOICE_PRIMITIVE[("assess_plan", "plan")] == "plan.assess"
     argv = ["plan", "assess", "T-0001", "--launch", "--expect-rev", "3"]
+    from aew.surface import lead_text
+
     refusal = lead_broker.refuses_locally(build_parser().parse_args(argv))
-    assert refusal == ("`aew plan assess` is not run from a Lead session's shell: use its typed route, the `resolve` "
-                       "tool, choice `assess_plan`, subject `<W>#plan`")
+    route = lead_text.plan_assessment()  # the one owner of the route's text: the catalog's (#586 review, m4)
+    assert route and refusal == (f"`aew plan assess` is not run from a Lead session's shell: use its typed route, "
+                                 f"{route}")
     with pytest.raises(Refused) as exc:  # the broker applies the same check before anything runs
         lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
     assert exc.value.message == refusal
 
 
-def test_a_plan_assessor_whose_pack_drifted_is_dispatched_again_by_its_own_entrypoint():
+def test_a_plan_assessor_whose_pack_drifted_is_dispatched_again_by_the_leads_typed_route():
+    """#586 review, m1: the Lead's next step is the typed dispatch, its arguments given; the engine prints it from the
+    one owner its refusals read (``evidence.assessor_call``), which is the catalog's route (held equal here)."""
     from aew.engine import gate_ops
+    from aew.surface import contract, lead_text
 
     state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}}}
     inv = {"work_unit": "T-0001", "scope": E.ASSESSMENT_SCOPE, "role": "reviewer", "card": {"id": E.ASSESSOR_CARD}}
-    commands = gate_ops.redispatch_commands(state, "INV-0003", inv)
-    assert commands[0].startswith("aew invoke cancel INV-0003")
-    assert commands[1].startswith(f"aew plan assess T-0001 --card {E.ASSESSOR_CARD} --launch")
+    entry = gate_ops.redispatch_entry(state, "INV-0003", inv, "drift")
+    assert entry["commands"][0].startswith("aew invoke cancel INV-0003")
+    assert entry["commands"][1] == f"aew lead tool {E.ASSESS_TOOL} --arguments -"
+    assert entry["arguments"] == {"subject": "T-0001#plan", "choice": E.ASSESS_CHOICE, "rationale": "drift"}
+    assert "operator" not in entry
+    # The engine's call and the catalog's route are one: the tool runs the choice, which runs the assessor.
+    assert contract.RESOLVE_CHOICE_PRIMITIVE[(E.ASSESS_CHOICE, "plan")] == "plan.assess"
+    assert "plan.assess" in contract.TOOLS[E.ASSESS_TOOL].expands_to
+    assert lead_text.plan_assessment() == f"`{E.ASSESS_TOOL}`, choice `{E.ASSESS_CHOICE}`, subject `<W>{E.PLAN_ITEM}`"
+    other = gate_ops.redispatch_entry(state, "INV-0003", {**inv, "card": {"id": "custom_assessor"}}, "drift")
+    assert "--card custom_assessor" in other["operator"] and "operator runs" in other["operator"]

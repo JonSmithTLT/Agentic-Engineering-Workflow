@@ -771,11 +771,12 @@ def assess_plan(c: Call) -> dict[str, Any]:
                                 subject=a["subject"])
     out = c.engine.plan_assess(token=c.token(), expect_rev=a["expect_rev"], work_id=work_id, launch=True,
                                reason=a["rationale"])
-    out = c.engine.launch_dispatched(out)
     c.subject = work_id
+    # Recorded before the launch, so a launch that fails after the commit still reports what committed (#586 review,
+    # m2): its run is recorded, and the error's `committed` says so.
     c.committed("plan.assess", out, f"{out['invocation']} ({out['role_card']}) dispatched to assess {work_id}'s plan "
                 f"v{out['plan_revision']['revision']}", [out["invocation"]])
-    return out
+    return c.engine.launch_dispatched(out)
 
 
 def resolve_stage(c: Call) -> dict[str, Any]:

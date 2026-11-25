@@ -48,7 +48,8 @@ def test_every_lead_authenticated_command_is_classified_exactly_once():
     assert all(not a & b for i, a in enumerate(groups) for b in groups[i + 1:])
     assert typed <= commands
     unclassified = commands - reachable - operator - transports - typed
-    assert not unclassified, f"classify these (LEAD_REACHABLE or OPERATOR_ONLY): {sorted(map(sorted, unclassified))}"
+    assert not unclassified, (f"classify these (LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY): "
+                              f"{sorted(map(sorted, unclassified))}")
     assert reachable <= commands, f"no such commands: {sorted(map(sorted, reachable - commands))}"
 
 

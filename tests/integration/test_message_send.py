@@ -22,7 +22,7 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 # Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
 # description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved), and E160's `plan.assess`
 # among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`), and E160 slice 2b's `assess_plan` choice
-# on `resolve`, its description, and its `dispatches` (nothing else moved).
+# in `resolve`'s enum and its description naming it (nothing else moved; `dispatches` is not advertised).
 OFF_LIST_SHA = {"normal": "5217385bf5d89beb23d8c16fd29719bbe853b43e71bb9835f23a5acbf0b3c141",
                 "recovery": "daa9a4b353ce3a0644751fed6e5ab1e3b17f57caa1246986375723bfe49eb661"}
 OFF_CLI_SHA = "f0cc439f2f2c4de9028f7afe22a395a459acc278cd66ff872e9937169fa5249b"

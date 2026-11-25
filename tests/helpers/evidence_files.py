@@ -64,6 +64,17 @@ FRAME = re.compile(
 
 FRESH_S = 60
 PREFIX = "worker snapshot "
+CANCEL_COLLECTION = "cancel collection"
+# The sample reasons taken at an interruption: the Linux supervisor's pre-signal warning and the cancellation
+# collection (lane_step --collect). Both retry inside one shared budget, and their stacks answer evidence_problems'
+# live-stack check (register E3).
+INTERRUPTION_REASONS = frozenset({"warning", CANCEL_COLLECTION})
+# A cancellation-collection outcome that owes no stack: the collection attaches only to a worker already sampled in the
+# supervisor's owned tree, so it never attaches to one it did not sample (register E3).
+NOT_SAMPLED = "not sampled in the owned tree"
+# The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
+# accepts only these, and only when the retained frames themselves classify so (register E3).
+OUTSIDE_CALL = ("setup", "teardown", "between tests")
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
@@ -79,6 +90,28 @@ def test_frame(node: str, frames: str) -> bool:
         if ("/" + file.replace("\\", "/")).endswith("/" + source.replace("\\", "/")) and called == function:
             return True
     return False
+
+
+def pytest_phase(frames: str) -> str:
+    """Where a dump without its test-function frame stands in pytest's test protocol: one of OUTSIDE_CALL, ``call``
+    (inside pytest_runtest_call, so the test's frame is missing), or ``indeterminate``. Between tests needs the run
+    loop's own frame, so a dump that lost the main thread never reads as outside a call."""
+    called = {(match.group("function") or match.group("spy_function")).rsplit(".", 1)[-1]
+              for match in FRAME.finditer(frames)}
+    if "pytest_runtest_call" in called:
+        return "call"
+    if "runtestprotocol" not in called:
+        return "between tests" if "pytest_runtestloop" in called else "indeterminate"
+    if "pytest_runtest_teardown" in called:
+        return "teardown"
+    if "pytest_runtest_setup" in called:
+        return "setup"
+    return "indeterminate"
+
+
+def cancel_outcome(pid: int, start: int) -> str:
+    """The snapshots file naming why the cancellation collection kept no test stack for one worker identity."""
+    return f"{pid}-{start}-cancel-outcome.txt"
 
 
 def entries(text: str):

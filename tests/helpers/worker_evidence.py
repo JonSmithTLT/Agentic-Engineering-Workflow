@@ -17,7 +17,22 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import proctree
-from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, is_link, open_observation, test_frame
+from evidence_files import (
+    CANCEL_COLLECTION,
+    FRAME,
+    FRESH_S,
+    INTERRUPTION_REASONS,
+    NOT_SAMPLED,
+    OUTSIDE_CALL,
+    PREFIX,
+    WATCHDOG_HEADER,
+    cancel_outcome,
+    entries,
+    is_link,
+    open_observation,
+    pytest_phase,
+    test_frame,
+)
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
 DROPPED = "older snapshots dropped\n"
@@ -244,6 +259,40 @@ def ablated(mode: str) -> bool:
     return os.environ.get("AEW_EVIDENCE_PLANT") in PROOF_KINDS and os.environ.get("AEW_EVIDENCE_ABLATE") == mode
 
 
+def _marker(root: Path, path: Path, fallback: Path | None, text: str) -> None:
+    with contextlib.suppress(OSError):
+        if is_link(root):
+            return
+        path.parent.mkdir(exist_ok=True)
+        if is_link(path.parent):
+            return
+        try:
+            output = path.open("x", encoding="utf-8")
+        except FileExistsError:
+            if fallback is None:
+                return
+            # An earlier timeout snapshot may already have recorded a failure for this PID.
+            output = fallback.open("x", encoding="utf-8")
+        with output:
+            output.write(text)
+
+
+def _unavailable(root: Path, worker: Worker, reason: str, failures: list[str]) -> None:
+    # PR 554's marker. The fallback is named for the reason ("warning", "cancel") so the two never collide.
+    path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
+    fallback = path.with_name(f"{worker.pid}-{worker.start}-{reason.split()[0]}-unavailable.txt")
+    attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
+    _marker(root, path, fallback, f"evidence defect: py-spy unavailable for {worker.node}{attempts}\n")
+
+
+def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str]) -> None:
+    """Name why the cancellation collection kept no test stack for this worker (register E3)."""
+    row = {"reason": CANCEL_COLLECTION, "pid": worker.pid, "start": worker.start, "node": worker.node,
+           "outcome": outcome, "attempts": failures}
+    path = ring_path(root, worker).with_name(cancel_outcome(worker.pid, worker.start))
+    _marker(root, path, None, json.dumps(row, ensure_ascii=True) + "\n")
+
+
 def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed) -> set[tuple[int, int]]:
     # A slow or inaccessible worker cannot multiply the pre-cleanup wait by the number of workers.
     # All attaches have their own three-second subprocess cutoff. After this common window expires,
@@ -251,57 +300,67 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed)
     until = time.monotonic() + 3
 
     def sample(worker: Worker):
-        if time.monotonic() >= until or worker.identity not in allowed or not proctree.same(worker.identity):
-            return None
         warning = reason == "warning"
+        retried = reason in INTERRUPTION_REASONS
+        # The cancellation collection names every worker it kept no test stack for (register E3).
+        typed = reason == CANCEL_COLLECTION
+        failures: list[str] = []
+        if worker.identity not in allowed:
+            if typed:
+                _outcome(root, worker, NOT_SAMPLED, failures)
+            return None
+        if not proctree.same(worker.identity):
+            if typed:
+                _outcome(root, worker, "exited before its attach", failures)
+            return None
+
+        def straddled():
+            if typed:
+                gone = not proctree.same(worker.identity)
+                _outcome(root, worker, "exited during its attach" if gone else "straddled a test change", failures)
+
         last = None
-        failures = []
         matched = False
-        for attempt in range(3 if warning else 1):
-            if warning and (worker not in workers(root) or not proctree.same(worker.identity)):
-                return None
+        for attempt in range(3 if retried else 1):
+            if retried and (worker not in workers(root) or not proctree.same(worker.identity)):
+                return straddled()
             remaining = until - time.monotonic()
             if remaining <= 0:
                 if attempt == 0:
+                    if typed:
+                        _unavailable(root, worker, reason, ["shared budget spent before its first attach"])
                     return None
                 break
             at = time.time()
             elapsed = time.monotonic() - worker.began
-            result = attach(worker.pid, timeout=remaining, failures=failures) if warning else attach(worker.pid)
+            result = attach(worker.pid, timeout=remaining, failures=failures) if retried else attach(worker.pid)
             # A stack straddling a test boundary has no trustworthy node label.
             if worker not in workers(root) or not proctree.same(worker.identity):
-                return None
+                return straddled()
             if result:
                 # Nonblocking dumps may omit a live Python frame. Retry only
-                # this invocation inside the original shared pre-signal budget.
-                if warning and not FRAME.search(result[1]):
+                # this invocation inside the original shared budget.
+                if retried and not FRAME.search(result[1]):
                     failures.append(f"{result[0]}: dump has no Python frames")
                     continue
                 last = (at, elapsed, result)
-                if not warning or test_frame(worker.node, result[1]):
+                if not retried or test_frame(worker.node, result[1]):
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-        if warning and not matched:
-            path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
-            message = f"evidence defect: py-spy unavailable for {worker.node}"
-            if last is not None:
-                path = path.with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
-                message = f"py-spy sampled support frames for {worker.node}"
-            with contextlib.suppress(OSError):
-                if is_link(root):
-                    return None
-                path.parent.mkdir(exist_ok=True)
-                if not is_link(path.parent):
-                    try:
-                        output = path.open("x", encoding="utf-8")
-                    except FileExistsError:
-                        # An earlier timeout snapshot may already have recorded a failure for this PID.
-                        output = path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt").open(
-                            "x", encoding="utf-8")
-                    with output:
-                        attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
-                        output.write(f"{message}{attempts}\n")
+                if typed and pytest_phase(result[1]) in OUTSIDE_CALL:
+                    break  # a worker outside its test's call has no test frame to give, however often it is asked
+        if retried and not matched and last is None:
+            _unavailable(root, worker, reason, failures)
+        elif warning and not matched:
+            path = ring_path(root, worker).with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
+            attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
+            _marker(root, path, path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt"),
+                    f"py-spy sampled support frames for {worker.node}{attempts}\n")
+        elif typed and not matched and last is not None:
+            # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
+            # the call without the test's frame stays a live-stack defect.
+            _outcome(root, worker, pytest_phase(last[2][1]), failures)
         if last is None:
             return None
         # Retain a support-only stack as evidence of what was actually running.

@@ -843,6 +843,162 @@ def test_linux_interrupt_samples_four_owned_workers_before_delivery(tmp_path, mo
         assert note.count("sudo -n: exit 1 (os error 3)") == 2
 
 
+SUPPORT = "    support (tests/helpers/support.py:4)\n"
+PHASE_DUMPS = {
+    "setup": SUPPORT + "    pytest_runtest_setup (_pytest/runner.py:160)\n    runtestprotocol (_pytest/runner.py:120)\n"
+             "    pytest_runtestloop (xdist/remote.py:150)\n",
+    "teardown": SUPPORT + "    pytest_runtest_teardown (_pytest/runner.py:180)\n"
+                "    runtestprotocol (_pytest/runner.py:120)\n    pytest_runtestloop (xdist/remote.py:150)\n",
+    "between tests": "    receive (execnet/gateway_base.py:700)\n    pytest_runtestloop (xdist/remote.py:150)\n",
+    "call": SUPPORT + "    pytest_runtest_call (_pytest/runner.py:170)\n    runtestprotocol (_pytest/runner.py:120)\n"
+            "    pytest_runtestloop (xdist/remote.py:150)\n",
+    "indeterminate": SUPPORT,  # a dump that lost the main thread: no pytest frame at all
+}
+
+
+def _cancel_collection(tmp_path, monkeypatch, attach, *, pids=(101,), sampled=(101,)):
+    """Run the Windows cancellation collection (lane_step --collect) on Linux, through a fake attach."""
+    import json
+
+    lane = _load("lane_step")
+    ev = lane.worker_evidence
+    session = tmp_path / "autopsy/session-test"
+    session.mkdir(parents=True)
+    guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+    live = {(pid, pid * 2) for pid in pids}
+    for index, pid in enumerate(pids):
+        node = f"tests/test_a.py::test_case[{pid}]"
+        (session / f"worker-gw{index}-pid.txt").write_text(str(pid))
+        (session / f"worker-gw{index}-start.txt").write_text(str(pid * 2))
+        (tmp_path / f"hang-gw{index}-{pid}.txt").write_text(guard._header(SimpleNamespace(nodeid=node)))
+        if pid in sampled:
+            worker = ev.Worker(session, pid, pid * 2, node, 0, 120)
+            assert ev.save_sample(tmp_path, worker, lane.time.time() - 30, 1, "unelevated",
+                                  "    test_case (tests/test_a.py:4)\n", reason="periodic")
+    for name in ("GH_TOKEN", "AEW_PYTEST_OUTCOME", "AEW_EVIDENCE_PLANT", "AEW_LANE_RECOVERY_OUTCOME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AEW_LANE_JOB_STATUS", "cancelled")
+    monkeypatch.setattr(lane.proctree, "same", lambda identity: identity in live)
+    monkeypatch.setattr(lane, "collect", lambda _: None)
+    monkeypatch.setattr(lane, "attach", lambda pid, **kw: attach(pid, live=live, **kw))
+    assert lane.main(["--collect", "--root", str(tmp_path)]) == 0
+    records = {pid: json.loads((session / f"cancelled-{pid}.txt").read_text()) for pid in pids}
+    outcomes = {pid: json.loads(path.read_text()) for pid in pids
+                if (path := tmp_path / "snapshots" / f"{pid}-{pid * 2}-cancel-outcome.txt").exists()}
+    check = _load("evidence_problems").evidence_problems
+    defects = [why for why in check(tmp_path, kind="cancel") if "[live-stack]" in why]
+    return records, outcomes, defects
+
+
+def test_a_windows_cancel_collection_retries_an_attach_that_failed(tmp_path, monkeypatch):
+    calls = []
+
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        assert not allow_sudo and 0 < timeout <= 3
+        calls.append(pid)
+        if len(calls) == 1:
+            failures.append("unelevated: exit 1 (os error 5)")
+            return None
+        return "unelevated", "    test_case (tests/test_a.py:4)\n"
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert calls == [101, 101] and records[101]["alive_when_observed"]
+    assert defects == [] and outcomes == {} and not (tmp_path / "snapshots/101-unavailable.txt").exists()
+
+
+def test_a_failed_cancel_collection_attach_leaves_a_typed_unavailable_marker(tmp_path, monkeypatch):
+    calls = []
+
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        calls.append(pid)
+        failures.append("unelevated: exit 1 (os error 5)")
+        return None
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    note = (tmp_path / "snapshots/101-unavailable.txt").read_text()
+    assert note.startswith("evidence defect: py-spy unavailable for tests/test_a.py::test_case[101] (attempts: ")
+    assert note.count("unelevated: exit 1 (os error 5)") == len(calls) == 3 and len(note.splitlines()) == 1
+    # Still a defect: the marker names why the stack is missing, it does not excuse it.
+    assert defects == ["evidence defect: [live-stack] cancelled-101.txt: live worker lacks its interruption stack"]
+
+
+def test_alive_when_observed_is_decided_before_the_capture(tmp_path, monkeypatch):
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        live.discard((pid, pid * 2))  # the worker exits while it is being attached
+        failures.append("unelevated: exit 1 (os error 87)")
+        return None
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert records[101]["alive_when_observed"] is True
+    assert outcomes[101]["outcome"] == "exited during its attach"
+    assert outcomes[101]["attempts"] == ["unelevated: exit 1 (os error 87)"]
+    assert defects == ["evidence defect: [live-stack] cancelled-101.txt: live worker lacks its interruption stack"]
+
+
+def test_a_worker_never_sampled_in_the_ring_gets_a_typed_marker_not_a_demand(tmp_path, monkeypatch):
+    import worker_evidence as ev
+    from evidence_files import NOT_SAMPLED
+
+    calls = []
+
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        calls.append(pid)
+        return "unelevated", "    test_case (tests/test_a.py:4)\n"
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach, pids=(101, 102), sampled=(101,))
+    assert calls == [101] and records[102]["alive_when_observed"]
+    assert outcomes == {102: {"reason": "cancel collection", "pid": 102, "start": 204,
+                              "node": "tests/test_a.py::test_case[102]", "outcome": NOT_SAMPLED, "attempts": []}}
+    assert defects == []
+    # The bundle must bear the outcome out: a retained sample of that identity makes it a demand again.
+    worker = ev.Worker(tmp_path / "autopsy/session-test", 102, 204, "tests/test_a.py::test_case[102]", 0, 120)
+    assert ev.save_sample(tmp_path, worker, 1, 1, "unelevated", "    test_case (tests/test_a.py:4)\n",
+                          reason="periodic")
+    check = _load("evidence_problems").evidence_problems
+    assert [why for why in check(tmp_path, kind="cancel") if "[live-stack]" in why] == [
+        "evidence defect: [live-stack] cancelled-102.txt: live worker lacks its interruption stack"]
+
+
+@pytest.mark.parametrize("phase", ["teardown", "setup", "between tests"])
+def test_a_worker_in_teardown_is_reported_as_teardown_not_a_missing_stack(tmp_path, monkeypatch, phase):
+    calls = []
+
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        calls.append(pid)
+        return "unelevated", PHASE_DUMPS[phase]
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert calls == [101], "a worker outside its test's call is not asked again for a frame it cannot give"
+    assert outcomes[101]["outcome"] == phase and defects == []
+    assert '"reason": "cancel collection"' in (tmp_path / "snapshots/101.txt").read_text()
+    # The outcome is accepted only when the retained frames classify so: a claim the frames contradict is a defect.
+    path = tmp_path / "snapshots/101-202-cancel-outcome.txt"
+    other = next(name for name in ("setup", "teardown") if name != phase)
+    path.write_text(path.read_text().replace(f'"outcome": "{phase}"', f'"outcome": "{other}"'))
+    check = _load("evidence_problems").evidence_problems
+    assert any("[live-stack] cancelled-101.txt" in why for why in check(tmp_path, kind="cancel"))
+
+
+@pytest.mark.parametrize("phase", ["call", "indeterminate"])
+def test_a_worker_mid_call_without_its_frame_is_still_a_live_stack_defect(tmp_path, monkeypatch, phase):
+    calls = []
+
+    def attach(pid, *, live, allow_sudo, timeout, failures):
+        calls.append(pid)
+        return "unelevated", PHASE_DUMPS[phase]
+
+    records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, attach)
+    assert len(calls) == 3, "a dump inside the call is retried for the test's frame"
+    assert outcomes[101]["outcome"] == phase
+    assert outcomes[101]["attempts"] == ["unelevated: dump has no active test frame"] * 3
+    assert defects == ["evidence defect: [live-stack] cancelled-101.txt: live worker lacks its interruption stack"]
+    # Even a forged outside-call outcome cannot excuse a worker whose retained frames show it inside the call.
+    path = tmp_path / "snapshots/101-202-cancel-outcome.txt"
+    path.write_text(path.read_text().replace(f'"outcome": "{phase}"', '"outcome": "teardown"'))
+    check = _load("evidence_problems").evidence_problems
+    assert any("[live-stack] cancelled-101.txt" in why for why in check(tmp_path, kind="cancel"))
+
+
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):
     import json
 

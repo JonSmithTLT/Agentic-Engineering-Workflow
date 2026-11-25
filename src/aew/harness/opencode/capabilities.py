@@ -230,13 +230,14 @@ def _enum(spec: dict[str, Any], schema: Any) -> set[str]:
     return values
 
 
-def problems(spec: Any, extra: tuple[Op, ...] = ()) -> list[str]:
+def problems(spec: Any, extra: tuple[Op, ...] = (), *, messaging: bool = False) -> list[str]:
     """Everything the adapter needs that the served API does not declare (empty when compatible)."""
     if not isinstance(spec, dict) or not isinstance(spec.get("paths"), dict):
         return ["the server's /openapi.json is not an OpenAPI document"]
     out: list[str] = []
     paths = spec["paths"]
-    for op in (*REQUIRED_OPERATIONS, *extra):
+    messaging_ops = (_op("POST", "/api/session/{sessionID}/prompt", body=("resume", "metadata")),) if messaging else ()
+    for op in (*REQUIRED_OPERATIONS, *extra, *messaging_ops):
         entry = (paths.get(op.path) or {}).get(op.method.lower())
         if not isinstance(entry, dict):
             out.append(f"operation {op} is missing")
@@ -252,7 +253,15 @@ def problems(spec: Any, extra: tuple[Op, ...] = ()) -> list[str]:
             if missing:
                 out.append(f"{op} does not accept query {sorted(missing)}")
     schemas = (spec.get("components") or {}).get("schemas") or {}
-    for name, fields in REQUIRED_FIELDS.items():
+    fields_by_schema = REQUIRED_FIELDS
+    enums = REQUIRED_ENUMS
+    if messaging:
+        fields_by_schema = REQUIRED_FIELDS | {
+            "Session.Message.User": REQUIRED_FIELDS["Session.Message.User"] | {"text": S},
+            "Session.Inbox.User": {"id": S, "payload": O, "payload.text": S},
+        }
+        enums = REQUIRED_ENUMS | {"Session.Inbox.Delivery": REQUIRED_ENUMS["Session.Inbox.Delivery"] | {"steer"}}
+    for name, fields in fields_by_schema.items():
         if name not in schemas:
             out.append(f"schema {name} is missing")
             continue
@@ -262,7 +271,7 @@ def problems(spec: Any, extra: tuple[Op, ...] = ()) -> list[str]:
             out.append(f"schema {name} lacks {missing}")
         out += [f"schema {name} field {f} is {problem}" for f, problem in found.items()
                 if problem and problem != "missing"]
-    for name, values in REQUIRED_ENUMS.items():
+    for name, values in enums.items():
         if name not in schemas:
             out.append(f"schema {name} is missing")
             continue

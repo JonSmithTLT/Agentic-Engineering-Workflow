@@ -39,6 +39,7 @@ def rows_named(texts: dict, name: str):
 
 
 ELISION = re.compile(r"Use -v+ to (?:get more diff|show)|Omitting \d+ identical items|Skipping \d+ identical leading")
+FAILURE_PHASES = ("collect", "setup", "call", "teardown")
 
 
 def failure_problems(path: Path, report: dict) -> list[str]:
@@ -68,6 +69,11 @@ def failure_problems(path: Path, report: dict) -> list[str]:
             detail = f"{node} ({phase})"
             text = failure.get("longrepr") or ""
             crash = failure.get("crash") or ""
+            # xdist's controller emits a synthetic TestReport with when="???" for a crashed worker.
+            worker_crash = phase == "???" and re.fullmatch(r"worker 'gw[0-9]+' crashed while running "
+                                                          + re.escape(repr(node)), crash)
+            if phase not in FAILURE_PHASES and not worker_crash:
+                defect("failure-report", f"{detail}: missing or unrecognized failure phase")
             location = failure.get("overflow")
             if location:
                 relative = Path(location)

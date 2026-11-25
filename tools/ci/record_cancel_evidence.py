@@ -104,7 +104,7 @@ def record_test_sightings(directory, run, rows):
     entries = yaml.safe_load(REGISTER_PATH.read_text(encoding="utf-8"))["entries"]
     sightings = []
     for row in rows:
-        if row["kind"] != "test_failure" or not row.get("started_at"):
+        if row["kind"] not in {"test_failure", "runner-lost"} or not row.get("started_at"):
             continue
         for entry in entries:
             if (entry["scope"] == "test" and entry["status"] == "open" and _matches_session(entry, row["name"])

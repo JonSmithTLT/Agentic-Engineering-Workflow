@@ -559,6 +559,10 @@ def test_row_1_passes_on_a_network_of_the_runs_own_and_records_what_it_checked(m
     ({"direct": "connected"}, "direct TCP connection"),
     ({"direct_udp": "sent"}, "direct UDP connection"),
     ({"direct6": "connected"}, "direct IPv6 TCP connection"),
+    # a socket the probe could not create is recorded by its errno name; only EAFNOSUPPORT on direct6 is "no route"
+    ({"direct6": "EMFILE"}, "direct IPv6 TCP connection"),
+    ({"direct": "EPERM"}, "direct TCP connection"),
+    ({"direct_udp": "ENOBUFS"}, "direct UDP connection"),
     ({"host_port": "connected"}, "a loopback port the host holds is reachable inside"),
     ({"host_abstract": "connected"}, "an abstract socket the host holds is reachable inside"),
     ({"abstract": ["@aew-probe-0011"]}, "an abstract socket the host holds is reachable inside"),
@@ -585,6 +589,27 @@ def test_row_1_on_a_network_without_routes_fails_on_any_route_that_answers(monke
     assert row1(monkeypatch, quiet, relay=False, egress=False)["ok"] is True
     assert "a provider route answers" in row1(monkeypatch, {**quiet, "relay": INSIDE["relay"]}, relay=False,
                                               egress=False)["reason"]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="the probe runs in a Linux sandbox: an error's name is Linux's "
+                                                    "(Windows names it WSAEAFNOSUPPORT)")
+def test_a_host_without_ipv6_records_no_ipv6_route_and_still_passes_row_1(monkeypatch):
+    """A kernel without IPv6 refuses the socket itself, whatever ``socket.has_ipv6`` says: the probe records that as
+    the route's answer and the judge accepts it, rather than the probe failing and every launch with a network of its
+    own being refused (register E362). Any other family still gets its socket."""
+    real = socket.socket
+
+    def no_ipv6(family=socket.AF_INET, *args, **kwargs):
+        if family == socket.AF_INET6:
+            raise OSError(errno.EAFNOSUPPORT, os.strerror(errno.EAFNOSUPPORT))
+        return real(family, *args, **kwargs)
+
+    attempt = payload()["attempt"]
+    monkeypatch.setattr(socket, "socket", no_ipv6)
+    direct6 = attempt(socket.AF_INET6, (probe.OUTSIDE6, 9))
+    assert direct6 == "EAFNOSUPPORT"
+    assert attempt(socket.AF_UNIX, "\0aew-probe-e362-unbound") == "ECONNREFUSED"  # other families: as before
+    assert row1(monkeypatch, {**INSIDE, "direct6": direct6})["ok"] is True
 
 
 def test_row_1_on_the_hosts_network_claims_nothing():

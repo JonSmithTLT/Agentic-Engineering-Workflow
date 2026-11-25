@@ -8,7 +8,9 @@ For every required platform it proves, from the lane reports written by ``pytest
 * every shard of a sharded lane reported (a dropped shard is a problem even before its tests show as missing);
 * no session failed (including the isolation guard) and no test failed or errored;
 * the skipped tests are exactly the pinned platform skips (``tests/platform-skips.yaml``);
-* no xfail/xpass occurred unless pinned there.
+* no xfail/xpass occurred unless pinned there;
+* no session's controller was still running a margin after it finished (``stuck-after-finish``, named apart from its
+  tests: its lane report can be complete and green while the job failed).
 
 It judges each shard's latest run attempt only (``latest_attempts``): a re-run job's report supersedes its earlier
 attempt's, whichever of them failed.
@@ -38,6 +40,11 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tier as tiers  # noqa: E402  (tools/ci/tier.py: the tiers and the lanes each requires)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
+# The marker the session deadline's sentinel writes when a controller outlived ``session-finished`` by a margin, and the
+# one autopsy file the reports-only staging carries to this job (``evidence_files.stuck_marker``).
+from evidence_files import STUCK_MARKER  # noqa: E402  (importable once the line above has set the path)
 
 REPORT_SCHEMA = "aew/lane-report/v1"
 # A hang's autopsy (tests/helpers/autopsy.py) lives in the report directory, which CI uploads. Its files never end in
@@ -95,6 +102,16 @@ def latest_attempts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for r in planned:
         latest[(*lane(r), r.get("shard"))] = max(latest[(*lane(r), r.get("shard"))], attempt(r))
     return [r for r in planned if attempt(r) == latest[(*lane(r), r.get("shard"))]]
+
+
+def stuck_after_finish(root: Path) -> list[str]:
+    """A session ended by the sentinel after it finished: its tests may all have passed and its report be complete, so
+    without this the job's failure reads only as the lane's result (the nightly's reference shards, 2026-11-17 to 11-22,
+    register E3)."""
+    return [f"{path.parent.relative_to(root).as_posix()}: the session finished, but its controller had not exited a "
+            "margin later and the sentinel ended it (stuck-after-finish; its stacks are in "
+            "controller-after-finish-stacks.txt in the job's evidence-* bundle)"
+            for path in sorted(root.rglob(STUCK_MARKER)) if AUTOPSY_DIR in path.relative_to(root).parts]
 
 
 def load_expectations(path: Path) -> dict[str, Any]:
@@ -264,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
 
     omitted = windows_selection.omitted_for_workflow(args.windows_pr, args.tier)
     problems, facts = check(reports, load_expectations(args.skips), required, args.tier, omitted)
+    problems += stuck_after_finish(args.reports)
     if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
         problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
                            "reduced tier; a push to main and a merge group are always full")

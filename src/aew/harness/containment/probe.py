@@ -276,7 +276,10 @@ def failure(e):
 def attempt(family, address, dgram=False):
     # "connected" (or "sent", for UDP), else the error's name: a route out, or none
     import socket
-    s = socket.socket(family, socket.SOCK_DGRAM if dgram else socket.SOCK_STREAM)
+    try:  # a kernel without IPv6 refuses the socket itself (EAFNOSUPPORT): no route out, recorded (register E362)
+        s = socket.socket(family, socket.SOCK_DGRAM if dgram else socket.SOCK_STREAM)
+    except OSError as e:
+        return failure(e)
     s.settimeout(3)
     try:
         if dgram:

@@ -45,6 +45,14 @@ PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
 MAX_IN_FLIGHT = 8  # non-wait tool calls answered at once; a further one starts when one of them ends
 MAX_WAITS = 8  # wait tool calls in flight at once, in a lane of their own
+# How deep one line may nest, one level per array or object opened. A line nested deeper is a parse error, decided
+# before json.loads, so it gets the same one PARSE_ERROR on every interpreter, platform and version. json's own refusal
+# (a RecursionError) comes at a depth that varies with them: about 1,000 on Python 3.11, about 10,000 on Linux 3.12 and
+# later, about 3,000 on Windows 3.13; between those depths a hostile line parsed as a nested batch on one interpreter
+# and was a parse error on another (nightly, 2026-11-20 to 22). An MCP message is shallow: the envelope, its params and
+# a tool's arguments are a handful of levels. 128 leaves room for any argument and stays far below every interpreter's
+# limit, and below the depth at which a Python-level walk of the value (the argument schema check) runs out of frames.
+MAX_DEPTH = 128
 BROKER_UNREACHABLE = -32001  # a server error: the Lead broker could not be reached; nothing about AEW is claimed
 # Variables whose presence means this is not the Lead session's curated environment (the broker's own coordinates
 # are expected; any credential, or another bridge's coordinates, is not).
@@ -245,11 +253,37 @@ class Server:
 _NOT_JSON = object()
 
 
+# A JSON string (escapes included), or one bracket outside a string. The closing quote is optional: an unterminated
+# string runs to the end of the line, so no later quote restarts a scan to the end and the whole scan stays linear in
+# the line's length (PR #556 review, F1).
+_TOKEN = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.DOTALL)
+
+
 def _parse(line: str) -> Any:
+    """``line`` parsed, or ``_NOT_JSON`` for a line that is not JSON or nests deeper than :data:`MAX_DEPTH`."""
+    if _too_deep(line):
+        return _NOT_JSON
     try:
         return json.loads(line)
-    except (ValueError, RecursionError):
+    except (ValueError, RecursionError):  # RecursionError: kept as a backstop; the bound refuses first
         return _NOT_JSON
+
+
+def _too_deep(line: str) -> bool:
+    """Whether ``line`` opens more than :data:`MAX_DEPTH` arrays or objects at once, brackets in strings not counted.
+    A line that is not JSON may be counted wrongly here (an unterminated string hides the brackets after it); json.loads
+    refuses it either way, before it nests deeper than counted."""
+    if line.count("[") + line.count("{") <= MAX_DEPTH:
+        return False  # it cannot nest deeper than it opens: an ordinary line is never scanned
+    depth = 0
+    for token in _TOKEN.finditer(line):
+        if token.group() in ("[", "{"):
+            depth += 1
+            if depth > MAX_DEPTH:
+                return True
+        elif token.group() in ("]", "}"):
+            depth -= 1
+    return False
 
 
 def _calls_a_tool(message: Any, *, waiting: bool = False) -> bool:

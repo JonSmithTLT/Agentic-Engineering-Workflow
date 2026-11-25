@@ -75,7 +75,7 @@ jobs:
         run: python -m pip install "PyYAML>=6.0" "pytest>=8"
       - id: tier
         env:
-          PYTHONPATH: src  # flake-register validation imports the lane policy and aew.util
+          PYTHONPATH: src  # harmless: the lane policy and flake-register validation load without AEW since #550
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           REPO: ${{ github.repository }}

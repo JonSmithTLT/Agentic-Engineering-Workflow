@@ -27,6 +27,7 @@ from evidence_files import (  # noqa: E402
     publishable,
     report_json,
     state,
+    stuck_marker,
 )
 
 JOB_CAP = 64 * 1024 * 1024
@@ -351,7 +352,7 @@ def stage(source: Path, destination: Path, *, reports_only: bool = False) -> str
 
         for file in sorted(files(), key=lambda p: (not failure_or_death(p.relative_to(source)), p)):
             relative = file.relative_to(source)
-            if reports_only and not (report_json(relative) or failure_overflow(relative)
+            if reports_only and not (report_json(relative) or failure_overflow(relative) or stuck_marker(relative)
                                      or relative == Path("runner-resources-job.txt")):
                 continue
             if relative.parent == Path(".") and relative.match("inventory-part-*.txt"):

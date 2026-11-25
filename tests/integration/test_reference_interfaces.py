@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 import yaml
 
 from aew import schemas
@@ -50,7 +51,7 @@ def _tool_modules():
 
 
 C, IFACE, CLI, SCH, SQL, SQL_TEXT = _tool_modules()
-CTX = C.Context(ROOT)
+CTX = reference_render.context()
 
 
 @cache

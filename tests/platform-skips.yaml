@@ -8,6 +8,8 @@ evidence_proof_skips:
     oom: Linux cgroup v2 supplies an isolated, swap-free memory limit and an oom_kill counter.
 skipped:
   win32:
+    tests/unit/test_evidence_states.py::test_hosted_warning_attach_records_only_process_outcomes: >-
+      The hosted Linux sampler retries py-spy through sudo. Linux exercises both routes with real subprocesses.
     tests/integration/test_relay_status.py::test_direct_relay_connect_destinations_match_the_receiver_and_report: >-
       Linux strace observes all connect attempts of the test's worker relay and its threads. Covered on Linux.
     tests/integration/test_seat_resume.py::test_v2_driver_answers_and_counts_the_resume_prompt: >-
@@ -761,6 +763,9 @@ skipped:
     tests/unit/test_containment_probe.py::test_the_probes_network_stand_ins_leave_no_listener_socket_or_thread_behind: >-
       Row 1's stand-ins exist only on Linux: _network yields None on win32, so there is nothing to leave behind
       (register E75). Covered on Linux.
+    tests/unit/test_containment_probe.py::test_a_host_without_ipv6_records_no_ipv6_route_and_still_passes_row_1: >-
+      The probe runs in a Linux sandbox, so the route's answer is Linux's errno name (EAFNOSUPPORT); Windows names the
+      same errno WSAEAFNOSUPPORT and never runs the probe (register E362). Covered on Linux.
     tests/integration/test_containment.py::test_a_readers_fingerprint_in_its_sandbox_equals_the_writers[uncommitted_edits]: >-
       Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
       Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by

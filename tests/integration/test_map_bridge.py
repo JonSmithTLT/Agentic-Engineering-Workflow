@@ -21,6 +21,7 @@ from aew.harness import bridge, runlog
 from aew.harness import contract as K
 from aew.harness.supervisor import bridge_tables
 from aew.maps import EVIDENCE_CLASS, query, store
+from aew.util import dump_yaml
 
 MAPS = Path(".aew") / store.MAPS_REL
 
@@ -262,5 +263,49 @@ def test_a_dispatch_launch_records_the_maps_snapshot_and_an_off_run_names_why_it
                 assert error["details"]["reason"] == "maps_reads_off"
                 assert "launched with maps.reads off" in error["message"]
                 assert "read the source in your workspace, or ask the Lead" in error["message"]
+    finally:
+        lab.cleanup()
+
+
+# A project card that narrows the investigator's operations and leaves out context.read, which the map reads ride.
+NO_CONTEXT_INVESTIGATOR = {
+    "schema": "aew/role/v1", "role": "no_context_investigator", "display_name": "No-context Investigator",
+    "version": 1, "extends": "investigator", "purpose": "Investigates without reading context.",
+    "restrict": {"operations": ["check.run", "submit.discovery_record"]},
+}
+
+
+@pytest.mark.parametrize(("reads", "card", "reason"), [
+    ("off", None, "maps_reads_off"),
+    ("structural", NO_CONTEXT_INVESTIGATOR, "context_read_narrowed"),
+    ("off", NO_CONTEXT_INVESTIGATOR, "context_read_narrowed"),
+], ids=["switch-off", "card-narrowed", "both"])
+def test_a_refused_worker_map_read_names_the_switch_only_when_the_invocation_reads_context(tmp_path, reads, card,
+                                                                                            reason):
+    """q1 of #576's quick check: a run that offers no map read is refused with the cause that holds. The switch is
+    named only when the invocation is offered context.read; a role card that narrows context.read away is named as the
+    cause instead, even with the switch on, and turning the switch on would not help it. Either way the refusal is
+    typed (PERMISSION_DENIED with its reason) and gives the same next step."""
+    p = sample_project(tmp_path)
+    if card:
+        roles = p.root / ".aew" / "roles"
+        roles.mkdir(exist_ok=True)
+        (roles / f"{card['role']}.yaml").write_text(dump_yaml(card), encoding="utf-8", newline="\n")
+    lab = HarnessLab.create(p, tmp_path, policy={**POLICY, "maps": {"pack_slices": "structural", "reads": reads}})
+    try:
+        wid = create_investigation(lab.project, tmp_path, card=card["role"] if card else None)
+        lab.script("default", [{"do": "aew", "args": ["map", "show", "--json"]},
+                               {"do": "aew", "args": ["map", "search", "core.py", "--json"]}])
+        run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
+        assert lab.wait(run)["status"] == "ended_without_evidence"
+        for refused in (lab.step(run, 0), lab.step(run, 1)):
+            error = (refused.get("stderr_json") or refused.get("stdout_json") or {})["error"]
+            assert refused["exit"] != 0 and error["code"] == "PERMISSION_DENIED"
+            assert error["details"]["reason"] == reason
+            assert ("launched with maps.reads off" in error["message"]) == (reason == "maps_reads_off")
+            if card:
+                assert error["details"]["card"] == card["role"]
+                assert f"role card {card['role']} narrows" in error["message"]
+            assert "read the source in your workspace, or ask the Lead" in error["message"]
     finally:
         lab.cleanup()

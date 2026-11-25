@@ -8,7 +8,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
 
-**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51
+**partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -20,7 +20,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Waiting on your sign-off:** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22, SYS-43, SYS-51
+**Limit's count / wip_limit:** 11 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22, SYS-43, SYS-51, SYS-53
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 16 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-53, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -101,6 +101,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 30
 
 **Own slices left:** 2 — the Lead change stage (item 43's stage) and its class 1 shape; the operator decision and fingerprint; the refusal list and check inputs; the export-and-check; the view rendering; containment widened to the route (CS-4 addendum 14); the light review and the operator-requested review ride in these PRs (small-changes design §2, §6, §8) (E159); first configuration (E119's `aew init`) proposes `review_triggers` entries with their levels and each check's `inputs:` list, for the operator to adopt (small-changes design §2, §8) (E166) — **Next:** the Lead change stage (item 43's stage) and its class 1 shape; the operator decision and fingerprint; the refusal list and check inputs; the export-and-check; the view rendering; containment widened to the route (CS-4 addendum 14); the light review and the operator-requested review ride in these PRs (small-changes design §2, §6, §8) — E159 — 4-5 PRs (estimate; the designer's reading, small-changes design §6)
+
+**Wired:** none
+
+### SYS-53 — Per-operation revision check (replacing the project-wide expect_rev)
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 42
+
+**Own slices left:** 1 — The switch-on: bindings required, the project-wide compare dropped, `expect_rev` retired, stage intents migrated, and the amendments (E329) — **Next:** The switch-on: bindings required, the project-wide compare dropped, `expect_rev` retired, stage intents migrated, and the amendments — E329 — 1 PR (the designer's ruling of 2026-11-10)
 
 **Wired:** none
 
@@ -266,7 +278,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 31
 
-**Own slices left:** 3 — the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule — E160 — about 1 PR (estimate; same source)
+**Own slices left:** 4 — the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160); the plan assessor's pack fitted to its scope: the reviewer archetype's text rendered at plan_assessment scope asks for a change's findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator, 2026-11-25) (E366) — **Next:** the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule — E160 — about 1 PR (estimate; same source)
 
 **Wired:** none
 
@@ -316,9 +328,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Who:** Lead (E231's next part, E233, E241)
 
-**Now:** not on the Now list
+**Now:** 44
 
-**Own slices left:** 3 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The worker route's size check (E241) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
+**Own slices left:** 5 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The worker route's size check (E241); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator, 2026-11-25) (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
 
@@ -374,7 +386,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Members:** 1 — SYS-26
 
-**Decided:** 37 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-47, SYS-48, SYS-49, SYS-50, SYS-51, SYS-52
+**Decided:** 38 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-47, SYS-48, SYS-49, SYS-50, SYS-51, SYS-52, SYS-53
 
 ### SYS-26 — Resource and progress supervision (stall detection, run health, weak-worker continuity, dynamic scheduler)
 

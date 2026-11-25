@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 from aew.engine.dispatch import ENTRYPOINTS
 from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
 from aew.errors import ValidationFailed
+from aew.knowledge import evidence as E
 from aew.schemas import _validator, validate_def
 from aew.surface import contract, run
 from aew.surface.classify import (
@@ -441,7 +442,10 @@ def test_every_staged_primitive_is_declared(catalog):
 
 # The engine methods the `resolve` runner calls first, by the primitive it runs (aew.surface.stage.resolve_stage).
 _FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve",
-               "work_gate_replace": "work.gate_replace", "work_scope_add": "work.scope_add"}
+               "work_gate_replace": "work.gate_replace", "work_scope_add": "work.scope_add",
+               "plan_assess": "plan.assess"}
+# The subject a choice takes where the runner reads its form before any engine call (E160: `<W>#plan`).
+_SUBJECT = {c: f"X-0001{E.PLAN_ITEM}" for c in contract.PLAN_CHOICES}
 
 
 class _Called(Exception):
@@ -457,7 +461,7 @@ def _runner_primitive(choice: str) -> str:
                 raise _Called(name)
             return record
 
-    args = {"expect_rev": 1, "subject": "X-0001", "choice": choice, "rationale": "r"}
+    args = {"expect_rev": 1, "subject": _SUBJECT.get(choice, "X-0001"), "choice": choice, "rationale": "r"}
     with pytest.raises(_Called) as called:
         run.RUNNERS["resolve"](run.Call(Engine(), SurfaceContext(lead_session=None, generation=None), args, "t"))
     return _FIRST_CALL[str(called.value)]
@@ -474,7 +478,7 @@ def resolve_pair_problems(mapping: dict[tuple[str, str], str]) -> list[str]:
                    f"{contract.DISPOSITION_SUBJECTS}")
     if tuple(dict.fromkeys(c for c, _ in mapping)) != contract.RESOLVE_CHOICES:
         out.append("RESOLVE_CHOICES is not the mapping's choices, in its order")
-    if set(contract.TOOLS["resolve"].expands_to) != set(mapping.values()):
+    if set(contract.TOOLS["resolve"].expands_to) != set(mapping.values()) | set(contract.RESOLVE_LAUNCH):
         out.append(f"resolve.expands_to {contract.TOOLS['resolve'].expands_to} is not the mapping's image")
     for (choice, kind), primitive in mapping.items():
         spec = SPECS.get(primitive)
@@ -500,7 +504,8 @@ def test_resolve_choice_primitive_pairs():
     assert resolve_pair_problems(mapping) == []
     assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {
         "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"],
-        "work.gate_replace": ["replace_gate"], "work.scope_add": ["add_scope", "add_scope_signed"]}
+        "work.gate_replace": ["replace_gate"], "work.scope_add": ["add_scope", "add_scope_signed"],
+        "plan.assess": ["assess_plan"]}
     # Differential: a pair that disagrees with the runner, or a choice the mapping loses, is named.
     swapped = {**mapping, ("accept_risk", "finding"): "stage.resolve"}
     assert any("(accept_risk, finding) maps to 'stage.resolve', but the resolve runner runs 'work.dispose'" in p

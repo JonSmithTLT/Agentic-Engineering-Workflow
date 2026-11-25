@@ -383,7 +383,7 @@ def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object
     produced = [{"id": "EV-0003", "kind": "review" if role == "reviewer" else "verification"}]
     harness = Harness.__new__(Harness)
     harness.gates = SimpleNamespace(stage_for=lambda state, wid, frm, dst: None)  # type: ignore[assignment]
-    message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced)
+    message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced, "INV-0003")
     [(printed, fenced)] = P.commands(message)
     [args] = P.parse(printed, fenced=fenced)
     assert (args.work_id, args.evidence, args.expect_rev) == ("T-0007", "EV-0003", 17)

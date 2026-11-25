@@ -107,6 +107,18 @@ def wait_for_workers(repo, ident):
         lane = next((step for step in job.get("steps", []) if step["name"] == "Real planted lane"), {})
         return bool(job.get("conclusion")) or lane.get("status") == "completed"
 
+    def reached_reserve(job):
+        # An ended plant is the twin's queueing only once its lane ran to its trigger reserve. One that ended before
+        # it, such as a checkout or setup failure, falls through to the errors that name it (#564's quick check, m1).
+        steps = {step["name"]: step for step in job.get("steps", [])}
+        opened = steps.get("The job's deadline", {}).get("started_at")
+        if not opened:
+            return False
+        stamp = steps.get("Real planted lane", {}).get("completed_at") or job.get("completed_at")
+        finished = datetime.fromisoformat(stamp).timestamp() if stamp else time.time()
+        reserve = datetime.fromisoformat(opened).timestamp() + CANCEL_PLANT_SECONDS - TRIGGER_RESERVE_SECONDS
+        return finished >= reserve
+
     def live():
         attempt = jobs()
         named = {job["name"]: job for job in attempt}
@@ -114,7 +126,8 @@ def wait_for_workers(repo, ident):
         # a target that finished early or lost its execution window (#564 review).
         for label, twin in zip(labels, reversed(labels), strict=True):
             job, other = named.get(label), named.get(twin)
-            if job and ended(job) and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S))):
+            if (job and ended(job) and reached_reserve(job)
+                    and not (other and (ended(other) or ready_job(twin, attempt, SENTINEL_READY_S)))):
                 raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not live before "
                                   f"{label}'s lane ended")
         active = [ready_job(label, attempt, SENTINEL_READY_S) for label in labels]

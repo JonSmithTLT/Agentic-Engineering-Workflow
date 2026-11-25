@@ -783,7 +783,7 @@ class Validation:
                 "schema": "aew/evidence/v1", "id": eid, "kind": "check_result", "work_unit": work_id,
                 "producer": {"kind": "engine", "invocation": run["custodian"], "validation_run": run["id"]},
                 "created_at": utc_now(), "seq": seq,
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": staged["before"],
                 "method": {"capability": "targeted_test_execution" if r["command"][0] != "aew-builtin"
                            else "guardrail_check", "provider": "aew-check-runner", "command": r["command"],

@@ -697,8 +697,7 @@ class Gates:
         its own.
         """
         inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
-        plan = unit.get("plan") or {}
-        accepted = {"revision": plan.get("accepted"), "sha256": plan.get("sha256")}
+        accepted = E.plan_binding(unit.get("plan"))
         problems: dict[str, Any] = {}
         if ev.get("plan_revision") != accepted:
             problems["plan"] = {"report": ev.get("plan_revision"), "accepted": accepted}
@@ -1086,7 +1085,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(), "seq": seq,
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
@@ -1162,7 +1161,7 @@ class EvidenceCommands:
                 "producer": {"role": inv["role"], "invocation": inv_id, "role_card": self.invocations.card_ref(inv),
                              **(submitted.get("producer") or {}), **self.invocations.execution_provenance(inv)},
                 "created_at": utc_now(),
-                "plan_revision": {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None,
+                "plan_revision": E.plan_binding(plan),
                 "method": submitted.get("method") or {"capability": kind, "provider": "harness-role"},
                 "claim": submitted.get("claim") or kind.replace("_", " "),
                 "evidence": submitted.get("evidence") or [],

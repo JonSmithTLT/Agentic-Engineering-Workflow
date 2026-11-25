@@ -79,6 +79,9 @@ SAMPLING_POLICY = "runner-resources-sampling.txt"
 # M1). Hosted CI samples every worker, a serial lane's controller included (operator, 2026-11-25).
 NOT_SAMPLED = "not sampled in the owned tree"
 SAMPLING_GAP = "never sampled although its lane's policy samples it"
+# The Linux pre-signal warning's outcome for a worker outside the supervisor's tree. The warning's outcomes only say why
+# a stack is missing; none of them excuses one (register E3).
+OUTSIDE_TREE = "outside the supervisor's owned tree"
 # The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
 # accepts only these, and only when the retained frames themselves classify so (register E3).
 OUTSIDE_CALL = ("setup", "teardown", "between tests")
@@ -130,6 +133,11 @@ def sampling_failures(pid: int, start: int) -> str:
 def cancel_outcome(pid: int, start: int) -> str:
     """The snapshots file naming why the cancellation collection kept no test stack for one worker identity."""
     return f"{pid}-{start}-cancel-outcome.txt"
+
+
+def warning_outcome(pid: int, start: int) -> str:
+    """The snapshots file naming why the Linux pre-signal warning kept no test stack for one worker identity."""
+    return f"{pid}-{start}-warning-outcome.txt"
 
 
 def entries(text: str):

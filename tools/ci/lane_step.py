@@ -391,8 +391,10 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                     worker_phases = interrupt_phases(root, signal_at)
                     if not active:
                         # No worker was in a test: say so, if the sessions bear out that none had started one (E3).
-                        worker_evidence.before_tests(root, at, worker_phases.get("registered_workers"),
-                                                     observer=WARNING)
+                        # The phases are the bounded read's, or else read here: a few receipts, from regular files.
+                        rows = (worker_phases.get("registered_workers") if worker_phases.get("status") == "observed"
+                                else worker_evidence.phases_at_signal(root, signal_at))
+                        worker_evidence.before_tests(root, at, rows, observer=WARNING)
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
                                   else f"Lane command had exited with code {code}")

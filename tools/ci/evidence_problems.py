@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
 import sys
+from collections import defaultdict
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
@@ -18,6 +20,7 @@ from evidence_files import (  # noqa: E402
     FRAME,
     FRESH_S,
     INTERRUPTION_REASONS,
+    LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
     OUTSIDE_CALL,
     PREFIX,
@@ -28,12 +31,15 @@ from evidence_files import (  # noqa: E402
     cancel_outcome,
     entries,
     failure_overflow,
+    finished_without_tests,
     owner,
     policy_samples,
     priority,
     publishable,
     pytest_phase,
+    receipt_phases,
     report_json,
+    report_shows_no_test,
     sampling_failures,
     stack_file,
     state,
@@ -75,8 +81,10 @@ def rows_named(texts: dict, name: str):
 
 def before_tests_problems(texts: dict, running: set) -> list[str]:
     """Where the bundle contradicts or lacks its record that the lane was cancelled before any test started (register
-    E3). The record stands in for a worker observation and a running name only when every copy agrees, and when no
-    session, worker, watchdog header or running name in the bundle shows a test begun."""
+    E3). The record stands in for a worker observation and a running name only when every copy agrees, every session
+    is listed, every registered worker is listed by identity with its lifecycle receipt, which reached the recorded
+    phase and never execution, a finished session's own files show that it began no test, and no autopsy of a test,
+    watchdog header, interruption record, test result or running name shows a test begun (review of #579, M1 and m1)."""
     problems = []
     copies = {json.dumps(row, sort_keys=True) for row in rows_named(texts, BEFORE_TESTS)}
     record = json.loads(copies.pop()) if len(copies) == 1 else {}
@@ -90,46 +98,60 @@ def before_tests_problems(texts: dict, running: set) -> list[str]:
             if not isinstance(worker, dict) or worker.get("phase") not in BEFORE_EXECUTION:
                 problems.append(f"{row.get('session')}: a worker not recorded before its first test")
             else:
-                listed[(PurePosixPath(str(row.get("session"))).name, worker.get("worker"))] = worker.get("pid")
+                listed[(PurePosixPath(str(row.get("session"))).name, worker.get("worker"))] = worker
     names = {PurePosixPath(str(row.get("session"))).name for row in sessions}
+    reports = []
+    files = defaultdict(dict)  # each published session's files, by name, across the bundle's copies
     for path, text in texts.items():
-        session = path.parent.name
         if path.suffix == ".json":
-            try:
+            with contextlib.suppress(ValueError):
                 doc = json.loads(text)
-            except ValueError:
-                continue
-            results = doc.get("results") if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT else None
-            # A collection error is reported before any test; any other result is a test that ran.
-            if isinstance(results, dict) and any(
-                    not isinstance(result, dict) or not result.get("failures")
-                    or any(not isinstance(f, dict) or f.get("phase") != "collect" for f in result["failures"])
-                    for result in results.values()):
-                problems.append(f"{path.name}: the lane report has a test's result")
+                if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
+                    reports.append(doc)
+                    # A collection error is reported before any test; any other result is a test that ran.
+                    if not report_shows_no_test({**doc, "complete": True, "collected": None}):
+                        problems.append(f"{path.name}: the lane report has a test's result")
             continue
-        if not (session.startswith("session-") and path.parent.parent.name == "autopsy"):
-            if path.name.startswith("hang-") and WATCHDOG_HEADER.match(text):
-                problems.append(f"{path.name}: a test was in flight")
-            elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
-                problems.append(f"{path.name}: a worker was observed in a test")
+        if "autopsy" in path.parts[:-1]:
+            under = path.parts[len(path.parts) - 1 - path.parts[::-1].index("autopsy") + 1]
+            if not under.startswith("session-"):
+                problems.append(f"autopsy/{under}: a test's autopsy")
+            elif path.parent.name == under:
+                files[under][path.name] = text
             continue
+        if path.name.startswith("hang-") and WATCHDOG_HEADER.match(text):
+            problems.append(f"{path.name}: a test was in flight")
+        elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
+            problems.append(f"{path.name}: a worker was observed in a test")
+    for session, published in sorted(files.items()):
         if session not in names:
             problems.append(f"{session}: a session the observation does not list")
-        elif path.name == "session-finished.txt":
-            problems.append(f"{session}: the session had finished")
-        elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
-            problems.append(f"{session}/{path.name}: a worker was observed in a test")
-        elif (ident := re.fullmatch(r"(worker-gw[0-9]+)-pid", path.stem)) and (
-                listed.get((session, ident[1])) != (int(text) if text.strip().isdecimal() else None)):
-            problems.append(f"{session}: {ident[1]} is not recorded before its first test")
-        elif path.name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
-            problems.append(f"{session}/{path.name}: a worker had started its tests")
+            continue
+        if "session-finished.txt" in published and (why := finished_without_tests(published, reports)):
+            problems.append(f"{session}: the session had finished, and {why}")
+        for name, text in sorted(published.items()):
+            if re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+\.txt", name):
+                problems.append(f"{session}/{name}: a worker was observed in a test")
+            elif ident := re.fullmatch(r"(worker-gw[0-9]+)-pid\.txt", name):
+                worker = listed.get((session, ident[1]), {})
+                start = published.get(f"{ident[1]}-start.txt", "")
+                if (not text.strip().isdecimal() or not start.strip().isdecimal()
+                        or (worker.get("pid"), worker.get("start")) != (int(text), int(start))):
+                    problems.append(f"{session}: {ident[1]} is not recorded, by pid and start, before its first test")
+            elif name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
+                problems.append(f"{session}/{name}: a worker had started its tests")
+    for (session, name), worker in sorted(listed.items()):
+        phases = receipt_phases(files.get(session, {}).get(f"worker-{worker.get('pid')}-{worker.get('start')}"
+                                                           f"-lifecycle.txt", ""))
+        # The receipt must have reached the recorded phase: a worker can go on collecting after the observation until
+        # the lane is ended, so a later phase short of execution still bears it out.
+        if phases is None or worker["phase"] not in phases or WORKER_PHASES[-1] in phases:
+            problems.append(f"{session}: {name} has no lifecycle receipt bearing out its recorded phase")
     if running:
         problems.append("a running test name was published")
     return problems
 
 
-LANE_REPORT = "aew/lane-report/v1"
 ELISION = re.compile(r"Use -v+ to (?:get more diff|show)|Omitting \d+ identical items|Skipping \d+ identical leading")
 FAILURE_PHASES = ("collect", "setup", "call", "teardown")
 
@@ -246,7 +268,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 except ValueError:
                     report("failure-report", f"{relative}: unreadable scanned JSON")
                 else:
-                    if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT:
+                    if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
                         defects.extend(failure_problems(path, doc))
             if owner(relative) is None:
                 report("writer-path", f"{relative}: unlisted writer")

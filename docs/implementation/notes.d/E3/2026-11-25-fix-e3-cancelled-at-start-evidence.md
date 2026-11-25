@@ -10,23 +10,31 @@ observation` and `[running] missing running test name` in the evidence check.
   45602811086), the cancelled steps printed none, and the collection found no worker with an in-flight watchdog header
   (`evidence timing collect 0.010s`). A worker is observed only inside a test, so there was nothing to observe or name:
   the evidence was not lost, it never existed, and the check had no way to say so.
-- **The fix.** The Linux supervisor at the signal, or the cancellation collection, writes
+- **The fix.** The lane supervisor at the signal (on either platform), or the cancellation collection, writes
   `runner-resources-before-tests.txt` (`worker_evidence.before_tests`) from positive observations only: no in-flight
-  header or running name, no finished session, and every session an xdist session whose registered workers' lifecycle
-  receipts, read from their live writers, stand before their first test; or no session registered at all. The check
-  (`check_evidence_run`) types such a lane `before tests`, and `evidence_problems` accepts the record as its death
-  evidence only while the bundle bears it out: every session listed, every registered worker recorded before its first
-  test, no `execution-started` receipt, no finished session, no test result in the lane report (a collection error is
-  not one), and no in-flight header, interruption record or running name. Anything else is a `[before-tests]` defect.
-  The evidence proof's `verify` job ablates the rule on every hosted `normal` plant: that lane's own bundle, claimed as
-  cancelled before its tests, must raise it (`verify_evidence.before_tests_twin`). `WORKER_PHASES` moves to
-  `evidence_files`, its one owner, so the check can read it without pytest.
+  header or running name, and each session either still starting, as an xdist session whose registered workers'
+  lifecycle receipts, read from their live writers, stand before their first test, or finished after a graceful
+  interrupt, with every registered worker's receipt short of execution and the lane report complete with no test's
+  result or collecting nothing (`evidence_files.finished_without_tests`); or no session registered at all. The check
+  (`check_evidence_run`) types such a lane `before tests` (a controller's `abnormal-exit` does not prevent it: that is
+  the cancellation's own death), and `evidence_problems` accepts the record as its death evidence only while the bundle
+  bears it out: every session listed; every registered worker listed by pid and start, with its lifecycle receipt
+  present, reaching its recorded phase and never `execution-started`; a finished session's own files showing no test
+  began; no test's autopsy, test result in the lane report (a collection error is not one), in-flight header,
+  interruption record or running name. Anything else is a `[before-tests]` defect. `WORKER_PHASES`, the lane report's
+  schema and the `worker-count` marker are owned by `evidence_files`, so the check reads them without pytest.
+- **The proof.** A real xdist session interrupted by SIGINT while its workers collect ends gracefully, and its published
+  bundle is accepted whether the record was taken at the signal or at the collection
+  (`test_a_start_up_interrupted_gracefully_is_typed_before_tests_from_its_real_bundle`, POSIX). The hosted matrix row is
+  the evidence proof's start-up control: `run-cancel-control (start)` dispatches a target whose plants
+  (`evidence_plants/startup.py`) hold their workers' collection, behind the twin barrier, cancels it once both lanes
+  have run `START_READY_SECONDS`, and requires both jobs typed `before tests` with A2 yes and no defect. The `verify`
+  job also ablates the rule on every hosted `normal` plant (`verify_evidence.before_tests_twin`).
 - **Limits.** A serial session's controller runs its tests itself and keeps no lifecycle receipt, and an xdist session
-  that has not yet written `worker-count` cannot be told from one; neither is recorded, so its gap stays a defect. A
-  registered worker whose receipt cannot be read from its live writer stays indeterminate, with the same result. No
-  hosted plant cancels a lane during start-up, so the record's acceptance is proven by the unit matrix in
-  `tests/unit/test_cancel_evidence.py` (four start-up layouts accepted; serial, executing and finished refused; seven
-  contradictions defects and a collection error not one; the Linux supervisor's record at the signal; no record while a
-  test is in flight).
+  that has not yet written `worker-count` cannot be told from one; neither is recorded before it finishes, so its gap
+  stays a defect. A registered worker whose receipt cannot be read from its live writer stays indeterminate, with the
+  same result. "No session at all" reads an absence: it holds while every lane command passes `--session-deadline` with
+  its hang directory the lane root or one level under it, which
+  `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins.
 - **Carried follow-ons.** #564's quick-check m1 and #561's quick-check m5 were both fixed by #573 (42ecb439) and are
   proven there; this change confirmed each fails its test when undone.

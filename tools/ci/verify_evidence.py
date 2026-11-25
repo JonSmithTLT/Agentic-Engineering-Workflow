@@ -16,12 +16,14 @@ from pathlib import Path
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
 from evidence_files import (
+    BEFORE_EXECUTION,
     BEFORE_TESTS,
     BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
     FRAME,
     WARNING,
     entries,
+    receipt_phases,
     state,
     test_frame,
     warning_outcome,
@@ -166,11 +168,15 @@ def before_tests_twin(root: Path) -> list[str]:
         shutil.copytree(root, twin)
         sessions = {}
         for pid_file in twin.rglob("autopsy/session-*/worker-gw*-pid.txt"):
-            sessions.setdefault(pid_file.parent.name, []).append({
-                "worker": pid_file.stem.removesuffix("-pid"), "pid": int(pid_file.read_text().strip()),
-                "phase": "collecting"})
+            worker = pid_file.stem.removesuffix("-pid")
+            pid, start = int(pid_file.read_text()), int(pid_file.with_name(f"{worker}-start.txt").read_text())
+            receipt = pid_file.with_name(f"worker-{pid}-{start}-lifecycle.txt")
+            reached = receipt_phases(receipt.read_text(encoding="utf-8")) if receipt.is_file() else None
+            sessions.setdefault(pid_file.parent.name, {})[worker] = {
+                "worker": worker, "pid": pid, "start": start,
+                "phase": next((p for p in reversed(reached or []) if p in BEFORE_EXECUTION), "collecting")}
         record = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": CANCEL_COLLECTION, "at": 0,
-                  "sessions": [{"session": name, "worker_count": len(rows), "workers": rows}
+                  "sessions": [{"session": name, "worker_count": len(rows), "workers": list(rows.values())}
                                for name, rows in sessions.items()]}
         # A passing lane publishes no priority (watchdog) bundle: any of its inventories will do, as for checker_twins.
         inventory = next(iter(sorted(twin.rglob("inventory.txt"))), None)

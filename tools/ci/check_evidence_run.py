@@ -17,7 +17,12 @@ from cancel_evidence import attach_reasons, valid
 from evidence_problems import FAILURE_PHASES, evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from evidence_files import BEFORE_TESTS, HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
+from evidence_files import (  # noqa: E402 - on the helpers path evidence_problems adds
+    BEFORE_TESTS,
+    HOST_STOP_FILE,
+    LANE_REPORT_SCHEMA,
+    WORKER_COUNT,
+)
 from flake_register import _api, _gh_read, _pages, _started_pytest, check_annotations  # noqa: E402
 
 
@@ -84,7 +89,7 @@ def finished_tests(bundles, complete_report, *, report_exits=(), steps_passed=Fa
                 return True
         # An interrupted controller may not have written its report. Every configured
         # worker must have finished its pytest session with its own matching PID.
-        count = int(receipt("worker-count.txt"))
+        count = int(receipt(f"{WORKER_COUNT}.txt"))
         pids = {path.name for _, directory in sessions for path in directory.glob("worker-gw*-pid.txt")}
         if not pids or count != len(pids):
             return False
@@ -190,7 +195,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                         continue
                     if not isinstance(doc, dict) or "exitstatus" not in doc:
                         continue
-                    if (doc.get("schema") == "aew/lane-report/v1" and doc.get("complete") is True
+                    if (doc.get("schema") == LANE_REPORT_SCHEMA and doc.get("complete") is True
                             and doc["exitstatus"] in (0, 1)):
                         completed.add(name)
                     results = doc.get("results")
@@ -243,8 +248,13 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                                    report_exits=reports_by_prefix[name], steps_passed=all_steps_passed)
                     for name in prefixes)
                 # With no death marker, a lane step's record that no session had started a test types the
-                # cancellation; evidence_problems checks the bundle bears it out (register E3).
-                before_tests = not death_marker and Path(BEFORE_TESTS).stem in markers
+                # cancellation; evidence_problems checks the bundle bears it out (register E3). A controller ended
+                # by the cancellation before it finished (the sentinel's abnormal-exit) is that death itself, not a
+                # test interrupted.
+                in_test = any(name != "abnormal-exit" and re.fullmatch(
+                    r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+|worker-gw[0-9]+-down|session-deadline|cutoff"
+                    r"|(?:running|hang)-.+", name) for name in markers)
+                before_tests = not in_test and Path(BEFORE_TESTS).stem in markers
                 kind = ("cancel-after-tests" if after_tests else "cancel-before-tests" if before_tests
                         else "cancel")
             elif any(re.fullmatch(r"oom-\d+", name) for name in markers):

@@ -115,7 +115,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ARMED_NOTE, WORKER_PHASES, stacks_ablated  # noqa: E402
+from evidence_files import ARMED_NOTE, WORKER_COUNT, WORKER_PHASES, stacks_ablated  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
@@ -667,7 +667,7 @@ class Controller:
     def pytest_xdist_setupnodes(self, config: Any, specs: list[Any]) -> None:
         # The final lane report may disappear if GitHub interrupts controller shutdown.
         # Pin the expected worker roster before any of its tests start.
-        _write(self.dir, "worker-count", f"{len(specs)}\n")
+        _write(self.dir, WORKER_COUNT, f"{len(specs)}\n")
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_configure_node(self, node: Any) -> None:

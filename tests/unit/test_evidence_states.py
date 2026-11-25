@@ -180,7 +180,12 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     cancel = jobs["cancel-plant"]
     assert cancel["if"] == ("github.event_name != 'pull_request' && "
                             "(!inputs.probe_origin || inputs.probe_role == 'target')")
-    assert cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    # The start-up control's target alone runs the start-up plant (register E3; #579, M1).
+    assert cancel["strategy"]["matrix"]["kind"] == ("${{ inputs.probe_scenario == 'start' && "
+                                                    "fromJSON('[\"cancel-start\"]') || fromJSON('[\"cancel\"]') }}")
+    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", "start"]
+    scenarios = proof[True]["workflow_dispatch"]["inputs"]["probe_scenario"]["options"]
+    assert scenarios == ["manual", "supersede", "start"]
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):

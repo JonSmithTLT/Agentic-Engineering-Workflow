@@ -405,13 +405,19 @@ that defines their matrix was cancelled, both in the completed run and in assura
 concludes.
 
 A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
-The Linux supervisor at the signal, or the cancellation collection, then records `runner-resources-before-tests.txt`,
-but only from positive observations: no watchdog header or running name, no finished session, and every session an
-xdist session whose registered workers' lifecycle receipts, read from their live writers, stand before their first
-test (or no session registered at all). The evidence check types such a lane `before tests` and accepts the record as
-its death evidence only while every session, worker, lifecycle receipt and lane-report result in the bundle bears it
-out; anything else is a `[before-tests]` defect, and the proof's `verify` job ablates the rule on each `normal` plant. A serial session, whose controller runs its tests itself and keeps no lifecycle receipt,
-is never recorded this way, so its gap stays a defect.
+The lane supervisor at the signal, on either platform, or the cancellation collection, then records
+`runner-resources-before-tests.txt`, but only from positive observations: no watchdog header or running name, and each
+session either still starting, as an xdist session whose registered workers' lifecycle receipts, read from their live
+writers, stand before their first test, or finished after a graceful interrupt, with every worker's receipt short of
+execution and the lane report showing no test ran. No session registered at all is recorded too: that reading of an
+absence holds while every lane command passes `--session-deadline` with its hang directory the lane root or one level
+under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The evidence check types
+such a lane `before tests` and accepts the record as its death evidence only while every session, worker (by pid and
+start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out; anything else is a
+`[before-tests]` defect. The proof's start-up control cancels a lane whose workers hold their collection and requires
+that typing with no defect, and its `verify` job ablates the rule on each `normal` plant. A serial session that has not
+finished, whose controller runs its tests itself and keeps no lifecycle receipt, is never recorded this way, so its gap
+stays a defect.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The

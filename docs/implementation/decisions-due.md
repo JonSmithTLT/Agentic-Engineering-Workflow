@@ -65,11 +65,27 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E349
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Where E349 (E7d's custodian half) sits against SYS-08's finish line, which does not name it, now that SYS-08 awaits the operator's sign-off; inside it, outside it (the operator's to place after SYS-08 finishes, as E359 is), or in another system
+
+**Blocks:** -
+
 ### E360
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** adoption
 
 **What:** An amendment to E123's custody ruling of 2026-11-02 and to I-6 that writes the operator's decisions of 2026-11-24 into the contract (managed key custody opt in per provider, today's path custody the default; credential operations operator-only, activation a G3 action), with the persistence a host without a TPM may claim
+
+**Blocks:** -
+
+### STG-15
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Whether SYS-09's serves_claims keeps its claim on the SPT records closing work (SPB), now that the operator has taken STG-15's later records (MCP servers and SPT's records) out of SYS-09's finish line
 
 **Blocks:** -
 

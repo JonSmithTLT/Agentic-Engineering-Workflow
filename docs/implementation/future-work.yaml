@@ -148,7 +148,7 @@ sections:
     | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
     | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
     | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
-    | 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+    | 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
     | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
     | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 
@@ -2874,23 +2874,6 @@ sections:
     Source: 'Found in the review of #331 (E130), 2026-11-05: two pre-existing points under its finding F1'
     When: '**Unscheduled**, any idle slot'
     Notes: Filed by the Lead
-
-  - '#': E182
-    Work: 'The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check`
-      in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned,
-      and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers
-      and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:**
-      `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator''s
-      decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy.
-      **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and
-      the Lead''s tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository,
-      and lanes. Done when CI fails on an unowned row, a line citation or a count above N'
-    Source: 'The operator''s decision of 2026-11-06, the build board''s generator placed now (design workspace `7040a55`):
-      "Now, PR 1 first"; the build board''s format draft of 2026-11-06 (`FORMAT.md`, draft 3); the Lead''s audit of the
-      hand-kept board, 2026-11-06'
-    When: '**Now.** Item 39 of the Now list. PR 1 takes the next free slot after the first-use one-offs in flight, and PRs
-      2 and 3 follow it. It doesn''t delay first use'
-    Notes: Filed by the Lead. Until PR 2 renders the board, it stays hand-kept, citing register row ids, never line numbers
 
   - '#': E183
     Work: 'The steering text and stop fix, with the `request_confirmation` hide, in one small PR: the steering tool''s text
@@ -5637,6 +5620,16 @@ sections:
     When: '**Unscheduled**, after #551 and #556 merge; the operator places it'
     Notes: 'Filed by #556'
 
+  - '#': E365
+    Work: 'The systems generator''s later work, split from E182 when it closed: derive `serves` from each system''s `serves_claims`
+      and `as_built` against the requirements trace, and compute lanes from `touches` and `depends_on` (per slice, once
+      each slice carries its own `touches` and `after`, as the board''s format owes)'
+    Source: E182's **Later** clause; the build board's format draft of 2026-11-06 (`FORMAT.md`, draft 3); the operator's
+      decision of 2026-11-25 on the Lead's finish plan ("yes to the recommendations"), which drops it from SYS-48's finish
+      line
+    When: '**Unscheduled**, once the requirements trace is in the repository'
+    Notes: Filed by the Lead. SYS-48 owns it, outside its finish line
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:
@@ -6393,6 +6386,16 @@ sections:
       Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
     Closed: '2026-11-08'
     By: '#384 (`039a281e`), with its review''s follow-ons on #391. What it does not reach is in this row''s note'
+
+  - '#': E182
+    Was: 'The systems generator: `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane (PR 1),
+      the rendered board (PR 2), and state read from the code with the N = 12 check (PR 3). Its later work, `serves` once
+      the requirements trace is in the repository and lanes, is E365'
+    Closed: '2026-11-25'
+    By: '#346 (`703afbc4`), #415 (`3df46bfa`) and #421 (`76e1cc64`), with the sign-off state and the lag check on #430 (`5395d072`):
+      its done line holds, so CI fails on an unowned row, a line citation or a count above N. Closed on the operator''s
+      decision of 2026-11-25 on the Lead''s finish plan ("yes to the recommendations"), which drops serves and lanes from
+      SYS-48''s finish line and files them as E365'
 
   - '#': E191
     Was: '`aew init` at a terminal has no up-front way to decline every tool download: `init`''s `--fetch-tool` option taking

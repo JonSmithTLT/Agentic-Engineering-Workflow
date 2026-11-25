@@ -11,6 +11,7 @@ evidence stays byte-identical.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -162,6 +163,14 @@ def kinds_for(role: str, scope: str | None) -> set[str]:
     if role == ASSESSOR_ARCHETYPE and scope == ASSESSMENT_SCOPE:
         return kinds & {PLAN_ASSESSMENT}
     return kinds - {PLAN_ASSESSMENT}
+
+
+def submit_operations(operations: Iterable[str], role: str, scope: str | None) -> list[str]:
+    """``operations`` less each ``submit.<kind>`` an invocation of ``role`` at ``scope`` may not use (``kinds_for``):
+    what a pack lists and a run's bridge offers, so a reviewer of a change is never told it may submit a plan
+    assessment (#581 review, F1). The grant itself is the archetype's; this narrows only what is offered."""
+    allowed = kinds_for(role, scope)
+    return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
 
 
 def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None) -> None:

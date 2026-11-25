@@ -4083,8 +4083,8 @@ systems:
     binding and card), Q3 (cost and placement), adoption pointer
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 5 and 8
   - 'E160 slice 1: the `plan_assessment` kind, its schema and the revision binding (`aew.knowledge.evidence`);
-    no credential submits one and no gate reads it yet'
-  - 'src/aew/roles/archetypes/reviewer.yaml:28: `requires_distinct_invocation_from` is card data; no Python module in src/
+    a plan assessor dispatched with `aew plan assess` (E160 slice 2a) submits one, and no gate reads it yet'
+  - 'src/aew/roles/archetypes/reviewer.yaml:30: `requires_distinct_invocation_from` is card data; no Python module in src/
     or tests/ reads it'
   - 'src/aew/knowledge/manifest.py:29-39: no class path carries a plan assessment gate'
   - 'src/aew/engine/evidence_ops.py:1491-1492: a gate is waivable only when listed in the policy''s waivable_gates (:1489-1490

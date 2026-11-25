@@ -292,7 +292,8 @@ def _allowed_values(role: str, scope: str | None = None) -> dict[str, dict[str, 
 
 
 def _operations(p: PackInputs) -> list[str]:
-    return (p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]
+    granted = (p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]
+    return E.submit_operations(granted, p.role, p.scope)
 
 
 def _on_the_bridge(operations: list[str]) -> list[str]:

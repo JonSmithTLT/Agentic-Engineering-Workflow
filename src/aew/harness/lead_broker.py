@@ -108,7 +108,8 @@ OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability
 # A Lead command whose Lead route is a typed tool not yet built, so only the operator runs it until then: `plan assess`
 # (E160 slice 2a; its typed tool is slice 2b, as the surface map's standing rule requires of a new Lead command).
 TYPED_PENDING = (frozenset({"plan", "assess"}),)
-# Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
+# Commands only the operator runs, at their own terminal: never relayed, and never a typed tool (A1 §1), except those
+# in TYPED_PENDING, which are the operator's only until their typed tool is built and leave this list with it.
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
                  + (CREDENTIAL_REPORT,) + TYPED_PENDING)

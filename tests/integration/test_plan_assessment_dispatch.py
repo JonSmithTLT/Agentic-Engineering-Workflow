@@ -7,12 +7,18 @@ with the Lead credential."""
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
+import printed_commands as P
+import pytest
 from aewflow import Role, create_planned_ticket, create_unit, implement, plan_unit, sample_project
 from conftest import run_aew
+from fake_harness import HarnessLab
 from invariants import assert_control_invariants
 
+from aew.engine import gate_ops
+from aew.engine.api import Engine
 from aew.knowledge import evidence as E
 
 
@@ -26,6 +32,37 @@ def assessment(**overrides):
     base.update(overrides)
     return {"claim": "the plan covers the requirement", "producer": {"model": "scripted-assessor"},
             "assessment": base}
+
+
+@pytest.fixture
+def lab(tmp_path):
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path)
+    yield lab
+    lab.cleanup()
+
+
+def follow(p, printed, fenced, *, env=None, stdin=None, **values):
+    """Run a command exactly as the product printed it: its placeholders filled as a reader fills them (the revision
+    from `aew status`, and ``values``, e.g. ``file=...``), its heredoc (or ``stdin``, for a `--fields -` the reader
+    writes) as stdin, with the Lead credential."""
+    head, body = P.split(printed, fenced)
+    body = stdin if body is None else body
+    head = head.replace("<revision from aew status>", str(p.rev()))
+    for name, value in values.items():
+        head = head.replace(f"<{name}>", value)
+    head, body = P.fill(head), (P.fill(body) if body is not None else None)
+    argv = shlex.split(head)
+    assert argv[0] == "aew"
+    res = run_aew("-C", str(p.root), *argv[1:], input=body,
+                  env={**(env or {}), "AEW_LEAD_TOKEN": p.token})
+    assert res.returncode == 0, f"{head} failed: {res.stderr or res.stdout}"
+    return res.json
+
+
+def printed(message, word):
+    """The one command ``message`` prints whose words include ``word``."""
+    [found] = [(c, f) for c, f in P.commands(message) if word in c]
+    return found
 
 
 def assess(p, wid, *args):
@@ -158,3 +195,86 @@ def test_the_assessors_pack_holds_the_plan_and_the_request_and_no_planner_reason
     pack = run_aew("-C", str(p.root), "context", "show", ticket["invocation"]).stdout
     assert "## The request as recorded" in pack and "Story " + story in pack
     assert "every operation is tested" in pack
+
+
+def test_a_ticket_with_no_plan_is_assessed_by_following_the_refusals_steps(tmp_path):
+    """#581 review, F4: `no_accepted_plan` names the steps for a unit with no proposal, and following them works."""
+    p = sample_project(tmp_path)
+    wid = create_unit(p, "ticket", "Unplanned", extra=("--goal", "g", "--scope", "calc/**"))
+    error = refused(p, "plan", "assess", wid)
+    plan = tmp_path / "plan.md"
+    plan.write_text("1. Change calc/core.py.\n", encoding="utf-8")
+    proposed = follow(p, *printed(error["message"], "plan propose"), file=str(plan))
+    follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]))
+    assert assess(p, wid)[1]["plan_revision"]["revision"] == proposed["revision_number"]
+
+
+def test_after_an_assessors_run_the_printed_step_ends_it_and_the_assessment_still_counts(lab, tmp_path):
+    """#581 review, F2: nothing ingests a plan assessment. The finished run's next action says it is recorded and
+    counts, and prints the step that ends the invocation; following it retires the observation and the credential."""
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    out = lab.lead("plan", "assess", wid, "--launch")
+    assert lab.wait(out["launch"]["run"])["status"] == "ended_with_evidence"
+    [entry] = [r for r in lab.ok("resume", "--json")["harness_runs"] if r["invocation"] == out["invocation"]]
+    action = entry["action"]
+    assert "is the assessment that counts" in action and "ingest" not in action.replace("nothing ingests it", "")
+    follow(p, *printed(action, "invoke cancel"), env=lab.env)
+    inv = p.ok("invoke", "show", out["invocation"])
+    assert inv["status"] != "active" and inv["observation"]["status"] != "active"
+    assert not any(r["invocation"] == out["invocation"] for r in lab.ok("resume", "--json").get("harness_runs", []))
+    plan = p.ok("work", "show", wid)["control"]["plan"]
+    assert E.counting_assessment(E.scan(p.root / ".aew", wid)[0], plan)["producer"]["invocation"] == out["invocation"]
+    assert_control_invariants(p)
+
+
+def test_an_assessor_of_a_replaced_revision_is_dispatched_again_by_following_the_refusal(lab, tmp_path):
+    """#581 review, F4: `plan_revision_changed` prints the dispatch of a new assessor, which assesses the new one."""
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    role, _ = assess(p, wid)
+    plan_unit(p, tmp_path, wid, "A revised plan.\n", reason="revised")
+    res = role.submit(E.PLAN_ASSESSMENT, assessment(), expect_ok=False)
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    again = follow(p, *printed(res.error["message"], "plan assess"), env=lab.env)
+    assert again["plan_revision"]["revision"] == 2
+    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+
+
+def test_an_assessor_whose_pack_drifted_is_dispatched_again_by_following_its_commands(lab, tmp_path):
+    """#581 review, F4: `redispatch_commands` for an assessor, followed as printed: cancel, then a new assessor."""
+    p = lab.project
+    wid = create_planned_ticket(p, tmp_path)
+    _, out = assess(p, wid)
+    current = Engine.discover(p.root)._k.store.current()  # the state the commands are printed from
+    inv = current["invocations"][out["invocation"]]
+    cancel, dispatch = gate_ops.redispatch_commands(current, out["invocation"], inv)
+    follow(p, cancel, False, env=lab.env, stdin="reason: its pack drifted\n")
+    lab.script("default", [{"do": "submit", "kind": E.PLAN_ASSESSMENT, "meta": assessment()}])
+    again = follow(p, dispatch, False, env=lab.env)
+    assert p.ok("invoke", "show", out["invocation"])["status"] == "cancelled"
+    assert again["role_card"] == E.ASSESSOR_CARD and again["scope"] == E.ASSESSMENT_SCOPE
+    assert lab.wait(again["launch"]["run"])["status"] == "ended_with_evidence"
+    assert_control_invariants(p)
+
+
+def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_assessment(tmp_path):
+    """#581 review, F1: what a run is offered (its bridge operations and expected kinds) is what it may submit."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    role, _ = assess(p, wid)
+    me = role.ok("whoami")
+    assert f"submit.{E.PLAN_ASSESSMENT}" in me["operations"] and "submit.review" not in me["operations"]
+    assert me["expected_kinds"] == [E.PLAN_ASSESSMENT]
+    other = create_planned_ticket(p, tmp_path, title="Other")
+    impl = Role(p, p.lead("work", "assign", other)["invocation_token"],
+                Path(p.ok("work", "show", other)["control"]["workspace"]["path"]))
+    p.lead("work", "transition", other, "--to", "RUNNING")
+    implement(impl)
+    p.lead("work", "transition", other, "--to", "REVIEW_PENDING")
+    out = p.lead("invoke", "create", other, "--card", "code_reviewer")
+    reviewer = Role(p, out["invocation_token"], Path(p.ok("work", "show", other)["control"]["workspace"]["path"]))
+    me = reviewer.ok("whoami")
+    assert "submit.review" in me["operations"] and f"submit.{E.PLAN_ASSESSMENT}" not in me["operations"]
+    assert me["expected_kinds"] == ["review"]

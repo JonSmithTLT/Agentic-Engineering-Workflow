@@ -215,11 +215,20 @@ def test_a_review_still_validates_against_the_shared_finding_shape():
 
 def test_a_lead_session_cannot_relay_plan_assess_until_its_typed_tool():
     # E160 slice 2a: the command takes the Lead credential and is not Lead-reachable, so a Lead session's broker refuses
-    # it; slice 2b gives the Lead its typed tool. Like every dispatch, a relay would need --launch.
+    # it, saying why and what to do; slice 2b gives the Lead its typed tool. Like every dispatch, a relay would need
+    # --launch.
+    from aew.errors import PermissionDenied as Refused
     from aew.harness import lead_broker
 
     assert frozenset({"plan", "assess"}) not in lead_broker.LEAD_REACHABLE
     assert frozenset({"plan", "assess"}) in lead_broker.DISPATCHES
+    argv = ["plan", "assess", "T-0001", "--launch", "--expect-rev", "3"]
+    refusal = lead_broker.refuses_locally(build_parser().parse_args(argv))
+    assert refusal == ("`aew plan assess` reaches a Lead session through its typed tool, which is not built yet; "
+                       "until it is, ask the operator to run it at their own terminal")
+    with pytest.raises(Refused) as exc:  # the broker applies the same check before anything runs
+        lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
+    assert exc.value.message == refusal
 
 
 def test_a_plan_assessor_whose_pack_drifted_is_dispatched_again_by_its_own_entrypoint():

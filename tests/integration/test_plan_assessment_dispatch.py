@@ -83,7 +83,7 @@ def test_a_code_reviewer_run_may_never_submit_a_plan_assessment(tmp_path):
     assert res.returncode != 0
     assert res.error["code"] == "PERMISSION_DENIED"
     assert res.error["details"]["reason"] == "not_a_plan_assessment_dispatch"
-    assert "aew plan assess" in res.error["message"]  # what to do instead
+    assert "plan assess command" in res.error["message"]  # what to do instead
     ok = reviewer.submit("review", {"claim": "c", "producer": {"model": "m"},
                                     "review": {"independence": "R1", "disposition": "pass", "findings": [],
                                                "resolved_findings": []}})

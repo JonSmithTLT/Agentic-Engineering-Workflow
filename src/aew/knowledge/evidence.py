@@ -171,11 +171,12 @@ def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str |
         if kind == PLAN_ASSESSMENT:
             raise PermissionDenied(
                 "only an invocation dispatched to assess the accepted plan may submit a plan assessment; this one was "
-                f"dispatched at scope {scope!r}. The Lead dispatches an assessor with `aew plan assess <W>`",
+                f"dispatched at scope {scope!r}. A plan assessor is dispatched with the plan assess command, never as "
+                "a reviewer of a change",
                 reason="not_a_plan_assessment_dispatch", role=role, kind=kind, scope=scope)
         raise PermissionDenied(
             f"this invocation was dispatched to assess the accepted plan: it submits a {PLAN_ASSESSMENT} "
-            f"(`aew submit --kind {PLAN_ASSESSMENT}`), not {kind} evidence",
+            f"(`aew submit --kind {PLAN_ASSESSMENT} --file <file>`), not {kind} evidence",
             reason="plan_assessment_dispatch", role=role, kind=kind, scope=scope)
     control = sorted(CONTROL_FIELDS & meta.keys())
     if control:

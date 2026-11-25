@@ -829,6 +829,7 @@ None.
 - `aew.engine.work_ops`
 - `aew.errors`
 - `aew.harness.containment`
+- `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.runlog`
 - `aew.harness.weaker_register`

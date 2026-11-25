@@ -64,6 +64,7 @@ from aew.errors import (
     ValidationFailed,
     WorkspaceMutated,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
@@ -1207,8 +1208,8 @@ class EvidenceCommands:
                     raise GateUnsatisfied(
                         f"{work_id}'s accepted plan changed after {inv_id} was dispatched to assess revision "
                         f"{(inv.get('plan_revision') or {}).get('revision')}, so this assessment would be of a plan "
-                        f"that is no longer the accepted one; the Lead dispatches a new assessor with "
-                        f"`aew plan assess {work_id}`", reason="plan_revision_changed",
+                        f"that is no longer the accepted one; a new assessor is dispatched with "
+                        f"`aew plan assess {work_id} --launch {EXPECT_REV}`", reason="plan_revision_changed",
                         dispatched_for=inv.get("plan_revision"), accepted=E.plan_binding(unit.get("plan")))
                 meta.update(E.plan_assessment_binding(work_id, unit.get("plan"), submitted))
                 meta["evaluated_snapshot"] = inv["snapshot"]  # the dispatch snapshot: the source it observed

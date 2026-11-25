@@ -905,15 +905,16 @@ commands:
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: plan assess
     home: product
-    users: [lead]
+    users: [operator]
     journeys: []
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision), and
                    dispatches a plan assessor with its own observation worktree and credential"
     refusals: [DISPATCH_REFUSED, GATE_UNSATISFIED, ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED,
                PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "E160 slice 2a: it takes the Lead credential and is not in lead_broker.LEAD_REACHABLE, so a Lead session's
-          broker refuses it; the Lead's route is its typed tool (E160 slice 2b), which decides its lead_disposition"
+    note: "E160 slice 2a: the Lead's route is its typed tool (E160 slice 2b), which decides its lead_disposition; until
+          then it is in lead_broker.TYPED_PENDING, part of OPERATOR_ONLY, so a Lead session's broker refuses it and
+          the operator runs it at their own terminal with the Lead credential"
   - name: plan reconfirm
     home: product
     users: [lead]

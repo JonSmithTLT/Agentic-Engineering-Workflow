@@ -485,7 +485,7 @@ class NonMutating:
             if binding is None:
                 raise IllegalTransition(
                     f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the accepted "
-                    f"revision, so accept a plan first (`aew plan accept {work_id} --revision <N> {EXPECT_REV}`)",
+                    f"revision, so accept a plan first (`aew plan accept {work_id} --revision <n> {EXPECT_REV}`)",
                     reason="no_accepted_plan", work_id=work_id)
             facts["plan_revision"] = binding
             facts["base"] = self.k.authoritative_commit()
@@ -525,8 +525,9 @@ class NonMutating:
                 raise IllegalTransition(
                     f"{work_id}'s accepted plan v{plan['accepted']} is already assessed: {counted['id']} "
                     f"({counted['result']}) is the assessment that counts for it, and a later one never replaces it. "
-                    "To have the plan assessed again, revise it: propose and accept a new revision "
-                    f"(`aew plan propose {work_id} --file <plan.md> {EXPECT_REV}`), which is assessed afresh",
+                    "To have the plan assessed again, revise it: propose a new revision (`aew plan propose "
+                    f"{work_id} --file <file> --reason <reason> --assurance none {EXPECT_REV}`, or with its review "
+                    "and verification cards) and accept it; a new revision is assessed afresh",
                     reason="plan_revision_assessed", work_id=work_id, counting=counted["id"],
                     result=counted["result"], plan_revision=E.plan_binding(plan))
         return checked(check)

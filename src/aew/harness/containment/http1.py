@@ -17,6 +17,12 @@ TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _CONTROL = re.compile(rb"[\x00-\x08\x0a-\x1f\x7f]")
 
 
+def has_control(value: bytes) -> bool:
+    """Whether ``value`` holds a control character a field value may not hold (all but HTAB). A chunk-size line's
+    extension and a trailer field are held to the same rule (RFC 9112 §7.1.1, §7.1.2)."""
+    return _CONTROL.search(value) is not None
+
+
 class BadField(ValueError):
     """A field line that is not ``name: value`` as RFC 9110 allows it; the message says which part, never the line."""
 
@@ -34,7 +40,7 @@ def fields(lines: list[bytes]) -> list[tuple[str, str]]:
             text = ""
         if not sep or not TOKEN.fullmatch(text):
             raise BadField("a request header is not Name: value")
-        if _CONTROL.search(value):
+        if has_control(value):
             raise BadField(f"the value of request header {text} holds a control character, which a header value "
                            "may not hold (RFC 9110 §5.5)")
         out.append((text, value.strip(b" \t").decode("latin-1")))

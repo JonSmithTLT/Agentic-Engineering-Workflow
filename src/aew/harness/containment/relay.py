@@ -100,7 +100,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
-from aew.harness.containment.http1 import TOKEN, BadField, fields
+from aew.harness.containment.http1 import TOKEN, BadField, fields, has_control
 from aew.http_close import REFUSAL_DRAIN_S, close_after_response
 
 if TYPE_CHECKING:
@@ -1042,7 +1042,9 @@ class ProviderRelay(Service):
         every byte of a chunked body as it goes upstream: its size lines with any extension, its data, each chunk's
         CRLF and its trailer section. A chunk that would pass it is refused at its size line, and a trailer line at
         that line, neither of them sent: the upstream never gets the request whole. A chunk's data not followed by
-        exactly CRLF is refused as malformed."""
+        exactly CRLF is refused as malformed. Chunk extensions and trailer fields are held to the same field-value rule
+        as the head's (RFC 9112 §7.1.1, §7.1.2; RFC 9110 §5.5): a size line with a control character other than HTAB
+        is refused ``bad_chunk``, a trailer line that is not a field ``bad_header``, neither of them sent."""
         self._body(conn, framing, early, upstream.sendall, framed=True)
 
     def _read_whole(self, conn: socket.socket, framing: tuple[str, int], early: bytes,
@@ -1078,7 +1080,7 @@ class ProviderRelay(Service):
 
             while True:
                 line = reader.line()
-                size = _chunk_size(line)
+                size = _chunk_size(line[:-2])  # without its CRLF, which reader.line() ends every line with
                 if size is None:
                     raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed")
                 counted(len(line) + (size + 2 if size else 0))  # the whole chunk, as its size line declares it
@@ -1088,6 +1090,11 @@ class ProviderRelay(Service):
                     while True:  # the trailer section, to its empty line
                         trailer = reader.line()
                         counted(len(trailer))
+                        if trailer != b"\r\n":  # a trailer field is held to a header's rule (RFC 9112 §7.1.2)
+                            try:
+                                fields([trailer[:-2]])
+                            except BadField as exc:
+                                raise _Refused(400, "bad_header", f"a trailer field: {exc}") from None
                         if framed:
                             sink(trailer)
                         if trailer == b"\r\n":
@@ -1341,9 +1348,13 @@ class RequestLog:
 
 
 def _chunk_size(line: bytes) -> int | None:
-    """A chunk-size line's size, or None when its size is not hex digits alone (``1*HEXDIG``, RFC 9112 §7.1).
-    ``int`` would also take a sign or underscores, and a negative size never ends its chunk (#257's quick check, Q1)."""
-    token = line.split(b";", 1)[0].strip()
+    """A chunk-size line's size (``line`` without its CRLF), or None when its size is not hex digits alone
+    (``1*HEXDIG``, RFC 9112 §7.1), or the line holds a control character other than HTAB, in its size or its
+    extension (RFC 9112 §7.1.1; :func:`http1.has_control`). ``int`` would also take a sign or underscores, and a
+    negative size never ends its chunk (#257's quick check, Q1). Only spaces and tabs around the size are dropped."""
+    if has_control(line):
+        return None
+    token = line.split(b";", 1)[0].strip(b" \t")
     return int(token, 16) if re.fullmatch(rb"[0-9A-Fa-f]+", token) else None
 
 
@@ -1496,7 +1507,7 @@ def _framing(headers: list[tuple[str, str]]) -> tuple[str, int]:
         raise _Refused(400, "bad_framing", "the request carries different Content-Length values")
     if lengths:
         value = lengths.pop()
-        if not value.isdigit():
+        if not (value.isascii() and value.isdigit()):  # str.isdigit alone takes other scripts' digits
             raise _Refused(400, "bad_framing", "the request's Content-Length is not a number")
         return "length", int(value)
     return "none", 0

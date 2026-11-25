@@ -20,6 +20,7 @@ from aew.engine.authority import ROLE_OPERATIONS
 from aew.harness import bridge, runlog
 from aew.harness import contract as K
 from aew.harness.supervisor import bridge_tables
+from aew.knowledge import evidence as E
 from aew.maps import EVIDENCE_CLASS, query, store
 
 MAPS = Path(".aew") / store.MAPS_REL
@@ -83,8 +84,9 @@ def test_with_the_switch_off_the_worker_prompt_and_operations_are_byte_identical
     messaging = contract(["context.read", "submit.review"], {"coordination": {"messaging": "enabled"}})
     assert tuple(hashlib.sha256(K.preamble(c).encode()).hexdigest() for c in (plain, messaging)) == PREAMBLE_SHA256
     engine = Engine.discover(sample_project(tmp_path).root)
-    for role, ops in ROLE_OPERATIONS.items():
-        assert engine._harness.operations_of({"role": role, "runs": [{"run": "R-1"}]}) == sorted(ops)
+    for role, ops in ROLE_OPERATIONS.items():  # its role's, less a submit its scope never takes (E160, #581 F1)
+        assert engine._harness.operations_of({"role": role, "runs": [{"run": "R-1"}]}) == sorted(
+            E.submit_operations(ops, role, None))
     assert bridge_tables(sorted(ROLE_OPERATIONS["investigator"]), messaging=False) == (bridge.OPERATIONS, frozenset())
     on = contract([*plain.operations, *bridge.MAP_OPERATIONS])
     added = K.preamble(on).removeprefix(K.preamble(plain))

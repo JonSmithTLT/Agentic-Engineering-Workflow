@@ -5,6 +5,7 @@ than from hand lists (docs/implementation/vertical-uat.md §8)."""
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
@@ -645,6 +646,7 @@ def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
     assert "O-WORDS cli:aew status|PROJECT_NOT_FOUND" in data["findings"], data["findings"]
 
 
+@pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="pytest-xdist not installed (extra: parallel)")
 def test_a_lost_xdist_worker_after_its_tests_pass_publishes_the_exit_and_fails_d2(tmp_path, capsys):
     """An EOF after the last test report has no crash item. The green pytest lane still needs a red D2 result."""
     import os
@@ -659,13 +661,14 @@ def test_a_lost_xdist_worker_after_its_tests_pass_publishes_the_exit_and_fails_d
         "import os\n\ndef pytest_sessionfinish(session):\n"
         "    if hasattr(session.config, 'workerinput'):\n        os._exit(37)\n", encoding="utf-8")
     report = tmp_path / "reports" / "probe.json"
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tests), os.environ.get("PYTHONPATH", "")])}
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tests), os.environ.get("PYTHONPATH", "")]),
+           "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     env.pop("PYTEST_ADDOPTS", None)
-    proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "conftest",
-                           "-p", "exit_worker", "--rootdir", str(tmp_path), "-c", str(tmp_path / "pytest.ini"),
-                           "-n", "1", "--dist", "worksteal", "--max-worker-restart", "0", "--lane-report",
-                           str(report), str(probe)], cwd=tmp_path, env=env, capture_output=True, text=True,
-                          timeout=300, stdin=subprocess.DEVNULL,
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "xdist.plugin", "-p", "conftest",
+               "-p", "exit_worker", "--rootdir", str(tmp_path), "-c", str(tmp_path / "pytest.ini"), "-n", "1",
+               "--dist", "worksteal", "--max-worker-restart", "0", "--lane-report", str(report), str(probe)]
+    proc = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300,
+                          stdin=subprocess.DEVNULL,
                           creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]
     assert json.loads(report.read_text(encoding="utf-8"))["complete"]

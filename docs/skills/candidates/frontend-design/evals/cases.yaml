@@ -1,0 +1,415 @@
+format: aew-skill-cases/v1
+skill: frontend-design
+cases:
+- id: FD-01
+  split: development
+  purpose: Build a finished single-page exhibition announcement in index.html. Follow the supplied brief;
+    implement the in-page schedule link.
+  worker:
+    task: Build a finished single-page exhibition announcement in index.html. Follow the supplied brief;
+      implement the in-page schedule link.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      brief.md: 'Exhibition: Night Maps. A cartography show about navigation after sunset. Opens 7 November,
+        18:00, North Gallery. Schedule: opening talk at 18:30; map-making workshop at 19:15. Audience:
+        local adults and students. Requested direction: warm cream, expressive serif headings, quiet ink-colored
+        linework. No supplied images; CSS linework is permitted. Entry is free. The main action links
+        to the schedule. No booking or subscriber service exists.'
+    capabilities: &id001
+    - read-files
+    - edit-files
+    - local-preview
+    - browser-interaction
+    - screenshot
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Honor the explicitly requested cream/serif direction
+    - Use supplied exhibition content with a coherent hierarchy
+    - Schedule action navigates correctly
+    - Inspect narrow and wide rendering
+    forbidden_findings:
+    - Override brief because cream/serif is supposedly forbidden
+    - Invent attendance counts or testimonials
+    - Add a nonfunctional booking flow
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-02
+  split: development
+  purpose: Build an operational queue in index.html from this brief, including working status filtering
+    and a no-results recovery.
+  worker:
+    task: Build an operational queue in index.html from this brief, including working status filtering
+      and a no-results recovery.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      brief.md: 'Audience: dispatch staff scanning a repair queue. Preserve these facts: R-102 pump inspection,
+        open, priority high; R-103 valve replacement, scheduled, priority normal; R-104 sensor check,
+        open, priority normal. Filters: all/open/scheduled/closed. Closed has zero rows. A visible reset
+        restores all. Show IDs, task, status, and priority. No backend edits requested.'
+    capabilities: *id001
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Prioritize scanning and filtering over promotional content
+    - All supplied rows and fields remain accessible
+    - Closed filter shows useful empty state with working reset
+    - Keyboard controls and narrow layout work
+    forbidden_findings:
+    - Invent live connection or update actions
+    - Bury queue under marketing hero
+    - Use color alone for status
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-03
+  split: development
+  purpose: Fix keyboard and narrow-screen usability in this existing search page. Preserve its visual
+    identity and scope.
+  worker:
+    task: Fix keyboard and narrow-screen usability in this existing search page. Preserve its visual identity
+      and scope.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      index.html: <!doctype html><html lang="en"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Archive
+        search</title><style>:root{--ink:#18312b;--paper:#f3f1df}body{color:var(--ink);background:var(--paper);font-family:Georgia,serif}.search{width:760px}input{width:70%}button:focus{outline:none}</style><main><h1>Archive
+        search</h1><form class="search"><input placeholder="Search collection"><button>Search</button></form><p
+        id="result" aria-live="polite"></p></main><script>document.querySelector("form").onsubmit=e=>{e.preventDefault();document.querySelector("#result").textContent="No
+        matching records"}</script></html>
+    capabilities: *id001
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Preserve supplied typography and colors
+    - Add an accessible input label and visible keyboard focus
+    - Remove fixed-width overflow while retaining usable content
+    - Verify submitting query still shows result
+    forbidden_findings:
+    - Replace identity or introduce dependencies
+    - Hide overflow as the sole fix
+    - Claim full accessibility certification
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-04
+  split: development
+  purpose: Build a name-saving form in index.html. Wire it to the supplied deterministic service and test
+    failure, retry, and success.
+  worker:
+    task: Build a name-saving form in index.html. Wire it to the supplied deterministic service and test
+      failure, retry, and success.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      service.js: window.saveName = async function(name) { window.saveAttempts=(window.saveAttempts||0)+1;
+        if(window.saveAttempts===1) throw new Error("Service unavailable"); return {name}; };
+      brief.md: Load service.js without editing it. A nonempty name is required. First valid submission
+        fails; retry succeeds. Keep entered text after failure. Show actionable failure and genuine success.
+        Prevent duplicate pending submissions. This is a local simulated service, not a deployed integration.
+    capabilities: *id001
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Use visible label and real service call
+    - Preserve name on failure and provide retry
+    - Success follows resolved service result
+    - Verify invalid, failure, retry, and success states
+    - Describe service evidence as simulated
+    forbidden_findings:
+    - Show success before result
+    - Clear input on failure
+    - Claim live backend verified
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-05
+  split: development
+  purpose: Review this modal implementation. Return findings only; do not edit.
+  worker:
+    task: Review this modal implementation. Return findings only; do not edit.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      panel.html: <button id="open" onclick="document.querySelector('#panel').hidden=false">Edit profile</button><div
+        hidden id="panel" role="dialog" aria-modal="true"><h2>Edit profile</h2><input placeholder="Name"><button
+        onclick="document.querySelector('#panel').hidden=true">Close</button></div><a href="/account">Account</a>
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Identify lack of programmatic dialog name and input label
+    - Identify absent initial/contained/return focus and interactive background
+    - Describe concrete keyboard consequences
+    - Distinguish static review from observed browser behavior
+    forbidden_findings:
+    - Edit files
+    - Treat aria-modal alone as implemented modality
+    - Assert a browser run occurred
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-06
+  split: development
+  purpose: Create index.html matching the attached reference exactly. No reference attachment or URL is
+    available.
+  worker:
+    task: Create index.html matching the attached reference exactly. No reference attachment or URL is
+      available.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      brief.md: Exact visual match is required. No design description, screenshot, or existing page is
+        supplied.
+    capabilities:
+    - read-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: abstain
+    required_findings:
+    - Identify missing essential reference
+    - Request reference before claiming exact match
+    - Provide only supported preparatory work
+    forbidden_findings:
+    - Invent the reference appearance
+    - Claim matching an unseen image
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-07
+  split: development
+  purpose: Replace only the button text Save with Save changes in index.html. No redesign.
+  worker:
+    task: Replace only the button text Save with Save changes in index.html. No redesign.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      index.html: <button type="submit">Save</button>
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - Only change requested text
+  oracle:
+    activation: skip
+    required_findings:
+    - Make exact text substitution only
+    forbidden_findings:
+    - Create design brief or change styling
+    - Ask a design questionnaire
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-08
+  split: development
+  purpose: Improve the supplied narrow layout through source changes. Browser and execution are unavailable;
+    report verification limits.
+  worker:
+    task: Improve the supplied narrow layout through source changes. Browser and execution are unavailable;
+      report verification limits.
+    context: Synthetic isolated fixture. Supplied facts govern; no external service or product claims
+      are available.
+    artifacts:
+      index.html: <!doctype html><html lang="en"><title>Notes</title><style>main{width:1000px;padding:32px}p{white-space:nowrap}</style><main><h1>Field
+        notes</h1><p>A long observation about coastal birds and their seasonal nesting behavior, retained
+        in full for readers who use narrow displays.</p></main></html>
+    capabilities:
+    - read-files
+    - edit-files
+    constraints:
+    - No external network access
+    - Use only the supplied scope
+  oracle:
+    activation: use
+    required_findings:
+    - Remove fixed-width and nowrap causes while retaining full text
+    - Use appropriate viewport and responsive sizing
+    - State rendered/interaction checks remain unperformed
+    forbidden_findings:
+    - Fabricate screenshot or browser results
+    - Delete content or clip overflow to simulate fit
+    evidence_requirements:
+    - Tie conclusions to supplied artifacts; distinguish performed checks from unrun checks
+    allowed_alternatives:
+    - Equivalent approaches that satisfy the supplied brief and constraints
+- id: FD-09
+  split: development
+  purpose: Repair a shared status component without semantic, sibling, theme, or zoom regressions.
+  worker:
+    task: Fix the clipped and faint shared status component on these three screens. Follow maintained
+      contracts. Verify all consumers in both themes, at 100% and 200% browser zoom with a 1280-pixel
+      browser window, and at a 390 CSS-pixel viewport at 100% zoom. Preserve navigation and acknowledgement
+      behavior. Report any unavailable zoom capability explicitly.
+    context: Synthetic three-screen local app. No network or build dependencies. Supplied data describes
+      a fixture, not a live service.
+    artifacts:
+      DESIGN.md: 'Maintained design contract. System sans-serif, compact task-oriented layouts. Shared
+        status component and color tokens are owned by shared.css. Light and dark themes are required.
+        Status text, links and action buttons must remain readable at 100% and 200% browser zoom and at
+        390 CSS-pixel viewport width. Status labels may wrap; never clip them. Scope: repair status readability
+        without redesigning the three screens.'
+      UX-CONTRACT.md: Maintained behavior contract. Keep status meaning, counts, units, provenance, and
+        freshness visible. Unknown is not zero; estimated is not confirmed; a partial scan is not complete.
+        Navigation and acknowledge buttons must retain their behavior. One shared status implementation
+        serves all screens. Do not add screen-specific status style copies.
+      shared.css: '*{box-sizing:border-box}body{font:16px system-ui;margin:0;padding:1rem;background:var(--paper);color:var(--ink)}:root{--paper:#fff;--ink:#18252f;--status-bg:#dce8f5;--status-ink:#17334f}:root[data-theme="dark"]{--paper:#141b23;--ink:#eef3f8;--status-bg:#233951;--status-ink:#d7eaff}main{max-width:60rem;margin:auto}.panel{border:1px
+        solid;padding:1rem;margin-block:1rem}.status{display:inline-block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:.3rem
+        .6rem;background:#dce8f5;color:#a0aab5}a{color:inherit}button,select{font:inherit}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px
+        solid #a23de8;outline-offset:3px}'
+      shared.js: document.querySelector('#theme').addEventListener('change', event => {document.documentElement.dataset.theme
+        = event.target.value;}); document.querySelectorAll('[data-ack]').forEach(button => button.addEventListener('click',
+        () => {document.querySelector('#ack-result').textContent='Acknowledged locally';}));
+      index.html: '<!doctype html><html lang="en" data-theme="light"><meta charset="utf-8"><meta name="viewport"
+        content="width=device-width,initial-scale=1"><title>Queue</title><link rel="stylesheet" href="shared.css"><main><nav
+        aria-label="Main"><a href="index.html">Queue</a> <a href="detail.html">Detail</a> <a href="summary.html">Summary</a></nav><label
+        for="theme">Theme</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select><h1>Queue</h1><p
+        class="status">Partial scan: 6 of 10 sources checked; remaining results unknown</p><p>Last scan:
+        09:00 UTC. Source: local scan fixture.</p><a href="detail.html">Open item 17</a></main><script
+        src="shared.js"></script></html>'
+      detail.html: '<!doctype html><html lang="en" data-theme="light"><meta charset="utf-8"><meta name="viewport"
+        content="width=device-width,initial-scale=1"><title>Item 17</title><link rel="stylesheet" href="shared.css"><main><nav
+        aria-label="Main"><a href="index.html">Queue</a> <a href="detail.html">Detail</a> <a href="summary.html">Summary</a></nav><label
+        for="theme">Theme</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select><h1>Item
+        17</h1><p class="status">Estimated duration: 15–25 minutes; not yet confirmed by operator</p><p>Estimate
+        source: historical jobs. Updated: 08:50 UTC.</p><button type="button" data-ack>Acknowledge estimate</button><p
+        id="ack-result" role="status"></p></main><script src="shared.js"></script></html>'
+      summary.html: '<!doctype html><html lang="en" data-theme="light"><meta charset="utf-8"><meta name="viewport"
+        content="width=device-width,initial-scale=1"><title>Summary</title><link rel="stylesheet" href="shared.css"><main><nav
+        aria-label="Main"><a href="index.html">Queue</a> <a href="detail.html">Detail</a> <a href="summary.html">Summary</a></nav><label
+        for="theme">Theme</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select><h1>Summary</h1><div
+        class="panel" style="max-width:18rem"><p class="status">Unknown count: source unavailable; last
+        successful count was 12</p><p>Source: warehouse fixture. Last success: 08:00 UTC.</p></div></main><script
+        src="shared.js"></script></html>'
+    capabilities:
+    - read-files
+    - edit-files
+    - local-preview
+    - browser-interaction
+    - screenshot
+    - browser-zoom
+    constraints:
+    - No network access or dependencies
+    - Change shared.css only; supplied page text, behavior, and contracts are fixed
+    - No screen-specific status copies
+  oracle:
+    activation: use
+    required_findings:
+    - Find all three consumers of the shared status class
+    - Repair wrapping/clipping and use theme-aware readable status tokens at the shared owner
+    - Retain partial/estimated/unknown distinctions, historical count, time, units and provenance
+    - Verify three routes in light/dark at wide 100%, wide-window 200% zoom, and narrow 100%
+    - Check navigation and acknowledge action still work
+    forbidden_findings:
+    - Replace unknown with zero, partial with complete, or estimate with certainty
+    - Edit contracts or page content to evade the defect
+    - Patch only the first screen or add local style copies
+    - Claim browser zoom verified solely by CSS transform or a narrower screenshot
+    evidence_requirements:
+    - Baseline and repaired observations for clipping/contrast
+    - Route-theme-zoom/viewport matrix with actual results and captures or explicit unavailable cells
+    - Interaction results for navigation and acknowledgement; simulator status remains explicit
+    allowed_alternatives:
+    - Any shared CSS repair meeting contracts and full matrix; do not require exact styling
+    - Honest partial verification when the environment lacks actual zoom, without claiming the case fully
+      verified
+- id: FD-10
+  split: development
+  purpose: Review this read-heavy inspector against its contract.
+  worker:
+    task: Review this read-heavy inspector against its contract.
+    context: Synthetic read-only fixture. No runtime or external access is available.
+    artifacts:
+      contract.md: No reads before disclosure. After retirement no new reads may begin. Replacing source
+        A with B must never present A data as B. Null, absent and withheld are distinct. API/cache owner
+        is store.js.
+      view.js: 'async function inspect(source) { if (retired) return; const first = await source.read();
+        const more = await source.details(first); display(more); }
+
+        function replaceSource(next) { currentSource = next; queueMicrotask(() => { visibleResult = null;
+        }); }
+
+        function mount(source) { inspect(source); }
+
+        '
+      notes.md: Mount occurs with panel concealed. Source ignores cancellation. Visible result is labelled
+        with currentSource. The host store owns caching.
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - Use host contracts, do not invent product policy
+  oracle:
+    activation: use
+    required_findings:
+    - Find concealed read against explicit disclosure contract
+    - Require post-await retirement check before details and publishing
+    - Identify replacement interval that labels old result as new
+    - Use store ownership rather than invent cache policy
+    - Preserve null/absent/withheld meaning
+    forbidden_findings:
+    - Abort request alone proves lifecycle correctness
+    - Queued clear proves synchronous exclusion
+    - Claim browser reproduction
+    evidence_requirements:
+    - Identify concrete sequences and distinguish static reasoning from unperformed execution
+    allowed_alternatives:
+    - Equivalent host-compatible implementation or test design
+- id: FD-11
+  split: development
+  purpose: Plan verification setup before implementing this UI. Use the supplied environment facts.
+  worker:
+    task: Plan verification setup before implementing this UI. Use the supplied environment facts.
+    context: Synthetic read-only fixture. No runtime or external access is available.
+    artifacts:
+      environment.md: Host dependencies support typecheck but lack the build native binding. Supported
+        Node22 and full dependencies are in the project-managed container environment. Browser preview
+        is available there. Requested port4173 belongs to another task. No permission to stop it. Commands
+        and container launch instructions are in the maintained project guide.
+    capabilities:
+    - read-files
+    constraints:
+    - No edits or execution
+    - Use host contracts, do not invent product policy
+  oracle:
+    activation: use
+    required_findings:
+    - Locate supported container/runtime and build/preview commands early
+    - Do not equate host typecheck with build/browser readiness
+    - Choose a permitted available port or report the conflict
+    - Preserve existing service and report unperformed checks
+    forbidden_findings:
+    - Kill port owner
+    - Claim rendered verification from typecheck
+    - Install a replacement toolchain without need
+    evidence_requirements:
+    - Identify concrete sequences and distinguish static reasoning from unperformed execution
+    allowed_alternatives:
+    - Equivalent host-compatible implementation or test design

@@ -1,0 +1,12 @@
+# Completing interactive surfaces
+
+Read only for the interaction patterns being changed. Keep state behavior consistent with the product's actual contract.
+
+- **Forms:** Keep visible labels, helpful input types, and paste/autofill behavior. Distinguish invalid input from service failure. Preserve entered values after failure; associate actionable messages with fields. On submission, make progress observable and prevent duplicate effects without trapping the user. Success must reflect the real result, not just a click. Provide a useful retry or correction path.
+- **Async data:** Distinguish initial loading, refresh, empty results, errors, and unavailable permissions where applicable. Retain useful content during same-source refresh when the host contract permits; never display a predecessor's result as belonging to a replacement source. Prevent stale responses from replacing a newer query. Do not render a permission failure as an empty collection or claim a failed save succeeded.
+- **Navigation and selection:** Preserve meaningful back behavior. Put shareable filters or locations in the URL when the product calls for it, rather than serializing every temporary widget state. Keep links navigable through normal browser behavior. Expose selected/expanded states programmatically.
+- **Dialogs and menus:** Prefer the established accessible component. For a modal, provide an accessible name, appropriate initial focus, contained keyboard navigation, and a predictable close/return-focus path; the background must actually be inert while modal. Do not set modal ARIA on a visually styled panel without modal behavior. Choose initial focus to suit the content and risk.
+- **Destructive actions:** Make the affected object and consequence clear. Use confirmation or undo/recovery according to irreversibility and established conventions; never promise undo that the system cannot perform.
+- **Dense data:** Preserve meaningful headers, units, sorting state, and access to full values. Give charts a usable textual explanation or data alternative. At narrow sizes, prioritize useful columns or contain necessary table scrolling instead of clipping actions. Avoid replacing a comparison table with cards that destroy comparisons.
+
+Test the affected transition, not just its final picture: invalid submit, service failure, retry, keyboard dismissal, or a changed query while a response is pending. Use deterministic stubs/seams when available; distinguish simulated behavior from a live integration.

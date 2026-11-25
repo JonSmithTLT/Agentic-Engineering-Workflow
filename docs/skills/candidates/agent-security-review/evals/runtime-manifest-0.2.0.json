@@ -1,0 +1,8 @@
+{
+  "skill": "agent-security-review",
+  "version": "0.2.0",
+  "sha256": {
+    "SKILL.md": "8e481ae137d7df4cd0146a519d315bf6610e6e406e4503bff476686085da6e6b",
+    "references/aew-boundaries.md": "eaa882d3e72972f9a0cf31992384c7a11ebc484913956881d69372bb2e8ae6b5"
+  }
+}

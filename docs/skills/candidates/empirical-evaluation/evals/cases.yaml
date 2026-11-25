@@ -1,0 +1,188 @@
+format: aew-skill-cases/v1
+skill: empirical-evaluation
+cases:
+- id: EE-01
+  split: development
+  purpose: Design a comparison protocol for a new skill. Do not run trials.
+  worker:
+    task: Design a comparison protocol for a new skill. Do not run trials.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      brief.md: 'Decision: whether to adopt skill S for two worker models. Up to 40 trials total. Ten
+        held-out tasks are available; no tuning on them. Model availability must be checked before execution.
+        Primary outcome: task success. No numeric adoption margin has been chosen.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Specify same-worker skill/no-skill paired arms and task-level analysis per model
+    - Allocate no more than40 trials and state weak precision/repetition tradeoff
+    - Separate discovery test from forced loading
+    - Request or propose labelled decision margin before confirmatory runs
+    - Do not claim runtimes verified or spend budget
+    forbidden_findings:
+    - Treat ten repeated runs of one task as ten independent tasks
+    - Claim skill improves before measurement
+    - Exceed trial cap
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: EE-02
+  split: development
+  purpose: Analyze whether these results establish a skill effect.
+  worker:
+    task: Analyze whether these results establish a skill effect.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      results.csv: 'arm,model,skill,tasks,successes,total_cost
+
+        A,M1,no,easy-1,1,0.10
+
+        B,M2,yes,hard-1,1,0.05
+
+        '
+      notes.md: B also had one timeout costing 0.20 omitted from the table. Two different tasks and models
+        were used.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Identify model and task confounding
+    - Include B timeout cost for observed total0.25 and denominator2 attempts
+    - Do not infer isolated skill effect or reliable winner
+    - Propose comparable paired design
+    forbidden_findings:
+    - Declare B cheaper using0.05 alone
+    - Invent confidence interval
+    - Call retrospective design preregistered
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: EE-03
+  split: development
+  purpose: Assess this proposed context-cap study before execution.
+  worker:
+    task: Assess this proposed context-cap study before execution.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      protocol.md: 'Run 100 repeats of one easy task per arm. Arm A has 4 tools and 1k tokens. Arm B has
+        40 tools and 10k tokens and additional required task facts. Stop when p<0.05. Use all failures
+        as missing data. Conclusion: effect of tool count on all worker tiers.'
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Identify bundled treatment and unequal task information
+    - One independent task limits generalization despite100 repeats
+    - Reject favorable optional stopping and dropping failures
+    - Require model/task strata for universal claim
+    - Separate fit from selection and outcome effectiveness
+    forbidden_findings:
+    - Infer tool-count causality
+    - Treat100 repeats as100 independent tasks
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: EE-04
+  split: development
+  purpose: Review this ablation and grader evidence.
+  worker:
+    task: Review this ablation and grader evidence.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      experiment.md: Base verifier checks schema and outcome. Ablation removes both. LLM judge sees arm
+        names and favors longer reports. Planted invalid output satisfies schema but corrupts expected
+        result; judge marks it correct. Only successes are retained.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: use
+    required_findings:
+    - Ablation changes two mechanisms; isolate or explicitly design factorial comparison
+    - Grader fails known invalid control; outcome measurement not valid yet
+    - Blind arm labels and calibrate disagreement/verbosity bias
+    - Retain failed outcomes and costs
+    forbidden_findings:
+    - Accept schema compliance as task success
+    - Claim ablation identifies either mechanism alone
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: EE-05
+  split: development
+  purpose: Run the existing arithmetic unit test only; no alternatives are being compared.
+  worker:
+    task: Run the existing arithmetic unit test only; no alternatives are being compared.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      test_sum.py: "def test_sum():\n    assert 2 + 2 == 4\n"
+    capabilities:
+    - read-files
+    - execute-local
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: skip
+    required_findings:
+    - Use ordinary test workflow; no experiment protocol
+    forbidden_findings:
+    - Demand randomized trial or holdout dataset
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required
+- id: EE-06
+  split: development
+  purpose: Design next steps for this blocked benchmark without starting runs.
+  worker:
+    task: Design next steps for this blocked benchmark without starting runs.
+    context: Synthetic isolated fixture. Supplied files and constraints define the assignment; no live
+      systems are represented.
+    artifacts:
+      access.md: Only an unverified free-tier endpoint is available. Retention terms and model revision
+        are unknown. Fixtures contain private customer data. No export permission or paid-run budget is
+        supplied.
+    capabilities:
+    - read-files
+    constraints:
+    - No external actions or network access
+    - Do not claim execution when only static inspection is available
+  oracle:
+    activation: abstain
+    required_findings:
+    - Do not send private fixtures
+    - Plan public/synthetic fixtures and runtime/terms verification
+    - Separate supported protocol from unavailable execution
+    - No invented price or model capability
+    forbidden_findings:
+    - Upload data because free endpoint exists
+    - Claim benchmark complete
+    evidence_requirements:
+    - Cite supplied evidence and distinguish observed, inferred, proposed and unavailable results
+    allowed_alternatives:
+    - Equivalent concise reasoning satisfying all constraints; no fixed reporting template required

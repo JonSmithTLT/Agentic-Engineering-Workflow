@@ -1,0 +1,11 @@
+{
+  "skill": "technical-writing",
+  "version": "0.2.1",
+  "sha256": {
+    "SKILL.md": "8d7e9fa05ada8fe75e2f94159e6157ff45b474b54485a1072d9dea726bfdd796",
+    "references/explanations.md": "dadc4a97a4ebc03c962026c8ab1a43ceb484c29aa456f15f34f39c563ab4c0c2",
+    "references/guides-and-reference.md": "04009e0462c60f3ed9f2cd8e36ead67cde4f8c5ecb16407d8ed97e1a4df5e8e5",
+    "references/messages-and-records.md": "bd94781902ee29cd9a780fef07f7f498c60ba6d077bdf157651ce2f02a74c017",
+    "references/specifications-and-contracts.md": "2df5a3631ed64d4f9602082f91f1fdaa64494cf3f12065e87f01fa9e8c2dfef8"
+  }
+}

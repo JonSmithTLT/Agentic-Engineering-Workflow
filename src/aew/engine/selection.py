@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 import posixpath
+import threading
 from collections.abc import Callable
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
 from aew.errors import AEWError, IntegrityError
-from aew.harness import check_changes
+from aew.harness import check_changes, procs
+from aew.policy import checks
 from aew.schemas import iter_errors
-from aew.util import create_exclusive, glob_any, sha256_text
+from aew.util import create_exclusive, glob_any, sha256_bytes, sha256_text
 
 
 def _json(value: Any) -> str:
@@ -32,8 +35,31 @@ def _usable_paths(paths: list[str] | None) -> bool:
     return paths is not None and not any("\n" in path or "\r" in path for path in paths)
 
 
+def _run_within(budget_s: float, run: Callable[[procs.CheckTrees], dict[str, Any]]) -> dict[str, Any]:
+    """Bound waiting for the whole copy operation. Its owner finishes cleanup even if validation has moved on."""
+    if budget_s <= 0:
+        return {"outcome": "timeout"}
+    trees = procs.CheckTrees()
+    result: Future[dict[str, Any]] = Future()
+
+    def finish() -> None:
+        try:
+            result.set_result(run(trees))
+        except BaseException as exc:
+            result.set_exception(exc)
+
+    # A late operation can only retire its copy. The validation thread alone records and attributes the selection.
+    threading.Thread(target=finish, name="aew-validation-selector", daemon=False).start()
+    try:
+        return result.result(timeout=budget_s)
+    except TimeoutError:
+        return {"outcome": "timeout"}
+    finally:
+        trees.end(wait_s=0)
+
+
 def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], selector: dict[str, Any],
-            candidate: str | None, paths: list[str] | None) -> dict[str, Any]:
+            candidate: str | None, paths: list[str] | None, *, budget_s: float | None = None) -> dict[str, Any]:
     """Return evidence about the selector itself. The result is advisory even if the command cannot run."""
     def unknown(reason: str, **details: Any) -> dict[str, Any]:
         return {"result": "unknown", "reason": reason, **details}
@@ -47,7 +73,12 @@ def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], se
     if any(glob_any(path, inputs) for path in paths):
         return unknown("selector_changed_by_subject")
     try:
-        out = check_changes.run_copy(project, snapshot_of, selector, candidate, changed_paths=paths)
+        if budget_s is None:
+            out = check_changes.run_copy(project, snapshot_of, selector, candidate, changed_paths=paths)
+        else:
+            out = _run_within(min(budget_s, selector.get("timeout_s", checks.DEFAULT_TIMEOUT_S)),
+                              lambda trees: check_changes.run_copy(project, snapshot_of, selector, candidate,
+                                                                 changed_paths=paths, trees=trees))
     except (AEWError, OSError):
         return unknown("selector_could_not_start")
     if out.get("not_run") or out["outcome"] == "spawn_failed":
@@ -68,18 +99,18 @@ def observe(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], se
 
 def _read(root: Path, rel: str) -> tuple[dict[str, Any], dict[str, str]] | None:
     try:
-        raw = (root / rel).read_text(encoding="utf-8")
-        value = json.loads(raw)
+        raw = (root / rel).read_bytes()
+        value = json.loads(raw.decode("utf-8"))
     except (OSError, ValueError):
         return None
     if iter_errors("selection", value):
         return None
-    return value, {"path": rel, "sha256": sha256_text(raw)}
+    return value, {"path": rel, "sha256": sha256_bytes(raw)}
 
 
 def reuse_or_run(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], *, directory: str,
                  selector: dict[str, Any], candidate: str | None, snapshot: str,
-                 paths: list[str] | None) -> tuple[dict[str, Any], dict[str, str]] | None:
+                 paths: list[str] | None, budget_s: float) -> tuple[dict[str, Any], dict[str, str]] | None:
     """Cache by snapshot and complete selector and changed-path commitments. Never reuse a mismatched record."""
     paths = sorted(set(paths)) if paths is not None else None
     fields = {"snapshot": snapshot, "selector_sha256": sha256_text(_json(selector)),
@@ -90,7 +121,8 @@ def reuse_or_run(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]
         cached = _read(root, rel)
         return cached if cached and all(cached[0][k] == v for k, v in fields.items()) else None
 
-    value = {"schema": "aew/selection/v1", **fields, **observe(project, snapshot_of, selector, candidate, paths)}
+    value = {"schema": "aew/selection/v1", **fields,
+             **observe(project, snapshot_of, selector, candidate, paths, budget_s=budget_s)}
     raw = _json(value)
     try:
         create_exclusive(root / rel, raw)

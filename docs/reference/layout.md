@@ -618,7 +618,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.resume_ops`: `Resume._freshness` (Path.exists), `Resume._freshness` (Path.read_text), `Resume._plan_brief` (Path.read_text), `Resume.resume` (Path.exists), `Resume.resume` (Path.read_text)
 - `aew.engine.role_ops`: `Roles.role_validate` (Path.read_bytes)
 - `aew.engine.scope_ops`: `ScopeCorrections._check` (Path.is_file), `ScopeCorrections._record` (Path.read_text), `_file_text` (Path.read_text), `pack_entries` (Path.read_text)
-- `aew.engine.selection`: `_read` (Path.read_text)
+- `aew.engine.selection`: `_read` (Path.read_bytes)
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)

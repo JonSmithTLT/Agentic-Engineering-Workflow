@@ -132,10 +132,12 @@ coverage:
 
 A project whose CI selects the tests a change affects can declare the selector and the unit it selects, such as tests
 or lanes. The selector receives the changed paths in `{changed_paths_file}` and writes one UTF-8 item per line to
-`{selection_out}`. Both files are outside its disposable copy of the integration candidate. List the selector code
-and configuration under `inputs` so validation reports the selection as unknown when a change touches them. When
-`inputs` is omitted, the selector's project-file arguments are its declared inputs. An empty selection is known
-only when `may_select_none` is true and the command writes an empty output file.
+`{selection_out}`. Both files are outside its disposable copy of the integration candidate. Validation accepts up to
+1 MiB of selector output. A larger file leaves the selection unknown (`selector_no_output`). The selector timeout
+covers preparing the copy, running the command and retiring the copy. The validation checks keep their own deadline.
+List the selector code and configuration under `inputs` so validation reports the selection as unknown when a change
+touches them. When `inputs` is omitted, the selector's project-file arguments are its declared inputs. An empty
+selection is known only when `may_select_none` is true and the command writes an empty output file.
 
 ```yaml
 coverage:

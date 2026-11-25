@@ -309,10 +309,12 @@ def _run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None,
     faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
     exit_code: int | None = None
     outcome, spawn_errno = "ran", None
+    # A selector's diagnostics are independent of its UTF-8 selection file.
+    decoding: dict[str, Any] = {"errors": "replace"} if "{selection_out}" in files else {}
     try:
         try:
             proc = tree.spawn(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              stdin=subprocess.DEVNULL, env=env, text=True)
+                              stdin=subprocess.DEVNULL, env=env, text=True, **decoding)
         except OSError as exc:
             outcome, spawn_errno = "spawn_failed", exc.errno
             log = f"$ {' '.join(command)}\nfailed to start: {exc}"

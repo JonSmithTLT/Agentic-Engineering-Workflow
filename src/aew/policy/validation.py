@@ -108,19 +108,22 @@ def custody_register_s(post: dict[str, Any]) -> int:
     return int(post.get("custody_register_s") or CUSTODY_REGISTER_S)
 
 
+def selector_allowance_s(selector: dict[str, Any] | None) -> int:
+    """The whole selector phase reserves its own budget, only for a declaration already verified at its pin."""
+    return math.ceil(selector.get("timeout_s", C.DEFAULT_TIMEOUT_S)) if selector is not None else 0
+
+
 def deadline_s(post: dict[str, Any], checks_policy: dict[str, Any]) -> int:
-    """The run's hard deadline: ``validation_deadline_s`` when policy sets it, otherwise the sum of the checks'
-    timeouts plus the orchestration allowance, capped either way. The optional selector has its own allowance."""
-    selector = (checks_policy.get("coverage") or {}).get("affected_tests", {}).get("selector")
-    selection_s = math.ceil(selector.get("timeout_s", C.DEFAULT_TIMEOUT_S)) if selector else 0
+    """The hard check budget: ``validation_deadline_s`` when set, otherwise the checks' timeouts plus orchestration.
+    Both forms are capped."""
     explicit = post.get("validation_deadline_s")
     if explicit:
-        return min(int(explicit), DEADLINE_CAP_S) + selection_s
+        return min(int(explicit), DEADLINE_CAP_S)
     total = 0
     for check_id in post.get("checks") or []:
         cfg = (checks_policy.get("checks") or {}).get(check_id) or {}
         total += 0 if check_id in C.BUILTIN else int(cfg.get("timeout_s", C.DEFAULT_TIMEOUT_S))
-    return min(total + ORCHESTRATION_ALLOWANCE_S, DEADLINE_CAP_S) + selection_s
+    return min(total + ORCHESTRATION_ALLOWANCE_S, DEADLINE_CAP_S)
 
 
 def classify_spawn_failure(spawn_errno: int | None) -> str:

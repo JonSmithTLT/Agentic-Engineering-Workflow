@@ -21,9 +21,12 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew.policy import checks as C
+
+if TYPE_CHECKING:
+    from aew.harness.procs import CheckTrees
 
 CHECK = "check-changes"
 COMMAND = "aew doctor --run-checks"
@@ -86,8 +89,14 @@ def configured(engine: Any) -> list[tuple[str, dict[str, Any]]]:
 
 def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
     checks = configured(engine)
-    selector = ((engine.policy("checks") or {}).get("coverage", {}).get("affected_tests") or {}).get("selector")
-    if run and selector is not None:
+    selector = None
+    if run:
+        from aew.engine import coverage
+
+        _, pin = coverage.checks_at_pin(engine._k)
+        if pin is not None:
+            selector = pin["declaration"].get("affected_tests", {}).get("selector")
+    if selector is not None:
         from aew.engine import selection
 
         commit = engine.authoritative_commit()
@@ -161,13 +170,14 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
 
 
 def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], cfg: dict[str, Any], commit: str,
-             *, changed_paths: list[str] | None = None) -> dict[str, Any]:
+             *, changed_paths: list[str] | None = None, trees: CheckTrees | None = None) -> dict[str, Any]:
     """The check-copy mechanism also runs a declared selector, with input and output outside the copied tree."""
     from aew.errors import AEWError, ContainmentUnavailable
     from aew.harness import containment, procs, runlog, weaker_register
     from aew.workspace import git
     from aew.workspace.integration import changed_between
 
+    copy_trees = procs.CheckTrees() if trees is None else trees
     policy, _ = project.execution_policy()
     stamp = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{secrets.token_hex(3)}"
     run_dir = runlog.run_dir(project.aew_root, f"doctor-check-{stamp}")
@@ -186,6 +196,8 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
                 shutil.copyfile(exclude, copy / ".git" / "info" / "exclude")
         except (AEWError, OSError) as exc:
             return {"not_run": f"the copy of {commit[:12]} could not be made ({getattr(exc, 'message', exc)})"}
+        if copy_trees.ended:
+            return {"outcome": "timeout"}
         scratch = run_dir / "scratch"
         try:
             layout, label = containment.establish(
@@ -197,7 +209,8 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
             shutil.rmtree(layout.net_dir, ignore_errors=True)
         marker = run_dir / "label.json"
         marker.write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        copy_trees = procs.CheckTrees()
+        if copy_trees.ended:
+            return {"outcome": "timeout"}
         try:
             weaker = weaker_register.enter_if_weaker(
                 label, kind="doctor_check", ownership=weaker_register.ownership_of(label), project=project.repo_root,
@@ -205,17 +218,22 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
         except ContainmentUnavailable as exc:
             return {"not_run": exc.message}
         env = {**C.allowlist_env(layout), weaker_register.MARKER: str(marker)}
-        tracked = set(git.git("ls-files", "--cached", "-z", cwd=copy).stdout.decode("utf-8", "replace").split("\0"))
-        before = snapshot_of(copy, WORKSPACE_ID)
-        paths_file, selection_out, expected_paths = None, None, b""
-        if changed_paths is not None:
-            scratch.mkdir(exist_ok=True)
-            paths_file, selection_out = scratch / "changed.txt", scratch / "selection.txt"
-            expected_paths = "".join(f"{path}\n" for path in changed_paths).encode()
-            paths_file.write_bytes(expected_paths)
-        if weaker is not None:
-            weaker.started()
+        tracked: set[str] = set()
         try:
+            if changed_paths is None:
+                listing = git.git("ls-files", "--cached", "-z", cwd=copy).stdout
+                tracked = set(listing.decode("utf-8", "replace").split("\0"))
+            before = snapshot_of(copy, WORKSPACE_ID)
+            if copy_trees.ended:
+                return {"outcome": "timeout"}
+            paths_file, selection_out, expected_paths = None, None, b""
+            if changed_paths is not None:
+                scratch.mkdir(exist_ok=True)
+                paths_file, selection_out = scratch / "changed.txt", scratch / "selection.txt"
+                expected_paths = "".join(f"{path}\n" for path in changed_paths).encode()
+                paths_file.write_bytes(expected_paths)
+            if weaker is not None:
+                weaker.started()
             channels: dict[str, Any] = {"paths_file": paths_file, "selection_out": selection_out} if paths_file else {}
             out = C.run(cfg, copy, policy=policy, env=env, layout=layout, trees=copy_trees, **channels)
         except ContainmentUnavailable as exc:
@@ -223,6 +241,8 @@ def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], c
         finally:
             if weaker is not None:
                 weaker.end(list(copy_trees.left))
+        if copy_trees.ended:
+            return {"outcome": "timeout"}
         after = snapshot_of(copy, WORKSPACE_ID)
         a, b = before["relevant_inputs_fingerprint"], after["relevant_inputs_fingerprint"]
         if paths_file is not None:

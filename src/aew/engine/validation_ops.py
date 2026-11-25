@@ -462,6 +462,8 @@ class Validation:
             selector = ((declaration_pin or {}).get("declaration") or {}).get("affected_tests", {}).get("selector")
             changed_paths = copy.deepcopy(integ.get("changed_paths"))
             now = _now()
+            selector_deadline = now + timedelta(seconds=V.selector_allowance_s(selector))
+            validation_deadline = selector_deadline + timedelta(seconds=V.deadline_s(self._post(), checks_policy))
             executor = {"host_pid": os.getpid(), "start_time": procs.started_at(os.getpid()) or time.time(),
                         "host": socket.gethostname()}
             if (start := procs.start_id(os.getpid())) is not None:  # unknown: judged by its start time (legacy)
@@ -470,7 +472,7 @@ class Validation:
                    "identity": self._identity(unit, ob, check_set), "checks": check_set["checks"],
                    "executor": executor,
                    "started_at": _iso(now),
-                   "deadline_at": _iso(now + timedelta(seconds=V.deadline_s(self._post(), checks_policy))),
+                   "deadline_at": _iso(validation_deadline),
                    "state": "running", "infra_attempt": attempt}
             if diagnostic:
                 run["diagnostic"] = True
@@ -499,7 +501,8 @@ class Validation:
                            f"{len(check_set['checks'])} checks, deadline {run['deadline_at']})")
         # The resolved definitions travel with the executor, never through state: the checks run exactly what this
         # transaction pinned, whatever policy says while they run (PR #91 review, finding 1).
-        return {**run, "_definitions": definitions, "_selector": selector, "_changed_paths": changed_paths}
+        return {**run, "_definitions": definitions, "_selector": selector, "_changed_paths": changed_paths,
+                "_selector_deadline_at": _iso(selector_deadline)}
 
     def _resolve_definitions(self, check_set: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Each pinned check's definition as resolved now: a configured check's command, cwd and timeout, or the
@@ -565,7 +568,8 @@ class Validation:
                 seen = selection.reuse_or_run(
                     self.k, self.invocations.snapshot_of, directory=f"work/{work_id}/{RUNS_DIR}",
                     selector=run["_selector"], candidate=run["identity"]["candidate"],
-                    snapshot=run["identity"]["snapshot"], paths=run["_changed_paths"])
+                    snapshot=run["identity"]["snapshot"], paths=run["_changed_paths"],
+                    budget_s=max(0.0, (_parse(run["_selector_deadline_at"]) - _now()).total_seconds()))
                 if seen is not None:
                     record, selection_ref = seen
                     selected = record.get("items")

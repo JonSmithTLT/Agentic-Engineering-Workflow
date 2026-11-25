@@ -1225,6 +1225,8 @@ None.
 
 - `aew.errors`
 - `aew.harness.check_changes`
+- `aew.harness.procs`
+- `aew.policy.checks`
 - `aew.schemas`
 - `aew.util`
 
@@ -1434,6 +1436,7 @@ None.
 
 ### `aew.harness.check_changes`
 
+- `aew.engine.coverage`
 - `aew.engine.selection`
 - `aew.errors`
 - `aew.harness.containment`

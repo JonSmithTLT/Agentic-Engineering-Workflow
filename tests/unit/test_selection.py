@@ -45,14 +45,15 @@ def test_an_unobservable_subject_never_runs_a_selector(monkeypatch, commit, path
 def test_a_selection_observation_is_reused_only_for_the_same_complete_key(tmp_path, monkeypatch):
     seen = []
 
-    def observe(_project, _snapshot_of, _cfg, commit, paths):
+    def observe(_project, _snapshot_of, _cfg, commit, paths, *, budget_s):
+        assert budget_s == 20
         seen.append((commit, paths))
         return {"result": "known", "items": ["fast"]}
 
     monkeypatch.setattr(selection, "observe", observe)
     project = SimpleNamespace(aew_root=tmp_path)
     inputs = dict(directory="validation-runs", selector=SELECTOR, candidate="candidate", snapshot="tree",
-                  paths=["first", "second"])
+                  paths=["first", "second"], budget_s=20)
     one = selection.reuse_or_run(project, dict, **inputs)
     assert one is not None
     assert selection.reuse_or_run(project, dict, **{**inputs, "paths": ["second", "first"]}) == one
@@ -64,7 +65,10 @@ def test_a_selection_observation_is_reused_only_for_the_same_complete_key(tmp_pa
     value, ref = one
     pin_args = {"directory": "validation-runs", "snapshot": "tree"}
     assert selection.read_pinned(tmp_path, ref, **pin_args) == value
-    (tmp_path / ref["path"]).write_text('{"result":"known"}', encoding="utf-8")
+    path = tmp_path / ref["path"]
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    assert selection.read_pinned(tmp_path, ref, **pin_args) is None
+    path.write_text('{"result":"known"}', encoding="utf-8")
     assert selection.read_pinned(tmp_path, ref, **pin_args) is None
     assert selection.reuse_or_run(project, dict, **inputs) is None
 
@@ -108,6 +112,9 @@ def test_coverage_counts_all_unrun_items_even_when_its_display_is_bounded():
     assert f"{len(names)} selected, {len(names)} not run" in "\n".join(value["summary"]["lines"])
 
 
-def test_a_selector_timeout_is_added_to_the_checks_deadline_allowance():
-    policy = {"coverage": {"affected_tests": {"selector": {**SELECTOR, "timeout_s": 2.25}}}}
-    assert validation.deadline_s({"validation_deadline_s": 20}, policy) == 23
+def test_the_selector_allowance_is_separate_from_the_original_checks_deadline():
+    selector = {**SELECTOR, "timeout_s": 2.25}
+    unadopted_policy = {"coverage": {"affected_tests": {"selector": selector}}}
+    assert validation.selector_allowance_s(selector) == 3
+    assert validation.selector_allowance_s(None) == 0
+    assert validation.deadline_s({"validation_deadline_s": 20}, unadopted_policy) == 20

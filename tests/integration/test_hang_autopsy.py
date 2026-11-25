@@ -15,7 +15,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 import bounds
@@ -128,7 +127,7 @@ def pytest_runtest_protocol():
         for gate, phase in checkpoints:
             bounds.bounded_wait("test.inner_started", (proj / f"{gate}-ready").exists,
                                 gone=lambda: proc.poll() is not None)
-            [worker] = worker_evidence.phases_at_signal(hangs, time.monotonic_ns())
+            [worker] = worker_evidence.phases_at_signal(hangs, session_deadline.phase_clock_ns())
             assert worker["worker"] == "worker-gw0" and worker["phase"] == phase
             (proj / f"{gate}-release").touch()
         assert proc.wait(timeout=60) == 0

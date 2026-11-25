@@ -26,7 +26,13 @@ import proctree  # noqa: E402
 import worker_evidence  # noqa: E402
 from evidence_files import CANCEL_COLLECTION, HOST_STOP_FILE, WARNING, open_observation, stacks_ablated  # noqa: E402
 from evidence_files import WATCHDOG_HEADER as HEADER  # noqa: E402
-from session_deadline import HOST_RESOURCES_EXIT, SUPERVISOR_CUTOFF_EXIT, marker, session_directories  # noqa: E402
+from session_deadline import (  # noqa: E402
+    HOST_RESOURCES_EXIT,
+    SUPERVISOR_CUTOFF_EXIT,
+    marker,
+    phase_clock_ns,
+    session_directories,
+)
 from session_deadline import collect_leftovers as collect  # noqa: E402
 from session_deadline import recorded_processes as identities  # noqa: E402
 from watchdog import running_names  # noqa: E402
@@ -332,7 +338,7 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
     def forward(signum, frame):
         nonlocal signal_at
         if signal_at is None:
-            signal_at = time.monotonic_ns()
+            signal_at = phase_clock_ns()  # the workers' phase receipts' clock
         interrupted.append(signal.Signals(signum).name)
 
     previous = {sig: signal.signal(sig, forward) for sig in (signal.SIGINT, signal.SIGTERM)}

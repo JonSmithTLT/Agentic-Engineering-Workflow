@@ -214,6 +214,16 @@ def spool(run_dir: Path, event: str, reason: str) -> None:
                        reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}")
 
 
+def bridge_tables(operations: list[str], *, messaging: bool) -> tuple[bridge.Operations, frozenset[str]]:
+    """A run's bridge: the operations it offers and those that are cooperative. Messaging's from the run's immutable
+    snapshot; the map reads (register F15.8) exactly when the contract's operations name them, that is when the launch
+    snapshot had them on and the role reads context (``harness_ops.operations_of``). Both are cooperative, so a long
+    wait or a slow map read never holds `check run` or `submit`. With neither, the bridge is as it always was."""
+    maps = {op: spec for op, spec in bridge.MAP_OPERATIONS.items() if op in operations}
+    offered = bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if messaging else {}) | maps
+    return offered, frozenset({"message.wait"} if messaging else ()) | frozenset(maps)
+
+
 class Supervisor:
     def __init__(self, run_dir: Path, handoff: dict[str, Any], ack: Any) -> None:
         from aew.engine.api import Engine  # the supervisor is an engine client like any other process
@@ -348,6 +358,8 @@ class Supervisor:
             self.stop_reason = (K.TERMINATED, f"authority ended: {problem}")
             raise errors.StaleAuthority(f"run {self.run} no longer holds {self.inv_id}'s authority: {problem}",
                                         run=self.run)
+        if op in bridge.MAP_OPERATIONS:
+            return self._map_read(op, args)
         # The window a rotation or revocation can race: the engine re-checks the credential under its lock.
         faults.pause("harness.bridge.before_engine")
         try:
@@ -371,6 +383,26 @@ class Supervisor:
             self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
             raise
         raise errors.UsageError(f"unknown bridge operation {op}")
+
+    def _map_read(self, op: str, args: dict[str, Any]) -> Any:
+        """A worker's map read (register F15.8), cooperative: :meth:`handle` has made its two checks; only the
+        credential's check and the state read (the invocation's base, workspace and scope) take the bridge's
+        serialization, and the query runs outside it, so a slow read never holds `check run` or `submit`. It reads
+        only: no map is refreshed or selected, a STALE one included."""
+        from aew.maps import query
+
+        assert self.bridge is not None
+        try:
+            with self.bridge.serialized():
+                basis = self.engine.map_read_basis(invocation_token=self._credential)
+        except errors.StaleAuthority as exc:
+            self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
+            raise
+        ctx = query.Context(repo_root=self.engine.repo_root, aew_root=self.engine.aew_root, commit=basis["base"],
+                            chosen_by=query.INVOCATION_BASE, recipient=basis["recipient"],
+                            workspace=Path(basis["workspace"]),
+                            scope_paths=None if basis["scope_paths"] is None else tuple(basis["scope_paths"]))
+        return query.serve(ctx, op, args)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -407,9 +439,8 @@ class Supervisor:
             self.record["contract"] = contract.to_record()
             (self.run_dir / "prompt.md").write_text(K.redact(contract.prompt), encoding="utf-8")
             self.messaging = (contract.extra.get("coordination") or {}).get("messaging") == "enabled"
-            self.bridge = bridge.BridgeServer(self.handle,
-                operations=bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if self.messaging else {}),
-                cooperative=frozenset({"message.wait"}) if self.messaging else frozenset(),
+            operations, cooperative = bridge_tables(contract.operations, messaging=self.messaging)
+            self.bridge = bridge.BridgeServer(self.handle, operations=operations, cooperative=cooperative,
                 connection_handlers={"message.wait": self.messages.wait} if self.messaging else {})
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
@@ -431,6 +462,10 @@ class Supervisor:
             if self.weaker is not None:
                 self.weaker.started()
             info = self.adapter.launch(contract, dict(self.agent_env))
+            if self.messaging:
+                self.record["coordination_delivery"] = ("live_pending" if self.adapter.coordination_live
+                                                        else "unsupported")
+                self.messages.launched(contract.continuation)
             self.record["launch"] = info
             relay_family = relay_family_of(info)
             if relay_family is not None:  # the label says what the launch could check of its model (register E143)
@@ -611,7 +646,10 @@ class Supervisor:
         self._watching.set()
         deadline_s = self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
+        if self.messaging:
+            self.messages.start(deadline)
         last_beat = last_poll = 0.0
+        exited = None
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
@@ -619,6 +657,11 @@ class Supervisor:
             if now - last_beat >= runlog.HEARTBEAT_S:
                 runlog.beat(self.run_dir)
                 last_beat = now
+            if exited is not None:
+                if self.messages.drained():
+                    return self._finish_exited(exited)
+                time.sleep(TICK_S)
+                continue
             if self.stop_reason:
                 return self._finish(*self.stop_reason)
             for req in self._authorized_requests():
@@ -650,9 +693,18 @@ class Supervisor:
                 if read:
                     last_poll = now
             status = self.adapter.inspect()
+            if self.messaging:
+                outcome = self.record["coordination_delivery"]
+                if self.adapter.coordination_live:
+                    outcome = "held" if status.get("turn") == "held" else "live_pending"
+                if outcome != self.record["coordination_delivery"]:
+                    self.record["coordination_delivery"] = outcome
+                    self._save()
             if not status.get("alive"):
-                return self._finish_exited(status)
-            if deadline is not None and now >= deadline:
+                if not self.messaging or self.messages.drained():
+                    return self._finish_exited(status)
+                exited = status  # receipt draining cannot change an already-observed exit into a deadline or stop
+            elif deadline is not None and now >= deadline:
                 spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
                 # A low anomaly the next Lead commit records (M4-E E7b; plan v3 §2.4, A1 §3.2): this process commits
                 # nothing, so it leaves a worker-side signal, as a refused report does.
@@ -817,13 +869,21 @@ class Supervisor:
             # until its final record.
             until = time.monotonic() + (0.0 if self._start_overdue() else TERMINATE_S + ENDING_EXTRA_S)
             ending = self._background_beats("aew-ending-heartbeat", until=until)
+            final_admissions = None
             try:
-                faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
-                self._end(status, reason, reason_code)
+                try:
+                    if self.messaging:
+                        self.messages.stop()
+                        if self.messages.has_posted and self.authority_problem():
+                            final_admissions = self.messages.capture_final_admissions()
+                finally:
+                    faults.pause("harness.supervisor.finishing")  # tests: a run slow to end
+                    self._end(status, reason, reason_code, final_admissions=final_admissions)
             finally:
                 ending.set()
 
-    def _end(self, status: str, reason: str, reason_code: str | None = None) -> None:
+    def _end(self, status: str, reason: str, reason_code: str | None = None, *,
+             final_admissions: worker_messages.FinalAdmissions | None = None) -> None:
         self._ending.set()
         # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
         # request is still in flight starts nothing, and the private state is retired only once they have returned.
@@ -842,6 +902,10 @@ class Supervisor:
         # the stop still running and its private directory left (E128). Bounded by the stop's own bound.
         if self.bridge is not None and not self.bridge.wait_stopped():
             self._event("bridge_stop_timeout", bound_s=bridge.STOP_BOUND_S)
+        if final_admissions is not None:
+            # Recovery and disk writes may take longer than control-lock acquisition. The worker and its bridge
+            # have already been stopped, so this optional receipt cannot extend their lifetime.
+            self.messages.record_final_admissions(final_admissions)
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

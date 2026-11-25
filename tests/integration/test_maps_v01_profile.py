@@ -173,7 +173,9 @@ def test_the_orientation_names_its_work_revision_source_basis_and_recipient(tmp_
 def test_reading_or_generating_a_map_never_runs_repository_controlled_code(tmp_path):
     """P01-10: the repository's own Git configuration, hooks, filter and textconv drivers and attributes are untrusted.
     Generating the map, its freshness and the slice's scoped listing read Git objects with plumbing only (no checkout,
-    no filters, hooks off), so not one of the planted programs runs."""
+    no filters, hooks off). This test holds the outcome, that not one of the planted programs runs; it does not hold
+    how (``git.safe_config``'s neutralisation of configured drivers is one way, plumbing that never invokes them is
+    another), so a change that keeps the outcome by other means still passes (the review of #567, n2)."""
     files = {".gitattributes": b"* filter=planted diff=planted\n", "pyproject.toml": b"[project]\nname = 'x'\n"}
     files |= {f"d{i:03d}/a.txt": b"x\n" for i in range(205)} | {"z_task/b.txt": b"x\n"}
     repo = make_repo(tmp_path / "repo", files)
@@ -239,6 +241,12 @@ def test_every_map_read_is_labelled_agent_reachable_derived_and_selection_never_
     assert picked["selected"] and picked["evidence_class"] == EVIDENCE_CLASS
     shown = project.ok("map", "show", "--json")
     assert shown["selected"] and shown["evidence_class"] == EVIDENCE_CLASS
+    # `map diff` too, of stored roots and of records generated in memory (the review of #567, m1), and the shared
+    # module's answers (register F15.8)
+    diffed = project.ok("map", "diff", "--root", made["root"], "--commit", "HEAD", "--json")
+    assert diffed["evidence_class"] == EVIDENCE_CLASS
+    for args in (["map", "show", "--section", "languages"], ["map", "search", "README.md"]):
+        assert project.ok(*args, "--json")["evidence_class"] == EVIDENCE_CLASS
     assert project.ok("map", "show", "--root", made["root"], "--json")["evidence_class"] == EVIDENCE_CLASS
     artifact = (project.root / ".aew" / store.artifact_rel(made["root"])).read_bytes()
     assert EVIDENCE_CLASS.encode() not in artifact and b"evidence_class" not in artifact

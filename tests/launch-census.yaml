@@ -246,6 +246,13 @@ starts:
     launch's own sandbox and network (register E153)
   contained_by: [src/aew/harness/supervisor.py::contain_launch]
   weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
+- site: src/aew/maps/query.py::_run_lexical
+  call: ProcessTree
+  classes: [not_agent_context]
+  reason: the map search's lexical fallback (register F15.8), host-side in the supervisor or the operator's or Lead's
+    CLI; the capability register's pinned, checked provider with a fixed argv (no configuration, fixed strings, no
+    symlink followed), bounded and killed at its limit. It reads the workspace's files as data; nothing an agent wrote
+    runs. The plan's residual is that it runs host-side
 - site: src/aew/policy/checks.py::run
   call: ProcessTree
   classes: [contained]

@@ -432,6 +432,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **`mode: allow_weaker`:** the run launches labelled `workdir_separation_only`, with the reason recorded.
 - **`writable`** adds directories every contained run may write (for example a shared build cache), recorded on each run's label. A root that equals, contains or lies under what containment protects is refused at launch, naming what it would expose and what to list instead (independent review, 2026-10-04): the project's `.aew`, the git directories, the runs directory, this run's bridge directory, the Python environment, a masked secret, or the workspaces root (contains only). For the shared temporary directory, containing it, or reaching one of AEW's own `aew-*` directories in it, is refused; a directory such as `/tmp/cache` is not. **`hide`** masks further secrets.
 - **Other platforms:** Windows always runs labelled `workdir_separation_only` (below). On any other platform without containment, an explicit `mode: required` refuses the launch and `doctor` reports FAIL; without it, runs launch labelled weaker.
+  *Amended for Windows by the amendment of 2026-11-25 below (register E100): an explicit `mode: required` refuses the launch on Windows too; without it, Windows runs launch labelled `workdir_separation_only`.*
 
 ### Labels
 - **Every run record's `containment` is an object** with:
@@ -1676,6 +1677,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **Where the policy allows it, and on Windows, the general command runs labelled not contained**, through the same
   `label.json` writer as `aew opencode` (in a `lead-<UTC>-<hex>` run directory), which now names the session's own
   process by pid and start id. Off Linux, `aew opencode`'s label says why it is weaker.
+  *Amended by the amendment of 2026-11-25 (E100): an explicit `required` refuses on Windows too.*
 - **The register of weaker contexts** (ruling 2; `aew.harness.weaker_register`): per host and per operator account,
   in AEW's host state beside the capability register, outside every project and every sandbox's writable binds. Every
   agent context whose label is weaker than a self-tested sandbox on a network of its own is entered there by its
@@ -2182,3 +2184,29 @@ the rest of AEW's import path, such as an editable install's source tree, was no
   - a writable bind nested inside an import-path directory other than the interpreter's prefix;
   - third-party modules linked from elsewhere by symbolic links;
   - paths on case-insensitive filesystems, which are compared by their spelling.
+
+## Amendment 2026-11-25 — an explicit `required` refuses on every platform (register E100)
+
+The designer's decision of 2026-10-25, unfrozen by the operator on 2026-11-25 as SYS-02's slice. It replaces the
+Windows sentence of "Other platforms" in the M4-B amendment above, under which Windows always ran labelled
+`workdir_separation_only`, even under an explicit `containment.mode: required`, and the amendment of 2026-11-01's
+"and on Windows" for the general Lead command, which ran labelled not contained there under an explicit `required`
+too.
+
+- **An explicit `required` on a host that cannot meet it refuses the launch, on every platform, Windows included.**
+  `containment.mode` returns `required` wherever the policy says so; off Linux, `containment.establish` then refuses
+  with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform` and the `platform`, saying the launch is refused, that
+  the platform has no filesystem containment, and what works instead: run on Linux, or set
+  `containment.mode: allow_weaker`. Nothing of the run starts: the refusal comes before any register entry, network,
+  check process or harness, so a worker run ends `launch_failed` as any refused launch does, and `aew check run`
+  removes its run directory.
+- **Every launch route reads the same mode:** worker runs (the supervisor's `contain_launch`), checks (`aew check run`
+  and a run's checks), checks-mode validation, and both Lead routes. Off Linux, the Lead's refusal (`aew lead session`,
+  and `aew opencode`) gives the same reason and remedy, and does not send the operator to `aew opencode`, which is not
+  contained there either. `aew doctor`'s `containment` line is FAIL under it.
+- **An unset mode still runs weaker** off Linux, labelled `workdir_separation_only`, its `weaker_because` naming the
+  platform; so does an explicit `allow_weaker`. On Linux nothing changes: `required` is the default.
+- **Not changed:** Windows still has no containment (the M3 model above, and the label decided for it in the
+  amendment of 2026-10-11, register F48), and `aew doctor` still prints it UNQUALIFIED.
+- **Tests:** `tests/unit/test_containment_required_everywhere.py`, with the platform simulated so that both sides run
+  on every CI platform.

@@ -100,7 +100,7 @@ def test_message_send_creates_no_invocation_run_or_credential_and_leaves_expect_
     assert first["ok"], first["stopped"]
     assert first["revision"] == rev and first["completed_steps"] == [] and first["stage_intent_id"] is None
     assert first["base_operation_class"] == first["effective_operation_class"] == "MECHANICAL"
-    assert first["result"]["delivery"] == "not_built" and "not built yet" in first["result"]["next"]
+    assert first["result"]["delivery"] == "no_live_run" and "next launched" in first["result"]["next"]
     assert w.control_bytes() == before
     assert call(w, body="A second message at the same revision.")["ok"]
     assert w.control_bytes() == before
@@ -211,7 +211,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                           "Publication stays a separate decision.",
         "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
-                        "Delivery not built; turn-end refused.",
+                        "Deliver at the next step or on relaunch. Turn-end refused.",
     }
     assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
     assert expected["ticket_start"] in text

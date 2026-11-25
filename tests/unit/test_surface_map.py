@@ -246,7 +246,7 @@ def ideal_path_options() -> dict[str, list[str]]:
 
 def worker_commands() -> set[str]:
     """The commands a worker runs through its run's custody bridge (bridge.OPERATIONS: `check.run` is `check run`)."""
-    return {op.replace(".", " ") for op in bridge.OPERATIONS | bridge.MESSAGE_OPERATIONS}
+    return {op.replace(".", " ") for op in bridge.OPERATIONS | bridge.MESSAGE_OPERATIONS | bridge.MAP_OPERATIONS}
 
 
 def dests(name: str) -> set[str]:
@@ -2053,7 +2053,8 @@ def test_the_walk_and_the_ideal_path_are_the_live_ones():
     assert len(rows) == 13 and rows["init"] == ["init"] and resolve(["init"]) == "init"
     assert rows["configure"] == ["init"]  # its options are `ideal_path_options`'s: they're no words of the command
     assert ideal_path_options() == {"init": ["--check-command", "--model", "--provider"]}
-    assert worker_commands() == {"whoami", "check run", "submit", "message reply", "message read", "message wait"}
+    assert worker_commands() == {"whoami", "check run", "submit", "message reply", "message read", "message wait",
+                                 "map show", "map search"}
 
 
 # Each enforced check fails, naming the item, on the drift it exists to catch.

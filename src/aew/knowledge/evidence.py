@@ -11,6 +11,7 @@ evidence stays byte-identical.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,9 +20,23 @@ from aew.errors import IntegrityError, PermissionDenied, ValidationFailed
 from aew.schemas import validate, validate_property
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text
 
+# E160 (SYS-43; the designer's decision of 2026-11-06 on planner staffing and the plan assessor, Q2): the plan
+# assessment, a record kind of the reviewer archetype that challenges an accepted plan revision: a requirement trace,
+# the premises challenged, and findings. The schema holds its producer to this archetype. Only an invocation the
+# assessor entrypoint (`aew plan assess`, E160 slice 2) dispatched submits one: its scope is ``ASSESSMENT_SCOPE``, and
+# a reviewer dispatched to review a change never may (``kinds_for``). The entrypoint's default card is
+# ``ASSESSOR_CARD``; any card of the archetype that lists the kind among its outputs may be named instead.
+PLAN_ASSESSMENT = "plan_assessment"
+ASSESSOR_ARCHETYPE = "reviewer"
+ASSESSMENT_SCOPE = "plan_assessment"
+ASSESSOR_CARD = "plan_assessor"
+# The invocation scopes that hold their own read-only observation of the source (ADR-0008): a non-mutating Ticket's
+# executor and its reviewers and verifiers, a parent's acceptance roles, and a plan assessor.
+OBSERVER_SCOPES = frozenset({"observation", "parent", ASSESSMENT_SCOPE})
+
 ROLE_KINDS = {
     "implementer": {"implementation_report"},
-    "reviewer": {"review"},
+    "reviewer": {"review", PLAN_ASSESSMENT},  # a plan assessment only at its own scope (``kinds_for``)
     "verifier": {"verification"},
     # Non-mutating execute records (ADR-0008): each read-only archetype writes exactly one kind.
     "investigator": {"discovery_record"},
@@ -31,14 +46,6 @@ ROLE_KINDS = {
 # The record a non-mutating executor of each archetype must produce (the pinned output contract).
 EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
 EXECUTE_KINDS = frozenset(EXECUTE_KIND.values())
-# E160 (SYS-43; the designer's decision of 2026-11-06 on planner staffing and the plan assessor, Q2): the plan
-# assessment, a record kind of the reviewer archetype that challenges an accepted plan revision: a requirement trace,
-# the premises challenged, and findings. The schema holds its producer to this archetype. No credential may submit one
-# yet: the assessor entrypoint (E160 slice 2) grants it to a plan-assessor dispatch only, never to a reviewer
-# dispatched to review a change, so ``ROLE_KINDS``, the reviewer's operations and a review run's expected kinds are
-# unchanged here.
-PLAN_ASSESSMENT = "plan_assessment"
-ASSESSOR_ARCHETYPE = "reviewer"
 SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check",
          "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
          PLAN_ASSESSMENT: "assess"}
@@ -147,9 +154,39 @@ def one_of(values: dict[str, str | None]) -> str:
     return ", ".join(words[:-1]) + " or " + words[-1]
 
 
-def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
+def kinds_for(role: str, scope: str | None) -> set[str]:
+    """The evidence kinds an invocation of ``role`` dispatched at ``scope`` may submit: its archetype's, where a plan
+    assessment belongs to the assessor's scope alone. So a plan-assessor dispatch submits a plan assessment and nothing
+    else, and a reviewer of a change never submits one (E160 slice 2). The one owner of what a run is expected to
+    produce, too (``harness_ops.expected_kinds``)."""
+    kinds = set(ROLE_KINDS.get(role, set()))
+    if role == ASSESSOR_ARCHETYPE and scope == ASSESSMENT_SCOPE:
+        return kinds & {PLAN_ASSESSMENT}
+    return kinds - {PLAN_ASSESSMENT}
+
+
+def submit_operations(operations: Iterable[str], role: str, scope: str | None) -> list[str]:
+    """``operations`` less each ``submit.<kind>`` an invocation of ``role`` at ``scope`` may not use (``kinds_for``):
+    what a pack lists and a run's bridge offers, so a reviewer of a change is never told it may submit a plan
+    assessment (#581 review, F1). The grant itself is the archetype's; this narrows only what is offered."""
+    allowed = kinds_for(role, scope)
+    return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
+
+
+def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None) -> None:
     if kind not in ROLE_KINDS.get(role, set()):
         raise PermissionDenied(f"role {role} may not submit {kind} evidence", role=role, kind=kind)
+    if kind not in kinds_for(role, scope):
+        if kind == PLAN_ASSESSMENT:
+            raise PermissionDenied(
+                "only an invocation dispatched to assess the accepted plan may submit a plan assessment; this one was "
+                f"dispatched at scope {scope!r}. A plan assessor is dispatched with the plan assess command, never as "
+                "a reviewer of a change",
+                reason="not_a_plan_assessment_dispatch", role=role, kind=kind, scope=scope)
+        raise PermissionDenied(
+            f"this invocation was dispatched to assess the accepted plan: it submits a {PLAN_ASSESSMENT} "
+            f"(`aew submit --kind {PLAN_ASSESSMENT} --file <file>`), not {kind} evidence",
+            reason="plan_assessment_dispatch", role=role, kind=kind, scope=scope)
     control = sorted(CONTROL_FIELDS & meta.keys())
     if control:
         raise PermissionDenied(

@@ -45,6 +45,7 @@ COVERED = {
     "dispatch.launch": "test_launch_relaunch_and_dispatch_launch_record_their_decision",
     "lead_broker.relay": "test_a_lead_session_dispatch_is_relayed_to_the_same_predicate",
     "integrate.prepare": "test_an_integration_lease_records_the_decision_that_granted_it",
+    "plan.assess": "test_a_plan_assessor_records_its_decision_and_the_query_equals_the_execution",
 }
 
 
@@ -127,6 +128,20 @@ def test_parent_acceptance_invocations_record_their_decision(tmp_path):
     complete_investigation(p, create_investigation(p, tmp_path, parent=story))
     out = p.lead("invoke", "create", story, "--role", "reviewer")
     admitted(p, out["invocation"], "invoke.create.parent")
+    assert_control_invariants(p)
+
+
+def test_a_plan_assessor_records_its_decision_and_the_query_equals_the_execution(tmp_path):
+    """E160 slice 2a: `aew plan assess` reaches the predicate through its own entrypoint, for a Ticket and a parent."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    explained = p.ok("dispatch", "explain", wid, "--entrypoint", "plan.assess")
+    assert explained["allowed"] and explained["entrypoint"] == "plan.assess"
+    out = p.lead("plan", "assess", wid)
+    assert admitted(p, out["invocation"], "plan.assess")["revision"] == explained["revision"]
+    story = create_unit(p, "story", "Understand calc", cls=1)
+    plan_unit(p, tmp_path, story, "Investigate, then decide.\n")
+    admitted(p, p.lead("plan", "assess", story)["invocation"], "plan.assess")
     assert_control_invariants(p)
 
 

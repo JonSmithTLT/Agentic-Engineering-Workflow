@@ -333,8 +333,15 @@
               "ticket",
               "integration",
               "observation",
-              "parent"
+              "parent",
+              "plan_assessment"
             ]
+          },
+          "plan_revision": {
+            "description": "E160: a plan assessor's (scope plan_assessment) pin, the accepted plan revision and sha256 it was dispatched to assess; its assessment is refused once the accepted plan is another",
+            "type": "object",
+            "required": ["revision", "sha256"],
+            "properties": {"revision": {"type": "integer"}, "sha256": {"type": "string"}}
           },
           "specialty": {
             "type": [

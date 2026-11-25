@@ -903,6 +903,18 @@ commands:
           - "option --verify"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: plan assess
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision), and
+                   dispatches a plan assessor with its own observation worktree and credential"
+    refusals: [DISPATCH_REFUSED, GATE_UNSATISFIED, ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED,
+               PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "E160 slice 2a: the Lead's route is its typed tool (E160 slice 2b), which decides its lead_disposition; until
+          then it is in lead_broker.TYPED_PENDING, part of OPERATOR_ONLY, so a Lead session's broker refuses it and
+          the operator runs it at their own terminal with the Lead credential"
   - name: plan reconfirm
     home: product
     users: [lead]
@@ -1007,8 +1019,10 @@ commands:
     users: [worker]
     journeys: [V1, V2, V4]
     mutates: "yes"
-    mutates_basis: "submits role evidence (implementation report, review, verification) for its invocation"
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    mutates_basis: "submits role evidence (implementation report, review, verification, an execute record, or a plan
+                   assessment, which `--kind plan_assessment` takes from a plan assessor's dispatch only) for its
+                   invocation"
+    refusals: [GATE_UNSATISFIED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE, VALIDATION_FAILED]
   - name: whoami
     home: diagnostic
     users: [worker]

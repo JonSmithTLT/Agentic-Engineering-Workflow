@@ -91,8 +91,10 @@ def attach(pid: int, *, allow_sudo: bool = True, timeout: float = SPY_TIMEOUT_S,
     for prefix in prefixes:
         via = "sudo -n" if prefix else "unelevated"
         try:
+            # A malformed byte in a diagnostic must not abort the lane supervisor's sampling loop.
             result = subprocess.run([*prefix, binary, "dump", "--nonblocking", "--full-filenames", "--pid", str(pid)],
-                                    capture_output=True, text=True, timeout=max(0, until - time.monotonic()),
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                    timeout=max(0, until - time.monotonic()),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if result.returncode == 0 and result.stdout.strip():
                 return via, result.stdout
@@ -389,6 +391,12 @@ def supervise(root: Path, shell: str, script: Path, cutoff: float) -> int:
                         note(directory, "cutoff", f"step cutoff at {time.time():.6f}\n")
                 elif interrupted:
                     worker_phases = interrupt_phases(root, signal_at)
+                    if not active:
+                        # No worker was in a test: say so, if the sessions bear out that none had started one (E3).
+                        # The phases are the bounded read's, or else read here: a few receipts, from regular files.
+                        rows = (worker_phases.get("registered_workers") if worker_phases.get("status") == "observed"
+                                else worker_evidence.phases_at_signal(root, signal_at))
+                        worker_evidence.before_tests(root, at, rows, observer=WARNING)
                 code = child.poll()
                 command_status = ("Lane command was still running" if code is None
                                   else f"Lane command had exited with code {code}")
@@ -457,6 +465,11 @@ def main(argv: list[str]) -> int:
         if cancelled or step_ended:
             active = list(worker_evidence.workers(args.root))
             at = time.time()
+            if cancelled and not active:
+                # Cancelled with no worker in a test: record that no session had started one, where the sessions'
+                # receipts, read from their live writers now, bear that out (register E3).
+                worker_evidence.before_tests(args.root, at, worker_evidence.phases_at_signal(
+                    args.root, time.monotonic_ns()), observer=CANCEL_COLLECTION)
             # Liveness is decided before the capture, as the Linux supervisor decides it before its warning attach: a
             # worker that exits during the capture is still owed its stack, and its typed outcome says why there is
             # none (register E3).

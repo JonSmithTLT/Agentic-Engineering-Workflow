@@ -58,11 +58,17 @@ def _in_worker_run(a: argparse.Namespace, *flags: str) -> bool:
 
 MAPS_READS_OFF = ("this run was launched with maps.reads off, so its bridge offers no map reads: read the source in "
                   "your workspace, or ask the Lead (register F15.8)")
+CONTEXT_READ_NARROWED = ("role card {card} narrows this invocation's operations and leaves out context.read, which the "
+                         "map reads ride, so its bridge offers no map reads: read the source in your workspace, or ask "
+                         "the Lead (register F15.8)")
 
 
 def _bridge_read(op: str, args: dict[str, Any]) -> Any:
-    """A worker's map read through its run's bridge. A run launched with the switch off offers no map operation; its
-    refusal says why and what to do instead (the review of #576, m8), never only that the bridge "does not offer" it."""
+    """A worker's map read through its run's bridge. A run that offers no map operation is refused with its cause and
+    what to do instead (the review of #576, m8), never only that the bridge "does not offer" it. The map reads ride
+    ``context.read`` (``harness_ops.operations_of``), so the switch is the cause only when the invocation is offered
+    ``context.read``; otherwise its role card's restriction is (#576's quick check, q1). The bridge's own ``offered``
+    lists its rows, never ``context.read``, so the invocation's operations come from ``whoami``, the same owner."""
     from aew.errors import PermissionDenied
     from aew.harness import bridge
 
@@ -70,9 +76,14 @@ def _bridge_read(op: str, args: dict[str, Any]) -> Any:
         return bridge.call(op, args)
     except PermissionDenied as exc:
         offered = (exc.details or {}).get("offered")
-        if isinstance(offered, list) and op not in offered:
+        if not isinstance(offered, list) or op in offered:
+            raise
+        who = bridge.call("whoami", {})
+        if "context.read" in (who.get("operations") or []):
             raise PermissionDenied(MAPS_READS_OFF, reason="maps_reads_off", operation=op) from None
-        raise
+        card = (who.get("role_card") or {}).get("id")
+        raise PermissionDenied(CONTEXT_READ_NARROWED.format(card=card), reason="context_read_narrowed", operation=op,
+                               card=card) from None
 
 
 def _context(a: argparse.Namespace, engine: Any, *, scope_paths: tuple[str, ...] = ()) -> Any:

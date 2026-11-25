@@ -65,6 +65,7 @@ from aew.errors import (
     ValidationFailed,
     WorkspaceMutated,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
@@ -1179,14 +1180,14 @@ class EvidenceCommands:
             state = s.state
             inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}",
                                                     archived=self.archive.archived_credential)
-            E.check_submission(inv["role"], kind, submitted)
+            E.check_submission(inv["role"], kind, submitted, scope=inv.get("scope"))
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).
             workspace, ws_id, _ = self.invocations.invocation_workspace(state, inv)
             # A worker commits no control state: a mutated workspace is a signal the next Lead commit records as an
             # anomaly (M4-E E5b; plan v3 §2.4). The refusal is unchanged.
             with DO.signalled(self.k.aew_root, inv["work_unit"]):
-                if inv.get("scope") in {"observation", "parent"}:
+                if inv.get("scope") in E.OBSERVER_SCOPES:
                     self.nm.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
                 elif inv["role"] in SHARED_WORKSPACE_READERS:
                     self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # M3-B6
@@ -1239,6 +1240,16 @@ class EvidenceCommands:
                 meta["result"] = "pass" if review.get("disposition") == "pass" else "fail"
             elif kind == "verification":
                 meta.update(self._verification_binding(state, inv_id, inv, submitted))
+            elif kind == E.PLAN_ASSESSMENT:  # E160 slice 2: only a plan assessor's (``check_submission``)
+                if E.plan_binding(unit.get("plan")) != inv.get("plan_revision"):
+                    raise GateUnsatisfied(
+                        f"{work_id}'s accepted plan changed after {inv_id} was dispatched to assess revision "
+                        f"{(inv.get('plan_revision') or {}).get('revision')}, so this assessment would be of a plan "
+                        f"that is no longer the accepted one; a new assessor is dispatched with "
+                        f"`aew plan assess {work_id} --launch {EXPECT_REV}`", reason="plan_revision_changed",
+                        dispatched_for=inv.get("plan_revision"), accepted=E.plan_binding(unit.get("plan")))
+                meta.update(E.plan_assessment_binding(work_id, unit.get("plan"), submitted))
+                meta["evaluated_snapshot"] = inv["snapshot"]  # the dispatch snapshot: the source it observed
             elif kind in E.EXECUTE_KINDS:
                 meta.update(self.nm.execute_record_binding(state, inv_id, inv, kind, submitted))
             else:

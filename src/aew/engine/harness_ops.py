@@ -360,7 +360,7 @@ class Harness:
         pinned = (unit.get("execution") or {}).get("expected_kind")
         if inv["role"] in E.EXECUTE_KIND and pinned:
             return [pinned]
-        return sorted(E.ROLE_KINDS.get(inv["role"], set()))
+        return sorted(E.kinds_for(inv["role"], inv.get("scope")))  # a plan assessor's run expects its assessment
 
     def operations_of(self, inv: dict[str, Any]) -> list[str]:
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))
@@ -372,7 +372,7 @@ class Harness:
         # The map reads ride context.read (register F15.8): a role that reads context, in a run launched with them on
         if runs and "context.read" in ops and K.run_maps_reads(runs[-1]) == X.MAPS_READS_STRUCTURAL:
             ops |= set(MAP_OPERATIONS)
-        return sorted(ops)
+        return sorted(E.submit_operations(ops, inv["role"], inv.get("scope")))  # only what it may submit (#581 F1)
 
     def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
         """What a worker's map read answers at (register F15.8): its invocation's workspace and base commit
@@ -983,7 +983,7 @@ class Harness:
                 action = f"{run}'s record is unreadable: {K.wait_step([run])}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
-                          f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
+                          f"{self._after_run(state, inv, produced, inv_id)} (the run itself decides nothing)")
             elif plan_failure := K.plan_login_failure(
                 (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
             ):
@@ -1020,10 +1020,13 @@ class Harness:
                         "action": action})
         return out
 
-    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]]) -> str:
+    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
+                   inv_id: str) -> str:
         """What the Lead does with a finished run's evidence, as the command that applies (M3-D8)."""
         wid = inv["work_unit"]
         unit = state["work"].get(wid) or {}
+        if inv.get("scope") == E.ASSESSMENT_SCOPE:
+            return self._after_assessment(state, inv, produced, inv_id)
         if inv["role"] == "implementer":
             blocked = self.implementation_blocker(state, wid)
             if blocked:
@@ -1037,6 +1040,27 @@ class Harness:
             return "ingest it"
         return f"ingest it: {self._stage_for_report(state, inv)}" + ", ".join(
             f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+
+    def _after_assessment(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
+                          inv_id: str) -> str:
+        """A plan assessor's finished run (E160; #581 review, F2): nothing ingests a plan assessment, so say whether it
+        is the one that counts for the accepted revision (``evidence.counting_assessment``), and end the invocation,
+        which retires its observation and credential."""
+        wid = inv["work_unit"]
+        mine = sorted(e["id"] for e in produced if e["kind"] == E.PLAN_ASSESSMENT)
+        plan = (state["work"].get(wid) or {}).get("plan")
+        counted = E.counting_assessment(E.scan(self.k.aew_root, wid)[0], plan)
+        if counted is not None and counted["id"] in mine:
+            standing = (f"{counted['id']} ({counted['result']}) is the assessment that counts for {wid}'s plan "
+                        f"v{plan['accepted'] if plan else '?'}")
+        elif counted is not None:
+            standing = f"{counted['id']} already counts for {wid}'s accepted plan, so it is history"
+        else:
+            standing = f"it is bound to a plan revision that is no longer {wid}'s accepted one, so it counts for none"
+        end = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}", "reason",
+                               "its plan assessment is recorded")
+        return (f"its plan assessment {', '.join(mine) or '(none)'} is recorded and nothing ingests it: {standing}. "
+                f"End {inv_id}, which retires its observation and credential, with:\n\n{end}\n")
 
     def _stage_for_report(self, state: dict[str, Any], inv: dict[str, Any]) -> str:
         """The stage that accepts a Ticket's report, in front of its command, where it is a whole step for that Ticket

@@ -1274,6 +1274,11 @@ class Engine:
                                    source=source, reason=reason, review=review, verify=verify,
                                    no_assurance=no_assurance)
 
+    def plan_assess(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+        return self._nm.plan_assess(token=token, expect_rev=expect_rev, work_id=work_id, card=card,
+                                    execution_profile=execution_profile, launch=launch)
+
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)
 

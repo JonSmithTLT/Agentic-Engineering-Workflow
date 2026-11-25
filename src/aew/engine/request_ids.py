@@ -11,6 +11,7 @@ from typing import Any, NamedTuple
 from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
 from aew.harness.contract import EXPECT_REV, invocation_of_run
+from aew.knowledge import evidence as E
 from aew.maps import slices
 from aew.util import sha256_text
 
@@ -135,6 +136,6 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
               "evaluated_snapshot": deepcopy(inv.get("snapshot")), "pack": slices.for_lead(deepcopy(inv.get("pack")))}
     if inv["scope"] == "observation":
         result["subject"] = deepcopy(inv["subject"])
-    if inv["scope"] in {"observation", "parent"}:
+    if inv["scope"] in E.OBSERVER_SCOPES:
         result["observation"] = deepcopy(inv["observation"])
     return identity | result | metadata

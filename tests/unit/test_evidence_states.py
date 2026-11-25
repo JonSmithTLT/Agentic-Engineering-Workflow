@@ -180,7 +180,12 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     cancel = jobs["cancel-plant"]
     assert cancel["if"] == ("github.event_name != 'pull_request' && "
                             "(!inputs.probe_origin || inputs.probe_role == 'target')")
-    assert cancel["strategy"]["matrix"]["kind"] == ["cancel"]
+    # The start-up control's target alone runs the start-up plant (register E3; #579, M1).
+    assert cancel["strategy"]["matrix"]["kind"] == ("${{ inputs.probe_scenario == 'start' && "
+                                                    "fromJSON('[\"cancel-start\"]') || fromJSON('[\"cancel\"]') }}")
+    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", "start"]
+    scenarios = proof[True]["workflow_dispatch"]["inputs"]["probe_scenario"]["options"]
+    assert scenarios == ["manual", "supersede", "start"]
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
@@ -774,6 +779,35 @@ def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypat
     failures.clear()
     assert lane.attach(42, timeout=0.2, failures=failures) is None
     assert failures[-1] == "sudo -n: timed out"
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_worker_attach_survives_invalid_utf8_in_py_spy_output(monkeypatch, exit_code):
+    import subprocess
+    import sys
+
+    lane = _load("lane_step")
+    run = subprocess.run
+    monkeypatch.setattr(lane.shutil, "which", lambda _name: sys.executable)
+    dump = b"Thread 7 (active)\n    m\xc3\xa9thod (tests/test_sample.py:10)\n"
+    if not exit_code:
+        dump += b"    damaged\xf9\n"
+    error = b"private argument\xf9 (os error 13)\n" if exit_code else b""
+    script = (f"import sys; sys.stdout.buffer.write({dump!r}); sys.stderr.buffer.write({error!r}); "
+              f"sys.exit({exit_code})")
+
+    def py_spy(_argv, **kwargs):
+        return run([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(lane.subprocess, "run", py_spy)
+    failures = []
+    observed = lane.attach(42, allow_sudo=False, failures=failures)
+    if exit_code:
+        assert observed is None
+        assert failures == ["unelevated: exit 1 (os error 13)"]
+    else:
+        assert observed == ("unelevated", "Thread 7 (active)\n    méthod (tests/test_sample.py:10)\n    damaged�\n")
+        assert failures == []
 
 
 @pytest.mark.parametrize("fault", [None, "unavailable", "prior-unavailable", "changed-node", "support-frame",

@@ -32,7 +32,8 @@ TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
 # and tests/unit/test_roles.py keeps the two equal. Role cards can only narrow it.
 ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     "implementer": frozenset({"check.run", "submit.implementation_report", "context.read"}),
-    "reviewer": frozenset({"submit.review", "context.read"}),
+    # A plan assessment is submitted only at the assessor's own scope (E160; ``evidence.kinds_for``).
+    "reviewer": frozenset({"submit.review", "submit.plan_assessment", "context.read"}),
     "verifier": frozenset({"check.run", "submit.verification", "context.read"}),
     # Non-mutating executors (ADR-0008): each submits exactly its own record kind; the investigator may
     # also gather runtime evidence by running project checks in its read-only observation workspace.

@@ -47,6 +47,18 @@ def _load(name: str):
 
 check_assurance = _load("check_assurance")
 tier = _load("tier")
+
+
+@pytest.mark.parametrize(("change", "expected"), [("docs/README.md", "docs"), ("src/aew/engine/base.py", "full")])
+def test_requesting_lane_names_uses_the_same_tier_as_workflow_output(tmp_path, change, expected):
+    paths = tmp_path / "changed.txt"
+    paths.write_text(change + "\n", encoding="utf-8")
+    workflow, lanes = tmp_path / "workflow.txt", tmp_path / "lanes.txt"
+    assert tier.main(["--event", "pull_request", "--base-ref", "main", "--labels", "",
+                      "--paths-file", str(paths), "--lanes-out", str(lanes),
+                      "--github-output", str(workflow)]) == 0
+    assert workflow.read_text(encoding="utf-8").splitlines()[0] == f"tier={expected}"
+    assert lanes.read_text(encoding="utf-8").splitlines() == list(tier.LANES[expected])
 update_durations = _load("update_durations")
 shard_plan = _load("shard_plan")
 cost_record = _load("cost_record")

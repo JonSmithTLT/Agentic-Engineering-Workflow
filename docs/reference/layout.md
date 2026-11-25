@@ -144,11 +144,11 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `local/harness/lead/xdg-state/opencode` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.harness.opencode.lead:ContainedLead._seed_models`
-- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`
+- `local/harness/runs` (git-ignored, masked by containment); named by `aew.harness.runlog`: `RUNS_REL`; read by `aew.engine.evidence_ops`: `EvidenceCommands._check_run_direct`; `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.check_changes`: `run_copy`; `aew.harness.containment.layout`: `for_run`; `aew.harness.model_list`: `read`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`, `visit`; `aew.kit.receipt`: `write_receipt`
   - Written by
     - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct`
     - `aew.engine.harness_ops:Harness._spawn_run`
-    - `aew.harness.check_changes:run_once`
+    - `aew.harness.check_changes:run_copy`
     - `aew.harness.doctor_relay:lead_rows`
     - `aew.harness.lead_broker:lead_run_dir`
     - `aew.harness.model_list:read`
@@ -227,10 +227,10 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-check-{}-{}` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `run_once`; `aew.harness.containment.layout`: `for_run`
+- `local/harness/runs/doctor-check-{}-{}` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `run_copy`; `aew.harness.containment.layout`: `for_run`
   - Written by
     - `aew.capability.bind:place`
-    - `aew.harness.check_changes:run_once`
+    - `aew.harness.check_changes:run_copy`
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.containment.layout:retire_private_git`
 - `local/harness/runs/doctor-check-{}-{}/git` (git-ignored, masked by containment); read by none
@@ -241,9 +241,11 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.harness.containment.layout:for_run`
     - `aew.harness.containment.probe:_self_test`
-- `local/harness/runs/doctor-check-{}-{}/scratch` (git-ignored, masked by containment); read by none
+- `local/harness/runs/doctor-check-{}-{}/scratch` (git-ignored, masked by containment); read by `aew.harness.check_changes`: `_protocol_bytes`
   - Written by
+    - `aew.harness.check_changes:run_copy`
     - `aew.harness.containment.layout:for_run`
+    - `aew.policy.checks:run`
 - `local/harness/runs/doctor-check-{}-{}/tools` (git-ignored, masked by containment); read by none
   - Written by
     - `aew.capability.bind:place`
@@ -572,8 +574,9 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `work/{}/stage-intents` (kept in git); read by none
   - Written by
     - `aew.engine.stage_intents:StageIntents._end`
-- `work/{}/validation-runs` (kept in git); read by none
+- `work/{}/validation-runs` (kept in git); read by `aew.engine.selection`: `_read`, `reuse_or_run`
   - Written by
+    - `aew.engine.selection:reuse_or_run`
     - `aew.engine.validation_ops:Validation._pin`
     - `aew.engine.validation_ops:Validation._write_record`
 
@@ -616,6 +619,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.resume_ops`: `Resume._freshness` (Path.exists), `Resume._freshness` (Path.read_text), `Resume._plan_brief` (Path.read_text), `Resume.resume` (Path.exists), `Resume.resume` (Path.read_text)
 - `aew.engine.role_ops`: `Roles.role_validate` (Path.read_bytes)
 - `aew.engine.scope_ops`: `ScopeCorrections._check` (Path.is_file), `ScopeCorrections._record` (Path.read_text), `_file_text` (Path.read_text), `pack_entries` (Path.read_text)
+- `aew.engine.selection`: `_read` (Path.read_text)
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
 - `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)
@@ -626,7 +630,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.work_ops`: `WorkCommands.plan_accept` (sha256_file), `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
 - `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)
-- `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_once` (Path.is_file), `run_once` (shutil.copyfile)
+- `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_copy` (Path.is_dir), `run_copy` (Path.is_file), `run_copy` (shutil.copyfile)
 - `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open), `public_snapshot` (open)
 - `aew.harness.containment.layout`: `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolution` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `display_files` (os.path.isfile), `for_run` (Path.exists), `for_run` (os.path.isdir), `interpreter_binds` (os.path.isdir), `lead_trusted_code_exposed` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2), `trusted_code` (Path.is_dir), `trusted_code` (Path.is_symlink), `trusted_code` (os.path.exists), `trusted_code` (os.scandir)
 - `aew.harness.containment.netns`: `_shim_source` (open)

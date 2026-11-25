@@ -77,6 +77,7 @@ flowchart LR
     path_records -.-> proc_aew
     path_roles -.-> proc_aew
     path_state -.-> proc_aew
+    path_work -.-> proc_aew
     path_local -.-> proc_aew_dashboard_serve
     path_local -.-> proc_aew_harness_supervisor
     path_knowledge -.-> proc_aew_kit_main
@@ -127,7 +128,7 @@ flowchart LR
 | `records` | other entries of .aew | `aew` | `aew` | yes | yes |
 | `roles` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | - |
 | `state` | the control store | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | yes | yes |
-| `work` | other entries of .aew | `aew` | - | yes | yes |
+| `work` | other entries of .aew | `aew` | `aew` | yes | yes |
 
 ## Not drawn
 

@@ -94,6 +94,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `role` | `role.schema.json` |
 | `run-usage` | `run-usage.schema.json` |
 | `scope-correction` | `scope-correction.schema.json` |
+| `selection` | `selection.schema.json` |
 | `spool-event` | `spool-event.schema.json` |
 | `stage-intent` | `stage-intent.schema.json` |
 | `surface` | `surface.schema.json` |

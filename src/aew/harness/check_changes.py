@@ -19,6 +19,7 @@ import shutil
 import stat
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,23 @@ CHECK = "check-changes"
 COMMAND = "aew doctor --run-checks"
 ROLE, SCOPE = "implementer", "ticket"  # a worker's check runs in its run's sandbox (``check.run``)
 WORKSPACE_ID = "doctor-run-checks"
+# The selector is an advisory subprocess. Bound how much of its output the engine reads.
+SELECTION_OUTPUT_BYTES = 1024 * 1024
+
+
+def _protocol_bytes(path: Path, maximum: int) -> bytes | None:
+    """Read a bounded regular file from this run's scratch, without following links or waiting on a pipe."""
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return None
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(path, flags), "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                return None
+            data = handle.read(maximum + 1)
+    except OSError:
+        return None
+    return data if len(data) <= maximum else None
 
 
 def remove_copy(path: Path) -> None:
@@ -68,16 +86,31 @@ def configured(engine: Any) -> list[tuple[str, dict[str, Any]]]:
 
 def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
     checks = configured(engine)
+    selector = ((engine.policy("checks") or {}).get("coverage", {}).get("affected_tests") or {}).get("selector")
+    if run and selector is not None:
+        from aew.engine import selection
+
+        commit = engine.authoritative_commit()
+        result = selection.observe(engine, engine.snapshot_of, selector, commit, [])
+        detail = (f"{len(result['items'])} selected for an empty change"
+                  if result["result"] == "known" else result["reason"].replace("_", " "))
+        selection_row = {"check": "checks-configured",
+                         "status": "PASS" if result["result"] == "known" else "WARN",
+                         "detail": f"Affected-test selector: {detail} (diagnostic only)"}
+        rows = [selection_row]
+    else:
+        rows = []
     if not checks:
-        return []
+        return rows
     names = ", ".join(c for c, _ in checks)
     if not run:
-        return [_row("WARN", f"not checked: needs the project's check to run once ({names}), to see whether it changes "
-                             f"the snapshot it runs on, which makes every verification of it inconclusive. Run "
-                             f"`{COMMAND}`: it runs each once on a disposable copy, contained as a worker's check")]
+        return rows + [_row("WARN", f"not checked: needs the project's check to run once ({names}), to see whether it "
+                            f"changes the snapshot it runs on, which makes every verification of it inconclusive. Run "
+                            f"`{COMMAND}`: it runs each once on a disposable copy, contained as a worker's check")]
     commit = engine.authoritative_commit()
     if commit is None:
-        return [_row("WARN", f"not run: the authoritative branch {engine.authoritative_branch} has no commit to copy")]
+        return rows + [_row("WARN", f"not run: the authoritative branch {engine.authoritative_branch} has no commit "
+                            "to copy")]
     changed: list[str] = []
     notes: list[str] = []
     for check_id, cfg in checks:
@@ -97,8 +130,8 @@ def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
             notes.append(f"check {check_id} ({ran}) changes nothing in the snapshot")
     detail = "; ".join(changed + notes) + f" (ran once on a copy of {commit[:12]}; never evidence)"
     if changed:
-        return [_row("FAIL", detail)]
-    return [_row("PASS" if not any("was not run" in n for n in notes) else "WARN", detail)]
+        return rows + [_row("FAIL", detail)]
+    return rows + [_row("PASS" if not any("was not run" in n for n in notes) else "WARN", detail)]
 
 
 def fix(engine: Any, paths: list[str], *, check_id: str = "", tracked: set[str] | None = None) -> str:
@@ -124,60 +157,86 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
     """Run one check once, contained as a worker's check, on a disposable clone of ``commit`` with the project's own
     exclusions; return its outcome and the paths it changed. The clone, the run's directory and every process are
     gone when this returns."""
+    return run_copy(engine, engine.snapshot_of, cfg, commit)
+
+
+def run_copy(project: Any, snapshot_of: Callable[[Path, str], dict[str, Any]], cfg: dict[str, Any], commit: str,
+             *, changed_paths: list[str] | None = None) -> dict[str, Any]:
+    """The check-copy mechanism also runs a declared selector, with input and output outside the copied tree."""
     from aew.errors import AEWError, ContainmentUnavailable
     from aew.harness import containment, procs, runlog, weaker_register
     from aew.workspace import git
     from aew.workspace.integration import changed_between
 
-    policy, _ = engine.execution_policy()
+    policy, _ = project.execution_policy()
     stamp = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{secrets.token_hex(3)}"
-    run_dir = runlog.run_dir(engine.aew_root, f"doctor-check-{stamp}")
-    copy = engine.workspaces_root() / f".doctor-check-{stamp}"  # where a worker's workspace lives, outside the store
+    run_dir = runlog.run_dir(project.aew_root, f"doctor-check-{stamp}")
+    copy = project.workspaces_root() / f".doctor-check-{stamp}"  # a worker workspace, outside the store
     weaker = None
     try:
         run_dir.mkdir(parents=True)
         copy.parent.mkdir(parents=True, exist_ok=True)
         try:
-            git.git("clone", "--quiet", "--shared", "--no-checkout", str(engine.repo_root), str(copy),
+            git.git("clone", "--quiet", "--shared", "--no-checkout", str(project.repo_root), str(copy),
                     cwd=copy.parent)
             git.git("checkout", "--quiet", "--detach", commit, cwd=copy)
-            exclude = git.common_dir(engine.repo_root) / "info" / "exclude"
+            exclude = git.common_dir(project.repo_root) / "info" / "exclude"
             if exclude.is_file():  # a worker's workspace shares the project's exclusions (a linked worktree)
                 (copy / ".git" / "info").mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(exclude, copy / ".git" / "info" / "exclude")
         except (AEWError, OSError) as exc:
             return {"not_run": f"the copy of {commit[:12]} could not be made ({getattr(exc, 'message', exc)})"}
+        scratch = run_dir / "scratch"
         try:
             layout, label = containment.establish(
-                role=ROLE, scope=SCOPE, workspace=str(copy), run_dir=run_dir, scratch=str(run_dir / "scratch"),
-                bridge_dir=None, policy=policy, project=str(engine.repo_root))
+                role=ROLE, scope=SCOPE, workspace=str(copy), run_dir=run_dir, scratch=str(scratch),
+                bridge_dir=None, policy=policy, project=str(project.repo_root))
         except ContainmentUnavailable as exc:
             return {"not_run": f"a worker's sandbox could not be established here ({exc.message})"}
         if layout is not None and layout.net_dir:  # a check never uses a run's routes out (F28 §3.8)
             shutil.rmtree(layout.net_dir, ignore_errors=True)
         marker = run_dir / "label.json"
         marker.write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        trees = procs.CheckTrees()
+        copy_trees = procs.CheckTrees()
         try:
             weaker = weaker_register.enter_if_weaker(
-                label, kind="doctor_check", ownership=weaker_register.ownership_of(label), project=engine.repo_root,
-                aew_root=engine.aew_root, directory=run_dir, marker=marker)
+                label, kind="doctor_check", ownership=weaker_register.ownership_of(label), project=project.repo_root,
+                aew_root=project.aew_root, directory=run_dir, marker=marker)
         except ContainmentUnavailable as exc:
             return {"not_run": exc.message}
         env = {**C.allowlist_env(layout), weaker_register.MARKER: str(marker)}
         tracked = set(git.git("ls-files", "--cached", "-z", cwd=copy).stdout.decode("utf-8", "replace").split("\0"))
-        before = engine.snapshot_of(copy, WORKSPACE_ID)
+        before = snapshot_of(copy, WORKSPACE_ID)
+        paths_file, selection_out, expected_paths = None, None, b""
+        if changed_paths is not None:
+            scratch.mkdir(exist_ok=True)
+            paths_file, selection_out = scratch / "changed.txt", scratch / "selection.txt"
+            expected_paths = "".join(f"{path}\n" for path in changed_paths).encode()
+            paths_file.write_bytes(expected_paths)
         if weaker is not None:
             weaker.started()
         try:
-            out = C.run(cfg, copy, policy=policy, env=env, layout=layout, trees=trees)
+            out = C.run(cfg, copy, policy=policy, env=env, layout=layout, trees=copy_trees,
+                        paths_file=paths_file, selection_out=selection_out)
         except ContainmentUnavailable as exc:
             return {"not_run": f"it was refused at its start ({exc.message})"}
         finally:
             if weaker is not None:
-                weaker.end(list(trees.left))
-        after = engine.snapshot_of(copy, WORKSPACE_ID)
+                weaker.end(list(copy_trees.left))
+        after = snapshot_of(copy, WORKSPACE_ID)
         a, b = before["relevant_inputs_fingerprint"], after["relevant_inputs_fingerprint"]
+        if paths_file is not None:
+            if _protocol_bytes(paths_file, len(expected_paths)) != expected_paths:
+                return {**out, "mutated": True}
+            items = None
+            assert selection_out is not None
+            raw = _protocol_bytes(selection_out, SELECTION_OUTPUT_BYTES)
+            try:
+                if raw is not None:
+                    items = raw.decode("utf-8").replace("\r\n", "\n").split("\n")
+            except UnicodeError:
+                pass
+            return {**out, "mutated": a != b, "selection_items": items}
         try:  # the paths between the two snapshots, as a workspace's mutation is named (evidence_ops._paths_between)
             paths = sorted(changed_between(copy, a.removeprefix("git-tree:"), b.removeprefix("git-tree:"))) \
                 if a != b else []

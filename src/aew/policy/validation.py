@@ -23,6 +23,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import math
 from typing import Any
 
 from aew.errors import ContainmentUnavailable
@@ -109,15 +110,17 @@ def custody_register_s(post: dict[str, Any]) -> int:
 
 def deadline_s(post: dict[str, Any], checks_policy: dict[str, Any]) -> int:
     """The run's hard deadline: ``validation_deadline_s`` when policy sets it, otherwise the sum of the checks'
-    timeouts plus the orchestration allowance; capped either way."""
+    timeouts plus the orchestration allowance, capped either way. The optional selector has its own allowance."""
+    selector = (checks_policy.get("coverage") or {}).get("affected_tests", {}).get("selector")
+    selection_s = math.ceil(selector.get("timeout_s", C.DEFAULT_TIMEOUT_S)) if selector else 0
     explicit = post.get("validation_deadline_s")
     if explicit:
-        return min(int(explicit), DEADLINE_CAP_S)
+        return min(int(explicit), DEADLINE_CAP_S) + selection_s
     total = 0
     for check_id in post.get("checks") or []:
         cfg = (checks_policy.get("checks") or {}).get(check_id) or {}
         total += 0 if check_id in C.BUILTIN else int(cfg.get("timeout_s", C.DEFAULT_TIMEOUT_S))
-    return min(total + ORCHESTRATION_ALLOWANCE_S, DEADLINE_CAP_S)
+    return min(total + ORCHESTRATION_ALLOWANCE_S, DEADLINE_CAP_S) + selection_s
 
 
 def classify_spawn_failure(spawn_errno: int | None) -> str:

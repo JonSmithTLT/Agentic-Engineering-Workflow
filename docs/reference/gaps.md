@@ -121,7 +121,8 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.broker_liveness:write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.check_changes:remove_copy.writable`: os.rmdir of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:remove_copy.writable`: os.unlink of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
-- `aew.harness.check_changes:run_once`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.check_changes:run_copy`: Path.unlink of a path this reading cannot place: a loop variable over `changed_paths`, which a call leaves out; a loop variable over `paths`, a list this reading cannot read
+- `aew.harness.check_changes:run_copy`: shutil.rmtree of a path this reading cannot place: a loop variable over `changed_paths`, which a call leaves out; a loop variable over `paths`, a list this reading cannot read; the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.containment:establish`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.layout:for_run`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:for_run`: Path.write_bytes of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name

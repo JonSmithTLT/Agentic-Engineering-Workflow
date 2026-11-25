@@ -130,27 +130,40 @@ coverage:
       covered_by: []
 ```
 
-A project whose CI selects the tests a change affects can also declare `coverage.affected_tests`: the `selector`
-command that prints that selection, and the `unit` it selects (tests, lanes or similar). The selector's optional keys
-are `cwd`, `timeout_s`, `network` (`isolated` by default), `inputs` and `may_select_none`.
+A project whose CI selects the tests a change affects can declare the selector and the unit it selects, such as tests
+or lanes. The selector receives the changed paths in `{changed_paths_file}` and writes one UTF-8 item per line to
+`{selection_out}`. Both files are outside its disposable copy of the integration candidate. List the selector code
+and configuration under `inputs` so validation reports the selection as unknown when a change touches them. When
+`inputs` is omitted, the selector's project-file arguments are its declared inputs. An empty selection is known
+only when `may_select_none` is true and the command writes an empty output file.
 
 ```yaml
 coverage:
   affected_tests:
-    unit: tests
+    unit: lanes
     selector:
-      command: [python, tools/select_tests.py]
+      command: ["{python}", "tools/ci/tier.py", "--event", "pull_request", "--base-ref", "main",
+                "--labels", "", "--paths-file", "{changed_paths_file}", "--lanes-out", "{selection_out}"]
+      cwd: "."
+      timeout_s: 120
+      network: isolated
+      inputs: ["tools/ci/**", "tests/helpers/lanes.py"]
 ```
 
-AEW does not run the selector yet, so a validation reports affected tests as "not known (selection not run)" even
-with this declared.
+The example reuses AEW's CI tier selector. A check that consumes the result includes `{selection_file}` in its
+command. AEW records whether that check finished after receiving the list. The project's check is responsible for
+running the selection, and for interpreting a single `*` line as a request to run its full scope when selection is
+unknown. AEW's own project checks do not yet have a lane runner that consumes this file. Its validation lists
+selected lanes as unrun. Single worker and verifier check calls receive the full-scope marker.
 
 The operator reviews the draft, pastes it into the policy and runs the manifest adoption command from the preceding
 section in one sitting. The project is frozen between the edit and adoption because reads of the changed policy
 are refused. A contained Lead can draft the text. An uncontained Lead can also edit the file for the operator to adopt.
 
 Validation reports the CI tools from the adopted declaration. A tool marked as run means a covering check finished.
-Doctor reports undeclared lists and tools with no configured check under `checks-configured`.
+Doctor reports undeclared lists, tools with no configured check, and a declared selector with no consuming check
+under `checks-configured`. `aew doctor --run-checks` probes the selector against an empty change on a disposable
+copy of the authoritative commit. The probe is diagnostic.
 
 ### Giving AEW the Lead credential
 

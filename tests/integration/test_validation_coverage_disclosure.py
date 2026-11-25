@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from aewflow import Role, sample_project, to_commit_ready
+from aewflow import Role, allow_weaker_lead, sample_project, to_commit_ready
 from invariants import assert_control_invariants
 from test_validation_checks import SMOKE, control, engine, integ, policy, prepared, py, record_of, validate
 from test_validation_checks import contained as contained
@@ -19,6 +19,12 @@ from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.surface import readable
 from aew.util import dump_yaml, load_yaml, parse_frontmatter, sha256_file
+
+SELECTOR = {"selector": {"command": [*py("import sys; from pathlib import Path; "
+                                       "assert 'calc/core.py' in Path(sys.argv[1]).read_text().splitlines(); "
+                                       "Path(sys.argv[2]).write_text('fast\\n', encoding='utf-8')"),
+                                     "{changed_paths_file}", "{selection_out}"]},
+            "unit": "lanes"}
 
 
 def declare(p, *tools, affected_tests=None):
@@ -258,21 +264,57 @@ def test_plain_validated_requires_both_known_lists_and_all_items_run(tmp_path, m
     # The sandbox still measures delivery. Give this synthetic project no pinned tools to deliver.
     monkeypatch.setattr(records, "shipped", dict)
     p = sample_project(tmp_path)
-    policy(p, checks=SMOKE, post=["unit", "smoke", "guardrails"])
-    declare(p, ("pytest", ["unit"]), affected_tests={"selector": {"command": ["unused-selector"]}, "unit": "lanes"})
+    check = [*py("import sys; from pathlib import Path; "
+                "assert Path(sys.argv[1]).read_text().splitlines() == ['fast']"), "{selection_file}"]
+    policy(p, checks={"smoke": {**SMOKE["smoke"], "command": check}}, post=["unit", "smoke", "guardrails"])
+    declare(p, ("pytest", ["unit"]), affected_tests=SELECTOR)
     wid = prepared(p, tmp_path)
     value = validate(p, wid)["coverage"]
     assert value["run_capabilities"] and all(c["tools_recorded"] and not c["missing_tools"]
                                              for c in value["run_capabilities"].values())
     assert value["ci_tools"]["items"] == [{"name": "pytest", "ran": True, "reasons": []}]
-    assert value["affected_tests"] == {"known": False, "reason": "selection_not_run"}
-    assert value["summary"]["verdict"] == "validated within its scope"
-    # Supply only the PR 2 output shape. The rest of the observation comes from the contained executor.
-    value["affected_tests"] = {"known": True, "source": "selection:synthetic", "unit": "lanes", "items": [
-        {"name": "fast", "ran": True, "reasons": []}]}
-    assert CV.summarize(value)["verdict"] == "validated"
-    value["affected_tests"]["items"][0].update(ran=False, reasons=["not_run_in_this_validation"])
-    assert CV.summarize(value)["verdict"] == "validated within its scope"
+    assert value["affected_tests"] == {"known": True, "source": f"selection:{value['selection']['sha256']}",
+                                       "unit": "lanes", "omitted": 0, "items": [
+                                           {"name": "fast", "ran": True, "reasons": []}]}
+    assert value["summary"]["verdict"] == "validated"
+
+
+@pytest.mark.parametrize("case", ["covered", "fixed-scope", "changed-selector", "mutated-copy"])
+def test_a_validation_reports_the_committed_selector_observation_and_keeps_its_candidate(tmp_path, contained,
+                                                                                        monkeypatch, case):
+    from aew.harness import containment
+
+    # This exercises real clone/runner/receipt paths, with the sandbox represented by the established seam.
+    monkeypatch.setattr(containment, "establish", lambda **kw: (None, {"filesystem": "os_readonly_roots"}))
+    p = allow_weaker_lead(sample_project(tmp_path))
+    normal = case in {"covered", "fixed-scope"}
+    expected = "fast" if normal else "*"
+    command = [*py(f"import sys; from pathlib import Path; "
+                   f"assert Path(sys.argv[1]).read_text().splitlines() == [{expected!r}]"), "{selection_file}"]
+    check = SMOKE if case == "fixed-scope" else {"smoke": {**SMOKE["smoke"], "command": command}}
+    policy(p, checks=check)
+    declaration = copy.deepcopy(SELECTOR)
+    if case == "changed-selector":
+        declaration["selector"]["inputs"] = ["calc/**"]
+    if case == "mutated-copy":
+        declaration["selector"]["command"][2] += "; Path('calc/core.py').write_text('a change', encoding='utf-8')"
+    declare(p, ("lint-tool", []), affected_tests=declaration)
+    wid = prepared(p, tmp_path)
+    out = validate(p, wid)
+    assert out["result"] == "pass"
+    coverage = out["coverage"]
+    pin = coverage["selection"]
+    assert sha256_file(p.root / ".aew" / pin["path"]) == pin["sha256"]
+    assert engine(p).status(wid)["coverage"] == coverage
+    if normal:
+        assert coverage["affected_tests"]["source"] == f"selection:{pin['sha256']}"
+        assert coverage["affected_tests"]["items"] == [{
+            "name": "fast", "ran": case == "covered",
+            "reasons": [] if case == "covered" else ["not_run_in_this_validation"]}]
+    else:
+        reason = "selector_changed_by_subject" if case == "changed-selector" else "selector_mutated_inputs"
+        assert coverage["affected_tests"] == {"known": False, "reason": reason}
+    assert coverage["ci_tools"]["items"] == [{"name": "lint-tool", "ran": False, "reasons": ["not_configured"]}]
 
 
 @pytest.mark.parametrize("kind", ["advisory", "unavailable", "abandoned"])

@@ -2428,7 +2428,7 @@ systems:
     alpha. The Lead is one more recipient (E161): a `lead` list in the manifest (engineering-planning, requirements-clarification,
     delegation-handoffs, all optional) read by `lead_config` through the same helper that decides exposure for a run;
     the contained Lead gets its own rule list (allow each exposed id, deny every other, compatibility plugin off, skills
-    copied to the session''s private state); the uncontained Lead gets AEW''s path and ids with other skills left at ask;
+    copied into a folder of each start''s own, bound read-only); the uncontained Lead gets AEW''s path and ids with other skills left at ask;
     exposed and loaded skills recorded in the Lead session''s own record, with listing and loaded-body cost measured; the
     Lead''s text names its skills, derived from the list; a live Windows test checks the absolute `skills` path and a colliding
     id; exercised in a real Lead run. AEW-declared MCP servers are not in the Lead''s alpha.'

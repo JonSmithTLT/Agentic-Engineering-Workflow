@@ -2375,8 +2375,9 @@ systems:
     the operator places it)
   - docs/implementation/future-work.yaml (row HOLD-10, at c11a61ea) HOLD-10 members
 - id: SYS-22
-  name: Specialist skills delivered to runs
-  purpose: Give worker runs the skills their role cards request, from AEW's own install, hash-pinned and labelled.
+  name: Specialist skills delivered to runs and the Lead
+  purpose: Give worker runs the skills their role cards request, and the Lead the skills of the manifest's `lead` list, from
+    AEW's own install, hash-pinned and labelled, by one exposure and copy mechanism.
   serves_claims:
     closing_works: []
     extra: []
@@ -2386,11 +2387,15 @@ systems:
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   - docs/skills/specification.md
   - docs/skills/evaluation-guide.md
+  - docs/implementation/adr/0006-role-archetypes-and-cards.md
+  design_unpublished:
+  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md
   register:
   - E127
   - E142
   - E136
   - E135
+  - E161
   as_built:
   - modules:aew.skills
   touches:
@@ -2403,8 +2408,11 @@ systems:
   - src/aew/knowledge/context.py
   - src/aew/surface/lead_text.py
   - docs/skills/**
+  - src/aew/harness/opencode/lead.py
+  - src/aew/engine/guide.py
   touches_new:
   - src/aew/skills/**
+  - tests/unit/test_lead_skills.py
   depends_on:
   - SYS-09
   state:
@@ -2417,7 +2425,13 @@ systems:
   finish_line: 'E127''s four skills, then E142''s two (merged) and E136''s eleven, ship from AEW''s install with
     a hash manifest, labelled unevaluated; a card''s requested and optional skills are offered and loaded; the run''s record
     says what was offered and loaded; exercised in a real run; E135''s qualification before anything beyond the personal
-    alpha.'
+    alpha. The Lead is one more recipient (E161): a `lead` list in the manifest (engineering-planning, requirements-clarification,
+    delegation-handoffs, all optional) read by `lead_config` through the same helper that decides exposure for a run;
+    the contained Lead gets its own rule list (allow each exposed id, deny every other, compatibility plugin off, skills
+    copied to the session''s private state); the uncontained Lead gets AEW''s path and ids with other skills left at ask;
+    exposed and loaded skills recorded in the Lead session''s own record, with listing and loaded-body cost measured; the
+    Lead''s text names its skills, derived from the list; a live Windows test checks the absolute `skills` path and a colliding
+    id; exercised in a real Lead run. AEW-declared MCP servers are not in the Lead''s alpha.'
   remaining:
   - slice: 'E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text
       check; after E142'
@@ -2426,13 +2440,23 @@ systems:
   - slice: 'E135: the evaluation runner, and qualification before anything beyond the personal alpha'
     row: E135
     estimate: 1 PR for the runner (estimate), plus operator-approved spend
+  - slice: 'the Lead''s skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the
+      per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record. Left:
+      the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding
+      id, the listing''s and a loaded body''s cost, and which skills were loaded) and a real Lead run; the Lead''s record
+      does not count loads, since its server ends with its TUI, so the live test counts them'
+    row: E161
+    estimate: no build PR; the operator's live session
   decision: 'decided: E142 at the end of slot 3 (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md));
-    E136 unfrozen (the operator, 2026-11-11: "Also yes serve the skills.")'
+    E136 unfrozen (the operator, 2026-11-11: "Also yes serve the skills."); the Lead''s skills are part of this system
+    (the operator, 2026-11-25: "To me this is part of the overarching skills system and isnt a seperate system from
+    other skills work only difference is who is getting a skill")'
   recommendation: finish
   who: Lead
   reason: 'E127 and E142 ship six skills from AEW''s install, E142''s two, with every built-in card''s requested
     skill shipping; E136''s first batch adds two optional ones, so eight ship (as of 9930f167). The system stays staged
-    for the rest of the rollout; E136''s other nine optional skills follow, and E135''s qualification is still owed.'
+    for the rest of the rollout; E136''s other nine optional skills follow, and E135''s qualification is still owed. The
+    Lead''s skills (E161) are built and wait on the operator''s live checks.'
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills
@@ -4130,76 +4154,6 @@ systems:
   - 'src/aew/roles/cards/planner.yaml:13-14: the planner card exists (skills [], outputs plan_proposal)'
   - 'src/aew/engine/guide.py:291 and :412: the Lead''s text names the planner without saying when to staff it'
   - no match for plan_assessment or plan_assessor in src/ at c11a61ea
-- id: SYS-44
-  name: Lead skills (a lead list in the skill manifest; no MCP servers in the alpha)
-  purpose: Give the Lead optional skills by fit through E127's exposure mechanism, from a `lead` list in AEW's skill manifest,
-    with per-mode rules and recorded exposure and cost.
-  serves_claims:
-    closing_works: []
-    extra: []
-  serves_pending: []
-  design: []
-  design_unpublished:
-  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md
-  register:
-  - E161
-  as_built: []
-  touches:
-  - src/aew/harness/opencode/projection.py
-  - src/aew/harness/opencode/lead.py
-  - src/aew/engine/guide.py
-  touches_new:
-  - src/aew/skills/**
-  - tests/unit/test_lead_skills.py
-  depends_on:
-  - SYS-22
-  state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
-    used_in_default_flow: 'no'
-  finish_line: A `lead` list in E127's skill manifest (engineering-planning, requirements-clarification, delegation-handoffs,
-    all optional) read by `lead_config` through the same helper that decides exposure for a run; the contained Lead gets
-    its own rule list (allow each exposed id, deny every other, compatibility plugin off, skills copied to the session's
-    private state); the uncontained Lead gets AEW's path and ids with other skills left at ask; exposed and loaded skills
-    recorded in the Lead session's own record, with listing and loaded-body cost measured; the Lead's text names its skills,
-    derived from the list; a live Windows test checks the absolute `skills` path and a colliding id; exercised in a real
-    Lead run. AEW-declared MCP servers are not in the alpha.
-  remaining:
-  - slice: 'the Lead''s skills: the `lead` list, per-mode rule lists in `lead_config`, the records and cost measures, the
-      Lead''s text and the live tests (skills design (a)); after E127'
-    row: E161
-    estimate: 1 PR (estimate; the designer's reading, skills design (e))
-  - slice: 'deliver the skill bodies the list names that E136 carries: engineering-planning and requirements-clarification
-      (rides on SYS-22''s E136)'
-    row: E136
-    estimate: inside SYS-22's estimate
-  - slice: 'deliver delegation-handoffs, which is not among E136''s eleven: unevaluated, alpha only, labelled (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
-      item 6)'
-    row: E161
-    estimate: not estimated in the design
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-    pointer on item 4)'
-  recommendation: finish
-  who: Lead
-  reason: 'Adopted 2026-11-06: delegation-handoffs added for the Lead, no MCP servers beyond AEW''s own in the alpha, placed
-    in the alpha after the first-use list (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 6-8);
-    last in the designer''s alpha order, after E127; the row is the Lead''s to file (the designer''s reading, workspace
-    record, ''How it is applied'').'
-  evidence:
-  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md (a), (b), (e) and the adoption pointer
-  - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 6-8
-  - 'src/aew/harness/opencode/projection.py:212-221: LEAD_RULES is one constant with no skill rule, so skills fall to the
-    `*` ask rule at :213'
-  - 'src/aew/harness/opencode/projection.py:340-363: `lead_config` sets no skills entry'
-  - 'src/aew/harness/opencode/projection.py:104-105: the invocation rules deny `skill` and allow each exposed id, the shape
-    the Lead''s contained rules would take'
-  - 'src/aew/harness/opencode/lead.py:55: the operator''s own config file passes through for the uncontained Lead; :124
-    disables project config'
-  - 'no match for optional_skills in src/ at c11a61ea: E127''s mechanism is not built yet'
-  - register row D3 (closed 2026-10-24, absorbed into STG-15) held 'Skills for AEW agents (Lead and role skills)'
 - id: SYS-45
   name: Branch review and document work (ref_review, technical_writer)
   purpose: 'Make documents and branch reviews work AEW can do: a `technical_writer` card for delegated docs, a raw-body

@@ -16,7 +16,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46
+**designed_only:** 17 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-46
 
 **Waiting on your sign-off:** 2 — SYS-39, SYS-47
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-19, SYS-22, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+**Members:** 13 — SYS-19, SYS-40, SYS-42, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
 
 ### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
 
@@ -41,18 +41,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
 
 **Wired:** cli:check run, dashboard:/evidence/{id}
-
-### SYS-22 — Specialist skills delivered to runs
-
-**Board state:** staged
-
-**Who:** Lead
-
-**Now:** 24
-
-**Own slices left:** 2 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
-
-**Wired:** pack
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -75,18 +63,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 30
 
 **Own slices left:** 2 — the Lead change stage (item 43's stage) and its class 1 shape; the operator decision and fingerprint; the refusal list and check inputs; the export-and-check; the view rendering; containment widened to the route (CS-4 addendum 14); the light review and the operator-requested review ride in these PRs (small-changes design §2, §6, §8) (E159); first configuration (E119's `aew init`) proposes `review_triggers` entries with their levels and each check's `inputs:` list, for the operator to adopt (small-changes design §2, §8) (E166) — **Next:** the Lead change stage (item 43's stage) and its class 1 shape; the operator decision and fingerprint; the refusal list and check inputs; the export-and-check; the view rendering; containment widened to the route (CS-4 addendum 14); the light review and the operator-requested review ride in these PRs (small-changes design §2, §6, §8) — E159 — 4-5 PRs (estimate; the designer's reading, small-changes design §6)
-
-**Wired:** none
-
-### SYS-44 — Lead skills (a lead list in the skill manifest; no MCP servers in the alpha)
-
-**Board state:** designed_only
-
-**Who:** Lead
-
-**Now:** 32
-
-**Own slices left:** 2 — the Lead's skills: the `lead` list, per-mode rule lists in `lead_config`, the records and cost measures, the Lead's text and the live tests (skills design (a)); after E127 (E161); deliver delegation-handoffs, which is not among E136's eleven: unevaluated, alpha only, labelled (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md item 6) (E161) — **Next:** the Lead's skills: the `lead` list, per-mode rule lists in `lead_config`, the records and cost measures, the Lead's text and the live tests (skills design (a)); after E127 — E161 — 1 PR (estimate; the designer's reading, skills design (e))
 
 **Wired:** none
 
@@ -218,7 +194,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 13 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 14 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-22, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -269,6 +245,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route (E356); Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route — E356 — 1 PR (estimate), with I-6's route
 
 **Wired:** none
+
+### SYS-22 — Specialist skills delivered to runs and the Lead
+
+**Board state:** staged
+
+**Who:** Lead
+
+**Now:** 24
+
+**Own slices left:** 3 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
+
+**Wired:** pack
 
 ### SYS-41 — Lead consult (spawn a non-mutating agent for the Lead's own question)
 
@@ -384,7 +372,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Members:** 1 — SYS-26
 
-**Decided:** 34 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-47, SYS-48
+**Decided:** 33 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-45, SYS-47, SYS-48
 
 ### SYS-26 — Resource and progress supervision (stall detection, run health, weak-worker continuity, dynamic scheduler)
 

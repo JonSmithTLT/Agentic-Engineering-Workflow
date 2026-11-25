@@ -498,7 +498,7 @@ class RunNetwork:
         self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
         self.server_leg = True    # the harness server is reached through the shim: a worker's, and the Lead's (E210)
         self.lead = False         # the Lead's network: its relays are per provider
-        self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
+        self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, which forwards plain http (E92)
         self.provider: str | None = None  # a worker's provider, and whether its key reached its relay: kept from the
         self.key_relayed = False          # start for the record's note (:meth:`refused`), as close() clears the values
         self.key_source: str | None = None
@@ -696,9 +696,10 @@ class RunNetwork:
     def harness_env(self, env: dict[str, str]) -> dict[str, str]:
         """The harness's environment with each provider variable's value replaced by its sentinel, the operator's
         proxy variables (the relay's) removed, and, with an egress proxy, ``HTTPS_PROXY`` set to the shim's egress
-        port, loopback excepted. Only the HTTPS one: the egress proxy serves CONNECT only (CS-3a), and the provider's
-        ``baseURL`` is plain HTTP to loopback, which must never be sent to it. The values are never in what is
-        returned."""
+        port, loopback excepted. Only the HTTPS one for a worker: the provider's ``baseURL`` is plain HTTP to loopback,
+        which must never be sent to the egress proxy, and a worker's allowlist names what it needs by ``host:port``.
+        The Lead's ``HTTP_PROXY`` names it too (:attr:`http_proxy`), which forwards plain http (register E92). The
+        values are never in what is returned."""
         out = {k: v for k, v in env.items() if k.upper() not in PROXY_NAMES}
         for name, value in self.sentinels.items():
             for key in [k for k in out if k == name or (sys.platform == "win32" and k.upper() == name.upper())]:

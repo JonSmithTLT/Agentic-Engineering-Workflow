@@ -100,7 +100,10 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
-from aew.harness.containment.http1 import TOKEN, BadField, fields, has_control
+from aew.harness.containment.http1 import HOP_BY_HOP, TOKEN, BadField, fields
+from aew.harness.containment.http1 import chunk_size as _chunk_size
+from aew.harness.containment.http1 import close_head as _close_head
+from aew.harness.containment.http1 import head as _head
 from aew.http_close import REFUSAL_DRAIN_S, close_after_response
 
 if TYPE_CHECKING:
@@ -185,9 +188,6 @@ EXCERPT_BYTES = 512
 # The headers a provider SDK carries its key in: OpenAI's and most others' bearer token, Anthropic's, Azure OpenAI's
 # and Google's. The relay puts a credential nowhere else.
 CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "api-key", "x-goog-api-key"})
-# Hop-by-hop (RFC 9110 §7.6.1), plus Expect, which the relay answers itself (a 100 Continue before the body).
-HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate",
-                        "te", "trailer", "upgrade", "expect"})
 # Resolve-mode forwards the target raw. Accept only unreserved path characters and literal separators so
 # neither percent decoding nor upstream-specific path parameter handling can change its interpretation.
 _RESOLVED_PATH = re.compile(r"/[A-Za-z0-9._~/\-]*")
@@ -1347,17 +1347,6 @@ class RequestLog:
             out.write(line)
 
 
-def _chunk_size(line: bytes) -> int | None:
-    """A chunk-size line's size (``line`` without its CRLF), or None when its size is not hex digits alone
-    (``1*HEXDIG``, RFC 9112 §7.1), or the line holds a control character other than HTAB, in its size or its
-    extension (RFC 9112 §7.1.1; :func:`http1.has_control`). ``int`` would also take a sign or underscores, and a
-    negative size never ends its chunk (#257's quick check, Q1). Only spaces and tabs around the size are dropped."""
-    if has_control(line):
-        return None
-    token = line.split(b";", 1)[0].strip(b" \t")
-    return int(token, 16) if re.fullmatch(rb"[0-9A-Fa-f]+", token) else None
-
-
 def _tls_context() -> ssl.SSLContext:
     """The system's default verifying context, with its floor stated: TLS 1.2 is already the default's minimum on every
     interpreter AEW supports, set here so that a reader, or a scanner, need not know that (#257's quick check, Q2)."""
@@ -1511,20 +1500,6 @@ def _framing(headers: list[tuple[str, str]]) -> tuple[str, int]:
             raise _Refused(400, "bad_framing", "the request's Content-Length is not a number")
         return "length", int(value)
     return "none", 0
-
-
-def _head(line: str, headers: list[tuple[str, str]]) -> bytes:
-    return ("\r\n".join([line, *(f"{k}: {v}" for k, v in headers)]) + "\r\n\r\n").encode("latin-1")
-
-
-def _close_head(head: bytes) -> bytes:
-    """A response head with its hop-by-hop headers out and ``Connection: close`` in."""
-    lines = head[:-4].split(b"\r\n")
-    fields = [(raw.split(b":", 1)[0].strip().lower().decode("latin-1"), raw) for raw in lines[1:]]
-    named = {t.strip().lower().decode("latin-1") for name, raw in fields if name == "connection"
-             for t in raw.split(b":", 1)[-1].split(b",")}
-    kept = [raw for name, raw in fields if name not in HOP_BY_HOP and name not in named]
-    return b"\r\n".join([lines[0], *kept, b"Connection: close"]) + b"\r\n\r\n"
 
 
 def describe(relay: ProviderRelay | None) -> dict[str, Any]:

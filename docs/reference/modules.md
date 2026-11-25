@@ -1468,6 +1468,7 @@ None.
 ### `aew.harness.containment.egress`
 
 - `aew.errors`
+- `aew.harness.containment.http1`
 - `aew.harness.containment.peer`
 - `aew.http_close`
 

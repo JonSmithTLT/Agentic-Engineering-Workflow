@@ -26,6 +26,7 @@ from aew.errors import (
 )
 from aew.harness import agentenv, base, registry
 from aew.harness import contract as K
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.policy import execution as X
 from aew.roles import NON_MUTATING_EXECUTORS
@@ -274,7 +275,7 @@ class Invocations:
         An invocation is never retargeted to a later workspace or candidate of the same Ticket.
         """
         unit = state["work"][inv["work_unit"]]
-        if inv.get("scope") in {"observation", "parent"}:
+        if inv.get("scope") in E.OBSERVER_SCOPES:
             obs = inv.get("observation") or {}
             if obs.get("status") != "active" or not obs.get("path"):
                 raise PermissionDenied("this invocation's read-only observation workspace has been retired",

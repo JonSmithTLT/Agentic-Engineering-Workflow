@@ -109,6 +109,14 @@ class ContextPacks:
                 extras["subject"] = {"id": s["id"], "sha256": s["sha256"], "kind": ev["kind"],
                                      "content": dump_yaml(content),
                                      "body": body, "observed_commit": ev["evaluated_snapshot"]["base_revision"]}
+        if inv.get("scope") == E.ASSESSMENT_SCOPE:  # the preserved request beyond the unit's own record (E160)
+            request = []
+            for anc in reversed(H.ancestors(state, wid)):
+                a = state["work"][anc]
+                rec = read_record(self.k.aew_root / a["record"], "work-unit")
+                request.append({"id": anc, "kind": a["kind"], "title": a["title"], "body": rec.body,
+                                "acceptance": rec.meta.get("acceptance") or {}})
+            extras["request"] = request
         if inv.get("scope") == "parent":
             baseline = unit.get("baseline_commit")
             commit = (inv.get("observation") or {}).get("commit")
@@ -240,7 +248,7 @@ class ContextPacks:
                      ) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         """``fresh_map``: the pack is being built now, so its map (if any) is the selected one (``build_pack``)."""
         inv = state["invocations"][inv_id]
-        if inv.get("scope") in {"observation", "parent"}:
+        if inv.get("scope") in E.OBSERVER_SCOPES:
             return self._m2_pack_inputs(state, inv_id, fresh_map=fresh_map, lead=lead)
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]

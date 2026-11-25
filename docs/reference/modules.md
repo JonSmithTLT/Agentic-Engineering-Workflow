@@ -796,6 +796,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.reasons`
 - `aew.errors`
+- `aew.knowledge.evidence`
 - `aew.util`
 
 ### `aew.engine.disposition_ops`
@@ -874,6 +875,7 @@ None.
 - `aew.engine.ports`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.knowledge.records`
 - `aew.schemas`
 - `aew.util`
@@ -1065,6 +1067,7 @@ None.
 - `aew.knowledge.evidence`
 - `aew.knowledge.records`
 - `aew.maps.slices`
+- `aew.roles`
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
@@ -1146,6 +1149,7 @@ None.
 - `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.knowledge.evidence`
 - `aew.maps.slices`
 - `aew.util`
 
@@ -1365,6 +1369,7 @@ None.
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.harness.registry`
+- `aew.knowledge.evidence`
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.policy.execution`

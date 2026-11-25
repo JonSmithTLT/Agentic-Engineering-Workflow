@@ -1,6 +1,6 @@
-"""The plan assessment record kind (E160 slice 1; SYS-43): its schema, its revision binding, and the one assessment that
-counts per revision. The assessor entrypoint (slice 2) and the gate that reads ``counting_assessment`` (slice 3) are
-later pull requests of the series."""
+"""The plan assessment record kind (E160 slices 1 and 2; SYS-43): its schema, its revision binding, the one assessment
+that counts per revision, and who may submit one (a plan-assessor dispatch only). The entrypoint itself is driven in
+``tests/integration/test_plan_assessment_dispatch.py``; the gate that reads ``counting_assessment`` is slice 3."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ import pytest
 from aew import roles
 from aew.cli.main import build_parser
 from aew.engine.authority import ROLE_OPERATIONS
-from aew.errors import ValidationFailed
+from aew.errors import PermissionDenied, ValidationFailed
+from aew.knowledge import context as ctx
 from aew.knowledge import evidence as E
 from aew.schemas import schema, validate
 from aew.util import sha256_text
@@ -73,16 +74,43 @@ def test_a_plan_assessment_is_the_reviewer_archetypes_and_no_other_roles():
     assert E.ASSESSOR_ARCHETYPE in roles.ARCHETYPES
 
 
-def test_no_credential_may_submit_a_plan_assessment_before_the_assessor_entrypoint():
-    # Slice 2 grants it to a plan-assessor dispatch only; until then no role, a code reviewer included, may submit one,
-    # and a review run's expected kinds stay what they were.
-    assert all(f"submit.{E.PLAN_ASSESSMENT}" not in ops for ops in ROLE_OPERATIONS.values())
-    assert all(E.PLAN_ASSESSMENT not in kinds for kinds in E.ROLE_KINDS.values())
-    assert all(E.PLAN_ASSESSMENT not in roles.archetype(a)["evidence_kinds"] for a in roles.ARCHETYPES
-               if "evidence_kinds" in roles.archetype(a))
+def test_only_a_plan_assessor_dispatch_may_submit_a_plan_assessment_and_a_code_reviewer_never():
+    # The reviewer archetype holds the grant (its YAML and ROLE_OPERATIONS are held equal by test_roles), but the kind
+    # belongs to the assessor's scope alone: a reviewer of a change, at any other scope, never submits one.
+    assert f"submit.{E.PLAN_ASSESSMENT}" in ROLE_OPERATIONS[E.ASSESSOR_ARCHETYPE]
+    assert all(f"submit.{E.PLAN_ASSESSMENT}" not in ops for role, ops in ROLE_OPERATIONS.items()
+               if role != E.ASSESSOR_ARCHETYPE)
+    for scope in ("ticket", "observation", "parent", "integration", None):
+        assert E.kinds_for("reviewer", scope) == {"review"}
+        with pytest.raises(PermissionDenied) as exc:
+            E.check_submission("reviewer", E.PLAN_ASSESSMENT, {"claim": "c"}, scope=scope)
+        assert exc.value.details["reason"] == "not_a_plan_assessment_dispatch"
+    assert E.kinds_for("reviewer", E.ASSESSMENT_SCOPE) == {E.PLAN_ASSESSMENT}
+    E.check_submission("reviewer", E.PLAN_ASSESSMENT, {"claim": "c"}, scope=E.ASSESSMENT_SCOPE)
+    with pytest.raises(PermissionDenied) as exc:
+        E.check_submission("reviewer", "review", {"claim": "c"}, scope=E.ASSESSMENT_SCOPE)
+    assert exc.value.details["reason"] == "plan_assessment_dispatch"
+    with pytest.raises(PermissionDenied):  # no other archetype at the assessor's scope either
+        E.check_submission("planner", E.PLAN_ASSESSMENT, {"claim": "c"}, scope=E.ASSESSMENT_SCOPE)
     top = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
     submit = next(a for a in top.choices["submit"]._actions if "--kind" in a.option_strings)
-    assert submit.choices and E.PLAN_ASSESSMENT not in submit.choices and "review" in submit.choices
+    assert submit.choices and E.PLAN_ASSESSMENT in submit.choices
+
+
+def test_the_assessor_card_extends_the_assessor_archetype_and_is_narrowed_to_the_assessment():
+    card = roles.builtin_cards()[E.ASSESSOR_CARD]
+    assert card.archetype == E.ASSESSOR_ARCHETYPE and card.meta["outputs"] == [E.PLAN_ASSESSMENT]
+    assert set(card.meta["restrict"]["operations"]) == {f"submit.{E.PLAN_ASSESSMENT}", "context.read"}
+    others = [c for c in roles.builtin_cards().values() if c.id != E.ASSESSOR_CARD]
+    assert all(E.PLAN_ASSESSMENT not in (c.meta.get("outputs") or []) for c in others)
+
+
+def test_the_assessors_report_format_is_what_the_engine_accepts():
+    kind, template = ctx.output_template(E.ASSESSOR_ARCHETYPE, E.ASSESSMENT_SCOPE)
+    assert kind == E.PLAN_ASSESSMENT and ctx.output_template("reviewer", "ticket")[0] == "review"
+    E.check_submission("reviewer", kind, template, scope=E.ASSESSMENT_SCOPE)
+    out = E.plan_assessment_binding("T-0001", PLAN, template)  # the gap it shows cites its finding
+    assert out["result"] == "pass"
 
 
 def test_there_is_nothing_to_assess_without_an_accepted_plan():
@@ -183,3 +211,22 @@ def test_a_review_still_validates_against_the_shared_finding_shape():
             "review": {"independence": "R1", "disposition": "changes_required",
                        "findings": [{"id": "F1", "severity": "fatal", "summary": "s", "required": True}]},
         }, source="review")
+
+
+def test_a_lead_session_cannot_relay_plan_assess_until_its_typed_tool():
+    # E160 slice 2a: the command takes the Lead credential and is not Lead-reachable, so a Lead session's broker refuses
+    # it; slice 2b gives the Lead its typed tool. Like every dispatch, a relay would need --launch.
+    from aew.harness import lead_broker
+
+    assert frozenset({"plan", "assess"}) not in lead_broker.LEAD_REACHABLE
+    assert frozenset({"plan", "assess"}) in lead_broker.DISPATCHES
+
+
+def test_a_plan_assessor_whose_pack_drifted_is_dispatched_again_by_its_own_entrypoint():
+    from aew.engine import gate_ops
+
+    state = {"work": {"T-0001": {"kind": "ticket", "mutating": True}}}
+    inv = {"work_unit": "T-0001", "scope": E.ASSESSMENT_SCOPE, "role": "reviewer", "card": {"id": E.ASSESSOR_CARD}}
+    commands = gate_ops.redispatch_commands(state, "INV-0003", inv)
+    assert commands[0].startswith("aew invoke cancel INV-0003")
+    assert commands[1].startswith(f"aew plan assess T-0001 --card {E.ASSESSOR_CARD} --launch")

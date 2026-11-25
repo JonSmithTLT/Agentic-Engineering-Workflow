@@ -131,8 +131,10 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
 ))
+# `plan assess` is not Lead-reachable yet (E160 slice 2a: the Lead's route is its typed tool, slice 2b), but it prints a
+# credential like every dispatch, so a relay would need --launch too.
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
-              frozenset({"invoke", "create"}))
+              frozenset({"invoke", "create"}), frozenset({"plan", "assess"}))
 POLL_S = 1.0
 RECEIPT_CLOSE_LOCK_S = 2.0  # let a successful send finish its receipt; a stalled client cannot hold close forever
 # If that bound expires, receipt remains uncertain and the body may be re-shown; never claim an unrecorded receipt.

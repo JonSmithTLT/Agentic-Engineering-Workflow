@@ -358,7 +358,7 @@ class Harness:
         pinned = (unit.get("execution") or {}).get("expected_kind")
         if inv["role"] in E.EXECUTE_KIND and pinned:
             return [pinned]
-        return sorted(E.ROLE_KINDS.get(inv["role"], set()))
+        return sorted(E.kinds_for(inv["role"], inv.get("scope")))  # a plan assessor's run expects its assessment
 
     def operations_of(self, inv: dict[str, Any]) -> list[str]:
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))

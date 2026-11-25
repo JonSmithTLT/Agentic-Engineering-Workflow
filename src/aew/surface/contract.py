@@ -168,7 +168,8 @@ NOTE_MAX, NEXT_MAX = 8000, 500
 # The dispatch entrypoints a decision can be asked of: every one that is not covered by another (tested to equal
 # aew.engine.dispatch.ENTRYPOINTS without the covered ones).
 EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.mutating", "invoke.create.non_mutating",
-                      "invoke.create.parent", "work.assign", "work.dispatch", "work.redispatch"))
+                      "invoke.create.parent", "plan.assess", "work.assign", "work.dispatch",
+                      "work.redispatch"))
 
 
 # ---------------------------------------------------------------------------------------------- the catalog

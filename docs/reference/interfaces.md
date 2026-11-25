@@ -211,6 +211,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `operator serve`
 - `plan accept`
 - `plan adopt`
+- `plan assess`
 - `plan lint`
 - `plan propose`
 - `plan reconfirm`

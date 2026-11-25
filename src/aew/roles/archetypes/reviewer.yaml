@@ -10,8 +10,8 @@ responsibilities:
   - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
   - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
   - when re-reviewing, state which earlier findings are resolved
-engine_operations: [submit.review, context.read]
-evidence_kinds: [review]
+engine_operations: [submit.review, submit.plan_assessment, context.read]
+evidence_kinds: [review, plan_assessment]
 authority_capabilities: []
 prohibited:
   - fixing its own findings in the same review step
@@ -19,10 +19,12 @@ prohibited:
   - deciding work state or completion
 outputs:
   - review with independence level, disposition, findings, resolved_findings
+  - plan_assessment (a plan-assessor dispatch only) with a requirement trace, the premises challenged and findings
 context:
   knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
-              implementation_structured_summary, open_review_findings, review_scope, codebase_map]
-  excluded: [implementer reasoning transcript, implementation report prose]
+              implementation_structured_summary, open_review_findings, review_scope, codebase_map,
+              preserved_request]
+  excluded: [implementer reasoning transcript, implementation report prose, planner reasoning (a plan assessment)]
 independence:
   level: R1
   requires_distinct_invocation_from: [implementer]

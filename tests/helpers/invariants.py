@@ -205,8 +205,8 @@ def control_violations(root: Path) -> list[str]:
         if unit.get("state") in {"DONE", "CANCELLED"}:
             problems.append(f"{inv_id} is active on terminal {inv['work_unit']}")
             continue
-        if inv.get("scope") in {"observation", "parent"}:
-            continue  # bound to their own read-only observation (rules 9 and 12)
+        if inv.get("scope") in E.OBSERVER_SCOPES:
+            continue  # bound to their own read-only observation (rules 9 and 12), a plan assessor's too (E160)
         if inv.get("scope") == "integration":
             integ = unit.get("integration") or {}
             if integ.get("workspace") != inv.get("workspace"):
@@ -1088,6 +1088,18 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
                 inv = invocations.get(ev["producer"]["invocation"], {})
                 if EXECUTE_KIND.get(inv.get("role")) != ev["kind"] or inv.get("scope") != "observation":
                     problems.append(f"{ev['id']} ({ev['kind']}) was produced by {inv.get('role')}/{inv.get('scope')}")
+    # 11a. A plan assessment comes only from a plan assessor (a reviewer dispatched at scope plan_assessment, never a
+    #      reviewer of a change), bound to the plan revision that assessor was pinned to (E160 slice 2).
+    for wid in work:
+        for ev in _evidence(root, wid).values():
+            if ev["kind"] == E.PLAN_ASSESSMENT:
+                inv = invocations.get(ev["producer"]["invocation"], {})
+                if inv.get("role") != E.ASSESSOR_ARCHETYPE or inv.get("scope") != E.ASSESSMENT_SCOPE:
+                    problems.append(f"{ev['id']} (plan_assessment) was produced by {inv.get('role')}/"
+                                    f"{inv.get('scope')}")
+                elif ev.get("plan_revision") != inv.get("plan_revision"):
+                    problems.append(f"{ev['id']} is bound to {ev.get('plan_revision')}, not the revision its assessor "
+                                    f"was pinned to ({inv.get('plan_revision')})")
     # 12. Retired observations belong to ended invocations; revoked credentials never wrote later evidence
     #     (rule 5 covers all invocations, including observation ones).
     for inv_id, inv in invocations.items():

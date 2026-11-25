@@ -4047,8 +4047,8 @@ systems:
   depends_on:
   - SYS-08
   state:
-    board_state: designed_only
-    built: 'no'
+    board_state: partly_built
+    built: partly
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
@@ -4060,9 +4060,6 @@ systems:
     a `plan_assessor` card; the Lead's staffing text names the two planner triggers, tested in the text a run receives;
     exercised in a real class 1 run. The Lead-change route is exempt at class 1.
   remaining:
-  - slice: the `plan_assessment` kind, its schema and the revision binding
-    row: E160
-    estimate: 'about 1 PR (estimate; the designer''s reading, planner design Q3: 3-4 PRs in all)'
   - slice: the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule
     row: E160
     estimate: about 1 PR (estimate; same source)
@@ -4085,9 +4082,8 @@ systems:
   - designer-decisions-2026-11-06-planner-staffing-and-plan-assessor-v2.md Q1 (planner triggers), Q2 (the ruled gate, kind,
     binding and card), Q3 (cost and placement), adoption pointer
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 5 and 8
-  - 'src/aew/knowledge/evidence.py:24: the reviewer archetype''s only evidence kind is `review`; no `plan_assessment` kind
-    exists'
-  - 'src/aew/roles/archetypes/reviewer.yaml:13: engine_operations are submit.review and context.read only'
+  - 'E160 slice 1: the `plan_assessment` kind, its schema and the revision binding (`aew.knowledge.evidence`);
+    no credential submits one and no gate reads it yet'
   - 'src/aew/roles/archetypes/reviewer.yaml:28: `requires_distinct_invocation_from` is card data; no Python module in src/
     or tests/ reads it'
   - 'src/aew/knowledge/manifest.py:29-39: no class path carries a plan assessment gate'

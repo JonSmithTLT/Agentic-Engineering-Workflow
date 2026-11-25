@@ -35,13 +35,15 @@ from aew.knowledge import evidence as E
 from aew.schemas import validate_property
 from aew.util import load_yaml
 
-SCOPES = {"implementer": ["ticket"], "reviewer": ["ticket", "observation", "parent", "integration"],
+SCOPES = {"implementer": ["ticket"],
+          "reviewer": ["ticket", "observation", "parent", "integration", E.ASSESSMENT_SCOPE],
           "verifier": ["ticket", "observation", "parent", "integration"], "investigator": ["observation"],
           "researcher": ["observation"], "planner": ["observation"]}
 DISPATCHABLE = [name for name in roles.ARCHETYPES if roles.archetype(name).get("dispatchable")]
 PROMISE = "- Required knowledge (included below): "
 SECTION = {"implementation_report": "implementation", "review": "review", "verification": "verification",
-           "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
+           "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
+           E.PLAN_ASSESSMENT: "assessment"}
 CARDS = sorted(roles.builtin_cards().items())
 
 
@@ -59,6 +61,8 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
                          "content": "x: y"}],
             "subject": {"id": "E-3", "kind": "discovery_record", "sha256": "0" * 64, "content": "x: y"},
             "children": [{"id": "T-2", "kind": "ticket", "state": "DONE", "title": "t"}],
+            "request": [{"id": "S-1", "kind": "story", "title": "t", "body": "the request",
+                         "acceptance": {"goal_backwards": ["g"]}}],
         }
     return ctx.PackInputs(
         invocation_id="INV-1", role=role, role_def=role_def or roles.archetype(role), work_id="T-1", title="a title",
@@ -70,10 +74,17 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
         checks={"unit": {"configured": True, "description": "unit tests"}}, authority=[], card=card, **optional)
 
 
+def card_scopes(card: roles.Card) -> list[str]:
+    """The scopes a card is dispatched at: those whose report it writes (a plan assessor's card only at the assessor's
+    scope, a code reviewer's never there; ``evidence.kinds_for``)."""
+    outputs = set(card.meta.get("outputs") or roles.archetype(card.archetype)["evidence_kinds"])
+    return [s for s in SCOPES[card.archetype] if outputs & E.kinds_for(card.archetype, s)]
+
+
 def matrix() -> list[tuple[str, str, bool, dict[str, Any] | None]]:
     cases: list[tuple[str, str, bool, dict[str, Any] | None]] = []
     cases += [(role, scope, full, None) for role in DISPATCHABLE for scope in SCOPES[role] for full in (True, False)]
-    cases += [(c.archetype, scope, True, c.meta) for _, c in CARDS for scope in SCOPES[c.archetype]]
+    cases += [(c.archetype, scope, True, c.meta) for _, c in CARDS for scope in card_scopes(c)]
     return cases
 
 
@@ -133,14 +144,15 @@ def says_there_is_none(text: str) -> bool:
     return "no credential" in text.lower()
 
 
-def report_format_problems(pack: str, role: str) -> list[str]:
+def report_format_problems(pack: str, role: str, scope: str | None = None) -> list[str]:
     """Why the pack's report format is not what the engine accepts as it stands (a `<...>` placeholder is a string to
     the schema, so filling those in is all a copy needs), or does not list a field's other values."""
     fence = re.search(r"^```markdown\n---\n(.*?)\n---\n", pack, re.S | re.M)
     if fence is None:
         return ["no report format"]
     meta = load_yaml(fence.group(1))
-    kind = ctx.OUTPUT_TEMPLATES[role][0]
+    kind = ctx.output_template(role, scope)[0]
+    assert kind is not None
     problems = []
 
     def walk(value: Any) -> None:
@@ -158,12 +170,12 @@ def report_format_problems(pack: str, role: str) -> list[str]:
     if "scope" in section:
         problems.append("names a scope")
     try:
-        E.check_submission(role, kind, meta)
+        E.check_submission(role, kind, meta, scope=scope)
         filled = {"scope": "ticket", **section} if kind == "verification" else section  # as the engine fills it
         validate_property("evidence", SECTION[kind], filled, source="the template")
     except AEWError as exc:
         problems.append(exc.message)
-    allowed = ctx._allowed_values(role)
+    allowed = ctx._allowed_values(role, scope)
     if "result" in meta and meta["result"] not in allowed["result"]:
         problems.append(f"result {meta['result']!r} is refused")
     listed = next((ln for ln in pack.splitlines() if ln.startswith("Allowed values: ")), "")
@@ -259,7 +271,7 @@ def test_context_read_is_the_only_operation_left_off_the_list(role):
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_a_report_format_is_what_the_engine_accepts_and_lists_the_other_values(role, scope, full, card):
-    assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role) == []
+    assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role, scope) == []
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())

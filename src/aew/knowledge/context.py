@@ -105,6 +105,35 @@ OUTPUT_TEMPLATES = {
     }),
 }
 
+# A report format chosen by the dispatched scope rather than the role (E160 slice 2): a reviewer dispatched to assess
+# the accepted plan writes a plan assessment, never a review (``evidence.kinds_for``). No ``result``: the engine derives
+# it from the findings, as a review's.
+SCOPE_TEMPLATES = {
+    E.ASSESSMENT_SCOPE: (E.PLAN_ASSESSMENT, {
+        "claim": "<one line: what the assessment found>",
+        "producer": {"model": "<model>"},
+        "assessment": {
+            "requirement_trace": [
+                {"requirement": "<a requirement or acceptance criterion, by its id where it has one>",
+                 "status": "covered", "plan_reference": "<where in the plan it is met>"},
+                {"requirement": "<one the plan meets in part or not at all>", "status": "partial", "finding": "A1"},
+            ],
+            "premises_challenged": [
+                {"premise": "<a premise the plan, or a fact stated in the request, relies on>", "source": "plan",
+                 "challenge": "<how you tested it>", "outcome": "holds",
+                 "evidence": ["<path:line, symbol or record id>"]},
+            ],
+            "findings": [{"id": "A1", "severity": "minor", "summary": "<finding>",
+                          "location": "<plan section or path:line>", "required": False}],
+        },
+    }),
+}
+
+
+def output_template(role: str, scope: str | None) -> tuple[str, dict[str, Any]] | tuple[None, None]:
+    """The report a role dispatched at ``scope`` writes back, and its format."""
+    return SCOPE_TEMPLATES.get(scope or "") or OUTPUT_TEMPLATES.get(role, (None, None))
+
 
 # A role that may not change the tree it evaluates, told what running a check there can do (`check_run` runs inside it;
 # `require_observation_intact` and `require_workspace_intact` refuse the submission after a write lands, and `check_run`
@@ -128,6 +157,7 @@ KNOWLEDGE_SECTIONS = {
     "discovery_evidence": "inputs", "codebase_map": "codebase-map", "review_scope": "review-scope",
     "change_diff": "change", "check_results": "check-results",
     "implementation_structured_summary": "implementation-facts", "implementation_revision": "implementation-revision",
+    "preserved_request": "request",
 }
 
 
@@ -170,6 +200,9 @@ class PackInputs:
     # Register F22.1 (plan §5.4): the structural-map slice, rendered (``aew.maps.slices``); None when the switch is off
     # or the role's context does not name codebase_map, and then the pack is exactly what it was without maps.
     codebase_map: list[str] | None = None
+    # E160 slice 2: a plan assessor's preserved request beyond the unit's own record, which is the requirement above:
+    # each ancestor's record (body and acceptance), outermost first. Empty for every other pack.
+    request: list[dict[str, Any]] = field(default_factory=list)
     # Register E126: the test paths the Lead added to a Ticket's scope on the record, listed apart from its declared
     # scope (``scope_ops.pack_entries``); empty when there is none, and then the pack is exactly what it was.
     scope_added: list[dict[str, Any]] = field(default_factory=list)
@@ -238,11 +271,18 @@ def _card_section(p: PackInputs) -> list[str]:
     ]
 
 
-def _allowed_values(role: str) -> dict[str, dict[str, str | None]]:
-    """The other values each field of ``role``'s report format may take, from what the engine validates against."""
+def _allowed_values(role: str, scope: str | None = None) -> dict[str, dict[str, str | None]]:
+    """The other values each field of the report format of ``role`` dispatched at ``scope`` may take, from what the
+    engine validates against."""
     section = schema("evidence")["properties"]
     review = section["review"]["properties"]
     severity = schema("evidence")["$defs"]["finding"]["properties"]["severity"]
+    if scope == E.ASSESSMENT_SCOPE:
+        assessment = section["assessment"]["properties"]
+        trace = assessment["requirement_trace"]["items"]["properties"]
+        premise = assessment["premises_challenged"]["items"]["properties"]
+        return {"status": dict.fromkeys(trace["status"]["enum"]), "source": dict.fromkeys(premise["source"]["enum"]),
+                "outcome": dict.fromkeys(premise["outcome"]["enum"]), "severity": dict.fromkeys(severity["enum"])}
     claim = section["verification"]["properties"]["claims"]["items"]["properties"]["result"]
     return {"implementer": {"result": E.IMPLEMENTATION_RESULTS},
             "planner": {"result": dict.fromkeys(E.RECORD_RESULTS)},  # a plan proposal answers no question
@@ -264,7 +304,7 @@ def _on_the_bridge(operations: list[str]) -> list[str]:
 def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
     """``delivered``: the names of the pack's other sections, so the contract promises only what follows it (most of
     them depend on the scope, a switch or the data)."""
-    kind, template = OUTPUT_TEMPLATES.get(p.role, (None, None))
+    kind, template = output_template(p.role, p.scope)
     snap = p.snapshot
     card_label = f"{p.card['display_name']} — " if p.card else ""
     lines = [
@@ -320,7 +360,7 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
             "```",
             "",
             "Allowed values: " + "; ".join(f"`{name}` is {E.one_of(values)}"
-                                           for name, values in _allowed_values(p.role).items()) + ".",
+                                           for name, values in _allowed_values(p.role, p.scope).items()) + ".",
         ]
     lines += ["", "### Completion criteria", ""]
     if p.role == "investigator":
@@ -340,6 +380,12 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
                            "stash or move HEAD (a contained run refuses those writes, and `git add` stages only "
                            "into the run's private index)",
                            "an implementation report with a completed self-review is submitted"])
+    elif p.role == "reviewer" and p.scope == E.ASSESSMENT_SCOPE:
+        lines += _bullets(["every requirement and acceptance criterion is traced to the plan as covered, partial or "
+                           "missing", "the plan's load-bearing premises, and the facts the request states, are "
+                           "challenged against the source and the evidence",
+                           "every gap and every premise that fails cites a finding of its own",
+                           "a plan_assessment is submitted; you do not revise the plan yourself"])
     elif p.role == "reviewer":
         lines += _bullets(["every finding has a severity and says whether a change is required",
                            "earlier open findings are marked resolved or remain open",
@@ -393,6 +439,20 @@ def _scope_lines(p: PackInputs) -> list[str]:
                      + "; ".join(f"{label} +{c['added']} -{c['removed']} in {c['files']} file(s)" for label, c in
                                  (("the declared scope", p.scope_lines_changed["declared"]),
                                   ("the added test paths", p.scope_lines_changed["added"]))))
+    return lines
+
+
+def _request(p: PackInputs) -> list[str]:
+    """A plan assessor's preserved request: the records of the unit's ancestors, as recorded (EW-U04.b, EW-U04.i)."""
+    lines = ["## The request as recorded (ancestors' records, outermost first)", "",
+             "AEW preserves the request as the records of the work: the unit's own is the requirement above, and its "
+             "ancestors' follow. Compare the plan with these, not with any summary of them."]
+    for r in p.request:
+        acceptance = r.get("acceptance") or {}
+        lines += ["", f"### {r['kind'].capitalize()} {r['id']} — {r['title']}", "",
+                  (r.get("body") or "").strip() or "(no additional description)", "",
+                  "Goal-backwards acceptance criteria:", *_bullets(acceptance.get("goal_backwards", [])), "",
+                  "Contract criteria:", *_bullets(acceptance.get("contract", []))]
     return lines
 
 
@@ -600,6 +660,8 @@ def sections(p: PackInputs) -> list[Section]:
     out.append(_lines_section("requirement", WORK, ["", *_requirement(p)]))
     if p.hierarchy or p.inherited:
         out.append(_lines_section("hierarchy", WORK, ["", *_hierarchy(p)]))
+    if p.request:
+        out.append(_lines_section("request", WORK, ["", *_request(p)]))
     if p.role != "verifier":
         out.append(_lines_section("accepted-plan", WORK,
                                   ["", "## Accepted plan", "", p.plan_text.strip() or "(no accepted plan)"]))
@@ -624,9 +686,18 @@ def sections(p: PackInputs) -> list[Section]:
             f"- Verification `{fe['id']}` result: {fe['result']}",
             *[f"- claim [{c['type']}] {c['claim']}: {c['result']}" for c in fe.get("claims", [])],
             f"- Verifier's suspected cause: {fe.get('suspected_cause') or 'not stated'}"], cuttable=True))
-    if p.role in {"implementer", "reviewer", "verifier"}:
+    assessing = p.scope == E.ASSESSMENT_SCOPE  # the open findings are a change's: they are not the plan's (E160)
+    if p.role in {"implementer", "reviewer", "verifier"} and not assessing:
         out.append(_lines_section("open-findings", WORK, ["", *_findings(p)]))  # they decide the gate
-    if p.role == "reviewer" and p.scope in {"observation", "parent"}:
+    if p.role == "reviewer" and assessing:
+        out.append(_lines_section("review-scope", CONSTRAINTS, [
+            "", "## Assessment scope", "",
+            "Assess the accepted plan above, independently: compare it with the requirement and the request as "
+            "recorded, never with a summary of them; challenge its dependency, integration, feasibility and evidence "
+            "obligations; test its load-bearing premises, and the facts the request states, against the source in "
+            "your workspace; and name consequential reliance the plan leaves out. Record each gap and each premise "
+            "that fails as a finding."]))
+    elif p.role == "reviewer" and p.scope in {"observation", "parent"}:
         out.append(_lines_section("review-scope", CONSTRAINTS, [
             "", "## Review scope", "",
             "Review " + ("the record above: are the facts supported by the cited evidence, are hypotheses kept "

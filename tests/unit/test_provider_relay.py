@@ -1880,8 +1880,9 @@ def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_
     its estimate (``relay._scan``) within ``max_held`` before it parses, so a body that is small but would parse
     large is refused 413 with nothing connected, and the estimate is above what the scan and the parse hold. What the
     scan alone holds is within what the relay holds before it starts (``relay._scan_hold``), whatever the body:
-    #551's quick check, q2 and q3. A compact object of many short unique keys, the costliest shape per value measured
-    (q1), keeps a margin of a tenth."""
+    #551's quick check, q2 and q3. A compact object of many short unique keys whose values are each a new number
+    object, sized just past a dict's resize, the costliest shape per value measured (q1, q4), keeps a margin of a
+    tenth on the interpreter that runs it."""
     import itertools
     import string
     import tracemalloc
@@ -1894,7 +1895,8 @@ def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_
               json.dumps({"a": "\U0001F600" * 5000}).encode(), json.dumps({f"k{i}": i for i in range(5000)}).encode(),
               json.dumps(["ab"] * 5000).encode().replace(b"[", b'{"a": [', 1) + b"}"]
     names = ("".join(t) for k in (1, 2, 3, 4) for t in itertools.product(string.ascii_letters, repeat=k))
-    compact = ("{" + ",".join(f'"{name}":0' for name in itertools.islice(names, 200_000)) + "}").encode()
+    resized = 2 * 2 ** 19 // 3 + 1  # a dict of this many keys has just grown
+    compact = ("{" + ",".join(f'"{name}":-9' for name in itertools.islice(names, resized)) + "}").encode()
     deep = b'{"a":' + b"[" * 200_000 + b"]" * 200_000 + b"}"
     for body in [*shapes, compact, deep]:
         held = bytearray(body)  # as the relay holds it, before the scan starts
@@ -1906,12 +1908,7 @@ def test_a_body_whose_parse_would_pass_the_relays_bound_is_refused_before_it_is_
         peak = tracemalloc.get_traced_memory()[1]
         tracemalloc.stop()
         assert scanned <= relay._scan_hold(len(held)), (body[:40], scanned, relay._scan_hold(len(held)))
-        assert peak <= cost, (body[:40], peak, cost)
-    tracemalloc.start()
-    cost, _ = relay._scan(bytearray(compact))
-    relay._document(bytearray(compact))
-    assert tracemalloc.get_traced_memory()[1] * 1.1 <= cost
-    tracemalloc.stop()
+        assert peak * (1.1 if body is compact else 1) <= cost, (body[:40], peak, cost)
 
 
 def _reset_mid_body(request: bytes, **kw: Any) -> tuple[Seam, list[dict[str, Any]]]:

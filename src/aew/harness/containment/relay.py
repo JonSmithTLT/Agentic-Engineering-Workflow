@@ -120,11 +120,12 @@ MAX_BODY = 64 * 1024 * 1024
 # documents) fits, and so do many of the sizes model calls take (a turn's context is a few MiB at most).
 MAX_HELD = 256 * 1024 * 1024
 # Implementation bound: what parsing one JSON value of a body costs at most, beyond its text and its strings' text
-# (:func:`_scan`). Measured with tracemalloc on CPython 3.13 (2026-11-24, #551's review, m3 and its quick check, q1):
-# 28-62 bytes per value across arrays of empty objects, empty arrays, small objects, numbers and strings, and about
-# 105 for an object of many short unique keys (each pair counted twice, by its ``:`` and its ``,``); 128 leaves a
-# margin over the largest.
-PARSE_VALUE_BYTES = 128
+# (:func:`_scan`). Measured with tracemalloc (2026-11-24, #551's review, m3, and its quick checks, q1 and q4): 28-62
+# bytes per value across arrays of empty objects, empty arrays, small objects, numbers and strings; the most, about
+# 123 per value on CPython 3.11 (each pair counted twice, by its ``:`` and its ``,``), for a compact object of many
+# short unique keys whose values are each a new number object, at a size just past a dict's resize. 160 holds that
+# shape's peak to about 0.77 of the estimate on 3.11 and 3.13.
+PARSE_VALUE_BYTES = 160
 # What any parse holds besides (its objects' headers, the parser's state): 1-2 KiB measured alike; 16 KiB margin.
 PARSE_BASE_BYTES = 16 * 1024
 # Implementation bound: how deep a model call's body may nest its arrays and objects (its top-level object is 1). It is

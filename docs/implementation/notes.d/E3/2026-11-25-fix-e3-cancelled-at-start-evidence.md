@@ -15,7 +15,8 @@ observation` and `[running] missing running test name` in the evidence check.
   header or running name, and each session either still starting, as an xdist session whose registered workers'
   lifecycle receipts, read from their live writers, stand before their first test, or finished after a graceful
   interrupt, with every registered worker's receipt short of execution and the lane report complete with no test's
-  result or collecting nothing (`evidence_files.finished_without_tests`); or no session registered at all. The check
+  result (`evidence_files.finished_without_tests`; its `collected` list proves nothing, since under xdist the
+  controller fills it only as each worker goes down); or no session registered at all. The check
   (`check_evidence_run`) types such a lane `before tests` (a controller's `abnormal-exit` does not prevent it: that is
   the cancellation's own death), and `evidence_problems` accepts the record as its death evidence only while the bundle
   bears it out: every session listed; every registered worker listed by pid and start, with its lifecycle receipt

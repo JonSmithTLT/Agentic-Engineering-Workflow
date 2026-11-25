@@ -41,6 +41,12 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
     return False
 
 
+# The markers of a death during the lane; the controller's abnormal exit is the one a cancellation itself leaves.
+ABNORMAL_EXIT = "abnormal-exit"
+DEATH_MARKER = re.compile(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+|worker-gw[0-9]+-down|session-deadline"
+                          rf"|cutoff|{ABNORMAL_EXIT}|(?:running|hang)-.+")
+
+
 def bundle_prefix(name):
     return name.removeprefix("lane-report-").removesuffix("-running").removesuffix("-watchdog")
 
@@ -237,9 +243,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if conclusion == "cancelled":
-                death_marker = any(re.fullmatch(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+"
-                                                r"|worker-gw[0-9]+-down|session-deadline|cutoff|abnormal-exit"
-                                                r"|(?:running|hang)-.+", name) for name in markers)
+                death_marker = any(DEATH_MARKER.fullmatch(name) for name in markers)
                 all_steps_passed = (len(lane_steps) == len(prefixes)
                                     and all(s["conclusion"] == "success" for s in lane_steps))
 
@@ -251,9 +255,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                 # cancellation; evidence_problems checks the bundle bears it out (register E3). A controller ended
                 # by the cancellation before it finished (the sentinel's abnormal-exit) is that death itself, not a
                 # test interrupted.
-                in_test = any(name != "abnormal-exit" and re.fullmatch(
-                    r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+|worker-gw[0-9]+-down|session-deadline|cutoff"
-                    r"|(?:running|hang)-.+", name) for name in markers)
+                in_test = any(DEATH_MARKER.fullmatch(name) for name in markers - {ABNORMAL_EXIT})
                 before_tests = not in_test and Path(BEFORE_TESTS).stem in markers
                 kind = ("cancel-after-tests" if after_tests else "cancel-before-tests" if before_tests
                         else "cancel")

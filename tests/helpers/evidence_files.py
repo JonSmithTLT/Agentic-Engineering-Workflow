@@ -115,11 +115,10 @@ def receipt_phases(text: str) -> list[str] | None:
 
 
 def report_shows_no_test(report: dict) -> bool:
-    """Whether a lane report shows that no test ran: it collected nothing, or it is complete and its only results are
-    collection errors, which pytest reports before any test."""
+    """Whether a lane report shows that no test ran: it is complete, and its only results are collection errors, which
+    pytest reports before any test. Its ``collected`` list proves nothing: under xdist the controller fills it only
+    as each worker goes down (review of #579, m4)."""
     results = report.get("results")
-    if report.get("collected") == []:
-        return True
     return report.get("complete") is True and isinstance(results, dict) and all(
         isinstance(result, dict) and result.get("failures") and all(
             isinstance(failure, dict) and failure.get("phase") == "collect" for failure in result["failures"])
@@ -131,7 +130,8 @@ def finished_without_tests(files: dict[str, str], reports: list[dict]) -> str | 
 
     An interrupt during start-up lets pytest end gracefully: the session writes ``session-finished`` and a complete
     lane report with no results (review of #579, M1). Every registered worker (``worker-gwN-pid`` and ``-start``) must
-    have its lifecycle receipt, never past collection, and every lane report must show no test ran. ``files`` maps the
+    have its lifecycle receipt, never past collection, and every lane report must be complete with no test's result.
+    ``files`` maps the
     session directory's file names to their text."""
     for name in sorted(files):
         if not re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):

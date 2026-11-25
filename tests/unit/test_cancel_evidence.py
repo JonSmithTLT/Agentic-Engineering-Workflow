@@ -824,14 +824,25 @@ def test_a_lane_cancelled_before_any_test_started_has_complete_typed_evidence(tm
 
 
 @pytest.mark.parametrize("layout", ["serial", "executing", "finished without a report", "finished after a test",
-                                    "finished without a receipt"])
+                                    "finished without a receipt", "finished past execution",
+                                    "finished with an incomplete report", "finished with a result collected nothing"])
 def test_a_cancelled_lane_whose_tests_may_have_begun_is_never_typed_before_tests(tmp_path, monkeypatch, layout):
     # A serial controller runs its own tests and keeps no lifecycle receipt, and a worker past its first test has begun
     # its tests. A finished session is shown not to have begun one only by its receipts and its lane report. None of
     # these is shown to stand before its first test, so the gap stays a defect.
     raw = tmp_path / "raw"
-    rows = _starting_lane(raw, layout.split()[0])
-    if layout == "finished after a test":
+    rows = _starting_lane(raw, "executing" if layout == "finished past execution" else layout.split()[0])
+    result = {"tests/test_a.py::test_a": {"outcome": "passed"}}
+    if layout == "finished past execution":
+        # A worker's receipt reached its first test's protocol (#579 quick check, m4).
+        (raw / "autopsy/session-42-abc/session-finished.txt").write_text("finished\n")
+        (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+    elif layout == "finished with an incomplete report":
+        (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "complete": False}))
+    elif layout == "finished with a result collected nothing":
+        # Under xdist the controller fills `collected` only as each worker goes down, so an empty list proves nothing.
+        (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "results": result}))
+    elif layout == "finished after a test":
         (raw / "report.json").write_text(json.dumps({**NOTHING_RAN, "collected": ["tests/test_a.py::test_a"],
                                                      "results": {"tests/test_a.py::test_a": {"outcome": "passed"}}}))
     elif layout == "finished without a receipt":
@@ -1040,9 +1051,12 @@ def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection
     import cancel_evidence_plant
 
     prove = _load("prove_cancel_evidence")
-    sys_path_plants = ROOT / "tests/integration/evidence_plants"
-    assert "HOLD_S = 330" in (sys_path_plants / "startup.py").read_text(encoding="utf-8")
-    assert prove.START_READY_SECONDS + 60 < 330 < prove.CANCEL_PLANT_SECONDS
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("startup", ROOT / "tests/integration/evidence_plants/startup.py")
+    startup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(startup)  # outside a start-up plant its import holds nothing
+    assert prove.START_READY_SECONDS + 60 < startup.HOLD_S < prove.CANCEL_PLANT_SECONDS
     waits = []
 
     def now():
@@ -1097,3 +1111,32 @@ def test_a_controller_ended_by_the_cancellation_still_lets_the_lane_be_typed_bef
     rows = []
     assert check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows) == []
     assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
+
+
+@pytest.mark.parametrize("kind", ["manual-or-api cancel", "manual-or-api cancel before tests"])
+def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch, kind):
+    # The start-up control's accepted side (#579 quick check, m5): a target job with complete evidence that is not
+    # typed "before tests" fails the control.
+    prove = _load("prove_cancel_evidence")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "x/y")
+    monkeypatch.setenv("GITHUB_RUN_ID", "7")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    parent = {"workflow_id": 3, "head_sha": "a" * 40, "head_branch": "b",
+              "path": ".github/workflows/evidence-proof.yml"}
+    target = {"id": 42, "status": "completed", "conclusion": "cancelled", "run_attempt": 1}
+    monkeypatch.setattr(prove, "_api", lambda repo, endpoint: parent if endpoint == "actions/runs/7" else target)
+    monkeypatch.setattr(prove, "dispatch", lambda *args: None)
+    monkeypatch.setattr(prove, "target_run", lambda *args: target)
+    monkeypatch.setattr(prove, "wait_for_start_up", lambda repo, ident: [{"id": 1}, {"id": 2}])
+    monkeypatch.setattr(prove, "_gh_read", lambda *args: b"HTTP/2 200\r\ndate: Wed, 25 Nov 2026 14:40:00 GMT\r\n")
+    reason = {"kind": "manual-or-api", "message": CANCEL.MANUAL, "actor": "github-actions[bot]"}
+    rows = [{"job": job, "missing": [], "cancel_reason": reason, "A2": "yes", "artifacts": [9],
+             "kind": kind.replace("manual-or-api ", "superseded (by run 1) ")} for job in (1, 2)]
+    monkeypatch.setattr(prove, "inspect_run", lambda *args, **kwargs: rows)
+    monkeypatch.setattr(prove, "run_jobs", lambda *args: [])
+    monkeypatch.setattr(prove, "classify", lambda *args: {"kind": "unresolved"})
+    if kind.endswith("before tests"):
+        prove.main("start")
+    else:
+        with pytest.raises(RuntimeError, match="was not typed as cancelled before tests"):
+            prove.main("start")

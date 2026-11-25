@@ -211,6 +211,48 @@ def test_each_timer_sits_half_way_past_its_own_process_acting(tmp_path, workers,
     assert worker.stacks.at_mono == pytest.approx(worker.mono + 2.0)
 
 
+@pytest.mark.parametrize("taken", [False, True], ids=["free", "taken"])
+def test_a_windows_controller_names_its_job_as_its_lane_says_and_never_joins_a_taken_name(tmp_path, monkeypatch, taken):
+    """Register E3; review of #573, m1. The cancellation collection opens the session's job by the lane's name, so the
+    controller creates its job under that name and records it; a name already taken is never joined (a random one
+    stands in, with a note); and no process the session starts inherits the name."""
+    lane_name = "aew-session-1-evidence-lane-report"
+    created, joined = [], []
+
+    class Job:
+        def __init__(self, name, *, exclusive=False):
+            if exclusive and taken and name == lane_name:
+                raise FileExistsError(f"a job object named {name} already exists")
+            self.name = name
+            created.append(name)
+
+        def assign_self(self):
+            joined.append(self.name)
+
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=None),
+                             getoption=lambda name, default=None: str(tmp_path) if name == "aew_hang_dir" else default)
+    controller = session_deadline.Controller(config, 60.0, 4.0)
+    monkeypatch.setenv(session_deadline.JOB_NAMESPACE_ENV, lane_name)
+    monkeypatch.setattr(proctree, "IS_WINDOWS", True)
+    monkeypatch.setattr(proctree, "Job", Job, raising=False)
+    monkeypatch.setattr(proctree, "outer_job", lambda: "not in any job before the session job", raising=False)
+    monkeypatch.setattr(proctree, "start_time", lambda pid: 7)
+    # No sentinel, timer or deadline thread in a unit test: the sentinel's readiness is all start waits for.
+    monkeypatch.setattr(controller, "_spawn_sentinel",
+                        lambda name: session_deadline.marker(controller.dir, session_deadline.READY).touch())
+    monkeypatch.setattr(controller.stacks, "arm", lambda: None)
+    monkeypatch.setattr(controller, "_watch", lambda: None)
+    controller.start()
+    recorded = session_deadline.marker(controller.dir, "session-job").read_text().strip()
+    assert session_deadline.JOB_NAMESPACE_ENV not in os.environ
+    assert created == [recorded] and joined == [recorded]
+    if taken:
+        assert recorded != lane_name and recorded.startswith(f"aew-session-{os.getpid()}-")
+        assert "the lane's job name was taken (FileExistsError)" in controller.job_note
+    else:
+        assert recorded == lane_name and "taken" not in controller.job_note
+
+
 def test_the_holders_check_reads_this_sessions_files_before_any_earlier_sessions(tmp_path, monkeypatch):
     """Review of #387's quick check, f1. It reads a capped number of files, and a local hang directory keeps growing."""
     own = tmp_path / "autopsy" / "session-9-b"

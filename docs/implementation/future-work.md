@@ -4809,7 +4809,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-25
 
-**By:** #584 (`727b74f0`), on #582 (`7c788df8`): the egress proxy forwards an absolute-form `http://` request through CONNECT's host check on the URL's host:port, one request per connection, with every other shape refused before any DNS (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). The quick check of #584's m7, no 100 Continue to an HTTP/1.0 client, is fixed by the pull request that closes this row. Tests in `tests/unit/test_egress_proxy.py`
+**By:** #584 (`727b74f0`), on #582 (`7c788df8`): the egress proxy forwards an absolute-form `http://` request through CONNECT's host check on the URL's host:port, one request per connection, with every other shape refused before any DNS (ADR-0009, amendment of 2026-11-25; the row's note of 2026-11-25). The quick check of #584's m7, no 100 Continue to an HTTP/1.0 client, is fixed by #587. Tests in `tests/unit/test_egress_proxy.py`
 
 *Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
 

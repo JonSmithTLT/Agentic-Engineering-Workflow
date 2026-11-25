@@ -643,6 +643,23 @@ def test_expect_100_continue_is_answered_by_the_relay_and_not_forwarded():
     assert "expect" not in [n for n, _ in headers(head)] and rest == b"{}"
 
 
+def test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue_and_its_body_still_goes():
+    """No 1xx goes to an HTTP/1.0 client (RFC 9110 §15.2): the relay ignores its expectation, as an HTTP/1.0 server must
+    (§10.1.1), reads its body all the same, and the client gets only the response."""
+    seam = Seam()
+    with relayed(seam) as (_, client, _):
+        client.sendall(b"POST /v1/responses HTTP/1.0\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n{}")
+        upstream = seam.upstream()
+        head, rest = read_head(upstream)
+        if not rest:
+            rest = upstream.recv(64)
+        upstream.sendall(OK)
+        upstream.close()
+        answer = read_all(client)
+    assert rest == b"{}" and "expect" not in [n for n, _ in headers(head)]
+    assert answer.startswith(b"HTTP/1.1 200 OK") and b"100 Continue" not in answer
+
+
 def test_the_response_streams_as_it_comes():
     """The client has the first event before the upstream sends the second: the relay does not wait for the end."""
     seam = Seam()

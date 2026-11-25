@@ -842,7 +842,10 @@ class ProviderRelay(Service):
                                    "Content-Encoding: it was not sent to the provider")
                 if framing[0] == "length":  # held before a 100 Continue asks the client for it
                     reserve(framing[1])
-            if any(k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
+            # Only to HTTP/1.1 (_request has checked the version): no 1xx goes to an HTTP/1.0 client, which ignores the
+            # expectation, and its body is read all the same (RFC 9110 §15.2, §10.1.1; the review of #587, m1)
+            if head.split(b"\r\n", 1)[0].endswith(b" HTTP/1.1") and any(
+                    k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             if entry["operation"] == "model":
                 body = self._read_whole(conn, framing, early, reserve)

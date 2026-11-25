@@ -2264,3 +2264,5 @@ It narrows "The proxy answers `100-continue` itself" in the E92 amendment above:
 request's `Expect: 100-continue` only on HTTP/1.1. An HTTP/1.0 client is sent no 1xx response (RFC 9110 §15.2), and its
 expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read and forwarded without one. Test:
 `test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
+The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
+only; the review of #587, m1): `tests/unit/test_provider_relay.py`.

@@ -58,17 +58,24 @@ def run_layout(tmp_path: Path, role: str, *, scope: str = "ticket", policy: dict
 
 
 def lead_layout(tmp_path: Path, *, scope: str = "project", network: str = L.SHARED, net_dir: str | None = None,
-                home: str | None = None, policy: dict | None = None, env: dict[str, str] | None = None) -> C.Layout:
+                home: str | None = None, policy: dict | None = None, env: dict[str, str] | None = None,
+                skills_dir: str | None = None) -> C.Layout:
     """The Lead's layout (STG-05 CS-4): its project's working tree is its workspace, its run directory and its own
     OpenCode state are under the project's `.aew/local`."""
     repo, _ = repo_with_worktree(tmp_path)
     for d in (".aew/state/log", ".aew/local/harness/runs"):
         (repo / d).mkdir(parents=True, exist_ok=True)
+    return C.for_run(**lead_args(tmp_path), scope=scope, policy=policy,
+                     home=home if home is not None else str(tmp_path / "home"), env=env or {}, network=network,
+                     net_dir=net_dir, skills_dir=skills_dir)
+
+
+def lead_args(tmp_path: Path) -> dict[str, Any]:
+    """The arguments of :func:`lead_layout`'s project, once it is made, that every Lead start there shares."""
+    repo = tmp_path / "repo"
     run = repo / ".aew/local/harness/runs/lead-1"
-    return C.for_run(role="lead", scope=scope, workspace=str(repo), run_dir=run, scratch=str(run / "scratch"),
-                     bridge_dir=None, policy=policy, home=home if home is not None else str(tmp_path / "home"),
-                     project=str(repo), runs=str(run.parent), env=env or {}, network=network, net_dir=net_dir,
-                     state_dir=str(repo / ".aew/local/harness/lead"))
+    return {"role": "lead", "workspace": str(repo), "run_dir": run, "scratch": str(run / "scratch"), "bridge_dir": None,
+            "project": str(repo), "runs": str(run.parent), "state_dir": str(repo / ".aew/local/harness/lead")}
 
 
 def test_argv_binds_the_root_read_only_first_then_writable_roots_then_read_only_rebinds_then_masks():
@@ -146,6 +153,33 @@ def test_a_runs_skill_copy_is_bound_read_only_after_its_harness_state_and_protec
     steps = L.order(present)
     assert steps.index(("--bind", harness)) < steps.index(("--ro-bind", real))
     assert present.describe()["skills_binds"] == [real]
+
+
+def test_a_superseded_lead_cannot_write_the_skills_its_successor_loads(tmp_path, fake_bwrap):
+    """E161: each Lead start's copy is a folder of its own, made by the host beside the Lead's state and never in it,
+    and reached by no writable bind of an earlier start's layout or its own: only its own start binds it, read-only."""
+    from types import SimpleNamespace
+
+    from aew import skills
+    from aew.harness.opencode import lead
+
+    engine = SimpleNamespace(aew_root=tmp_path / "repo" / ".aew")
+    first, first_at = lead.deliver_lead_skills(engine)
+    earlier = lead_layout(tmp_path, skills_dir=first_at.folder)
+    planned, at = lead.deliver_lead_skills(engine)
+    successor = C.for_run(**lead_args(tmp_path), scope="project", policy=None, home=str(tmp_path / "home"),
+                          env={}, skills_dir=at.folder)
+    assert first["exposed"] and planned["exposed"] and skills.verify(planned, Path(at.folder))
+    assert at.folder != first_at.folder and not os.path.lexists(first_at.folder)
+    assert successor.skills_binds == (at.folder,) and at.folder in successor.protected
+    for layout in (earlier, successor):
+        # the deepest bind that reaches the copy decides it: the project is writable, `.aew` read-only, `.aew/local`
+        # hidden (an empty read-only tmpfs), and only the successor's own copy is bound back, read-only
+        reach = [(len(b), kind) for kind, binds in (("writable", layout.writable), ("readonly", layout.readonly),
+                                                     ("hidden", layout.hide_runs))
+                 for b in binds if Path(at.folder).is_relative_to(b)]
+        assert max(reach)[1] == ("readonly" if layout is successor else "hidden"), reach
+    assert not Path(at.folder).is_relative_to(os.path.realpath(engine.aew_root / lead.LEAD_DIR))
 
 
 def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):

@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import stat
 from functools import cache
 from importlib import resources
 from pathlib import Path, PurePosixPath
@@ -154,36 +156,87 @@ def plan(skills: list[str] | tuple[str, ...], optional: list[str] | tuple[str, .
             "unavailable": [s for s in requested if s not in exposed], "reasons": reasons, "delivered": delivered}
 
 
+def real_dir(path: Path) -> bool:
+    """Whether ``path`` is itself a directory, by ``lstat``: never a link to one, which is never followed here."""
+    try:
+        return stat.S_ISDIR(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def root_problems(root: Path, exposed: list[str] | tuple[str, ...]) -> list[str]:
     """What, under the folder the harness scans, is not an exposed skill's allow-listed file: a file at the root, a
     folder that is no exposed skill, or a file the allow-list keeps out (another ``SKILL.md``, ``evals/``). Each would
-    be listed to the model, or become a skill of its own. Empty when the folder is exactly the copy."""
+    be listed to the model, or become a skill of its own. Empty when the folder is exactly the copy. A ``root`` that is
+    not itself a directory (a link to one included) is never listed through: it is the one problem, ``"."``."""
+    if not real_dir(root):
+        return ["."]
     problems: list[str] = []
     for child in sorted(root.iterdir(), key=lambda p: p.name):
-        if not child.is_dir() or child.is_symlink() or child.name not in exposed:
+        if not real_dir(child) or child.name not in exposed:
             problems.append(child.name)
             continue
-        for path in sorted(child.rglob("*")):
+        for path in sorted(child.rglob("*")):  # rglob never descends through a link to a directory
             rel = path.relative_to(child).as_posix()
             if path.is_symlink() or (path.is_file() and not allowed(rel)):
                 problems.append(f"{child.name}/{rel}")
     return problems
 
 
+def _matches(root: Path, name: str, rels: list[str] | tuple[str, ...]) -> bool:
+    """Whether ``root/name`` holds the manifest's files for ``name``, each a regular file by ``lstat`` (never through a
+    link), re-read and re-hashed to the manifest's tree hash."""
+    copied: dict[str, str] = {}
+    for rel in rels:
+        path = root / name / Path(*PurePosixPath(rel).parts)
+        try:
+            if not stat.S_ISREG(os.lstat(path).st_mode):
+                return False
+            copied[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return False
+    return tree_sha256(copied) == entries()[name].get("sha256")
+
+
+def verify(planned: dict[str, Any], root: Path) -> bool:
+    """Whether ``root`` still holds exactly ``planned``'s exposed skills as delivered: a directory itself, nothing else
+    under it, every file re-hashed to the manifest. Checked again just before a copy is bound, after :func:`deliver`."""
+    exposed = list(planned.get("exposed") or [])
+    if not exposed or root_problems(root, exposed):
+        return False
+    for name in exposed:
+        files = (entries().get(name) or {}).get("files")
+        if not isinstance(files, dict) or not _matches(root, name, list(files)):
+            return False
+    return True
+
+
 def deliver(planned: dict[str, Any], root: Path) -> dict[str, Any]:
     """Copy ``planned``'s exposed skills into ``root`` (made afresh: the run's own folder, before its sandbox exists),
     and return the plan as delivered. Only the manifest's files are written, each re-read and re-hashed; a skill whose
     copy fails or does not match is removed and reported ``copy_failed``, and the run goes on. Anything else found under
-    ``root`` afterwards takes its skill out the same way. With nothing exposed, ``root`` does not exist."""
+    ``root`` afterwards takes its skill out the same way. With nothing exposed, ``root`` does not exist.
+
+    Nothing here acts through a link: a ``root`` that is a link, or is not a directory, or whose parent is a link, is
+    left as it is and every skill reports ``copy_failed``; only what ``lstat`` shows to be a directory is removed."""
     exposed = list(planned.get("exposed") or [])
     reasons = dict(planned.get("reasons") or {})
     failed: set[str] = set()
-    shutil.rmtree(root, ignore_errors=True)
-    if exposed:
-        try:
-            root.mkdir(parents=True)
-        except OSError:
-            failed = set(exposed)
+    made = False
+    try:
+        if exposed:
+            root.parent.mkdir(parents=True, exist_ok=True)
+        if root.parent.exists() and not real_dir(root.parent):
+            raise OSError("the copy's parent is not a directory of its own")
+        if os.path.lexists(root):
+            if not real_dir(root):
+                raise OSError("the copy's folder is not a directory of its own")
+            shutil.rmtree(root)  # a directory, by lstat: rmtree never follows a link below it
+        if exposed:
+            root.mkdir()
+            made = True
+    except OSError:
+        failed = set(exposed)
     for name in exposed if not failed else ():
         try:
             why, files = check(name)
@@ -193,22 +246,25 @@ def deliver(planned: dict[str, Any], root: Path) -> dict[str, Any]:
                 out = root / name / Path(*PurePosixPath(rel).parts)
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(data)
-            copied = {rel: hashlib.sha256((root / name / Path(*PurePosixPath(rel).parts)).read_bytes()).hexdigest()
-                      for rel in files}
-            if tree_sha256(copied) != entries()[name].get("sha256"):
+            if not _matches(root, name, list(files)):
                 raise OSError("the copy does not match the manifest")
         except OSError:
             failed.add(name)
-    if root.is_dir():
-        for stray in root_problems(root, [n for n in exposed if n not in failed]):
-            failed.add(stray.split("/", 1)[0])
+    if made:
+        strays = root_problems(root, [n for n in exposed if n not in failed])
+        if "." in strays:  # the folder itself was replaced: nothing under it is touched, and no skill is delivered
+            failed = set(exposed)
+        else:
+            for stray in strays:
+                failed.add(stray.split("/", 1)[0])
+            for name in failed:
+                _remove(root / name)
     for name in failed:
-        _remove(root / name)
         if name in exposed:
             reasons[name] = COPY_FAILED
     final = [n for n in exposed if n not in failed]
-    if not final:
-        shutil.rmtree(root, ignore_errors=True)
+    if made and not final:
+        _remove(root)
     requested = list(planned.get("requested") or [])
     return {**planned, "exposed": final, "unavailable": [s for s in requested if s not in final],
             "reasons": dict(sorted(reasons.items())),
@@ -216,10 +272,15 @@ def deliver(planned: dict[str, Any], root: Path) -> dict[str, Any]:
 
 
 def _remove(path: Path) -> None:
-    if path.is_dir() and not path.is_symlink():
+    """Remove ``path`` without following it: a directory by ``lstat`` is removed whole (``rmtree`` follows no link
+    below it), anything else, a link included, is unlinked itself."""
+    if real_dir(path):
         shutil.rmtree(path, ignore_errors=True)
     else:
-        path.unlink(missing_ok=True)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def pins(skills: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:

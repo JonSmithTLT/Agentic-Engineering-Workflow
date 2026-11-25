@@ -18,8 +18,11 @@ is recorded, not asserted: the rules allow the id, whichever source wins.
 that provider's key, which must be set) are: a keyed, paid model the operator approves for that run (the operator,
 2026-11-06), never one of OpenCode's free models (``live_models.free_model``). Two private servers, the Lead's
 configuration with and without AEW's skills. Asserted: the model's ``skill`` call of ``engineering-planning`` completes,
-and no permission is left asking. Recorded, never asserted: the first step's input tokens with and without the listing
-(the listing's cost) and the input tokens before and after the load (a loaded body's cost), with the ``SKILL.md`` size.
+counted as loaded by the function a run's record uses (``adapter.skill_loads``), and no permission is left asking.
+Recorded, never asserted: which exposed skills the Lead loaded and how many other ``skill`` calls it made (the Lead's
+server ends with its TUI, so a session's own record cannot count them at teardown, as a run's does), the first step's
+input tokens with and without the listing (the listing's cost) and the input tokens before and after the load (a
+loaded body's cost), with the ``SKILL.md`` size.
 Each record goes to ``AEW_LIVE_RESULTS`` if set::
 
     AEW_LIVE_LEAD_SKILLS_MODEL=<provider/model> AEW_LIVE_PROVIDER_KEY_ENV=<VARIABLE> \\
@@ -75,12 +78,12 @@ def operator_config(tmp: Path) -> Path:
 
 def lead_configuration(tmp: Path, *, with_skills: bool) -> tuple[dict[str, Any], dict[str, Any]]:
     """The uncontained Lead's configuration as `aew opencode` builds it (``tui_env``'s ``lead_config``), its skills
-    copied by the production code into a synthetic project's Lead state, and the plan as delivered."""
+    copied by the production code into a synthetic project's per-start folder, and the plan as delivered."""
     engine = SimpleNamespace(aew_root=tmp / "project" / ".aew")
     if not with_skills:
         return projection.lead_config(), {}
-    planned = lead.deliver_lead_skills(engine)
-    return projection.lead_config(skills_dir=lead.lead_skills_at(engine), skills_planned=planned), planned
+    planned, at = lead.deliver_lead_skills(engine)
+    return projection.lead_config(skills_dir=at, skills_planned=planned), planned
 
 
 def start(tmp: Path, config: dict[str, Any], *, operator: Path | None, provider_env: list[str]) -> tuple[Any, Any]:
@@ -220,12 +223,15 @@ def test_live_a_paid_model_loads_a_lead_skill_and_the_cost_is_recorded(tmp_path)
         assistant = [m for m in messages if m.get("type") == "assistant"]
         calls = [c for m in assistant for c in m.get("content") or []
                  if isinstance(c, dict) and c.get("type") == "tool" and c.get("name") == "skill"]
-        loaded = [c for c in calls if (c.get("state") or {}).get("status") == "completed"
-                  and ((c.get("state") or {}).get("input") or {}).get("id") == COLLIDING]
+        # what the Lead loaded, counted by the function a run's record counts its loads with (adapter.skill_loads)
+        counted = [adapter.skill_loads(m.get("content"), frozenset(planned["exposed"])) for m in assistant]
+        loaded = [sid for ids, _ in counted for sid in ids]
         after = [input_tokens(m) for m in assistant[before:]]
         body = next(d["bytes"] for d in planned["delivered"] if d["name"] == COLLIDING)
         record_result({"test": "model", "model": ref, "first_step_input_tokens": first,
                        "turn_input_tokens_before": input_tokens(assistant[before - 1]) if before else None,
                        "turn_input_tokens_after": after, "skill_md_bytes": body,
-                       "skill_calls": [{"status": (c.get("state") or {}).get("status")} for c in calls]})
-        assert loaded, calls
+                       "skill_calls": [{"status": (c.get("state") or {}).get("status")} for c in calls],
+                       "loaded": {sid: loaded.count(sid) for sid in sorted(set(loaded))},
+                       "skill_other": sum(other for _, other in counted)})
+        assert COLLIDING in loaded, calls

@@ -122,7 +122,8 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     # The Lead's skills (E161): the manifest's list, copied beside the operator's own skills, kept by rules only
     planned = out["containment"]["skills"]
     assert planned["exposed"] == list(skills.lead()) and planned["copy"] == "rules_only"
-    at = lead.lead_skills_at(lab)
+    [start] = (lab.aew_root / lead.LEAD_SKILLS_DIR).iterdir()  # this start's own folder, beside the Lead's state
+    at = lead.lead_skills_at(lab, start.name)
     assert sorted(p.name for p in Path(at.folder).iterdir()) == planned["exposed"]
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
         guide_of(lab), tools={"placed": False, "tools": []},  # and no tool of AEW's placed: it is not contained

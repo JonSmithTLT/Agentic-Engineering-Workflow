@@ -2,11 +2,12 @@
 2026-11-06, the Lead's skills and MCP servers, (a)).
 
 The Lead has no card, so AEW's skill manifest holds its list (``lead``), and the same helper that decides what a run is
-exposed decides what the Lead is (``aew.skills.plan``, every id optional). The copy goes into the Lead's own state, the
-same ``aew.skills.deliver`` a run's supervisor uses. The contained Lead is offered only that copy: every other id
-denied, the compatibility plugin off. The Lead that is not contained gets AEW's folder and ids beside the operator's own
-skills, which stay at ``ask``. Its text names its skills from the plan, and its record says what it was given. Nothing
-here runs a model: the live check is ``tests/live/test_lead_skills_live.py``.
+exposed decides what the Lead is (``aew.skills.plan``, every id optional). The copy goes into a folder of each start's
+own, beside the Lead's state and never in it, by the same ``aew.skills.deliver`` a run's supervisor uses, which never
+follows a link. The contained Lead is offered only that copy: every other id denied, the compatibility plugin off. The
+Lead that is not contained gets AEW's folder and ids beside the operator's own skills, which stay at ``ask``. Its text
+names its skills from the plan, and its record says what it was given. Nothing here runs a model: the live check is
+``tests/live/test_lead_skills_live.py``.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -152,9 +154,9 @@ def test_the_text_names_what_the_copy_delivered_never_a_failed_one(tmp_path, mon
     monkeypatch.setattr(skills, "check", lambda n: (skills.HASH_MISMATCH, {}) if n == "delegation-handoffs"
                         else real(n))
     engine = SimpleNamespace(aew_root=tmp_path / ".aew")
-    planned = lead.deliver_lead_skills(engine)
+    planned, at = lead.deliver_lead_skills(engine)
     assert planned["exposed"] == ["engineering-planning", "requirements-clarification"]
-    config = projection.lead_config(skills_dir=lead.lead_skills_at(engine), skills_planned=planned)
+    config = projection.lead_config(skills_dir=at, skills_planned=planned)
     assert "`delegation-handoffs`" not in lead_agent(config)["system"]
     assert effect(lead_agent(config)["permissions"], "skill", "delegation-handoffs") == "ask"
 
@@ -162,15 +164,72 @@ def test_the_text_names_what_the_copy_delivered_never_a_failed_one(tmp_path, mon
 # ---------------------------------------------------------------------------------------------- the copy and record
 
 
-def test_the_copy_goes_into_the_leads_own_state_and_holds_exactly_the_list(tmp_path):
+def test_each_start_copies_into_its_own_folder_outside_the_leads_state_holding_exactly_the_list(tmp_path):
     engine = SimpleNamespace(aew_root=tmp_path / ".aew")
-    planned = lead.deliver_lead_skills(engine)
-    at = lead.lead_skills_at(engine)
-    assert at.folder == os.path.realpath(engine.aew_root / lead.LEAD_DIR / "skills") and os.path.isabs(at.folder)
-    assert planned["exposed"] == LEAD_LIST
+    first, first_at = lead.deliver_lead_skills(engine)
+    planned, at = lead.deliver_lead_skills(engine)
+    parent = os.path.realpath(engine.aew_root / lead.LEAD_SKILLS_DIR)
+    state = os.path.realpath(engine.aew_root / lead.LEAD_DIR)
+    assert os.path.isabs(at.folder) and Path(at.folder).parent.parent == Path(parent)
+    assert not Path(at.folder).is_relative_to(state)  # never in the Lead's state
+    assert at.folder != first_at.folder and not os.path.lexists(first_at.folder)  # an earlier start's copy goes
+    assert first["exposed"] == planned["exposed"] == LEAD_LIST
     assert sorted(p.name for p in Path(at.folder).iterdir()) == LEAD_LIST
-    assert skills.root_problems(Path(at.folder), planned["exposed"]) == []
+    assert skills.root_problems(Path(at.folder), planned["exposed"]) == [] and skills.verify(planned, Path(at.folder))
     assert not list(Path(at.folder).rglob("evals"))
+    assert lead.lead_skills_at(engine).folder == os.sep.join([parent, lead.EACH_START, "skills"])  # --print-config's
+
+
+def test_a_symlinked_lead_skills_folder_is_never_followed_and_nothing_outside_is_removed(tmp_path):
+    outside = tmp_path / "outside"
+    (outside / "sub").mkdir(parents=True)
+    (outside / "file").write_text("kept")
+    (outside / "sub" / "f").write_text("kept")
+    kept = sorted(p.relative_to(outside).as_posix() for p in outside.rglob("*"))
+
+    def intact() -> bool:
+        return sorted(p.relative_to(outside).as_posix() for p in outside.rglob("*")) == kept
+
+    planned = projection.lead_skills()
+    failed = {name: skills.COPY_FAILED for name in LEAD_LIST}
+    # the copy's folder a link: left as it is, nothing listed or removed through it
+    root = tmp_path / "state" / "skills"
+    root.parent.mkdir()
+    root.symlink_to(outside, target_is_directory=True)
+    delivered = skills.deliver(planned, root)
+    assert (delivered["exposed"], delivered["reasons"]) == ([], failed)
+    assert root.is_symlink() and intact() and skills.root_problems(root, LEAD_LIST) == ["."]
+    assert not skills.verify(planned, root)
+    # its parent a link: nothing made or removed under it
+    linked = tmp_path / "linked"
+    linked.symlink_to(outside, target_is_directory=True)
+    assert skills.deliver(planned, linked / "sub")["reasons"] == failed and intact()
+    # the Lead's: a link where an earlier start's copy was is never followed, and the start goes on
+    engine = SimpleNamespace(aew_root=tmp_path / ".aew")
+    parent = engine.aew_root / lead.LEAD_SKILLS_DIR
+    parent.mkdir(parents=True)
+    (parent / "earlier").symlink_to(outside, target_is_directory=True)
+    delivered, at = lead.deliver_lead_skills(engine)
+    assert delivered["exposed"] == LEAD_LIST and intact()
+    # and where the whole folder is a link, nothing is copied through it
+    (parent / "earlier").unlink()
+    shutil.rmtree(parent)
+    parent.symlink_to(outside, target_is_directory=True)
+    delivered, at = lead.deliver_lead_skills(engine)
+    assert (delivered["exposed"], delivered["reasons"]) == ([], failed) and intact()
+
+
+def test_a_copy_changed_after_delivery_is_never_taken_for_the_delivered_one(tmp_path):
+    """What the contained start checks again just before it binds the copy (``aew.skills.verify``)."""
+    planned, at = lead.deliver_lead_skills(SimpleNamespace(aew_root=tmp_path / ".aew"))
+    folder = Path(at.folder)
+    assert skills.verify(planned, folder)
+    (folder / "notes.md").write_text("extra")
+    assert not skills.verify(planned, folder)
+    (folder / "notes.md").unlink()
+    (folder / LEAD_LIST[0] / skills.SKILL_FILE).write_text("changed")
+    assert not skills.verify(planned, folder)
+    assert lead.undelivered(planned)["reasons"] == {name: skills.COPY_FAILED for name in LEAD_LIST}
 
 
 def test_a_lead_copy_that_fails_reports_copy_failed_and_the_start_goes_on(tmp_path, monkeypatch):
@@ -180,10 +239,10 @@ def test_a_lead_copy_that_fails_reports_copy_failed_and_the_start_goes_on(tmp_pa
 
     monkeypatch.setattr(skills, "deliver", broken)
     engine = SimpleNamespace(aew_root=tmp_path / ".aew")
-    planned = lead.deliver_lead_skills(engine)
+    planned, at = lead.deliver_lead_skills(engine)
     assert planned["exposed"] == [] and planned["delivered"] == []
     assert planned["reasons"] == {name: skills.COPY_FAILED for name in LEAD_LIST}
-    assert not Path(lead.lead_skills_at(engine).folder).exists()
+    assert not Path(at.folder).exists()
 
 
 @pytest.mark.parametrize("bound, copy", [(True, "read_only_bind"), (False, "rules_only")])
@@ -203,7 +262,11 @@ def test_the_presentation_copies_once_seated_and_hands_the_plan_to_the_harness_t
     for kw in ({"weaker": weaker}, {"contained": holder}):
         env = lead.session_presentation(engine, provider_env=[], **kw)({"PATH": os.defpath}, frozenset())
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
-        assert config["skills"] == [lead.lead_skills_at(engine).folder]
+        [folder] = config["skills"]  # this start's own copy, made by the callback and holding exactly the list
+        assert Path(folder).parent.parent == Path(os.path.realpath(engine.aew_root / lead.LEAD_SKILLS_DIR))
+        assert Path(folder).is_dir() and skills.root_problems(Path(folder), LEAD_LIST) == []
+        assert skills.verify({"exposed": LEAD_LIST}, Path(folder))
+    assert holder.skills_at.folder == folder
     assert weaker.label_extra["skills"]["exposed"] == LEAD_LIST
     assert weaker.label_extra["skills"]["copy"] == "rules_only"
     assert holder.skills_planned["exposed"] == LEAD_LIST

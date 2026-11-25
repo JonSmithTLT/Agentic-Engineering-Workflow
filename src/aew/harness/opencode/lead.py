@@ -99,30 +99,53 @@ def refuse_unusable(provider_env: list[str], base: Mapping[str, str]) -> None:
         raise UsageError(f"--provider-env {name}: {why}", variable=name)
 
 
-def lead_skills_at(engine: Any) -> projection.SkillsAt:
-    """Where the Lead's skills are copied (register E161): ``skills`` in its own state, per project, by real path (the
-    configuration's ``skills`` entry is absolute, and the contained Lead's layout binds that path read-only). Both
-    routes use it: the uncontained Lead's configuration is made before its session's run directory exists."""
-    return projection.skills_at(os.path.realpath(engine.aew_root / LEAD_DIR), os.sep)
+LEAD_SKILLS_DIR = "local/harness/lead-skills"  # under the AEW root: a folder for each start's copy (E161)
+EACH_START = "<start>"  # the per-start folder's name in what `--print-config` shows: each start names its own
 
 
-def deliver_lead_skills(engine: Any) -> dict[str, Any]:
-    """Copy the Lead's exposed skills into :func:`lead_skills_at` (``aew.skills.deliver``, as a run's supervisor does)
-    and return the plan as delivered. Made afresh at each start, from AEW's install: a Lead started on the same project
-    meanwhile has its copy replaced with the same bytes, and only a superseded session can be using it. A copy that
-    fails reports ``copy_failed`` and the session goes on: a missing skill never fails a start (the 2026-11-03
-    ruling, §3)."""
+def lead_skills_at(engine: Any, start: str = EACH_START) -> projection.SkillsAt:
+    """Where a Lead start's skills are copied (register E161): ``skills`` in that start's own folder under
+    :data:`LEAD_SKILLS_DIR`, by real path (the configuration's ``skills`` entry is absolute, and the contained Lead's
+    layout binds that path read-only). The folder is made by the host for each start, beside the Lead's state and
+    never in it. Without a ``start``, the folder a start would make, as ``--print-config`` shows it."""
+    return projection.skills_at(os.sep.join([os.path.realpath(engine.aew_root / LEAD_SKILLS_DIR), start]), os.sep)
+
+
+def undelivered(planned: Mapping[str, Any]) -> dict[str, Any]:
+    """``planned`` with nothing delivered: each exposed skill ``copy_failed``, as ``aew.skills.deliver`` reports one."""
+    from aew import skills
+
+    failed = {str(n): skills.COPY_FAILED for n in planned.get("exposed") or []}
+    requested = list(planned.get("requested") or [])
+    return {**planned, "exposed": [], "unavailable": requested,
+            "reasons": dict(sorted({**(planned.get("reasons") or {}), **failed}.items())), "delivered": []}
+
+
+def deliver_lead_skills(engine: Any) -> tuple[dict[str, Any], projection.SkillsAt]:
+    """Copy the Lead's exposed skills into a folder made for this start (:func:`lead_skills_at`;
+    ``aew.skills.deliver``, as a run's supervisor does), and return the plan as delivered and where. Earlier starts'
+    copies are removed, each only once ``lstat`` shows it a directory of its own. A copy that fails reports
+    ``copy_failed`` and the session goes on: a missing skill never fails a start (the 2026-11-03 ruling, §3)."""
     from aew import skills
 
     planned = projection.lead_skills()
-    folder = engine.aew_root / LEAD_DIR / projection.SKILLS_DIR  # lead_skills_at's folder, before its real path
+    start = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{secrets.token_hex(4)}"
+    at = lead_skills_at(engine, start)
+    here = engine.aew_root / LEAD_SKILLS_DIR  # at.folder's grandparent, before its real path
     try:
-        return skills.deliver(planned, folder)
+        here.mkdir(parents=True, exist_ok=True)
+        if not skills.real_dir(here):
+            raise OSError("the Lead's skills folder is not a directory of its own")  # a link is never followed
+        for old in here.iterdir():  # earlier starts' copies
+            if skills.real_dir(old):
+                shutil.rmtree(old, ignore_errors=True)
+        (here / start).mkdir()  # this start's own, never one that exists
+        delivered = skills.deliver(planned, here / start / projection.SKILLS_DIR)
     except Exception:  # noqa: BLE001 - a missing skill never fails a start (the 2026-11-03 ruling, §3)
-        shutil.rmtree(folder, ignore_errors=True)
-        failed = {str(n): skills.COPY_FAILED for n in planned.get("exposed") or []}
-        return {**planned, "exposed": [], "reasons": dict(sorted({**(planned.get("reasons") or {}), **failed}.items())),
-                "delivered": []}
+        delivered = undelivered(planned)
+    if not delivered.get("exposed") and skills.real_dir(here / start):
+        shutil.rmtree(here / start, ignore_errors=True)  # this start's own, and nothing in it is delivered
+    return delivered, at
 
 
 def skills_label(planned: Mapping[str, Any], bound: bool) -> dict[str, Any]:
@@ -165,13 +188,14 @@ def session_presentation(engine: Any, *, provider_env: list[str], contained: Con
     delivered goes to whichever builds it, for its configuration and its record (register E161)."""
     def prepare(env: dict[str, str], switches: frozenset[str]) -> dict[str, str]:
         guide = guide_of(engine, switches=switches)
-        planned = deliver_lead_skills(engine)
+        planned, at = deliver_lead_skills(engine)
         if contained is not None:
-            contained.guide, contained.surface_switches, contained.skills_planned = guide, switches, planned
+            contained.guide, contained.surface_switches = guide, switches
+            contained.skills_planned, contained.skills_at = planned, at
         if weaker is not None:
             weaker.label_extra = {"skills": skills_label(planned, bound=False)}
         return {**env, **tui_env(env, provider_env=provider_env, guide=guide, switches=switches,
-                               push_wake=pushes_wakes(engine), skills_dir=lead_skills_at(engine),
+                               push_wake=pushes_wakes(engine), skills_dir=at,
                                skills_planned=planned)}
 
     return prepare
@@ -736,6 +760,7 @@ class ContainedLead(LeadProviders):
         self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
         self.surface_switches: frozenset[str] = frozenset()  # set by the broker's post-offer presentation callback
         self.skills_planned: dict[str, Any] = {}  # the Lead's skills as copied, set by the same callback (E161)
+        self.skills_at: projection.SkillsAt | None = None  # and where this start copied them
         policy = engine.execution_policy()[0]
         self.warning_h = login_warning_h(policy)
         super().__init__(policy, provider_env, base)
@@ -817,6 +842,7 @@ class ContainedLead(LeadProviders):
             reason=netns.PROVIDER_KEY_MISSING)
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
+        from aew import skills
         from aew.harness import containment, runlog, weaker_register
         from aew.harness.containment import client_cert, netns, relay
 
@@ -830,8 +856,10 @@ class ContainedLead(LeadProviders):
                  "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
         policy, policy_sha256 = engine.execution_policy()
         project = str(engine.repo_root)
-        at = lead_skills_at(engine)
+        at = self.skills_at or lead_skills_at(engine)
         planned = self.skills_planned
+        if planned.get("exposed") and not skills.verify(planned, Path(at.folder)):
+            planned = undelivered(planned)  # checked again just before it is bound: what is bound is what was copied
         layout, label = establish_layout(engine, policy, run_dir, terminal=self.terminal,
                                          bridge_dir=bridge_dir, bridge=child_env.get(lead_broker.ENV_ENDPOINT),
                                          skills_dir=at.folder if planned.get("exposed") else None)

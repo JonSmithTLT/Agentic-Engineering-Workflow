@@ -127,18 +127,25 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/harness/lead`, named by `aew.harness.opencode.lead:LEAD_DIR`
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/lead-skills`, named by `aew.harness.opencode.lead:LEAD_SKILLS_DIR`
+  - `aew.harness.opencode.lead:deliver_lead_skills` (direct: Path.mkdir)
+- `local/harness/lead-skills/{}`
+  - `aew.harness.opencode.lead:deliver_lead_skills` (direct: shutil.rmtree)
+- `local/harness/lead-skills/{}-{}`
+  - `aew.harness.opencode.lead:deliver_lead_skills` (direct: Path.mkdir, shutil.rmtree)
+  - `aew.skills:deliver` (direct: Path.mkdir)
+- `local/harness/lead-skills/{}-{}/skills`
+  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
+  - `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
+- `local/harness/lead-skills/{}-{}/skills/{}`
+  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
+  - `aew.skills:deliver` (direct: Path.mkdir)
+- `local/harness/lead-skills/{}-{}/skills/{}/{}`
+  - `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/lead/server`
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.mkdir)
 - `local/harness/lead/server/lead-server.json`
   - `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
-- `local/harness/lead/skills`
-  - `aew.harness.opencode.lead:deliver_lead_skills` (direct: shutil.rmtree)
-  - `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
-- `local/harness/lead/skills/{}`
-  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
-  - `aew.skills:deliver` (direct: Path.mkdir)
-- `local/harness/lead/skills/{}/{}`
-  - `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/lead/xdg-data/opencode/opencode.db`
   - `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect)
   - `aew.harness.opencode.login:clear_aew_logins` (direct: sqlite3.connect)
@@ -163,10 +170,12 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness`
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+  - `aew.skills:deliver` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness/.aew-containment-probe-{}.spec.json`
   - `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/harness/runs/R-{}-{}/harness/skills`
   - `aew.harness.supervisor:Supervisor._deliver_skills` (direct: shutil.rmtree)
+  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
   - `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
 - `local/harness/runs/R-{}-{}/harness/skills/{}`
   - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
@@ -395,10 +404,12 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
   - `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness`
   - `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+  - `aew.skills:deliver` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness/.aew-containment-probe-{}.spec.json`
   - `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/harness/runs/{}/harness/skills`
   - `aew.harness.supervisor:Supervisor._deliver_skills` (direct: shutil.rmtree)
+  - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)
   - `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
 - `local/harness/runs/{}/harness/skills/{}`
   - `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree)

@@ -172,7 +172,10 @@ def before_tests_twin(root: Path) -> list[str]:
         record = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": CANCEL_COLLECTION, "at": 0,
                   "sessions": [{"session": name, "worker_count": len(rows), "workers": rows}
                                for name, rows in sessions.items()]}
-        inventory = next(twin.glob("*-watchdog/inventory.txt"))
+        # A passing lane publishes no priority (watchdog) bundle: any of its inventories will do, as for checker_twins.
+        inventory = next(iter(sorted(twin.rglob("inventory.txt"))), None)
+        if inventory is None:
+            return ["download has no inventory for the before-tests ablation"]
         path = inventory.parent / BEFORE_TESTS
         path.write_text(json.dumps(record) + "\n", encoding="utf-8")
         label(inventory, path, "lane_step")

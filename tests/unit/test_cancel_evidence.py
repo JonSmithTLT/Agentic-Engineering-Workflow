@@ -922,6 +922,11 @@ def test_the_hosted_twin_finds_a_lane_whose_tests_ran_claimed_as_cancelled_befor
         (raw / "report.json").write_text(json.dumps({"schema": "aew/lane-report/v1", "complete": True, "exitstatus": 0,
                                                       "results": {"tests/test_a.py::test_a": {"outcome": "passed"}}}))
     root = _published(tmp_path, raw, monkeypatch)
+    if ran == "lane report":
+        # As a hosted normal plant publishes: a passing lane has no priority (watchdog) bundle.
+        import shutil
+
+        shutil.rmtree(root / "evidence-before-attempt-1-watchdog")
     assert verify.before_tests_twin(root) == []
     for path in root.rglob("report.json"):
         path.unlink()

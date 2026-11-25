@@ -15,7 +15,6 @@ from vertical.ledger import COUNTERS, Ledger
 
 from aew.cli.main import build_parser
 from aew.errors import UsageError
-from aew.harness import contract as K
 
 T, REV = "T-0001", 17
 PRIOR = ["--prior-value", "ASSIGNED"]
@@ -35,6 +34,7 @@ PRIOR = ["--prior-value", "ASSIGNED"]
     (f"work redispatch {T} --reason <why>", ["work", "redispatch", T, "--reason", H.REASON]),
     ("integrate prepare", ["integrate", "prepare", T]),
     ("work redispatch --reason <reason>", ["work", "redispatch", T, "--reason", H.REASON]),
+    ("resume --json", ["resume", "--json"]),
     # The hint already names another subject and binds its current run.
     ("harness launch INV-0012 --prior-value none", ["harness", "launch", "INV-0012", "--prior-value", "none"]),
     ("harness wait R-INV-0012-1", ["harness", "wait", "R-INV-0012-1"]),
@@ -72,7 +72,7 @@ def test_a_plain_word_standing_for_a_value_goes_through_as_printed() -> None:
     """The limit ``hints``' docstring states: nothing marks `NAME` or `WHY` as a stand-in, so neither is refused. The
     live one is outside the modules that feed a Lead's hints; if it moves or a change refuses these, the docstring's
     limit needs reading again."""
-    assert H.fill_hint("opencode --provider-env NAME", T) == ["opencode", T, "--provider-env", "NAME"]
+    assert H.fill_hint("opencode --provider-env NAME", T) == ["opencode", "--provider-env", "NAME"]
     assert H.fill_hint(f"work redispatch {T} --reason WHY", T)[-1] == "WHY"
     live = [site for site in P.ast_sites() if site.text == "aew opencode --provider-env NAME"]
     assert live and not [site.key for site in live if site.path in HINT_SOURCES]
@@ -117,10 +117,6 @@ def test_no_printed_command_goes_through_with_a_placeholder_in_it() -> None:
 
 # The modules whose text reaches a projection's hints (``ResumeOps.next_actions``, through ``projection._guidance``).
 HINT_SOURCES = ("src/aew/engine/resume_ops.py", "src/aew/engine/harness_ops.py", "src/aew/engine/gate_ops.py")
-# Commands that take no subject, so the driver's added subject cannot parse. They never reach the Lead's projection: its
-# subject is a Ticket, `_guidance` keeps only that subject's lines, and these are the project's, or a parent's.
-NOT_A_TICKETS = {"aew lead takeover --reason <reason>", "aew history audit --record",
-                 "aew history audit --record --full", K.MANIFEST_ADOPT.strip("`")}
 
 
 def _parse_failure(argv: list[str], site: P.Site) -> str | None:
@@ -134,8 +130,7 @@ def _parse_failure(argv: list[str], site: P.Site) -> str | None:
 
 def test_a_filled_hint_parses_as_printed() -> None:
     """Every whole command a hint can print parses once filled. A mention (`aew evidence ingest`) names a command and is
-    not held to its arguments; when a hint prints one, the run's ``hint_usage_error`` shows it. Each exception is
-    live."""
+    not held to its arguments; when a hint prints one, the run's ``hint_usage_error`` shows it."""
     results, whole = {}, 0
     for site, argv in _census():
         if (argv is not None and site.path in HINT_SOURCES
@@ -143,9 +138,8 @@ def test_a_filled_hint_parses_as_printed() -> None:
             whole += 1
             results[site.key, site.shown] = _parse_failure(argv, site)
     assert len(results) == whole > 20  # two spans on one line are two results (#325's review, F4)
-    failing = {key: why for key, why in results.items() if why and key[1] not in NOT_A_TICKETS}
+    failing = {key: why for key, why in results.items() if why}
     assert not failing, failing
-    assert {shown for (_, shown), why in results.items() if why} == NOT_A_TICKETS
 
 
 def test_the_forced_kill_hint_parses_with_the_real_parser() -> None:

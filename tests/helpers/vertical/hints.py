@@ -15,10 +15,11 @@ Filling works on the text before it is split. An operation's concrete binding st
 
 from __future__ import annotations
 
+import argparse
 import shlex
 from typing import Any
 
-from printed_commands import ANGLE
+from printed_commands import ANGLE, parser
 
 from aew.errors import UsageError
 
@@ -36,9 +37,10 @@ class NotFollowable(ValueError):
 
 
 def fill_hint(text: str, subject: Any) -> list[str]:
-    """The argv the Lead runs for a hint's command ``text`` (the words after ``aew``), or ``NotFollowable``. The subject
-    goes after the command's words unless the hint already names what it acts on (``harness launch INV-0012``: a third
-    word before the first option)."""
+    """The argv the Lead runs for a hint's command ``text`` (the words after ``aew``), or ``NotFollowable``.
+
+    Supply the subject if the command requires a work ID and the hint does not name one.
+    """
     values = {**dict.fromkeys(SUBJECTS, subject), **dict.fromkeys(REASONS, REASON)}
     for name, value in values.items():
         text = text.replace(name, shlex.quote(str(value)))
@@ -52,9 +54,18 @@ def fill_hint(text: str, subject: Any) -> list[str]:
     unfilled = [a for a in argv if a == ELIDED or NOT_FILLED & set(a)]
     if unfilled:
         raise NotFollowable(f"alternatives or a value the Lead cannot fill: {', '.join(unfilled)}")
-    words = next((at for at, a in enumerate(argv) if a.startswith("-")), len(argv))
-    if str(subject) not in argv and words <= 2:
-        argv.insert(words, str(subject))
+    command = parser()
+    for position, word in enumerate(argv + [""]):
+        subcommands = next((action for action in command._actions
+                            if isinstance(action, argparse._SubParsersAction)), None)
+        if subcommands is not None and word in subcommands.choices:
+            command = subcommands.choices[word]
+            continue
+        if (not word or word.startswith("-")) and any(
+                action.dest == "work_id" and not action.option_strings and action.required
+                for action in command._actions):
+            argv.insert(position, str(subject))
+        break
     return argv
 
 

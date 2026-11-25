@@ -155,7 +155,7 @@ def test_a_runs_skill_copy_is_bound_read_only_after_its_harness_state_and_protec
     assert present.describe()["skills_binds"] == [real]
 
 
-def test_a_superseded_lead_cannot_write_the_skills_its_successor_loads(tmp_path, fake_bwrap):
+def test_each_lead_start_binds_only_its_own_skills_copy_read_only(tmp_path, fake_bwrap):
     """E161: each Lead start's copy is a folder of its own, made by the host beside the Lead's state and never in it,
     and reached by no writable bind of an earlier start's layout or its own: only its own start binds it, read-only."""
     from types import SimpleNamespace

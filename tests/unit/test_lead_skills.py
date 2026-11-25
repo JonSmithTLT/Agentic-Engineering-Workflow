@@ -180,7 +180,7 @@ def test_each_start_copies_into_its_own_folder_outside_the_leads_state_holding_e
     assert lead.lead_skills_at(engine).folder == os.sep.join([parent, lead.EACH_START, "skills"])  # --print-config's
 
 
-def test_a_symlinked_lead_skills_folder_is_never_followed_and_nothing_outside_is_removed(tmp_path):
+def test_a_linked_lead_skills_folder_is_left_alone_and_reported(tmp_path):
     outside = tmp_path / "outside"
     (outside / "sub").mkdir(parents=True)
     (outside / "file").write_text("kept")

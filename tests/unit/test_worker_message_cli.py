@@ -31,7 +31,7 @@ def test_message_lost_has_no_authority_argument():
     parser = build_parser(coordination_reads=True)
     assert parser.parse_args(["message", "lost"]).message_cmd == "lost"
     with pytest.raises(SystemExit) as refused:
-        parser.parse_args(["message", "lost", "--token", "not-used"])
+        parser.parse_args(["message", "lost", "--token"])
     assert refused.value.code == 2
 
 

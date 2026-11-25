@@ -17,6 +17,7 @@ import shared_setup
 from conftest import IS_WINDOWS
 
 HELPERS = Path(module_heap.__file__).resolve().parent
+GUARD = module_heap.GUARD
 # Well over the budget: a list of one-element lists keeps two to three blocks per element.
 BIG = module_heap.BUDGET_BLOCKS
 
@@ -64,7 +65,7 @@ def test_a_module_that_keeps_a_large_build_in_a_global_fails_its_collection_nami
     })
     proc = inner_pytest(root, "-p", "no:xdist")
     assert proc.returncode == pytest.ExitCode.INTERRUPTED, proc.stdout + proc.stderr  # a collection error
-    assert "module heap guard: tests/test_hog.py kept" in proc.stdout and "at import" in proc.stdout
+    assert f"{GUARD}: tests/test_hog.py kept" in proc.stdout and "at import" in proc.stdout
     assert "test_fine.py kept" not in proc.stdout
 
 
@@ -77,7 +78,7 @@ def test_a_module_whose_tests_fill_a_cache_of_its_own_fails_a_serial_session_nam
     proc = inner_pytest(root, "-p", "no:xdist")
     assert proc.returncode == pytest.ExitCode.TESTS_FAILED, proc.stdout + proc.stderr
     assert "2 passed" in proc.stdout
-    assert "module heap guard: tests/test_hog.py kept" in proc.stdout and "after its tests" in proc.stdout
+    assert f"{GUARD}: tests/test_hog.py kept" in proc.stdout and "after its tests" in proc.stdout
     assert "test_fine.py kept" not in proc.stdout
 
 
@@ -88,7 +89,21 @@ def test_the_same_build_shared_once_per_process_is_never_charged_to_the_modules_
     root = scratch(tmp_path, {f"tests/test_{n}.py": "import shared_big\n" + use for n in ("a", "b", "c")})
     proc = inner_pytest(root, "-p", "no:xdist")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "3 passed" in proc.stdout and "module heap guard" not in proc.stdout
+    assert "3 passed" in proc.stdout and GUARD not in proc.stdout
+
+
+def test_clearing_a_shared_build_withdraws_its_credit_so_a_rebuild_leaves_a_module_no_allowance(tmp_path):
+    """Review of #559, n1: had the first build's credit stayed, a module that cleared and rebuilt the shared value
+    would be credited twice for one value held, and could keep a build of that size of its own unseen."""
+    root = scratch(tmp_path, {
+        "tests/test_a.py": "import shared_big\n\ndef test_a():\n    assert shared_big.big()\n",
+        "tests/test_b.py": ("import shared_big\n\nMINE = []\n\ndef test_b():\n    shared_big.big.cache_clear()\n"
+                            "    assert shared_big.big()\n"
+                            f"    MINE.append([[i] for i in range({BIG})])\n"),
+    })
+    proc = inner_pytest(root, "-p", "no:xdist")
+    assert proc.returncode == pytest.ExitCode.TESTS_FAILED, proc.stdout + proc.stderr
+    assert f"{GUARD}: tests/test_b.py kept" in proc.stdout and f"{GUARD}: tests/test_a.py" not in proc.stdout
 
 
 def test_a_session_fixture_is_shared_setup_and_a_module_fixture_is_torn_down_before_its_module_is_measured(tmp_path):
@@ -103,7 +118,7 @@ def test_a_session_fixture_is_shared_setup_and_a_module_fixture_is_torn_down_bef
     })
     proc = inner_pytest(root, "-p", "no:xdist")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "2 passed" in proc.stdout and "module heap guard" not in proc.stdout
+    assert "2 passed" in proc.stdout and GUARD not in proc.stdout
 
 
 @pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="pytest-xdist not installed (extra: parallel)")
@@ -115,8 +130,24 @@ def test_under_xdist_every_worker_refuses_a_module_global_build_and_nothing_else
     })
     proc = inner_pytest(root, "-n", "2")
     assert proc.returncode != 0, proc.stdout + proc.stderr
-    assert "module heap guard: tests/test_hog.py kept" in proc.stdout
-    assert "test_cache.py kept" not in proc.stdout
+    # One refusal from each worker: both collect the module (review of #559, n5).
+    refusals = [line for line in proc.stdout.splitlines() if line.startswith(f"{GUARD}: tests/test_hog.py kept")]
+    assert len(refusals) == 2 and all("at import" in line for line in refusals), proc.stdout
+    assert f"{GUARD}: tests/test_cache.py" not in proc.stdout
+
+
+def test_a_cleared_and_rebuilt_shared_value_is_credited_once_not_twice():
+    @shared_setup.once
+    def value() -> list[list[int]]:
+        return [[i] for i in range(100_000)]
+
+    before = shared_setup.credited()
+    kept = value()
+    first = shared_setup.credited() - before
+    value.cache_clear()  # type: ignore[attr-defined]
+    del kept
+    value()
+    assert first > 100_000 and shared_setup.credited() - before == pytest.approx(first, rel=0.1)
 
 
 def test_a_shared_build_is_recorded_once_and_a_nested_one_is_not_counted_twice():

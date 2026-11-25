@@ -78,6 +78,9 @@ def once(fn: Callable[P, R]) -> Callable[P, R]:
     def cache_clear() -> None:
         cached.cache_clear()
         built.clear()  # the next build is recorded again, as a build
+        # and the cleared builds' credit goes with them: what is no longer held is no longer shared, so a clear and a
+        # rebuild never leave a module an allowance the size of the first build (review of #559, n1)
+        _BUILT.pop(owner, None)
 
     shared.cache_clear = cache_clear  # type: ignore[attr-defined]
     shared.cache_info = cached.cache_info  # type: ignore[attr-defined]
@@ -90,5 +93,6 @@ def credited() -> int:
 
 
 def owners() -> dict[str, int]:
-    """What each shared owner kept, for the guard's report."""
+    """What each shared owner has kept so far in this process, by owner: the breakdown of :func:`credited`, which the
+    guard subtracts, for a test (or a reader of a guard failure) to see what was credited and to whom."""
     return dict(_BUILT)

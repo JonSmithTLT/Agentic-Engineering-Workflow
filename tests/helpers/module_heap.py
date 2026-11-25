@@ -19,13 +19,25 @@ session-scoped fixture's setup are shared once per process by definition (``shar
 fixture is torn down before its module is measured, so it is never charged either.
 
 **The measure** is ``sys.getallocatedblocks()``: cheap enough to read around every module (it walks the allocator's
-arenas, not the heap). A module over the budget at that reading is measured again after a full collection, so its
-uncollected garbage is never charged; only then does it fail.
+arenas, not the heap). It counts allocations, not bytes: each allocation through Python's object allocator is one
+block, whatever its size (one over 512 bytes, which pymalloc hands to the system allocator, is still one). The budget's
+"about 30 MB" is an average over the small objects a parse or a list of records is made of. A module over the budget at
+that reading is measured again after a full collection, so its uncollected garbage is never charged; only then does it
+fail.
 
-**Limits.** Garbage left by earlier modules and collected during that confirming collection lowers the module's figure,
-so a module can pass that a fully collected baseline would fail by that much. Memory a module's tests leave in a
-product cache is charged to the module that filled it. Memory outside Python's small-object allocator (large buffers,
-C extensions' own allocations) is not counted.
+**Limits.**
+
+- Garbage left by earlier modules and collected during that confirming collection lowers the module's figure, so a
+  module can pass that a fully collected baseline would fail by that much.
+- Memory a module's tests leave in a product cache is charged to the module that filled it.
+- The first module to import a product or third-party package is charged for that package, so a module's figure
+  depends on the collection order: ``test_opencode_units.py`` read 18,638 blocks in the whole suite's collection and
+  119,436 collected alone (review of #559, m1).
+- pytest's own objects for each test are charged to its module: about 50 blocks per collected item at import, and
+  about 80 to 120 per test after its tests (the reports pytest keeps). So a module of about 2,500 to 3,000 tests could
+  reach the budget after its tests from that alone; the largest today has 738.
+- Allocations a C extension makes with its own allocator are not counted, and under ``PYTHONMALLOC=malloc`` nothing
+  is: the reading stays flat and the guard is inert.
 """
 
 from __future__ import annotations
@@ -37,10 +49,10 @@ from typing import Any
 import pytest
 import shared_setup
 
-# 300,000 blocks, about 30 MB. A parse of src/aew keeps about 2.2 M blocks (1.0 M tracked objects), on Python 3.11
-# and 3.13 alike, so a module that keeps one, or any build of that order, is over. Once #553 and this change shared
-# what they share, no module kept a third of it for itself at import, and none of the fast lane's kept 30,000 tracked
-# objects after its tests (the measurement: register E363's note).
+# 300,000 blocks: allocations, about 30 MB over small objects. A parse of src/aew keeps about 2.2 M blocks (1.0 M
+# tracked objects), on Python 3.11 and 3.13 alike, so a module that keeps one, or any build of that order, is over.
+# Once #553 and this change shared what they share, no module kept a third of it for itself at import, and none of the
+# fast lane's kept 30,000 tracked objects after its tests (the measurement: register E363's note).
 BUDGET_BLOCKS = 300_000
 GUARD = "module heap guard"
 

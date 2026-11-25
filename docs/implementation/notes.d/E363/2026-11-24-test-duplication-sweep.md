@@ -6,7 +6,7 @@
   parse go through it; the parse's lazy parts (the sources, each module's index, each `Context.once` analysis) are
   recorded as shared when first built.
 - **The guard.** `tests/helpers/module_heap.py`, registered by `tests/conftest.py`. Budget: 300,000 allocated memory
-  blocks (`sys.getallocatedblocks`, about 30 MB) per test module; a parse of `src/aew` keeps about 2.2 M blocks (1.0 M
+  blocks (`sys.getallocatedblocks`: allocations, about 30 MB over small objects) per test module; a parse of `src/aew` keeps about 2.2 M blocks (1.0 M
   tracked objects) on 3.11 and 3.13 alike (2,179,471 and 2,188,154). It checks each module's import in every session
   and lane (a module over budget fails its collection, naming itself) and, in a serial session, what a module's tests
   left (the session fails at its end, naming the module). Session-scoped fixtures and `once` builds are credited as

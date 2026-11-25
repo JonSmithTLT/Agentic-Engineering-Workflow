@@ -47,7 +47,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from aew.engine import approval, faults, transitions
+from aew.engine import approval, faults, selection, transitions
 from aew.engine import coverage as CV
 from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
@@ -458,7 +458,12 @@ class Validation:
             run_id = f"IV-{lease['custodian'].split('-', 1)[1]}-{n}"
             check_set = self._check_set()
             definitions = self._resolve_definitions(check_set)
+            checks_policy, declaration_pin = CV.checks_at_pin(self.k)
+            selector = ((declaration_pin or {}).get("declaration") or {}).get("affected_tests", {}).get("selector")
+            changed_paths = copy.deepcopy(integ.get("changed_paths"))
             now = _now()
+            selector_deadline = now + timedelta(seconds=V.selector_allowance_s(selector))
+            validation_deadline = selector_deadline + timedelta(seconds=V.deadline_s(self._post(), checks_policy))
             executor = {"host_pid": os.getpid(), "start_time": procs.started_at(os.getpid()) or time.time(),
                         "host": socket.gethostname()}
             if (start := procs.start_id(os.getpid())) is not None:  # unknown: judged by its start time (legacy)
@@ -467,17 +472,16 @@ class Validation:
                    "identity": self._identity(unit, ob, check_set), "checks": check_set["checks"],
                    "executor": executor,
                    "started_at": _iso(now),
-                   "deadline_at": _iso(now + timedelta(seconds=V.deadline_s(self._post(), self.k.policy("checks")))),
+                   "deadline_at": _iso(validation_deadline),
                    "state": "running", "infra_attempt": attempt}
             if diagnostic:
                 run["diagnostic"] = True
-            checks_policy, declaration_pin = CV.checks_at_pin(self.k)
             coverage_inputs = {"subject": {"work_id": work_id, "scope": "integration", "run": run_id,
                                             "candidate": integ["candidate"], "base": integ["base"],
                                             "snapshot": integ["candidate_snapshot"]},
                                "configured": CV.inventory(checks_policy, self.k.policy("guardrails")),
                                "declaration_pin": declaration_pin,
-                               "changed_files": CV.files(integ.get("changed_paths"),
+                               "changed_files": CV.files(changed_paths,
                                                          source=f"candidate_diff_from:{integ['base']}",
                                                          reason="candidate_diff_not_recorded")}
             inputs_path = f"work/{work_id}/{RUNS_DIR}/{run_id}-coverage-inputs.yaml"
@@ -497,7 +501,8 @@ class Validation:
                            f"{len(check_set['checks'])} checks, deadline {run['deadline_at']})")
         # The resolved definitions travel with the executor, never through state: the checks run exactly what this
         # transaction pinned, whatever policy says while they run (PR #91 review, finding 1).
-        return {**run, "_definitions": definitions}
+        return {**run, "_definitions": definitions, "_selector": selector, "_changed_paths": changed_paths,
+                "_selector_deadline_at": _iso(selector_deadline)}
 
     def _resolve_definitions(self, check_set: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Each pinned check's definition as resolved now: a configured check's command, cwd and timeout, or the
@@ -555,9 +560,19 @@ class Validation:
         timer.start()
         results = []
         before = self.invocations.snapshot_of(workspace, integ["workspace_id"])
+        selected, selection_ref = None, None
         try:
             if weaker is not None:
                 weaker.started()
+            if run.get("_selector") is not None:
+                seen = selection.reuse_or_run(
+                    self.k, self.invocations.snapshot_of, directory=f"work/{work_id}/{RUNS_DIR}",
+                    selector=run["_selector"], candidate=run["identity"]["candidate"],
+                    snapshot=run["identity"]["snapshot"], paths=run["_changed_paths"],
+                    budget_s=max(0.0, (_parse(run["_selector_deadline_at"]) - _now()).total_seconds()))
+                if seen is not None:
+                    record, selection_ref = seen
+                    selected = record.get("items")
             for entry in run["checks"]:
                 if _past(run["deadline_at"]):
                     return {"infra": "VALIDATION_DEADLINE_EXPIRED", "detail": "the deadline passed between checks"}
@@ -566,7 +581,8 @@ class Validation:
                     return {"infra": "CHECK_NOT_CONFIGURED",
                             "detail": f"check {check_id} is not configured in policy/checks.yaml"}
                 faults.hit("validate.before_check")
-                staged = self._one_check(run, check_id, entry, Path(workspace), integ, scope, env, layout, trees)
+                staged = self._one_check(run, check_id, entry, Path(workspace), integ, scope, env, layout, trees,
+                                         selected=selected, selection_ref=selection_ref)
                 if _past(run["deadline_at"]):
                     return {"infra": "VALIDATION_DEADLINE_EXPIRED", "detail": f"the deadline passed during {check_id}"}
                 if staged.get("infra"):
@@ -583,6 +599,8 @@ class Validation:
                     "results": [{"check_id": r["check_id"], "file": r["file"],
                                  "outcome": r["outcome"],
                                  "sha256": sha256_file(directory / r["file"])} for r in results]}
+        if selection_ref is not None:
+            finished["selection"] = selection_ref
         faults.hit("validate.before_finished")
         atomic_write(directory / "finished.json", json.dumps(finished, indent=2, sort_keys=True))
         faults.hit("validate.after_finished")
@@ -596,10 +614,12 @@ class Validation:
 
     def _one_check(self, run: dict[str, Any], check_id: str, entry: dict[str, Any], workspace: Path,
                    integ: dict[str, Any], scope: tuple[list[str], Any, list[dict[str, str]]], env: dict[str, str],
-                   layout: Any, trees: Any) -> dict[str, Any]:
+                   layout: Any, trees: Any, *, selected: list[str] | None,
+                   selection_ref: dict[str, str] | None) -> dict[str, Any]:
         directory = self._staging(run["id"])
         pinned = run["_definitions"][check_id]  # the definition transaction 1 resolved, never live policy
         cfg = pinned["cfg"]
+        takes_selection = selected is not None and C.takes_selection(cfg)
         if cfg.get("builtin"):  # the guardrails, over what the candidate changes against its base
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
                                   pinned["guardrails"], scope[0], scope[1])
@@ -609,7 +629,8 @@ class Validation:
                    "cwd": str(workspace.resolve())}
         else:
             try:
-                out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
+                out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees,
+                            selected=selected if takes_selection else None)
             except ContainmentUnavailable as exc:  # at the spawn: refused as itself, never "interrupted" (E114)
                 return {"infra": V.classify_containment_failure(exc),
                         "detail": f"check {check_id} was refused at its start: {exc.message}"}
@@ -625,6 +646,8 @@ class Validation:
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
                   "command": out["command"], "cwd": out.get("cwd"), "log": out["log"],
                   **({"network": out["network"]} if out.get("network") else {})}
+        if takes_selection and selection_ref is not None:
+            record["selection_sha256"] = selection_ref["sha256"]
         name = f"{check_id}.json"
         atomic_write(directory / name, json.dumps(record, indent=2, sort_keys=True))
         return {**record, "file": name}
@@ -649,7 +672,8 @@ class Validation:
             results.append(record)
         if [r["check_id"] for r in results] != [c["check_id"] for c in run["checks"]]:
             return None
-        return {"results": results, "mutated": finished["mutated"], "before": finished["before"]}
+        return {"results": results, "mutated": finished["mutated"], "before": finished["before"],
+                "selection": finished.get("selection")}
 
     def _recorded_label(self, run_id: str) -> dict[str, Any]:
         """The containment label the run staged when its sandbox was established (:data:`LABEL`), as its records keep
@@ -797,6 +821,7 @@ class Validation:
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],
                 "check": {"check_id": r["check_id"], "exit_code": r["exit_code"], "duration_s": r["duration_s"],
                           **({"outcome": r["outcome"]} if "outcome" in r else {}),
+                          **({"selection_sha256": r["selection_sha256"]} if "selection_sha256" in r else {}),
                           "mutated_inputs": staged["mutated"], "definition_sha256": r["definition_sha256"]},
                 "integration_validation": {"candidate": run["identity"]["candidate"],
                                            "check_set": run["identity"]["check_set"],
@@ -869,6 +894,8 @@ class Validation:
                           "coverage": coverage})
         ctx.session.write(path, text)
         ctx.refs.append(path)
+        if coverage.get("selection") is not None:
+            ctx.refs.append(coverage["selection"]["path"])
         run["record"] = {"path": path, "sha256": sha256_text(text)}
         run["coverage"] = CV.pin(path, run["record"]["sha256"], coverage)
 
@@ -900,9 +927,15 @@ class Validation:
                    "outcome": r.get("outcome"), "exit_code": r.get("exit_code"),
                    "command": r["command"], "cwd": r.get("cwd"), "evaluated_snapshot": staged["before"],
                    "result": "inconclusive" if staged["mutated"] else r["result"],
+                   **({"selection_sha256": r["selection_sha256"]} if "selection_sha256" in r else {}),
                    "reason": "WORKSPACE_MUTATED" if staged["mutated"] else r.get("reason"), "run": run["id"]}
                   for r in staged["results"]] if staged else []
+        ref = staged.get("selection") if staged else None
+        record = selection.read_pinned(self.k.aew_root, ref,
+                                       directory=f"work/{inputs['subject']['work_id']}/{RUNS_DIR}",
+                                       snapshot=run["identity"]["snapshot"]) if ref is not None else None
         return CV.build(**inputs, checks=checks, capabilities={run["id"]: capabilities},
+                        selection_record=record, selection_ref=ref if record is not None else None,
                         result=result or "not validated", complete=staged is not None)
 
     def _returned_coverage(self, work_id: str, run_id: str) -> dict[str, Any]:

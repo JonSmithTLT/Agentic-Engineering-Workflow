@@ -19,6 +19,7 @@ from aewflow import (
 from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
+from aew import roles
 from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.policy import execution as X
@@ -274,7 +275,7 @@ def test_a_run_gets_a_copy_of_the_skills_its_card_is_offered_and_its_record_says
     record = lab.record(run)
     planned = record["contract"]["extra"]["skills"]
     assert planned["requested"] == []
-    assert planned["offered"] == ["c-development", "debugging-root-cause-analysis", "python-development"]
+    assert planned["offered"] == sorted(roles.builtin_cards()["engineer"].meta["optional_skills"])  # the card's list
     assert planned["exposed"] == planned["offered"] and planned["unavailable"] == [] and planned["reasons"] == {}
     assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
     contained = record["containment"]["filesystem"] == "os_readonly_roots"

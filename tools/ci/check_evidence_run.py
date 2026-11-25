@@ -17,7 +17,12 @@ from cancel_evidence import attach_reasons, valid
 from evidence_problems import FAILURE_PHASES, evidence_problems, report_json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from evidence_files import HOST_STOP_FILE  # noqa: E402 - on the helpers path evidence_problems adds
+from evidence_files import (  # noqa: E402 - on the helpers path evidence_problems adds
+    BEFORE_TESTS,
+    HOST_STOP_FILE,
+    LANE_REPORT_SCHEMA,
+    WORKER_COUNT,
+)
 from flake_register import _api, _gh_read, _pages, _started_pytest, check_annotations  # noqa: E402
 
 
@@ -34,6 +39,12 @@ def hosted_step_timeout(repo: str, job: dict) -> bool:
                 and row.get("annotation_level") == "failure"):
             return True
     return False
+
+
+# The markers of a death during the lane; the controller's abnormal exit is the one a cancellation itself leaves.
+ABNORMAL_EXIT = "abnormal-exit"
+DEATH_MARKER = re.compile(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+|worker-gw[0-9]+-down|session-deadline"
+                          rf"|cutoff|{ABNORMAL_EXIT}|(?:running|hang)-.+")
 
 
 def bundle_prefix(name):
@@ -84,7 +95,7 @@ def finished_tests(bundles, complete_report, *, report_exits=(), steps_passed=Fa
                 return True
         # An interrupted controller may not have written its report. Every configured
         # worker must have finished its pytest session with its own matching PID.
-        count = int(receipt("worker-count.txt"))
+        count = int(receipt(f"{WORKER_COUNT}.txt"))
         pids = {path.name for _, directory in sessions for path in directory.glob("worker-gw*-pid.txt")}
         if not pids or count != len(pids):
             return False
@@ -190,7 +201,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                         continue
                     if not isinstance(doc, dict) or "exitstatus" not in doc:
                         continue
-                    if (doc.get("schema") == "aew/lane-report/v1" and doc.get("complete") is True
+                    if (doc.get("schema") == LANE_REPORT_SCHEMA and doc.get("complete") is True
                             and doc["exitstatus"] in (0, 1)):
                         completed.add(name)
                     results = doc.get("results")
@@ -232,9 +243,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             markers = {path.stem for path in merged.rglob("*.txt")}
             kind = "deadline" if "session-deadline" in markers else "time-limit" if "cutoff" in markers else None
             if conclusion == "cancelled":
-                death_marker = any(re.fullmatch(r"(?:interrupted|cancelled|worker-killed|oom)-[0-9]+"
-                                                r"|worker-gw[0-9]+-down|session-deadline|cutoff|abnormal-exit"
-                                                r"|(?:running|hang)-.+", name) for name in markers)
+                death_marker = any(DEATH_MARKER.fullmatch(name) for name in markers)
                 all_steps_passed = (len(lane_steps) == len(prefixes)
                                     and all(s["conclusion"] == "success" for s in lane_steps))
 
@@ -242,7 +251,14 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
                     finished_tests([path for path in found if bundle_prefix(path.name) == name], name in completed,
                                    report_exits=reports_by_prefix[name], steps_passed=all_steps_passed)
                     for name in prefixes)
-                kind = "cancel-after-tests" if after_tests else "cancel"
+                # With no death marker, a lane step's record that no session had started a test types the
+                # cancellation; evidence_problems checks the bundle bears it out (register E3). A controller ended
+                # by the cancellation before it finished (the sentinel's abnormal-exit) is that death itself, not a
+                # test interrupted.
+                in_test = any(DEATH_MARKER.fullmatch(name) for name in markers - {ABNORMAL_EXIT})
+                before_tests = not in_test and Path(BEFORE_TESTS).stem in markers
+                kind = ("cancel-after-tests" if after_tests else "cancel-before-tests" if before_tests
+                        else "cancel")
             elif any(re.fullmatch(r"oom-\d+", name) for name in markers):
                 kind = "oom"
             elif kind is None and any(re.fullmatch(r"worker-(?:killed-\d+|gw\d+-down)", name) for name in markers):
@@ -267,6 +283,7 @@ def check_jobs(root: Path, jobs: list[dict], *, include_success: bool = False, t
             nodes = sorted({node for _, node, _ in recorded | observed})
             row["kind"] = ("test_failure" if nodes and (not kind or conclusion == "cancelled")
                            else f"{cancelled_as} after tests" if kind == "cancel-after-tests"
+                           else f"{cancelled_as} before tests" if kind == "cancel-before-tests"
                            else cancelled_as if conclusion == "cancelled" else kind or "unclassified")
             row["failed_nodes"] = nodes
             if nodes or not kind and conclusion == "failure":

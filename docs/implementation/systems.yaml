@@ -179,9 +179,10 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'On Linux it is already built, wired, on and used: every worker run, check and Lead session runs contained
-    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list), E100 (an explicit required
-    refuses the launch on every platform) and E92 (plain http:// forwarded through the egress under R-6) are merged, with
-    E247 (a small POSIX check of ProcessTree.active()) riding along. Narrowed to that Linux core by the operator on 2026-11-25:
+    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged, with E247 (a small
+    POSIX check of ProcessTree.active()) riding along; E100 (an explicit required refuses the launch on every platform)
+    and E92 (plain http:// forwarded through the egress under R-6) are merged and closed. Narrowed to that Linux core
+    by the operator on 2026-11-25:
     the CS-4 addenda 12 to 14, a headless contained Lead (E113) and the Windows work (F48''s backend, E222''s network
     containment, E250''s std handles) are SYS-49''s, outside this finish line, so Windows keeps its label and doctor''s
     UNQUALIFIED line.'
@@ -191,12 +192,6 @@ systems:
       and the login seed checks the credential table''s columns first (E118''s note of 2026-11-24)'
     row: E118
     estimate: 1 small PR (estimate; BOARD v2 §0), after the designer's choice
-  - slice: 'E100: change mode()''s win32 branch so an explicit required refuses the launch on every platform'
-    row: E100
-    estimate: 1 small PR (estimate; BOARD v2 §2)
-  - slice: 'E92: forward plain http:// requests through the contained egress under the same R-6 host check'
-    row: E92
-    estimate: 1 PR (estimate; BOARD v2 §2)
   - slice: ProcessTree.active() with a group holding only a zombie, for checking
     row: E247
     estimate: 1 small PR (estimate)
@@ -206,15 +201,15 @@ systems:
     waiting on the designer''s choice of mechanism. Earlier: only its slot items finish, the rest frozen by the reset
     of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: designer (E118's mechanism), then Lead (E118, E100, E92, E247)
-  reason: 'The Linux core is on, used and gating every launch. What is left is small: E100 and E92, unfrozen on 2026-11-25,
-    and E118''s server move once the designer chooses its mechanism (its other two parts are built). E100 is built
-    by its pull request (an explicit required refuses the launch on every platform, containment/__init__.py:84-86), and
-    its slice comes off remaining when its row closes; the code confirms that the egress refuses plain http:// naming the
-    https form (E92''s work). E247 is small and POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change,
-    so they are design work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm,
-    not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained
-    Lead; it may belong with SYS-05.'
+  who: designer (E118's mechanism), then Lead (E118, E247)
+  reason: 'The Linux core is on, used and gating every launch. What is left is small: E118''s server move once the
+    designer chooses its mechanism (its other two parts are built). E100 and E92, unfrozen on 2026-11-25, are merged and
+    their rows closed: an explicit required refuses the launch on every platform (containment/__init__.py:84-86), and
+    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is small and
+    POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
+    work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings:
+    E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained Lead; it may
+    belong with SYS-05.'
   evidence:
   - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
   - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
@@ -223,8 +218,8 @@ systems:
   - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
   - src/aew/harness/containment/__init__.py:108 the label records weaker_because
-  - src/aew/harness/containment/egress.py:1,416-421 the egress proxy serves CONNECT only and refuses plain http:// naming
-    the https form (E92's work)
+  - 'src/aew/harness/containment/egress.py:1-2,27-50 the egress proxy tunnels CONNECT and forwards plain http://; :617-657
+    the plain request checked before any DNS, :664 the host check both share (E92''s work)'
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before
     the harness starts
   - src/aew/engine/validation_ops.py:196,201,266,281,487 validation runs read containment.mode under the execution policy
@@ -2400,16 +2395,18 @@ systems:
   recommendation: finish
   who: Lead
   reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
-    E136's first batch adds two optional ones, so eight ship (as of 9930f167). The system stays staged for the rest of
-    the rollout; E136's other nine optional skills follow, and E135's evaluation runner is still owed; its qualification
+    E136's first batch adds two optional ones, E161 the Lead's three and E136's second batch two more, so thirteen ship
+    (as of a66de36f). The system stays staged for the rest of the rollout; E136's other five optional skills follow, and
+    E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
-    lists eight as of 9930f167, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
-    python-development, E142''s c-review and security-review, and E136''s codebase-investigation and debugging-root-cause-analysis),
+    lists thirteen as of a66de36f, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
+    python-development, E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis,
+    test-design and mechanical-enumeration, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills

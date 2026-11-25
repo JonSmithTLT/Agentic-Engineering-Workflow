@@ -31,7 +31,7 @@ on:
       probe_scenario:
         description: Controlled cancellation scenario
         type: choice
-        options: [manual, supersede]
+        options: [manual, supersede, start]
         default: manual
       probe_role:
         description: Isolated child run role
@@ -79,12 +79,12 @@ jobs:
       # A controlled target's plants start their deadline clocks together: one platform's runner queueing must not
       # spend its twin's window before both can be live (prove_cancel_evidence.TWIN_BARRIER_SECONDS).
       - name: Wait for the twin plant's runner
-        if: matrix.kind == 'cancel' && inputs.probe_origin
+        if: startsWith(matrix.kind, 'cancel') && inputs.probe_origin
         timeout-minutes: 11
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TWIN: plant (${{ matrix.os == 'ubuntu-24.04' && 'windows-latest' || 'ubuntu-24.04' }}, cancel, none)
+          TWIN: plant (${{ matrix.os == 'ubuntu-24.04' && 'windows-latest' || 'ubuntu-24.04' }}, ${{ matrix.kind }}, none)
         run: |
           bound=600
           until=$(( $(date +%s) + bound ))
@@ -121,13 +121,13 @@ jobs:
           echo 0 | sudo -n tee "$group/memory.swap.max"
           echo "AEW_PROOF_OOM_GROUP=$group" >> "$GITHUB_ENV"
       - name: Install tools before starting the GitHub step timer
-        if: matrix.kind == 'time-limit-github' || matrix.kind == 'cancel'
+        if: matrix.kind == 'time-limit-github' || matrix.kind == 'cancel' || matrix.kind == 'cancel-start'
         shell: bash
         run: python tools/ci/install_evidence.py
       - name: Real planted lane
         id: lane
         if: matrix.kind != 'time-limit-github'
-        continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' }}
+        continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' && matrix.kind != 'cancel-start' }}
         timeout-minutes: 17
         uses: ./.github/actions/lane
         env: &plant-env
@@ -140,11 +140,11 @@ jobs:
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
-            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (matrix.os == 'ubuntu-24.04' && matrix.kind == 'cancel' && '-n 4 --dist worksteal --max-worker-restart 0' || contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
-            tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || 'deaths.py' }} --lane integration
+            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (matrix.kind == 'cancel-start' && '-n 2 --dist worksteal --max-worker-restart 0' || matrix.os == 'ubuntu-24.04' && matrix.kind == 'cancel' && '-n 4 --dist worksteal --max-worker-restart 0' || contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
+            tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || matrix.kind == 'cancel-start' && 'startup.py' || 'deaths.py' }} --lane integration
             ${{ matrix.ablate == 'verbosity' && '-o verbosity_assertions=0' || '' }}
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
-            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline' || matrix.kind == 'failure-in-death') && 30 || (matrix.kind == 'cancel' && 360 || 180) }}
+            --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline' || matrix.kind == 'failure-in-death') && 30 || (startsWith(matrix.kind, 'cancel') && 360 || 180) }}
             --session-deadline-margin 3 "--lane-report=${{ runner.temp }}/lane-reports/plant.json"
       - name: GitHub timed execution
         id: timed
@@ -172,7 +172,7 @@ jobs:
         run: sudo -n rmdir "$AEW_PROOF_OOM_GROUP"
       - name: Confirm planted death
         timeout-minutes: 1
-        if: matrix.kind != 'normal' && matrix.kind != 'cancel'
+        if: matrix.kind != 'normal' && matrix.kind != 'cancel' && matrix.kind != 'cancel-start'
         shell: bash
         env:
           LANE_OUTCOME: ${{ matrix.kind == 'time-limit-github' && steps.timed.outcome || steps.lane.outcome }}
@@ -191,7 +191,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
-        kind: [cancel]
+        # The start-up control's target cancels a lane whose workers hold their collection (register E3; #579, M1).
+        kind: ${{ inputs.probe_scenario == 'start' && fromJSON('["cancel-start"]') || fromJSON('["cancel"]') }}
         ablate: [none]
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 30
@@ -258,7 +259,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [manual, supersede]
+        scenario: [manual, supersede, start]
     runs-on: ubuntu-24.04
     # The control allows 20 minutes for runner allocation before its existing execution budget.
     timeout-minutes: 46

@@ -88,6 +88,69 @@ OUTSIDE_CALL = ("setup", "teardown", "between tests")
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
+# An xdist worker's lifecycle receipt (session_deadline.Worker): its phases, in order. A worker runs no test before it
+# records the last one, which it writes on entering its first test's protocol.
+WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
+BEFORE_EXECUTION = WORKER_PHASES[:-1]
+# A lane cancelled while its sessions were still starting has no test running and no worker in a test, so it has no
+# worker observation or running name to give. worker_evidence.before_tests records that, from positive observations
+# only, and evidence_problems accepts it as the cancellation's complete death evidence once the bundle bears it out
+# (register E3: cancelled CI runs 45590135545, 45591135734, 45571060413 and 45570390239).
+BEFORE_TESTS = "runner-resources-before-tests.txt"
+BEFORE_TESTS_OUTCOME = "cancelled before any test started"
+# The lane report's schema (lanes.py writes it) and the xdist controller's roster marker (session_deadline writes it),
+# owned here so that the evidence check, which runs without pytest, reads them from their one definition.
+LANE_REPORT_SCHEMA = "aew/lane-report/v1"
+WORKER_COUNT = "worker-count"
+
+
+def receipt_phases(text: str) -> list[str] | None:
+    """The phases an xdist worker's lifecycle receipt records, in order, or None when it records none or is not a
+    prefix of WORKER_PHASES."""
+    try:
+        phases = [line.split()[1] for line in text.splitlines()]
+    except IndexError:
+        return None
+    return phases if phases and tuple(phases) == WORKER_PHASES[:len(phases)] else None
+
+
+def report_shows_no_test(report: dict) -> bool:
+    """Whether a lane report shows that no test ran: it is complete, and its only results are collection errors, which
+    pytest reports before any test. Its ``collected`` list proves nothing: under xdist the controller fills it only
+    as each worker goes down (review of #579, m4)."""
+    results = report.get("results")
+    return report.get("complete") is True and isinstance(results, dict) and all(
+        isinstance(result, dict) and result.get("failures") and all(
+            isinstance(failure, dict) and failure.get("phase") == "collect" for failure in result["failures"])
+        for result in results.values())
+
+
+def finished_without_tests(files: dict[str, str], reports: list[dict]) -> str | None:
+    """Why a finished session's own files fall short of showing that it began no test, or None when they show it.
+
+    An interrupt during start-up lets pytest end gracefully: the session writes ``session-finished`` and a complete
+    lane report with no results (review of #579, M1). Every registered worker (``worker-gwN-pid`` and ``-start``) must
+    have its lifecycle receipt, never past collection, and every lane report must be complete with no test's result.
+    ``files`` maps the
+    session directory's file names to their text."""
+    for name in sorted(files):
+        if not re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
+            continue
+        worker = name.removesuffix("-pid.txt")
+        try:
+            receipt = f"worker-{int(files[name])}-{int(files[worker + '-start.txt'])}-lifecycle.txt"
+        except (KeyError, ValueError):
+            return f"{worker} has no recorded identity"
+        phases = receipt_phases(files.get(receipt, ""))
+        if phases is None or WORKER_PHASES[-1] in phases:
+            return f"{worker} has no lifecycle receipt that stops before its first test"
+    if not reports:
+        return "no lane report shows what ran"
+    if not all(report_shows_no_test(report) for report in reports):
+        return "its lane report does not show that no test ran"
+    return None
+
+
 STUCK_MARKER = "stuck-after-finish.txt"  # session_deadline's STUCK marker, as written (its test pins the two)
 
 

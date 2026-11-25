@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/selection/v1",
+  "title": "Project selector observation",
+  "description": "Affected-test selection observed on a copy of a candidate with committed selector and changed-path inputs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot", "selector_sha256", "changed_paths_sha256", "result"],
+  "properties": {
+    "schema": {"const": "aew/selection/v1"},
+    "snapshot": {"type": "string", "minLength": 1},
+    "selector_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "changed_paths_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "result": {"enum": ["known", "unknown"]},
+    "items": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "reason": {"enum": ["selection_not_run", "changed_files_not_known", "selector_changed_by_subject",
+                       "selector_could_not_start", "selector_failed", "selector_timed_out",
+                       "selector_mutated_inputs", "selector_no_output"]},
+    "exit_code": {"type": "integer"}
+  },
+  "if": {"properties": {"result": {"const": "known"}}},
+  "then": {"required": ["items"], "not": {"anyOf": [{"required": ["reason"]}, {"required": ["exit_code"]}]}},
+  "else": {"required": ["reason"], "not": {"required": ["items"]}}
+}

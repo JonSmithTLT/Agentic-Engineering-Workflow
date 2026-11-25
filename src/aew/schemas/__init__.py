@@ -19,6 +19,7 @@ SCHEMAS = {
     "plan": "plan.schema.json",
     "decision": "decision.schema.json",
     "evidence": "evidence.schema.json",
+    "selection": "selection.schema.json",
     "guardrails": "guardrails.schema.json",
     "checks": "checks.schema.json",
     "gates": "gates.schema.json",

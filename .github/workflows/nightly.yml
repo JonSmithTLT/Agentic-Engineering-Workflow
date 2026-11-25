@@ -284,13 +284,21 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
-    # The original test budget plus the declared collection and publication bounds.
-    timeout-minutes: 82
+    # The budgets fit the recorded time of the tests (register E75; tests/unit/test_repetition_fit.py, which states the
+    # rule, its 70 s cold start and its 1.25x margin). A serial pass takes --test-timeout 150, the least above the
+    # helpers' longest bound (bounds.py's wait.run_end, 120 s) with a deadline margin to spare, and --session-deadline
+    # 510: the cold start, the lane's 252 s of recorded Windows tests and that timeout (472 s), so a hang anywhere in a
+    # pass fails by name, plus the 22.5 s the record underestimates its newest slow test (26.3 s measured, 3.8 s
+    # estimated, run 45698876718), rounded up to a 30 s margin. The fixed 270 s within 240 s per test, with a 46 to 70 s
+    # cold collection, ended repetition 1 on Windows on 11-24 and 11-25 with no test stalled. Ten such passes then set
+    # the job: the bounds nesting needs a 98-minute timeout, so the job deadline is 4620 s (it needs 4059 s at the
+    # margin's pace).
+    timeout-minutes: 99
     steps:
-      # The original test deadline is preserved. The bounds checker reserves collection and publication.
+      # The job's test budget, the bounds checker reserving collection and publication on top.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 4620 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -298,7 +306,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: serial lane x10
-        timeout-minutes: 71
+        timeout-minutes: 88
         uses: ./.github/actions/lane
         id: lane_3
         with:
@@ -309,8 +317,8 @@ jobs:
           command: |
             for i in $(seq 1 10); do
               echo "::group::serial lane repetition $i"
-              python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
-                --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" "--lane-report=${{ runner.temp }}/hangs/repetition-$i.json" || exit 1
+              python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 150 \
+                --session-deadline 510 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" "--lane-report=${{ runner.temp }}/hangs/repetition-$i.json" || exit 1
               echo "::endgroup::"
             done
       - name: Recover evidence if the lane action was interrupted
@@ -323,7 +331,7 @@ jobs:
           artifact: evidence-nightly-race-hangs-${{ runner.os }}-step-3-attempt-${{ github.run_attempt }}
           outcome: ${{ steps.lane_3.outcome }}
       - name: racing writers with 4x the transactions
-        timeout-minutes: 71
+        timeout-minutes: 88
         uses: ./.github/actions/lane
         id: lane_4
         env:

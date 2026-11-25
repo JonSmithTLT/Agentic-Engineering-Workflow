@@ -206,6 +206,10 @@ class Lane:
     repeats: int = 1
     uploads: list[dict[str, Any]] = field(default_factory=list)
     job_deadline_s: float | None = None  # the job's AEW_JOB_DEADLINE, as seconds after its first step
+    keyword: str | None = None  # its -k expression
+    shard: str | None = None  # its --shard K/N
+    paths: tuple[str, ...] = ()  # the test paths or node ids it names (its words under tests/)
+    env: dict[str, str] = field(default_factory=dict)  # the job's and the step's env, the step's winning
 
     @property
     def label(self) -> str:
@@ -262,6 +266,7 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
             uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
             set_at = next((m for m in (JOB_DEADLINE_RE.search(str(s.get("run") or "")) for s in steps) if m), None)
             for step in steps:
+                env = {str(k): str(v) for k, v in {**(job.get("env") or {}), **(step.get("env") or {})}.items()}
                 for command, repeats in _commands(command_text(step)):
                     text = re.sub(r"\$\{\{[^}]*\}\}", "X", command)  # expressions are one word to the parser
                     try:
@@ -278,7 +283,9 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
                         max_worker_restart=_option(argv, "--max-worker-restart"),
                         hang_dir=_option(argv, "--hang-dir"), lane_report=_option(argv, "--lane-report"),
                         repeats=repeats, uploads=uploads,
-                        job_deadline_s=float(set_at.group(1)) if set_at else None))
+                        job_deadline_s=float(set_at.group(1)) if set_at else None,
+                        keyword=_option(argv, "-k"), shard=_option(argv, "--shard"),
+                        paths=tuple(a for a in argv if a.startswith("tests/")), env=env))
     return lanes
 
 

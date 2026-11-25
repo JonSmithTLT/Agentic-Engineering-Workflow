@@ -1308,7 +1308,7 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: wall clock
   cause: >-
     The doctor model-list read's start deadline counts from before the containment, as a launch's does. On a slow
@@ -1318,10 +1318,20 @@ entries:
     exposure, so a sighting of it belongs here too.
   owner: CI timing fixes
   test: tests/integration/test_doctor_model_list.py::test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the_catalog_wait
-  planned_fix: >-
-    A start that fails once the deadline has passed is the start deadline row, wherever in the read it ran out; a zero
-    deadline proves it deterministically. Closure awaits the fix PR number.
+  closure:
+    pr: 505
+    cause: >-
+      A launch failure caught once the start deadline has passed is the start deadline row, wherever in the read the
+      time ran out, with the real cause kept in the row.
+    test: tests/integration/test_doctor_model_list.py::test_a_start_deadline_that_ends_before_the_server_starts_is_the_deadline_row_and_is_waited_for_once
+    proof: fault injection
   evidence:
+  - run: 43603081178
+    job: 132471880645
+    at: '2026-11-14T14:37:21Z'
+    note: >-
+      full suite 4/8 (windows-latest, py3.11), the nightly on main: the sibling test read "the OpenCode server printed
+      no address within 4s" as a harness that did not start.
   - run: 43746378961
     job: 132912728970
     at: '2026-11-15T19:05:04Z'

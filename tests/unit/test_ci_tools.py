@@ -2778,7 +2778,9 @@ PRE_G3A_TIMEOUT_MIN = {
     "ci.yml": {"core": 20, "lanes": 30},
     "vertical.yml": {"vertical": 45},
     "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
-    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60},
+    # race-repeat: 60 until its serial passes outgrew it; its budget now fits their recorded time (register E75,
+    # tests/unit/test_repetition_fit.py).
+    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 77, "crash-extended": 60},
     "flake-dispatch.yml": {"regression": 30},
 }
 

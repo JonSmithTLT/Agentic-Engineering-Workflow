@@ -5,18 +5,19 @@ file. The relay runs in the run's supervisor, outside the sandbox, and holds the
 holds only a sentinel in its place (:func:`sentinel`). For each request it:
 
 1. reads the request head (``origin-form`` only: a target that names a host is refused, so the sandbox never chooses
-   where the relay connects). Its path must lie inside the upstream's prefix, spelled unambiguously
-   (:data:`OUTSIDE_UPSTREAM_PATH`), and name an operation the relay's policy allows (:data:`OPERATION_NOT_PERMITTED`):
-   the provider's model calls and its model list (:data:`DEFAULT_OPERATIONS`), and any other the operator's adopted
-   execution policy names for the provider (``containment.network.relay_operations``, read on the host at the relay's
-   start: never the request's or the sandbox's to widen). Either refusal is answered 403 before anything is connected.
-   A model call's body is held to the provider's allowed operations as its path is (register E361): it is read whole
-   (within :data:`MAX_BODY`, and within :data:`MAX_HELD` for all the bodies the relay holds at once) before anything is
-   connected, must be one JSON object (:data:`BODY_UNREADABLE`), and may use a field of :func:`body_fields` only when
-   the operator's adopted policy opts that field in for the provider (``containment.network.relay_body_fields``, read
-   on the host at the relay's start, as ``relay_operations`` is): else it is refused 403
-   (:data:`BODY_FIELD_NOT_PERMITTED`), naming the field, and nothing is connected. Any other operation's body is
-   streamed as it comes;
+   where the relay connects), and a header value with a control character other than HTAB is refused 400
+   (``bad_header``; RFC 9110 §5.5, :mod:`aew.harness.containment.http1`). Its path must lie inside the upstream's
+   prefix, spelled unambiguously (:data:`OUTSIDE_UPSTREAM_PATH`), and name an operation the relay's policy allows
+   (:data:`OPERATION_NOT_PERMITTED`): the provider's model calls and its model list (:data:`DEFAULT_OPERATIONS`), and
+   any other the operator's adopted execution policy names for the provider (``containment.network.relay_operations``,
+   read on the host at the relay's start: never the request's or the sandbox's to widen). Either refusal is answered 403
+   before anything is connected. A model call's body is held to the provider's allowed operations as its path is
+   (register E361): it is read whole (within :data:`MAX_BODY`, and within :data:`MAX_HELD` for all the bodies the relay
+   holds at once) before anything is connected, must be one JSON object (:data:`BODY_UNREADABLE`), and may use a field
+   of :func:`body_fields` only when the operator's adopted policy opts that field in for the provider
+   (``containment.network.relay_body_fields``, read on the host at the relay's start, as ``relay_operations`` is): else
+   it is refused 403 (:data:`BODY_FIELD_NOT_PERMITTED`), naming the field, and nothing is connected. Any other
+   operation's body is streamed as it comes;
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
    it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
@@ -99,6 +100,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
+from aew.harness.containment.http1 import TOKEN, BadField, fields
 from aew.http_close import REFUSAL_DRAIN_S, close_after_response
 
 if TYPE_CHECKING:
@@ -186,7 +188,6 @@ CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "api-key", "x-goog
 # Hop-by-hop (RFC 9110 §7.6.1), plus Expect, which the relay answers itself (a 100 Continue before the body).
 HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate",
                         "te", "trailer", "upgrade", "expect"})
-_TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Resolve-mode forwards the target raw. Accept only unreserved path characters and literal separators so
 # neither percent decoding nor upstream-specific path parameter handling can change its interpretation.
 _RESOLVED_PATH = re.compile(r"/[A-Za-z0-9._~/\-]*")
@@ -952,22 +953,16 @@ class ProviderRelay(Service):
             method, target, version = lines[0].decode("ascii").split(" ")
         except (UnicodeDecodeError, ValueError):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1") from None
-        if not _TOKEN.fullmatch(method) or version not in ("HTTP/1.1", "HTTP/1.0"):
+        if not TOKEN.fullmatch(method) or version not in ("HTTP/1.1", "HTTP/1.0"):
             raise _Refused(400, "bad_request", "the request line is not METHOD /path HTTP/1.1")
         if self._resolve is None and (not target.startswith("/") or any(c <= " " or c == "\x7f" for c in target)):
             raise _Refused(400, "not_origin_form", "the provider relay takes a path only (/v1/...): it always "
                            "connects to the run's fixed provider upstream, which a request cannot name")
         self._check_target(target)
-        headers = []
-        for raw in lines[1:]:
-            name, sep, value = raw.partition(b":")
-            try:
-                text = name.decode("ascii")
-            except UnicodeDecodeError:
-                text = ""
-            if not sep or not _TOKEN.fullmatch(text):
-                raise _Refused(400, "bad_header", "a request header is not Name: value")
-            headers.append((text, value.strip(b" \t").decode("latin-1")))
+        try:  # a value with a control character is refused here, before anything connects (RFC 9110 §5.5)
+            headers = fields(lines[1:])
+        except BadField as exc:
+            raise _Refused(400, "bad_header", str(exc)) from None
         if any(k.lower() == "upgrade" for k, _ in headers):
             raise _Refused(501, "upgrade", "the provider relay serves plain HTTP requests, not a protocol upgrade "
                            "(WebSocket); AEW sets the provider's transport to http")

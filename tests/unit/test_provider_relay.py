@@ -553,6 +553,41 @@ def test_a_request_that_names_its_own_destination_is_refused_and_nothing_is_conn
     assert seam.calls == [] and service.counts() == {reason.decode(): 1}
 
 
+@pytest.mark.parametrize("control", [b"\n", b"\r", b"\x00", b"\x1b", b"\x7f"], ids=["lf", "cr", "nul", "esc", "del"])
+def test_a_header_value_with_a_control_character_is_refused_before_any_upstream_connects(control):
+    """A header value may hold no control character but HTAB (RFC 9110 §5.5): one that does is refused 400
+    ``bad_header``, the refusal names the header, and nothing is connected."""
+    seam = Seam()
+    with relayed(seam) as (service, client, token):
+        client.sendall(b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1:4101\r\nX-Request-Id: a" + control + b"b\r\n"
+                       + f"Authorization: Bearer {token}\r\n\r\n".encode())
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: bad_header" in answer
+    assert b"X-Request-Id" in answer and b"RFC 9110" in answer
+    assert seam.calls == [] and service.counts() == {"bad_header": 1}
+
+
+def test_a_request_head_with_bare_lf_line_ends_is_refused_before_any_upstream_connects():
+    """A head is read as lines ended by CRLF (RFC 9112 §2.2): one whose lines end in a bare LF reads as one line, which
+    is refused, never taken as separate fields."""
+    seam = Seam()
+    with relayed(seam) as (service, client, token):
+        client.sendall(f"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1:4101\nX-Request-Id: 1\n"
+                       f"Authorization: Bearer {token}\r\n\r\n".encode())
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: bad_header" in answer
+    assert seam.calls == [] and service.counts() == {"bad_header": 1}
+
+
+def test_a_header_value_with_a_horizontal_tab_still_reaches_the_upstream():
+    """HTAB is the one control character a header value may hold (RFC 9110 §5.5): it goes upstream as it came."""
+    seam = Seam()
+    got, answer, service = exchange(seam, b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1:4101\r\n"
+                                    b"X-Request-Id: a\tb\r\n\r\n")
+    assert ("x-request-id", "a\tb") in headers(got.split(b"\r\n\r\n", 1)[0])
+    assert answer.startswith(b"HTTP/1.1 200 ") and service.counts() == {"allowed": 1}
+
+
 def test_a_protocol_upgrade_is_refused_with_what_to_do_instead():
     seam = Seam()
     with relayed(seam) as (_, client, _):

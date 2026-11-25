@@ -496,9 +496,12 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     src.add_argument("--file", action=fields.FileInput, help="message file, or - for stdin")
     q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
                    help="when the agent receives it: next-step (the default) or turn-end")
+    q.add_argument("--expect-rev", type=int, help="optional revision this send was written against")
+    q.add_argument("--idempotency-id", help="a stable retry identity when coordination messaging is on")
     add_token(q)
     q.set_defaults(handler=lambda a: _engine(a).harness_send(
-        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when))
+        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when,
+        expect_rev=a.expect_rev, idempotency_id=a.idempotency_id))
     q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
     q.add_argument("run")
     add_token(q)

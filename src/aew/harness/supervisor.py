@@ -370,6 +370,9 @@ class Supervisor:
                                              env=dict(self.agent_env), layout=self.layout, trees=self._checks,
                                              ending=self._ending, label=self.record["containment"])
             if op == "submit":
+                if self.messaging:
+                    return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"],
+                                              admitted=self.messages.submit_admissions())
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
             if op.startswith("message."):
                 self.require_message_authority()

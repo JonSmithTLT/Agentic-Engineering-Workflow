@@ -306,7 +306,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Own slices left:** 3 — MS5: live delivery and continuation (E175); MS5b: finality, both timings, recorded harness send and default-on (E175); MS7: separately approved real-provider qualification; not a default-on gate (E175) — **Next:** MS5: live delivery and continuation — E175 — 1 PR
 
-**Switch:** coordination.messaging — default: disabled — checked against src/aew/policy/execution.py:STRING_SWITCHES
+**Switch:** coordination.messaging — default: disabled (a new project: enabled) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
 **Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:harness send
 

@@ -238,6 +238,20 @@ class MessagingSnapshotMismatch(IllegalTransition):
     code = "MESSAGING_SNAPSHOT_MISMATCH"
 
 
+class PendingLeadMessage(IllegalTransition):
+    """The run submitted a report while a previously admitted Lead message remained unincorporated into
+    a subsequent worker result.
+
+    Admission is recording before the submission's thread sequence. Incorporation requires a delivered input on a
+    report by the same invocation. A forged unposted line, a superseded unposted message and a superseded post never
+    confirmed delivered do not count as admitted inputs for this guard.
+    """
+
+    code = "PENDING_LEAD_MESSAGE"
+    definition = ("The run submitted a report while a previously admitted Lead message remained unincorporated into "
+                  "a subsequent worker result.")
+
+
 class CoordinationLimit(IllegalTransition):
     """A coordination message beyond one of its bounds (F9-A plan D-7). ``details.bound`` names the bound."""
 

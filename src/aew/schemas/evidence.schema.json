@@ -30,6 +30,17 @@
       }
     },
     "created_at": {"type": "string"},
+    "coordination_through": {"type": "integer", "minimum": 0, "description": "Last message sequence at submission."},
+    "coordination_rev": {"type": "integer", "minimum": 0, "description": "Control revision at the same submission."},
+    "coordination_inputs": {
+      "type": "array",
+      "items": {"type": "object", "required": ["message", "sha256", "kind", "via"], "properties": {
+        "message": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "kind": {"type": "string"},
+        "via": {"enum": ["live", "continuation", "wait", "posted", "replied"]}
+      }}
+    },
     "plan_revision": {
       "type": ["object", "null"],
       "properties": {"revision": {"type": "integer"}, "sha256": {"type": "string"}}
@@ -195,6 +206,7 @@
       }
     }
   },
+  "dependentRequired": {"coordination_through": ["coordination_rev"], "coordination_rev": ["coordination_through"]},
   "allOf": [
     {
       "if": {"properties": {"producer": {"required": ["kind"], "properties": {"kind": {"const": "engine"}}}}},

@@ -237,6 +237,7 @@ sources:
     role: adr
     carried:
       "Amendment of 2026-11-15: stream loss and worker waits (D8)": [CMG-30]
+      "Amendment of 2026-11-25: report finality and turn-end delivery (MS5b)": [SVQ-01, MGT-04, MGT-05, MGR-01, MGR-06, MGR-07]
     no_requirements:
       "Context": framing (what F9-A1 asks for, why `harness send` is not it, the off state M4-H needs); the requirements are D1 to D13
       "Decision": a container heading; its decisions are the D1 to D13 sections

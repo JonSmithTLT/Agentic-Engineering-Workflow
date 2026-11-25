@@ -1473,6 +1473,7 @@ systems:
   switch:
     key: coordination.messaging
     default: disabled
+    new_project_default: enabled
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
     owner: operator (read from the adopted execution policy only, src/aew/policy/execution.py:172-174)
     turning_on_changes: 'Today: the typed message_send records without delivery, and `aew message thread|list|unseen`
@@ -1488,7 +1489,7 @@ systems:
     - cli:message list
     - cli:message unseen
     - cli:harness send
-    on_by_default: false
+    on_by_default: true
     used_in_default_flow: partly
   finish_line: 'After MS3''s record-only typed send, MS4 (worker reply/read/wait bridge ops and real launch snapshots)
     and MS6 (Lead attention), all done: delivery (MS5), finality and store-recorded harness send (MS5b), with messaging

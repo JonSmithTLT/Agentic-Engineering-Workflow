@@ -612,6 +612,7 @@ None.
 - `aew.errors`
 - `aew.harness.containment`
 - `aew.harness.contract`
+- `aew.harness.delivery`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
 - `aew.harness.relay_status`
@@ -754,6 +755,7 @@ None.
 - `aew.harness.wake_queue`
 - `aew.history.manifest`
 - `aew.history.store`
+- `aew.knowledge.evidence`
 - `aew.knowledge.manifest`
 - `aew.policy.execution`
 - `aew.schemas`
@@ -1986,6 +1988,7 @@ None.
 - `aew.coordination.layout`
 - `aew.errors`
 - `aew.harness.bridge`
+- `aew.harness.delivery`
 - `aew.harness.supervisor`
 - `aew.harness.wait_binding`
 

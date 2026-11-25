@@ -122,7 +122,8 @@ class HarnessAdapter(ABC):
         current turn): ``aew.harness.delivery.WHEN_DELIVERY`` maps the Lead's ``--when`` onto it (register E55)."""
         raise HarnessIncompatible(f"harness {self.name} does not support delivering messages to a running agent")
 
-    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool) -> str:
+    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                          delivery: str = "steer", wake: bool = False) -> str:
         """Offer coordination to this session, returning the outcome of the POST, never admission."""
         return "unsupported"
 

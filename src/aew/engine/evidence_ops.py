@@ -65,7 +65,6 @@ from aew.errors import (
     ValidationFailed,
     WorkspaceMutated,
 )
-from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
@@ -1243,11 +1242,14 @@ class EvidenceCommands:
                 meta.update(self._verification_binding(state, inv_id, inv, submitted))
             elif kind == E.PLAN_ASSESSMENT:  # E160 slice 2: only a plan assessor's (``check_submission``)
                 if E.plan_binding(unit.get("plan")) != inv.get("plan_revision"):
+                    # The Lead's next step is its typed dispatch (#586 review, m1): its arguments are in the details.
+                    command, arguments = E.assessor_call(work_id, f"{work_id}'s plan was revised after {inv_id}")
                     raise GateUnsatisfied(
                         f"{work_id}'s accepted plan changed after {inv_id} was dispatched to assess revision "
                         f"{(inv.get('plan_revision') or {}).get('revision')}, so this assessment would be of a plan "
-                        f"that is no longer the accepted one; a new assessor is dispatched with "
-                        f"`aew plan assess {work_id} --launch {EXPECT_REV}`", reason="plan_revision_changed",
+                        f"that is no longer the accepted one; the Lead dispatches a new assessor with `{command}`, "
+                        "and its arguments, in these details with the Lead's `expect_rev` added, on stdin",
+                        reason="plan_revision_changed", arguments=arguments,
                         dispatched_for=inv.get("plan_revision"), accepted=E.plan_binding(unit.get("plan")))
                 meta.update(E.plan_assessment_binding(work_id, unit.get("plan"), submitted))
                 meta["evaluated_snapshot"] = inv["snapshot"]  # the dispatch snapshot: the source it observed

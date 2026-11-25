@@ -39,7 +39,7 @@ allocations:
   E160:
     bytes: 300
     kind: estimate
-    source: "Register E160. A short paragraph for plan assessment guidance."
+    source: "Register E160. A short paragraph for plan assessment guidance. Slice 2b, measured: resolve's assess_plan choice and its description, MCP +14 B with messaging on (the compact description) and +38 B off, and the guide's one line naming the route, +107 B; so +121 B on and +145 B off. The estimate stands until slice 4's staffing text lands, which spends the rest."
   E162:
     bytes: 500
     kind: estimate

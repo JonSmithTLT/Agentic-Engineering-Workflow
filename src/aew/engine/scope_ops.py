@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dispatch import Blocker, checked
-from aew.engine.gate_ops import redispatch_commands
+from aew.engine.gate_ops import redispatch_entry
 from aew.engine.guards import require
 from aew.errors import AEWError, GateUnsatisfied, GitError, IllegalTransition, UsageError, ValidationFailed
 from aew.harness import contract as K
@@ -630,7 +630,9 @@ class ScopeCorrections:
                 commands = [f"aew harness send {runs[-1]['run']} --fields -"]
                 fields = {"text": f"{why}: you may now change `{path}`"}
             else:
-                commands, fields = redispatch_commands(state, inv_id, inv), {"reason": why}
+                out.append({"invocation": inv_id, "work_id": work_id, "role": inv.get("role"),
+                            **redispatch_entry(state, inv_id, inv, why)})
+                continue
             out.append({"invocation": inv_id, "work_id": work_id, "role": inv.get("role"), "commands": commands,
                         "fields": fields})
         return out

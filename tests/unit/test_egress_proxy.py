@@ -1193,11 +1193,13 @@ def test_an_http_1_0_request_is_forwarded_as_http_1_0_so_its_response_is_never_c
 
 
 def test_an_answer_the_upstream_sends_before_taking_the_whole_body_reaches_the_client():
-    """An upstream may answer and close before it has read a large body (a 401 to an upload): that answer is the
-    client's, not a gateway error."""
-    proxy, _, spy = public_proxy()
+    """An upstream may answer and stop reading before it has taken a large body (a 401 to an upload): that answer is
+    the client's, not a gateway error. The upstream here stops reading without closing, which every platform keeps
+    readable; a reset can discard the answer, as Windows' does."""
+    spy = ConnectSpy(peer_address=("8.8.8.8", 80), small=True)
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver({"docs.example": ["8.8.8.8"]}), connect=spy,
+                        is_local=never_local, connect_timeout=0.5)
     size = 64 * SMALL_BUFFER
-    spy.small = True
     try:
         with served(proxy, small=True) as client:
             client.sendall(plain("http://docs.example/up", f"Content-Length: {size}", method="POST"))
@@ -1206,7 +1208,7 @@ def test_an_answer_the_upstream_sends_before_taking_the_whole_body_reaches_the_c
             sender = threading.Thread(target=send_until_closed, args=(client, b"x" * size), daemon=True)
             sender.start()
             far.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 6\r\n\r\ndenied")
-            far.close()
+            far.shutdown(socket.SHUT_WR)  # answered, and reads no more of the body
             answer = until_closed(client)
             sender.join(TIMEOUT)
     finally:
@@ -1232,7 +1234,7 @@ def test_an_upstream_that_closes_mid_body_without_answering_is_said_to_have_done
     finally:
         spy.close()
     assert (status, headers["X-AEW-Refusal"]) == (502, "upstream_closed")
-    assert "sent no response" in body.decode()
+    assert "no response from it could be read" in body.decode()
 
 
 def test_an_upstream_response_head_that_never_ends_is_refused_at_the_bound(monkeypatch):

@@ -41,12 +41,12 @@ policy decides only what is asked; R-6 then judges every address, under either p
 The proxy forwards it with an origin-form target and the client's own HTTP version (so an HTTP/1.0 client is never sent
 a chunked response), ``Host`` set to the URL's authority, the hop-by-hop headers out (``http1.HOP_BY_HOP``, every
 ``Proxy-*`` header, and ``Connection`` and what it names, in the head and in a chunked body's trailer section), its
-framing as checked, and ``Connection: close``. An upstream that answers and closes before it has taken the whole request
-(a 401 to a large upload) has that answer relayed. **One request per connection:** the answer says
-``Connection: close``, and what the client sends after its one request is never forwarded. The proxy holds no credential
-and adds none, so none it holds can reach a host. The response head is bounded (:data:`MAX_RESPONSE_HEAD`), and the
-response ends when the upstream ends it, the client goes, :meth:`EgressProxy.close`, or :data:`RESPONSE_IDLE_TIMEOUT`
-passes with no byte either way.
+framing as checked, and ``Connection: close``. An upstream that stops taking the request (it closes, or takes nothing
+for ``connect_timeout``) has an answer it already sent relayed, a 401 to a large upload, where one can still be read.
+**One request per connection:** the answer says ``Connection: close``, and what the client sends after its one request
+is never forwarded. The proxy holds no credential and adds none, so none it holds can reach a host. The response head is
+bounded (:data:`MAX_RESPONSE_HEAD`), and the response ends when the upstream ends it, the client goes,
+:meth:`EgressProxy.close`, or :data:`RESPONSE_IDLE_TIMEOUT` passes with no byte either way.
 
 **One refused answer refuses the name,** under both policies (the Lead, 2026-10-24). A name whose answers mix public
 and host-local addresses looks like rebinding or split-horizon tricks, and refusing it whole is simpler to prove than
@@ -745,17 +745,17 @@ class EgressProxy(Service):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             self._send_body(conn, send, plain.framing, early, named)
         except _UpstreamClosed:
-            # The upstream stopped taking the request: it may have answered first (a 401 to a large upload), and that
-            # answer is the client's. None: said as it happened
+            # The upstream stopped taking the request (it closed, or took nothing for connect_timeout): it may have
+            # answered first (a 401 to a large upload), and that answer is the client's. None: said as it happened
             self._count("upstream_closed")
             try:
                 self._respond(conn, upstream, plain)
-            except _Refused as refused:
-                if refused.reason != "no_response":
+            except (_Refused, OSError) as exc:  # a reset may arrive in place of the answer (Windows discards it)
+                if plain.began or isinstance(exc, _Refused) and exc.reason != "no_response":
                     raise
-                raise _Refused(502, "upstream_closed", "the upstream closed the connection while the request was "
-                               "being sent, and sent no response; it may have received part of the request, which "
-                               "the egress proxy does not send again") from None
+                raise _Refused(502, "upstream_closed", "the upstream stopped taking the request before all of it was "
+                               "sent, and no response from it could be read; it may have received part of the "
+                               "request, which the egress proxy does not send again") from None
             close_after_response(conn, REFUSAL_DRAIN_S)  # the client may still be sending: no reset over the answer
             return
         self._count("allowed")  # the whole request went: a refusal of its body is counted as that, never as allowed

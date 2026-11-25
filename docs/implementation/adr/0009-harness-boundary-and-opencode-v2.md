@@ -2241,10 +2241,11 @@ the Lead only; a worker's sandbox still has none.
   sends after its one request, pipelined or after the answer, is read and dropped, never forwarded.
 - **Bounds** (implementation bounds, not policy): the request head as before (`MAX_HEADER`, `HEADER_TIMEOUT`), a pause
   in the body (`BODY_TIMEOUT`), the response head (`MAX_RESPONSE_HEAD`), and a response with no byte either way for
-  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that answers and closes before
-  it has taken the whole request has that answer relayed; one that closes without answering is answered 502
-  (`upstream_closed`), and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the
-  request may have arrived and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
+  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that stops taking the request
+  (it closes, or takes nothing for `connect_timeout`) has an answer it already sent relayed, where one can still be
+  read (a connection reset can discard it, as Windows does); with none, the client is answered 502 (`upstream_closed`),
+  and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the request may have arrived
+  and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
 - **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
   which the relay and the egress proxy both import.
 - **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a

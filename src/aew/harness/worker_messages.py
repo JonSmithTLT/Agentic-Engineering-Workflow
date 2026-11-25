@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from aew import errors
-from aew.coordination.layout import MAX_UNDELIVERED_LEAD
 from aew.harness import bridge, wait_binding
 from aew.harness.delivery import DEFAULT_WHEN, NEXT_STEP, WHEN_DELIVERY
 
@@ -43,6 +42,7 @@ class FinalAdmissions:
     admitted: dict[str, str]
     interrupt_confirmed: bool
     deadline: float
+    continued: tuple[str, list[str]] | None = None
 
 
 def connected(conn: Any) -> bool:
@@ -203,27 +203,35 @@ class WorkerMessages:
         """Ask the live adapter for one bounded snapshot before terminating the revoked run."""
         return self._capture_admissions(halt=True)
 
-    def submit_admissions(self) -> dict[str, str] | None:
+    def submit_admissions(self) -> tuple[dict[str, str] | None, tuple[str, list[str]] | None]:
         """Settle observed admissions before entering the submission's control transaction."""
-        if not self._offers or self._stop.is_set():
-            return None
-        return self._capture_admissions(halt=False).admitted
+        launch = self._launch
+        if self._stop.is_set() or not (self._offers or launch):
+            return None, None
+        snapshot = self._capture_admissions(halt=False, launch=launch)
+        return snapshot.admitted, snapshot.continued
 
-    def _capture_admissions(self, *, halt: bool) -> FinalAdmissions:
+    def _capture_admissions(self, *, halt: bool, launch: tuple[str, list[str]] | None = None) -> FinalAdmissions:
         adapter = self.owner.adapter
         deadline = time.monotonic() + _FINAL_CHECK_S
-        offers = list(self._offers.values())[:MAX_UNDELIVERED_LEAD]
+        # A worker's reply frees a send slot before admission. Consider all offers from the bounded thread.
+        offers = list(self._offers.values())
         admitted: dict[str, str] = {}
         results = threading.Lock()
         interrupt_confirmed = False
+        continued = None
 
         def collect() -> None:
-            nonlocal interrupt_confirmed
+            nonlocal interrupt_confirmed, continued
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
             if halt:
                 interrupt_confirmed = adapter.coordination_halt(remaining)
+            if launch and adapter.coordination_admission(launch[0], timeout=remaining) == "admitted":
+                with results:
+                    if time.monotonic() < deadline:
+                        continued = launch
             for item in offers:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -237,7 +245,7 @@ class WorkerMessages:
         check.start()
         check.join(max(0.0, deadline - time.monotonic()))
         with results:
-            return FinalAdmissions(admitted.copy(), interrupt_confirmed, deadline)
+            return FinalAdmissions(admitted.copy(), interrupt_confirmed, deadline, continued)
 
     def record_final_admissions(self, snapshot: FinalAdmissions) -> None:
         """Persist the snapshot after teardown, while the supervisor still holds the revoked credential."""

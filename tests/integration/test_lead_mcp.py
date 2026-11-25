@@ -95,7 +95,7 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert [t["name"] for t in listed["tools"]] == [  # no cli
         "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
         "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
-        "ticket_prepare", "integration_publish"]
+        "ticket_prepare", "integration_publish", "message_send"]
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])
@@ -177,7 +177,8 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
     engine = Engine.discover(p.root)
     in_flight, released = threading.Event(), threading.Event()
 
-    def held(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+    def held(runs, *, timeout=600.0, any_=False, triggers=False, lead=False, message_after=None):
+        assert message_after == {}, "a new project's typed wait observes the coordination lane"
         in_flight.set()  # each check the broker's cooperative wait makes, under its serialization
         run = runs if isinstance(runs, str) else runs[0]
         if released.is_set():

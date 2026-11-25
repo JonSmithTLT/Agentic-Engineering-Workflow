@@ -371,8 +371,9 @@ class Supervisor:
                                              ending=self._ending, label=self.record["containment"])
             if op == "submit":
                 if self.messaging:
+                    admitted, continued = self.messages.submit_admissions()
                     return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"],
-                                              admitted=self.messages.submit_admissions())
+                                              admitted=admitted, continued=continued)
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
             if op.startswith("message."):
                 self.require_message_authority()

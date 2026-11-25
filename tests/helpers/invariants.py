@@ -61,6 +61,10 @@ def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str,
     state = dict(state)
     if "steering" not in schema["properties"]:
         state.pop("steering", None)
+    registration = schema["properties"].get("coordination_store", {})
+    registration_sources = registration.get("properties", {}).get("via", {}).get("enum", ())
+    if (state.get("coordination_store") or {}).get("via") == "init" and "init" not in registration_sources:
+        state.pop("coordination_store")
     lead = dict(state["lead"])
     properties = schema["properties"]["lead"]["properties"]
     for key in ("host_uid", "start"):

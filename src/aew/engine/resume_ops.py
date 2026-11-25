@@ -701,7 +701,7 @@ class Resume:
             lines += ["", "## Unadmitted Lead messages"]
             lines.extend(f"- {m['id']} ({m['when']}, {m['work_unit']}): {m['next']}" for m in lost["messages"])
             if omitted := lost.get("omitted"):
-                lines.append(f"- At least {omitted['at_least']} more. Run `aew message lost` for the full list.")
+                lines.append(f"- At least {omitted['at_least']} more.")
             if note := lost.get("note") or lost.get("problem"):
                 lines.append(f"- {note}")
         lines += ["", "## Next actions", *(f"- {a}" for a in r["next_actions"] or ["(none)"])]

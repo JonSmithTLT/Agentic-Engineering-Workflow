@@ -119,8 +119,9 @@ and the execution policy, and an edit nobody adopted, an unreadable policy or a 
 init. Existing projects can turn it on through the operator's `manifest adopt`, which the switch offer proposes only
 for an absent key. The broker snapshots it at session start and each run snapshots it at launch.
 
-Off means absent: no catalog row, CLI command, bridge operation, environment variable, prompt line, policy key,
-control-state key or output field. New records, live delivery, `message.wait` and the surface additions are gated by
+An older project that has never enabled messaging keeps its existing policy and control bytes. While disabled, the
+worker messaging surface stays absent. An explicit `disabled` policy value and a prior registration remain in place.
+New records, live delivery, `message.wait` and the surface additions are gated by
 the switch (D-31); the seal, `UNDELIVERABLE`, pinning and evidence inputs always run, each a no-op where no thread
 exists, so turning the switch off never orphans a thread. The read projections key on "the switch is on, or any thread
 exists", which is one stat of the project marker `.aew/coordination/marker.yaml` (`aew/coordination-marker/v1`):
@@ -357,9 +358,11 @@ excludes three cases: an unposted line that fails D-36 against the submission's 
 from a superseded generation, and a superseded POST for which there is no confirmed delivery. A later final admission
 check may confirm the last case and make the earlier report insufficient again.
 
-The supervisor checks its tracked POSTs against the provider within five seconds before submission takes the control
-lock. The submission records only confirmed admissions for its own run, then snapshots the sequence and revision
-under that lock. A report without the sequence is treated as earlier only if it predates its invocation's first message
+The supervisor checks its tracked POSTs and the continuation launch prompt against the provider within one five-second
+budget before submission takes the control lock. A reply can free a recording slot before its message is admitted, so
+the check considers all tracked offers up to the thread's existing bound. The submission records confirmed admissions
+for its own run, then snapshots the sequence and revision under that lock. A report without the sequence is treated as
+earlier only if it predates its invocation's first message
 or there is no thread. A timestamp tie is treated conservatively. The comparison on old reports depends on the two
 writers' clocks. Once messaging is on in the project or the run, even a report before the first message records a zero
 sequence. A previously used thread still counts when messaging is switched off.

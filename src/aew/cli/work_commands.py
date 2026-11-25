@@ -497,8 +497,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
                     "`turn-end` messages, one at each end of the agent's turn; a `next-step` message sent after a "
                     "`turn-end` one arrives first. A message is up to 1 MiB (4,000 characters when coordination "
                     "messaging is on). With messaging on, every send is recorded as a coordination message, and still "
-                    "wakes a held session; a report the worker submitted before receiving a message of either timing "
-                    "is not final until it submits again.")
+                    "wakes a held session. A message of either timing recorded before submission must be accounted "
+                    "for in a final report. A message recorded after submission leaves that report final and may "
+                    "produce a Lead advisory.")
     q.add_argument("run")
     src = q.add_mutually_exclusive_group(required=True)
     src.add_argument("--text")

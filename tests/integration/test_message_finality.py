@@ -1,36 +1,234 @@
 """MS5b report finality at the control transaction and its read-only advice."""
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 from threading import Barrier
+from typing import Any
 
 import pytest
-from aewflow import stand_in_containment
-from test_coordination_store import CP, OPERATOR, world
+from aewflow import (
+    Role,
+    assign,
+    complete_investigation,
+    create_investigation,
+    create_planned_ticket,
+    create_unit,
+    dispatch,
+    implement,
+    parent_review,
+    parent_verify,
+    plan_unit,
+    review,
+    sample_project,
+    stand_in_containment,
+    submit_record,
+    to_commit_ready,
+    verify,
+)
+from test_coordination_store import CP, OPERATOR, set_messaging, world
 
 from aew.engine import coordination_ops as coordination
+from aew.engine.api import Engine
 from aew.errors import PendingLeadMessage, ValidationFailed
+from aew.harness import contract, runlog
 from aew.knowledge import evidence as E
-from aew.util import utc_now
+from aew.knowledge.manifest import DEFAULT_GATES
+from aew.policy import execution as X
+from aew.surface import run as surface
+from aew.surface.context import SurfaceContext
+from aew.util import dump_yaml, load_yaml, utc_now
 
 
 @pytest.fixture
 def implementation(tmp_path, monkeypatch):
     stand_in_containment(monkeypatch, {"guarantee": "dev", "effective": "workdir_separation_only"})
-    w = world(tmp_path, checks=True)
+    w = world(tmp_path, checks=True, model="fakeprov/fake-model")
     for rel, text in CP.PATCH.items():
         (w.workspace / rel).write_text(text, encoding="utf-8", newline="\n")
     w.e.check_run(invocation_token=w.worker, check_id="unit")
     return w
 
 
-def submit(w, *, token=None, admitted=None):
+def submit(w, *, token=None, admitted=None, continued=None):
     return w.e.submit(invocation_token=token or w.worker, kind="implementation_report", text=CP.submission(CP.REPORT),
-                      admitted=admitted)
+                      admitted=admitted, continued=continued)
 
 
 def evidence_of(w, name):
     return next(e for e in E.scan(w.e.aew_root, w.wid)[0] if e["id"] == name)
+
+
+def _capture_launch_credentials(engine, monkeypatch):
+    credentials = {}
+
+    def spawn(_invocation, run, credential):
+        credentials[run] = credential
+        return {"run": run, "status": contract.RUNNING}
+
+    monkeypatch.setattr(engine._harness, "_spawn_run", spawn)
+    return credentials
+
+
+_TRANSITIONS = {"implementation-review": "REVIEW_PENDING", "implementation-verify": "VERIFY_PENDING",
+                "implementation-commit": "COMMIT_READY"}
+_INGESTS = {"ticket-review": "review.ingest", "ticket-verify": "verify.ingest",
+            "integration-verify": "verify.ingest.integration", "integration-verify-fail": "verify.ingest.integration",
+            "executor-record": "evidence.ingest",
+            "observation-review": "review.ingest", "observation-verify": "verify.ingest",
+            "parent-review": "review.ingest", "parent-verify": "verify.ingest"}
+
+
+def _prepare_report_case(p, tmp_path, route: str) -> tuple[str, Callable[[], Any]]:
+    if route in ("parent-review", "parent-verify"):
+        story = create_unit(p, "story", "Acceptance")
+        plan_unit(p, tmp_path, story)
+        complete_investigation(p, create_investigation(p, tmp_path, parent=story))
+        if route == "parent-review":
+            return story, lambda: parent_review(p, story)
+        p.lead("review", "ingest", story, "--evidence", parent_review(p, story))
+        return story, lambda: parent_verify(p, story)
+    if route in ("executor-record", "observation-review", "observation-verify"):
+        wid = create_investigation(p, tmp_path)
+        role, _ = dispatch(p, wid)
+        if route == "executor-record":
+            return wid, lambda: submit_record(role, "discovery_record")
+        p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
+        review_route = route == "observation-review"
+        p.lead("work", "transition", wid, "--to", "REVIEW_PENDING" if review_route else "VERIFY_PENDING")
+        actor = p.lead("invoke", "create", wid, "--role", "reviewer" if review_route else "verifier")
+        reporter = Role(p, actor["invocation_token"], Path(actor["observation"]["path"]))
+        if review_route:
+            return wid, lambda: reporter.submit("review", CP.REVIEW)
+
+        def observation_verify():
+            check = reporter.check("unit")["evidence"]
+            claims = [{"type": kind, "claim": "the observation supports the claim", "result": "pass",
+                       "checks": [check]} for kind in ("goal_backwards", "contract")]
+            return reporter.submit("verification", {"claim": "verified", "verification": {"claims": claims}})
+
+        return wid, observation_verify
+    if route.startswith("integration-verify"):
+        wid, _ = to_commit_ready(p, tmp_path)
+        p.lead("integrate", "prepare", wid)
+        goal_result = "fail" if route.endswith("fail") else "pass"
+        return wid, lambda: verify(p, wid, scope="integration", goal_result=goal_result)
+    wid = create_planned_ticket(p, tmp_path)
+    role = assign(p, wid)
+    if route in _TRANSITIONS:
+        return wid, lambda: implement(role)
+    implement(role)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    if route == "ticket-review":
+        return wid, lambda: review(p, wid)
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    return wid, lambda: verify(p, wid)
+
+
+@pytest.mark.parametrize("route", [*_TRANSITIONS, *_INGESTS])
+@pytest.mark.parametrize("when", ["next-step", "turn-end"])
+def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacement(tmp_path, monkeypatch, route,
+                                                                                    when):
+    gates = deepcopy(DEFAULT_GATES)
+    if route in ("implementation-verify", "implementation-commit"):
+        drop = ("review_", "verification_") if route == "implementation-commit" else ("review_",)
+        gates["risk_paths"]["1"] = [gate for gate in gates["risk_paths"]["1"] if not gate.startswith(drop)]
+    if route == "observation-review":
+        gates["non_mutating_paths"]["1"].append("review_r1")
+    if route == "observation-verify":
+        gates["non_mutating_paths"]["1"].extend(("verification_goal_backwards", "verification_contract"))
+    p = sample_project(tmp_path, gates=gates)
+    execution = p.root / ".aew" / X.REL_PATH
+    policy = load_yaml(execution.read_text(encoding="utf-8"))
+    policy["configured"] = True
+    policy["profiles"] = {"standard": {"model": "fakeprov/fake-model"}}
+    policy["routing"]["default"] = "standard"
+    execution.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    p.pin_policy()
+    engine = Engine.discover(p.root)
+    stand_in_containment(monkeypatch, {"guarantee": "dev", "effective": "workdir_separation_only"})
+    monkeypatch.setattr(Role, "check", lambda role, key: engine.check_run(invocation_token=role.token, check_id=key))
+    wid, report = _prepare_report_case(p, tmp_path, route)
+    captured: dict[str, Any] = {}
+
+    def submit_after_message(role, kind, meta, body="", *, expect_ok=True):
+        assert expect_ok
+        inv = engine.invocation_whoami(invocation_token=role.token)["invocation"]
+        message = engine.message_record_lead(token=p.token, expect_rev=p.rev(), to=inv, body="Follow-up", when=when)
+        text = CP.submission(meta) + body
+        evidence = engine.submit(invocation_token=role.token, kind=kind, text=text)
+        captured.update(inv=inv, message=message["message"]["id"], kind=kind, text=text, evidence=evidence)
+        return evidence
+
+    monkeypatch.setattr(Role, "submit", submit_after_message)
+    report()
+    original = captured["evidence"]
+    assert original["pending_lead_messages"] == 1
+    report_path = Path(original["path"])
+    old_bytes = report_path.read_bytes()
+    primitive = _INGESTS.get(route, "work.transition")
+
+    def arguments(evidence):
+        return {"to": _TRANSITIONS[route]} if route in _TRANSITIONS else {"evidence": evidence}
+
+    def ingest(evidence):
+        args: dict[str, Any] = {"token": p.token, "expect_rev": p.rev(), "work_id": wid}
+        if route in _TRANSITIONS:
+            return engine.work_transition(**args, to=_TRANSITIONS[route])
+        if primitive.startswith("verify.ingest"):
+            return engine.verify_ingest(**args, evidence_id=evidence,
+                                        scope="integration" if primitive == "verify.ingest.integration" else None)
+        if primitive == "review.ingest":
+            return engine.review_ingest(**args, evidence_id=evidence)
+        return engine.evidence_ingest(**args, evidence_id=evidence)
+
+    state = engine.store.read_committed()
+    prediction = engine.guard_query(primitive, wid, arguments(original["evidence"]))
+    with pytest.raises(PendingLeadMessage) as refused:
+        ingest(original["evidence"])
+    assert prediction["reason_codes"] == ["PENDING_LEAD_MESSAGE"]
+    assert prediction["blocking_conditions"][0]["details"] == refused.value.details
+    stage = _stage_for_route(route, state["work"][wid], original["evidence"])
+    if stage:
+        name, stage_arguments = stage
+        explained = surface.run_tool(engine, SurfaceContext.outside_session(), "explain",
+                                     {"stage": name, "work_id": wid, "arguments": stage_arguments})["result"]
+        assert explained["availability"] == "BLOCKED"
+        assert "PENDING_LEAD_MESSAGE" in explained["reason_codes"]
+    assert engine.store.read_committed() == state and report_path.read_bytes() == old_bytes
+
+    creds = _capture_launch_credentials(engine, monkeypatch)
+    run = engine.harness_launch(token=p.token, expect_rev=p.rev(), invocation=captured["inv"])["run"]
+    credential = creds[run]
+    posted = engine.message_next_post(credential=credential, run=run, permit=lambda: True)
+    assert posted["message"]["id"] == captured["message"]
+    engine.message_confirm_delivery(credential=credential, run=run, ids=[captured["message"]],
+                                    via="live", transport_ref="confirmed-prompt")
+    replacement = engine.submit(invocation_token=credential, kind=captured["kind"], text=captured["text"])
+    new_id = replacement["evidence"]
+    assert replacement["pending_lead_messages"] == 0 and new_id != original["evidence"]
+    assert engine.guard_query(primitive, wid, arguments(new_id))["availability"] == "AVAILABLE"
+    assert ingest(new_id)["ok"]
+    assert report_path.read_bytes() == old_bytes
+    if route == "integration-verify-fail":
+        assert engine.store.read_committed()["work"][wid]["state"] == "VERIFICATION_FAILED"
+    if route == "executor-record":
+        assert engine.work_accept(token=p.token, expect_rev=p.rev(), work_id=wid)["ok"]
+
+
+def _stage_for_route(route: str, unit: dict[str, Any], evidence: str) -> tuple[str, dict[str, Any]] | None:
+    if route == "implementation-review":
+        return "ticket_request_review", {}
+    if route == "ticket-review":
+        return "ticket_request_verification", {"review_evidence": evidence}
+    if route == "ticket-verify":
+        return "ticket_prepare", {"verification_evidence": evidence}
+    if route == "integration-verify":
+        return "integration_publish", {"prepared_candidate": unit["integration"]["candidate"],
+                                       "verification_evidence": evidence}
+    return None
 
 
 @pytest.mark.parametrize("when", ["next-step", "turn-end"])
@@ -108,6 +306,96 @@ def test_replying_after_a_read_never_prevents_the_worker_obtaining_a_delivery_re
     assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
 
 
+def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resubmission(implementation, monkeypatch):
+    w = implementation
+    keys = _capture_launch_credentials(w.e, monkeypatch)
+    original = w.lead("harness_launch", invocation=w.inv)["run"]
+    mid = w.send()["message"]["id"]
+    first = submit(w, token=keys[original])
+    set_messaging(w.root, "disabled")
+    w.lead("manifest_adopt", reason="temporarily turn delivery off", authorization=OPERATOR)
+    runlog.write_record(runlog.run_dir(w.e.aew_root, original), {"status": contract.ENDED_WITH_EVIDENCE})
+
+    with pytest.raises(PendingLeadMessage) as held:
+        w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")
+    assert held.value.details["report"] == first["evidence"]
+    next_step = held.value.details["next"]
+    assert f"operator re-enable coordination messaging. Relaunch {w.inv}" in next_step and mid in next_step
+    assert w.e._coordination.continuation_messages(w.e.store.read(), w.inv)[0] == []
+
+    set_messaging(w.root, "enabled")
+    w.lead("manifest_adopt", reason="resume message delivery", authorization=OPERATOR)
+    successor = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
+    continuation = w.e.harness_contract(w.e.store.read(), w.inv, successor).continuation
+    assert continuation["messages"] == [mid]
+    last = submit(w, token=keys[successor], continued=("confirmed-launch", continuation["messages"]))
+    assert last["pending_lead_messages"] == 0
+    assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
+
+
+def test_an_answered_message_delivered_after_a_report_requests_a_new_report_without_repeating_delivery(
+        implementation, monkeypatch):
+    w = implementation
+    keys = _capture_launch_credentials(w.e, monkeypatch)
+    original = w.lead("harness_launch", invocation=w.inv)["run"]
+    mid = w.send()["message"]["id"]
+    first = submit(w, token=keys[original])
+    w.e.message_deliver_wait(invocation_token=keys[original], after="", send=lambda _: None)
+    w.reply(mid, invocation_token=keys[original])
+    runlog.write_record(runlog.run_dir(w.e.aew_root, original), {"status": contract.ENDED_WITH_EVIDENCE})
+    with pytest.raises(PendingLeadMessage) as held:
+        w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")
+    assert held.value.details["report"] == first["evidence"]
+    assert f"Relaunch {w.inv}." in held.value.details["next"]
+    assert f"accounting for the delivered messages {mid}" in held.value.details["next"]
+    successor = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
+    continuation = w.e.harness_contract(w.e.store.read(), w.inv, successor).continuation
+    assert not continuation.get("messages")
+    assert submit(w, token=keys[successor])["pending_lead_messages"] == 0
+    assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
+
+
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+def test_a_legacy_report_uses_the_threads_first_timestamp_only_without_its_own_watermark(implementation, monkeypatch,
+                                                                                        offset):
+    from aew.engine import evidence_ops
+
+    w = implementation
+    first_message_at = "2026-11-24T11:00:01Z"
+    monkeypatch.setattr(coordination, "utc_now", lambda: first_message_at)
+    monkeypatch.setattr(evidence_ops, "utc_now", lambda: f"2026-11-24T11:00:0{1 + offset}Z")
+    with monkeypatch.context() as legacy:
+        legacy.setattr(w.e._coordination, "report_snapshot", lambda *_: None)
+        submitted = submit(w)
+    old = evidence_of(w, submitted["evidence"])
+    assert "coordination_through" not in old
+    assert w.e._coordination.report_finality(w.e.store.read(), old) == (None, [])
+    mid = w.send()["message"]["id"]
+    error, advisory = w.e._coordination.report_finality(w.e.store.read(), old)
+    if offset < 0:
+        assert error is None and advisory == [{"id": mid, "when": "next-step", "state": "undelivered"}]
+    else:
+        assert error is not None and error.details["messages"][0]["id"] == mid and advisory == []
+
+
+@pytest.mark.parametrize("messaging", [None, "disabled"])
+def test_a_never_enabled_report_keeps_the_same_bytes_as_before_finality(tmp_path, monkeypatch, messaging):
+    from aew.engine import evidence_ops
+
+    w = world(tmp_path, messaging=messaging)
+    monkeypatch.setattr(evidence_ops, "utc_now", lambda: "2026-11-24T11:00:00Z")
+    before = w.control_bytes()
+    actual = submit(w)
+    path = Path(actual["path"])
+    record = path.read_bytes()
+    path.unlink()
+    with monkeypatch.context() as legacy:
+        legacy.setattr(w.e._coordination, "report_snapshot", lambda *_: None)
+        previous = submit(w)
+    assert actual == previous and Path(previous["path"]).read_bytes() == record
+    assert w.control_bytes() == before and not w.thread_path().exists()
+
+
 @pytest.mark.parametrize("resume,cap", [(True, 500), (False, 10_000)])
 def test_the_lost_message_walk_never_examines_more_than_its_limit(implementation, monkeypatch, resume, cap):
     w = implementation
@@ -155,6 +443,7 @@ def test_resume_stops_reading_older_commits_after_twenty_lost_messages(implement
         assert "aew message lost" in resumed["note"]
     else:
         assert resumed["omitted"] == {"at_least": 2}
+        assert "aew message lost" in resumed["note"]
     seen.clear()
     listed = reader.message_lost(state)
     assert seen == [12_000, 11_999, 11_998]

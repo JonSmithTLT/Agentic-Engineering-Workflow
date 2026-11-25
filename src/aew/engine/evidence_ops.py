@@ -1174,7 +1174,8 @@ class EvidenceCommands:
                 **({"failure_output": C.failure_output(run["log"])} if run["exit_code"] != 0 else {})}
 
     def submit(self, *, invocation_token: str, kind: str, text: str,
-               admitted: dict[str, str] | None = None) -> dict[str, Any]:
+               admitted: dict[str, str] | None = None,
+               continued: tuple[str, list[str]] | None = None) -> dict[str, Any]:
         submitted, body = parse_frontmatter(text, source="submission")
         with self.k.store.session() as s:
             state = s.state
@@ -1263,7 +1264,7 @@ class EvidenceCommands:
                                              "plan_revision", "evaluated_snapshot", "method", "claim", "result",
                                              "evidence") if k in meta}
             ordered.update({k: v for k, v in meta.items() if k not in ordered})
-            pending = self.coordination.report_snapshot(state, ordered, admitted)
+            pending = self.coordination.report_snapshot(state, ordered, admitted, continued)
             path = self.k.aew_root / f"evidence/{work_id}/{meta['id']}.md"
             create_exclusive(path, E.seal(ordered, body))
         return {"ok": True, "evidence": meta["id"], "result": meta["result"],

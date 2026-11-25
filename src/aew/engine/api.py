@@ -1483,9 +1483,11 @@ class Engine:
         return self._stages.read(self._k.store.current(), intent)
 
     def submit(self, *, invocation_token: str, kind: str, text: str,
-               admitted: dict[str, str] | None = None) -> dict[str, Any]:
-        """Only the supervisor supplies observed admissions. The bridge's submit payload has no such field."""
-        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text, admitted=admitted)
+               admitted: dict[str, str] | None = None,
+               continued: tuple[str, list[str]] | None = None) -> dict[str, Any]:
+        """Only the supervisor supplies observed live and continuation admissions."""
+        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text,
+                                     admitted=admitted, continued=continued)
 
     # ---------------------------------------------------------------- history (ADR-0011)
 

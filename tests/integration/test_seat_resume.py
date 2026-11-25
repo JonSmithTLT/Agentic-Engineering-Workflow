@@ -263,6 +263,8 @@ def test_resumed_session_refreshes_presentation_after_the_new_seats_switch_offer
     from aew.harness.opencode import projection
 
     project, engine, old, prompts = acquired
+    set_messaging(project.root, None)
+    project.adopt_policy("start with no messaging switch before the offer")
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
     observed = []
 
@@ -295,6 +297,8 @@ def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monk
     from aew.harness.opencode import projection
 
     project, engine, _, _ = acquired
+    set_messaging(project.root, None)
+    project.adopt_policy("start with no messaging switch before the offer")
     captured = []
 
     def offer(token):

@@ -609,17 +609,21 @@ class Coordination:
         """Record confirmed admission without reopening a sealed or superseded thread."""
         with self.k.store.session() as s:
             thread = self._delivery_thread(s.state, credential, run)
-            by_id = thread.by_id()
-            for mid in dict.fromkeys(ids):
-                if mid not in by_id or not _is_lead(by_id[mid]):
-                    continue
-                facts = [f for f in thread.facts if f["message"] == mid]
-                if via == "live" and not any(f["kind"] == L.POSTED and f.get("run") == run for f in facts):
-                    continue
-                if any(f["kind"] == L.DELIVERED and f.get("via") == via and f.get("run") == run for f in facts):
-                    continue
-                self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": mid, "via": via,
-                                                  "run": run, "at": utc_now(), "transport_ref": transport_ref})
+            self._record_deliveries(s.state, thread, run, ids, via, transport_ref)
+
+    def _record_deliveries(self, state: dict[str, Any], thread: Thread, run: str, ids: list[str],
+                           via: str, transport_ref: str) -> None:
+        by_id = thread.by_id()
+        for mid in dict.fromkeys(ids):
+            if mid not in by_id or not _is_lead(by_id[mid]):
+                continue
+            facts = [f for f in thread.facts if f["message"] == mid]
+            if via == "live" and not any(f["kind"] == L.POSTED and f.get("run") == run for f in facts):
+                continue
+            if any(f["kind"] == L.DELIVERED and f.get("via") == via and f.get("run") == run for f in facts):
+                continue
+            self._write_fact(state, thread, {"kind": L.DELIVERED, "message": mid, "via": via,
+                                            "run": run, "at": utc_now(), "transport_ref": transport_ref})
 
     def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str],
                             lock_timeout: float | None = None) -> None:
@@ -1277,7 +1281,7 @@ class Coordination:
             out["walk_limit"] = cap
             out["note"] = ("More may exist. Run `aew message lost` for the full list." if resume else
                            f"Stopped at the cap of {cap:,} commits. Older lost messages within seven days may exist.")
-        elif hit_entry_limit and not omitted:
+        elif hit_entry_limit or omitted:
             out["note"] = "More may exist. Run `aew message lost` for the full list."
         return out
 
@@ -1350,20 +1354,24 @@ class Coordination:
                             "via": via})
         return out
 
-    def report_snapshot(self, state: dict[str, Any], ev: dict[str, Any],
-                        admitted: dict[str, str] | None) -> int | None:
+    def report_snapshot(self, state: dict[str, Any], ev: dict[str, Any], admitted: dict[str, str] | None,
+                        continued: tuple[str, list[str]] | None = None) -> int | None:
         """Settle this run's confirmed POSTs and snapshot the report under the caller's control lock."""
         iid, work_id = ev["producer"]["invocation"], ev["work_unit"]
         thread = read_thread(self.k.aew_root, work_id, iid)
-        latest = (state["invocations"][iid].get("runs") or [{}])[-1]
+        runs = state["invocations"][iid].get("runs") or []
+        latest = runs[-1] if runs else {}
         snapshot_on = (latest.get("coordination") or {}).get("messaging") == X.MESSAGING_ENABLED
         if not (thread.exists or snapshot_on or self.project_switch(state) == X.MESSAGING_ENABLED):
             return None
         run = latest.get("run")
-        if admitted and snapshot_on and run is not None and ev["producer"].get("run") == run:
+        if snapshot_on and run is not None and ev["producer"].get("run") == run:
+            if continued and len(runs) > 1:
+                prompt, ids = continued
+                self._record_deliveries(state, thread, run, ids, "continuation", prompt)
             delivered = _delivered(thread)
             posted = {f["message"] for f in thread.facts if f["kind"] == L.POSTED and f.get("run") == run}
-            for mid, prompt in admitted.items():
+            for mid, prompt in (admitted or {}).items():
                 if mid in posted and mid not in delivered:
                     fact = {"kind": L.DELIVERED, "message": mid, "via": "live", "run": run,
                             "at": utc_now(), "transport_ref": prompt}
@@ -1419,12 +1427,22 @@ class Coordination:
         if not pending:
             return None, later
         ids = ", ".join(m["id"] for m in pending)
+        waiting = ", ".join(m["id"] for m in pending if m["state"] == "undelivered")
         latest = (state["invocations"].get(iid, {}).get("runs") or [{}])[-1]
         run = latest.get("run")
         live = run and runlog.possibly_live(runlog.observed_status(runlog.run_dir(self.k.aew_root, run))[0],
                                            latest.get("launched_at"))
-        next_action = (f"{iid} must submit again after receiving {ids}" if live else
-                       f"Relaunch {iid}, so its continuation delivers {ids}, then ingest its new report")
+        if not waiting:
+            action = f"Have {iid} submit again accounting for the delivered messages {ids}"
+            next_action = action if live else f"Relaunch {iid}. {action}"
+        else:
+            if live and (latest.get("coordination") or {}).get("messaging") == X.MESSAGING_ENABLED:
+                next_action = f"Have {iid} receive {waiting} and submit again accounting for {ids}"
+            else:
+                next_action = (f"Relaunch {iid}, so its continuation delivers {waiting}, then have it submit again "
+                               f"accounting for {ids}")
+            if self.project_switch(state) != X.MESSAGING_ENABLED:
+                next_action = f"Have the operator re-enable coordination messaging. {next_action}"
         return PendingLeadMessage(f"{PendingLeadMessage.definition}\n{next_action}.",
                                   invocation=iid, report=ev["id"], messages=pending, next=next_action), []
 

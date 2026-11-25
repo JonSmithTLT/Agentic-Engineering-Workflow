@@ -62,8 +62,8 @@ def test_harness_send_help_states_both_timings_and_their_order(capsys, monkeypat
                    "a `next-step` message sent after a `turn-end` one arrives first",
                    "up to 1 MiB (4,000 characters when coordination messaging is on)",
                    "every send is recorded as a coordination message, and still wakes a held session",
-                   "a report the worker submitted before receiving a message of either timing is not final until it "
-                   "submits again",
+                   "A message of either timing recorded before submission must be accounted for in a final report",
+                   "A message recorded after submission leaves that report final and may produce a Lead advisory",
                    "--when {next-step,turn-end}"):
         assert phrase in text, phrase
     assert "after its current step" not in text  # the old claim, true only of `steer`

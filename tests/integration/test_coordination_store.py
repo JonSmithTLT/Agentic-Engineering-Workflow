@@ -935,6 +935,22 @@ def test_a_new_project_can_send_a_message_before_any_policy_adoption(tmp_path):
     assert_control_invariants(w)
 
 
+def test_an_engine_before_init_registration_refuses_the_new_control_shape(tmp_path):
+    from jsonschema import Draft202012Validator
+
+    from aew.schemas import _registry
+
+    baseline = ROOT / "tests/fixtures/baseline/control.schema.0f59742.json"
+    old = Draft202012Validator(json.loads(baseline.read_text(encoding="utf-8")), registry=_registry())
+    project = make_git_repo(tmp_path / "new", CP.FILES)
+    engine = Engine.initialize(project, project_id="new")
+    state = engine.store.read_committed()
+    errors = [list(failure.path) for failure in old.iter_errors(state)]
+    assert errors == [[L.STORE_KEY, "since_rev"], [L.STORE_KEY, "via"]]
+    state.pop(L.STORE_KEY)
+    assert list(old.iter_errors(state)) == []
+
+
 def test_first_configuration_preserves_the_new_project_messaging_registration(tmp_path):
     project = make_git_repo(tmp_path / "configured", CP.FILES)
     init = run_aew("init", "--model", "opencode/example-model", cwd=project)

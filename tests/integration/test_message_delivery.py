@@ -7,6 +7,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from aewflow import stand_in_containment
 from fake_harness import credential_hits
 from harness_conformance import FakeOpenCodeDriver
 from invariants import coordination_violations
@@ -14,6 +15,7 @@ from racing_read import read_text_or_none
 from test_coordination_store import CP, world
 from test_worker_messages import launch, send
 
+from aew.coordination import layout as L
 from aew.engine.api import Engine
 from aew.engine.authority import token_id_of
 from aew.errors import IllegalTransition
@@ -36,7 +38,10 @@ def live_lab(tmp_path):
 
 @pytest.fixture
 def worker(tmp_path, monkeypatch):
-    w = world(tmp_path, model="fakeprov/fake-model")
+    return worker_with_credentials(world(tmp_path, model="fakeprov/fake-model"), monkeypatch)
+
+
+def worker_with_credentials(w, monkeypatch):
     credentials = {}
 
     def spawn(invocation, run, credential):
@@ -501,13 +506,71 @@ def test_submit_settles_admission_before_the_next_delivery_tick(worker, when):
     delivery.tick(select=True)
     assert facts(w) == [["RECORDED", "POSTED"]]
     session.admit_all()
-    observed = delivery.submit_admissions()
+    observed, continued = delivery.submit_admissions()
     assert list(observed) == [mid]
+    assert continued is None
     assert session.observations[-1] == "admission" and "interrupt" not in session.observations
     out = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
                      admitted=observed | {f"MSG-{w.inv}-2": "an-unposted-id"})
     assert out["pending_lead_messages"] == 0
     assert facts(w) == [["RECORDED", "POSTED", "DELIVERED"]]
+
+
+@pytest.mark.parametrize("final_check", [False, True], ids=["submit", "revoked"])
+def test_settlement_can_confirm_every_post_after_replies_free_send_slots(worker, final_check):
+    w, keys = worker
+    delivery, session, run = transport(worker)
+    messages = []
+    for index in range(L.MAX_UNDELIVERED_LEAD + 1):
+        mid = w.send(f"Follow-up {index}", when="turn-end")["message"]["id"]
+        messages.append(mid)
+        delivery.tick(select=True)
+        w.reply(mid, invocation_token=keys[run])
+
+    assert len(session.posts) == len(messages)
+    session.admit_all()
+    if final_check:
+        w.lead("harness_launch", invocation=w.inv, replace=True)
+        delivery.stop()
+        captured = delivery.capture_final_admissions()
+        assert list(captured.admitted) == messages
+        delivery.record_final_admissions(captured)
+    else:
+        admitted, continued = delivery.submit_admissions()
+        assert list(admitted) == messages and continued is None
+        result = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
+                            admitted=admitted)
+        assert result["pending_lead_messages"] == 0
+
+    entries = w.e.message_thread(w.inv)["messages"]
+    assert [m["id"] for m in entries if any(f["kind"] == L.DELIVERED for f in m["facts"])] == messages
+
+
+@pytest.mark.parametrize("when", ["next-step", "turn-end"])
+def test_the_first_successor_report_captures_an_admitted_continuation_before_the_tick(tmp_path, monkeypatch, when):
+    stand_in_containment(monkeypatch, {"guarantee": "dev", "effective": "workdir_separation_only"})
+    w, keys = worker_with_credentials(world(tmp_path, checks=True, model="fakeprov/fake-model"), monkeypatch)
+    delivery, session, _ = transport((w, keys))
+    mid = w.send("Carry this into the successor", when=when)["message"]["id"]
+    run = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
+    carried = w.e.harness_contract(w.e.store.read(), w.inv, run).continuation
+    assert carried["messages"] == [mid]
+    delivery.owner.run, delivery.owner._credential = run, keys[run]
+    delivery.owner.adapter._coordination_launch_id = "launch-prompt"
+    delivery.launched(carried)
+    session.admitted["launch-prompt"] = {"id": "launch-prompt", "text": "Admitted launch with continuation"}
+    assert facts(w) == [["RECORDED"]]
+
+    for rel, text in CP.PATCH.items():
+        (w.workspace / rel).write_text(text, encoding="utf-8", newline="\n")
+    w.e.check_run(invocation_token=keys[run], check_id="unit")
+    admitted, continued = delivery.submit_admissions()
+    assert admitted == {} and continued == ("launch-prompt", [mid])
+    submitted = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
+                           admitted=admitted, continued=continued)
+    assert submitted["pending_lead_messages"] == 0
+    assert facts(w) == [["RECORDED", "DELIVERED"]]
+    assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
 
 
 def test_continuation_recovers_a_replied_but_unconfirmed_message_without_repeating_a_delivered_reply(worker):

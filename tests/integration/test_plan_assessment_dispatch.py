@@ -204,7 +204,8 @@ def test_a_ticket_with_no_plan_is_assessed_by_following_the_refusals_steps(tmp_p
     error = refused(p, "plan", "assess", wid)
     plan = tmp_path / "plan.md"
     plan.write_text("1. Change calc/core.py.\n", encoding="utf-8")
-    proposed = follow(p, *printed(error["message"], "plan propose"), file=str(plan))
+    # as_posix: the reader's shell line is split as a POSIX shell splits it, where a backslash is an escape
+    proposed = follow(p, *printed(error["message"], "plan propose"), file=plan.as_posix())
     follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]))
     assert assess(p, wid)[1]["plan_revision"]["revision"] == proposed["revision_number"]
 

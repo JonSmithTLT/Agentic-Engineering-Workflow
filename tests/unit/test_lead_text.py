@@ -46,6 +46,7 @@ NOT_TOOLS = {
     "planner": "a card", "researcher": "a card", "verifier": "a role",
     "checks": "a policy file's key", "max_publish_paths": "a policy key", "mutating_concurrency": "a policy key",
     "replace_gate": "a policy key", "add_scope": "a `resolve` choice: the scope add (register E126)",
+    "assess_plan": "a `resolve` choice: the plan assessor's dispatch (register E160)",
     "coordination_store": "a policy key", "launch": "a policy key",
     "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
     "seat": "a field of `aew opencode`'s result: how the Lead seat stands, and the step that goes with it",
@@ -437,12 +438,13 @@ def test_the_guide_for_a_project_is_rendered_with_the_stages():
     seen: list[Any] = []
 
     class Engine:
-        def lead_guide(self, stages: Any) -> str:
-            seen.append(stages)
+        def lead_guide(self, stages: Any, *, plan_assessment: str | None = None) -> str:
+            seen.append((stages, plan_assessment))
             return "text"
 
     assert lead_text.guide_for(Engine()) == "text"
-    assert seen == [lead_text.stages()]
+    assert seen == [(lead_text.stages(), lead_text.plan_assessment())]
+    assert lead_text.plan_assessment() == "`resolve`, choice `assess_plan`, subject `<W>#plan`"
 
 
 # --------------------------------------------------------------------------- the engine's own words: the one mirror

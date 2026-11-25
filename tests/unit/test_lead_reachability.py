@@ -43,9 +43,13 @@ def test_every_lead_authenticated_command_is_classified_exactly_once():
     operator = {p for p in lead_broker.OPERATOR_ONLY if p in commands}
     transports = set(lead_broker.NOT_RELAYED) & commands
     reachable = set(lead_broker.LEAD_REACHABLE)
-    assert not reachable & operator and not reachable & transports and not operator & transports
-    unclassified = commands - reachable - operator - transports
-    assert not unclassified, f"classify these (LEAD_REACHABLE or OPERATOR_ONLY): {sorted(map(sorted, unclassified))}"
+    typed = set(lead_broker.TYPED_ONLY)  # reached through a typed tool only, never relayed (E160 slice 2b)
+    groups = [reachable, operator, transports, typed]
+    assert all(not a & b for i, a in enumerate(groups) for b in groups[i + 1:])
+    assert typed <= commands
+    unclassified = commands - reachable - operator - transports - typed
+    assert not unclassified, (f"classify these (LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY): "
+                              f"{sorted(map(sorted, unclassified))}")
     assert reachable <= commands, f"no such commands: {sorted(map(sorted, reachable - commands))}"
 
 
@@ -65,6 +69,7 @@ def test_every_command_is_classified_once_for_the_contained_lead():
     classes = {"LEAD_REACHABLE": set(lead_broker.LEAD_REACHABLE), "RELAYED_READS": set(lead_broker.RELAYED_READS),
                "OPERATOR_ONLY": set(lead_broker.OPERATOR_ONLY), "NOT_RELAYED": set(lead_broker.NOT_RELAYED),
                "LEAD_KEPT_OUT": {frozenset(words) for words in custody_ops.LEAD_KEPT_OUT},
+               "TYPED_ONLY": set(lead_broker.TYPED_ONLY),
                "CONTAINED_LOCAL": set(lead_broker.CONTAINED_LOCAL)}
     placed = {path: [name for name, members in classes.items() if path in members] for path in commands}
     assert {" ".join(sorted(p)): c for p, c in placed.items() if len(c) != 1} == {}

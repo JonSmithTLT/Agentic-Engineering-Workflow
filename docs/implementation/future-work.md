@@ -72,6 +72,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
 | 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
 | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
+| 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 
 **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
@@ -4175,6 +4176,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the register PR of 2026-11-24
 
 *Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
+
+### E363
+
+**Work:** The test suite's duplication down to what is required or beneficial: isolation a test needs (a fresh repository where the test mutates it), parallel shards, and independence that proves something stay; any other expensive setup (a parsed source tree, a rendered document, a loaded schema, a repository a test only reads) is built once per process or per session and shared read-only, through one owner per value. The first instance is #553's `reference_render.context()` (one parse of `src/aew` per process for the reference-family test modules); the owner for the rest is `tests/helpers/shared_setup.py` (`once`). A guard holds the line: no test module keeps more than its stated budget of memory at import, in any session, or after its tests, in a serial one (`tests/helpers/module_heap.py`)
+
+**Source:** The operator, 2026-11-24: "We should get duplication down to only required or beneficial duplication", after #553 (twelve test modules each kept a parse of `src/aew`, 2.4 GB in one serial process) and the local fast lanes' out-of-memory kills
+
+**When:** **Now** (the operator placed it, 2026-11-24)
+
+**Notes:** Filed with the sweep's first pull request, which builds the owner and the guard; its note holds the sweep's table and what remains
+
+*Later notes: `notes.d/E363/`, oldest first (`python tools/register.py show E363`).*
 
 ### E364
 

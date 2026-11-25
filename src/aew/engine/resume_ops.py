@@ -158,8 +158,10 @@ class Resume:
                      if si["generation"] != lead["generation"] else "")
             actions.append(f"{wid + ': ' if wid else ''}stage {si['tool']} ({sid}) is unfinished after "
                            f"{len(si['steps'])} of {len(si['plan'])} step(s){owner}: resolve it, continue or abandon "
-                           f"with a rationale (`resolve` or `aew stage continue|abandon`). "
-                           f"`aew resume` shows the approval digest for continuing and whether it is safe")
+                           f"with a rationale via `resolve` or "
+                           f"`aew stage continue {sid} --rationale <reason> --approval-digest <shown digest>` "
+                           f"or `aew stage abandon {sid} --rationale <reason>`. "
+                           "`aew resume --json` shows the approval digest for continuing and whether it is safe")
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         audit = self.history.audit_status(state)
         if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)

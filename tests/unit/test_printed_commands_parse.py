@@ -255,7 +255,7 @@ def refusal(work_id, held, verb):
     """A function docstring naming `aew work cancel`."""
     argparse.ArgumentParser().add_argument("--x", help="see `aew status`")
     a = f"run `aew work show {work_id}` first"
-    b = ("held" if held else "run `aew lead acquire`")
+    b = ("held" if held else "run `aew work transition T-1 --prior-value RUNNING`")
     c = dict(next="aew lead takeover")
     d = {"remedy": f"aew work show {work_id}"}
     e = fields_command(f"aew invoke cancel {work_id}", "reason", verb)

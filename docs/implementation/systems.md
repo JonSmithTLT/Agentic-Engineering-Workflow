@@ -6,9 +6,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 2 — SYS-39, SYS-47
+**awaiting_signoff (built, awaiting your sign-off):** 3 — SYS-08, SYS-39, SYS-47
 
-**partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -18,9 +18,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46
 
-**Waiting on your sign-off:** 2 — SYS-39, SYS-47
+**Waiting on your sign-off:** 3 — SYS-08, SYS-39, SYS-47
 
-**Limit's count / wip_limit:** 12 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-22, SYS-48
+**Limit's count / wip_limit:** 11 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-09, SYS-13, SYS-19, SYS-22, SYS-48
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,19 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 15 — SYS-19, SYS-22, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+**Members:** 16 — SYS-09, SYS-19, SYS-22, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+
+### SYS-09 — Capability register (CAP-1 and the base bundle)
+
+**Board state:** partly_built
+
+**Who:** the operator for the real contained run; Lead for the later records
+
+**Now:** 7
+
+**Own slices left:** 1 — Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only — STG-15 — unsized (estimate)
+
+**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
 ### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
 
@@ -38,7 +50,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 9
 
-**Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
+**Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 2, the selector in the validation executor. PR 1 (the coverage declaration in checks policy, frozen with each validation, doctor rows, the guide) merged at a31c6118 (E243's note of 2026-11-11) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
 
 **Wired:** cli:check run, dashboard:/evidence/{id}
 
@@ -144,13 +156,13 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-08 — Governed stages on the typed Lead surface (StageIntent) and dispositions
 
-**Board state:** partly_built
+**Board state:** awaiting_signoff
 
-**Who:** Lead (E83)
+**Who:** operator (the real Lead run, then the sign-off)
 
 **Now:** not on the Now list
 
-**Own slices left:** 1 — E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test that classify.auto_runnable's set equals it; it rides the scheduler's PR 4 (E228) (E83) — **Next:** E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test that classify.auto_runnable's set equals it; it rides the scheduler's PR 4 (E228) — E83 — 1 small PR (estimate)
+**Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
 
@@ -218,7 +230,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 13 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 12 — SYS-02, SYS-05, SYS-29, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -228,7 +240,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 5
 
-**Own slices left:** 11 — E118: the contained Lead's saved permissions cleared at start, and the Lead's server moved out of the shell's reach (on the Now list, before first use) (E118); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E100: change mode()'s win32 branch so an explicit required refuses the launch on every platform (E100); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E92: forward plain http:// requests through the contained egress under the same R-6 host check (E92); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E113: a headless contained OpenCode Lead, so the live lane exercises containment (E113); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 12: the Lead credential's input as a hidden prompt, never a command-line value (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 13: an AEW-projected, display-only status plugin in the Lead's TUI (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 14: the Lead edits a class 0 change in that Ticket's workspace only (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c) (F48); Windows network containment, with the Lead's usage on Windows (E222); ProcessTree.active() with a group holding only a zombie, for checking (E247); run_session_tree's std handles on Windows (E250) — **Next:** E118: the contained Lead's saved permissions cleared at start, and the Lead's server moved out of the shell's reach (on the Now list, before first use) — E118 — 1 small PR (estimate; BOARD v2 §0)
+**Own slices left:** 11 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E100: change mode()'s win32 branch so an explicit required refuses the launch on every platform (E100); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E92: forward plain http:// requests through the contained egress under the same R-6 host check (E92); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E113: a headless contained OpenCode Lead, so the live lane exercises containment (E113); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 12: the Lead credential's input as a hidden prompt, never a command-line value (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 13: an AEW-projected, display-only status plugin in the Lead's TUI (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): CS-4 addendum 14: the Lead edits a class 0 change in that Ticket's workspace only (map v1.20:87; no register row found) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c) (F48); Windows network containment, with the Lead's usage on Windows (E222); ProcessTree.active() with a group holding only a zombie, for checking (E247); run_session_tree's std handles on Windows (E250) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
 
 **Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker on Windows, even when required is set explicitly — not read from the code
 
@@ -238,25 +250,13 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E35's probe; H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06 after the designer's match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)
+**Who:** Lead (H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06 after the designer's match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)
 
 **Now:** 6
 
-**Own slices left:** 9 — E35's probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known layer (on the Now list, before first use) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E35's seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute and browser denies, the 'nothing else loaded' conformance scenario, tool_output limits (on the Now list) (E35); H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): H-2 (OpenCode qualification, absorbed F18.11) and H-3 (patch releases without a PR per release, absorbed E17 with H-1's part 2; H-3's bundle import); shares its bundle import with F18.3 (SYS-33) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E149: the 429 re-drive in the turn-end path, with the relay classifying a 429 and setting x-should-retry; once placed (E149); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E150: turn-ending continuation for workers, after E149 (E150); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E152: measure ruling 11's W1 workaround (measurement only, before any patch to the harness) (E152); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless, after it); held in HOLD-06 (F24); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** E35's probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known layer (on the Now list, before first use) — E35 — 1 PR (estimate)
+**Own slices left:** 8 — FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E35's seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute and browser denies, the 'nothing else loaded' conformance scenario, tool_output limits (on the Now list) (E35); H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): H-2 (OpenCode qualification, absorbed F18.11) and H-3 (patch releases without a PR per release, absorbed E17 with H-1's part 2; H-3's bundle import); shares its bundle import with F18.3 (SYS-33) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E149: the 429 re-drive in the turn-end path, with the relay classifying a 429 and setting x-should-retry; once placed (E149); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E150: turn-ending continuation for workers, after E149 (E150); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E152: measure ruling 11's W1 workaround (measurement only, before any patch to the harness) (E152); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless, after it); held in HOLD-06 (F24); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E35's seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute and browser denies, the 'nothing else loaded' conformance scenario, tool_output limits (on the Now list) — E35 — 1 PR (estimate)
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
-
-### SYS-09 — Capability register (CAP-1 and the base bundle)
-
-**Board state:** partly_built
-
-**Who:** Lead (E191 with E196, placed on 2026-11-11 for the near-finish push); the operator for the real contained run
-
-**Now:** 7
-
-**Own slices left:** 3 — `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered (E191); The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings only (E196); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered — E191 — part of 1 small PR with E196 (estimate)
-
-**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -326,7 +326,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 40
 
-**Own slices left:** 7 — Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader (row owed); MS4+MS6: worker reply/read/wait, launch snapshot, one Lead wake and local told-ID consumption (E175); MS5: live delivery and continuation (E175); MS5b: finality, both timings, recorded harness send and default-on (E175); MS7: separately approved real-provider qualification; not a default-on gate (E175); Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer (row owed); A typed harness_interrupt (E248) — **Next:** Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader — row owed — 1-2 PRs (estimate; the designer's reading, the reset record)
+**Own slices left:** 6 — Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader (row owed); MS5: live delivery and continuation (E175); MS5b: finality, both timings, recorded harness send and default-on (E175); MS7: separately approved real-provider qualification; not a default-on gate (E175); Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer (row owed); A typed harness_interrupt (E248) — **Next:** Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader — row owed — 1-2 PRs (estimate; the designer's reading, the reset record)
 
 **Switch:** coordination.messaging — default: disabled — checked against src/aew/policy/execution.py:STRING_SWITCHES
 

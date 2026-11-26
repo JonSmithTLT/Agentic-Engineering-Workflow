@@ -65,6 +65,20 @@
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 4-5 (C++ lifetime and unwinding; defined behavior, concurrency and ABI) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   },
+  "ci-evidence-triage": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "f12e37c7a199eb844347c0a850cb274adf71ffc4d2d9e286d2c3a7f17580c2d3",
+   "files": {
+    "references/github-actions.md": "e94a3bdf60dc20a86fc5837c46101b4e1020937b4c90cfa704cf26d40c049036",
+    "SKILL.md": "8321344c761f81787c68a4cea1925416198da74ae503a537f8371cab4a205946"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/ci-evidence-triage",
+    "snapshot": "ci-evidence-triage-0.1.0-8321344c",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
   "codebase-investigation": {
    "version": "0.1.0",
    "label": "unevaluated",
@@ -106,6 +120,20 @@
    "source": {
     "candidate": "docs/skills/candidates/delegation-handoffs",
     "snapshot": "delegation-handoffs-0.1.0-c8df3915",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
+  "empirical-evaluation": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "9f47d62e281f15113695b614cdfb400def835359731d2ea92d80db8d6ef4a0b2",
+   "files": {
+    "references/comparison-design.md": "25f5da08f346a3f56c00245ceac2b6be7edc19a1c2a2b799b9054cf543ff1812",
+    "SKILL.md": "fe3e0f577e3d4d585f2d30a12b023b18c8dc1de82366b4a9c089e50362039768"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/empirical-evaluation",
+    "snapshot": "empirical-evaluation-0.1.0-fe3e0f57",
     "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   },
@@ -218,6 +246,7 @@
   }
  },
  "lead": [
+  "ci-evidence-triage",
   "delegation-handoffs",
   "engineering-planning",
   "requirements-clarification"

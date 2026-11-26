@@ -1,0 +1,12 @@
+# Comparing models, context and tools
+
+Use for multi-arm or stochastic comparisons where task mix and cost can mask the effect.
+
+- Freeze task IDs and splits before tuning. Include representative production-like tasks separately from adversarial/challenge tasks; do not report their combined score as population prevalence without a sampling rationale.
+- For a skill, compare the same worker with and without the skill. Test natural discovery separately from forced loading; forced-load performance does not show that the description triggers correctly. For composition, add a combined arm and examine interactions rather than adding separate skill gains arithmetically.
+- For context/tool size, measure usable fit, selection errors, outcome quality and latency/cost separately. Vary token mass and tool count independently when making separate claims; otherwise label the intervention a bundle. Preserve necessary task information across arms or acknowledge information removal as part of treatment.
+- Pin actual served model identifiers, harness, settings and effective inputs. A catalog label, maximum context window or cheap token price does not predict end-to-end effectiveness. Stratify by intended worker/model and task family; an average cannot prove every tier meets a limit.
+- Pair outcomes by independent task and report counts/differences, not just arm averages. Repeated trials are nested within tasks. Use task-level resampling or an appropriate hierarchical/paired model when estimating uncertainty; state assumptions and small-sample limits. Do not compute an interval you cannot justify or reproduce.
+- Calibrate graders using correct, incorrect and incomplete outputs. Blind labels/order where feasible. Retain disagreements and audit samples; a judge preferring verbose answers may inflate an arm's apparent quality. A schema pass only validates structure.
+- Include timeouts/failures/retries in the declared outcome and cost denominator. Missing infrastructure runs need a predeclared disposition, not silent deletion. Report total cost and cost per successful task with definitions; zero successes makes the latter undefined, not zero.
+- Define an effect worth adopting and an acceptable regression margin before confirmation. If available budget cannot distinguish them, return inconclusive and the needed precision. Correct for planned multiple comparisons or label unplanned slices exploratory. Repeatedly checking significance requires a suitable sequential procedure.

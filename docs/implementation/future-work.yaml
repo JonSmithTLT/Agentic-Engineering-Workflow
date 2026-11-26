@@ -5390,6 +5390,16 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
+  - '#': E395
+    Work: A frontend-focused specialised role card, which carries the `frontend-design` skill and lines up with the MCP
+      servers and utilities planned for frontend work. Until it exists `frontend-design` stays an unserved candidate, since
+      no built-in card fits it. The card's archetype, its capabilities and what it requests or offers are the designer's
+      to shape
+    Source: 'The operator, 2026-11-26, on E136''s remaining skills: "for 3 we should just track making a front-end focused
+      specialized role card. It''ll also align with the mcp servers and utilities we were planning on jnckuding anyway."'
+    When: '**Unscheduled.** After the designer shapes the card; E136 leaves `frontend-design` to this row'
+    Notes: Filed by E136's fourth batch
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

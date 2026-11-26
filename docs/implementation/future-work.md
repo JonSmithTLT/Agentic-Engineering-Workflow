@@ -3942,6 +3942,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
+### E395
+
+**Work:** A frontend-focused specialised role card, which carries the `frontend-design` skill and lines up with the MCP servers and utilities planned for frontend work. Until it exists `frontend-design` stays an unserved candidate, since no built-in card fits it. The card's archetype, its capabilities and what it requests or offers are the designer's to shape
+
+**Source:** The operator, 2026-11-26, on E136's remaining skills: "for 3 we should just track making a front-end focused specialized role card. It'll also align with the mcp servers and utilities we were planning on jnckuding anyway."
+
+**When:** **Unscheduled.** After the designer shapes the card; E136 leaves `frontend-design` to this row
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E395/`, oldest first (`python tools/register.py show E395`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

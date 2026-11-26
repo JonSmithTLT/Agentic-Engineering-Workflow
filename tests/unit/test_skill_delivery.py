@@ -28,8 +28,9 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-SHIPS = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "codebase-investigation",
-         "debugging-root-cause-analysis", "delegation-handoffs", "engineering-planning", "mechanical-enumeration",
+SHIPS = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "ci-evidence-triage",
+         "codebase-investigation", "debugging-root-cause-analysis", "delegation-handoffs", "empirical-evaluation",
+         "engineering-planning", "mechanical-enumeration",
          "python-development", "requirements-clarification", "security-review", "technical-writing", "test-design"]
 UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
@@ -250,11 +251,13 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     # code_reviewer went to 3 for register E126's three lines on test work, after the skills moved it to 2. E136's
     # first batch moved engineer to 3 and the four others it touched to 2; its second batch moves each card it offers
     # a skill to one more: code_reviewer and engineer to 4, the other five to 3. Its third moves code_reviewer to 5,
-    # and `technical_writer` (E167) starts at 1.
+    # and `technical_writer` (E167) starts at 1. Its fourth moves the four cards it offers a skill to one more:
+    # code_reviewer to 6, verifier and investigator to 4, researcher to 2.
     assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer", "python_engineer",
-                                                  "c_engineer", "investigator", "planner", "technical_writer")} == {
-        "code_reviewer": 5, "verifier": 3, "engineer": 4, "python_engineer": 3, "c_engineer": 3, "investigator": 3,
-        "planner": 3, "technical_writer": 1}
+                                                  "c_engineer", "investigator", "planner", "technical_writer",
+                                                  "researcher")} == {
+        "code_reviewer": 6, "verifier": 4, "engineer": 4, "python_engineer": 3, "c_engineer": 3, "investigator": 4,
+        "planner": 3, "technical_writer": 1, "researcher": 2}
 
 
 # E136's first batch: the two candidates whose text is public in this repository, on the cards they fit, as
@@ -297,7 +300,15 @@ BATCH_2 = {
 # `technical-writing` on `code_reviewer` (E167), and the Lead's two items, accepted there, put the language skills on
 # it too. optional_skills only; the language skills already ship (E127).
 BATCH_3 = {"code_reviewer": ["technical-writing", "python-development", "c-development"]}
-BATCHES = (BATCH_1, BATCH_2, BATCH_3)
+# E136's fourth batch, the evidence group, by the operator's answer of 2026-11-26 ("Your rec is fine on 2"):
+# optional_skills only. `ci-evidence-triage` is also on the Lead's own list (``test_lead_skills.py``).
+BATCH_4 = {
+    "researcher": ["empirical-evaluation"],
+    "investigator": ["empirical-evaluation"],
+    "verifier": ["ci-evidence-triage"],
+    "code_reviewer": ["ci-evidence-triage"],
+}
+BATCHES = (BATCH_1, BATCH_2, BATCH_3, BATCH_4)
 # Every built-in card's offered list, whole: E127's language skills on the default implementer, then E136's batches.
 OFFERED = {card: ([] if card != "engineer" else ["python-development", "c-development"])
            + [name for batch in BATCHES for name in batch.get(card, [])]
@@ -321,6 +332,21 @@ def test_the_second_e136_batch_is_offered_on_its_cards_delivered_and_listed_neve
 
 @pytest.mark.parametrize("card, batch", sorted(BATCH_3.items()))
 def test_the_third_e136_batch_is_offered_on_its_card_delivered_and_listed_never_requested(tmp_path, card, batch):
+    meta = roles.builtin_cards()[card].meta
+    assert not set(batch) & set(meta.get("skills") or [])
+    planned = skills.plan(meta.get("skills") or [], meta.get("optional_skills"))
+    assert set(batch) <= set(planned["offered"]) and set(batch) <= set(planned["exposed"])
+    assert (planned["unavailable"], planned["reasons"]) == ([], {})
+    delivered = skills.deliver(planned, tmp_path / "skills")
+    assert delivered["exposed"] == planned["exposed"]
+    assert sorted(p.name for p in (tmp_path / "skills").iterdir()) == delivered["exposed"]
+    assert skills.root_problems(tmp_path / "skills", delivered["exposed"]) == []
+    listed = next(line for line in lines(delivered) if line.startswith("- The `skill` tool lists "))
+    assert all(f"`{name}`" in listed for name in batch), listed
+
+
+@pytest.mark.parametrize("card, batch", sorted(BATCH_4.items()))
+def test_the_fourth_e136_batch_is_offered_on_its_cards_delivered_and_listed_never_requested(tmp_path, card, batch):
     meta = roles.builtin_cards()[card].meta
     assert not set(batch) & set(meta.get("skills") or [])
     planned = skills.plan(meta.get("skills") or [], meta.get("optional_skills"))

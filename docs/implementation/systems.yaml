@@ -2336,7 +2336,7 @@ systems:
     says what was offered and loaded; exercised in a real run; E135''s evaluation runner built. E135''s qualification
     is a release gate before anything beyond the personal alpha, kept on E135''s row, not a condition of finishing this
     system (the operator, 2026-11-25). The Lead is one more recipient (E161): a `lead` list in the manifest (engineering-planning,
-    requirements-clarification, delegation-handoffs, all optional) read by `lead_config` through the same helper that
+    requirements-clarification, delegation-handoffs and, from E136''s fourth batch, ci-evidence-triage, all optional) read by `lead_config` through the same helper that
     decides exposure for a run; the contained Lead gets its own rule list (allow each exposed id, deny every other, compatibility
     plugin off, skills copied into a folder of each start''s own, bound read-only); the uncontained Lead gets AEW''s path
     and ids with other skills left at ask; exposed and loaded skills recorded in the Lead session''s own record, with
@@ -2344,17 +2344,16 @@ systems:
     checks the absolute `skills` path and a colliding id; exercised in a real Lead run. AEW-declared MCP servers are not
     in the Lead''s alpha.'
   remaining:
-  - slice: 'E136: what its three batches left, each waiting on the operator: the two security skills on `security_reviewer`
-      (the designer''s fit, 2026-11-04) once their drafts are updated; `empirical-evaluation`, `ci-evidence-triage` and
-      `frontend-design`, which no decision places on a card; and a foundational skill in `skills:` per role, its cost measured
-      first'
+  - slice: 'E136: what its four batches left, each waiting on the operator: the two security skills on `security_reviewer`
+      (the designer''s fit, 2026-11-04) once their drafts are updated; and one foundational skill in every card''s `skills:`
+      (the operator, 2026-11-26), once the operator approves which skill each card gets'
     row: E136
     estimate: 1 or 2 batched PRs after the operator's answers (estimate)
   - slice: 'E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate
       on E135''s row, outside this finish line'
     row: E135
     estimate: 1 PR for the runner (estimate)
-  - slice: 'the Lead''s skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the
+  - slice: 'the Lead''s skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the
       per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record.
       Left: the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a
       colliding id, the listing''s and a loaded body''s cost, and which skills were loaded) and a real Lead run; the Lead''s
@@ -2371,8 +2370,10 @@ systems:
   reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
     E136's first batch adds two optional ones, E161 the Lead's three, E136's second batch two more and its third `technical-writing`,
     with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
-    staged for the rest of the rollout. Of E136's skills, the two security ones wait on the operator's update of their
-    drafts and three on a card fit nobody has decided, and
+    staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
+    second also on the Lead's list. Of E136's skills, the two security ones wait on the operator's update of their
+    drafts, `frontend-design` waits for its own card (E395), every card's one foundational skill waits on the operator's
+    approval of the mapping, and
     E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
@@ -2382,7 +2383,8 @@ systems:
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
     lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
     E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,
-    mechanical-enumeration and technical-writing, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
+    mechanical-enumeration, technical-writing, empirical-evaluation and ci-evidence-triage, and E161''s delegation-handoffs,
+    engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills

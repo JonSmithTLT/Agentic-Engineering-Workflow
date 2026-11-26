@@ -115,6 +115,7 @@ def state_problems(clusters: dict[str, dict[str, str]], known: set[str], open_ro
 
 def register_ids() -> tuple[set[str], set[str]]:
     data = register.load()
+
     def ids(open_only: bool) -> set[str]:
         return {r["id"] for r in register.rows(data, open_only=open_only) if r["id"] and r["id"] != "Gate"}
     return ids(False), ids(True)

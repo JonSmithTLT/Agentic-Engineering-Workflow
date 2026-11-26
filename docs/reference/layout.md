@@ -74,6 +74,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.engine.history_ops:HistoryCommands.history_reindex`
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
+    - `aew.engine.operator_decisions:_write`
     - `aew.engine.outbox:bump_wake`
     - `aew.engine.queue_ops:Queue._checkout_sync_lock`
     - `aew.engine.recall:Substrate._connect`
@@ -424,10 +425,11 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.harness.notify:DeliveryLog.record`
     - `aew.harness.notify:Watcher._write_state`
-- `local/operator` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.store`: `replace_pending`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
+- `local/operator` (git-ignored, masked by containment); read by `aew.engine.lock`: `FileLock._is_path`; `aew.engine.operator_decisions`: `_read`; `aew.engine.store`: `replace_pending`; `aew.harness.operator_client`: `read_locator`, `session_holders_live`
   - Written by
     - `aew.engine.lock:FileLock._join_queue`
     - `aew.engine.lock:FileLock._open`
+    - `aew.engine.operator_decisions:_write`
     - `aew.harness.operator_autostart:ensure`
     - `aew.harness.operator_client:name_session`
     - `aew.harness.operator_client:no_session_left`

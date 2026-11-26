@@ -515,6 +515,7 @@ def _lead_tool(args: argparse.Namespace) -> Any:
 def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     """Outside a Lead session: the runner in this process, with the operator's own credential (ADR-0005)."""
     from aew import lead_credential
+    from aew.engine import dispatch
     from aew.harness import lead_broker
     from aew.surface import contract, run
     from aew.surface.context import SurfaceContext, switches_for
@@ -527,7 +528,7 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     token = (lead_credential.optional() if reads else lead_credential.required()) or ""
 
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
-        return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
+        return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel=dispatch.CLI)
 
     result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
                           args.name, arguments, token=token or None, run_cli=cli)

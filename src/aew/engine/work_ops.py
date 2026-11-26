@@ -11,6 +11,7 @@ from aew.engine import dependencies as deps
 from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import operator_decisions as OD
 from aew.engine import priority as PRIORITY
 from aew.engine import scope_ops as SC
 from aew.engine.base import TxnContext
@@ -787,6 +788,9 @@ class WorkCommands:
             approval.compare("plan.accept", entry["path"], binding,
                              sha256_file(self.k.aew_root / entry["path"]))
             approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
+            # The operator's decision (the ruling of 2026-11-26): a Lead session's acceptance needs their confirmation
+            # of exactly this plan, given at the operator endpoint, and uses it up.
+            confirmed = OD.consume(self.k, ctx, OD.PLAN, work_id, entry["sha256"], revision=revision)
             for p in unit["plans"]:
                 if p["status"] == "accepted":
                     p["status"] = "superseded"
@@ -810,7 +814,8 @@ class WorkCommands:
                 to = "BLOCKED" if blockers else "READY"
                 transitions.check("REPLAN_REQUIRED", to, "plan.accept")
                 self.units.set_state(unit, to, f"plan v{revision} accepted", state=ctx.state)
-            ctx.summary = f"{work_id} plan v{revision} accepted ({decision})"
+            ctx.summary = f"{work_id} plan v{revision} accepted ({decision})" + (
+                f", confirmed by the operator ({confirmed})" if confirmed else "")
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "accepted": revision, "decision": decision,
                 "revision": ctx.session.committed_revision}

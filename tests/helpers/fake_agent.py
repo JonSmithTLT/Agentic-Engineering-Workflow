@@ -206,6 +206,9 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "check":
         return aew("check", "run", s["id"])
     if do == "lead":  # scripted decisions use the subject shown by the same Lead bridge
+        # A step the Lead asked the operator about goes on at their word (operator_confirms.asked).
+        if s.get("after_file") and not wait_file(s["after_file"], bounds.TEST_TIMEOUT_S):
+            raise RuntimeError("the operator never confirmed this step")
         argv = list(s["args"])
         if argv[:2] == ["work", "transition"] and "--prior-value" not in argv:
             shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])

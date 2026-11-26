@@ -636,6 +636,27 @@ def test_a_signal_before_the_cutoff_records_interruption_without_a_cutoff_marker
         assert observation["status"] == "observed" and observation["registered_workers"] == []
 
 
+def test_a_cancel_collection_with_no_worker_reads_the_phases_at_a_stamp_on_the_phase_clock(tmp_path, monkeypatch):
+    # The collection's own stamp, as the supervisor's above: on the workers' phase receipts' clock, never
+    # time.monotonic, which differs from it on Windows before CPython 3.13 (#575's follow-on).
+    lane = _load("lane_step")
+    for name in ("AEW_PYTEST_OUTCOME", "AEW_LANE_RECOVERY_OUTCOME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AEW_LANE_JOB_STATUS", "cancelled")
+    monkeypatch.setattr(lane, "collect", lambda _root: None)
+    sentinel = 987_654_321
+    monkeypatch.setattr(lane, "phase_clock_ns", lambda: sentinel)
+    stamps = []
+
+    def read_phases(_root, at_ns):
+        stamps.append(at_ns)
+        return []
+
+    monkeypatch.setattr(lane.worker_evidence, "phases_at_signal", read_phases)
+    assert lane.main(["--collect", "--root", str(tmp_path)]) == 0
+    assert stamps == [sentinel]
+
+
 def test_a_windows_supervisor_interrupted_by_sigint_still_collects_and_ends_its_lanes_job(tmp_path, monkeypatch):
     import signal
 

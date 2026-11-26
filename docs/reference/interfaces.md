@@ -192,6 +192,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `lead session`
 - `lead show`
 - `lead takeover`
+- `lead telemetry`
 - `lead tool`
 - `manifest adopt`
 - `map diff`

@@ -34,10 +34,14 @@ def test_aew_guide_explains_this_projects_flow_from_its_own_policy(tmp_path):
     """F16 (operator, 2026-09-30), from audit X4 and the dogfood: the Lead learned AEW by trial and error. `aew guide`
     prints how work flows in this project, from its own policy; `aew opencode` puts it in the Lead's system text."""
     p = sample_project(tmp_path)
-    res = p.aew("guide")
+    res = p.aew("guide", "core")  # E231: the core, which `aew opencode` puts in the Lead's system text
     assert res.returncode == 0, res.stderr
     text = res.stdout
     assert text.startswith("# How work gets done in AEW: the Lead's guide")
-    assert "the implementer's local checks pass on the change as submitted (`unit`)" in text  # this project's checks
-    assert "Checks not configured yet" not in text  # the sample project configures `unit`
-    assert p.ok("guide", "--json")["guide"] == text.rstrip("\n") + "\n"
+    assert p.ok("guide", "core", "--json")["text"] == text.rstrip("\n") + "\n"
+    gates = p.aew("guide", "gates").stdout  # a section, from the same project's policy
+    assert "the implementer's local checks pass on the change as submitted (`unit`)" in gates  # this project's checks
+    assert "Checks not configured yet" not in gates  # the sample project configures `unit`
+    assert "`aew guide gates`" in p.aew("guide").stdout  # with no section, it lists them
+    listed = p.ok("guide", "--json")["sections"]  # each entry has the same shape (review of #593, n2)
+    assert listed[0]["name"] == "core" and all(set(e) == {"name", "topic", "when"} for e in listed)

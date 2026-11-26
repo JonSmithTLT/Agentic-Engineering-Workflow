@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 16 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-53, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 17 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-43, SYS-53, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -104,6 +104,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-43 — Plan assessment gate and planner staffing
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 31
+
+**Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
+
+**Wired:** none
+
 ### SYS-53 — Per-operation revision check (replacing the project-wide expect_rev)
 
 **Board state:** partly_built
@@ -134,11 +146,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E293's maps profile next, 1-2 PRs); decided by the operator
+**Who:** Lead (F22.2 and F22.3 after their benchmark); decided by the operator
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — E293, V-01's maps profile: the built maps held against A-14's obligations, the profile written, each divergence fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code (E293); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** E293, V-01's maps profile: the built maps held against A-14's obligations, the profile written, each divergence fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code — E293 — 1-2 PRs (estimate)
+**Own slices left:** 1 — F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) — F22.2 — many PRs, unsized (estimate)
 
 **Switch:** maps.pack_slices — default: off (a new project: structural) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
@@ -188,7 +200,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 1 — AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes (E225) — **Next:** AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes — E225 — 1 PR (estimate)
+**Own slices left:** 0 — none — **Next:** none
 
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
@@ -232,7 +244,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 12 — SYS-29, SYS-22, SYS-41, SYS-43, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -267,18 +279,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 28
 
 **Own slices left:** 5 — consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1; A-58 CL-R03) (E158); the bounds and the allow-list, the isolation tests, the resume lists and the Lead's text (consult design, Placement, PR 2) (E158); `aew policy model allow <provider/model>` and a profile add, operator-decided, with their surface-map entries (consult design, later pointer); first configuration proposing a profile per named provider (E164); an operator-requested review or verification on a consult or branch review: the obligation-adding request record, its non-waivable mark, its owed dispatch in `next`, the operator's removal (small-changes design §8) (row owed); `--model` held to profiles plus the allow-list, always bounded (E165) — **Next:** consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1; A-58 CL-R03) — E158 — 1 PR (estimate; the designer's reading, consult design Placement: 2 PRs in all)
-
-**Wired:** none
-
-### SYS-43 — Plan assessment gate and planner staffing
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** 31
-
-**Own slices left:** 3 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160); the plan assessor's pack fitted to its scope: the reviewer archetype's text rendered at plan_assessment scope asks for a change's findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator, 2026-11-25) (E366) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
 
 **Wired:** none
 
@@ -406,9 +406,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Not counted
 
-**Members:** 19 — SYS-18, SYS-12, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
-
-**SYS-18 — Ticket revisions:** freeze
+**Members:** 19 — SYS-12, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-18, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
 
 **SYS-12 — Discovery layer, D2 (output and text rules):** freeze
 
@@ -423,6 +421,8 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **SYS-15 — Operator settings surface and fresh-project configuration:** cut
 
 **SYS-16 — Plan assurance before mutating dispatch (ASSURED):** keep
+
+**SYS-18 — Ticket revisions:** freeze
 
 **SYS-21 — Operator attention (attention spine, observability, fact-owner registry, blocked-on-you):** freeze
 

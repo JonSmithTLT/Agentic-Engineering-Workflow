@@ -1119,8 +1119,9 @@ class Engine:
                      kind: str = "lead_acquire") -> dict[str, Any]:
         return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label, kind=kind)
 
-    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False, plan_assessment: str | None = None) -> str:
-        return self._resume.lead_guide(stages, messaging=messaging, plan_assessment=plan_assessment)
+    def lead_guide_document(self, stages: Sequence[Any], *, messaging: bool = False, uses: Sequence[Any] = (),
+                            plan_assessment: str | None = None) -> Any:
+        return self._resume.lead_guide_document(stages, messaging=messaging, uses=uses, plan_assessment=plan_assessment)
 
     def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)

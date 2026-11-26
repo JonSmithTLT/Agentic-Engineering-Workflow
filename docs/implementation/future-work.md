@@ -48,11 +48,11 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 14 | STG-15, E35 | H-1, H-2 and H-3, beside first use, which they don't hold. CAP-1's PR 3 is closed by #349 |
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 was established on a Linux host by the operator's root session, 2026-11-10 |
 | 16 | closed: E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass, closed by #360 |
-| 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
+| 17 | closed: E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope, closed by #540 and #545 |
 | 18 | closed: E127 | Delivering the first four skills, labelled unevaluated, and `optional_skills` on the card, closed by #342 |
 | 19 | closed: E130 | What the Lead is told points at its typed tools and cannot go stale, closed by #331 |
 | 20 | closed: E139 | Worker packs made true, each finding with a guard, closed by #333 (its review's follow-ons are E198) |
-| 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling merged as #332 and the rules as #335; the flip is next |
+| 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling merged as #332, the rules as #335, and the flip as #502 (O-SECRET) and #555 (O-CMD); what is left is the first runs on the flipped base |
 | 22 | closed: E143 | The relay route's model-family check and its follow-on (one allowlist function, row 1's list and the check on the status line), closed by #338 and #339 |
 | 23 | closed: E142 | Serving `security-review` and `c-review`, after E127, closed by #457 |
 | 24 | E136 | Serving the other eleven skills, batched, after E142 (unfrozen by the operator, 2026-11-11) |
@@ -71,10 +71,10 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
 | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
 | 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
-| 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
+| 40 | E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3 (E131, closed by #422), MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 | 42 | E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25) |
-| 43 | E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25) |
+| 43 | closed: E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25), closed by #594 |
 | 44 | E367 | The Lead's system text and tool list rewritten, with a truth test, after the guide's core plus pointers |
 | 45 | E368 | Worker packs as a core plus pointers, after E367 |
 | 46 | E369 | The always-sent context audit, a standing item the operator schedules |
@@ -1158,18 +1158,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E58/`, oldest first (`python tools/register.py show E58`).*
 
-### E62
-
-**Work:** Integration debt, audit AX-15 (P4): project maps reach only the investigator's pack, not the planner's, and are not regenerated on publish. Designer disposition: **pending / local-owner review**
-
-**Source:** Serves `P01-27`; position A-14; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-15; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
-
-**When:** **V-01.** Restored from HOLD-14 by the hold match (operator, 2026-11-06); its matched scope is its note of that day. Placed in slot 2 of the reset of 2026-11-06 (SYS-07), which supersedes "after first use". Its first slice, the map refreshed at use, merged as #441 (the note of 2026-11-10); the switch-on, with E184's owed items, is next
-
-**Notes:** Evidence: `src/aew/maps/slices.py` (at `8f4dabb`)
-
-*Later notes: `notes.d/E62/`, oldest first (`python tools/register.py show E62`).*
-
 ### E71
 
 **Work:** The M4 operator guide: a guide under `docs/guides/` for what M4 built, which today's guides (M1 to M3) do not cover: the typed Lead tools and `aew lead tool`; the operator endpoint, steering (Crawl/Walk/Run, the steering loop) and the operator notifier; concurrency and the integration queue (`defer`, `requeue`, `reorder`, the breaker); VALIDATE_ONLY and the custody worker; checks-mode validation (Linux only); `aew stage continue|abandon` and dispositions; `aew map`, raw-history search and F9 messaging; the containment labels per platform; usage (no `aew usage` command yet, and a price table needs a `policy.pricing` entry that `aew init` does not write); and a dashboard guide, of which there is none. It also corrects what is wrong today: `opencode.md`'s containment section still says every run is workdir separation only, stale for Linux; the dashboard's default port (4280) is undocumented; and Class 0 integration needs the CLI (`ticket_draft` cannot create a Class 0 Ticket, and `ticket_prepare` requires Ticket-level verification evidence), which no guide says
@@ -1224,7 +1212,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** `main`'s push run 38291227264 (`977d685`), attempt 1, `integration 3/4 (windows-latest)`: `tests/integration/test_integration_stages.py::test_broker_spawned_custody_worker_registers` failed with `PermissionError: [Errno 13]` on `.aew/state/control.yaml`. Call path: `test_integration_stages.py:590` (the `_wait_for` condition, line 572), then `control` (line 81), then `invariants.py:41` `load_control`, then `Path.read_bytes`. The inventory comes from the review of #223, at `977d685`: a syntax-tree pass over every `.py` under `tests/` for `control.yaml` and `project.yaml`. For each `read_bytes`, `read_text` or `open` call, it resolves a bare-name receiver to its last assignment earlier in the same function. Its limits: it does not follow a path across functions (one passed in or returned is found only where it is built) or through containers. It found 40 reads: 3 in `tests/helpers` (2 of `control.yaml`, 1 of `project.yaml`) and, in test modules, 30 of `control.yaml` and 7 of `project.yaml`. An earlier one-line search had found only 15, because it missed every read through a variable
 
-**When:** **Unscheduled.** Owner: the test helpers; the reads that need the bytes wait for #220
+**When:** **Unscheduled.** Owner: the test helpers; the reads that need the bytes use `store.read_lock_free`, which #220 brought
 
 **Notes:** The test-side twin of E73: the same class, readers that do not go through the one owner. E74 is the same class in the code-registry scan
 
@@ -1602,18 +1590,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E124/`, oldest first (`python tools/register.py show E124`).*
 
-### E126
-
-**Work:** A pre-F4 correction that F4 absorbs, not F4's first slice: the product's Lead adds one exact test path to one Ticket's scope, on the record with a reason, in place of cancel and replace. The Ticket's record never changes: an immutable correction record and one accessor for the effective scope. There is no size limit, and the review judges proportion from the lines shown. A removed test, fewer test definitions, a runner config or an existing shared file under a test directory stops for a sign-off, cited from a plan revision or quoted from the operator. Any other kind of path stays out of this slice, until use shows a test-only add is not enough
-
-**Source:** The operator's order of 2026-11-03; the designer's decisions of 2026-11-03; the operator's answer on who decides an add, recorded by the designer on 2026-11-03
-
-**When:** **Now.** Item 17 of the Now list. F4 stays unbuilt (an Unscheduled row since the hold match of 2026-11-06), and no marker raises
-
-**Notes:** Filed by the Lead. Before the wire the Lead decides an add alone, an interim delegation for this one class of path. A-29 is not amended: before V-01 the add routes through `DECIDE_WORK_PROPOSAL` or the operator amends the text, which the designer holds. This describes the product's Lead, not development of AEW. The stop covers added paths only: a Ticket whose scope already covers the tests has the guide and the review behind it. `aew-reviewer` reviews it, with an extra look at the path rules and the pack's labelling of added paths
-
-*Later notes: `notes.d/E126/`, oldest first (`python tools/register.py show E126`).*
-
 ### E128
 
 **Work:** `aew opencode`'s refusal can race its own exit: the broker's close leaves a thread stopping the listener, the exit finalizer also unlinks the socket, and a traceback follows the JSON on stderr. The broker's close waits for the listener's stop within `WAKE_TIMEOUT_S`, the test helper keeps stderr when it finds no error, and the same delay pins the fix
@@ -1637,18 +1613,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E129/`, oldest first (`python tools/register.py show E129`).*
-
-### E131
-
-**Work:** F9-A MS3's typed `message_send`, recording coordination without a control commit or redispatch. Live delivery and the recorded `harness send` path follow under E175
-
-**Source:** The operator, 2026-11-04; the count of 8 real sessions
-
-**When:** **Now.** Placed by the operator (2026-11-10). F9 was restored from HOLD-09; MS3 follows merged E4, E3c and MS2
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E131/`, oldest first (`python tools/register.py show E131`).*
 
 ### E132
 
@@ -1805,18 +1769,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. The "scope exceeds plan" blocker is built with it. `aew-reviewer` reviews it
 
 *Later notes: `notes.d/E150/`, oldest first (`python tools/register.py show E150`).*
-
-### E151
-
-**Work:** The launch conflict check for concurrent workers' files (`CNI-03.a`, `.g`): at dispatch, compare the new invocation's declared scope with each live invocation's scope and touched paths, and hold or serialize on a conflict, or where a live invocation's paths cannot be established. The check runs again at effect. Other resource kinds stay in HOLD-09
-
-**Source:** The operator's decision of 2026-11-01 selecting it; A-09
-
-**When:** **Unscheduled**, after first use and after the Lead change, E159 (the operator, 2026-11-06). The default's raise to 2, with the `gates.yaml` migration, is F10's, right after E151 merges
-
-**Notes:** Filed by the Lead. `aew-reviewer` reviews it
-
-*Later notes: `notes.d/E151/`, oldest first (`python tools/register.py show E151`).*
 
 ### E152
 
@@ -2004,7 +1956,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The designer's decision of 2026-11-06, O-SECRET reads one fixed prohibition and stops parsing negation (D2); the operator, 2026-11-06, on #335's review rounds
 
-**When:** **Now.** Item 37 of the Now list, after #335 merges, at normal priority behind the chain
+**When:** **Now.** Item 37 of the Now list, at normal priority behind the chain; #335 and E140's flip, which it follows, have both merged
 
 **Notes:** Filed by the Lead. Best effort over the ask surface, not over English: one full review, then a confirm-only check, and a gap found later is a follow-on. If the rewording costs more than the machinery it replaces, it stops at #335's rules and the designer is told. O-CMD is unchanged. #335's last quick check left notes for it
 
@@ -2118,18 +2070,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E184
-
-**Work:** `maps.pack_slices` on for every card: every role's pack carries the bounded structural slice, not only the roles whose context names `codebase_map`. The PR measures each card's added pack tokens and records them, as a record and not a gate: every byte of a pack is paid on every request. Done when every card's pack carries the slice, and the tokens it adds are recorded per card
-
-**Source:** The operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 3, "on for all cards", with its pointer of the same day (`7040a55`); the operator's selection of 2026-10-25 before I-7, maps shown to agents in V-01; the designer's rate-limit ruling of 2026-11-06, ruling 3
-
-**When:** **Unscheduled**, with E62's switch-on: its review items 2, 3 and 5 to 8 merged with #441 (the note of 2026-11-10); items 1 and 4, the dispatch result's pack without the slice body and the offer to projects already switched on, go with the switch-on
-
-**Notes:** Filed by the Lead. It supersedes the gate of 2026-10-07 on wider map serving (F22.1) for agents' packs. Maps describe the code's structure, not a Ticket's prose, so the reviewer-lookup rule of 2026-10-09 doesn't restrict them. Today the switch is `"off"` by default
-
-*Later notes: `notes.d/E184/`, oldest first (`python tools/register.py show E184`).*
-
 ### E185
 
 **Work:** History search for the Lead, on by default: `recall.raw_history_search` defaults on at `aew init`, an existing project is offered it through the shared switch offer, and the Lead reads it through a relayed `aew` command (`RELAYED_READS`, the lock-free committed path), not a typed tool. It serves only what the history store already holds, under its existing redaction, and the refusal inside an invocation stays. Workers' search is part of E253. Done when a new project has it on and the Lead's relayed read returns what the store holds
@@ -2166,18 +2106,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E188/`, oldest first (`python tools/register.py show E188`).*
 
-### E189
-
-**Work:** `base.LAUNCH_REFUSALS` lacks `provider_key_missing`, so a supervisor-side refusal for a missing provider key reaches the run's record with no `refusal` field (at `e945b3ca`). Add it to the closed set, or say in ADR-0009 why it stays out. Done when the record of such a refusal carries its reason, or ADR-0009 says why not
-
-**Source:** Found in the quick check of #340 (E156), 2026-11-06
-
-**When:** **Unscheduled**, any idle slot. One line
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E189/`, oldest first (`python tools/register.py show E189`).*
-
 ### E190
 
 **Work:** Test hygiene: test helpers take an environment or a token as the redacting `Env` type (`tests/helpers/fake_harness.py`), in function parameters as well as fields, so that a traceback's printed locals show names only. `HarnessLab.lead_env` takes a plain dict. Sweep the parameters of `tests/helpers` and `tests/live`, as #342 swept fields. Done when the sweep finds no parameter holding either as a plain dict
@@ -2201,30 +2129,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Owner, the Lead's reading, the messaging code's next builder (E131)
 
 *Later notes: `notes.d/E192/`, oldest first (`python tools/register.py show E192`).*
-
-### E193
-
-**Work:** `tests/integration/test_lead_tool.py::test_a_wait_never_holds_the_broker_and_channels_never_bleed` failed once on Windows and passed on re-run. Find the cause; never raise a deadline or add a retry
-
-**Source:** `ci` run 42161374319, attempt 1, Windows, on #335's branch at `87e3f598`, whose diff doesn't touch it
-
-**When:** **Unscheduled**, any idle slot, unless it recurs
-
-**Notes:** Filed by the Lead. Owner, the Lead's reading, the Lead's wait (E122)
-
-*Later notes: `notes.d/E193/`, oldest first (`python tools/register.py show E193`).*
-
-### E194
-
-**Work:** `tests/integration/test_dashboard_maps.py::test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on_the_index[history_moved]` failed once on Windows: its 10 s wall-clock bound measured 13.3 s under load. Take the wall clock out of the test, bounding what it counts rather than how long it takes; never raise the bound or add a retry
-
-**Source:** `ci` run 42302072140, attempt 1, Windows, on #343's branch at `beb3ed66`, whose diff doesn't touch it
-
-**When:** **Unscheduled**, any idle slot, unless it recurs
-
-**Notes:** Filed by the Lead. Owner, the Lead's reading, the dashboard's maps routes (F20.8)
-
-*Later notes: `notes.d/E194/`, oldest first (`python tools/register.py show E194`).*
 
 ### E195
 
@@ -2396,11 +2300,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E210
 
-**Work:** Reach the Lead's OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`). The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that server is inside the Lead's sandbox. Built by steering PR 2: AEW starts that server, and the broker reaches it. What is left is Windows, where no wake has been run, and steering PR 3's switch
+**Work:** Reach the Lead's OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`). The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that server is inside the Lead's sandbox. Built on Linux by steering PR 2 (AEW starts that server, and the broker reaches it), and switched on by steering PR 3 (#405). What is left is Windows: one real wake run there, where none has been run, which also shows a server lost under a real TUI (only a fake TUI has been run)
 
 **Source:** Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves the Lead's server, and `adapter.py` declared so
 
-**When:** **Unscheduled** for Windows; steering PR 3 switches the wake on (the designer's ruling of 2026-11-08: AEW starts the Lead's server)
+**When:** **Unscheduled**, the Windows half (the designer's ruling of 2026-11-08: AEW starts the Lead's server)
 
 **Notes:** Filed by the push wake's builder. It corrects a false capability declaration
 
@@ -2573,18 +2477,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E224/`, oldest first (`python tools/register.py show E224`).*
-
-### E225
-
-**Work:** Audit AEW's own git wrapper (`src/aew/workspace/git.py`) so that a run launched from inside a git operation (a hook, a rebase) never acts on the wrong repository: the git environment variables a hook sets are cleared, as the test suite's are since #373
-
-**Source:** The operator's decision of 2026-11-08 on git isolation for the test suite, which named this row
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E225/`, oldest first (`python tools/register.py show E225`).*
 
 ### E226
 
@@ -2933,18 +2825,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E258/`, oldest first (`python tools/register.py show E258`).*
-
-### E259
-
-**Work:** Drop the unread `project.profile` field: `aew init` writes `base` (`src/aew/knowledge/manifest.py`) and `project.schema.json` declares it, but nothing reads it
-
-**Source:** The operator's decision of 2026-11-09 on SYS-15 (the settings write path retires into I-6), with the build board's loose ends
-
-**When:** **Unscheduled**, placed on 2026-11-11 in the lane and small guards chain for the near-finish push, in order: E225, E259, E191 with E196, then SYS-23's doctor warning (E357)
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E259/`, oldest first (`python tools/register.py show E259`).*
 
 ### E260
 
@@ -3342,18 +3222,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E292/`, oldest first (`python tools/register.py show E292`).*
 
-### E293
-
-**Work:** V-01's profile for the built structural maps (`src/aew/maps/`): it says which capabilities V-01 supports, holds the built code against A-14's obligations, and fixes any divergence. The structural record claims only repository shape, tracked paths, language and build descriptors and declared candidates drawn from the exact source it read, never runtime behaviour, call relationships, project intent or owner approval. Each map names its exact source revision, its generator and ruleset version, every input it actually read and what it left out, and its own digest or producer name counts as a claim, not proof. The Git-objects reader treats repository content, Git configuration, hooks, symlinks and LFS or submodule references as untrusted, never silently runs repository-controlled code, and runs any such code only under ADC/HEB authority. The at-use freshness check compares the recorded inputs and tracked paths with the work's source basis, and says unknown or partial, never current, when it cannot compare; a pinned historical slice stays usable for labelled navigation without being called current. The pack slices keep to their scope cut and row bounds, never the whole map, graph or history in every prompt, declare their bounds and omission counts, never let an omission caused by a cap be read as an absent project element, and name the explicit path for wider investigation, with its cost bound, its sources and how it fails made visible. The profile names, in P01-34's terms, the capabilities V-01 supports (structure, with orientation through the pack slices, per P-DEC-01) and the source and deployment limits it supports them at, and says that an absent map degrades to direct source reads and usable work, not to false success or a refusal. For the rest it states how far V-01's maps go, and builds what V-01 needs: each orientation names its work revision, source basis and recipient, and a map selected for one checkout never passes as current for another; a role sees only what it is authorized for, and an empty answer covers only what was searched and what that role may see; a map never calls a mutable governing fact current on its own timer, and consumers reconcile changed inputs before relying on them; making, selecting or reading a map authorizes nothing, and repository text inside a map stays inert data. Every map is labelled `AGENT_REACHABLE_DERIVED`, with no protected producer and no deterministic-class upgrade, and the Lead's selection is stated as no shared qualified selection, with local maps and at-use recomputation kept available. Done when the profile is written down and names V-01's supported capabilities with the source and deployment limits it supports them at, each qualified obligation has a test that holds on the built code (or the fix that makes it hold), each piece the row builds for the stated obligations (the orientation naming its work revision, source basis and recipient; scoped empty answers; no map calling a mutable fact current on its own timer; maps authorizing nothing) has a test that holds on the built code, and each stated obligation says how far V-01 meets it
-
-**Source:** Row spec RS-35 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06 (design workspace `cffb1ee`, HOLD-14), routing A-14's requirements P01-04, P01-06 to P01-11, P01-24, P01-29, P01-32, P01-34, P01-37 and P01-38; A-14 adopted at `docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md`; P-DEC-02 (maps stay derived and agent-reachable, with no protected map writer and no custody service) in the operator's first selections of 2026-10-24
-
-**When:** **V-01.** The hold match recommends the row at V-01 and the operator accepted the batches as recommended (2026-11-06); V-01 serves the built structural map to agents for orientation and structure (the operator's first selections of 2026-10-24). It works on the built maps (F22.1) and waits on no other row. Placed now by the operator (the Lead's reading of the question), 2026-11-11: "we can do the maps profile since maps is mostly done right?", as its own PR right after SYS-07's switch-on (E62); it adds no system to the limit's count.
-
-**Notes:** Its neighbour is E62, maps on for every card (restored by the hold match at V-01): E62 turns the pack slices on, and this row qualifies what they serve. P01-12's served line and HOLD-14's 'For the operator' bullet in the hold match (HOLD-MATCH.md) add that this row also qualifies the pack slices' own bounds and omission counts, the slices' share of P01-12, which F15.8 (HOLD-06, the typed map reads' envelope) owns; P01-12 stays F15.8's. It is not F22 (the architecture map and composed view, P01-20 and P01-22, Unscheduled), F22.2 (the semantic layer, On measured need behind CAPR-B2 under P-DEC-03), F22.3 (test and constraint indexes) or F30 (impact analysis). It is not a site map view: V-01 shows maps on the agents' route only, and the shared read wire carries no map read for V-01 (P-DEC-04, the selection before I-7). Maps are never evidence. E62's regenerate-on-publish half leaves E62 and is not this row's. A neighbour filed since this spec: E184, `maps.pack_slices` on for every card. Filed from its row spec by the row-specs register PR
-
-*Later notes: `notes.d/E293/`, oldest first (`python tools/register.py show E293`).*
-
 ### E294
 
 **Work:** Advisor capacity admission. An ordinary request for advisor capacity is evaluated against the operator-approved policy and aggregate budgets, the lineage's quotas and the priority reserves, without the Lead mediating each request (R01-22, AEW-FR-26.c). Admission follows the operator's priorities, protects mandatory independent assurance and reserved high-capability capacity, keeps starvation bounds with their exceptions visible, and admits only permitted eligible work, so routine consultations cannot indefinitely displace a required review or verification and no first-come rule silently overrides the policy (R01-11, AEW-FR-26.b). Available capacity permits queuing or a reservation, not an advisor launch or a read by the recipient: before a protected invocation, a separately qualified authorization binds the advisor's identity and root lineage, its generation, the allowed subject, the diagnostic or read profile, what is disclosed to whom, the advisor-seat lease, the aggregate budget and the permitted recursion or attempt count, and effect admission checks those facts again on its own. A substitute serving mandatory assurance meets ADC-08.l's eligibility and independence, not only model compatibility (R01-22). Done when a required review is not indefinitely displaced by routine consultations under a policy that reserves capacity for it, a routine request within policy is queued or reserved with no Lead step, and available capacity alone never launches an advisor
@@ -3714,42 +3582,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
 
-### E332
-
-**Work:** `aew check run` names the paths a check changed: a check that changes its own snapshot is answered today with `mutated_inputs: true` and `result: inconclusive` alone, so the worker cannot tell what to restore, the Lead what changed, and the operator is never told. The result names the changed paths and says what to do
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X3)
-
-**When:** **Unscheduled**, the first of the vertical's "say what changed" chain (E332 to E335)
-
-**Notes:** Filed by the register PR of 2026-11-10
-
-*Later notes: `notes.d/E332/`, oldest first (`python tools/register.py show E332`).*
-
-### E333
-
-**Work:** The moved-head conflict refusal names the commit, its subject and the path in its message, so a reader can tell what moved the head without reading the history
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X4)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E332
-
-**Notes:** Filed by the register PR of 2026-11-10
-
-*Later notes: `notes.d/E333/`, oldest first (`python tools/register.py show E333`).*
-
-### E334
-
-**Work:** A check's own caches (`__pycache__`, `.pytest_cache`) never change its snapshot, or first configuration excludes them (U14). Today the gate counts them as a change and refuses with GATE_UNSATISFIED, and the vertical's operator clears them by hand: the one fallback that is a product question with no row
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X2; U14 in `vertical-uat.md`)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E333, being built. The designer confirmed the snapshot's definition on 2026-11-11 (`designer-decisions-2026-11-11-e334-e335.md`): a check's declared `caches` leave the working state every reader takes, its snapshot, `changed_paths` and the Ticket commit, and a tracked path always counts
-
-**Notes:** Filed by the register PR of 2026-11-10
-
-*Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -3960,7 +3792,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator's grant of 2026-11-11: "i wanted teh ability to choose which usage pot is being used"; the designer's ruling of the same day on the usage pot (revision 2, `RULING-usage-pot.md`), parts 1 and 2
 
-**When:** **Unscheduled** as a row: briefed (2026-11-11), after PR 1 (E354, merged as #453); the operator: "yup i think i have a chain that can do it and get it merged before expect rev is done so why not". Then a keyless qualification the operator is asked for once it is green, and `plan_login` is refused at adoption until it is marked qualified
+**When:** **Unscheduled** as a row: PR 1 (E354) merged as #453 and this PR 2 as #468, with the offline qualification tool's fixes as #471 (the operator, 2026-11-11: "yup i think i have a chain that can do it and get it merged before expect rev is done so why not"). What is left is the keyless qualification the operator is asked for, which records the pinned version in `capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS`; until then `plan_login` is refused at adoption
 
 **Notes:** Filed by the register PR of 2026-11-11. `aew-reviewer` reviews it: it touches credentials
 
@@ -4026,30 +3858,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E360/`, oldest first (`python tools/register.py show E360`).*
 
-### E361
-
-**Work:** Body-level operation scope for the provider relay: a request's body is held to the provider's allowed operations as its path already is, so a field outside them is refused unless the provider's profile opts that field in, per provider and per field, in the policy the relay is started from, never by a request or the sandbox. A refusal names the field, is recorded `refused`, and sends nothing upstream. Inspecting the body before anything is sent means reading it whole within the relay's body bound (`relay.MAX_BODY`), where today it is streamed; that bound times the concurrency bound is the memory the change can cost, and its pull request states how it holds it. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
-
-**Source:** The operator's relay hardening and credential import handoff v0.1 (2026-11-23), "Authorize operations as well as hosts"; the operator, 2026-11-24, filing this as a follow-on; the STG-05 note of #542 (`2026-11-24-fix-relay-bounds-and-outcome.md`) for m6
-
-**When:** **Unscheduled**, after #542 (merged); the operator places it
-
-**Notes:** Filed by the register PR of 2026-11-24. Which fields each provider exposes comes from its pinned API surface, not from today''s online documentation
-
-*Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
-
-### E362
-
-**Work:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch with a network of its own (`proxy_only`, the default, or `isolated`) is refused `CONTAINMENT_UNAVAILABLE` (fail closed); a `shared` network never runs that probe. `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, the true answer (no IPv6 route out), which the host-side judge already accepts for `direct6`; with a test
-
-**Source:** E140's O-CMD triage (#547), 2026-11-24: seen in a container whose kernel lacks IPv6
-
-**When:** **Unscheduled**; the operator places it. It holds a host without IPv6 from contained work with a private network, so before first use on such a host
-
-**Notes:** Filed by the register PR of 2026-11-24
-
-*Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
-
 ### E363
 
 **Work:** The test suite's duplication down to what is required or beneficial: isolation a test needs (a fresh repository where the test mutates it), parallel shards, and independence that proves something stay; any other expensive setup (a parsed source tree, a rendered document, a loaded schema, a repository a test only reads) is built once per process or per session and shared read-only, through one owner per value. The first instance is #553's `reference_render.context()` (one parse of `src/aew` per process for the reference-family test modules); the owner for the rest is `tests/helpers/shared_setup.py` (`once`). A guard holds the line: no test module keeps more than its stated budget of memory at import, in any session, or after its tests, in a serial one (`tests/helpers/module_heap.py`)
@@ -4068,7 +3876,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** #556's review, F2 and F3, and its quick check, F4 (2026-11-25); the F15.1 note `2026-11-24-fix-mcp-parse-depth.md`
 
-**When:** **Unscheduled**, after #551 and #556 merge; the operator places it
+**When:** **Unscheduled**, after #551 and #556, both merged; the operator places it
 
 **Notes:** Filed by #556
 
@@ -4085,18 +3893,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. SYS-48 owns it, outside its finish line
 
 *Later notes: `notes.d/E365/`, oldest first (`python tools/register.py show E365`).*
-
-### E366
-
-**Work:** The plan assessor's pack says what is true at its scope. The pack renders the reviewer archetype's text (`src/aew/roles/archetypes/reviewer.yaml:7-19`, through `knowledge/context.py`) unchanged at every scope. At `plan_assessment` scope it tells the assessor to report "findings about the change", to read a "diff and check output" and to state which earlier findings are resolved; there is no change, diff or earlier review, and an assessor that follows the text is refused by `evidence.schema.json`. At observation scope the same text asks for a diff the reviewer does not have, though its `review` is accepted. Fix: the archetype's text is fitted to the scope it is rendered at, and a pack-truth test holds that no pack tells a role to do what its scope cannot give or its record kind refuses (scope fit). Both scopes are in this row and on SYS-43, since one change to the archetype's text serves both. Parent scope is not in it: its pack carries each child's integrated diff and the aggregate diffstat
-
-**Source:** The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the worker packs, the plan assessor's pack at `plan_assessment` scope
-
-**When:** **Now**, first in the always-sent context work (the operator's order of 2026-11-25)
-
-**Notes:** Filed by the always-sent audit register PR. It follows E160's assessor entrypoint, whose pack it corrects
-
-*Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
 
 ### E367
 
@@ -4133,6 +3929,42 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the always-sent audit register PR. Its findings become rows; E366 to E368 are the first audit's
 
 *Later notes: `notes.d/E369/`, oldest first (`python tools/register.py show E369`).*
+
+### E370
+
+**Work:** The Ticket commit's long-pathspec branch (`src/aew/workspace/integration.py`) gets a planted case that fails when the branch is removed: `tests/integration/test_check_caches.py`'s 300-path fixture reaches it, but 300 paths (about 16.5k characters) still fit Windows' 32,767-character command line, so removing the branch still passes there. Plant enough paths to pass that capacity (about 700), or assert the branch was taken (`git status` ran with `--untracked-files=no`)
+
+**Source:** The quick check of #463 (E334), its F2 (a), 2026-11-12: the nit it left; carried here when E334 closed (the register reconcile of 2026-11-26)
+
+**When:** **Unscheduled**, any idle slot. Test only
+
+**Notes:** Filed by the register reconcile of 2026-11-26
+
+*Later notes: `notes.d/E370/`, oldest first (`python tools/register.py show E370`).*
+
+### E371
+
+**Work:** `OUTSIDE_REGISTRY` in `tests/unit/test_discovery_registry.py`, the dispatch blocker codes kept outside the refusal registry (`FILES_CONFLICT` and `PROTECTED_CONDITION_OVERLAP` among them), is pinned by hand. Derive it from `aew.engine.reasons.REASONS`, the blocker codes no error class writes, and say in the pull request which codes' standing that changes
+
+**Source:** The review of #350 (E151), its n2, recorded on E151's note of 2026-11-06; carried here when E151 closed (the register reconcile of 2026-11-26)
+
+**When:** **Unscheduled**, any idle slot
+
+**Notes:** Filed by the register reconcile of 2026-11-26
+
+*Later notes: `notes.d/E371/`, oldest first (`python tools/register.py show E371`).*
+
+### E372
+
+**Work:** Pin the provider request surfaces that the relay's body scope rests on: fixtures of each provider's request types (OpenAI's Responses and Chat Completions, Anthropic's Messages, Google's generateContent), with a test that every field and place in them that names a stored object, a file by reference or a tool the client does not run is held by `relay.BODY_FIELDS` or judged not to need it, so a provider's new field is seen when its pinned surface moves. With it, the residual body-field shapes #551's merge comment left on E361: each place in those types that can carry a held field and that a route's walk (`relay._ROUTES`) does not yet descend into gets a refused case in the relay's tests, or a stated reason it needs none
+
+**Source:** The review of #551 (E361), its m7, recorded on E361's note `2026-11-24-relay-body-scope-request-surfaces.md`; and the residual body-field shapes that #551's merge comment lists as tracked on E361, which no note there carried; both carried here when E361 closed (the register reconcile of 2026-11-26)
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface, not from today's online documentation
+
+*Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
@@ -4646,6 +4478,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E61/`, oldest first (`python tools/register.py show E61`).*
 
+### E62
+
+**Was:** Integration debt, audit AX-15 (P4): project maps reach only the investigator's pack, not the planner's, and are not regenerated on publish. Designer disposition: **pending / local-owner review**
+
+**Closed:** 2026-11-20
+
+**By:** #378 (`ee3f0737`), #441 (`39de9d9f`) and #480 (`434f8a2a`): the matched scope of 2026-11-06, maps on for every card. Every worker archetype's pack carries the bounded structural slice, each card's added bytes recorded (#378); a Lead's dispatch refreshes a STALE or absent map at use, with no manual step (#441, ADR-0015's amendment of 2026-11-11); and `maps.pack_slices: structural` is a new project's default, offered to an existing one (#480). Restored from HOLD-14 by the hold match (`2026-11-06-operator-hold-match-batches.md`), whose matched scope this is; the regenerate-on-publish half left the row then (its note of 2026-11-06), since freshness is computed against the work's base at use
+
+*Later notes: `notes.d/E62/`, oldest first (`python tools/register.py show E62`).*
+
 ### E63
 
 **Was:** A fix round names the review it answers: a minimal `answers` link on the repair or re-dispatch record, so review and fix rounds can be counted as cycles (observability inventory gap 3)
@@ -4906,6 +4748,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E125/`, oldest first (`python tools/register.py show E125`).*
 
+### E126
+
+**Was:** A pre-F4 correction that F4 absorbs, not F4's first slice: the product's Lead adds one exact test path to one Ticket's scope, on the record with a reason, in place of cancel and replace. The Ticket's record never changes: an immutable correction record and one accessor for the effective scope. There is no size limit, and the review judges proportion from the lines shown. A removed test, fewer test definitions, a runner config or an existing shared file under a test directory stops for a sign-off, cited from a plan revision or quoted from the operator. Any other kind of path stays out of this slice, until use shows a test-only add is not enough
+
+**Closed:** 2026-11-24
+
+**By:** #540 (`3f6851c5`) and #545 (`5cac68f6`): `work.scope_add` adds one exact test path to a Ticket's scope on the record, an immutable scope correction read through one accessor for the effective scope, with the sign-off stops (#540); status, the projection, the guide and the reviewer's card show the added paths, with #540's quick-check follow-ons (#545). What the design itself defers stays with F4
+
+*Later notes: `notes.d/E126/`, oldest first (`python tools/register.py show E126`).*
+
 ### E127
 
 **Was:** Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own install, with a manifest of hashes, labelled unevaluated, and `optional_skills` on the card
@@ -4925,6 +4777,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #331 (`80a2360c`). The re-count of real sessions moves to E132, as its first step
 
 *Later notes: `notes.d/E130/`, oldest first (`python tools/register.py show E130`).*
+
+### E131
+
+**Was:** F9-A MS3's typed `message_send`, recording coordination without a control commit or redispatch. Live delivery and the recorded `harness send` path follow under E175
+
+**Closed:** 2026-11-11
+
+**By:** #422 (`d9a61f3d`): the typed `message_send` behind the adopted `coordination.messaging` switch, recorded with credential checks, revision CAS and idempotency, with no dispatch and no control commit. Live delivery and the recorded `harness send` path are E175's, as the row said
+
+*Later notes: `notes.d/E131/`, oldest first (`python tools/register.py show E131`).*
 
 ### E133
 
@@ -4986,6 +4848,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
 
+### E151
+
+**Was:** The launch conflict check for concurrent workers' files (`CNI-03.a`, `.g`): at dispatch, compare the new invocation's declared scope with each live invocation's scope and touched paths, and hold or serialize on a conflict, or where a live invocation's paths cannot be established. The check runs again at effect. Other resource kinds stay in HOLD-09
+
+**Closed:** 2026-11-07
+
+**By:** #350 (`600caca9`): the `conflict.files` guard (`FILES_CONFLICT`) holds a mutating implementer's dispatch at `work assign`, a new implementer and every `harness launch` when its declared scope may meet another live Ticket's scope or changed paths, or those paths cannot be read. The default's raise to 2 is F10's and is in (F10's note of 2026-11-07). The review's n2, deriving `OUTSIDE_REGISTRY`, is E371
+
+*Later notes: `notes.d/E151/`, oldest first (`python tools/register.py show E151`).*
+
 ### E153
 
 **Was:** Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today with "fell back to today's workaround"
@@ -5046,6 +4918,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 
+### E184
+
+**Was:** `maps.pack_slices` on for every card: every role's pack carries the bounded structural slice, not only the roles whose context names `codebase_map`. The PR measures each card's added pack tokens and records them, as a record and not a gate: every byte of a pack is paid on every request. Done when every card's pack carries the slice, and the tokens it adds are recorded per card
+
+**Closed:** 2026-11-20
+
+**By:** #378 (`ee3f0737`), #441 (`39de9d9f`) and #480 (`434f8a2a`): every card's pack carries the slice, with each card's added bytes recorded (#378); review items 2, 3 and 5 to 8 (#441); items 1 and 4, the dispatch result's pack without the slice body (`slice_bytes`) and the offer to existing projects, with the switch-on (#480)
+
+*Later notes: `notes.d/E184/`, oldest first (`python tools/register.py show E184`).*
+
+### E189
+
+**Was:** `base.LAUNCH_REFUSALS` lacks `provider_key_missing`, so a supervisor-side refusal for a missing provider key reaches the run's record with no `refusal` field (at `e945b3ca`). Add it to the closed set, or say in ADR-0009 why it stays out. Done when the record of such a refusal carries its reason, or ADR-0009 says why not
+
+**Closed:** 2026-11-08
+
+**By:** #369 (`14b9755f`): `base.LAUNCH_REFUSALS` derives `provider_key_missing` from its owner, `netns.PROVIDER_KEY_MISSING`, so the run's record and acknowledgement carry the refusal; ADR-0009's amendment says so
+
+*Later notes: `notes.d/E189/`, oldest first (`python tools/register.py show E189`).*
+
 ### E191
 
 **Was:** `aew init` at a terminal has no up-front way to decline every tool download: `init`'s `--fetch-tool` option taking `none`, recorded as no answer, so the consent screen isn't shown. It grows `init`'s option pin. Done when that option downloads nothing, shows no screen, and leaves each tool unanswered
@@ -5056,6 +4948,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E191/`, oldest first (`python tools/register.py show E191`).*
 
+### E193
+
+**Was:** `tests/integration/test_lead_tool.py::test_a_wait_never_holds_the_broker_and_channels_never_bleed` failed once on Windows and passed on re-run. Find the cause; never raise a deadline or add a retry
+
+**Closed:** 2026-11-08
+
+**By:** #370 (`06aa9b71`): the cause was the test, not the product: its 3 s bound timed the requests' own work. The test now checks order (each round answered while the wait is alive), with no clock, no wider bound and no retry, and a new test covers the wait's own timeout. The flake register's `broker-wait-clock` closed with it
+
+*Later notes: `notes.d/E193/`, oldest first (`python tools/register.py show E193`).*
+
+### E194
+
+**Was:** `tests/integration/test_dashboard_maps.py::test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on_the_index[history_moved]` failed once on Windows: its 10 s wall-clock bound measured 13.3 s under load. Take the wall clock out of the test, bounding what it counts rather than how long it takes; never raise the bound or add a retry
+
+**Closed:** 2026-11-10
+
+**By:** #406 (`4caf8372`): the test asserts what its name says, that the control lock is never taken and every history-index connection waits no longer than `ARCHIVE_WAIT_S`, with no wall clock. The flake register's `archive-maps-clock` closed with it
+
+*Later notes: `notes.d/E194/`, oldest first (`python tools/register.py show E194`).*
+
 ### E196
 
 **Was:** Text in the code that no longer holds, in one small PR that changes comments and strings only: `dashboard/reasons.py`'s `AWAITS_ACTION_PROJECTION` ("until" F15.1), `capability/__init__.py`'s docstring (the bind "comes in the next" pull request), `engine/seams.py`'s "empty until ADR-0011's archival", and `surface/contract.py`'s docstring on rows still `DESIGNED`. Each is checked against `main` and reworded to what holds. Done when each says what `main` does
@@ -5065,6 +4977,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #460 (`83d68093`), with E191: the four texts reworded to what `main` does, in `dashboard/reasons.py`, `capability/__init__.py`, `engine/seams.py` and `surface/contract.py` (the row's note of 2026-11-11). Closed in the board's lag sweep
 
 *Later notes: `notes.d/E196/`, oldest first (`python tools/register.py show E196`).*
+
+### E225
+
+**Was:** Audit AEW's own git wrapper (`src/aew/workspace/git.py`) so that a run launched from inside a git operation (a hook, a rebase) never acts on the wrong repository: the git environment variables a hook sets are cleared, as the test suite's are since #373
+
+**Closed:** 2026-11-12
+
+**By:** #461 (`7e7319c2`): AEW's Git wrapper drops inherited repository-local Git variables before it runs Git, its driver-configuration check included, with explicit per-call settings kept; a regression test runs Git against a target while the parent environment points at a decoy
+
+*Later notes: `notes.d/E225/`, oldest first (`python tools/register.py show E225`).*
 
 ### E227
 
@@ -5095,6 +5017,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** Absorbed into E336, docs and printed commands, which carries its work (the register PR of 2026-11-10)
 
 *Later notes: `notes.d/E251/`, oldest first (`python tools/register.py show E251`).*
+
+### E259
+
+**Was:** Drop the unread `project.profile` field: `aew init` writes `base` (`src/aew/knowledge/manifest.py`) and `project.schema.json` declares it, but nothing reads it
+
+**Closed:** 2026-11-12
+
+**By:** #459 (`a3efc570`): `aew init` no longer writes `project.profile`; an existing `aew/project/v1` manifest that carries it still loads, with no migration
+
+*Later notes: `notes.d/E259/`, oldest first (`python tools/register.py show E259`).*
+
+### E293
+
+**Was:** V-01's profile for the built structural maps (`src/aew/maps/`): it says which capabilities V-01 supports, holds the built code against A-14's obligations, and fixes any divergence. The structural record claims only repository shape, tracked paths, language and build descriptors and declared candidates drawn from the exact source it read, never runtime behaviour, call relationships, project intent or owner approval. Each map names its exact source revision, its generator and ruleset version, every input it actually read and what it left out, and its own digest or producer name counts as a claim, not proof. The Git-objects reader treats repository content, Git configuration, hooks, symlinks and LFS or submodule references as untrusted, never silently runs repository-controlled code, and runs any such code only under ADC/HEB authority. The at-use freshness check compares the recorded inputs and tracked paths with the work's source basis, and says unknown or partial, never current, when it cannot compare; a pinned historical slice stays usable for labelled navigation without being called current. The pack slices keep to their scope cut and row bounds, never the whole map, graph or history in every prompt, declare their bounds and omission counts, never let an omission caused by a cap be read as an absent project element, and name the explicit path for wider investigation, with its cost bound, its sources and how it fails made visible. The profile names, in P01-34's terms, the capabilities V-01 supports (structure, with orientation through the pack slices, per P-DEC-01) and the source and deployment limits it supports them at, and says that an absent map degrades to direct source reads and usable work, not to false success or a refusal. For the rest it states how far V-01's maps go, and builds what V-01 needs: each orientation names its work revision, source basis and recipient, and a map selected for one checkout never passes as current for another; a role sees only what it is authorized for, and an empty answer covers only what was searched and what that role may see; a map never calls a mutable governing fact current on its own timer, and consumers reconcile changed inputs before relying on them; making, selecting or reading a map authorizes nothing, and repository text inside a map stays inert data. Every map is labelled `AGENT_REACHABLE_DERIVED`, with no protected producer and no deterministic-class upgrade, and the Lead's selection is stated as no shared qualified selection, with local maps and at-use recomputation kept available. Done when the profile is written down and names V-01's supported capabilities with the source and deployment limits it supports them at, each qualified obligation has a test that holds on the built code (or the fix that makes it hold), each piece the row builds for the stated obligations (the orientation naming its work revision, source basis and recipient; scoped empty answers; no map calling a mutable fact current on its own timer; maps authorizing nothing) has a test that holds on the built code, and each stated obligation says how far V-01 meets it
+
+**Closed:** 2026-11-25
+
+**By:** #567 (`2962f12e`): V-01's maps profile, `maps-v01-profile.md`, holds each obligation the row routes against the code with the test that holds it, and the divergences are fixed. Its stated limits are owned elsewhere (F20.8's dashboard routes; P01-11's recomputation; F15.8's typed map reads), and its review's follow-ons (m1, n2 to n4) ride F15.8's mapping series, PR A (E293's note of 2026-11-25)
+
+*Later notes: `notes.d/E293/`, oldest first (`python tools/register.py show E293`).*
 
 ### E326
 
@@ -5136,6 +5078,36 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E330/`, oldest first (`python tools/register.py show E330`).*
 
+### E332
+
+**Was:** `aew check run` names the paths a check changed: a check that changes its own snapshot is answered today with `mutated_inputs: true` and `result: inconclusive` alone, so the worker cannot tell what to restore, the Lead what changed, and the operator is never told. The result names the changed paths and says what to do
+
+**Closed:** 2026-11-11
+
+**By:** #427 (`b2a7a287`): `aew check run`, on both the worker bridge and the direct route, returns `changed_paths` (tracked first, up to 20 in all) and a message that says what to restore and how to keep the check from writing, when a check changed its own inputs
+
+*Later notes: `notes.d/E332/`, oldest first (`python tools/register.py show E332`).*
+
+### E333
+
+**Was:** The moved-head conflict refusal names the commit, its subject and the path in its message, so a reader can tell what moved the head without reading the history
+
+**Closed:** 2026-11-11
+
+**By:** #434 (`5258cdb1`): moved-head publish refusals keep `STALE_CANDIDATE` and name the new head by its sha, its quoted subject and the count of commits, and a conflict refusal names its paths and their total (`head_subject`, `commit_count`)
+
+*Later notes: `notes.d/E333/`, oldest first (`python tools/register.py show E333`).*
+
+### E334
+
+**Was:** A check's own caches (`__pycache__`, `.pytest_cache`) never change its snapshot, or first configuration excludes them (U14). Today the gate counts them as a change and refuses with GATE_UNSATISFIED, and the vertical's operator clears them by hand: the one fallback that is a product question with no row
+
+**Closed:** 2026-11-14
+
+**By:** #463 (`c2c11c78`): `checks.<id>.caches` declares a check's caches, which leave the working snapshot, `changed_paths` and the Ticket commit, with tracked paths and `include_ignored` taking precedence; adoption refuses a pattern that would hide project paths; the starter kit declares pytest's caches and the vertical's U14 fallback is gone (ADR-0002, amendment of 2026-11-11). The quick check's remaining nit on the long-pathspec test is E370
+
+*Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
+
 ### E335
 
 **Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
@@ -5165,6 +5137,36 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #453 (`739f3a5c`), with the dated ADR-0009 amendment. E355 is the usage pot's PR 2
 
 *Later notes: `notes.d/E354/`, oldest first (`python tools/register.py show E354`).*
+
+### E361
+
+**Was:** Body-level operation scope for the provider relay: a request's body is held to the provider's allowed operations as its path already is, so a field outside them is refused unless the provider's profile opts that field in, per provider and per field, in the policy the relay is started from, never by a request or the sandbox. A refusal names the field, is recorded `refused`, and sends nothing upstream. Inspecting the body before anything is sent means reading it whole within the relay's body bound (`relay.MAX_BODY`), where today it is streamed; that bound times the concurrency bound is the memory the change can cost, and its pull request states how it holds it. It also carries the client-reset follow-on of #542's quick check (m6): a client that resets its connection mid-body is recorded `refused` (`incomplete`), not `unknown`
+
+**Closed:** 2026-11-25
+
+**By:** #551 (`30048210`): the relay reads a model call's body whole within `relay.MAX_HELD` and refuses a field of `relay.BODY_FIELDS` or a tool the client does not run (403 `body_field_not_permitted`, recorded `refused`, nothing sent), unless `containment.network.relay_body_fields.<provider>` in the adopted policy opts it in; and a client reset mid-request is recorded `refused` (`incomplete`), #542's m6. The review's m7, pinning the providers' request surfaces, is E372
+
+*Later notes: `notes.d/E361/`, oldest first (`python tools/register.py show E361`).*
+
+### E362
+
+**Was:** The containment self-test runs on a host whose kernel has no IPv6: `attempt()` in `src/aew/harness/containment/probe.py` creates its socket before its `try`, so on such a host `socket.socket(AF_INET6, ...)` raises EAFNOSUPPORT out of the probe, the self-test fails, and every contained launch with a network of its own (`proxy_only`, the default, or `isolated`) is refused `CONTAINMENT_UNAVAILABLE` (fail closed); a `shared` network never runs that probe. `socket.has_ipv6` is a build flag, not the kernel's. The probe should record EAFNOSUPPORT for that route, the true answer (no IPv6 route out), which the host-side judge already accepts for `direct6`; with a test
+
+**Closed:** 2026-11-24
+
+**By:** #549 (`39f68d7b`): the probe's `attempt()` creates its socket inside its handled region, so a kernel without IPv6 records EAFNOSUPPORT for `direct6`, which the host's judge accepts; the test is `test_a_host_without_ipv6_records_no_ipv6_route_and_still_passes_row_1`
+
+*Later notes: `notes.d/E362/`, oldest first (`python tools/register.py show E362`).*
+
+### E366
+
+**Was:** The plan assessor's pack says what is true at its scope: the reviewer archetype's text fitted to the scope it is rendered at (`plan_assessment` and observation), with a pack-truth test of scope fit
+
+**Closed:** 2026-11-26
+
+**By:** #594: the archetype's text is scope-neutral, `knowledge.context._scope_duties` adds each scope's duties only where the pack delivers their input, and `test_pack_truth`'s scope-fit guard holds it. Parent scope, outside the row, gained only the change duty for the child diffs its pack carries, on #594's review (m1) (`notes.d/E366/`)
+
+*Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
 
 ### F1
 

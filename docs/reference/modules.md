@@ -260,6 +260,7 @@ None.
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
+- `aew.harness.tool_calls`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
@@ -901,6 +902,7 @@ None.
 
 - `aew.engine.transitions`
 - `aew.engine.workspace_ops`
+- `aew.errors`
 - `aew.harness.contract`
 - `aew.roles`
 - `aew.skills`
@@ -1643,6 +1645,7 @@ None.
 - `aew.engine.dispatch`
 - `aew.engine.faults`
 - `aew.engine.first_configuration`
+- `aew.engine.guide`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.agentenv`

@@ -169,11 +169,22 @@ def _main(argv: list[str]) -> int:
 
     # Before anything can open the store (STG-05 CB-09). Scoped, since tests call `main` in-process.
     with process_kind.declared_as(process_kind.cli_entry_point(argv, os.environ)):
-        return _run_main(argv)
+        code = _run_main(argv)
+    if os.environ.get("AEW_LEAD_BROKER"):  # a Lead session whose guide reads are not relayed counts them here (E231)
+        from aew.harness import lead_broker
+
+        if lead_broker.notes_guide_read(argv):
+            lead_broker.note_lookup(argv, code)
+    return code
 
 
 def _run_main(argv: list[str]) -> int:
     _utf8_streams()
+    if os.environ.get("AEW_LEAD_BROKER"):  # a Lead session counts its help lookups (E231's failure criterion)
+        from aew.harness import lead_broker
+
+        if lead_broker.is_help_lookup(argv):
+            lead_broker.note_lookup(argv)
     parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv),
                           worker_messaging=bool(os.environ.get("AEW_AGENT_ENDPOINT"))
                           and os.environ.get("AEW_MESSAGING") == "enabled")

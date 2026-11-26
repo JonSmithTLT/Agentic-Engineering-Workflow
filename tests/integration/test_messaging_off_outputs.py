@@ -4,7 +4,11 @@ Originally captured from merged main f1ff2dd3 and refreshed for E327's plan.reco
 on by default (ADR-0015): the resume's codebase_map row names init's first map, CURRENT, where it said UNAVAILABLE;
 and for E126, where `work_show` gained the Ticket's `effective_scope` (in its JSON and the typed text, nothing else);
 and for E293, where the resume's codebase_map row gained `evidence_class` (in its JSON and the typed text); and for
-E160, where the resume's role catalog gained the built-in `plan_assessor` card (its JSON and the typed text only).
+E160, where the resume's role catalog gained the built-in `plan_assessor` card (its JSON and the typed text only); and
+for E367, where the typed resume's result lost its `next_actions` (the projection's hints, byte for byte) and that
+entry of its `order`, each role card's display name, and the `use_when` of the cards the guide's staffing section names
+with it, and gained `full`, the command that prints the whole report (the typed JSON and
+text only: the engine's own resume, its text and every other output are unchanged).
 
 This seed has an active assignment and no harness run: its wait refusal is pinned, not a fabricated run result.
 Real ended-run behavior is covered by run_progress_digest and lead_relayed_reads. Normalized volatile values and

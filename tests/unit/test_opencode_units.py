@@ -363,13 +363,28 @@ def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():
     assert not {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_LEAD_TOKEN", "AEW_HARNESS_ADAPTERS",
                 "OPENCODE_PASSWORD"} & set(env)
     assert env["XDG_CONFIG_HOME"] == "/c" and env["OPENCODE_CONFIG"] == "/cfg/opencode.json"
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(tools={"placed": False, "tools": []})
+    # The host's own Lead: on Windows, its shell is PowerShell (E367)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(tools={"placed": False, "tools": []},
+                                                                                powershell=sys.platform == "win32")
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == [
         {"action": "provider.use", "resource": "opencode", "effect": "deny"},
         {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]  # the designer's ruling, 2026-11-06
     assert "opencode" not in json.loads(env["OPENCODE_CONFIG_CONTENT"]).get("providers", {})  # never switched on
     assert env["PATH"].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     assert lead.tui_env(base_env(), provider_env=["ANTHROPIC_API_KEY"])["ANTHROPIC_API_KEY"] == "sk-ant-secret"
+
+
+def test_only_a_lead_whose_shell_is_powershell_is_told_its_form_and_a_contained_one_never_is():
+    """E367: the quoted heredoc the guide's core names is POSIX shell's. A Lead on Windows is told PowerShell's form,
+    and no other Lead pays for the line; a contained Lead runs on Linux, so it never gets it, whatever is asked."""
+    def system(**kw: Any) -> str:
+        return projection.lead_config("GUIDE", **kw)["agents"][projection.LEAD_AGENT]["system"]
+
+    assert projection.POWERSHELL in system(powershell=True).splitlines()
+    assert projection.POWERSHELL not in system() and projection.POWERSHELL not in projection.LEAD_SYSTEM
+    label = {"filesystem": "os_readonly_roots", "network": {"mode": "isolated"}}
+    assert system(contained=label, powershell=True) == system(contained=label)
+    assert "`@'` ... `'@ | aew ...`" in projection.POWERSHELL  # the here-string, piped in
 
 
 def no_proxy_of(env: dict[str, str]) -> list[str]:

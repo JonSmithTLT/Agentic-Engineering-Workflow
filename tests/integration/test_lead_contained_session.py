@@ -220,7 +220,7 @@ def test_the_contained_lead_reads_a_guide_section_through_its_broker_and_its_loo
         assert steps[2]["exit"] == 2 and refused["details"]["sections"] == doc.names() == [guide.CORE, *doc.sections]
         assert steps[3]["exit"] == 0 and "usage: aew work show" in steps[3]["stdout"], steps[3]
         [row] = [r for r in tool_calls.counters(tool_calls.read(lab.aew_root)).values() if r["guide_reads"]]
-        assert (row["guide_sections"], row["help_commands"]) == ({"steps": 1, "nope": 1}, {"work show": 1})
+        assert (row["guide_sections"], row["help_commands"]) == ({"steps": 1, "(unknown)": 1}, {"work show": 1})
     finally:
         lab.cleanup()
 

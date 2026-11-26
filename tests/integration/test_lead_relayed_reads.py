@@ -465,8 +465,10 @@ def test_a_guide_read_and_a_help_lookup_are_counted_in_the_sessions_telemetry(la
     assert broker.server.drain(20)
     [row] = [r for name, r in tool_calls.counters(tool_calls.read(lab.aew_root)).items()
              if name == broker.session_id]
-    assert (row["guide_reads"], row["guide_sections"], row["generation"]) == (2, {"steps": 1, "nope": 1},
-                                                                             broker.generation)
+    # Review of #593, m1: a name the guide does not have is recorded as a fixed token, never as typed
+    assert (row["guide_reads"], row["guide_sections"], row["generation"]) == (
+        2, {"steps": 1, lead_broker.UNKNOWN_SECTION: 1}, broker.generation)
+    assert "nope" not in tool_calls.path(lab.aew_root).read_text(encoding="utf-8")
     assert (row["help_lookups"], row["help_commands"]) == (1, {"work create": 1})
     lines = [x for x in tool_calls.read(lab.aew_root) if x.get("lookup") == tool_calls.GUIDE]
     assert [x["ok"] for x in lines] == [True, False]

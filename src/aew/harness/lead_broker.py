@@ -517,7 +517,7 @@ class LeadBroker:
         root = getattr(self.engine, "aew_root", None)
         if root is not None:
             tool_calls.lookup(root, kind=kind, session=self.session_id, generation=self.generation, command=command,
-                              section=section, ok=ok)
+                              section=section_named(section), ok=ok)
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
         return run_cli(self.engine, self._token, argv, cwd, stdin, channel="lead_broker")
@@ -958,7 +958,9 @@ def help_command(argv: list[str]) -> str:
         rest = rest[2:]
     if rest[:1] == ["help"]:
         rest = rest[1:]
-    parser, words = build_parser(), []
+    # Every switch on, as the command walks build it: a switched command's words count too (review of #593, m2). It
+    # only reads the words; nothing runs.
+    parser, words = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True), []
     for arg in rest[:HELP_WORDS_MAX]:
         sub = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
         if sub is None or arg not in sub.choices:
@@ -966,6 +968,19 @@ def help_command(argv: list[str]) -> str:
         words.append(arg)
         parser = sub.choices[arg]
     return " ".join(words)
+
+
+UNKNOWN_SECTION = "(unknown)"
+
+
+def section_named(section: str | None) -> str | None:
+    """What a guide read's line records of the section asked for: a name the guide has, or :data:`UNKNOWN_SECTION`
+    for any other, never the text the Lead typed (review of #593, m1: the log holds no authored text)."""
+    from aew.engine import guide
+
+    if section is None or section in (guide.CORE, *guide.SECTION_NAMES):
+        return section
+    return UNKNOWN_SECTION
 
 
 def guide_read(argv: list[str]) -> tuple[str | None] | None:

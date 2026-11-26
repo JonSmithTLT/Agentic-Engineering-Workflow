@@ -162,3 +162,18 @@ def test_a_help_lookup_is_recognised_and_names_only_command_words():
     assert B.help_command(["help", "work"]) == "work"
     assert B.help_command(["work", "create", "ticket", "my secret title", "--help"]) == "work create"
     assert B.help_command(["no", "such", "--help"]) == ""
+    # Review of #593, m2: a command that exists only under a switch is named too
+    assert B.help_command(["message", "list", "--help"]) == "message list"
+    assert B.help_command(["history", "search", "--help"]) == "history search"
+
+
+def test_a_guide_read_records_only_a_section_the_guide_has():
+    """Review of #593, m1: the log never holds text the Lead typed; an unknown section is a fixed token."""
+    from aew.engine import guide
+    from aew.harness import lead_broker as B
+
+    assert [B.section_named(n) for n in (None, guide.CORE, *guide.SECTION_NAMES)] == [None, guide.CORE,
+                                                                                      *guide.SECTION_NAMES]
+    assert B.section_named("my private note") == B.section_named("nope") == B.UNKNOWN_SECTION
+    assert B.guide_read(["-C", "x", "guide", "--json", "steps"]) == ("steps",) and B.guide_read(["guide"]) == (None,)
+    assert B.guide_read(["status"]) is None

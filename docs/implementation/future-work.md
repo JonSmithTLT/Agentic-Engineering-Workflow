@@ -3978,18 +3978,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
-### E389
-
-**Work:** Refine F19, the evaluation instrument, with the ProjectArchitect research plan's concepts: merge the good parts of the plan into F19's architecture and modernise F19 where needed, so that one instrument measures the value of AEW's features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves, its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect code, prompts or runtime. Done when the proposal is adopted and F19's plan and rows carry the result, or the operator refuses it and a note on this row gives the reason
-
-**Source:** The operator, 2026-11-26. On filing: "Yup file and run r0.", on the [ProjectArchitect research plan](../research/projectarchitect-concepts-and-evaluation-2026-11-25.md) (research, not adopted; ledger PAE); its R0 is [the R0 baseline](../research/projectarchitect-r0-baseline-2026-11-26.md) (ledger PAB). On how this row relates to F19, in order: "Oh no no no definetly not. We are not playing the two seperate subsystem game again that needs a discussion"; "Riggt that is what I was thinking e389 was a refinement on f19s eval architecture not a seperate sustem. What unwanted was to take the good parts of 389 blender it with f19 and modernize it if needed since it seems a ton of aew has a question mark on value."; and, asked whether to rework the filing this way and commission a read-only merge proposal, "Yup do so"
-
-**When:** **Evaluation.** The proposal now. F19 itself stays frozen (the operator, 2026-11-06, item 8) until the operator unfreezes it, and nothing is built from the proposal until the operator has read it
-
-**Notes:** Filed with the plan and R0. R0 is done (PAE-15). The operator's earlier reply to R0, 2026-11-26 ("Yes start R1 prep, ship truth fixes now, cap is fine but will only be able to be done when I get back home anyways"): its "start R1 prep" is superseded by the decision in Source, so no separate R1 preparation runs; E368's truth fixes ship now; and the operator approved R0's cap ("cap is fine") for R0's cells as then proposed ($0.50 and 20 minutes per attempt, at most 132 top-level attempts, a hard total of $75 with a stop for review at half): it is not withdrawn, and whether F19's metering takes it is for the proposal to put to the operator. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26). R0's findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built directly) and E198 (D2)
-
-*Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
-
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -5181,6 +5169,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #594: the archetype's text is scope-neutral, `knowledge.context._scope_duties` adds each scope's duties only where the pack delivers their input, and `test_pack_truth`'s scope-fit guard holds it. Parent scope, outside the row, gained only the change duty for the child diffs its pack carries, on #594's review (m1) (`notes.d/E366/`)
 
 *Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
+
+### E389
+
+**Was:** Refine F19, the evaluation instrument, with the ProjectArchitect research plan's concepts: merge the good parts of the plan into F19's architecture and modernise F19 where needed, so that one instrument measures the value of AEW's features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves, its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect code, prompts or runtime. Done when the proposal is adopted and F19's plan and rows carry the result, or the operator refuses it and a note on this row gives the reason
+
+**Closed:** 2026-11-26
+
+**By:** Closed into F19 as F19's feature-cell backlog, where its work continues (the operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the second of the Lead's seven questions was "E389: close it into F19 as F19's feature-cell backlog, or keep the row? I recommend closing it into F19, which matches what you said about not having two systems.", so the yes is to the Lead's stated recommendation). Delivered: [the F19 refinement proposal](../research/f19-refinement-proposal-2026-11-26.md) (research, not adopted; ledger FRP), filed and answered in part, not adopted. What the operator decided and what stays open are in F19's note of 2026-11-26
+
+*Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
 
 ### F1
 

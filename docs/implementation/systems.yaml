@@ -66,22 +66,43 @@ systems:
       R+ arms, S10 deliverable and review, S12 seals
     row: F19
     estimate: about 7 PRs (estimate)
-  - slice: 'S13 the A arm: after M4-E''s E7c, or the G3-backed confirmation A-37 points it at (F15.5 is held in HOLD-19)'
+  - slice: 'S13 the A arm: planned after M4-E''s E7c, or the G3-backed confirmation A-37 points it at. No hold blocks it:
+      F15.5 closed on 2026-11-06, merged into STG-14 as a note, and SYS-04''s entry says E7c was superseded or lapsed that
+      day. What it stands on now is open for the designer'
     row: F19
-    estimate: 1-2 PRs (estimate), blocked on HOLD-19
-  - slice: 'S14 the F25 binding: after F25 L4 (F25 is held in HOLD-21)'
+    estimate: 1-2 PRs (estimate); frozen, and its footing is open for the designer
+  - slice: 'S14 the F25 binding: after F25 L4. No hold blocks it: HOLD-21 closed on 2026-11-06 and F25 was restored at
+      V-01'
     row: F19
-    estimate: 1 PR (estimate), blocked on HOLD-21
+    estimate: 1 PR (estimate), after F25 L4; frozen
   - slice: 'S15 to S18: scoring, audit and report; CF evidence; host image; the metering proxy as an evaluator client of
-      the gateway''s accounting hook (F18.15, held in HOLD-20)'
+      the gateway''s accounting hook. No hold blocks it: HOLD-20 closed on 2026-11-06 and F18.15 closed that day, merged
+      into E97, the relay''s meter, as a note'
     row: F19
-    estimate: 3-5 PRs (estimate)
-  decision: 'decided: frozen (operator, 2026-11-06 (design workspace decision record: board decisions))'
+    estimate: 3-5 PRs (estimate); frozen
+  - slice: 'Feature cells, unfrozen (operator, 2026-11-26): the role-run arm, which waits on the designer''s answer on
+      how a feature cell expresses its treatment; then the shared walker and report; then the cells in the order the
+      operator agreed, which F19''s note of 2026-11-26 records (the pack pilot, the E368 deciding run, skills, the recovery
+      section, maps, the verifier)'
+    row: F19
+    estimate: 3 PRs to the first cell (the estimate of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3)
+  decision: 'decided: frozen except feature cells (operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the first
+    of the Lead''s seven questions was "Unfreeze F19 for feature cells only (the role-run arm, the shared walker and report),
+    leaving the large comparison and its slices frozen? I recommend yes."). The large comparison (Q7, M4-H) and its slices
+    stay frozen (operator, 2026-11-06 (design workspace decision record: board decisions); and the sixth question, same
+    answer: "The large comparison (Q7, M4-H): keep frozen and decide after three cells whether it is still wanted. I
+    recommend yes.")'
   recommendation: freeze
   who: operator
-  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. The critical path (S8b, S12,
-    S13) waits on rows held until the trace: E7c in HOLD-19 and F25 in HOLD-21 (BOARD v2 §4: "its next slices depend on
-    held rows (E7c, F25)"). M4-H is not on the Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
+  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. When it was frozen on
+    2026-11-06, the board''s reason was that the critical path (S8b, S12, S13) waited on rows held until the trace (BOARD
+    v2 §4: "its next slices depend on held rows (E7c, F25)"). Corrected on 2026-11-26 from the register and this board:
+    no hold blocks those slices now. HOLD-20 and HOLD-21 closed on 2026-11-06; F25 was restored from HOLD-21 at V-01; F18.15
+    closed that day into E97, and F15.5 into STG-14, so HOLD-19 holds F46 only; and SYS-04''s entry says E7c was superseded
+    or lapsed that day. The large comparison''s slices stay frozen by the operator''s decision, not by a hold. Feature cells
+    are unfrozen (the decision above); the recommendation stays freeze, so this system is still not counted toward the
+    limit, and whether feature-cell work makes it a counted system has not been put to the operator. M4-H is not on the
+    Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
     under src/aew imports aew_eval, so freezing it costs the product nothing. The as-built reference covers only src/aew,
     so eval/aew_eval has no reference records. That is why as_built is empty, not because nothing is built.'
   evidence:
@@ -100,6 +121,16 @@ systems:
   - 'docs/implementation/future-work.yaml (row HOLD-20, at c11a61ea) (F18.15: S18 is an evaluator client of the gateway''s
     accounting hook; a HOLD-20 member)'
   - docs/implementation/future-work.yaml (row HOLD-21, at c11a61ea) (HOLD-21, holding F25)
+  - 'docs/implementation/future-work.yaml (rows HOLD-20 and HOLD-21, at a21e49cd) (both closed 2026-11-06: every member
+    matched by the hold match of that day)'
+  - docs/implementation/future-work.yaml (row F25, at a21e49cd) (restored from HOLD-21 by the hold match, at V-01)
+  - docs/implementation/future-work.yaml (row F18.15, at a21e49cd) (closed 2026-11-06, merged into E97 as a note)
+  - 'docs/implementation/future-work.yaml (rows F15.5 and HOLD-19, at a21e49cd) (F15.5 closed 2026-11-06, merged into
+    STG-14 as a note; HOLD-19: 1 row still held, F46)'
+  - 'docs/implementation/systems.yaml (SYS-04, reason, at a21e49cd) ("Nothing is held: E7c and E6b were superseded or
+    lapsed on 2026-11-06"; the record it rests on is in the design workspace and was not read for this correction)'
+  - 'docs/implementation/notes.d/F19/2026-11-26-docs-f19-refinement-decisions.md (the operator''s answer of 2026-11-26
+    to the Lead''s seven questions on docs/research/f19-refinement-proposal-2026-11-26.md)'
 - id: SYS-02
   name: Agent containment (the Linux core; its follow-ons are SYS-49's)
   purpose: An OS-enforced sandbox (bubblewrap, a private network, masks, a launch self-test) for every worker run, check

@@ -2550,18 +2550,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E234/`, oldest first (`python tools/register.py show E234`).*
 
-### E235
-
-**Work:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set. Fix the lookup with a test on the real folder name, and weigh the desktop's `Programs\ai.opencode.desktop\resources\` copy, whose path moved in that update. Read from the code, not yet run
-
-**Source:** Found by the Lead, 2026-11-08; works out of the box is the operator's rule
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
-
 ### E237
 
 **Work:** Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server = None`: the thread then reaches `os._exit(0)` and kills the test worker
@@ -2609,18 +2597,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E240/`, oldest first (`python tools/register.py show E240`).*
-
-### E241
-
-**Work:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route. Read, not reproduced
-
-**Source:** The quick check of #388, 2026-11-08
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E242
 
@@ -5212,6 +5188,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E227/`, oldest first (`python tools/register.py show E227`).*
 
+### E235
+
+**Was:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set
+
+**Closed:** 2026-11-26
+
+**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version's, a pre-release's or another suffix's (#609's review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
+
+*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
+
 ### E236
 
 **Was:** `tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port` fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process's own listener, though it answers requests. CI's Windows passes. The E75 diagnostic loses its listener row on such a host, so the fix is the diagnostic saying so, with the test holding that, not a skip
@@ -5221,6 +5207,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E241
+
+**Was:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route
+
+**Closed:** 2026-11-26
+
+**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
+
+*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E247
 

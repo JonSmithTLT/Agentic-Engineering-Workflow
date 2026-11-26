@@ -5418,6 +5418,19 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
+  - '#': E373
+    Work: 'The Lead''s `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM
+      and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead
+      that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each
+      such decision names its choice and its rationale as the Lead''s judgment inputs (the vertical''s spec v2), so the
+      typed call is the governed path'
+    Source: 'The review of #597 (E335), its m2: the vertical''s steering-on counters. In V1 steering-on, with RESOLVE_STAGE
+      the Lead''s, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew
+      stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it'
+    When: '**Unscheduled**; the operator places it'
+    Notes: 'Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision
+      names them (`tests/helpers/vertical/lead.py`, `judged`)'
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

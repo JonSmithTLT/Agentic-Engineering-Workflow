@@ -4086,11 +4086,6 @@ systems:
   - slice: the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from`
     row: E160
     estimate: about 1 PR (estimate; same source)
-  - slice: 'the plan assessor''s pack fitted to its scope: the reviewer archetype''s text rendered at plan_assessment scope
-      asks for a change''s findings, which the evidence schema refuses; with a pack-truth test for scope fit (the operator,
-      2026-11-25)'
-    row: E366
-    estimate: 1 small PR (estimate)
   decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
     whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
     pointer on item 4)'

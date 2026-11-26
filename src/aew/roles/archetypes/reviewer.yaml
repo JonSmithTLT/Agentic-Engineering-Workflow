@@ -9,7 +9,8 @@ authority:
 # its pack adds those duties (aew.knowledge.context._scope_duties; register E366), and each value a field takes comes from
 # the evidence schema, in the pack's report format.
 responsibilities:
-  - evaluate it against the requirement, its contracts and guardrails, and the accepted plan
+  - evaluate what you were dispatched to evaluate (your scope section names it) against the requirement, its contracts
+    and guardrails, and the accepted plan it carries out, where there is one
   - classify every finding by severity and whether a change is required
 engine_operations: [submit.review, submit.plan_assessment, context.read]
 evidence_kinds: [review, plan_assessment]

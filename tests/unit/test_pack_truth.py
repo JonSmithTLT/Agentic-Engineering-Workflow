@@ -22,6 +22,7 @@ optional inputs and with none, so a section that depends on the scope or the dat
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from typing import Any
 
@@ -63,7 +64,8 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
             "history": [{"id": "H-1", "sha256": "0" * 64, "kind": "review", "source": "s", "reason": "r",
                          "content": "x: y"}],
             "subject": {"id": "E-3", "kind": "discovery_record", "sha256": "0" * 64, "content": "x: y"},
-            "children": [{"id": "T-2", "kind": "ticket", "state": "DONE", "title": "t"}],
+            "children": [{"id": "T-2", "kind": "ticket", "state": "DONE", "title": "t", "integrated_commit": "1" * 40,
+                          "diff": "+a line"}],
             "request": [{"id": "S-1", "kind": "story", "title": "t", "body": "the request",
                          "acceptance": {"goal_backwards": ["g"]}}],
         }
@@ -210,10 +212,12 @@ def archetype_prose(role: str) -> str:
                      for line in definition.get(key) or [])
 
 
-# Words in a role's instructions that send it to an input, each with the pack section that delivers that input
-# (register E366): an instruction may name one only where its pack has that section.
-INPUTS = {r"\bdiffs?\b|\bthe change\b": "change", r"\bcheck (?:output|results)\b": "check-results",
-          r"\b(?:earlier|open) (?:review )?findings\b|\bre-review": "open-findings"}
+# Words in a role's instructions that send it to an input, each with the pack sections that deliver that input
+# (register E366): an instruction may name one only where its pack has one of them. A diff is the change's, or a
+# child's integrated one in a parent's child work ("child-diffs": the children section holding one).
+INPUTS = {r"\bdiffs?\b": {"change", "child-diffs"}, r"\b(?:the|this) change\b": {"change"},
+          r"\bcheck (?:output|results)\b": {"check-results"},
+          r"\b(?:earlier|open) (?:review )?findings\b|\bre-review": {"open-findings"}}
 # The roles that evaluate another's work from what their pack carries. An implementer's diff is its own workspace's,
 # never a pack input, so its words name no input here.
 EVALUATORS = {"reviewer", "verifier"}
@@ -234,9 +238,10 @@ def scope_misfits(p: ctx.PackInputs) -> list[str]:
     if p.role not in EVALUATORS:
         return []
     delivered = {s.name for s in ctx.sections(p)}
+    delivered |= {"child-diffs"} if "children" in delivered and ctx.child_diffs(p) else set()
     text = instructions(p)
-    out = [f"names {section} ({m.group(0)!r}), which this pack does not deliver"
-           for word, section in INPUTS.items() if section not in delivered for m in [re.search(word, text, re.I)] if m]
+    out = [f"names {' or '.join(sorted(sections))} ({m.group(0)!r}), which this pack does not deliver"
+           for word, sections in INPUTS.items() if not sections & delivered for m in [re.search(word, text, re.I)] if m]
     kind = ctx.output_template(p.role, p.scope)[0]
     if kind:
         section = schema("evidence")["properties"][SECTION[kind]]
@@ -335,6 +340,43 @@ def test_a_roles_instructions_fit_its_scope(role, scope, full, card):
 def test_the_scope_fit_guard_right_wrong_and_missing(monkeypatch, text, problem):
     """Planted lines in an assessor's contract: each misfit is named; a line that fits is not."""
     p = inputs("reviewer", E.ASSESSMENT_SCOPE, full=False)
+    monkeypatch.setitem(p.role_def, "responsibilities", [*p.role_def["responsibilities"], text.removeprefix("- ")])
+    found = scope_misfits(p)
+    assert found == [] if problem is None else any(problem in f for f in found), found
+
+
+@pytest.mark.parametrize(("name", "card"), CARDS)
+def test_a_card_says_responsibilities_of_its_own_only_when_it_has_some(name, card):
+    """Review m3: a card without responsibilities (the plan assessor's are its scope's) gets no empty block for them."""
+    head = "\n".join(next(s.head for s in ctx.sections(inputs(card.archetype, card_scopes(card)[0], full=False,
+                                                                card=card.meta)) if s.name == "role-card"))
+    assert ("Card responsibilities" in head) is bool(card.meta.get("responsibilities")), name
+
+
+@pytest.mark.parametrize("diffs", [True, False])
+def test_a_parent_reviewer_is_told_to_evaluate_each_childs_diff_only_where_its_pack_carries_one(diffs):
+    """Register E366, review m1: a parent's child work carries each child's integrated diff, so the change duty is
+    given for it there, with no check results (a parent pack has none)."""
+    p = inputs("reviewer", "parent", full=True)
+    if not diffs:
+        p = dataclasses.replace(p, children=[{k: v for k, v in c.items() if k != "diff"} for c in p.children])
+    text = instructions(p)
+    assert ("evaluate each child's integrated change below; look for defects" in text) is diffs, text
+    assert "check results" not in text
+
+
+@pytest.mark.parametrize(("text", "problem", "diffs"), [
+    ("- check each child's integrated diff", None, True),
+    ("- check each child's integrated diff", "names change or child-diffs", False),
+    ("- evaluate this change", "names change", True),
+    ("- read the check output", "names check-results", True),
+])
+def test_a_parents_child_diffs_are_a_diff_it_may_name_and_nothing_more(monkeypatch, text, problem, diffs):
+    """Planted lines in a parent reviewer's contract: its child work carries each child's integrated diff when one is
+    there (``_children``), never the change under review or check output."""
+    p = inputs("reviewer", "parent", full=True)
+    if not diffs:
+        p = dataclasses.replace(p, children=[{k: v for k, v in c.items() if k != "diff"} for c in p.children])
     monkeypatch.setitem(p.role_def, "responsibilities", [*p.role_def["responsibilities"], text.removeprefix("- ")])
     found = scope_misfits(p)
     assert found == [] if problem is None else any(problem in f for f in found), found

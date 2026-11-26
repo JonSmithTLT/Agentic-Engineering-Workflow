@@ -53,7 +53,7 @@ OUTPUT_TEMPLATES = {
             "disposition": "pass",
             "findings": [{"id": "F1", "severity": "minor", "summary": "<finding>", "location": "<path:line>",
                           "required": False}],
-            "resolved_findings": ["<ids of earlier findings this change resolves>"],
+            "resolved_findings": ["<ids of the open findings now resolved>"],
         },
     }),
     "investigator": ("discovery_record", {
@@ -250,9 +250,9 @@ def _card_section(p: PackInputs) -> list[str]:
         "",
         card["purpose"],
         "",
-        "Card responsibilities (in addition to the archetype's):",
-        *_bullets(card.get("responsibilities", [])),
-        "",
+        # A card without responsibilities of its own (an assessor's are its scope's: E366) gets no empty block
+        *(["Card responsibilities (in addition to the archetype's):", *_bullets(card["responsibilities"]), ""]
+          if card.get("responsibilities") else []),
         "Skills to load (how the work is done): " + (", ".join(card.get("skills", [])) or "none"),
         # Only for a card with optional skills beyond `skills:` (the 2026-11-04 ruling, §1): conditional in its own
         # words, since the pack never states what is shipped, so a re-hash between dispatch and relaunch moves nothing
@@ -302,6 +302,11 @@ def _on_the_bridge(operations: list[str]) -> list[str]:
     return [op for op in operations if op in BRIDGE_OPERATIONS or op.split(".")[0] in BRIDGE_OPERATIONS]
 
 
+def child_diffs(p: PackInputs) -> bool:
+    """Whether the pack's child-work section carries a child's integrated diff (a parent's, ``_children``)."""
+    return any(c.get("diff") is not None for c in p.children)
+
+
 def _scope_duties(p: PackInputs, delivered: set[str]) -> list[str]:
     """What a role evaluates, and from which inputs, at the scope it was dispatched at: added to the archetype's
     responsibilities, which hold at every scope (register E366). A duty that reads an input is given only where the pack
@@ -319,10 +324,13 @@ def _scope_duties(p: PackInputs, delivered: set[str]) -> list[str]:
                 "obligations it leaves without an owner",
                 "give every gap in the trace and every premise that fails a finding of its own"]
     duties = []
+    look = ("look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, "
+            "and unnecessary scope")
     if "change" in delivered:
         checks = " and the check results on its snapshot" if "check-results" in delivered else ""
-        duties += [f"evaluate the change below{checks}; look for defects, plan violations, missing tests, ownership "
-                   "mistakes, security and error-path problems, and unnecessary scope"]
+        duties += [f"evaluate the change below{checks}; {look}"]
+    if "children" in delivered and child_diffs(p):  # a parent's: each child's integrated diff, and no check results
+        duties += [f"evaluate each child's integrated change below; {look}"]
     if "open-findings" in delivered:
         duties += ["when re-reviewing, state which of the open findings below are resolved"]
     return duties

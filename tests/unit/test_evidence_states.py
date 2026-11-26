@@ -723,19 +723,26 @@ def test_a_phase_read_can_outlast_its_budget_without_delaying_cleanup(tmp_path, 
     assert done.wait(5) and result["status"] == "unavailable"
 
 
-@pytest.mark.parametrize("history,identity,expected", [
-    (None, True, "indeterminate"), ("", True, "indeterminate"),
-    ("10 collecting\n", True, "collecting"),
-    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting"),
-    ("10 collecting\n15 collection-ended\n", True, "collection-ended"),
-    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started"),
-    ("21 collecting\n", True, "indeterminate"), ("20 collecting\n", True, "indeterminate"),
-    ("10 collecting\n", False, "indeterminate"), ("10 collecting", True, "indeterminate"),
-    ("15 collecting\n12 collection-ended\n", True, "indeterminate"),
-    ("10 collecting\n15 execution-started\n", True, "indeterminate"),
+SECOND_NS = 1_000_000_000
+
+
+@pytest.mark.parametrize("history,identity,expected,collecting_s", [
+    (None, True, "indeterminate", None), ("", True, "indeterminate", None),
+    ("10 collecting\n", True, "collecting", 0.0),
+    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting", 0.0),
+    ("10 collecting\n15 collection-ended\n", True, "collection-ended", 0.0),
+    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started", 0.0),
+    ("21 collecting\n", True, "indeterminate", None), ("20 collecting\n", True, "indeterminate", None),
+    ("10 collecting\n", False, "indeterminate", None), ("10 collecting", True, "indeterminate", None),
+    ("15 collecting\n12 collection-ended\n", True, "indeterminate", None),
+    ("10 collecting\n15 execution-started\n", True, "indeterminate", None),
+    # Read 2.5 s after the `collecting` stamp and 1 s after the later one: the age is in seconds, and is measured from
+    # the first stamp, when the process began collecting (#616 quick check, q1).
+    (f"{SECOND_NS} collecting\n{5 * SECOND_NS // 2} collection-ended\n", True, "collection-ended", 2.5),
+    (f"{SECOND_NS} collecting\n", True, "collecting", 2.5),
 ])
-def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(tmp_path, monkeypatch,
-                                                                                   history, identity, expected):
+def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(
+        tmp_path, monkeypatch, history, identity, expected, collecting_s):
     import worker_evidence as ev
 
     directory = tmp_path / "autopsy/session-test"
@@ -749,9 +756,10 @@ def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_wor
         (directory / "worker-123-456-lifecycle.txt").write_text(history)
     monkeypatch.setattr(ev, "_live_phase_writer", lambda path, pid, birth, fd: (pid, birth, fd) == (123, 456, 7)
                         and identity)
-    # A phase that is read comes with the time since the worker's `collecting` stamp (10 ns before this signal).
-    age = {} if expected == "indeterminate" else {"collecting_s": 0.0}
-    assert ev.phases_at_signal(tmp_path, 20) == [
+    # A phase that is read comes with the seconds since the worker's `collecting` stamp, at this read (10 ns, or 2.5 s).
+    age = {} if collecting_s is None else {"collecting_s": collecting_s}
+    at = 7 * SECOND_NS // 2 if collecting_s else 20
+    assert ev.phases_at_signal(tmp_path, at) == [
         {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected, **age}]
 
 

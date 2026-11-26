@@ -442,7 +442,8 @@ protocol, which owes its watchdog header, its observation and its running name l
 The record says that no test had started, not that the start-up was healthy: a session stuck in its collection (an
 import that hangs) and cancelled before its deadline is typed `before tests` with no defect and no stack, a serial one
 as an xdist one. What shows it is each listed process's `collecting_s` in the record, the seconds since its
-`collecting` stamp at the signal.
+`collecting` stamp when its receipt was read: at the signal in the supervisor's record, at the later collection in the
+cancellation collection's.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The

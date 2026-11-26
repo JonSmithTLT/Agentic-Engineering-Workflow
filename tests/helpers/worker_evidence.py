@@ -126,8 +126,10 @@ def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
                     continue
                 prior = [phase for stamp, phase, _ in transitions if stamp <= at_ns]
                 if prior:
-                    # How long the process had been collecting at the signal, so a collection that hangs is visible
-                    # in the before-tests record, which otherwise carries no age (review of #616, m2).
+                    # How long the process had been collecting when its receipt is read here (`at_ns`: the signal
+                    # for the supervisor, the collection's own later instant for the cancellation collection), in
+                    # seconds since its first stamp. A collection that hangs is then visible in the before-tests
+                    # record, which otherwise carries no age (review of #616, m2).
                     row.update(phase=prior[-1], collecting_s=round((at_ns - stamps[0]) / 1e9, 3))
             except (OSError, ValueError):
                 continue
@@ -184,8 +186,9 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
 
     A limit: the record says that no test had started, not that the start-up was healthy. A session stuck in its
     collection (an import that hangs) and cancelled before its deadline is typed ``before tests`` with no defect and
-    no stack, a serial one now as an xdist one since #579. Each listed process's ``collecting_s``, the seconds since
-    its ``collecting`` stamp at the signal, is what shows a long collection (review of #616, m2).
+    no stack, a serial one now as an xdist one since #579. Each listed process's ``collecting_s`` is what shows a
+    long collection: the seconds since its ``collecting`` stamp when its receipt was read, which is the signal for
+    the supervisor's record and the collection's later instant for the cancellation collection's (review of #616, m2).
 
     No session at all is recorded as such: pytest had not registered one under the lane root. That reading of an
     absence rests on every lane command passing ``--session-deadline`` with its hang directory the lane root or one

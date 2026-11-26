@@ -42,7 +42,9 @@ worker observation` and `[running] missing running test name`.
   deadline is typed `before tests` with no defect and no stack; #579 has the same property for xdist workers, and
   this extends it to serial lanes. The record says that no test had started, not that the start-up was healthy. So
   that a long collection is visible, `phases_at_signal` now gives each process read from its live writer a
-  `collecting_s`, the seconds from its `collecting` stamp to the signal, and the before-tests record keeps it (m2).
+  `collecting_s`, the seconds from its `collecting` stamp to the instant its receipt was read (the signal for the
+  supervisor's record, the later collection for the cancellation collection's), and the before-tests record keeps
+  it (m2; the quick check's q1 pins the stamp and the unit, and q2 this wording).
   `finished_without_tests`'s refusal of a controller receipt past collection has its test,
   `test_a_finished_serial_session_is_typed_before_tests_only_by_a_controller_receipt_short_of_its_first_test` (m1),
   and matches the receipt's name through `lifecycle_receipt` (n1). The real-session test's two killed cases now run on

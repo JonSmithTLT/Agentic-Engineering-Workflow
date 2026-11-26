@@ -7,10 +7,10 @@ which the system text's "as the guide says" pointed to with nothing behind it. `
 contained Lead, so it adds no tool and no bytes to the tool list.
 
 **Measured with the pool gate's own render**, at main 5649d832, where E160's plan-assessment line, now in the core,
-is part of the guide. With messaging on, the guide went from 17,445 B to 9,123 B, a saving of 8,322 B. With messaging
-off, it went from 17,267 B to 8,903 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
-8,090 B, and the derived ceiling to 34,649 B. The operator set the cap at 40,000 B on 2026-11-26, as an anti-bloat
-guard; the 5,351 B between the two is the record's `operator_reserve`, which only an operator-attributed reserve may
+is part of the guide. With messaging on, the guide went from 17,445 B to 9,154 B, a saving of 8,291 B. With messaging
+off, it went from 17,267 B to 8,934 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
+8,121 B, and the derived ceiling to 34,680 B. The operator set the cap at 40,000 B on 2026-11-26, as an anti-bloat
+guard; the 5,320 B between the two is the record's `operator_reserve`, which only an operator-attributed reserve may
 hold.
 
 **The failure criterion's counters.** Each line of the broker's typed-tool log now names its Lead session and
@@ -33,7 +33,7 @@ not always misuse); defects and calls with invalid arguments; guide reads by sec
 with the same scripted turns.
 - At main ee89c341, the Lead's first request carried 34,161 B of instructions in a 55,932 B body.
 - At this branch's commit 6445f91f, it carried 26,272 B of instructions in a 48,003 B body. The
-  head's core is 314 B shorter.
+  head's core is 283 B shorter.
 - The tool list was 21,112 B in both, so the request is 7,929 B smaller.
 - The branch's session showed up in `aew lead telemetry` with 3 typed calls and no misuse. The scripted model makes no
   guide reads or help lookups, so behaviour is UAT's to judge.

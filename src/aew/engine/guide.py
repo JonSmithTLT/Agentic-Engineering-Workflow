@@ -562,11 +562,11 @@ def _rules(gates_policy: dict[str, Any], post_verify: bool, post_checks: list[st
              "up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A "
              "parent's mandatory gates and minimum descendant class bind its children."),
         Rule("An ineligible Class 0 Ticket is refused (`explain` gives every reason), never reclassified: raise its "
-             "class, or make it eligible. A declared acceptance check is a gate before COMMIT_READY that cannot be "
-             "waived."),
-        Rule("Every Ticket needs an accepted plan before it becomes READY. The review and verification cards a plan "
-             "declares as its assurance become required gates when it is accepted; a review promised only in its "
-             "text binds nothing."),
+             "class, or make it eligible. On any class, a declared acceptance check is a gate before COMMIT_READY "
+             "that cannot be waived."),
+        Rule("Every Ticket needs an accepted plan before it becomes READY. Every plan declares its assurance, `none` "
+             "or the review and verification cards that become required gates when it is accepted; a review promised "
+             "only in its text binds nothing."),
         Rule(f"{_scope_rule(mutating_cap(gates_policy))} In every class, a change outside the Ticket's scope or on a "
              "protected path blocks it."),
         Rule(f"In every class, {TEST_WORK}."),

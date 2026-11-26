@@ -273,6 +273,14 @@ def test_every_typed_tool_the_lead_is_offered_is_named_in_the_core(switches):
     assert set(lead_text.WHEN) <= set(contract.catalog(frozenset(contract.ALL_SWITCHES)))
 
 
+def test_the_core_keeps_the_acceptance_check_on_any_class_and_every_plans_declared_assurance():
+    """Quick check of #593, n6: the n5 tightening must not drop that the acceptance check binds on any class, or that
+    every plan declares its assurance, `none` included."""
+    core = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert "On any class, a declared acceptance check is a gate before COMMIT_READY that cannot be waived." in core
+    assert "Every plan declares its assurance, `none` or the review and verification cards" in core
+
+
 def test_the_core_says_a_refusal_names_the_command_that_applies():
     """The old guide's cheapest line against `--help` lookups, kept in the core (review of #593, n1)."""
     assert "a refusal names the command that applies" in lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)

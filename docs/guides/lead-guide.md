@@ -46,8 +46,8 @@ Whatever the state:
 ## Rules that always hold
 
 - Classify each unit by its own change surface, ambiguity and risk, not its size (WC §7.4). A class may go up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A parent's mandatory gates and minimum descendant class bind its children.
-- An ineligible Class 0 Ticket is refused (`explain` gives every reason), never reclassified: raise its class, or make it eligible. A declared acceptance check is a gate before COMMIT_READY that cannot be waived.
-- Every Ticket needs an accepted plan before it becomes READY. The review and verification cards a plan declares as its assurance become required gates when it is accepted; a review promised only in its text binds nothing.
+- An ineligible Class 0 Ticket is refused (`explain` gives every reason), never reclassified: raise its class, or make it eligible. On any class, a declared acceptance check is a gate before COMMIT_READY that cannot be waived.
+- Every Ticket needs an accepted plan before it becomes READY. Every plan declares its assurance, `none` or the review and verification cards that become required gates when it is accepted; a review promised only in its text binds nothing.
 - A Ticket's scope is fixed once it exists (a test path the change needs excepted: `resolve`'s `add_scope`), and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more. In every class, a change outside the Ticket's scope or on a protected path blocks it.
 - In every class, test work needs a sign-off first, cited from a plan revision or quoted from the operator, to remove tests, to change a suite's flow or shared setup (a runner config, conftest, shared helper or mock, skip list), or to change its overall mocking or refactor it wholesale; otherwise tests may grow in proportion to the work, with no size limit.
 - Gates and guardrails are checked on the exact snapshot being accepted: evidence for an earlier state of the work is STALE and satisfies nothing.

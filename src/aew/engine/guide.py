@@ -317,6 +317,20 @@ def _grouped(paths: dict[str, Any]) -> list[tuple[str, list[str]]]:
     return out
 
 
+def _staffed(cards: Sequence[Any], shipped: Any) -> list[tuple[Any, list[str]]]:
+    """The implementer cards :func:`staffing_text` names, each with the shipped skills its run loads."""
+    loads = [(c, [s for s in c.meta.get("skills") or [] if s in shipped]) for c in cards]
+    return [(c, names) for c, names in loads if names and c.meta.get("use_when")]
+
+
+def staffed_cards() -> frozenset[str]:
+    """The ids of the cards the staffing section names with their `use_when` (a typed `resume` leaves theirs out)."""
+    from aew import roles, skills
+
+    cards = [c for c in roles.builtin_cards().values() if c.archetype == "implementer"]
+    return frozenset(c.id for c, _ in _staffed(cards, skills.shipped()))
+
+
 def staffing_text() -> str:
     """Which implementer card to staff, so a language card's skills load (the designer's ruling of 2026-11-04, §6: the
     Lead had only the cards' ``use_when``). Derived, never a list here: from the built-in implementer cards whose
@@ -328,8 +342,7 @@ def staffing_text() -> str:
 
     shipped = skills.shipped()
     cards = sorted((c for c in roles.builtin_cards().values() if c.archetype == "implementer"), key=lambda c: c.id)
-    loads = [(c, [s for s in c.meta.get("skills") or [] if s in shipped]) for c in cards]
-    loads = [(c, names) for c, names in loads if names and c.meta.get("use_when")]
+    loads = _staffed(cards, shipped)
     if not loads:
         return ""
     picks = "; ".join(f"`{c.id}` when {c.meta['use_when'][0]}, so its run loads {', '.join(f'`{n}`' for n in names)}"

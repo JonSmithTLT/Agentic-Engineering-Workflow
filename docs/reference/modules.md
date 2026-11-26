@@ -2512,6 +2512,7 @@ None.
 
 ### `aew.surface.run`
 
+- `aew.engine.guide`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
 - `aew.engine.stage_intents`

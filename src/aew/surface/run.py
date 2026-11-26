@@ -358,20 +358,24 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
 FULL = {"status": "`aew status --json`", "resume": "`aew resume --json`"}
 # The parts cut to what the Lead acts on: the usage report's one line, and the history audit's breaches.
 USAGE_KEPT, AUDIT_KEPT = ("line",), ("over_policy", "over_policy_detail")
-CARD_KEPT = ("id", "extends")  # a card's id to staff by; the guide's staffing section says which fits (E231)
+# A card keeps its id, archetype and `use_when`, the Lead's staffing guidance. Only the cards the guide's staffing
+# section names with their `use_when` (``guide.staffed_cards``) leave it out, since that section says it (#599, m1).
+CARD_KEPT, STAFFED_KEPT = ("id", "extends", "use_when"), ("id", "extends")
 
 
 def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
     """``payload`` as a typed ``name`` returns it: a project ``status`` or ``resume`` without its next actions where
     they are the projection's hints (byte for byte, as they are for the project: ``projection._guidance``), with the
     usage line, the history audit's breaches, the count of what stands between the project and Run (each problem's fix
-    is for the operator's terminal) and each role card's id; and where the whole report is. Any other result, and a
-    unit's status, is unchanged."""
+    is for the operator's terminal) and each role card without its display name (and without the `use_when` the guide's
+    staffing section gives); and where the whole report is. Any other result, and a unit's status, is unchanged."""
     if name not in FULL or not isinstance(payload, dict) or "project" not in payload:
         return payload
     out = dict(payload)
     if "next_actions" in out and out["next_actions"] == projection.get("hints"):
         del out["next_actions"]
+        if isinstance(out.get("order"), list):  # a resume's list of its parts names only the parts it holds (m2)
+            out["order"] = [part for part in out["order"] if part != "next_actions"]
     if isinstance(out.get("usage"), dict):
         out["usage"] = {k: out["usage"][k] for k in USAGE_KEPT if k in out["usage"]}
     if isinstance(out.get("history_audit"), dict):
@@ -380,8 +384,12 @@ def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
     if isinstance(steering, dict) and isinstance(steering.get("run_problems"), list):
         out["steering"] = {**steering, "run_problems": len(steering["run_problems"])}
     if isinstance(out.get("role_catalog"), list):
-        out["role_catalog"] = [{k: card[k] for k in CARD_KEPT if k in card} if isinstance(card, dict) else card
-                               for card in out["role_catalog"]]
+        from aew.engine.guide import staffed_cards
+
+        staffed = staffed_cards()
+        out["role_catalog"] = [
+            {k: card[k] for k in (STAFFED_KEPT if card.get("id") in staffed else CARD_KEPT) if k in card}
+            if isinstance(card, dict) else card for card in out["role_catalog"]]
     out["full"] = FULL[name]
     return out
 

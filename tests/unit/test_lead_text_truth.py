@@ -299,6 +299,16 @@ def test_a_typed_project_read_holds_no_large_value_twice_and_says_where_the_whol
     line, _ = lead_reads(engine, name)
     assert repeated(line) == [] and line["result"]["full"] == run.FULL[name]
     assert "next_actions" not in line["result"] and line["projection"]["hints"]
+    assert "next_actions" not in line["result"].get("order", [])  # its list of parts names none it lacks (#599, m2)
+    if name == "resume":  # a card keeps its staffing guidance unless the guide's staffing section gives it (#599, m1)
+        whole = {c["id"]: c for c in engine.resume()["role_catalog"]}
+        staffed = guide.staffed_cards()
+        assert staffed and staffed <= set(whole)
+        for card in line["result"]["role_catalog"]:
+            kept = "use_when" in card
+            assert kept is (card["id"] not in staffed and "use_when" in whole[card["id"]]), card["id"]
+            assert card["id"] in staffed or card.get("use_when") == whole[card["id"]].get("use_when")
+        assert all(c["id"] in guide.staffing_text() for c in line["result"]["role_catalog"] if c["id"] in staffed)
     monkeypatch.setattr(run, "_compact", lambda name, payload, projection: payload)  # the planted case: as it was
     assert any("next_actions" in r for r in repeated(lead_reads(engine, name)[0]))
 

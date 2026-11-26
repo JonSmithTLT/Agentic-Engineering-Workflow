@@ -476,8 +476,8 @@ WAKE_GUIDE: dict[str, Wake] = {
     RUN_ENDED: Wake(
         means="a run ended",
         act="act on how it ended, as the result's next step says: accept its evidence, or relaunch or cancel it",
-        tell="which run ended and what its evidence shows: the files it changed and the checks it ran, with their "
-             "results"),
+        tell="which run ended and what its evidence shows (the files it changed and the checks it ran, with their "
+             "results)"),
     TEST_FAILED: Wake(
         means="a test that passed earlier in the run now fails, or the same failure came back three test runs in a "
               "row (seen under the same test command)",

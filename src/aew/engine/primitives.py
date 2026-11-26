@@ -166,12 +166,8 @@ PRIMITIVE_OWNERS: dict[str, str] = {
     # The acceptances that are the Lead's by design: a review report, and a Ticket's own verification report.
     "review.ingest": LEAD,
     "verify.ingest": LEAD,
-    # The Lead's disposition of a finding, claim or anomaly (plan v3 §2.4), and its resolution of an unfinished stage
-    # (M4-E E3c). Register E350 names the operator's decisions a Lead session can reach; these are not among them.
-    "work.dispose": LEAD,
-    "stage.resolve": LEAD,
-    # Finishing a publication whose intent is already committed (E137): the publish decision was made before it.
-    "integrate.reconcile": LEAD,
+    # `work.dispose`, `stage.resolve` and `integrate.reconcile` are left unstated, so the operator's, until the designer
+    # confirms their owner (the operator, 2026-11-26: "might as well do the safe default for now"; E335's note).
 }
 
 

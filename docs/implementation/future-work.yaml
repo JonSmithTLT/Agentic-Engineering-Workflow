@@ -6501,7 +6501,8 @@ sections:
     Closed: '2026-11-26'
     By: '#597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`primitives.PRIMITIVE_OWNERS`),
       and one the table does not state is the operator''s; the review and Ticket-verification acceptances are the Lead''s
-      and the scripted Lead takes them. `test_decision_owners` pins E350''s four gaps; E351 is the plan''s own kind'
+      and the scripted Lead takes them. `test_decision_owners` pins E350''s four gaps and the four of the owners awaiting
+      the designer (the row''s note of 2026-11-26); E351 is the plan''s own kind'
 
   - '#': E337
     Was: 'A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may

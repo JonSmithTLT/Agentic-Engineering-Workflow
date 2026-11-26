@@ -1001,20 +1001,29 @@ class Harness:
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} --prior-value {run}`, or "
+                          f"relaunch with `{K.launch_command(inv_id, run)}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
                 cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "harness run ended")
-                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"--prior-value {run}` (its credential rotates) or cancel it with:"
-                          f"\n\n{cancel}")
+                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with "
+                          f"`{K.launch_command(inv_id, run)}` (its credential rotates) or cancel it with:\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
         return out
+
+    @staticmethod
+    def unlaunched(state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for: a dispatch made without `--launch`,
+        or a stage that stopped before its launch. ``harness_resume`` lists none of them (it reads runs), and a
+        `harness launch` starts each (register E233). Never the lease's custodian (``integration_attempt``), which an
+        engine process works for, not a harness."""
+        return [inv_id for inv_id, inv in sorted(state["invocations"].items())
+                if inv["status"] == "active" and inv["work_unit"] == work_id and not inv.get("runs")
+                and inv.get("kind") != "integration_attempt"]
 
     def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
                    inv_id: str) -> str:

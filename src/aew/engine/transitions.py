@@ -272,6 +272,17 @@ def next_steps(frm: str, work_id: str = "<T>", fit: Fit | None = None) -> str:
     return f"From {frm}: " + "; ".join(steps) + "." if steps else ""
 
 
+def lead_moves(frm: str) -> list[str]:
+    """Where the Lead's own `aew work transition` takes a Ticket on from ``frm``, for a state no stage starts from
+    (register E233): the table's forward ``transition`` edges, in its written order, and none from a state a stage
+    takes on (``STAGE_AT``), where the stage is the move. Cancelling, escalating, replanning and interrupting are left
+    out, as in :func:`next_steps`. The engine's hints name these moves and the projection offers them, both from
+    here; :func:`command` gives each one's command."""
+    if any(src == frm for src, _dst in STAGE_AT):
+        return []
+    return [dst for dst, via in allowed_from(frm).items() if via == "transition" and dst not in _EXCEPTIONAL]
+
+
 def check(frm: str, to: str, via: str, fit: Fit | None = None) -> Rule:
     rule = RULES.get((frm, to))
     if rule is None or (rule.via != via and via not in rule.also):

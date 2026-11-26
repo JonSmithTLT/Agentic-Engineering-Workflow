@@ -209,7 +209,7 @@ class StatusViewsPort(Protocol):
     """What other collaborators use of ``StatusViews``."""
 
     def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
-                       housekeeping: bool = True) -> list[str]: ...
+                       housekeeping: bool = True, pinned_failures: list[str] | None = None) -> list[str]: ...
 
 
 class SteeringPort(Protocol):

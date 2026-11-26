@@ -497,11 +497,12 @@ class Projector:
     def _attention_ids(self) -> set[str]:
         return {item["subject"]["id"] for item in self.attention_items() if item["subject"]["kind"] == "work"}
 
-    def attention_items(self) -> list[dict[str, Any]]:
+    def attention_items(self, *, include_notifier: bool = True,
+                        contradictions: list[str] | None = None) -> list[dict[str, Any]]:
         """Attention from engine facts: units in a state the Lead must act on, blockers, contradictions, lost or
         crashed runs. Shown through ``/overview`` (bounded) and ``Work.has_attention``; the ``/attention`` route
         waits for the canonical action projection (F15.1)."""
-        if self._attention is not None:
+        if include_notifier and self._attention is not None:
             return self._attention
         items: list[dict[str, Any]] = []
         for wid, unit in sorted(self.state["work"].items()):
@@ -521,7 +522,7 @@ class Projector:
                           "subject": entity(wid, "work", str(unit.get("title") or wid)),
                           "title": f"{wid} is {st}", "summary": rich(unit.get("state_reason")),
                           "reasons": _bounded(reasons + self._blockers(unit)), "first_seen_at": self._updated_at(unit)})
-        for n, text in enumerate(self._contradictions(), 1):
+        for n, text in enumerate(self._contradictions() if contradictions is None else contradictions, 1):
             items.append({"id": f"AT-contradiction-{n}", "kind": "anomaly", "severity": "high",
                           "subject": entity(self.s.project_id, "project", self.s.project_name),
                           "title": "Contradiction", "summary": rich(text), "reasons": [reason("CONTRADICTION", text)],
@@ -536,8 +537,9 @@ class Projector:
                                   "summary": rich(f"{inv['role']} run for {inv['work_unit']} is {observed}"),
                                   "reasons": [reason(code, f"run {run['run']} of {inv_id}")],
                                   "first_seen_at": str(run.get("launched_at") or SNAPSHOT_TIME)})
-        items += self._notifier_attention()
-        self._attention = items
+        if include_notifier:
+            items += self._notifier_attention()
+            self._attention = items
         return items
 
     def _notifier_attention(self) -> list[dict[str, Any]]:

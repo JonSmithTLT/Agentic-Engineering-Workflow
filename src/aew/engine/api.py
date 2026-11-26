@@ -43,7 +43,7 @@ from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
-from aew.engine.resume_ops import Resume
+from aew.engine.resume_ops import Resume, WorkerNeeded
 from aew.engine.role_ops import Roles
 from aew.engine.scope_ops import ScopeCorrections
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
@@ -1006,6 +1006,23 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
+    def worker_needed(self, state: dict[str, Any], work_id: str) -> WorkerNeeded | None:
+        """The fresh worker a mutating Ticket's state waits on, with its dispatch command, or None
+        (``Resume.worker_needed``; register E233)."""
+        unit = state["work"].get(work_id)
+        if unit is None or unit["kind"] != "ticket" or not unit.get("mutating"):
+            return None
+        return self._resume.worker_needed(state, work_id, unit)
+
+    def launch_refusal(self, state: dict[str, Any], work_id: str, role: str) -> AEWError | None:
+        """Why a `--launch` dispatch of ``role`` for ``work_id`` would be refused at its launch now, or None
+        (``Invocations.launch_refusal``)."""
+        return self._invocations.launch_refusal(state, work_id, role)
+
+    def harness_unlaunched(self, state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for (``Harness.unlaunched``)."""
+        return self._harness.unlaunched(state, work_id)
+
     def harness_send(self, *, token: str, run: str, text: str, when: str = DEFAULT_WHEN,
                      idempotency_id: str | None = None) -> dict[str, Any]:
         return self._harness.harness_send(token=token, run=run, text=text, when=when, idempotency_id=idempotency_id)
@@ -1622,8 +1639,9 @@ class Engine:
     def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
         return self._history.audit_status(state, policy=policy)
 
-    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]:
-        return self._views.contradictions(state, manifest)
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
+                       pinned_failures: list[str] | None = None) -> list[str]:
+        return self._views.contradictions(state, manifest, pinned_failures=pinned_failures)
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         return self._resume.next_actions(state)

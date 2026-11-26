@@ -370,6 +370,18 @@ class RawArm:
     kind = "raw"
     agent = "build"
 
+    def session_setup(self, session: Any, headless: ModuleType, profile: dict[str, str], config: dict[str, Any],
+                      scratch: Path) -> tuple[dict[str, Any], list[dict[str, str]] | None]:
+        """The run's OpenCode configuration and its session's own rules, decided before anything is launched: the M3
+        raw mode's configuration and no rules. An arm that adds to the harness alone extends this (the skill
+        evaluation's exposure, register E135); an error here is counted with nothing spent."""
+        return headless.raw_config(profile, int(config["steps"])), None
+
+    def harness_facts(self, summary: dict[str, Any]) -> dict[str, Any]:
+        """What else of the closed session's summary the run's ``harness`` record carries: nothing, for the harness
+        alone."""
+        return {}
+
     def check(self, config: dict[str, Any], snap: fixture.Snapshot) -> None:
         if not isinstance(config, dict):
             raise Invalid("a raw arm's configuration is a mapping")
@@ -485,9 +497,9 @@ class RawArm:
                 directory=scratch)
             if entry is not None:
                 entry.started()
+            session_config, rules = self.session_setup(session, headless, profile, config, scratch)
             launched = True
-            session.open(directory=repo, profile=profile, agent=self.agent,
-                         config=headless.raw_config(profile, int(config["steps"])),
+            session.open(directory=repo, profile=profile, agent=self.agent, config=session_config, rules=rules,
                          env=entry.mark(headless.shell_env(os.environ)) if entry is not None
                          else headless.shell_env(os.environ), provider_env=names, title="raw OpenCode (evaluation)")
             session.say(task)
@@ -534,7 +546,8 @@ class RawArm:
             observed_profiles=observed,
             harness={"name": "opencode", "agent": self.agent, "version": version,
                      "pinned_version": config["harness"]["version"], "platform": host_platform(),
-                     "artifact_sha256": _sha256_file(binary), "catalog": summary.get("catalog")},
+                     "artifact_sha256": _sha256_file(binary), "catalog": summary.get("catalog"),
+                     **self.harness_facts(summary)},
             # a run that never launched (refused before session.open: its containment failed) spent nothing: its cost
             # is known to be 0, never its cap
             cost={"provider_reported_usd": reported, "charged_usd": charged(reported, cap) if launched else 0.0,

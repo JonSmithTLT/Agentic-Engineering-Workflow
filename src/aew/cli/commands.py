@@ -82,6 +82,9 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
              coordination_reads: bool = False, worker_messaging: bool = False) -> None:
+    from aew.cli import read_commands
+
+    read_commands.register(sub)
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",

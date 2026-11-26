@@ -66,7 +66,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `local`
 
-- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
+- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `control_lock_visible`, `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
   - Written by
     - `aew.dashboard.service:Service._write_endpoint`
     - `aew.engine.custody_ops:spawn_worker`
@@ -170,7 +170,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.harness.doctor_relay:lead_rows`
     - `aew.harness.lead_broker:lead_run_dir`
     - `aew.harness.model_list:read`
-- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_age`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
+- `local/harness/runs/R-{}-{}` (git-ignored, masked by containment); read by `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `heartbeat_time`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -316,7 +316,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_age`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
+- `local/harness/runs/{}` (git-ignored, masked by containment); read by `aew.engine.harness_ops`: `Harness.harness_launch`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.notify`: `Watcher._offer_spool_line`, `Watcher._retire_spool`; `aew.harness.relay_status`: `_regular_dir`; `aew.harness.runlog`: `_open_append`, `_open_regular`, `_read_text.known`, `beat`, `end_returned`, `heartbeat_time`, `take_requests`; `aew.skills`: `deliver`, `real_dir`
   - Written by
     - `aew.capability.bind:place`
     - `aew.engine.harness_ops:Harness._spawn_run`
@@ -642,7 +642,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.scope_ops`: `ScopeCorrections._check` (Path.is_file), `ScopeCorrections._record` (Path.read_text), `_file_text` (Path.read_text), `pack_entries` (Path.read_text)
 - `aew.engine.selection`: `_read` (Path.read_bytes)
 - `aew.engine.stage_intents`: `StageIntents._load` (Path.read_bytes)
-- `aew.engine.status_ops`: `StatusViews.contradictions` (Path.exists), `StatusViews.contradictions` (sha256_file)
+- `aew.engine.status_ops`: `StatusViews._file_contradictions` (Path.exists), `StatusViews._file_contradictions` (sha256_file), `StatusViews.contradictions` (Path.exists)
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)
 - `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir), `replace_pending` (Path.glob), `replace_pending` (Path.is_file)
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
@@ -667,7 +667,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.opencode.login`: `StoredLogin._deciding_row` (Path.stat), `own_store` (os.lstat), `stored` (Path.is_file), `worker_keys` (Path.is_file)
 - `aew.harness.operator_client`: `lead_session_problem` (Path.read_bytes), `read_locator` (read_replaced), `session_holders_live` (read_replaced)
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
-- `aew.harness.runlog`: `_open_append` (os.lstat), `_open_regular` (os.lstat), `_open_regular` (os.open), `_read_text.known` (Path.exists), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat)
+- `aew.harness.runlog`: `_open_append` (os.lstat), `_open_regular` (os.lstat), `_open_regular` (os.open), `_read_text.known` (Path.exists), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat), `heartbeat_time` (os.lstat)
 - `aew.harness.seat`: `read_leftovers` (read_replaced)
 - `aew.harness.weaker_register`: `_ensure_created` (Path.exists), `_entries` (Path.glob), `_entries` (Path.read_bytes), `read` (Path.exists)
 - `aew.history.store`: `History._check` (Path.read_bytes), `History.unreferenced` (Path.is_file)
@@ -686,6 +686,8 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.snapshot.fingerprint`: `_staged_index` (Path.exists), `_staged_index` (shutil.copy2), `_working_index` (Path.exists), `_working_index` (shutil.copy2), `relevant_inputs_fingerprint` (Path.exists)
 - `aew.stg02.adopted`: `load` (Path.read_bytes)
 - `aew.stg02.g3_overlay`: `_document` (Path.read_text)
+- `aew.stg02.outage_host`: `binding` (Path.is_file), `binding` (Path.read_bytes), `binding` (Path.rglob), `g3_present` (Path.exists), `qualified` (Path.lstat), `qualified` (Path.read_bytes)
+- `aew.stg02.outage_store`: `OutageStore.attention` (Path.exists)
 - `aew.stg02.server`: `_main` (Path.read_text)
 - `aew.stg02.world`: `Fixture.load` (Path.read_text)
 - `aew.surface.projection`: `_stat` (Path.stat)

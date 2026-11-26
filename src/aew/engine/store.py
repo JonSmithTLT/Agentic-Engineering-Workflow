@@ -113,6 +113,14 @@ _T = TypeVar("_T")
 MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
 
 
+def control_lock_visible(aew_root: Path) -> bool:
+    """Whether the real project lock is visible, without opening it or acquiring a lock (A-45)."""
+    try:
+        return stat.S_ISREG((aew_root / LOCK_REL).lstat().st_mode)
+    except OSError:
+        return False
+
+
 def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = (),
                     budget_s: float | None = None, missing_when: Callable[[], bool] | None = None) -> _T:
     """``read()``, retried briefly on ``PermissionError`` (and on ``also``): on Windows a lock-free reader's open can

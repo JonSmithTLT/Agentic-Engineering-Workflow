@@ -354,14 +354,19 @@ def test_the_desktops_cli_is_found_in_the_folder_2_2_6_names_for_its_version_and
 
 
 def test_the_desktops_cli_in_a_folder_named_for_the_version_alone_is_still_found_and_comes_first(desktop):
-    suffixed = cli_in(desktop / f"{PINNED}-x64")
+    suffixed = cli_in(desktop / f"{PINNED}-{adapter.DESKTOP_CLI_ARCHITECTURES[0]}")
     assert adapter.default_binary() == suffixed
     plain = cli_in(desktop / PINNED)  # the layout before 2.2.6
     assert adapter.default_binary() == plain
 
 
-@pytest.mark.parametrize("other", [f"{PINNED}0-x64", f"1{PINNED}-x64", "2.2.7-x64", f"{PINNED}x64", "9.9.9"])
-def test_another_versions_folder_is_never_taken_for_the_pinned_one(desktop, other):
+@pytest.mark.parametrize("other", [
+    f"{PINNED}0-x64", f"1{PINNED}-x64", "2.2.7-x64", f"{PINNED}x64", "9.9.9",  # another version
+    f"{PINNED}-rc.1-x64", f"{PINNED}-beta", f"{PINNED}-evil", f"{PINNED}-x64-old", f"{PINNED}-",  # another suffix
+    f"{PINNED}-arm64",  # an architecture name nobody has seen the Desktop use
+])
+def test_a_folder_of_another_version_a_pre_release_or_an_unseen_suffix_is_never_taken_for_the_pin(desktop, other):
+    assert adapter.DESKTOP_CLI_ARCHITECTURES == ("x64",)  # a name added there has its folder planted above first
     cli_in(desktop / other)
     assert adapter.default_binary() is None
     with pytest.raises(HarnessIncompatible, match="no OpenCode binary"):

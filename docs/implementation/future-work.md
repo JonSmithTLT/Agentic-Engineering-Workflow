@@ -5002,7 +5002,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and a suffix (`2.2.6-x64`), and never another version's; the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
+**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version's, a pre-release's or another suffix's (#609's review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
 
 *Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
 

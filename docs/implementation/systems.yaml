@@ -645,7 +645,8 @@ systems:
   reason: 'The OpenCode adapter is on and used every run, and the version ''pin'' is a label, not a gate (BOARD v2 §6),
     so currency on the pin is what finishing needs. E35''s probe is done; H-1 probably needs a live model run, so it is
     partly the operator''s check. E235 is built and its row closed: default_binary reads the pinned version''s folder
-    under the Desktop''s cli folder, alone or with its architecture suffix (harness/opencode/adapter.py). The seams serve a second adapter (F24), and H-2 and H-3 share
+    under the Desktop''s cli folder, named for the version alone or for the version, a hyphen and x64, the one architecture
+    name seen, and no other name (harness/opencode/adapter.py). The seams serve a second adapter (F24), and H-2 and H-3 share
     a bundle import with F18.3 (SYS-33), so they moved to SYS-50 with the rate-limit rows. E35 stays this system''s row
     while H-1 is open; its seams, H-2 and H-3 ride on it from SYS-50. Partly built, not staged: its OpenCode adapter is
     on and used in every run (BOARD v2 §5).'

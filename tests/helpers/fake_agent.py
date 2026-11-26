@@ -206,6 +206,10 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "check":
         return aew("check", "run", s["id"])
     if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)
+        # A step the Lead asked the operator about goes on at their word (operator_confirms.asked): the test's own
+        # limit bounds the wait.
+        if s.get("after_file") and not wait_file(s["after_file"], bounds.TEST_TIMEOUT_S):
+            raise RuntimeError("the operator never confirmed this step")
         rev = json.loads(aew("lead", "show")["stdout"])["revision"]
         return aew(*s["args"], "--expect-rev", str(rev), env=env, input_bytes=stdin)
     if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it

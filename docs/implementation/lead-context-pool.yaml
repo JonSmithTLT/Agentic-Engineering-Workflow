@@ -113,10 +113,19 @@ approval_history:
     date: '2026-11-15'
 # E231's guide core and pointers: the guide's bytes in the pool gate's render, before and after, messaging on and off.
 # A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
+# The core's rule that accepting a plan and publishing are the operator's decisions, confirmed at their own terminal
+# (the operator's ruling of 2026-11-26; register E350), adds 221 B to the core, and its opening line, which said the
+# Lead accepts plans and makes every decision, now says what is true, for 49 B more (#597's quick check, m2): 270 B,
+# messaging on and off, and the same on the whole guide the core replaced, so before and after both grow by it and
+# E231's saving stands. Measured with the pool gate's own render on fix/operator-confirms-plan-and-publish: on,
+# 27324 B -> 27594 B (system 6194, guide 9424, join 2, MCP 11974); off, 27027 B -> 27297 B (system 6024, guide 9204,
+# join 2, MCP 12067). No allocation covers the 270 B and none is changed: the baseline, the derived ceiling, the
+# 40000 B cap and operator_reserve's 8554 B all stand, and the growth sits in the room that reserve keeps under the
+# cap. That room is the operator's, so the pull request says so for the operator to accept or to ask for a cut.
 guide_core:
-  measured: '2026-11-25'
-  messaging_on: {before: 17445, after: 9154}
-  messaging_off: {before: 17267, after: 8934}
+  measured: '2026-11-26'
+  messaging_on: {before: 17715, after: 9424}
+  messaging_off: {before: 17537, after: 9204}
   saving_bytes: 8291
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

@@ -257,6 +257,7 @@ None.
 - `aew.cli.work_commands`
 - `aew.doctor`
 - `aew.engine.api`
+- `aew.engine.dispatch`
 - `aew.engine.first_configuration`
 - `aew.errors`
 - `aew.harness.containment.netns`
@@ -362,6 +363,7 @@ None.
 
 - `aew.cli.commands`
 - `aew.cli.dashboard_commands`
+- `aew.engine.operator_decisions`
 - `aew.errors`
 - `aew.harness.operator_client`
 - `aew.harness.operator_endpoint`
@@ -605,6 +607,7 @@ None.
 - `aew.engine.log_compact`
 - `aew.engine.migrate_ops`
 - `aew.engine.nonmutating_ops`
+- `aew.engine.operator_decisions`
 - `aew.engine.outbox`
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
@@ -916,6 +919,7 @@ None.
 
 ### `aew.engine.guide`
 
+- `aew.engine.operator_decisions`
 - `aew.engine.transitions`
 - `aew.engine.workspace_ops`
 - `aew.errors`
@@ -1009,6 +1013,7 @@ None.
 - `aew.engine.dispatch`
 - `aew.engine.faults`
 - `aew.engine.guards`
+- `aew.engine.operator_decisions`
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
 - `aew.engine.stage_intents`
@@ -1095,6 +1100,16 @@ None.
 - `aew.util`
 - `aew.workspace.git`
 - `aew.workspace.worktrees`
+
+### `aew.engine.operator_decisions`
+
+- `aew.engine.base`
+- `aew.engine.dispatch`
+- `aew.engine.outbox`
+- `aew.engine.steering`
+- `aew.errors`
+- `aew.knowledge.records`
+- `aew.util`
 
 ### `aew.engine.outbox`
 
@@ -1370,6 +1385,7 @@ None.
 - `aew.engine.gates`
 - `aew.engine.guards`
 - `aew.engine.hierarchy`
+- `aew.engine.operator_decisions`
 - `aew.engine.ports`
 - `aew.engine.priority`
 - `aew.engine.request_ids`
@@ -1849,6 +1865,7 @@ None.
 
 - `aew.capability.ops`
 - `aew.engine.lock`
+- `aew.engine.operator_decisions`
 - `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.bridge`

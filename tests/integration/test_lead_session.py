@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from aewflow import create_investigation, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, Project, clean_env, make_git_repo, run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
+from operator_confirms import asked, standing_by
 
 from aew.harness import bridge, lead_broker
 from aew.harness.procs import pid_alive
@@ -57,8 +59,13 @@ def session(lab, name: str, steps: list[dict], *, acquire: bool = False, token: 
     """Run ``aew lead session`` to completion with the fake agent as the Lead's harness."""
     argv, transcript = _session_argv(lab, name, steps, acquire)
     # A whole Lead session (several CLI round trips and possibly a run launch) in one call: generous timeout.
-    res = run_aew("-C", str(lab.root), *argv, env={**lab.env, **({"AEW_LEAD_TOKEN": lab.project.token} if token
-                                                                  else {})}, timeout=600)
+    done = threading.Event()
+    standing_by(lab.root, steps, lambda: not done.is_set())  # the operator, for a step that waits on them
+    try:
+        res = run_aew("-C", str(lab.root), *argv, env={**lab.env, **({"AEW_LEAD_TOKEN": lab.project.token} if token
+                                                                      else {})}, timeout=600)
+    finally:
+        done.set()
     return res, _steps(transcript)
 
 
@@ -171,7 +178,7 @@ def test_an_acquired_seat_is_released_or_held_explicitly(tmp_path, sync):
             {"do": "lead", "args": ["work", "create", "ticket", "--title", "Survey", "--class", "0", "--non-mutating",
                                     "--goal", "g", "--scope", "calc/**"]},
             {"do": "lead", "args": ["plan", "propose", "--assurance", "none", "T-0001", "--file", str(plan)]},
-            {"do": "lead", "args": ["plan", "accept", "T-0001", "--revision", "1"]},
+            asked({"do": "lead", "args": ["plan", "accept", "T-0001", "--revision", "1"]}, sync),
             {"do": "lead", "args": ["work", "dispatch", "T-0001", "--launch"]},
         ], acquire=True, token=False)
         assert [steps[i]["exit"] for i in range(4)] == [0, 0, 0, 0], steps

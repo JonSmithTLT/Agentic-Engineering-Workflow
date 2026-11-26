@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import approval, faults, transitions
 from aew.engine import coverage as CV
+from aew.engine import operator_decisions as OD
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
@@ -851,9 +852,14 @@ class Integration:
             elif outcome == self.MOVED_HEAD:
                 moved = self._moved_head(ctx, work_id, args["found"]["current"])
             elif outcome == self.PUBLISH:
+                # The operator's decision (the ruling of 2026-11-26): a Lead session's publish needs their confirmation
+                # of exactly this candidate, given at the operator endpoint, and uses it up.
+                confirmed = OD.consume(self.k, ctx, OD.PUBLISH, work_id, integ["candidate"])
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+                if confirmed:
+                    ctx.summary += f", confirmed by the operator ({confirmed})"
                 if candidate is not None:
                     ctx.summary += f" ({work_id}@record:{candidate})"
             else:

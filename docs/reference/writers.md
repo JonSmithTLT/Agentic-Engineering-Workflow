@@ -533,9 +533,12 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/operator`
   - `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir)
   - `aew.engine.lock:FileLock._open` (direct: Path.mkdir)
+  - `aew.engine.operator_decisions:_write` (direct: Path.mkdir)
   - `aew.harness.operator_autostart:ensure` (direct: Path.mkdir)
   - `aew.harness.operator_client:sessions_lock` (direct: Path.mkdir)
   - `aew.harness.operator_endpoint:OperatorEndpoint._claim` (direct: Path.mkdir)
+- `local/operator/confirmations.json`, named by `aew.engine.operator_decisions:REL`
+  - `aew.engine.operator_decisions:_write` (direct: atomic_write)
 - `local/operator/endpoint.json`, named by `aew.harness.operator_client:LOCATOR_REL`
   - `aew.harness.operator_client:no_session_left` (direct: Path.unlink)
   - `aew.harness.operator_client:withdraw_locator` (direct: Path.unlink)

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
-from aew.engine import approval, gate_ops, transitions, usage_ops
+from aew.engine import approval, gate_ops, operator_decisions, transitions, usage_ops
 from aew.engine import steering as steering_mod
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
@@ -1403,6 +1403,15 @@ class Engine:
                        legality_digest: str) -> dict[str, Any]:
         """The operator endpoint's commit of a raise; ``principal`` only the endpoint constructs (A1 §1.1)."""
         return self._steering.raise_mode(principal, mode=mode, generation=generation, legality_digest=legality_digest)
+
+    def operator_confirmation_preview(self, decision: str, work_id: str,
+                                      revision: int | None = None) -> dict[str, Any]:
+        """What the operator's confirmation of a plan acceptance or a publish would bind, before they are asked."""
+        return operator_decisions.preview(self._k, decision, work_id, revision)
+
+    def operator_confirm(self, principal: OperatorPrincipal, bound: dict[str, Any]) -> dict[str, Any]:
+        """The operator endpoint's record of that confirmation; ``principal`` only the endpoint constructs."""
+        return operator_decisions.confirm(self._k, principal, bound)
 
     def steering_view(self) -> dict[str, Any]:
         return self._steering.view(self._k.store.current())

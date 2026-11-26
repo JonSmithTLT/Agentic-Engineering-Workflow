@@ -137,6 +137,30 @@ In the TUI, the agent is `aew-lead`, with these commands:
 
 **The Lead's guide.** The Lead's system text includes the project's guide to how AEW works (`aew guide`, rendered from this project's own gates policy when `aew opencode` starts): what each risk class requires and still guarantees, the Ticket lifecycle, and the typed tool for each step, with its shell command as the fallback. The default-policy version is [`lead-guide.md`](lead-guide.md).
 
+**Accepting a plan and publishing are your decisions.** When the Lead asks you to approve a plan, or to publish a
+Ticket's result, answering in chat is not enough: the Lead's step is refused until you confirm it at your own terminal,
+through the operator endpoint.
+
+```bash
+aew operator serve --dev              # the endpoint, in a terminal of its own; it shows what you confirm and a one-time code
+aew operator confirm plan T-0001      # in another terminal: type the code the endpoint shows
+aew operator confirm publish T-0001   # later, the same for the validated candidate
+```
+
+The endpoint shows the exact plan (its file and SHA-256) or the exact candidate commit, its base and the changed paths.
+A confirmation counts once, and only for what it showed: a plan revised or a candidate rebuilt afterwards needs a new
+one. Nothing the Lead passes counts as your confirmation, and `aew operator confirm` is refused in its session. If you
+run `aew plan accept` or `aew integrate publish` yourself, at your own terminal with the Lead credential, that is the
+decision and nothing more is asked.
+
+A confirmation does not end with the Lead's session or generation. It stands until the Lead uses it, you accept or
+publish that Ticket yourself, or you confirm the same step again, which replaces it. There is no command to withdraw
+one.
+
+`aew opencode` has usually started an endpoint in the background already. On Windows it shows the code in a window of
+its own. On Linux it cannot show one: your first `aew operator confirm` is refused, and the background endpoint stops so
+that `aew operator serve --dev` can start (it is refused while that endpoint is live). Start it then, and confirm again.
+
 The Lead's permissions: reading and searching, `aew`, and `git status|diff|log|show` are allowed; editing files and subagents are denied; any other shell command or tool asks you.
 
 ### When AEW's default for a switch has moved

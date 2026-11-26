@@ -18,6 +18,7 @@ from aewflow import (
     submit_record,
     verify,
 )
+from operator_confirms import confirm
 
 from aew.engine.api import Engine
 from aew.surface import projection as P
@@ -42,6 +43,9 @@ def test_relay_accepts_the_plan_binding_prefilled_by_the_read(project):
     with pytest.raises(ChangedSinceRead):
         run_cli(engine, project.token, [*argv[:-1], "0" * 64], str(project.root), "", channel="lead.cli")
     assert project.rev() == revision
+    # A relayed acceptance is a Lead session's, so the operator confirms the plan first (the ruling of 2026-11-26).
+    # The confirmation moves no revision: the argv the read prefilled is still the one to run.
+    confirm(project.root, "plan", wid)
     result = run_cli(engine, project.token, argv, str(project.root), "", channel="lead.cli")
     assert result["result"]["ok"] and project.rev() == revision + 1
 

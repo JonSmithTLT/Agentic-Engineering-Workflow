@@ -487,6 +487,87 @@
               "type": "string"
             }
           }
+        },
+        {
+          "description": "The operator's confirmation a Lead session's plan acceptance or publish used (E350): what it binds (the plan's SHA-256 or the candidate commit), when it was given, under which Lead generation, and the operator endpoint's principal",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "decision",
+            "work",
+            "binds",
+            "at",
+            "generation",
+            "by"
+          ],
+          "properties": {
+            "kind": {
+              "const": "confirmation.used"
+            },
+            "id": {
+              "type": "string"
+            },
+            "decision": {
+              "enum": [
+                "plan",
+                "publish"
+              ]
+            },
+            "work": {
+              "type": "string"
+            },
+            "binds": {
+              "type": "string"
+            },
+            "at": {
+              "type": "string"
+            },
+            "generation": {
+              "type": "integer"
+            },
+            "by": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "uid",
+                "method",
+                "guarantee",
+                "endpoint"
+              ],
+              "properties": {
+                "uid": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "method": {
+                  "type": "string"
+                },
+                "guarantee": {
+                  "type": "string"
+                },
+                "endpoint": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "pid",
+                    "started_at"
+                  ],
+                  "properties": {
+                    "pid": {
+                      "type": "integer"
+                    },
+                    "started_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       ]
     }

@@ -107,6 +107,9 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # (A-44).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
                      frozenset({"operator", "ping"}), frozenset({"notify", "desktop"}), frozenset({"notify", "file"}))
+# The operator's confirmation of a plan acceptance or a publish, at the operator endpoint (the operator's ruling of
+# 2026-11-26; register E350): a Lead session's `plan accept` or publish needs it, so the session never gives it.
+OPERATOR_CONFIRMS = frozenset({"operator", "confirm"})
 # The capability register's operator changes (STG-15, CAP-1; the designer's ruling 1): they change what every
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
@@ -120,7 +123,7 @@ TYPED_ONLY: dict[frozenset[str], str] = {frozenset({"plan", "assess"}): "plan.as
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
-                 + (CREDENTIAL_REPORT,))
+                 + (CREDENTIAL_REPORT, OPERATOR_CONFIRMS))
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -252,6 +255,10 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` changes the capability register, which every contained run reads, so it is "
                 "the operator's, approved at the operator endpoint in their own terminal; a Lead session cannot run "
                 "it: `aew capability list` shows the register, and the operator makes the change")
+    if OPERATOR_CONFIRMS <= path:
+        return ("`aew operator confirm` is the operator's own confirmation, at the operator endpoint from their own "
+                "terminal, that a plan may be accepted or a candidate published; a Lead session cannot give it: ask "
+                "the operator to run it, then carry out the step")
     if any(p <= path for p in OPERATOR_ENDPOINT):
         from aew.surface.contract import STEERING_STEP
 

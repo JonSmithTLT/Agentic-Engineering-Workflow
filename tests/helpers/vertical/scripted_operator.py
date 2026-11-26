@@ -69,6 +69,9 @@ from vertical.ledger import (
     at_least,
 )
 
+# The operator's decisions AEW asks them to confirm at the operator endpoint (the operator's ruling of 2026-11-26),
+# by the label the Lead's question carries: `aew operator confirm <label> <T>`.
+CONFIRMED = ("plan", "publish")
 # Declared and nested under the vertical lane's --test-timeout (G3 H5): the operator's waits fail first, by name, and
 # record why the Lead was silent (`lead_silent`).
 Fixture = Callable[[dict[str, Any]], None]  # one of the offline world's changes to the execution policy
@@ -154,7 +157,7 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
-    steering_console: Any = None  # the operator endpoint's console, once a raise started it (one per run)
+    steering_console: Any = None  # the operator endpoint's console, once a step started it (one per run)
     session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
     chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
@@ -371,14 +374,22 @@ class Operator:
                     hook(msg)
                 self.check_heads(f"before answering {label}")
                 # Steps 5 and 7 are G3 approvals through the confirmer; while they have not landed the operator
-                # answers in chat, which is their fallback (review of #306, F1).
+                # answers in chat, which is their fallback (review of #306, F1), and confirms the answer at the
+                # operator endpoint with its typed code (`confirm`), the interim the operator ruled on 2026-11-26:
+                # "Its me basically approving a plan fits requirements and final verification of the outputs actually
+                # does what I want it to". That is the decision itself, so the fallback still stands and no expected
+                # count moves: it is recorded with the decision, and the G3 approval replaces it when the step lands.
                 if label == "plan":
-                    self.workaround("plan", "the plan approved in chat to the Lead", step="answer:plan")
+                    self.workaround("plan", "the plan approved in chat to the Lead, and confirmed with `aew operator "
+                                            "confirm plan`, the code typed back", step="answer:plan")
                 elif label == "publish":
-                    self.workaround("publish", "the publish approved in chat to the Lead", step="answer:publish")
+                    self.workaround("publish", "the publish approved in chat to the Lead, and confirmed with `aew "
+                                               "operator confirm publish`, the code typed back", step="answer:publish")
                 answer = self.answers.get(label, "yes")
-                self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead",
-                                     detail=msg.get("detail"))
+                detail = msg.get("detail")
+                if label in CONFIRMED and answer.startswith("y"):  # the decision is given where AEW asks for it
+                    detail = {**(detail or {}), "confirmed": self.confirm(label, str(msg.get("text")))}
+                self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead", detail=detail)
                 if label == "publish" and answer.startswith("y"):
                     self.publish_approved = True
                 self.say(f"answer:{label}", answer)
@@ -387,6 +398,45 @@ class Operator:
                     self.reports.append(msg)
                 self.check_heads(f"at the Lead's {kind}")
                 return msg
+
+    def endpoint_console(self) -> Any:
+        """The operator endpoint, run in its own terminal the first time a step needs it, and its console: both
+        terminals are this process (the in-process channel AT-1 uses on Windows); the endpoint and its codes are real.
+        A later step, after a reopen too, uses the same one."""
+        from notifier import Console
+
+        from aew.engine.api import Engine
+        from aew.harness import operator_endpoint
+
+        if self.steering_console is None:
+            self.steering_console = Console()
+            endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(self.root), console=self.steering_console,
+                                                          dev=True, timeout=30)
+            endpoint.start()
+            self.closers.append(endpoint.close)
+            self.typed("endpoint:serve", "aew operator serve --dev")
+        return self.steering_console
+
+    def confirm(self, decision: str, question: str) -> dict[str, Any]:
+        """The operator's yes to a plan or a publish, given where AEW asks for it (the operator's ruling of 2026-11-26):
+        `aew operator confirm` at their own terminal, with the code the endpoint's console shows typed back. It is the
+        decision itself, recorded with it, and never a counted challenge (``Ledger.console_challenge``). The Ticket is
+        the one the Lead's question names, as a human reads it there."""
+        from aew.harness import operator_client
+
+        named = re.search(r"\b[TSE]-\d{4,}\b", question)
+        if named is None:
+            return {"refused": "the question names no Ticket to confirm"}
+        command = ["operator", "confirm", decision, named[0]]
+        console = self.endpoint_console()
+        self.typed(f"confirm:{decision}", "aew " + " ".join(command), command)
+        try:
+            out = operator_client.request_confirmation(self.lab.aew_root, decision, named[0],
+                                                       ask=lambda prompt: console.code())
+        except Exception as exc:  # recorded, never hidden: the Lead's call is then refused, and says so  # noqa: BLE001
+            self.ledger.observe("confirmation_refused", decision=decision, work=named[0], error=str(exc)[:300])
+            return {"command": "aew " + " ".join(command), "refused": str(exc)[:300]}
+        return {"command": "aew " + " ".join(command), "confirmation": out["confirmation"]}
 
     def end_session(self, session: Session, how: str = "exit") -> int | None:
         """``/exit`` in the TUI (the primary way), or the session killed from outside."""

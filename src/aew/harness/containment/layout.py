@@ -678,9 +678,11 @@ def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
     if not root.is_dir():  # no project directory to show, so nothing in it to hide
         return []
     if git.toplevel(root) is not None:
-        listed = git.git("ls-files", "-z", "--cached", "--others", "--",
+        # through ``git.out``, so no call site of ``git.git`` is added (the reference's CALLERS cap, at its widest
+        # fan-in); git quotes a name that is not plain ASCII (core.quotePath), which _unquoted reads back exactly
+        listed = git.out("-c", "core.quotePath=true", "ls-files", "--cached", "--others", "--",
                          *(f":(glob)**/{p}" for p in ENV_FILES), ":(exclude,top).aew", cwd=root)
-        names = [n for n in listed.stdout.decode("utf-8", "surrogateescape").split("\0") if n]
+        names = [_unquoted(n) for n in listed.splitlines() if n]
     else:
         names = []
         for top, dirs, files in os.walk(root):
@@ -695,6 +697,15 @@ def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
         if os.path.isfile(real) and not _sandbox_own(real):
             out.add(real)
     return sorted(out)
+
+
+def _unquoted(name: str) -> str:
+    """A path as ``git ls-files`` prints it, read back: one in double quotes holds C-style escapes of its bytes."""
+    if not (len(name) > 1 and name.startswith('"') and name.endswith('"')):
+        return name
+    import codecs
+
+    return os.fsdecode(codecs.escape_decode(name[1:-1].encode("ascii"))[0])
 
 
 def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:

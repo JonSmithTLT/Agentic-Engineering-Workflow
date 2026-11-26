@@ -1931,7 +1931,11 @@ def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_a_tree_wi
     (tree / "gone.env").symlink_to(tree / "missing.cfg")
     (tree / "svc").mkdir()
     (tree / "svc" / ".env").write_text("SYNTHETIC=1\n")
-    assert L.project_env_masks(tree) == [os.path.join(os.path.realpath(tree), "svc", ".env")]
+    (tree / "caf\u00e9").mkdir()  # a name git quotes, read back exactly
+    (tree / "caf\u00e9" / ".env").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(tree)
+    assert L.project_env_masks(tree) == sorted([os.path.join(real, "caf\u00e9", ".env"),
+                                                os.path.join(real, "svc", ".env")])
 
 
 def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_path, fake_bwrap, tmp_unmasked):

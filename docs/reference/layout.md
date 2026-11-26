@@ -247,7 +247,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`
+- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
   - Written by
     - `aew.capability.bind:place`
     - `aew.harness.containment:establish`
@@ -279,7 +279,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`
+- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`; `aew.workspace.git`: `git`
   - Written by
     - None
 - `local/harness/runs/lead-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`

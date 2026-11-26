@@ -926,20 +926,16 @@ systems:
     manual step, and each pack''s added bytes measured; no site map view in V-01 (register V-01 milestone, future-work.yaml
     (§1 text, at c11a61ea)).'
   remaining:
-  - slice: 'E293, V-01''s maps profile: the built maps held against A-14''s obligations, the profile written, each divergence
-      fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code'
-    row: E293
-    estimate: 1-2 PRs (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
     E293 placed now by the operator (the Lead''s reading of the question; 2026-11-11: "we can do the maps profile since maps is mostly done right?")'
   recommendation: finish
-  who: Lead (E293's maps profile next, 1-2 PRs); decided by the operator
+  who: Lead (F22.2 and F22.3 after their benchmark); decided by the operator
   reason: 'On for a new project and offered to an existing one (ADR-0015, amended 2026-11-11, second; register E62
-    and E184), as the reset of 2026-11-06 decided. Left: V-01''s maps profile (E293), then the semantic layer after its
-    benchmark.'
+    and E184), as the reset of 2026-11-06 decided. V-01''s maps profile (E293) is written and its divergences fixed. Left:
+    the semantic layer after its benchmark.'
   evidence:
   - src/aew/policy/execution.py NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL, and the template's maps.pack_slices
     line written from it
@@ -950,8 +946,7 @@ systems:
   - 'src/aew/maps/slices.py wanted(): switch structural AND the role''s context names codebase_map'
   - src/aew/engine/context_ops.py the pack slice is pinned only when slices.wanted()
   - src/aew/engine/resume_ops.py the resume row behind the same switch
-  - src/aew/roles/archetypes/investigator.yaml the only archetype naming codebase_map
-  - src/aew/roles/archetypes/planner.yaml the planner's knowledge omits codebase_map (E62)
+  - src/aew/roles/archetypes/*.yaml every worker archetype's knowledge names codebase_map (E184)
   - src/aew/knowledge/context.py the codebase-map section rendered last and cuttable
   - src/aew/knowledge/context.py KNOWLEDGE_SECTIONS has no architecture_map key
   - src/aew/maps/service.py select_architecture records a discovery-evidence id
@@ -1745,10 +1740,7 @@ systems:
   finish_line: 'Frozen, not finished: `aew settings show` stays as the configuration read, and `aew init`''s first-configuration
     flags (E119) are the fresh-project path. No further F46 slice is built here: the settings write path (F46.2) and the
     web settings page (F46.4) retire into I-6 (SYS-29), and the unread project.profile field is dropped (E259).'
-  remaining:
-  - slice: Drop the unread project.profile field; placed on 2026-11-11 in the near-finish small fixes
-    row: E259
-    estimate: 1 small PR (estimate)
+  remaining: []
   decision: 'decided: the settings write path (F46.2) retires into I-6 (SYS-29); `settings show` and `aew init`''s flags
     stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations);
     the web settings page (F46.4) retires into I-6 too (operator, 2026-11-11: "yes the web seetings comes with teh rest
@@ -1986,10 +1978,6 @@ systems:
     confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe, and E126, E88 and
     E87 done on their own rows.
   remaining:
-  - slice: 'E126: the Lead adds one exact test path to a Ticket''s scope, a pre-F4 correction F4 absorbs (on the Now list;
-      on its own row, not an F4 slice)'
-    row: E126
-    estimate: 1 PR (estimate, census)
   - slice: 'E88: remove the nine reserved keys from the registry, after checking the coordination-message schema''s required
       ticket_revision (on its own row)'
     row: E88
@@ -2004,8 +1992,8 @@ systems:
   decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
     stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: Lead for E126 (the freeze is decided)
-  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 proceed on their own rows. No
+  who: Lead for E88 and E87 (the freeze is decided)
+  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 (built) and E88 proceed on their own rows. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
   evidence:
@@ -2020,7 +2008,7 @@ systems:
   - src/aew/engine/stage_intents.py:527 (TRA-25 waits for F4)
   - src/aew/schemas/ticket-field-registry.v1.json:71,81,100-105,109 (the nine reserved keys E88 removes)
   - src/aew/engine/hierarchy_ops.py:54,667 (PROMOTION and the promotion check E87 changes)
-  - 'grep: no scope_correction or effective_scope in src (E126 unbuilt)'
+  - src/aew/engine/scope_ops.py effective_meta, the one accessor for a Ticket's effective scope (E126, built)
   - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), :1111 (E87), :1122 (E88), :1490
     (E126, on the Now list)'
 - id: SYS-19
@@ -3743,13 +3731,10 @@ systems:
     used_in_default_flow: 'yes'
   finish_line: 'Built, on, and used every time a Ticket integrates, and E151''s launch conflict check merged. mutating_concurrency
     is 2 for a new project, proven by a scripted test, two scripted workers integrating one after the other (tests/regression/test_concurrency_two.py),
-    and an existing project is offered the default at the operator''s terminal (the shared switch offer, built). Still owed:
-    E225, and a real run with two mutating workers, which the operator''s sign-off needs.'
-  remaining:
-  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in
-      the near-finish small fixes'
-    row: E225
-    estimate: 1 PR (estimate)
+    and an existing project is offered the default at the operator''s terminal (the shared switch offer, built). AEW''s git
+    wrapper never acts on the wrong repository from inside a git operation (E225). Still owed: a real run with two mutating
+    workers, which the operator''s sign-off needs.'
+  remaining: []
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
   who: Lead

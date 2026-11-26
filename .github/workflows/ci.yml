@@ -326,6 +326,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0     # the register guard reads the pull request's own commits and its base's register
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -335,6 +336,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,parallel,coverage,lint,eval,g3]"
+      # A pull request whose title or own commits name an open register row closes it, edits it or notes on it
+      # (tools/register.py, "Rows a change names"; the operator, 2026-11-26). The title is the event's.
+      - name: The open register rows a pull request names are closed, edited or noted (tools/register.py cited)
+        if: github.event_name == 'pull_request' && (success() || failure())
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: python tools/register.py cited --base "$BASE" --event "$GITHUB_EVENT_PATH"
       - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
         if: success() || failure()
         run: ruff check --output-format github .

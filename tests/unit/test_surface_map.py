@@ -508,7 +508,7 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
             out.append(f"`aew {name}` is operator-only: its mutates must be yes or with, or give `mutates_exempt` "
                        "with the reason")
         p = e.get("primitive")
-        if p and m == "no":
+        if p and p != "none" and m == "no":
             out.append(f"`aew {name}` runs primitive {p!r} but is declared `mutates: no`")
     return out
 
@@ -2097,6 +2097,8 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("registered", _drop("tool", "ticket_start"), "tool `ticket_start` exists but is not registered"),
     ("registered", _drop("tool", "message_send"), "tool `message_send` exists but is not registered"),
     ("mutates", lambda r: _entry(r, "message_send", "tool").update(mutates="no"), "tool `message_send`: mutates"),
+    ("mutates", lambda r: _entry(r, "read").update(primitive="message.send"),
+     "`aew read` runs primitive 'message.send' but is declared `mutates: no`"),
     ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "F9-A"}),
      "proposed tool `message_send` is built now"),
     ("live", lambda r: r["commands"].append({"name": "work teleport"}), "`aew work teleport` is registered but no"),

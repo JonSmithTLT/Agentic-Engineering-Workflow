@@ -32,10 +32,9 @@ DESCRIPTIONS = {
     # Whose decision it carries out is the owner table's (register E335), never restated here.
     "integration_publish": f"Publish the prepared candidate; this carries out "
                            f"{whose(owner_of('integrate.publish'), to_lead=True)} publication decision.",
-    # The guide's core says it changes no scope or authority (`messaging_guide_lines`). `when`'s `turn-end` is refused
-    # until MS5b builds it: dropping the value is a schema change, the designer's (E367).
-    "message_send": "Message an active worker's invocation, delivered at its next step or on relaunch. Turn-end "
-                    "refused.",
+    # The guide's core says it changes no scope or authority (`messaging_guide_lines`).
+    "message_send": "Message an active worker's invocation. Deliver at its next step (default), turn end or on "
+                    "relaunch.",
 }
 # Property descriptions, by tool and property (E367; the audit of 2026-11-25, U3 to U5): where an argument's source or
 # form was not said. Each names where the Lead finds the value.

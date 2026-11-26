@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from aew import errors
-from aew.coordination.layout import MAX_UNDELIVERED_LEAD
 from aew.harness import bridge, wait_binding
+from aew.harness.delivery import DEFAULT_WHEN, NEXT_STEP, WHEN_DELIVERY
 
 if TYPE_CHECKING:
     from aew.harness.supervisor import Supervisor
@@ -31,6 +31,8 @@ class _Offer:
     prompt: str
     text: str
     metadata: dict[str, str]
+    when: str
+    wake: bool
     attempts: int = 0
     outcome: str = "uncertain"
 
@@ -40,6 +42,7 @@ class FinalAdmissions:
     admitted: dict[str, str]
     interrupt_confirmed: bool
     deadline: float
+    continued: tuple[str, list[str]] | None = None
 
 
 def connected(conn: Any) -> bool:
@@ -128,6 +131,7 @@ class WorkerMessages:
                 self._launch = None
         # Wait and transport serialize admission decisions. HTTP runs without the control-state lock.
         with self.delivery_lock:
+            waiting = self.waiting
             for item in list(self._offers.values()):
                 remaining = until - time.monotonic()
                 if remaining <= 0 and select:
@@ -138,19 +142,24 @@ class WorkerMessages:
                     del self._offers[item.message]
                 elif outcome in ("session_lost", "delivery_mismatch"):
                     self._fail(item, outcome)
-                elif outcome == "pending" and item.outcome == "uncertain" and not self.waiting and select:
+                elif (outcome == "pending" and item.outcome == "uncertain" and select
+                      and (not waiting or item.when != NEXT_STEP)):
                     if item.attempts < 2:
                         self._post(item)
                     else:
                         self._fail(item, "unconfirmed")
                 if item.message in self._offers:
                     self._offers[item.message] = self._offers.pop(item.message)
-            if not select or not self._can_post() or self.waiting or not adapter.coordination_live or self._launch:
+            if not select or not self._can_post() or not adapter.coordination_live or self._launch:
                 return
             # Retry an uncertain earlier POST before sending another message so record order survives a lost response.
-            if any(item.outcome == "uncertain" for item in self._offers.values()):
+            blocked = {item.when for item in self._offers.values() if item.outcome == "uncertain"}
+            if waiting:
+                blocked.add(NEXT_STEP)
+            if len(blocked) == len(WHEN_DELIVERY):
                 return
-            result = sup.engine.message_next_post(credential=sup._credential, run=sup.run, permit=self._can_post)
+            result = sup.engine.message_next_post(credential=sup._credential, run=sup.run, permit=self._can_post,
+                                                 blocked=blocked)
             for mid in result["refused"]:
                 if mid not in self._refused:
                     self._refused.add(mid)
@@ -162,7 +171,10 @@ class WorkerMessages:
             self._has_posted = True
             domain = f"{sup.engine.project_id}\0{mid}"
             prompt = "msg_" + hashlib.sha256(domain.encode()).hexdigest()[:26]
-            offer = _Offer(mid, prompt, message["rendered"], {"aew_message": mid, "aew_thread": sup.inv_id})
+            when = message.get("when", DEFAULT_WHEN)
+            offer = _Offer(mid, prompt, message["rendered"],
+                           {"aew_message": mid, "aew_thread": sup.inv_id, "aew_when": when},
+                           when, message.get("origin") == "harness_send")
             self._offers[mid] = offer
             self._post(offer)
 
@@ -177,7 +189,8 @@ class WorkerMessages:
         if not self._can_post():
             return
         item.outcome = self.owner.adapter.coordination_post(
-            item.prompt, item.text, item.metadata, retry=item.attempts > 0)
+            item.prompt, item.text, item.metadata, retry=item.attempts > 0,
+            delivery=WHEN_DELIVERY[item.when], wake=item.wake)
         item.attempts += 1
         if item.outcome not in ("offered", "uncertain"):
             self._fail(item, item.outcome)
@@ -188,33 +201,51 @@ class WorkerMessages:
 
     def capture_final_admissions(self) -> FinalAdmissions:
         """Ask the live adapter for one bounded snapshot before terminating the revoked run."""
+        return self._capture_admissions(halt=True)
+
+    def submit_admissions(self) -> tuple[dict[str, str] | None, tuple[str, list[str]] | None]:
+        """Settle observed admissions before entering the submission's control transaction."""
+        launch = self._launch
+        if self._stop.is_set() or not (self._offers or launch):
+            return None, None
+        snapshot = self._capture_admissions(halt=False, launch=launch)
+        return snapshot.admitted, snapshot.continued
+
+    def _capture_admissions(self, *, halt: bool, launch: tuple[str, list[str]] | None = None) -> FinalAdmissions:
         adapter = self.owner.adapter
         deadline = time.monotonic() + _FINAL_CHECK_S
-        offers = list(self._offers.values())[:MAX_UNDELIVERED_LEAD]
+        # A worker's reply frees a send slot before admission. Consider all offers from the bounded thread.
+        offers = list(self._offers.values())
         admitted: dict[str, str] = {}
         results = threading.Lock()
         interrupt_confirmed = False
+        continued = None
 
         def collect() -> None:
-            nonlocal interrupt_confirmed
+            nonlocal interrupt_confirmed, continued
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            interrupt_confirmed = adapter.coordination_halt(remaining)
+            if halt:
+                interrupt_confirmed = adapter.coordination_halt(remaining)
+            if launch and adapter.coordination_admission(launch[0], timeout=remaining) == "admitted":
+                with results:
+                    if time.monotonic() < deadline:
+                        continued = launch
             for item in offers:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
-                if (adapter.coordination_admission(item.prompt, item.text, timeout=remaining) == "admitted"
-                        and time.monotonic() < deadline):
+                if adapter.coordination_admission(item.prompt, item.text, timeout=remaining) == "admitted":
                     with results:
-                        admitted[item.message] = item.prompt
+                        if time.monotonic() < deadline:
+                            admitted[item.message] = item.prompt
 
-        check = threading.Thread(target=collect, name="aew-final-message-check", daemon=True)
+        check = threading.Thread(target=collect, name="aew-message-admissions", daemon=True)
         check.start()
         check.join(max(0.0, deadline - time.monotonic()))
         with results:
-            return FinalAdmissions(admitted.copy(), interrupt_confirmed, deadline)
+            return FinalAdmissions(admitted.copy(), interrupt_confirmed, deadline, continued)
 
     def record_final_admissions(self, snapshot: FinalAdmissions) -> None:
         """Persist the snapshot after teardown, while the supervisor still holds the revoked credential."""

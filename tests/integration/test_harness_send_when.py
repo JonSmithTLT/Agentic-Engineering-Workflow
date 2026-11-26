@@ -1,6 +1,6 @@
 """`aew harness send --when next-step|turn-end` against fake V2 (register E55; F9-A plan v4 amendment 2 §3.1, §3.3,
 §4): the default is `next-step`, posted as `steer`; with messaging off no Lead path posts `queue` and `turn-end` is
-refused; with messaging on, or when the project's switch and the run's launch snapshot disagree, every send is refused.
+refused. With messaging on both timings are recorded. An adopted switch and run snapshot that disagree refuse a send.
 A refusal writes nothing: no request file, no control-state change, no POST.
 
 The route's matrix and the help are unit-tested in `tests/unit/test_harness_send_timing.py`.
@@ -33,6 +33,9 @@ EXECUTION = ".aew/policy/execution.yaml"
 def lab(tmp_path):
     lab = FakeOpenCodeDriver().create_lab(tmp_path)
     try:
+        # The lab already pins an explicit disabled policy. Only tests that change it need adoption.
+        policy, _ = Engine.discover(lab.root).execution_policy()
+        assert policy is not None and policy["coordination"]["messaging"] == X.MESSAGING_DISABLED
         yield lab
     finally:
         lab.cleanup()
@@ -126,9 +129,7 @@ def test_harness_send_defaults_to_next_step_and_posts_steer(lab, tmp_path):
 
 
 def test_harness_send_when_turn_end_is_refused_while_messaging_is_off_and_writes_nothing(lab, tmp_path):
-    """G1 (§3.3): with messaging off, `turn-end` is unavailable. It is refused `TURN_END_NEEDS_MESSAGING`, and nothing
-    is recorded or written: no request file, no control-state change, no thread, marker or `coordination_store` key
-    (D-31's byte-identity), and nothing posted."""
+    """G1 (§3.3): an explicit off policy refuses turn-end without a request, state change, thread, marker or post."""
     run = launch_held_open(lab, tmp_path)
     before = written(lab, run)
     res = send(lab, run, "--text", "After you finish, also update the changelog.", "--when", "turn-end")
@@ -136,7 +137,6 @@ def test_harness_send_when_turn_end_is_refused_while_messaging_is_off_and_writes
     assert "--when next-step" in res.error["message"]
     assert written(lab, run) == before
     assert not (lab.aew_root / "coordination").exists()
-    assert "coordination_store" not in Engine.discover(lab.root).store.read()
     # a `next-step` send after it is the first and only Lead post: the refused one never reached the queue
     lab.ok("harness", "send", run, "--text", "Now this.", "--when", "next-step",
            env={"AEW_LEAD_TOKEN": lab.project.token})
@@ -212,21 +212,22 @@ def test_harness_send_refuses_when_the_project_switch_and_the_runs_snapshot_disa
     assert lead_posts(lab, run) == []
 
 
-def test_a_run_launched_with_messaging_on_keeps_its_snapshot_and_refuses_unrecorded_send(lab, tmp_path):
+def test_a_run_launched_with_messaging_on_keeps_its_snapshot_and_records_send(lab, tmp_path):
     enable_messaging(lab)  # the operator adopts messaging BEFORE the run is launched
     run = launch_held_open(lab, tmp_path)
     before = written(lab, run)
     res = send(lab, run, "--text", "Check the shutdown path.")
-    assert res.returncode != 0 and res.error["code"] == "HARNESS_SEND_NEEDS_STORE", res.stderr
+    assert res.returncode == 0 and res.json["message"]["origin"] == "harness_send", res.stderr
     state = Engine.discover(lab.root).store.read()
     entry = state["invocations"]["INV-0001"]["runs"][-1]
     assert entry["coordination"] == {"messaging": "enabled"}
     contract = Engine.discover(lab.root).harness_contract(state, "INV-0001", run)
     assert contract.extra["coordination"] == {"messaging": "enabled"}
     assert written(lab, run) == before
+    lab.until(lambda: lead_posts(lab, run), "wait.condition", what="the recorded send posted")
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)
-    assert lead_posts(lab, run) == []
+    assert lead_posts(lab, run) == ["steer"]
 
 
 def test_snapshot_mismatch_takes_precedence_over_turn_end_needs_messaging(lab, tmp_path, monkeypatch):
@@ -254,18 +255,13 @@ def test_snapshot_mismatch_takes_precedence_over_turn_end_needs_messaging(lab, t
 
 
 @pytest.mark.parametrize("when", ["next-step", "turn-end"])
-def test_with_messaging_on_before_ms5b_harness_send_is_refused_needs_store(lab, tmp_path, when):
-    """G4, fail-closed (§3.1): with messaging on, every `harness send` is recorded in the message store or refused,
-    never the unrecorded request file. Until MS5b builds the store path it is refused `HARNESS_SEND_NEEDS_STORE` in
-    both timings: no request file, no control-state change, no POST. Both values are on: the project's adopted switch,
-    and the run's launch snapshot, which MS4 will write and the snapshot read stands in for here."""
+def test_a_recorded_send_that_exceeds_the_store_limit_never_posts(lab, tmp_path, when):
     enable_messaging(lab)
     run = launch_held_open(lab, tmp_path)
     before = written(lab, run)
     with pytest.raises(AEWError) as refused:
-        Engine.discover(lab.root).harness_send(token=lab.project.token, run=run, text="Check the shutdown path.",
-                                               when=when)
-    assert refused.value.code == "HARNESS_SEND_NEEDS_STORE" and "not yet available" in refused.value.message
+        Engine.discover(lab.root).harness_send(token=lab.project.token, run=run, text="x" * 4001, when=when)
+    assert refused.value.code == "COORDINATION_LIMIT" and refused.value.details["bound"] == "body_chars"
     assert written(lab, run) == before
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)

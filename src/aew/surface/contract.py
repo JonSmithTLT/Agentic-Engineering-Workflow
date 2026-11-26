@@ -376,7 +376,7 @@ TOOLS: dict[str, Tool] = _catalog(
     Tool(
         "message_send", STAGE, MECHANICAL,
         "Record a coordination message for an active worker, not a scope change. "
-        "Deliver at the next step or on relaunch. Turn-end refused.",
+        "Deliver at next step (default), turn end or relaunch.",
         _obj({"expect_rev": EXPECT_REV,
               "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},

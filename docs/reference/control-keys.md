@@ -10,7 +10,7 @@ The top-level properties of the control schema, which is closed and which the st
 - `archived_refs` (v2-only): `aew.engine.base:V2_ONLY_KEYS`
 - `cold` (v2-only, initial): `aew.engine.base:V2_ONLY_KEYS`
 - `control_requests` (v2-only): `aew.engine.base:V2_ONLY_KEYS`
-- `coordination_store` (v2-only): `aew.coordination.layout:STORE_KEY`
+- `coordination_store` (v2-only, initial): `aew.coordination.layout:STORE_KEY`
 - `coordination_unseen` (v2-only): `aew.coordination.layout:UNSEEN_KEY`
 - `counters` (required, initial): `aew.engine.api:Engine.initialize`
 - `invocations` (required, initial): `aew.engine.api:Engine.initialize`

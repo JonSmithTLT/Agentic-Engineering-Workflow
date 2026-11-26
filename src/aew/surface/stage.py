@@ -623,6 +623,8 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
                 **({"retried_after_stale_revision": True} if s.get("retried_after_stale_revision") else {})}
                for s in si["steps"]]
     out: dict[str, Any] = {"intent": intent, "status": si["status"], "steps": outputs}
+    if pending := [m for step in outputs for m in step.get("post_report_message_pending", ())]:
+        out["post_report_message_pending"] = pending
     if si["status"] == SI.ACTIVE:
         left = c.left_active
         out["left_active"] = {"code": left.code, "message": left.message} if left is not None else None

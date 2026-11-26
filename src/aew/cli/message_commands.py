@@ -15,7 +15,7 @@ from aew.cli.commands import _add_json, _engine, add_token
 
 def register(sub: argparse._SubParsersAction, *, operator: bool = True, worker: bool = False) -> None:
     p = sub.add_parser("message", help="coordination messages between the Lead and its workers: read a thread, a "
-                                       "unit's threads, or the sealed replies no Lead has seen (read-only)")
+                                       "unit's threads, sealed replies or unadmitted messages (read-only)")
     msub = p.add_subparsers(dest="message_cmd", required=True)
     if worker:
         _worker(msub)
@@ -39,6 +39,12 @@ def register(sub: argparse._SubParsersAction, *, operator: bool = True, worker: 
     _add_json(q)
     q.set_defaults(handler=lambda a: _engine(a).message_unseen(
         token=a.token or lead_credential.optional()))
+
+    q = msub.add_parser("lost", help="Lead messages left unadmitted when their worker ended, newest first",
+                       description="Show the last seven days, newest first. Read-only. Walks at most 10,000 commits "
+                                   "and reports if the walk stops at the cap.")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).message_lost())
 
 
 def _worker(msub: argparse._SubParsersAction) -> None:

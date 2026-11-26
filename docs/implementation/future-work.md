@@ -135,7 +135,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F3
 
-**Work:** Workspace strategy abstraction, role-sensitive isolation, repository-scale benchmarks
+**Work:** Workspace strategy abstraction (fail-closed selection, a `SHARED_MUTABLE_SERIAL` lock bound to its invocation) and repository-scale benchmarks. Role-sensitive isolation is built, as per-role sandbox layouts (M4-B, #36)
 
 **Source (governing):** Serves `HEB-09.d`, `AEW-FR-37.b`, `HEB-09.e`, `AEW-INV-ISO-004`; contributes to `AEW-INV-RESOURCE-001` (owned by other rows); position A-06; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: isolation design §4 to §14; lessons note, Incident B
 
@@ -241,18 +241,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/F9.2/`, oldest first (`python tools/register.py show F9.2`).*
 
-### F10
-
-**Work:** Mutating concurrency above 1: integration queue, merge revalidation
-
-**Source (governing):** Serves `HEB-06.c`; position A-06; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: `m1-implementation-plan.md`; `implementation-status.md`
-
-**Belongs to or gated by:** **Internal alpha.** E151 has merged. The reset of 2026-11-06 reversed "after first use", and the operator confirmed that on 2026-11-07 (this row's note of 2026-11-07). The offer to switch an existing project replaces the `gates.yaml` migration. Restored from HOLD-06 by the hold match (operator, 2026-11-06); its matched scope is its note of that day
-
-**Notes:** Interacts with F3. Research (not governing): [`m4-integration-queue-research-2026-10-01.md`](../research/m4-integration-queue-research-2026-10-01.md), which compares serial, speculative and batched queues and recommends a serial integration tail over parallel implementation first. **Designer's disposition (2026-10-01, research §7):** parallel Ticket execution with a single serial integration lease; runnable COMMIT_READY entries FIFO by default, dependency legality owned by the work graph, the Lead may reorder or defer; no batching or shared post-integration evidence in M4; a merge conflict releases the lease and returns to the Lead, never resolved automatically or sent straight to an Implementer; no head-of-line blocking; every integration attempt recomputes the dispatch predicate and binds to the current head. D4's path is in M4. **Follow-ups (research §7.1):** the lease is owned by the queue entry (not the replaceable candidate or attempt) with a live invocation as custodian, a dead custodian is reconciled before release, and no timeout alone releases it; one automatic rebuild on a moved head while holding the lease, after proving no publication; DEFERRED and AWAITING_DISPOSITION are queue states that never grant eligibility; a conflict resolution is a new implementation attempt whose gates rerun; a plain head move does not by itself invalidate unchanged Ticket-scope evidence, which stays subject to the normal admissibility and binding rules; batching is out of scope for M4, not forbidden. **M4-D3 built (2026-10-05):** the queue entries, the lease and its `integration_attempt` custodian, FIFO among runnable entries, the dead-custodian reconcile, retirement with the unit, the ISO-004 checkout-sync lock and oracle rules 34 to 38 ([ADR-0004 amendment 2026-10-05](adr/0004-controlled-integration.md); ADR-0003 amendment of the same date for the custody invocation). **M4-D4 built (2026-10-05):** the one automatic rebuild under the same lease, custodian and place; a second move, changed legality, a conflicting or refused rebuild and an inconclusive validation release the lease to AWAITING_DISPOSITION; the Lead's `aew integrate defer`, `requeue` and `reorder`; oracle rule 39 (ADR-0004 second amendment of 2026-10-05). Still open in M4-D: the `checks` validation path (D5, register D4).
-
-*Later notes: `notes.d/F10/`, oldest first (`python tools/register.py show F10`).*
-
 ### F14
 
 **Work:** Plan assurance and premise validation before mutating dispatch: raw stakeholder intent kept apart from derived interpretation, with statements typed (requirement, observation, diagnosis, inference, decision); acceptance reconstructed independently by a fresh role *before* it sees the proposed plan; decision-sensitive premises tested by discriminating probes; typed pre-implementation baselines (`EXPECTED_FAILURE`, `UNEXPECTED_PASS`, `INVALID_MEASUREMENT`, …); negative controls; subject kept apart from acceptance inputs, oracle, evaluator and environment, with protected acceptance conditions enforced through final verification; a Plan Challenge with bounded outcomes and disagreement budgets; assurance bound to the whole dependency set by canonical hash; `ASSURED` as one derived gate predicate at plan acceptance and at every dispatch path; deterministic plan lint; hierarchical inheritance of parent obligations; proportional tiers A–E with hard triggers; strong models at interpretation points
@@ -291,7 +279,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F15.6
 
-**Work:** Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed: 1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint, or project-wide; operator reset), and a relaunch record binding all of it
+**Work:** Bounded recovery, the approved limited slice's R5-3: one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed: 1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint, or project-wide; operator reset), and a relaunch record binding all of it. Its R5-1, the single `STALE_REVISION` retry, is built (M4-E E3b, #142)
 
 **Source (governing):** Serves `HEB-08.c`, `AEW-FR-32.c`, `HEB-08.d`, `MSN-Q12`; contributes to `AEW-FR-23.d` (owned by other rows); position A-06; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) (approved, limited slice, 2026-10-05; ledger BRP-01 to BRP-07, BRP-09, BRP-10), as amended by [A2, launch-failure recovery safety](../design/launch-failure-recovery-safety-amendment-v0.1.md) (approved 2026-10-05; ledger LFR-01 to LFR-08); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) (ledger PFS-01 to PFS-04); [A3, policy binding and digests](../design/policy-binding-digest-amendment-v0.1.md) §5 (PBD-06)
 
@@ -423,7 +411,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F22
 
-**Work:** Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first) that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed into one navigation/context view that never becomes an authority source
+**Work:** Project maps: the attributable architecture map, and the maps composed into one navigation/context view that qualifies each claim's contributing versions and never becomes an authority source. The deterministic structural map is built (F22.1, #126 and #143); its language-specific semantic extensions are F22.2 and its sibling derived indexes F22.3
 
 **Source (governing):** Serves `P01-20`, `P01-22`; position A-14; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: KC §8.2 to §8.5, §13; architecture review G3; [architecture review response](../design/architecture-review-response-2026-10-04.md) (accepted 2026-10-05) G3, D-AR6; **the design is [project maps v0.5](../design/project-maps-design-v0.5.md)** (frozen by the designer and adopted by the operator 2026-10-05; ledger PMP; the repository's v0.4 and v0.3 are archived under `archive/superseded/`), with the research behind it in `docs/research/` (ledger CXS, CXP, SEF, QRC, LRB, PUI)
 
@@ -944,7 +932,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E18
 
-**Work:** Transaction outbox: committed events atomic with the commit, durable consumer cursors, at-least-once idempotent consumers, bounded retention under ADR-0011; consumers wait-any (E1), the dashboard, knowledge capture, the scheduler
+**Work:** Two consumers of the built transaction outbox (ADR-0012 D8): the dashboard event endpoint (F20.7, which has no row of its own: `GET /api/v1/events?since=R` as a bounded long poll on the revision cursor, waking on `local/wake`, its reply naming which revisions changed which kinds and ids; built only once A-44's S11 is adopted, on the 0.1.x contract), and knowledge capture (F21's capture, E254). The outbox, wait-any and the `queue.*` kinds are built (#53, #60, #79, #65)
 
 **Source:** [ADR-0012](adr/0012-transaction-outbox.md) (accepted 2026-10-04; ledger OBX); architecture review G11, K2; [architecture review response](../design/architecture-review-response-2026-10-04.md) (accepted 2026-10-05) D-AR3
 
@@ -1112,7 +1100,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E53
 
-**Work:** PR test selection (operator, 2026-10-09): reduced tiers fail closed, and the main push and nightly stay full. The November 19 test redesign retired the shadow fast tier and its promotion path. Fast-lane test inputs run in full.
+**Work:** One affected-test selector for pull-request runs, widened to every changed `.py` file, with `main`'s push run and the nightly kept full and the selector plan's gates (shadow runs, mutations, the trip rate) kept (the operator's decision of 2026-10-24), built only if the operator decides to build it. The fast-tier experiment it replaces was retired by the test redesign of 2026-11-19
 
 **Source:** [Testing and CI strategy](testing-and-ci-strategy.md) §3
 
@@ -5197,6 +5185,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** M4-B: a bubblewrap sandbox per run, built from the role (exhaustive table, fail closed), applied by the run's process tree to every spawn and to its checks; run-private git state with the real metadata read-only; a launch self-test on the exact layout; truthful labels (filesystem integrity only; the host stays readable; network not provided). The designer's open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`, "M4-B as built"
 
 *Later notes: `notes.d/F2/`, oldest first (`python tools/register.py show F2`).*
+
+### F10
+
+**Was:** Mutating concurrency above 1: integration queue, merge revalidation
+
+**Closed:** 2026-11-26
+
+**By:** #65 (M4-D3: the queue, its lease and custodian), #77 (M4-D4: the one rebuild, disposition, defer, requeue and reorder), #91 (M4-D5: checks validation), #380 (`mutating_concurrency: 2` for a new project) and #407 (the switch offer for an existing project, which replaces the `gates.yaml` migration): the remaining scope of the hold match (`2026-11-06-operator-hold-match-batches.md`), which restored it from HOLD-06, the raise to 2 with that migration, is done (F10's notes of 2026-11-07, 2026-11-08 and 2026-11-26). The real run with two mutating workers stays SYS-39's sign-off (the operator, 2026-11-26)
+
+*Later notes: `notes.d/F10/`, oldest first (`python tools/register.py show F10`).*
 
 ### F11
 

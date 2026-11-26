@@ -331,5 +331,14 @@ def _scope_added(result: dict[str, Any]) -> list[str]:
     return _listed("scope added", (_projection(result).get("unit") or {}).get("scope_added") or [])
 
 
+def _post_report_messages(result: dict[str, Any]) -> list[str]:
+    messages = _payload(result).get("post_report_message_pending")
+    if not messages:
+        return []
+    ids = ", ".join(m["id"] for m in messages[:MAX_LISTED])
+    return [_one_line(f"Messages recorded after the report ({ids}) may be left unacted on "
+                      "when ingest ends the worker.")]
+
+
 _SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_validation, _capabilities, _stopped, _waiting,
-                                                                _scope_added)
+                                                                _scope_added, _post_report_messages)

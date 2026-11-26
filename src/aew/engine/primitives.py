@@ -118,11 +118,11 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
                   ("integration_verification",), "control_state+credential+harness_process", "expected_revision",
                   "verify.ingest.integration"),
-    # The Lead's publication decision (M4-E E6a: completed with `integration_publish`). Its step is the intent
-    # commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE follow it as its
-    # effect: the authoritative ref, the integration worktree and a removable Ticket workspace (`workspace`), and DONE's
-    # revocations (the lease's custody credential, `credential`; a live run's supervisor ends its harness,
-    # `harness_process`). A moved head commits the one rebuild instead. Its guard is its own query.
+    # The publication decision (M4-E E6a: completed with `integration_publish`), whose owner is `aew.owners`'. Its step
+    # is the intent commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE
+    # follow it as its effect: the authoritative ref, the integration worktree and a removable Ticket workspace
+    # (`workspace`), and DONE's revocations (the lease's custody credential, `credential`; a live run's supervisor ends
+    # its harness, `harness_process`). A moved head commits the one rebuild instead. Its guard is its own query.
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),
                   ("integration_validation",), "authoritative_ref+control_state+workspace+credential+harness_process",
                   "candidate", "integrate.publish"),
@@ -154,6 +154,10 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
     """The declaration of a primitive, or the fail-closed default for one nobody declared."""
     return SPECS.get(primitive_id) or PrimitiveSpec(primitive_id, JUDGMENT_BEARING, ("undeclared",), (), (),
                                                     "unknown", "unknown", None, declared=False)
+
+
+# The owner of each primitive's judgment is `aew.owners` (register E335), outside the engine so that the Lead's MCP
+# transport can word text from it.
 
 
 # The Lead transactions a primitive commits under, where they are not just its own id: the three creations share

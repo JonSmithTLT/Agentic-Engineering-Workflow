@@ -461,6 +461,26 @@ def test_only_an_exact_lead_or_mechanical_owner_is_taken_by_the_lead():
     assert "unknown owners (asked of the operator): PUBLISH [owner 'Operator']" in led.summary()
 
 
+def test_a_lead_owned_decision_with_no_typed_tool_runs_its_fallback_and_is_never_asked():
+    """E335: FINISH_PUBLISH is the Lead's and has no typed tool. The Lead runs its concrete `cli_fallback` from the
+    shell, counted as `decision_without_tool`, as it does for an operator's decision with none; it is not stuck and
+    asks no one. A fallback that still needs a choice stays stuck."""
+    lead = _Lead([])
+    shelled: list[list[str]] = []
+    lead.lead.shell = lambda argv, **kw: shelled.append(argv) or {"ok": True}
+    lead.lead.say = lambda *a, **kw: None
+    cli = ["integrate", "reconcile", "T-0001", "--expect-rev", "4"]
+    _ticking(lead, [{"decision": "FINISH_PUBLISH", "owner": "lead", "tool": None, "arguments": None,
+                     "cli_fallback": cli}])
+    assert lead.asked == [] and shelled == [cli]
+    assert [e.get("gap") for e in lead.events if e["kind"] == "gap"] == ["decision_without_tool"]
+    lead = _Lead([])
+    lead.lead.say = lambda *a, **kw: None
+    _ticking(lead, [{"decision": "DISPOSE_FINDING", "owner": "lead", "tool": None, "arguments": None,
+                     "cli_fallback": ["work", "dispose", "F-1", "--choice", "<accept_risk|follow_up>"]}])
+    assert lead.asked == [] and [e["kind"] for e in lead.events][-1] == "stuck"
+
+
 def test_the_lead_never_fills_an_operator_decisions_choice():
     """F3: after the operator's answer the Lead calls the decision's tool with the arguments the projection supplied;
     judgment inputs are the Lead's, for actions and its own decisions only."""

@@ -3522,18 +3522,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
 
-### E335
-
-**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator's; its gaps are E350 and E351
-
-**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
-
-*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -3917,6 +3905,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface, not from today's online documentation
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
+
+### E388
+
+**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
+
+**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E373
 
@@ -5315,6 +5315,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #463 (`c2c11c78`): `checks.<id>.caches` declares a check's caches, which leave the working snapshot, `changed_paths` and the Ticket commit, with tracked paths and `include_ignored` taking precedence; adoption refuses a pattern that would hide project paths; the starter kit declares pytest's caches and the vertical's U14 fallback is gone (ADR-0002, amendment of 2026-11-11). The quick check's remaining nit on the long-pathspec test is E370
 
 *Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
+
+### E335
+
+**Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Closed:** 2026-11-26
+
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
 
 ### E337
 

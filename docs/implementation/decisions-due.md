@@ -25,14 +25,6 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
-### E351
-
-**Due by:** V-01 · **Owner:** designer · **Needs:** decision
-
-**What:** The V-01 burn-down's Q8: "What is the plan decision kind's name? The vertical records a decision under its kind lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."
-
-**Blocks:** -
-
 ### E373
 
 **Due by:** V-01 · **Owner:** designer · **Needs:** decision

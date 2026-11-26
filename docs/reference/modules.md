@@ -2573,10 +2573,12 @@ None.
 - `aew.engine.approval`
 - `aew.engine.guards`
 - `aew.engine.hierarchy`
+- `aew.engine.operator_decisions`
 - `aew.engine.primitives`
 - `aew.engine.queue_ops`
 - `aew.engine.scope_ops`
 - `aew.engine.transitions`
+- `aew.engine.work_ops`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.knowledge.evidence`

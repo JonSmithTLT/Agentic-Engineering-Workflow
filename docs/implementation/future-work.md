@@ -3678,18 +3678,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E350/`, oldest first (`python tools/register.py show E350`).*
 
-### E351
-
-**Work:** Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3) is not a kind the action projection emits today, so E335's owner table has no row for it. Its own decision kind, with its owner, is this row
-
-**Source:** The designer's ruling of 2026-11-11 on E334 and E335 (`designer-decisions-2026-11-11-e334-e335.md`), part 2
-
-**When:** **Unscheduled**, after E335
-
-**Notes:** Filed by the register PR of 2026-11-11
-
-*Later notes: `notes.d/E351/`, oldest first (`python tools/register.py show E351`).*
-
 ### E352
 
 **Work:** One name for the publish judgment: the tool's is `publish_candidate` (`src/aew/surface/contract.py`) and the primitive's is `publish_decision` (`src/aew/engine/primitives.py`)
@@ -5369,6 +5357,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #440 (`35388ef1`), with its follow-ons on #449 (`daf41fcc`): a contained Linux OpenCode worker on the relay route uses its provider's stored API-key login through the built-in upstream, a usable export first, and `aew doctor` names the source, never the value. Windows custody is E341; which usage pot a worker draws from is E354 and E355
 
 *Later notes: `notes.d/E337/`, oldest first (`python tools/register.py show E337`).*
+
+### E351
+
+**Was:** Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3) is not a kind the action projection emits today, so E335's owner table has no row for it. Its own decision kind, with its owner, is this row
+
+**Closed:** 2026-11-26
+
+**By:** this PR: a proposed plan revision that `plan accept` would take now is the operator's `PLAN` decision (the kind's name is the operator's ruling of 2026-11-26, Q8), with `plan accept` bound to the plan's SHA-256 as its `cli_fallback` and the operator's confirmation command as `ask_operator`; the steering loop stops on it as the operator's. The wire action is E390, the typed accept E163
+
+*Later notes: `notes.d/E351/`, oldest first (`python tools/register.py show E351`).*
 
 ### E354
 

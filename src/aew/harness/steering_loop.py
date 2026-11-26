@@ -160,7 +160,9 @@ class Activation:
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
 
 
-LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)  # stops only the Lead can clear; a BLOCKED can clear on its own
+# Stops only the Lead can clear, itself or by asking the operator for a decision that is theirs (an operator-owned
+# decision such as PLAN, register E351); a BLOCKED can clear on its own.
+LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)
 
 
 def select(project: dict[str, Any], units: list[dict[str, Any]],

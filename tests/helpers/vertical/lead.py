@@ -118,6 +118,7 @@ class Lead:
         self.reports: dict[str, str] = {}
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
+        self.last_text: str | None = None  # the last result's readable text, as OpenCode shows it (MCP content)
         self.last_out: dict[str, Any] | None = None
         self.last_refusal = ""  # the last refusal a hint's command met
 
@@ -253,6 +254,7 @@ class Lead:
                                                    or {"code": err.get("code"), "message": err.get("message")}})
             return {"ok": False, "projection": None, "result": None, "stopped": {"error": err}}
         out = reply["result"]["structuredContent"]
+        self.last_text = _text(reply["result"])
         stopped = out.get("stopped")
         if out.get("projection"):
             self.last_projection = out["projection"]
@@ -311,7 +313,7 @@ class Lead:
         self.tools = self.start_mcp()
         threading.Thread(target=self._listen, daemon=True, name="vertical-chat").start()
         resumed = self.call("resume", {})
-        self.say("status", words=_words(resumed.get("result")), session="started")
+        self.say("status", words=_words(self.last_text), session="started")
         self.subject = _open_ticket(resumed.get("result"))
         self.request = str(self.hear().get("text", ""))  # the operator's first line
         self.event("heard", text=self.request)
@@ -713,12 +715,22 @@ def _open_ticket(result: Any) -> str | None:
     return None
 
 
-def _words(result: Any) -> str | None:
-    """What the resume says in words, if it says anything that is not a data field (a headline or a summary)."""
-    for key in ("headline", "summary", "message", "where_things_stand"):
-        if isinstance((result or {}).get(key), str):
-            return result[key]
-    return None
+def _text(result: Any) -> str | None:
+    """A tool result's text, what OpenCode shows the person and its model reads (the MCP ``content``'s text blocks),
+    never ``structuredContent``."""
+    blocks = [b.get("text") for b in (result or {}).get("content") or []
+              if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+    return "\n".join(blocks) if blocks else None
+
+
+def _words(text: str | None) -> str | None:
+    """What the result says in words, as a person reads it: the text's first paragraph (up to its first blank line),
+    which the data it carries for a model follows. None when it has none (V-01 re-measure of 2026-11-26, C8).
+
+    The cut is the blank line ``readable.render`` puts before its JSON marker, pinned by the unit test against
+    ``readable.JSON_MARKER``. A readable body that ever held a blank line of its own would end the words there."""
+    head = (text or "").split("\n\n", 1)[0].strip()
+    return head or None
 
 
 def _append(path: Path, line: str) -> None:

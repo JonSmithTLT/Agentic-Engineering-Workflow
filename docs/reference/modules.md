@@ -1563,6 +1563,7 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.desktop_notifier`
 - `aew.harness.wait_binding`
+- `aew.knowledge.context`
 - `aew.maps`
 - `aew.policy.execution`
 
@@ -1813,6 +1814,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.wake_queue`
+- `aew.knowledge.context`
 - `aew.skills`
 - `aew.surface`
 - `aew.surface.contract`

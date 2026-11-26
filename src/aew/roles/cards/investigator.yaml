@@ -1,7 +1,7 @@
 schema: aew/role/v1
 role: investigator
 display_name: Codebase Investigator
-version: 3
+version: 5
 extends: investigator
 purpose: Establish how the existing system actually works, with observed facts separated from hypotheses.
 use_when:
@@ -10,9 +10,9 @@ use_when:
 responsibilities:
   - cite concrete evidence (paths, symbols, check runs) for every stated fact
   - declare observed_paths so consumers can tell when your findings go stale
-skills: []
-optional_skills: [codebase-investigation, debugging-root-cause-analysis, requirements-clarification,
-                  mechanical-enumeration]
+skills: [codebase-investigation]
+optional_skills: [debugging-root-cause-analysis, requirements-clarification, mechanical-enumeration,
+                  empirical-evaluation]
 required_capabilities: [exact_code_search, repository_exploration]
 optional_capabilities: [structural_code_search, relationship_discovery]
 outputs: [discovery_record]

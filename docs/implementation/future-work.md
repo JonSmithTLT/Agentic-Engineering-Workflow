@@ -3984,7 +3984,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C3), from the vertical's re-measure of 2026-11-26 at `3640b585`: `guessed_commands` in every case with a Lead; V01-01 step 4 (W15)
 
-**When:** **V-01**, the strict track of the burn-down; it waits for the designer's answer to the plan's Q4 (whether the interim offer is `ticket_draft` or step 4 waits for `CREATE_PROPOSED_WORK`), and for the judgment_inputs row being filed with #597
+**When:** **V-01**, the strict track of the burn-down; it waits for the designer's answer to the plan's Q4 (whether the interim offer is `ticket_draft` or step 4 waits for `CREATE_PROPOSED_WORK`). It waits on no other row: E388, which #597 files, covers the choice and rationale of the `resolve` decisions, not an action's inputs, so naming `ticket_draft`'s inputs is this row's own
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 
@@ -3992,23 +3992,23 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E374
 
-**Work:** RESOLVE_STAGE is offered only for a stage the Lead must resolve: a stage intent the steering loop is running (`auto_run`, the loop active, its next step pending) is not a RESOLVE_STAGE decision, and a RESOLVE_STAGE that is offered carries what `resolve` requires (`choice` with its options, and `rationale`), so its call passes the tool's schema. Today `_stage_decisions` lists every unfinished stage intent, the loop's own included (`src/aew/surface/projection.py:233-243`), and its arguments omit `choice` and `rationale`, which `resolve` requires (`src/aew/surface/contract.py:285-295`). Naming judgment inputs on every projected decision is the judgment_inputs row being filed with #597; this row is RESOLVE_STAGE's own two parts
+**Work:** RESOLVE_STAGE is offered only for a stage the Lead must resolve: a stage intent the steering loop is running (`auto_run`, the loop active, its next step pending) is not a RESOLVE_STAGE decision. Today `_stage_decisions` lists every unfinished stage intent, the loop's own included (`src/aew/surface/projection.py:233-243`). What an offered RESOLVE_STAGE carries (the `choice` and `rationale` that `resolve` requires, `src/aew/surface/contract.py:285-295`) is not this row's: it is E388's, the row #597 files for the `resolve` decisions' judgment inputs
 
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C5), from the vertical's re-measure of 2026-11-26 at `3640b585`: `resolve` refused `INVALID_ARGUMENTS` in each steering-on case and in V2's forced case
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C5), from the vertical's re-measure of 2026-11-26 at `3640b585`: `resolve` refused `INVALID_ARGUMENTS` in each steering-on case and in V2's forced case, each time for a stage the loop was running or had left unfinished
 
 **When:** **V-01**, the strict track of the burn-down, after E335 (the owner decides who fills the inputs); whether the loop's running stage is offered at all waits for the designer's answer to the plan's Q9
 
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Coordinated with the judgment_inputs row being filed with #597, which it does not duplicate
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Narrowed at its review (m2) to the loop's running stage: the arguments of an offered RESOLVE_STAGE are E388's (#597)
 
 *Later notes: `notes.d/E374/`, oldest first (`python tools/register.py show E374`).*
 
 ### E375
 
-**Work:** The scripted Lead's steering-on policy: with steering on, it honours a wait the projection marks `woken` (`src/aew/surface/projection.py:558`) by ending its turn until a wake or the operator arrives, with the fake TUI given a wake channel to it (today it reads only chat, `tests/helpers/vertical/lead.py:167-191`, and calls the single AVAILABLE action, `:355-364`); and it counts a BLOCKED loop stop as a decline only when its blocker is still present after the run ends (today `loop_acts` counts it at once, `:379-382`, while the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`)
+**Work:** The scripted Lead's steering-on policy: with steering on, it honours a wait the projection marks `woken` (`src/aew/surface/projection.py:558`) by ending its turn until a wake or the operator arrives, with the fake TUI given a wake channel to it (today it reads only chat, `tests/helpers/vertical/lead.py:167-191`, and calls the single AVAILABLE action, `:355-364`). A second part is proposed and not approved: counting a BLOCKED loop stop as a decline only when its blocker is still present after the run ends (today `loop_acts` counts it at once, `:379-382`, while the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`). It changes how `vertical-uat.md` §3 ("Steering on": "only when the loop declined") is read, so it waits for the operator's answer to the plan's Q10
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical's re-measure of 2026-11-26 at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case
 
-**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("That honestly just seems like a bug and isnt how aew works now"), which approves the matching amendment of `vertical-uat.md` §2's Lead policy; this row's pull request makes it with the code
+**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("That honestly just seems like a bug and isnt how aew works now"). Q1 asked only about the wait marked `woken`, so the answer approves that part and the matching amendment of `vertical-uat.md` §2's Lead policy, which this row's pull request makes with the code. The BLOCKED-stop part and any change to §3 wait for the operator's answer to Q10, which the answer to Q1 does not cover
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 
@@ -4088,7 +4088,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E382
 
-**Work:** `REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), so that with its reads the oracle derives the step as landed and V2's G3 reopen fallback stops. Today `REATTACH_LEAD` is registry-only. The step's reads are other rows': attention and attachments (U01, L07) are E181's, and waiting and continuation state (U01, C18), which only STG-02 serves today, are E393's. STG-03's closure left it "proposed, with no row"
+**Work:** `REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), so that with its reads the oracle derives the step as landed and V2's G3 reopen fallback stops. Today `REATTACH_LEAD` is registry-only. The step's reads are other rows': attention and attachments (U01, L07) are E181's, and waiting and continuation state (U01, catalog C18), which only STG-02 serves today, are E393's. STG-03's closure left it "proposed, with no row"
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the reopen fallback in every V2 case
 
@@ -4100,7 +4100,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E383
 
-**Work:** `APPROVE_INTEGRATION` on the O-01 wire: V01-01 step 7 (`publish`, W09 and C10), held by G3, I4-06 and I4-B7, so the operator's publish is a confirmed approval and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and no row held it
+**Work:** `APPROVE_INTEGRATION` on the O-01 wire: V01-01 step 7 (`publish`, W09 and catalog C10), held by G3, I4-06 and I4-B7, so the operator's publish is a confirmed approval and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and no row held it
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the publish fallback in every case that reaches a publish
 
@@ -4172,7 +4172,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E392
 
-**Work:** `DELEGATE_NEW_WORKER` on the O-01 wire: V01-01 step 6 (`work`, W10; ADC the owner, the successor-generation origin, a grant naming the Lead generation), so the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and the act is `work assign` and `invoke create`. The step's other part, `CONTINUE_ELIGIBLE_WORK` (C17), already reaches an owner, the STG-02 carrier's fixture HEB; its production owner goes with E356
+**Work:** `DELEGATE_NEW_WORKER` on the O-01 wire: V01-01 step 6 (`work`, W10; ADC the owner, the successor-generation origin, a grant naming the Lead generation), so the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and the act is `work assign` and `invoke create`. The step's other part, `CONTINUE_ELIGIBLE_WORK` (catalog C17), already reaches an owner, the STG-02 carrier's fixture HEB; its production owner goes with E356
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
 
@@ -4184,7 +4184,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E393
 
-**Work:** The four D-01 0.3.4 reads E181 does not list get a production producer: `/v1/read/waiting`, `/v1/read/continuation-state/{work_id}`, `/v1/read/runs/{execution_id}` and `/v1/read/owner-operations`. Today only the STG-02 slice producer serves them (`src/aew/stg02/server.py:220-240`), with unqualified stamps (under SYS-29), and E356 retires it. Two are on V01-01 step 10 (`reopen`: U01's waiting, C18's continuation state). Each read is qualified before it is claimed, as E181's are (W1 to W5). The designer's session decides the producer's shape
+**Work:** The four D-01 0.3.4 reads E181 does not list get a production producer: `/v1/read/waiting`, `/v1/read/continuation-state/{work_id}`, `/v1/read/runs/{execution_id}` and `/v1/read/owner-operations`. Today only the STG-02 slice producer serves them (`src/aew/stg02/server.py:220-240`), with unqualified stamps (under SYS-29), and E356 retires it. Two are on V01-01 step 10 (`reopen`: U01's waiting, catalog C18's continuation state), and the vertical's oracle already derives those two as served, by the slice producer, so this row changes no step's state today: it is owed so that they stay served once E356 retires that producer. Each read is qualified before it is claimed, as E181's are (W1 to W5). The designer's session decides the producer's shape
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
 

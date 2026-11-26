@@ -49,6 +49,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E375
+
+**Due by:** V-01 · **Owner:** operator · **Needs:** decision
+
+**What:** The V-01 burn-down's Q10, which the operator's answer to Q1 does not cover: with steering on, whether a BLOCKED loop stop counts as the loop having declined only once its blocker is still present after the run's end, and not at once as the scripted Lead counts it today (vertical-uat.md §3, "Steering on": "only when the loop declined")
+
+**Blocks:** -
+
 ### E378
 
 **Due by:** V-01 · **Owner:** designer · **Needs:** decision

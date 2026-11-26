@@ -10,7 +10,11 @@ going stale.
 Limits: it reads the ledger's and the oracle's categories, not the case-specific checks of
 `tests/acceptance/test_vertical_path.py` (V2's must-holds, V3's diagnosis, the #213 autopsy's own assertions); those are
 named in the clusters' cells, which it does not read. ``HARNESS_FAULTS`` are left out: they are never product results
-(vertical-uat.md §5)."""
+(vertical-uat.md §5). A cluster's state is read only against its rows being open or closed: ``open`` and ``in flight
+(#N)`` are the same here and the pull request a state names is never read, so a fix that merges without closing its row
+leaves its cluster not done and nothing fails. A category's clusters are checked only for existing, except a step's,
+where one must not be done: a counter's entry can go on naming a done cluster. A cluster's rows are the backticked ids
+of its Rows cell: an id written without backticks, or elsewhere on the page, is not checked (review of #601, m3, n3)."""
 
 from __future__ import annotations
 

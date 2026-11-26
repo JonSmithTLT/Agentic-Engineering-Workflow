@@ -2,7 +2,8 @@
 
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
-and each question below is the operator's or the designer's; the operator answered Q1, Q5 and Q7 on 2026-11-26. It changes no threshold: those are
+and each question below is the operator's or the designer's. The operator answered Q1, Q5 and Q7 on 2026-11-26; Q10 is
+open. It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -20,7 +21,20 @@ copied (`tests/helpers/vertical/ledger.py`, `tests/helpers/vertical/oracle.py`, 
   open one.
 
 So the pull request that closes a cluster's last row marks that cluster `done` here, in the same change. A pull request
-that closes one row of several says what remains on the row's note, as usual.
+that closes one row of a cluster's several takes that row out of the cluster's Rows cell in the same change, or names
+there the row that now holds what remains: a note on the row is not enough, because the guard fails on a cluster that
+is not done and still names a closed row.
+
+**What the guard cannot see.**
+- It reads a state only against its rows being open or closed. `open` and `in flight (#N)` are the same to it, and the
+  pull request a state names is never read: a fix that merges without closing its row leaves its cluster not done, and
+  nothing fails. C7 and C8 go to `done` when E376 and E377 are closed, by the agreement between #603 and this page's
+  pull request, not by the guard.
+- A category's clusters are checked only for existing, except a step's, where one must not be done: a counter's entry
+  can go on naming a done cluster.
+- It reads a cluster's rows only from the backticked ids of its Rows cell: an id written without backticks, or
+  anywhere else on the page, is not checked.
+- It does not read the case-specific checks of `tests/acceptance/test_vertical_path.py`, nor `HARNESS_FAULTS`.
 
 ## The clusters
 
@@ -33,10 +47,10 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 |---|---|---|---|---|---|---|---|---|
 | **C1** Decision owners | Decisions carry no `owner` (`src/aew/surface/projection.py:246-299`, `_ticket_actions`; `:444-499`, `_decisions`), so the scripted Lead asks every one (`tests/helpers/vertical/lead.py:350-354`, `:392-393`): the review and verification acceptances reach the operator in every case that compares decisions | product | `E335` | No strict case; it clears the alpha's V1 line | Everything else; `reconcile` stays the operator's (E350); `resolve_stage` becomes the Lead's, whose `resolve` is still refused (C5) | M, 1 PR | none | in flight (#597) |
 | **C2** Plan approval is not a decision | The projection has no plan decision: the proposed plan shows only as blocker `PLAN_NOT_ACCEPTED` with a hint (`projection.py:246-299`), so the Lead's fallback asks and accepts from its shell (`lead.py:617-627`). The recorded label is the kind lowercased (`lead.py:392`), so a kind not named `PLAN` breaks V1's exact list (Q8) | design, then product | `E351`, `E163` | None: E351 alone still runs its `cli_fallback` from the shell; with a typed accept (E163, or the surface map's A1a-2) the shell call goes | The other clusters | 2 PRs | E335; Q8 | open |
-| **C3** An empty project offers no action | `_control_part` returns the project's part before any action (`projection.py:122`); `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so the built `ticket_draft` (`src/aew/surface/availability.py:173`) is never offered and the Lead guesses it | design | `E373` | None | The other clusters | M, 1 PR | Q4; the judgment_inputs row being filed with #597 | open |
+| **C3** An empty project offers no action | `_control_part` returns the project's part before any action (`projection.py:122`); `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so the built `ticket_draft` (`src/aew/surface/availability.py:173`) is never offered and the Lead guesses it | design | `E373` | None | The other clusters | M, 1 PR | Q4 | open |
 | **C4** `expect_rev` on every call | The revision check is project-wide: every typed tool requires `expect_rev` (`src/aew/surface/contract.py:103`) and the projection supplies it; the driver's hint filler appends it to every hinted command (`tests/helpers/vertical/hints.py:79`), and the Lead's retries strip it (`lead.py:558-563`) | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | in flight (#596) |
-| **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` lists every unfinished stage intent, the steering loop's running one included (`projection.py:233-243`), and its arguments omit `choice` and `rationale`, which `resolve` requires (`contract.py:285-295`): refused `INVALID_ARGUMENTS` | product, design | `E374` | None | The other clusters | M, 1 to 2 PRs | E335; Q9; the judgment_inputs row being filed with #597 | open |
-| **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters | S, 1 PR | Q1, answered yes: the amendment of `vertical-uat.md` §2 it approves goes in E375's pull request | open |
+| **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` lists every unfinished stage intent, the steering loop's running one included (`projection.py:233-243`). Its arguments also omit `choice` and `rationale`, which `resolve` requires (`contract.py:285-295`): refused `INVALID_ARGUMENTS`; those arguments are E388's, the row #597 files, which joins this cell once it is on `main` | product, design | `E374` | None | The other clusters | M, 1 to 2 PRs | E335; Q9; E388 (#597) | open |
+| **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters | S, 1 PR | Q1, answered yes for the `woken` wait: the amendment of `vertical-uat.md` §2 it approves goes in E375's pull request; Q10 for the BLOCKED stop | open |
 | **C7** The reopen blocks at the tool-consent screen | Only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`; `src/aew/capability/consent.py:401-405`) and waits out `src/aew/operator.py:28`'s timeout; the scripted operator answers only the resume code (`scripted_operator.py:316-321`). The counted takeover follows and interrupts the implementer | oracle | `E376` | No strict case; it clears the alpha's V2-forced line | The resume code counts under `pin_reentries` on Linux (`scripted_operator.py:320`; `Ledger.console_challenge`), reopen stays a G3 fallback (C12) | S, test-only | E335 for the alpha; Q5, answered: the consent screen is a setup fixture, recorded and never counted | in flight (#603) |
 | **C8** Not told where things stand in words | The scripted Lead reads only `structuredContent` (`lead.py:254`), and `_words` looks for fields `resume` does not carry (`lead.py:710-715`); the readable text is the MCP `content[0].text` (`src/aew/surface/mcp.py:240-247`). Unverified: whether the rendered resume names the Ticket | oracle, probably | `E377` | None | As C7 | Part of C7's PR | C7 | in flight (#603) |
 | **C9** A semantic conflict has no decision | At COMMIT_READY with the queue entry AWAITING_DISPOSITION, `_ticket_actions` emits no decision (`projection.py:246-299`); the only guidance is a requeue hint (`src/aew/engine/resume_ops.py:471-476`); after it `ticket_prepare` is offered and refused, and the Lead's gap key carries the revision (`lead.py:510-525`), so it loops | design, product, oracle | `E378` | None | Counters and fallbacks of the other clusters | M, 1 to 2 PRs | E335; Q2 | open |
@@ -94,7 +108,7 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | step | `open` | C12 | G3 fallback in every failing case but G3 #213 |
 | step | `ask` | C3, C12 | not built (W15); no operator fallback, the Lead guesses instead (C3) |
 | step | `plan` | C2, C12 | G3 fallback |
-| step | `work` | C12 | not built (W10, C17); no operator fallback |
+| step | `work` | C12 | not built (W10 and the catalog's C17, CONTINUE_ELIGIBLE_WORK); no operator fallback |
 | step | `publish` | C12 | G3 fallback |
 | step | `result` | C12 | not built (the D-01 reads); no operator fallback |
 | step | `exit` | none | outside AEW |
@@ -113,8 +127,9 @@ designer's session's to decide:
   and its production owner goes with E356.
 - **publish** (7): APPROVE_INTEGRATION, E383.
 - **result** (8): the assurance, resolve and work reads, E181's.
-- **reopen** (10): REATTACH_LEAD, E382; attention and attachments are E181's, and waiting and continuation state, which
-  only STG-02 serves today, are E393's with the other two reads E181 does not list.
+- **reopen** (10): REATTACH_LEAD, E382; attention and attachments are E181's. The oracle already derives waiting and
+  continuation state as served, by the STG-02 slice producer, so E393 (those two and the other two reads E181 does not
+  list) changes no step's state today: it is owed so that they stay served when E356 retires that producer.
 - **setting** (12) and **raise** (13): ADOPT_MANIFEST_EDIT and SET_STEERING_MODE, STG-14's.
 
 ## The order
@@ -135,9 +150,10 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 2. **C2** (E351, then E163 or A1a-2), with Q8 answered.
 3. **C3** (E373), after Q4.
 4. **C4** (E329, #596), with its driver change.
-5. **C5** (E374), with the judgment_inputs row being filed with #597.
+5. **C5** (E374, after Q9), with E388, the row #597 files for the `resolve` decisions' arguments.
 6. **C9** and **C11** (E378, E380), after Q2 and Q6.
-7. **C6** (E375), an oracle fix with its `vertical-uat.md` §2 amendment (Q1 answered).
+7. **C6** (E375), an oracle fix with its `vertical-uat.md` §2 amendment for the `woken` wait (Q1 answered); its
+   BLOCKED-stop part waits for Q10.
 8. **C14** (E384), with C16 (E386) and C17 (E387) as small fixes beside it.
 9. **C13** (E164, E331).
 10. **C12**, the wire track (E381 to E383, E390 to E393, E181, STG-14): after the personal alpha, aligned with STG-14 (Q7).
@@ -150,14 +166,19 @@ G3 #213 and V1 compatible-move.
 ## Questions
 
 The operator's three, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
-Q8 and Q9) are open, and are owned by [what the operator and designer owe](decisions-due.md), each on the row it holds:
-Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`python tools/register.py show <row>`).
+Q8 and Q9) and the operator's Q10 are open, and are owned by [what the operator and designer owe](decisions-due.md),
+each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351, Q9 on E374 and Q10 on E375
+(`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "That honestly just seems like a bug and isnt how aew works now." With
-    steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. C6 (E375) is
-    an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which E375's pull request
-    makes.
+    steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. That part of
+    C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which E375's
+    pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
+- **Q10 (operator; vertical-uat.md §3, "Steering on"), open, raised at this page's review:** with steering on, does a
+  BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end, and
+  not at once, as the scripted Lead counts it today? It decides whether the Lead's push after a self-clearing stop is
+  the spec's counted exception or a mechanical call.
 - **Q5 (operator):** "Is AEW's tool-consent screen at a reopen a setup fixture of the offline world (recorded, never counted), or an operator step the vertical counts? And until REATTACH_LEAD lands, is the seat-resume confirmation code meant to count under `pin_reentries` on Linux, as `Ledger.console_challenge` counts it today?"
   - **Answered** (operator, 2026-11-26): a setup fixture, recorded but not counted. "The vertical was meant to fix ux
     issues. Aew saying a critical item is missing isnt a ux failure its common sense." The seat-resume code still

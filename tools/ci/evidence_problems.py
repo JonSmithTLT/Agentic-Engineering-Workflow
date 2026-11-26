@@ -17,6 +17,7 @@ from evidence_files import (  # noqa: E402
     BEFORE_TESTS,
     BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
+    CONTROLLER,
     FRAME,
     FRESH_S,
     INTERRUPTION_REASONS,
@@ -27,11 +28,13 @@ from evidence_files import (  # noqa: E402
     SAMPLING_POLICY,
     WARNING,
     WATCHDOG_HEADER,
+    WORKER_COUNT,
     WORKER_PHASES,
     cancel_outcome,
     entries,
     failure_overflow,
     finished_without_tests,
+    lifecycle_receipt,
     owner,
     policy_samples,
     priority,
@@ -83,8 +86,10 @@ def before_tests_problems(texts: dict, running: set) -> list[str]:
     """Where the bundle contradicts or lacks its record that the lane was cancelled before any test started (register
     E3). The record stands in for a worker observation and a running name only when every copy agrees, every session
     is listed, every registered worker is listed by identity with its lifecycle receipt, which reached the recorded
-    phase and never execution, a finished session's own files show that it began no test, and no autopsy of a test,
-    watchdog header, interruption record, test result or running name shows a test begun (review of #579, M1 and m1)."""
+    phase and never execution, a session with no worker roster that had not finished (a serial one, whose controller
+    runs its tests itself) lists its controller on the same terms, a finished session's own files show that it began
+    no test, and no autopsy of a test, watchdog header, interruption record, test result or running name shows a test
+    begun (review of #579, M1 and m1)."""
     problems = []
     copies = {json.dumps(row, sort_keys=True) for row in rows_named(texts, BEFORE_TESTS)}
     record = json.loads(copies.pop()) if len(copies) == 1 else {}
@@ -140,9 +145,19 @@ def before_tests_problems(texts: dict, running: set) -> list[str]:
                     problems.append(f"{session}: {ident[1]} is not recorded, by pid and start, before its first test")
             elif name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
                 problems.append(f"{session}/{name}: a worker had started its tests")
+        controller = listed.get((session, CONTROLLER))
+        if controller is not None:
+            pid, start = (published.get(f"{CONTROLLER}-{key}.txt", "").strip() for key in ("pid", "start"))
+            if (not pid.isdecimal() or not start.isdecimal()
+                    or (controller.get("pid"), controller.get("start")) != (int(pid), int(start))):
+                problems.append(f"{session}: {CONTROLLER} is not recorded, by pid and start, before its first test")
+        elif "session-finished.txt" not in published and f"{WORKER_COUNT}.txt" not in published:
+            # Neither finished nor shown to be an xdist session: its controller may run its tests itself.
+            problems.append(f"{session}: a session with no worker roster does not list its {CONTROLLER} before its "
+                            "first test")
     for (session, name), worker in sorted(listed.items()):
-        phases = receipt_phases(files.get(session, {}).get(f"worker-{worker.get('pid')}-{worker.get('start')}"
-                                                           f"-lifecycle.txt", ""))
+        phases = receipt_phases(files.get(session, {}).get(
+            lifecycle_receipt(name, worker.get("pid"), worker.get("start")), ""))
         # The receipt must have reached the recorded phase: a worker can go on collecting after the observation until
         # the lane is ended, so a later phase short of execution still bears it out.
         if phases is None or worker["phase"] not in phases or WORKER_PHASES[-1] in phases:

@@ -115,7 +115,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ARMED_NOTE, WORKER_COUNT, WORKER_PHASES, stacks_ablated  # noqa: E402
+from evidence_files import (  # noqa: E402
+    ARMED_NOTE,
+    CONTROLLER,
+    WORKER_COUNT,
+    WORKER_PHASES,
+    lifecycle_receipt,
+    stacks_ablated,
+)
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
@@ -437,7 +444,58 @@ def addoption(parser: Any) -> None:
                     help="how long after the deadline the controller acts under xdist, and the sentinel one more")
 
 
-class Controller:
+class PhaseReceipt:
+    """The lifecycle receipt of a process that runs tests: an xdist worker, or a serial session's controller.
+
+    The process appends each of ``WORKER_PHASES`` as it reaches it, on one descriptor it keeps open, so a reader
+    (``worker_evidence.phases_at_signal``) can tell a live writer's current phase from a file left behind. A lane
+    cancelled before the process entered its first test's protocol is shown to be so by this receipt alone (register
+    E3): an xdist worker's since #579, and a serial controller's too, which runs its tests itself (the serial lane of
+    PR #608's run 45782924831, cancelled 2.4 s into its pytest step and typed as a test interrupted). An xdist
+    controller runs no test and has no ``lifecycle``, so it records nothing."""
+
+    lifecycle: Any = None
+    phase_stream: Any = None
+    execution_started = False
+
+    def _record_phase(self, phase: str) -> None:
+        # A held descriptor authenticates a live writer. On failure its last line cannot stand for the current phase.
+        if self.lifecycle is None:
+            return
+        try:
+            if phase == WORKER_PHASES[0]:
+                self.phase_stream = self.lifecycle.open("xb", buffering=0)
+            if self.phase_stream is not None:
+                line = f"{phase_clock_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
+                if self.phase_stream.write(line) != len(line):
+                    raise OSError("incomplete worker phase")
+        except OSError:
+            self._close_phase()
+
+    def _close_phase(self) -> None:
+        if self.phase_stream is not None:
+            with contextlib.suppress(OSError):
+                self.phase_stream.close()
+            self.phase_stream = None
+
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_collection(self):
+        self._record_phase(WORKER_PHASES[0])
+        try:
+            return (yield)
+        finally:
+            self._record_phase(WORKER_PHASES[1])
+
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_runtest_protocol(self):
+        # Enter the first item's protocol before ordinary hooks may block or suppress logstart.
+        if not self.execution_started:
+            self._record_phase(WORKER_PHASES[2])
+            self.execution_started = True
+        return (yield)
+
+
+class Controller(PhaseReceipt):
     def __init__(self, config: Any, seconds: float, margin: float) -> None:
         import watchdog
 
@@ -517,8 +575,12 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
-        _write(self.dir, "controller-pid", f"{os.getpid()}\n")
-        _write(self.dir, "controller-start", f"{proctree.start_time(os.getpid())}\n")
+        birth = proctree.start_time(os.getpid())
+        _write(self.dir, f"{CONTROLLER}-pid", f"{os.getpid()}\n")
+        _write(self.dir, f"{CONTROLLER}-start", f"{birth}\n")
+        if not self.distributed:
+            # The one process runs the tests, so it keeps a worker's receipt, under its own registered name.
+            self.lifecycle = self.dir / lifecycle_receipt(CONTROLLER, os.getpid(), birth)
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -654,6 +716,10 @@ class Controller:
             _write(self.dir, AFTER_FINISH_SIGNAL_READY, _stamp("the Linux controller armed its stack request"))
         atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
+        # A finished session is read from its files, not from a live writer: a serial controller's receipt is released
+        # here, so nothing of the session's stays open once it has said it finished (an in-process session's directory
+        # can then be removed on Windows).
+        self._close_phase()
         # Nothing the session made is collected at exit: interpreter finalization runs full collections, and over a
         # serial session's heap they outlasted the margin, so the sentinel ended sessions that had finished (the
         # nightly's Linux reference shards, 2026-11-17 to 11-22: ``Garbage-collecting``, no Python frame; register
@@ -725,7 +791,7 @@ class Controller:
         self.finish()
 
 
-class Worker:
+class Worker(PhaseReceipt):
     """An xdist worker: at the absolute deadline, the running test's autopsy, then exit."""
 
     def __init__(self, config: Any, wall: float, directory: str, margin: float) -> None:
@@ -733,8 +799,6 @@ class Worker:
         self.mono = time.monotonic() + (wall - time.time())
         self.dir = Path(directory)
         self._done = threading.Event()
-        self.phase_stream = None
-        self.execution_started = False
         worker = config.workerinput.get("workerid", "?")
         # Half way from its own exit, at the deadline, to the controller's ending it, a margin on (the docstring's end)
         self.stacks = Stacks(marker(self.dir, f"worker-{worker}-deadline-stacks"), self.mono + margin / 2)
@@ -744,43 +808,9 @@ class Worker:
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
         birth = proctree.start_time(os.getpid())
         _write(self.dir, f"worker-{worker}-start", f"{birth}\n")
-        self.lifecycle = marker(self.dir, f"worker-{os.getpid()}-{birth}-lifecycle")
+        self.lifecycle = self.dir / lifecycle_receipt(f"worker-{worker}", os.getpid(), birth)
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
-
-    def _record_phase(self, phase: str) -> None:
-        # A held descriptor authenticates a live writer. On failure its last line cannot stand for the current phase.
-        try:
-            if phase == WORKER_PHASES[0]:
-                self.phase_stream = self.lifecycle.open("xb", buffering=0)
-            if self.phase_stream is not None:
-                line = f"{phase_clock_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
-                if self.phase_stream.write(line) != len(line):
-                    raise OSError("incomplete worker phase")
-        except OSError:
-            self._close_phase()
-
-    def _close_phase(self) -> None:
-        if self.phase_stream is not None:
-            with contextlib.suppress(OSError):
-                self.phase_stream.close()
-            self.phase_stream = None
-
-    @pytest.hookimpl(wrapper=True, tryfirst=True)
-    def pytest_collection(self):
-        self._record_phase(WORKER_PHASES[0])
-        try:
-            return (yield)
-        finally:
-            self._record_phase(WORKER_PHASES[1])
-
-    @pytest.hookimpl(wrapper=True, tryfirst=True)
-    def pytest_runtest_protocol(self):
-        # Enter the first item's protocol before ordinary hooks may block or suppress logstart.
-        if not self.execution_started:
-            self._record_phase(WORKER_PHASES[2])
-            self.execution_started = True
-        return (yield)
 
     def _watch(self) -> None:
         while not self._done.wait(max(0.0, min(self.mono - time.monotonic(), 60.0))):

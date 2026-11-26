@@ -31,7 +31,7 @@ on:
       probe_scenario:
         description: Controlled cancellation scenario
         type: choice
-        options: [manual, supersede, start]
+        options: [manual, supersede, start, start-serial]
         default: manual
       probe_role:
         description: Isolated child run role
@@ -121,13 +121,13 @@ jobs:
           echo 0 | sudo -n tee "$group/memory.swap.max"
           echo "AEW_PROOF_OOM_GROUP=$group" >> "$GITHUB_ENV"
       - name: Install tools before starting the GitHub step timer
-        if: matrix.kind == 'time-limit-github' || matrix.kind == 'cancel' || matrix.kind == 'cancel-start'
+        if: matrix.kind == 'time-limit-github' || startsWith(matrix.kind, 'cancel')
         shell: bash
         run: python tools/ci/install_evidence.py
       - name: Real planted lane
         id: lane
         if: matrix.kind != 'time-limit-github'
-        continue-on-error: ${{ matrix.kind != 'normal' && matrix.kind != 'cancel' && matrix.kind != 'cancel-start' }}
+        continue-on-error: ${{ matrix.kind != 'normal' && !startsWith(matrix.kind, 'cancel') }}
         timeout-minutes: 17
         uses: ./.github/actions/lane
         env: &plant-env
@@ -140,8 +140,8 @@ jobs:
           source: ${{ runner.temp }}/lane-reports
           artifact: plant-${{ runner.os }}-${{ matrix.kind }}-${{ matrix.ablate }}-attempt-${{ github.run_attempt }}
           command: >-
-            python -m pytest -q -p no:cacheprovider ${{ matrix.kind == 'time-limit-github' && '-p no:xdist' || (matrix.kind == 'cancel-start' && '-n 2 --dist worksteal --max-worker-restart 0' || matrix.os == 'ubuntu-24.04' && matrix.kind == 'cancel' && '-n 4 --dist worksteal --max-worker-restart 0' || contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
-            tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || matrix.kind == 'cancel-start' && 'startup.py' || 'deaths.py' }} --lane integration
+            python -m pytest -q -p no:cacheprovider ${{ (matrix.kind == 'time-limit-github' || matrix.kind == 'cancel-start-serial') && '-p no:xdist' || (matrix.kind == 'cancel-start' && '-n 2 --dist worksteal --max-worker-restart 0' || matrix.os == 'ubuntu-24.04' && matrix.kind == 'cancel' && '-n 4 --dist worksteal --max-worker-restart 0' || contains(fromJSON('["oom","worker-kill","cancel","failure","failure-in-death"]'), matrix.kind) && '-n 1 --dist worksteal --max-worker-restart 0' || '-n auto --dist worksteal --max-worker-restart 0') }}
+            tests/integration/evidence_plants/${{ startsWith(matrix.kind, 'failure') && 'failures.py' || startsWith(matrix.kind, 'cancel-start') && 'startup.py' || 'deaths.py' }} --lane integration
             ${{ matrix.ablate == 'verbosity' && '-o verbosity_assertions=0' || '' }}
             --test-timeout ${{ matrix.kind == 'hang' && 8 || 120 }}
             --session-deadline ${{ (matrix.kind == 'hang' || matrix.kind == 'deadline' || matrix.kind == 'failure-in-death') && 30 || (startsWith(matrix.kind, 'cancel') && 360 || 180) }}
@@ -172,7 +172,7 @@ jobs:
         run: sudo -n rmdir "$AEW_PROOF_OOM_GROUP"
       - name: Confirm planted death
         timeout-minutes: 1
-        if: matrix.kind != 'normal' && matrix.kind != 'cancel' && matrix.kind != 'cancel-start'
+        if: matrix.kind != 'normal' && !startsWith(matrix.kind, 'cancel')
         shell: bash
         env:
           LANE_OUTCOME: ${{ matrix.kind == 'time-limit-github' && steps.timed.outcome || steps.lane.outcome }}
@@ -191,8 +191,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
-        # The start-up control's target cancels a lane whose workers hold their collection (register E3; #579, M1).
-        kind: ${{ inputs.probe_scenario == 'start' && fromJSON('["cancel-start"]') || fromJSON('["cancel"]') }}
+        # The start-up controls' targets cancel a lane whose workers hold their collection (register E3; #579, M1),
+        # and a serial lane whose controller holds its own.
+        kind: ${{ inputs.probe_scenario == 'start' && fromJSON('["cancel-start"]') || inputs.probe_scenario == 'start-serial' && fromJSON('["cancel-start-serial"]') || fromJSON('["cancel"]') }}
         ablate: [none]
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 30
@@ -259,7 +260,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [manual, supersede, start]
+        scenario: [manual, supersede, start, start-serial]
     runs-on: ubuntu-24.04
     # The control allows 20 minutes for runner allocation before its existing execution budget.
     timeout-minutes: 46

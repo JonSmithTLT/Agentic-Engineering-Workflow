@@ -180,12 +180,18 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     cancel = jobs["cancel-plant"]
     assert cancel["if"] == ("github.event_name != 'pull_request' && "
                             "(!inputs.probe_origin || inputs.probe_role == 'target')")
-    # The start-up control's target alone runs the start-up plant (register E3; #579, M1).
-    assert cancel["strategy"]["matrix"]["kind"] == ("${{ inputs.probe_scenario == 'start' && "
-                                                    "fromJSON('[\"cancel-start\"]') || fromJSON('[\"cancel\"]') }}")
-    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", "start"]
+    # Each start-up control's target alone runs its start-up plant: the xdist one (register E3; #579, M1) and its
+    # serial twin, whose command runs one process.
+    prove = _load("prove_cancel_evidence")
+    assert cancel["strategy"]["matrix"]["kind"] == (
+        "${{ " + "".join(f"inputs.probe_scenario == '{scenario}' && fromJSON('[\"{kind}\"]') || "
+                         for scenario, kind in prove.START_KINDS.items()) + "fromJSON('[\"cancel\"]') }}")
+    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", *prove.START_KINDS]
     scenarios = proof[True]["workflow_dispatch"]["inputs"]["probe_scenario"]["options"]
-    assert scenarios == ["manual", "supersede", "start"]
+    assert scenarios == ["manual", "supersede", *prove.START_KINDS]
+    command = next(step["with"]["command"] for step in jobs["plant"]["steps"] if step.get("id") == "lane")
+    assert "matrix.kind == 'cancel-start-serial') && '-p no:xdist'" in command
+    assert "startsWith(matrix.kind, 'cancel-start') && 'startup.py'" in command
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
@@ -804,6 +810,51 @@ def test_a_worker_phase_is_read_at_a_later_signal_however_coarse_the_monotonic_t
         worker._close_phase()
     # The runner's own clock, not the simulated tick: a 15.6 ms one fails here on the Windows lanes.
     assert session_deadline.time.get_clock_info(session_deadline.PHASE_CLOCK).resolution <= 1e-6
+
+
+def test_a_serial_controllers_receipt_is_read_from_its_live_writer_and_an_xdist_controller_has_none(tmp_path):
+    """A serial session's controller runs its tests itself, so its phase is read like a worker's, under its own name,
+    and only while it holds the receipt; an xdist controller keeps none and is no row (register E3: PR #608's serial
+    lane, cancelled before its first test)."""
+    import json
+    import os
+
+    import proctree
+    import worker_evidence as ev
+    from evidence_files import BEFORE_TESTS, CONTROLLER, lifecycle_receipt
+
+    pid, birth = proctree.identity(os.getpid())
+    xdist = tmp_path / "autopsy/session-xdist"
+    serial = tmp_path / "autopsy/session-serial"
+    for directory in (xdist, serial):
+        directory.mkdir(parents=True)
+        (directory / "controller-pid.txt").write_text(f"{pid}\n")
+        (directory / "controller-start.txt").write_text(f"{birth}\n")
+    (xdist / "worker-count.txt").write_text("2\n")
+    assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns()) == []
+    assert not ev.before_tests(tmp_path, 1.0, [], observer="warning")  # a controller with no receipt shows nothing
+    controller = object.__new__(session_deadline.Controller)
+    controller.lifecycle = serial / lifecycle_receipt(CONTROLLER, pid, birth)
+    try:
+        for phase in session_deadline.WORKER_PHASES[:-1]:
+            controller._record_phase(phase)
+            rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())
+            assert rows == [{"session": "session-serial", "worker": CONTROLLER, "phase": phase, "pid": pid,
+                             "start": birth}]
+        assert ev.before_tests(tmp_path, 1.0, rows, observer="warning")
+        record = json.loads((tmp_path / BEFORE_TESTS).read_text())
+        assert [(s["session"], s.get("serial"), len(s["workers"])) for s in record["sessions"]] == [
+            ("autopsy/session-xdist", None, 0), ("autopsy/session-serial", True, 1)]
+        (tmp_path / BEFORE_TESTS).unlink()
+        controller._record_phase(session_deadline.WORKER_PHASES[-1])
+        rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())
+        assert rows[0]["phase"] == "execution-started"
+        assert not ev.before_tests(tmp_path, 1.0, rows, observer="warning")  # it has entered its first test
+    finally:
+        controller._close_phase()
+    # The receipt is left behind with no live writer: its last line no longer stands for the controller's phase.
+    assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())[0]["phase"] == "indeterminate"
+    assert not (tmp_path / BEFORE_TESTS).exists()
 
 
 def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypatch):

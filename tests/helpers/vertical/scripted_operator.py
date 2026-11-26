@@ -522,8 +522,16 @@ OFFLINE_MODEL = f"{OFFLINE_PROVIDER}/fake-model"
 
 def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str, Fixture]:
     """What the offline world needs of the execution policy beyond what the operator types, by name: the fake harness,
-    and the writable roots where contained runs (Linux) read their scripts."""
+    and the writable roots where contained runs (Linux) read their scripts and, in an autopsy session, write their
+    childdiag files."""
     writable = [lab.env[SCRIPTS_ENV], str(lab.tmp / "sync")]
+    # The test's children directory, where the Lead's TUI writes its childdiag files (``mark_helper_dir`` names it in
+    # the scripts). Outside the writable roots, the contained TUI wrote them into the sandbox's private /tmp, and
+    # the #213 autopsy found no ``events-*`` (STG-13's note of 2026-10-30; the V-01 re-measure of 2026-11-26, C15).
+    # The product's own TUI diagnostics are its XDG directories, which the Lead's layout already makes writable.
+    children = autopsy.child_dir()
+    if children is not None:
+        writable.append(str(children))
     fixtures: dict[str, Fixture] = {"harness: fake": lambda doc: doc.update(harness="fake"),
                                     "containment.writable": lambda doc: doc.update(containment={"writable": writable})}
     if steering:

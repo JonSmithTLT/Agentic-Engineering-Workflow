@@ -524,7 +524,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `reports`
 
-- `reports` (kept in git); named by `aew.engine.reports`: `DIRECTORY`; read by `aew.engine.reports`: `Reports.write`, `read`; `aew.engine.store`: `replace_pending`
+- `reports` (kept in git); named by `aew.engine.reports`: `DIRECTORY`; read by `aew.engine.reports`: `Reports.write`, `_read_published`; `aew.engine.store`: `replace_pending`
   - Written by
     - `aew.engine.reports:Reports.write`
 

@@ -52,18 +52,27 @@ def read(root: Path, report_id: str, revision: int) -> dict[str, Any]:
     if not _visible_revision(report_id, revision):
         raise NotFound(f"no Lead report {report_id!r}", reason="report_not_found")
     try:
-        record = json.loads(read_replaced(root / _rel(report_id)).decode("utf-8"))
+        record = json.loads(_read_published(root, report_id).decode("utf-8"))
         validate("report", record, source=report_id)
     except FileNotFoundError:
-        if _pending_apply(root, report_id):
-            raise IntegrityError(f"Lead report {report_id} is awaiting publication. Retry after `aew status` "
-                                 "applies the committed writes.", reason="report_pending_apply") from None
         raise NotFound(f"no Lead report {report_id!r}", reason="report_not_found") from None
     except (OSError, ValueError, ValidationFailed) as exc:
         raise IntegrityError(f"Lead report {report_id} cannot be read", reason="report_unreadable") from exc
     if record["id"] != report_id:
         raise IntegrityError(f"Lead report {report_id} has the wrong record id", reason="report_id_mismatch")
     return record
+
+
+def _read_published(root: Path, report_id: str) -> bytes:
+    path = root / _rel(report_id)
+    try:
+        return read_replaced(path)
+    except FileNotFoundError:
+        if _pending_apply(root, report_id):
+            raise IntegrityError(f"Lead report {report_id} is awaiting publication. Retry after `aew status` "
+                                 "applies the committed writes.", reason="report_pending_apply") from None
+    # A writer may have applied the transaction while the reader checked the committed state.
+    return read_replaced(path)
 
 
 def _pending_apply(root: Path, report_id: str) -> bool:

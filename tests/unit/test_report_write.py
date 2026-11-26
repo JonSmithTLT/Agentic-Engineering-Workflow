@@ -179,8 +179,19 @@ def test_the_read_only_view_reports_a_pending_apply_and_the_status_command_recov
             reports.read_view(engine.aew_root, report_id, state["revision"])
     assert pending.value.details["reason"] == "report_pending_apply"
     assert "aew status" in pending.value.message
-    p.ok("status", "--json")
-    assert reports.read_view(engine.aew_root, report_id, state["revision"])["body"] == BODY
+
+    read_replaced = reports.read_replaced
+
+    def apply_after_first_open(path):
+        try:
+            return read_replaced(path)
+        except FileNotFoundError:
+            p.ok("status", "--json")
+            raise
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports, "read_replaced", apply_after_first_open)
+        assert reports.read_view(engine.aew_root, report_id, state["revision"])["body"] == BODY
 
 
 def test_report_count_refusal_names_the_session_limit_and_a_new_session_has_its_own(lab, monkeypatch):

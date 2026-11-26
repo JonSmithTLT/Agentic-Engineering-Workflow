@@ -296,11 +296,11 @@ class FakeOpenCode:
             add_usage(s.info, msg.get("tokens"), msg.get("cost"))
 
     def deliver(self, s: Session, *, boundary: bool = False) -> int:
-        """Move waiting prompts into the conversation (user messages), in order. At a step boundary in
-        ``idle_before_queue_s`` mode, queued prompts stay waiting (the late-arrival race of a real server)."""
+        """Steer inputs join at step boundaries. At a turn boundary one queued input follows any steers."""
         with self.lock:
-            hold = boundary and self.knobs.get("idle_before_queue_s") is not None
-            items = [i for i in s.inbox if not (hold and i["delivery"] == "queue")]
+            items = [i for i in s.inbox if i["delivery"] == "steer"]
+            if not boundary and not items:
+                items = s.inbox[:1]
             s.inbox = [i for i in s.inbox if i not in items]
             for item in items:
                 s.messages.append({"id": item["id"], "type": "user", "text": item["payload"]["text"],
@@ -439,10 +439,10 @@ class FakeOpenCode:
                 outcome = self.gate(s) or self.provider_rejects(s) or "succeeded"
                 for i, step in enumerate(self.steps if outcome == "succeeded" else []):
                     ended = self.run_step(s, i, step)
-                    self.deliver(s, boundary=True)  # steered or queued prompts join between steps
                     if ended:
                         outcome = ended
                         break
+                    self.deliver(s, boundary=True)
             if outcome == "succeeded":
                 self.assistant(s, len(self.steps), "stop")
             requeue = self.knobs.get("idle_before_queue_s")
@@ -465,7 +465,7 @@ class FakeOpenCode:
                 pending = bool(s.inbox)
                 error, s.error = s.error, None
             self.emit(f"session.execution.{outcome}", {"sessionID": sid, **({"error": error} if error else {})})
-        if pending and self.knobs.get("idle_before_queue_s") is not None:
+        if pending and outcome == "succeeded" and self.knobs.get("idle_before_queue_s") is not None:
             # The race a real server has: the turn is idle, a prompt queued during it is not yet delivered, and
             # a new execution starts a moment later. A client that saw only "idle" would call the run finished.
             time.sleep(float(self.knobs["idle_before_queue_s"]))
@@ -480,20 +480,20 @@ class FakeOpenCode:
             item["payload"]["metadata"] = body["metadata"]
         with self.lock:
             earlier = next((p for p in s.inbox if p["id"] == item["id"]), None)
-            if earlier is not None:
-                return earlier
             delivered = next((p for p in s.messages if p["id"] == item["id"] and p["type"] == "user"), None)
             if delivered is not None:
                 return {**item, "time": delivered["time"], "payload": {"text": delivered["text"]}}
-            s.inbox.append(item)
-            s.prompts.append({"id": item["id"], "delivery": body.get("delivery")})  # as posted: None when absent
+            if earlier is None:
+                s.inbox.append(item)
+                s.prompts.append({"id": item["id"], "delivery": body.get("delivery")})  # None when absent
             start = not s.running and body.get("resume") is not False
             s.running = s.running or start
-        self.persist()  # a test reads what was posted even when the server is stopped before the turn ends
-        self.emit("session.inbox.enqueued", {"sessionID": s.info["id"], "inboxID": item["id"]})
+        if earlier is None:
+            self.persist()  # a test reads what was posted even when the server is stopped before the turn ends
+            self.emit("session.inbox.enqueued", {"sessionID": s.info["id"], "inboxID": item["id"]})
         if start:
             threading.Thread(target=self.execute, args=(s,), daemon=True).start()
-        return item
+        return earlier or item
 
     # ------------------------------------------------------------------ API
 

@@ -641,16 +641,20 @@
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
     "coordination_store": {
-      "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Written once, by the operator's `manifest adopt` that leaves `coordination.messaging: enabled`, and never removed: threads may exist after the switch is turned off. An engine built before thread sealing refuses a control state holding it, so it cannot end a messaged invocation without a seal.",
+      "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Registered once, at init, at adoption of enabled messaging, or at migration of a v1 project with enabled messaging. Threads may exist after the switch is turned off, so the registration is retained.",
       "type": "object",
       "required": ["since_rev", "decision"],
       "additionalProperties": false,
       "properties": {
-        "since_rev": {"description": "The revision of the adoption (or of the migration) that registered the project.", "type": "integer", "minimum": 1},
-        "decision": {"description": "The adoption's decision record; null when the migration of a v1 project that had adopted messaging registered it.", "oneOf": [{"type": "string", "pattern": "^D-[0-9]+$"}, {"type": "null"}]},
-        "via": {"description": "Present only for a registration by `aew migrate` (the key is v2-only, so a v1 adoption could not write it).", "const": "migrate"}
+        "since_rev": {"type": "integer", "minimum": 0},
+        "decision": {"description": "The adoption decision record, or null for init or migration.", "oneOf": [{"type": "string", "pattern": "^D-[0-9]+$"}, {"type": "null"}]},
+        "via": {"enum": ["init", "migrate"]}
       },
-      "if": {"required": ["via"]}, "then": {"properties": {"decision": {"type": "null"}}}, "else": {"properties": {"decision": {"type": "string"}}}
+      "oneOf": [
+        {"required": ["via"], "properties": {"via": {"const": "init"}, "since_rev": {"const": 0}, "decision": {"type": "null"}}},
+        {"required": ["via"], "properties": {"via": {"const": "migrate"}, "since_rev": {"minimum": 1}, "decision": {"type": "null"}}},
+        {"not": {"required": ["via"]}, "properties": {"since_rev": {"minimum": 1}, "decision": {"type": "string"}}}
+      ]
     },
     "coordination_unseen": {
       "description": "F9-A (ADR-0017 D11; plan v4 D-38): worker messages of sealed threads that no Lead generation has been shown. Entries are added only by the commit that seals their thread and removed once `.aew/coordination/lead-seen.jsonl` records them; at most 20, with the further ones counted in `omitted` and the range of their sealing revisions in `omitted_revs` (each omitted message stays listed in its seal record). Absent while there is none.",

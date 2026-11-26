@@ -54,7 +54,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     from aew.policy import execution as X
 
     _wakes_are_posted_on_this_platform(monkeypatch)
-    assert _next_after_launch(project) == K.no_broker_step(["run-1"])  # on by default, and no broker posts
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"], messaging=True)
     assert "no broker is posting wakes here" in _next_after_launch(project)
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
     assert _next_after_launch(project).startswith("wait on run-1 with `harness_wait`")  # off: no fallback to explain
@@ -73,7 +73,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
     assert Q.status(project.root / ".aew", generation=generation) is None  # no wake was ever recorded
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: object())  # crashed, stale or closed
-    assert _next_after_launch(project) == K.no_broker_step(["run-1"])
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"], messaging=True)
 
 
 def _engine_of(project):
@@ -114,7 +114,7 @@ def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkey
     policy = engine.execution_policy()[0]
     assert X.push_wake(policy) == X.PUSH_WAKE_OFF and L.pushes_wakes(engine) is False
     assert L.lead_poster(policy, "password", unix="socket") is None
-    assert engine._harness._wait_on(["run-1"]) == K.wait_step(["run-1"])
+    assert engine._harness._wait_on(["run-1"]) == K.wait_step(["run-1"], messaging=True)
     system = P.lead_config(push_wake=L.pushes_wakes(engine))["agents"][P.LEAD_AGENT]["system"]
     assert Q.HEADER not in system and "do not end your turn" in system
 

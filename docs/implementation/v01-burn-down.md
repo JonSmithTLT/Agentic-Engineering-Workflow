@@ -2,8 +2,8 @@
 
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
-and each question below is the operator's or the designer's. The operator answered Q1, Q5 and Q7 on 2026-11-26; Q10 is
-open. It changes no threshold: those are
+and each question below is the operator's or the designer's. The operator answered Q1, Q5, Q7 and Q10 on 2026-11-26.
+It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -50,7 +50,7 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | **C3** An empty project offers no action | `_control_part` returns the project's part before any action (`projection.py:122`); `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so the built `ticket_draft` (`src/aew/surface/availability.py:173`) is never offered and the Lead guesses it | design | `E373` | None | The other clusters | M, 1 PR | Q4 | open |
 | **C4** `expect_rev` on every call | The revision check is project-wide: every typed tool requires `expect_rev` (`src/aew/surface/contract.py:103`) and the projection supplies it; the driver's hint filler appends it to every hinted command (`tests/helpers/vertical/hints.py:79`), and the Lead's retries strip it (`lead.py:558-563`) | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | in flight (#596) |
 | **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` lists every unfinished stage intent, the steering loop's running one included (`projection.py:233-243`). Its arguments also omit `choice` and `rationale`, which `resolve` requires (`contract.py:285-295`): refused `INVALID_ARGUMENTS`; those arguments are E388's, the row #597 filed | product, design | `E374`, `E388` | None | The other clusters | M, 1 to 2 PRs | E335 (done); Q9 | open |
-| **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters | S, 1 PR | Q1, answered yes for the `woken` wait: the amendment of `vertical-uat.md` §2 it approves goes in E375's pull request; Q10 for the BLOCKED stop | open |
+| **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters; with the loop now running the review stage itself, C5's refused `resolve` of the loop's stage also shows at REVIEW_PENDING | S, 1 PR | Q1 and Q10, both answered: `vertical-uat.md` §2 and §3 amended in E375's pull request | done (#627) |
 | **C7** The reopen blocks at the tool-consent screen | Only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`; `src/aew/capability/consent.py:401-405`) and waits out `src/aew/operator.py:28`'s timeout; the scripted operator answers only the resume code (`scripted_operator.py:316-321`). The counted takeover follows and interrupts the implementer | oracle | `E376` | No strict case; it clears the alpha's V2-forced line | The resume code counts under `pin_reentries` on Linux (`scripted_operator.py:320`; `Ledger.console_challenge`), reopen stays a G3 fallback (C12) | S, test-only | E335 for the alpha; Q5, answered: the consent screen is a setup fixture, recorded and never counted | done (#603) |
 | **C8** Not told where things stand in words | The scripted Lead reads only `structuredContent` (`lead.py:254`), and `_words` looks for fields `resume` does not carry (`lead.py:710-715`); the readable text is the MCP `content[0].text` (`src/aew/surface/mcp.py:240-247`). Unverified: whether the rendered resume names the Ticket | oracle, probably | `E377` | None | As C7 | Part of C7's PR | C7 | done (#603) |
 | **C9** A semantic conflict has no decision | At COMMIT_READY with the queue entry AWAITING_DISPOSITION, `_ticket_actions` emits no decision (`projection.py:246-299`); the only guidance is a requeue hint (`src/aew/engine/resume_ops.py:471-476`); after it `ticket_prepare` is offered and refused, and the Lead's gap key carries the revision (`lead.py:510-525`), so it loops | design, product, oracle | `E378` | None | Counters and fallbacks of the other clusters | M, 1 to 2 PRs | E335; Q2 | open |
@@ -154,8 +154,8 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 4. **C4** (E329, #596), with its driver change.
 5. **C5** (E374, after Q9, and E388, the `resolve` decisions' arguments, filed by #597).
 6. **C9** and **C11** (E378, E380), after Q2 and Q6.
-7. **C6** (E375), an oracle fix with its `vertical-uat.md` §2 amendment for the `woken` wait (Q1 answered); its
-   BLOCKED-stop part waits for Q10.
+7. **C6** (E375, done: #627), an oracle fix with its `vertical-uat.md` §2 and §3 amendments (Q1 and Q10 answered):
+   `mechanical_calls` 0 in each steering-on case.
 8. **C14** (E384), with C16 (E386) and C17 (E387) as small fixes beside it.
 9. **C13** (E164, E331).
 10. **C12**, the wire track (E381 to E383, E390 to E393, E181, STG-14): after the personal alpha, aligned with STG-14 (Q7).
@@ -167,20 +167,45 @@ G3 #213 and V1 compatible-move.
 
 ## Questions
 
-The operator's three, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
-Q8 and Q9) and the operator's Q10 are open, and are owned by [what the operator and designer owe](decisions-due.md),
-each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351, Q9 on E374 and Q10 on E375
-(`python tools/register.py show <row>`).
+The operator's four, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
+Q8 and Q9) are open, and are owned by [what the operator and designer owe](decisions-due.md), each on the row it holds:
+Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "For q1 yes. That honestly just seems like a bug and sint how aew works now."
     With steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. That
     part of C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which
     E375's pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
-- **Q10 (operator; vertical-uat.md §3, "Steering on"), open, raised at this page's review:** with steering on, does a
+- **Q10 (operator; vertical-uat.md §3, "Steering on"), raised at this page's review:** with steering on, does a
   BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end, and
   not at once, as the scripted Lead counts it today? It decides whether the Lead's push after a self-clearing stop is
   the spec's counted exception or a mechanical call.
+  - **As it was put to the operator:** item 5 of the questions the Lead put in its session on 2026-11-26, verbatim:
+
+    > **5. Q10, what a "BLOCKED" stop counts as in the vertical test**
+    >
+    > With steering on, a background steering loop is supposed to do the routine mechanical steps, so the Lead doesn't
+    > have to. The vertical test counts each time the Lead does one of those steps itself as a "mechanical call", and
+    > too many of them fail the test. The one allowed exception: if the loop declined to act, the Lead stepping in is
+    > fine.
+    >
+    > The question is about one kind of stop. Sometimes the loop stops with BLOCKED, for example because a run is
+    > still finishing, and the blocker then clears on its own a moment later. Today the scripted Lead treats every
+    > BLOCKED stop as the loop declining, so it steps in and that is not counted.
+    >
+    > The choice:
+    > - **(a) Count a BLOCKED stop as declined at once (today's behaviour).** It is lenient: the Lead may do work the
+    >   loop would have done seconds later, and the test won't notice.
+    > - **(b) Count it as declined only if the blocker is still there after the run ends.** It is stricter: a Lead
+    >   that jumps in on a self-clearing stop is doing the loop's job, and that counts against it.
+    >
+    > I recommend (b). It keeps the test honest about whether steering actually removes routine work from the Lead,
+    > which is the point of steering. The cost is that the scripted Lead must wait out self-clearing stops before it
+    > acts, which is a small change to the test helper (E375).
+  - **Answered** (operator, 2026-11-26). To an earlier, shorter version of the item the operator answered "5. Tell me
+    more about this."; to the version above: "5. B yes its meant to make sure the lead doesnt do menial labor." A
+    BLOCKED stop counts as a decline only when its blocker is still present after the run ends; the Lead's push after
+    a self-clearing stop is a mechanical call and is counted. E375's pull request amends `vertical-uat.md` §3 with it.
 - **Q5 (operator):** "Is AEW's tool-consent screen at a reopen a setup fixture of the offline world (recorded, never counted), or an operator step the vertical counts? And until REATTACH_LEAD lands, is the seat-resume confirmation code meant to count under `pin_reentries` on Linux, as `Ledger.console_challenge` counts it today?"
   - **Answered** (operator, 2026-11-26): a setup fixture, recorded but not counted. "The vertical was meant to fix ux
     issues. Aew saying a critical item is missing isnt a ux failure its common sense." The seat-resume code still

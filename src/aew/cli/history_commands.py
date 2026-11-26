@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, add_token
 
@@ -12,6 +13,27 @@ def _audit(a: argparse.Namespace):
     if a.expect_rev is None:
         return _engine(a).history_audit(full=a.full)
     return _engine(a).history_audit(full=a.full, token=_lead_token(a), expect_rev=a.expect_rev)
+
+
+# What `aew record body` prints and how (register E170), as its own help says it.
+BODY_HELP = ("Print the body of a work unit's record or of an evidence record (a report, a review, a research or "
+             "discovery record), current or archived, as it was recorded: line breaks and quotes as they are, not as "
+             "an escaped string inside JSON. As recorded is not always as typed: AEW stores a body with LF line "
+             "endings (a CR LF pair becomes LF) and a final line break. The body is its author's text, not AEW's, so "
+             "a character that could steer a terminal (an escape sequence, a carriage return, another control "
+             "character, a bidi override) is printed visibly as \\uXXXX; tabs and line breaks are kept. Invisible "
+             "characters that steer nothing are printed as they are and stay unseen: zero-width and soft-hyphen "
+             "characters, direction marks, line and paragraph separators, tag characters. --json shows every one of "
+             "them as an escape: it gives the recorded text exactly, with the record's kind and unit. A read: it "
+             "takes no credential.")
+
+
+def _body(a: argparse.Namespace) -> Any:
+    """Show terminal controls visibly in the text view and preserve the exact body in JSON."""
+    from aew.util import escape_display_controls
+
+    found = _engine(a).record_body(a.record_id)
+    return found if a.json else escape_display_controls(found["body"])
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:
@@ -98,3 +120,15 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
         _add_json(q)
         q.set_defaults(handler=lambda a: _engine(a).history_search(a.terms, kinds=a.kind, since=a.since,
                                                                   until=a.until, limit=a.limit))
+
+    # Register E170 (SYS-45): any record's body, current or archived, printed as written. A read: it takes no
+    # credential and grants nothing. `aew evidence show`, the structured and bounded Evidence read the designer's
+    # decision of 2026-10-06 names, is a follow-on and keeps its name.
+    p = sub.add_parser("record", help="a record's body, as it was written")
+    rsub = p.add_subparsers(dest="record_cmd", required=True)
+    q = rsub.add_parser("body", help="print a work unit's or an evidence record's body as recorded, current or "
+                                     "archived; what could steer a terminal is shown as \\uXXXX",
+                        description=BODY_HELP)
+    q.add_argument("record_id", help="a work unit's id (T-0001) or an evidence id (INV-0001-review-1)")
+    _add_json(q)
+    q.set_defaults(handler=_body)

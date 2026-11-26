@@ -1042,6 +1042,8 @@ def test_legality_modules_never_import_coordination():
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
                          "aew/harness/told_messages.py"}
+    # E170 and E157 both use the display escaping shared with coordination.
+    assert "aew.util.escape_display_controls" in _imports(src / "aew/cli/history_commands.py")
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
     assert not any(map(_is_coordination, _imports(src / "aew/harness/worker_messages.py")))

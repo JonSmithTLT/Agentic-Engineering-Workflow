@@ -222,6 +222,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `plan propose`
 - `plan reconfirm`
 - `read`
+- `record body`
 - `report show`
 - `resume`
 - `review ingest`

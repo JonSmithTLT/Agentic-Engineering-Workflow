@@ -44,8 +44,8 @@ NOT_DISPATCHING = {
     "message list", "message lost", "message thread", "message unseen",  # conditional coordination reads (F9-A)
     "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
-    "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
-    "report show",  # a read of a saved Lead report, no transaction
+    "plan propose", "plan reconfirm", "record body", "report show", "resume", "review ingest", "role list", "role show",
+    "role validate", "status",
     "credentials",  # retained provider records and policy, no dispatch
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
     "capability add", "capability check", "capability fetch", "capability host-copies", "capability import",

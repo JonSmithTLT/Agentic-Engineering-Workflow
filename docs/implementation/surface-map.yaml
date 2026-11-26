@@ -1412,6 +1412,25 @@ commands:
       reason: "an operator command (OPERATOR_ONLY, after B1): queue order changes from day to day"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: record body
+    home: product
+    users: [operator, lead]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: its handler only reads the committed state and the records it pins (HistoryCommands.
+                   record_body); it takes no credential and no expected revision"
+    probe:
+      - [record, body, "{ticket}"]
+      - [record, body, "{ticket}", --json]
+    refusals: [INTEGRITY_ERROR, NOT_FOUND, PROJECT_NOT_FOUND, USAGE]
+    note: "E170 (SYS-45), the CLI half. The body of a work unit's record or of an evidence record, current or
+      archived, as recorded; printed for a person, what could steer a terminal is shown as an escape
+       (aew.util.escape_display_controls; invisible characters that steer nothing are not), and --json has the exact text.
+      NOT_FOUND carries reason unknown_record or no_body; INTEGRITY_ERROR a record that is not what was recorded
+      (a current one with reason not_text, not_sealed, unreadable, not_this_units, not_pinned,
+      listed_twice or pinned_elsewhere), and says what to do. No typed
+      tool yet: the structured, bounded Evidence read for the typed surface (the designer's decision of 2026-10-06,
+      `aew evidence show`) is E170's follow-on"
   - name: history show
     home: diagnostic
     users: [operator, lead]

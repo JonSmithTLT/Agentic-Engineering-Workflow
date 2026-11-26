@@ -210,31 +210,23 @@ class ContextPacks:
     # ---- register F36: the recovery section of an invocation that replaces one (operator, 2026-11-26)
 
     @staticmethod
-    def _slot(inv: dict[str, Any]) -> tuple[Any, ...]:
-        """What makes two invocations of a unit the same piece of work. A producing role (an implementer, or the
-        executor of a non-mutating Ticket): its role and scope. An independent role: also its card, the snapshot it
-        evaluates and the record under review, so a reviewer of another change, or under another card, replaces
-        nobody."""
-        slot: tuple[Any, ...] = (inv.get("role"), inv.get("scope") or "ticket")
-        if inv.get("role") in ctxmod.RECOVERY_INDEPENDENT_ROLES:
-            slot += ((inv.get("card") or {}).get("id"),
-                     (inv.get("snapshot") or {}).get("relevant_inputs_fingerprint"),
-                     (inv.get("subject") or {}).get("id"))
-        return slot
-
-    @classmethod
-    def predecessor(cls, state: dict[str, Any], inv_id: str) -> str | None:
-        """The invocation ``inv_id`` replaces: the unit's latest earlier invocation in the same slot (``_slot``), when
-        it ended without completing (cancelled, interrupted: any status but active or completed). None for a first
-        invocation, and for one that follows completed work: a reviewer after an implementer, a rework after a review,
-        and a re-review each start from what their own pack sections deliver."""
+    def predecessor(state: dict[str, Any], inv_id: str) -> str | None:
+        """The invocation ``inv_id`` replaces: the unit's latest earlier invocation of the same role and scope, when it
+        ended without completing (cancelled, interrupted, superseded: any status but active or completed). Only for a
+        role that produces the work (``RECOVERY_ROLES``), each of which is completed when its report is taken: an
+        evaluator replaces nobody (a finished plan assessor is ended by `invoke cancel`, and a reviewer's verdict may
+        be recorded before it is ingested, so their status says nothing of completing; review of #614, M1 and M2).
+        None for a first invocation, and for one that follows completed work, such as a rework after a review."""
         inv = state["invocations"][inv_id]
+        if inv.get("role") not in ctxmod.RECOVERY_ROLES:
+            return None
+        slot = (inv["role"], inv.get("scope") or "ticket")
         latest = None
         for other in (state["work"].get(inv["work_unit"]) or {}).get("invocations", []):
             if other == inv_id:
                 break
             earlier = state["invocations"].get(other) or {}
-            if earlier.get("role") and cls._slot(earlier) == cls._slot(inv):  # a lease custodian has no role (M4-D)
+            if (earlier.get("role"), earlier.get("scope") or "ticket") == slot:
                 latest = other
         if latest is None or state["invocations"][latest]["status"] in {"active", "completed"}:
             return None
@@ -243,40 +235,34 @@ class ContextPacks:
     def recovery(self, state: dict[str, Any], inv_id: str) -> dict[str, Any] | None:
         """What a replacement invocation is told of the one it replaces, each fact read from its owner as it stands at
         dispatch and cut to the section's bounds (``aew.knowledge.context``): the predecessor's status (its
-        invocation), why its credential ended (its token record), the evidence it produced (the evidence store), and
-        for an implementer the workspace's paths against its base (``fingerprint.workspace_paths``). An independent
-        role gets neither the reason nor the paths (``RECOVERY_INDEPENDENT_ROLES``); a role that works in a read-only
-        observation inherits no workspace."""
+        invocation), why its credential ended (its token record), the evidence it produced (the evidence store, less
+        any verdict), and for an implementer the workspace's paths against its base
+        (``fingerprint.workspace_paths``). A role that works in a read-only observation inherits no workspace."""
         previous = self.predecessor(state, inv_id)
         if previous is None:
             return None
         inv, old = state["invocations"][inv_id], state["invocations"][previous]
         produced = sorted((e for e in E.scan(self.k.aew_root, inv["work_unit"])[0]
                            if e["producer"].get("invocation") == previous), key=lambda e: e.get("seq", 0))
+        reason = (state["tokens"].get(old.get("token_id") or "") or {}).get("revoke_reason")
         out: dict[str, Any] = {
             "predecessor": previous, "role": old["role"], "scope": old.get("scope") or "ticket",
             "status": old["status"], "workspace_id": old.get("workspace_id"),
-            "evidence": ctxmod.bounded([{"id": e["id"], "kind": e["kind"]} for e in produced],
-                                       ctxmod.RECOVERY_MAX_EVIDENCE)}
-        if inv["role"] in ctxmod.RECOVERY_INDEPENDENT_ROLES:
-            return out
-        reason = (state["tokens"].get(old.get("token_id") or "") or {}).get("revoke_reason")
-        out["reason"] = ctxmod.bounded_text(reason) if reason else None
-        unit = state["work"][inv["work_unit"]]
-        ws = unit.get("workspace") or {}
+            "reason": ctxmod.bounded_text(reason) if reason else None,
+            "evidence": ctxmod.recovery_evidence(produced)}
+        ws = state["work"][inv["work_unit"]].get("workspace") or {}
         if inv["role"] != "implementer" or ws.get("id") != inv.get("workspace_id") or not ws.get("base_commit"):
             return out
-        try:
-            found = fingerprint.workspace_paths(Path(ws["path"]), ws["base_commit"], **self.k.check_cache_inputs())
-        except Exception:  # an unreadable workspace never refuses the dispatch: the section says it was not read
-            out["workspace"] = {"id": ws["id"], "unreadable": True}
-            return out
-        staged, untracked = set(found["staged"]), set(found["untracked"])
-        paths = [{"path": ctxmod.bounded_text(path), **({"staged": True} if path in staged else {}),
-                  **({"untracked": True} if path in untracked else {})}
-                 for path in sorted({*found["changed"], *staged})]
-        out["workspace"] = {"id": ws["id"], "base": ws["base_commit"], "staged": len(staged),
-                            "untracked": len(untracked), "paths": ctxmod.bounded(paths, ctxmod.RECOVERY_MAX_PATHS)}
+        # Read straight after the dispatch's own snapshot of the same workspace: a workspace that cannot be read
+        # has already refused the dispatch there.
+        found = fingerprint.workspace_paths(Path(ws["path"]), ws["base_commit"], **self.k.check_cache_inputs())
+        marked = {mark: set(found[mark]) for mark in ctxmod.RECOVERY_MARKS}
+        paths = [{"path": ctxmod.bounded_text(path), **{mark: True for mark in ctxmod.RECOVERY_MARKS
+                                                        if path in marked[mark]}}
+                 for path in sorted({*found["changed"], *marked["staged"]})]
+        out["workspace"] = {"id": ws["id"], "base": ws["base_commit"],
+                            **{mark: len(marked[mark]) for mark in ctxmod.RECOVERY_MARKS},
+                            "paths": ctxmod.bounded(paths, ctxmod.RECOVERY_MAX_PATHS)}
         return out
 
     @staticmethod

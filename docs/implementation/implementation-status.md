@@ -106,7 +106,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** Implemented (the recitation's part for a replacement; the handoff note and the recitation on a trigger: Designed)
 
-**Acceptance evidence / next action:** An invocation dispatched in the place of one that ended without completing gets a "Recovery reference" section that AEW assembles at dispatch and pins on the invocation: the predecessor, its status and recorded reason, its evidence ids, and for an implementer the workspace's paths against its base, bounded and labelled reference data; a reviewer or verifier gets neither the reason nor the paths, and never replaces an implementer (`tests/integration/test_recovery_section.py`, `tests/unit/test_pack_truth.py`). Its effect on a worker is not measured
+**Acceptance evidence / next action:** An implementer, or the executor of a non-mutating Ticket, dispatched in the place of one that ended without completing gets a "Recovery reference" section that AEW assembles at dispatch and pins on the invocation: the predecessor, its status and recorded reason, its evidence ids (never a verdict), and for an implementer the workspace's paths against its base, bounded and labelled reference data. A reviewer, a verifier and a plan assessor never get it (`tests/integration/test_recovery_section.py`, `tests/unit/test_pack_truth.py`). It is always on when there is a predecessor (operator, 2026-11-26). Its effect on a worker is not measured; widening it to evaluators awaits the operator
 
 ### Read-only concurrency
 

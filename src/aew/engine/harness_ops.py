@@ -41,11 +41,11 @@ from aew.engine.store import Transition
 from aew.errors import (
     AEWError,
     HarnessLaunchFailed,
-    HarnessSendNeedsStore,
     IllegalTransition,
     MessagingSnapshotMismatch,
     NotFound,
     RunLive,
+    StaleRevision,
     TurnEndNeedsMessaging,
     UsageError,
 )
@@ -833,20 +833,26 @@ class Harness:
         return name, text
 
     def _lead_request(self, token: str, run: str, kind: str, payload: dict[str, Any], *, current: bool,
-                      reason: str | None = None,
-                      admit: Callable[[dict[str, Any], dict[str, Any]], None] | None = None) -> dict[str, Any]:
+                      reason: str | None = None, send_when: str | None = None, expect_rev: int | None = None,
+                      idempotency_id: str | None = None) -> dict[str, Any]:
         """Record and deliver a Lead request for a run. Work and invocation state do not change. Like the Lead seat
         operations, it needs no expected revision: it names one run and is checked against the state it commits on.
 
-        ``admit(state, run_entry)``, when given, runs under the same lock once the Lead and the run are found, before
-        any other check or write. It refuses by raising, and then nothing is written (``harness send``'s messaging
-        branch, F9-A plan v4 amendment 2 §3.1)."""
+        A send selects the request or coordination-record path here, with the authority and run check under the same
+        lock. A refused record never reaches the request writer (G4)."""
         directory = runlog.run_dir(self.k.aew_root, run)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.archive.archived_credential)
             inv_id, inv = self._find_run(s.state, run)
-            if admit is not None:
-                admit(s.state, next(r for r in inv["runs"] if r["run"] == run))
+            entry = next(r for r in inv["runs"] if r["run"] == run)
+            route = "request"
+            if send_when is not None:
+                route = send_route(self.coordination.project_switch(s.state), run_messaging_snapshot(entry), send_when,
+                                   invocation=inv_id)
+                if expect_rev is not None and expect_rev != s.revision:
+                    raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}: read again, "
+                                        "then decide whether the message still holds", expected=expect_rev,
+                                        current=s.revision)
             if current:
                 if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
                     raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
@@ -858,7 +864,17 @@ class Harness:
                     raise IllegalTransition(
                         f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
                         "its invocation")
-            entry = next(r for r in inv["runs"] if r["run"] == run)
+            if send_when is not None:
+                body = payload["text"]
+                if route == "coordination":
+                    return self.coordination.record_harness_send(s.state, actor, inv_id, body, when=send_when,
+                                                                  idempotency_id=idempotency_id) | {"run": run}
+                if idempotency_id is not None:
+                    raise UsageError("`--idempotency-id` needs coordination messaging", reason="messaging_off")
+                if len(body) > MAX_SEND_CHARS:
+                    raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has "
+                                     f"{len(body)}. Put the material in a file in the agent's workspace and send its "
+                                     "path instead")
             name, text = self._record_request(entry, kind, payload)
             revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
                                            reason=reason, refs=[f"run:{run}"]))
@@ -873,7 +889,8 @@ class Harness:
             raise UsageError(f"a stop reason is at most {MAX_SEND_CHARS} characters; this one has {len(reason)}")
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
-    def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN) -> dict[str, Any]:
+    def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN,
+                     expect_rev: int | None = None, idempotency_id: str | None = None) -> dict[str, Any]:
         """Deliver a Lead message to a running agent. ``when`` is its timing (F9-A plan v4 amendment 2 §1, §3, §4;
         register E55): ``next-step``, the default, reaches the agent at its next step boundary without interrupting it
         (OpenCode ``steer``); ``turn-end`` reaches it after its current turn (OpenCode ``queue``), and exists only
@@ -884,8 +901,7 @@ class Harness:
 
         * both off (M4-H's treatment, G1): ``next-step`` is a supervisor request file of up to ``MAX_SEND_CHARS``, as
           before; ``turn-end`` is refused ``TURN_END_NEEDS_MESSAGING``;
-        * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
-          (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
+        * both on (G4): every send is recorded in the message store, failing closed;
         * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal. The Lead relaunches
           the run to record a launch snapshot matching the current adopted switch.
 
@@ -897,17 +913,10 @@ class Harness:
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
             raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
-        if len(text) > MAX_SEND_CHARS:
-            raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has {len(text)}. "
-                             "Put the material in a file in the agent's workspace and send its path instead")
-
-        def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
-            send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when,
-                       invocation=K.invocation_of_run(entry["run"]))
-
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.
-        return self._lead_request(token, run, "send", {"text": text}, current=True, admit=admit)
+        return self._lead_request(token, run, "send", {"text": text}, current=True, send_when=when,
+                                  expect_rev=expect_rev, idempotency_id=idempotency_id)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         """Stop a run's current turn, keeping its session: `harness send` continues it. Work and invocation state do
@@ -1190,9 +1199,8 @@ def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
 def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
-    timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
-    and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
-    switched off or on records the matching snapshot. ``invocation`` is the run's, for the relaunch remedy."""
+    timing is ``next-step``. Both on goes through the coordination record. Mismatch has priority over a timing's
+    refusal and calls for a relaunch, which records the adopted switch in the new run's snapshot."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
@@ -1201,10 +1209,7 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)
     if on:
-        raise HarnessSendNeedsStore(
-            "coordination messaging is on, and this AEW version cannot yet record `harness send` in the message store; "
-            "nothing was sent. With messaging on, every send is recorded and fails closed: not yet available (F9-A "
-            "MS5b adds it)", when=when)
+        return "coordination"
     if when == L.TURN_END:
         raise TurnEndNeedsMessaging(
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "

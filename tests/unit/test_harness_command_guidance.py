@@ -6,6 +6,7 @@ import argparse
 import re
 import threading
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -282,21 +283,18 @@ def test_fields_command_roundtrip(value: str) -> None:
     assert args.reason == value
 
 
-def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`harness send` knows the run it was given, so its mismatch refusal names that run's invocation (#313 review,
-    F1). The route is decided inside `_lead_request`'s admit; this drives it with a run whose snapshot disagrees."""
+def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mismatch is reported for the named run before any write, naming the invocation to relaunch (#313)."""
     harness = Harness.__new__(Harness)
     harness.coordination = SimpleNamespace(project_switch=lambda _state: "disabled")
-    monkeypatch.setattr("aew.engine.harness_ops.run_messaging_snapshot", lambda _entry: "enabled")
-    admitted: list[Callable[[dict[str, object], dict[str, object]], None]] = []
-
-    def capture(_token: str, _run: str, _kind: str, _payload: dict[str, str], *, current: bool, admit: Callable[
-            [dict[str, object], dict[str, object]], None]) -> dict[str, object]:
-        admitted.append(admit)
-        return {}
-
-    monkeypatch.setattr(harness, "_lead_request", capture, raising=False)
-    harness.harness_send(token="token", run="R-INV-0012-1", text="hello")
+    harness.archive = SimpleNamespace(archived_credential=lambda _key: None)
+    run = "R-INV-0012-1"
+    entry = {"run": run, "coordination": {"messaging": "enabled"}}
+    state = {"invocations": {"INV-0012": {"runs": [entry], "status": "active"}}}
+    harness.k = SimpleNamespace(aew_root=tmp_path,
+                                store=SimpleNamespace(session=lambda: nullcontext(SimpleNamespace(state=state))))
+    monkeypatch.setattr("aew.engine.harness_ops.require_lead", lambda *_args, **_kwargs: {})
     with pytest.raises(MessagingSnapshotMismatch) as raised:
-        admitted[0]({}, {"run": "R-INV-0012-1"})
+        harness.harness_send(token="token", run=run, text="hello")
     assert "`aew harness launch INV-0012 --expect-rev <revision from aew status>`" in raised.value.message

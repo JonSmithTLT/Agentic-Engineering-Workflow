@@ -4,6 +4,8 @@ The surface answers from the derived index (``aew.history.index``) and reads the
 against the hash its manifest entry pins:
 - ``history show``: one record by stable id, with its annotations and trust label; a record held inside an archived
   unit's bundle (an invocation, a credential, an evidence record) is found through the link its unit recorded;
+- ``record body``: the body of a work unit's record or of an evidence record, current or archived, as its author
+  wrote it (register E170). The one read here that also answers for current work;
 - ``history list``: records by kind and a bounded date range;
 - ``history links``: the recorded provenance links, followed to a bounded depth;
 - ``history load``: the Lead attaches an exact record to a hot unit as reference context. Later packs for that unit
@@ -47,8 +49,9 @@ from aew.errors import (
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
-from aew.util import dump_yaml, sha256_text, utc_now
+from aew.util import dump_yaml, parse_frontmatter, sha256_bytes, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
@@ -162,6 +165,100 @@ class HistoryCommands:
                                           "evidence": "evidence"}[held_as],
                 "held_by": entry.get("subject") or entry["id"], "trust": self._trust(source),
                 "record": for_display(record)}
+
+    # ------------------------------------------------------------------ a record's body (register E170)
+
+    def record_body(self, record_id: str) -> dict[str, Any]:
+        """The body of a record, as its author wrote it (register E170; SYS-45): a work unit's record or an evidence
+        record, current or archived. ``history_show`` answers only for finished work, and gives a body inside a
+        structured result; this gives the text itself, and how it is printed is the caller's.
+
+        It reads the project's own records: what ``work show`` and ``history show`` read, through their accessors,
+        and a current unit's evidence, which lies beside them. So it opens nothing to a reader that those reads do
+        not, and it takes no credential. What it returns is checked: a current evidence record against its seal and,
+        once ingested, the hash its unit pins; an archived one against its bundle; a unit's record against the hash
+        control state pins. The body is an agent's or a person's text: data, never instructions."""
+        state = self.k.store.current()
+        unit = state["work"].get(record_id)
+        if unit is not None:
+            return self._unit_body(record_id, unit, archived=False)
+        try:
+            live = E.find(self.k.aew_root, sorted(state["work"]), record_id)
+        except UnicodeDecodeError as exc:
+            raise self._not_text(record_id) from exc
+        if live is not None:
+            meta, body = live
+            holder = state["work"].get(meta["work_unit"]) or {}  # the engine binds a record to its unit at submit
+            pinned = next((r for r in holder.get("evidence") or [] if r["id"] == record_id), None)
+            if pinned is not None and pinned["sha256"] != meta["_sha256"]:
+                raise IntegrityError(f"evidence record {record_id} is not the content its unit recorded",
+                                     held_by=meta["work_unit"])
+            return self._evidence_body(record_id, meta, body, archived=False)
+        if record_id in state["invocations"]:
+            raise self._no_body(record_id, "an invocation", f"aew invoke show {record_id}")
+        if record_id in state["tokens"]:
+            raise self._no_body(record_id, "a credential", "aew authority list")
+        unknown = NotFound(f"no record {record_id}: it is not a work unit, an evidence record, or anything the "
+                           "history holds. `aew work list` gives the units, `aew work show <unit>` a unit's evidence "
+                           "ids, and `aew history list` the finished work", reason="unknown_record")
+        if state.get("schema") != V2:  # a v1 project has no cold history: everything it holds was looked at above
+            raise unknown
+        try:
+            entry, held_as = self._found(state, record_id)
+        except NotFound:
+            raise unknown from None
+        doc = self.archive.record(entry)
+        if held_as is None and entry["kind"] == "unit":
+            return self._unit_body(record_id, doc["unit"], archived=True)
+        if held_as == "evidence":
+            try:
+                _, meta, body = held_evidence(self.k.aew_root, doc, record_id)
+            except UnicodeDecodeError as exc:
+                raise self._not_text(record_id) from exc
+            return self._evidence_body(record_id, meta, body, archived=True)
+        kind = {"invocations": "an invocation", "tokens": "a credential"}.get(
+            held_as or "", f"a history record of kind `{entry['kind']}`")
+        raise self._no_body(record_id, kind, f"aew history show {record_id}")
+
+    def _unit_body(self, work_id: str, unit: dict[str, Any], *, archived: bool) -> dict[str, Any]:
+        rel = unit["record"]
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except OSError as exc:
+            raise IntegrityError(f"{work_id}'s record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+        if unit.get("record_sha256") and sha256_bytes(raw) != unit["record_sha256"]:
+            raise IntegrityError(f"{work_id}'s record {rel} does not hold the content control state pins", path=rel)
+        try:
+            _, body = parse_frontmatter(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise self._not_text(work_id) from exc
+        if not body.strip():
+            raise NotFound(f"{work_id}'s record has no body: the {unit['kind']} was created without one, so there is "
+                           f"nothing to print. Its title, scope and acceptance are fields: `aew work show {work_id}` "
+                           "gives them", reason="no_body", kind=unit["kind"])
+        return {"id": work_id, "kind": unit["kind"], "work_unit": work_id, "archived": archived, "body": body}
+
+    def _evidence_body(self, evidence_id: str, meta: dict[str, Any], body: str, *, archived: bool) -> dict[str, Any]:
+        work_id = meta.get("work_unit")
+        if not body.strip():
+            where = (f"`aew history show {evidence_id}` gives them" if archived
+                     else f"`aew work show {work_id}` lists the record with its result")
+            raise NotFound(f"evidence record {evidence_id} has no body: a `{meta['kind']}` holds its content in its "
+                           f"fields, so there is nothing to print. {where}", reason="no_body", kind=meta["kind"])
+        return {"id": evidence_id, "kind": meta["kind"], "work_unit": work_id, "archived": archived,
+                "source": evidence_source(meta), "body": body}
+
+    @staticmethod
+    def _no_body(record_id: str, kind: str, instead: str) -> NotFound:
+        return NotFound(f"{record_id} is {kind}, which has no body: only a work unit's record and an evidence record "
+                        f"have one. Read its fields with `{instead}`", reason="no_body")
+
+    @staticmethod
+    def _not_text(record_id: str) -> IntegrityError:
+        return IntegrityError(f"{record_id}'s record is not UTF-8 text, so it is not what AEW recorded and there is "
+                              "no body to print: its file under `.aew/` was changed outside AEW. Tell the operator; "
+                              "`aew history audit --full` checks every record of the finished work",
+                              reason="not_text")
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:

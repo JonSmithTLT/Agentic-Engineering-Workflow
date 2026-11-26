@@ -318,7 +318,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 34
 
-**Own slices left:** 3 — the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) (E167); raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) — E167 — inside SYS-22's estimate
+**Own slices left:** 3 — the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) (E167); the site's half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its surface-map entry (E170's note of 2026-11-26) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) — E167 — inside SYS-22's estimate
 
 **Wired:** none
 

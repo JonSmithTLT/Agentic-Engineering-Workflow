@@ -650,7 +650,10 @@ def test_no_skills_says_nothing_about_skills():
 
 def card_lines(card: dict[str, Any]) -> list[str]:
     inputs = ctxmod.PackInputs.__new__(ctxmod.PackInputs)
-    object.__setattr__(inputs, "card", card)
+    archetype = card["extends"]  # the card's capability lines read its role's operations (register E368)
+    for name, value in {"card": card, "role": archetype, "role_def": roles.archetype(archetype),
+                        "scope": "ticket"}.items():
+        object.__setattr__(inputs, name, value)
     return ctxmod._card_section(inputs)
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -131,6 +132,14 @@ SCOPE_TEMPLATES = {
 }
 
 
+# The pack's title: the heading its text starts with, which a run's own text names when it says what the first message
+# holds (``aew.harness.opencode.projection.system_text``).
+CONTRACT_HEADING = "# AEW launch contract"
+# The command a pack prints for an engine operation, wherever it names one, as printed: in its backticks, so the
+# printed-command finder reads it here (the write-back's is built from the kind).
+OPERATION_COMMANDS = {"check.run": "`aew check run <check-id>`"}
+
+
 def output_template(role: str, scope: str | None) -> tuple[str, dict[str, Any]] | tuple[None, None]:
     """The report a role dispatched at ``scope`` writes back, and its format."""
     return SCOPE_TEMPLATES.get(scope or "") or OUTPUT_TEMPLATES.get(role, (None, None))
@@ -226,16 +235,22 @@ def _optional_skills(card: dict[str, Any]) -> list[str]:
     return [s for s in card.get("optional_skills") or [] if s not in skills]
 
 
-def _capability_lines(requested: list[str]) -> list[str]:
-    """The card's other capabilities, split by whether a tool of AEW's serves them (the register's
-    ``CARD_CAPABILITIES``). From the card alone, never from this host: the pack does not say what a host has, so a
-    run's own system text names the tools it got."""
+def _capability_lines(requested: list[str], operations: Iterable[str] = ()) -> list[str]:
+    """The card's other capabilities, split by what serves them: a tool of AEW's (the register's ``CARD_CAPABILITIES``),
+    one of the role's own engine ``operations`` (``evidence.served_by_operation``: a check it may run is its targeted
+    test execution, and the only run whose evidence it can cite; register E368), or neither. From the card and the
+    role's operations alone, never from this host: the pack does not say what a host has, so a run's own system text
+    names the tools it got."""
+    by_operation = E.served_by_operation(operations)
     served = [c for c in requested if c in CARD_CAPABILITIES]
-    other = [c for c in requested if c not in CARD_CAPABILITIES]
+    commanded = [c for c in requested if c in by_operation and c not in CARD_CAPABILITIES]
+    other = [c for c in requested if c not in CARD_CAPABILITIES and c not in by_operation]
     if not requested:
         return ["Other capabilities requested: none"]
     return [*(["Capabilities AEW's tools serve (your system text names the tools this run has): "
                + ", ".join(served)] if served else []),
+            *(["Capabilities an AEW command serves (it records the evidence you cite): "
+               + ", ".join(f"{c} ({OPERATION_COMMANDS[by_operation[c]]})" for c in commanded)] if commanded else []),
             *(["Capabilities no tool of AEW's serves (use your shell and the project's own commands): "
                + ", ".join(other)] if other else [])]
 
@@ -265,7 +280,7 @@ def _card_section(p: PackInputs) -> list[str]:
            + ", ".join(optional)] if (optional := _optional_skills(card)) else []),
         "Required knowledge: " + (", ".join(card.get("required_knowledge", [])) or "none beyond this package"),
         "Authority-sensitive capabilities (within the archetype envelope): " + (", ".join(sensitive) or "none"),
-        *_capability_lines(ordinary),
+        *_capability_lines(ordinary, _operations(p)),
         "Expected outputs: " + (", ".join(card.get("outputs", [])) or "the archetype's standard output"),
         *(["Restricted to operations: " + ", ".join(restrict["operations"])] if restrict.get("operations") else []),
         *(["Restricted to checks: " + ", ".join(restrict["checks"])] if restrict.get("checks") else []),
@@ -348,7 +363,7 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
     snap = p.snapshot
     card_label = f"{p.card['display_name']} — " if p.card else ""
     lines = [
-        f"# AEW launch contract — {p.invocation_id} ({card_label}{p.role}{'/' + p.specialty if p.specialty else ''})",
+        f"{CONTRACT_HEADING} — {p.invocation_id} ({card_label}{p.role}{'/' + p.specialty if p.specialty else ''})",
         "",
         "This package is your complete, bounded context. It was assembled from durable project artifacts;",
         "you do not need, and must not rely on, anyone's conversation history.",
@@ -383,7 +398,8 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
         f"Run commands from the workspace, as in `aew -C \"{p.workspace}\" whoami`",
     ]
     if "check.run" in _operations(p):
-        lines.append("- Run a check: `aew check run <check-id>` (records sealed evidence bound to the snapshot)")
+        lines.append(f"- Run a check: {OPERATION_COMMANDS['check.run']} (records sealed evidence bound to the "
+                     "snapshot)")
         if p.role != "implementer":
             lines.append(CHECK_WRITES_NOTE)
     if kind:

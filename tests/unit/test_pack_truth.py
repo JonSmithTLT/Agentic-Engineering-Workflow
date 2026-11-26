@@ -7,12 +7,20 @@ Each guard is a function of the rendered text or the role's definition, so its p
   offers, and each `submit.<kind>` listed is a kind the engine accepts from that role at that scope. Its limit: a
   card's "Restricted to operations" line is not read (the built-in `plan_assessor` card restricts; its allowed list,
   which the guard reads, is derived from the same restriction);
-- no worker's text both asks for a credential and says there is none, and no text corrects another;
+- no worker's text both asks for a credential and says there is none, and neither the preamble nor the pack corrects
+  the other about it. Its limit: the system text's skill lines qualify the pack's on purpose (ADR-0006, amendment
+  2026-11-05), which no guard here reads;
 - a report format is what the engine accepts as it stands, its other values listed beside it from what the engine
   validates, and it names no scope (the engine fills in the dispatched one);
 - a role that may not change the tree it evaluates is told what a check that writes there does to its submission;
 - an evaluating role's instructions fit its scope: none names an input its pack there does not carry (a diff, check
   output, open findings), and none asks for a field its scope's report refuses (register E366);
+- no pack sends a role to its shell for a capability that one of its own operations serves (a check it may run is its
+  targeted test execution, and the only run whose evidence it can cite), and each such capability is named with the
+  command for it (register E368). Its limit: the capabilities are those ``evidence.OPERATION_CAPABILITIES`` lists, and a
+  line counts as sending to the shell when it has the word;
+- a run's system text says what its first message holds: each text of that message, in order, by the heading it
+  starts with (register E368), prints only commands on the bridge and asks for no credential;
 - a role with no credential is told to stop, never to get one, and what an archetype tells any role asks for no
   credential and names only commands that parse (D2 does not scan these two).
 
@@ -35,6 +43,7 @@ from aew.engine.context_ops import ContextPacks
 from aew.errors import AEWError, UsageError
 from aew.harness import bridge
 from aew.harness import contract as K
+from aew.harness.opencode import projection
 from aew.knowledge import context as ctx
 from aew.knowledge import evidence as E
 from aew.schemas import schema, validate_property
@@ -94,15 +103,28 @@ def matrix() -> list[tuple[str, str, bool, dict[str, Any] | None]]:
     return cases
 
 
-def prompt(pack: str, role: str, scope: str = "ticket") -> str:
-    """The whole text a harness run's worker is given."""
+def launch(pack: str, role: str, scope: str = "ticket", card: dict[str, Any] | None = None) -> K.LaunchContract:
+    """A harness run's contract for ``pack``, as ``harness_contract`` records a card's lists (``extra``)."""
+    card = card or {}
     return K.LaunchContract(
-        run="R-INV-1-1", invocation="INV-1", work_unit="T-1", role=role, scope="ticket", card=None,
+        run="R-INV-1-1", invocation="INV-1", work_unit="T-1", role=role, scope=scope,
+        card={"id": card["role"]} if card else None,
         execution_profile={}, workspace="/ws/T-1", expected_kinds=sorted(E.kinds_for(role, scope)),
         operations=sorted(E.submit_operations(roles.archetype(role)["engine_operations"], role, scope)),
         pack_path="/p", pack_sha256="0" * 64,
         pack_text=pack, continuation={"previous_runs": ["R-INV-1-0"], "evidence": [], "changed_paths": []},
-        run_dir="/r", scratch="/s").prompt
+        run_dir="/r", scratch="/s",
+        extra={"card_skills": card.get("skills") or [], "card_optional_skills": card.get("optional_skills") or []})
+
+
+def prompt(pack: str, role: str, scope: str = "ticket") -> str:
+    """The whole text a harness run's worker is given as its first message."""
+    return launch(pack, role, scope).prompt
+
+
+def system(contract: K.LaunchContract) -> str:
+    """The run's system text (OpenCode's, the one built-in adapter), with the skills its card's lists give it."""
+    return projection.system_text(contract, projection.skills(contract))
 
 
 # ------------------------------------------------------------------------------------- the guards
@@ -251,9 +273,36 @@ def scope_misfits(p: ctx.PackInputs) -> list[str]:
     return out
 
 
+def allowed_operations(pack: str) -> list[str]:
+    block = re.search(r"^### Allowed engine operations\n+((?:- .*\n?)+)", pack, re.M)
+    return re.findall(r"^- (\S+)$", block.group(1) if block else "", re.M)
+
+
+def sent_to_the_shell_for_what_an_operation_serves(pack: str) -> list[str]:
+    """Each capability a line of ``pack`` sends the role to its shell for, although one of the operations the pack
+    allows it serves that capability (``evidence.OPERATION_CAPABILITIES``): the shell run records nothing it can cite.
+    Any line with the word counts, not one template's."""
+    served = E.served_by_operation(allowed_operations(pack))
+    return [f"{capability} ({operation})" for line in pack.splitlines() if re.search(r"\bshell\b", line, re.I)
+            for capability, operation in served.items() if re.search(rf"\b{capability}\b", line)]
+
+
+def first_message_misdescribed(text: str, parts: list[str]) -> list[str]:
+    """Why what ``text`` says the first message holds is not what it is. ``parts``: the texts of that message, in
+    order. The sentence names each by the heading it starts with, in that order, and nothing else."""
+    said = re.search(r"\bThe first message [^.]*\.", text)
+    named = re.findall(r'"(# [^"]+)"', said.group(0)) if said else []
+    starts = [next((h for h in named if part.startswith(h)), None) for part in parts]
+    out = [f"does not name the text that starts {part.splitlines()[0]!r}"
+           for part, h in zip(parts, starts, strict=True) if h is None]
+    if not out and named != starts:
+        out.append(f"names {named}, and the message holds {starts}")
+    return out
+
+
 def check_trap(pack: str, role: str) -> str | None:
     """What is wrong with what ``pack`` says about a check that writes, if anything."""
-    offered, said = "aew check run <check-id>" in pack, ctx.CHECK_WRITES_NOTE in pack
+    offered, said = ctx.OPERATION_COMMANDS["check.run"] in pack, ctx.CHECK_WRITES_NOTE in pack
     if offered and role != "implementer" and not said:
         return "unsaid"
     if said and (not offered or role == "implementer"):
@@ -380,6 +429,91 @@ def test_a_parents_child_diffs_are_a_diff_it_may_name_and_nothing_more(monkeypat
         p = dataclasses.replace(p, children=[{k: v for k, v in c.items() if k != "diff"} for c in p.children])
     monkeypatch.setitem(p.role_def, "responsibilities", [*p.role_def["responsibilities"], text.removeprefix("- ")])
     found = scope_misfits(p)
+    assert found == [] if problem is None else any(problem in f for f in found), found
+
+
+@pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
+def test_no_pack_sends_a_role_to_its_shell_for_what_one_of_its_operations_serves(role, scope, full, card):
+    """Register E368 (the worker-pack audit's F3): the verifier's card listed targeted test execution among what "no
+    tool of AEW's serves (use your shell ...)", and a shell run is no evidence its report can cite."""
+    assert sent_to_the_shell_for_what_an_operation_serves(ctx.render(inputs(role, scope, full=full, card=card))) == []
+
+
+@pytest.mark.parametrize(("name", "card"), CARDS)
+def test_a_capability_an_operation_serves_is_named_with_its_command_only_for_a_role_that_holds_it(name, card):
+    """A card's capability that one of its role's operations serves is printed with that operation's command; a role
+    without the operation (a reviewer has no ``check.run``) is not offered the command."""
+    scope = card_scopes(card)[0]
+    pack = ctx.render(inputs(card.archetype, scope, full=False, card=card.meta))
+    requested = [*card.meta.get("required_capabilities", []), *card.meta.get("optional_capabilities", [])]
+    served = E.served_by_operation(allowed_operations(pack))
+    line = next((ln for ln in pack.splitlines() if ln.startswith("Capabilities an AEW command serves")), "")
+    for capability in requested:
+        command = f"{capability} ({ctx.OPERATION_COMMANDS[served[capability]]})" if capability in served else None
+        assert (command is not None and command in line) or (command is None and capability not in line), (name, line)
+    assert bool(line) is bool(set(requested) & set(served)), name
+
+
+def test_a_card_whose_role_lacks_the_operation_keeps_the_capability_on_the_shell_line():
+    """The limit, stated: a reviewer's card that asks for targeted test execution has no ``check.run`` to serve it, so
+    the pack still says no tool serves it. Whether such a role should run tests at all is the card author's."""
+    card = {**roles.builtin_cards()["code_reviewer"].meta, "required_capabilities": [E.CHECK_CAPABILITY]}
+    pack = ctx.render(inputs("reviewer", "ticket", full=False, card=card))
+    assert f"commands): {E.CHECK_CAPABILITY}" in pack and "Capabilities an AEW command serves" not in pack
+    assert sent_to_the_shell_for_what_an_operation_serves(pack) == []
+
+
+@pytest.mark.parametrize(("line", "found"), [
+    ("Capabilities no tool of AEW's serves (use your shell and the project's own commands): build_execution", []),
+    ("Capabilities no tool of AEW's serves (use your shell and the project's own commands): targeted_test_execution, "
+     "inspect_authoritative_state", ["targeted_test_execution (check.run)"]),
+    ("- run targeted_test_execution in your Shell, then report", ["targeted_test_execution (check.run)"]),
+    ("Capabilities an AEW command serves: targeted_test_execution (`aew check run <check-id>`)", []),
+])
+def test_the_mechanism_guard_right_wrong_and_missing(line, found):
+    """Planted lines beside a list that allows ``check.run``; and with no such operation allowed, nothing is found."""
+    assert sent_to_the_shell_for_what_an_operation_serves(
+        f"### Allowed engine operations\n- check.run\n- submit.verification\n\n{line}\n") == found
+    assert sent_to_the_shell_for_what_an_operation_serves(
+        f"### Allowed engine operations\n- submit.review\n\n{line}\n") == []
+
+
+def test_every_operation_that_serves_a_capability_has_a_command_and_is_on_the_bridge():
+    """The two tables agree, and the check command is the one the check guard reads. That a real check's evidence
+    names ``evidence.CHECK_CAPABILITY`` as its method is read from one in
+    ``test_evidence_gates.test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_label`` (#613
+    review, m4). Limit (n3): the first line restates the table, so a new operation that serves a capability fails
+    nothing here until it is added."""
+    assert E.OPERATION_CAPABILITIES == {"check.run": (E.CHECK_CAPABILITY,)}
+    assert set(ctx.OPERATION_COMMANDS) == set(E.OPERATION_CAPABILITIES) <= set(bridge.OPERATIONS)
+    assert check_trap(f"{ctx.OPERATION_COMMANDS['check.run']}\n{ctx.CHECK_WRITES_NOTE}", "verifier") is None
+
+
+@pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
+def test_a_runs_system_text_says_what_its_first_message_holds(role, scope, full, card):
+    """Register E368 (the worker-pack audit's F4): the first message is the run's preamble and then the pack, and the
+    system text said it "is your AEW launch contract". The same text prints only commands on the bridge and asks for
+    no credential: the third text a worker is always sent, held to what the other two are."""
+    contract = launch(ctx.render(inputs(role, scope, full=full, card=card)), role, scope, card)
+    text = system(contract)
+    assert contract.prompt.startswith(K.preamble(contract) + "\n\n" + contract.pack_text)
+    assert first_message_misdescribed(text, [K.preamble(contract), contract.pack_text]) == []
+    assert operations_off_the_bridge(text, role, scope) == []
+    assert says_there_is_none(text) and not asks_for_a_credential(text)
+
+
+@pytest.mark.parametrize(("sentence", "problem"), [
+    ('The first message is rules ("# AEW harness run"), then your contract ("# AEW launch contract").', None),
+    ("The first message is your AEW launch contract. It is authoritative.", "does not name the text that starts"),
+    ('The first message is your launch contract ("# AEW launch contract").', "'# AEW harness run R-INV-1-1'"),
+    ('The first message is your contract ("# AEW launch contract"), then the rules ("# AEW harness run").', "names ["),
+    ('The first message is rules ("# AEW harness run"), a map ("# Map") and a contract ("# AEW launch contract").',
+     "names ["),
+    ("You are a bounded reviewer.", "does not name the text that starts"),
+])
+def test_the_first_message_guard_right_wrong_and_missing(sentence, problem):
+    contract = launch(ctx.render(inputs("reviewer", "ticket", full=False)), "reviewer")
+    found = first_message_misdescribed(sentence, [K.preamble(contract), contract.pack_text])
     assert found == [] if problem is None else any(problem in f for f in found), found
 
 
@@ -516,7 +650,7 @@ def test_the_text_guard_right_wrong_and_missing(text, problem):
     ("implementer", True, True, "said where it does not apply"),
 ])
 def test_the_check_guard_right_wrong_and_missing(role, offered, said, trap):
-    pack = ("aew check run <check-id>\n" if offered else "") + (ctx.CHECK_WRITES_NOTE if said else "")
+    pack = (ctx.OPERATION_COMMANDS["check.run"] + "\n" if offered else "") + (ctx.CHECK_WRITES_NOTE if said else "")
     assert check_trap(pack, role) == trap
 
 
@@ -528,11 +662,6 @@ def test_the_check_guard_right_wrong_and_missing(role, offered, said, trap):
 ])
 def test_the_credential_guard_tells_an_ask_from_a_denial(text, asks, none):
     assert asks_for_a_credential(text) is asks and says_there_is_none(text) is none
-
-
-def allowed_operations(pack: str) -> list[str]:
-    block = re.search(r"^### Allowed engine operations\n+((?:- .*\n?)+)", pack, re.M)
-    return re.findall(r"^- (\S+)$", block.group(1) if block else "", re.M)
 
 
 @pytest.mark.parametrize("card", [None, *(c.meta for _, c in CARDS if c.archetype == "reviewer")])

@@ -2277,10 +2277,11 @@ system text that said the same: the guarantee is containment's, and the `read` d
   2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
   `.env` is also a virtual environment's usual name. A link to a file is masked by its target, which hides it at both
   paths. Nothing under `.aew` is scanned: the store and the runs' own directories have masks of their own.
-- **How they are found** (`layout.project_env_masks`), at each launch: in a git work tree, one
-  `git ls-files --cached --others` with the two names as pathspecs, so tracked and untracked files alike, ignored ones
-  included. Git walks the tree in C, so the cost is the tree's size: about 0.2 s for 200,000 files in ignored vendored
-  directories. A project that is not a git work tree is walked without following links, past `.git` and `.aew`.
+- **How they are found** (`layout.project_env_masks`), at each launch: a walk of the whole tree, whatever git makes of
+  it (the quick check of #592). That covers tracked, untracked and ignored files alike, and a nested repository's or a
+  submodule's own, as each is in the tree a run sees. It skips each `.git` directory and the project's `.aew`, and
+  follows no link to a directory, so it ends. Its cost is the tree's size: about 0.3 s for 200,000 entries in ignored
+  vendored directories. A directory this account cannot list is skipped, as no run can list it either.
 - **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
   in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
   bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
@@ -2291,10 +2292,14 @@ system text that said the same: the guarantee is containment's, and the `read` d
 - **A tracked `.env` is masked too** (the review of #592, F1). That is the safer default, as such a file can still hold
   a local edit. Inside, git shows it as modified with its content deleted, and a program that loads it reads it as
   empty. Its committed content stays in the history (`git show HEAD:.env`), which a mask never covers.
-- **Its limits** (the review of #592): a file first created, or replaced by rename on the host, during the session is
-  seen inside until the next launch; a hard link to a masked file under another name is not masked; other names are
-  not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively). Anything else is named in
-  `containment.hide`.
+- **Its limits** (the review of #592):
+  - a file first created, or replaced by rename on the host, during the session is seen inside until the next launch;
+  - a hard link to a masked file under another name is not masked;
+  - other names are not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively);
+  - a `.env` file in a directory outside the project is not masked, even where a link inside the project points at
+    that directory.
+
+  Anything else is named in `containment.hide`.
 - **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
 - **Workers:** a worker's worktree holds only what is committed, so it has no ignored `.env`. The project is visible
   read-only in a worker's sandbox, and the mask applies there.
@@ -2305,10 +2310,11 @@ system text that said the same: the guarantee is containment's, and the `read` d
   are unchanged.
 - **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
   - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
-  - a directory named `.env` is not masked, a link masks its file, and a tree that is not a git work tree is walked;
+  - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked;
   - a project with too many files to mask is refused;
   - the read rules derive from the names.
 
   In a real sandbox on Linux, `tests/integration/test_lead_containment.py` and `tests/integration/test_containment.py`
   check the Lead's sandbox and a worker's. A read by name or by absolute path, a search of the tree and another
-  program's read find no nested or top-level `.env` file's content, while each `.env.example` reads as it is.
+  program's read find no nested or top-level `.env` file's content, while each `.env.example` reads as it is. The
+  same holds in a nested repository, in a submodule's checkout, and for names that begin or end with a space.

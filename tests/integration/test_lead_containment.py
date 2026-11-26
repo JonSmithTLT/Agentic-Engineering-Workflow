@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import select
+import shlex
 import shutil
 import subprocess
 import sys
@@ -450,6 +451,44 @@ def test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_s
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
     assert done.stdout.count("SYNTHETIC-DOC=") == 2, done.stdout  # the search ran, and both documentation copies stay
     assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+# A nested repository, a submodule and names that begin or end with a space: each `.env` there is the project's too
+HARD_ENV = ("nested/.env", "nested/deep/.env.local", "sm/.env", " .env", ".env.local ")
+
+
+def plant_hard_env_files(repo: Path, outside: Path) -> None:
+    """Synthetic `.env` files where a scan by git alone would not look: in a repository nested in the project, in a
+    submodule's checkout, and under names with a leading or trailing space."""
+    (repo / "nested" / "deep").mkdir(parents=True)
+    assert git("init", "-q", cwd=repo / "nested").returncode == 0
+    source = outside / "sm-source"
+    source.mkdir(parents=True)
+    assert git("init", "-q", cwd=source).returncode == 0
+    (source / "m.txt").write_text("m\n")
+    git("add", "m.txt", cwd=source)
+    assert git("commit", "-q", "-m", "m", cwd=source).returncode == 0
+    added = git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "sm", cwd=repo)
+    assert added.returncode == 0, added.stderr
+    for name in HARD_ENV:
+        (repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+
+
+def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_in_the_leads_sandbox(
+        lead_lab):
+    """Containment hides the project's `.env` files at any depth, wherever git would not list them: in a nested
+    repository, in a submodule's checkout, and under a name with a leading or trailing space. Inside the Lead's sandbox
+    a read by name, a search of the tree and another program's read find each empty. Synthetic values only."""
+    lab = lead_lab
+    plant_hard_env_files(lab.repo, lab.root)
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    names = " ".join(shlex.quote(n) for n in HARD_ENV)
+    first = lab.repo / HARD_ENV[0]
+    done = lab.sh(layout, f"cat {names}; grep -rh SYNTHETIC . 2>/dev/null; "
+                          f"{sys.executable} -I -c \"print(open({str(first)!r}).read())\"; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    assert (lab.repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

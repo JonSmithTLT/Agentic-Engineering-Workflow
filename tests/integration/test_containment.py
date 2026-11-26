@@ -213,6 +213,38 @@ def test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_pr
     assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
+# A nested repository, a submodule and names that begin or end with a space: each `.env` there is the project's too
+HARD_ENV = ("nested/.env", "nested/deep/.env.local", "sm/.env", " .env", ".env.local ")
+
+
+def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_from_a_worker(lab):
+    """Containment hides the project's `.env` files at any depth from a worker too, wherever git would not list them:
+    in a repository nested in the project, in a submodule's checkout, and under a name with a leading or trailing
+    space. A read by absolute path, a search of the project and another program's read find each empty. Synthetic
+    values only."""
+    repo = lab.repo
+    (repo / "nested" / "deep").mkdir(parents=True)
+    assert git("init", "-q", cwd=repo / "nested").returncode == 0
+    source = lab.root / "sm-source"
+    source.mkdir()
+    assert git("init", "-q", cwd=source).returncode == 0
+    (source / "m.txt").write_text("m\n")
+    git("add", "m.txt", cwd=source)
+    assert git("commit", "-q", "-m", "m", cwd=source).returncode == 0
+    added = git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "sm", cwd=repo)
+    assert added.returncode == 0, added.stderr
+    for name in HARD_ENV:
+        (repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    paths = " ".join(shlex.quote(str(repo / n)) for n in HARD_ENV)
+    first = repo / HARD_ENV[0]
+    done = lab.sh(lab.layout("implementer"), f"cat {paths}; grep -rh SYNTHETIC {repo} 2>/dev/null; "
+                                             f"{sys.executable} -I -c \"print(open({str(first)!r}).read())\"; "
+                                             "echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    assert (repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
 def test_provider_config_locations_read_empty_from_inside(lab):
     (lab.home / ".claude.json").write_text('{"secret": "SECRET-CFG"}\n')
     (lab.home / ".config" / "anthropic").mkdir(parents=True)

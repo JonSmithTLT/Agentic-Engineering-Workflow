@@ -1905,10 +1905,10 @@ def test_a_workers_layout_masks_the_projects_env_files_in_place_at_any_depth(tmp
         assert not [n for n in os.listdir(tmp_path / role / "ws") if n.startswith(".env")], role
 
 
-def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_a_tree_without_git_is_walked(tmp_path):
+def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole_tree_is_walked(tmp_path):
     """`.env` is also a virtual environment's usual name: a directory is not one of the project's `.env` files, nor a
     link to one, so a run that needs it keeps it. A `.env` that links to a file masks that file, which hides it at both
-    paths. A project that is not a git work tree is walked, at any depth, past `.git` and `.aew`."""
+    paths. The whole tree is walked, at any depth, past `.git` and the project's `.aew`, in a git work tree or not."""
     repo = tmp_path / "plain"
     (repo / ".env" / "bin").mkdir(parents=True)
     (repo / "secrets").mkdir()
@@ -1924,14 +1924,14 @@ def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_a_tree_wi
     assert L.project_env_masks(repo) == sorted([os.path.join(real, "secrets", "app.cfg"),
                                                 os.path.join(real, "svc", "deep", "x.env")])
     assert L.project_env_masks(tmp_path / "missing") == []
-    # In a git work tree too, where git lists a link as a file: a link to a directory is not masked, nor one to nothing
+    # In a git work tree too: a link to a directory is not masked, nor one to nothing, and a non-ASCII name is found
     tree, _ = repo_with_worktree(tmp_path / "git")
     (tree / "venv").mkdir()
     (tree / ".env").symlink_to(tree / "venv", target_is_directory=True)
     (tree / "gone.env").symlink_to(tree / "missing.cfg")
     (tree / "svc").mkdir()
     (tree / "svc" / ".env").write_text("SYNTHETIC=1\n")
-    (tree / "caf\u00e9").mkdir()  # a name git quotes, read back exactly
+    (tree / "caf\u00e9").mkdir()
     (tree / "caf\u00e9" / ".env").write_text("SYNTHETIC=1\n")
     real = os.path.realpath(tree)
     assert L.project_env_masks(tree) == sorted([os.path.join(real, "caf\u00e9", ".env"),

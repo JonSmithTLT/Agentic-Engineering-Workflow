@@ -309,6 +309,10 @@ skipped:
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
       tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_from_a_worker: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
+      tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
@@ -551,6 +555,9 @@ skipped:
       the shim's ctty step is POSIX's and serves only the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs
       labelled not contained. Covered on Linux.
     tests/integration/test_lead_containment.py::test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_in_the_leads_sandbox: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata: >-

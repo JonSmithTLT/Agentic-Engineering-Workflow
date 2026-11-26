@@ -665,47 +665,41 @@ def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
     name, and masking that whole would hide the interpreter a run may need. A link to a file is, by its target, which
     the mask hides at both paths; a link to nothing, or to a directory, is not.
 
-    The scan, at each launch: in a git work tree, one ``git ls-files --cached --others`` with the two names as
-    pathspecs, so tracked and untracked files alike, ignored ones included, and none under ``.aew`` (the store, and the
-    runs' own directories, which have masks of their own); git walks the tree in C, so its cost is the tree's size
-    (about 0.2 s for 200,000 files in ignored vendored directories). Elsewhere, a walk of the tree without following
-    links, skipping ``.git`` and ``.aew``. Present at the launch only: a file first created, or replaced by rename on
-    the host, during the session is seen inside until the next launch, as a containment.hide entry in the run's own
-    tree is."""
-    from aew.workspace import git
-
-    root = Path(project)
-    if not root.is_dir():  # no project directory to show, so nothing in it to hide
+    The scan, at each launch, is a walk of the whole tree, whatever git makes of it: tracked, untracked and ignored
+    files alike, and a nested repository's or a submodule's own, as each is in the tree a run sees. It skips each
+    ``.git`` directory and the project's ``.aew`` (the store, and the runs' own directories, which have masks of their
+    own), and follows no link to a directory, so it ends: a directory outside the project that a link inside it points
+    at is not walked. Its cost is the tree's size (about 0.3 s for 200,000 entries in ignored vendored directories). A
+    directory this account cannot list is skipped, as nothing inside can list it either. Present at the launch only: a
+    file first created, or replaced by rename on the host, during the session is seen inside until the next launch, as
+    a containment.hide entry in the run's own tree is."""
+    root = _real(project)
+    if not os.path.isdir(root):  # no project directory to show, so nothing in it to hide
         return []
-    if git.toplevel(root) is not None:
-        # through ``git.out``, so no call site of ``git.git`` is added (the reference's CALLERS cap, at its widest
-        # fan-in); git quotes a name that is not plain ASCII (core.quotePath), which _unquoted reads back exactly
-        listed = git.out("-c", "core.quotePath=true", "ls-files", "--cached", "--others", "--",
-                         *(f":(glob)**/{p}" for p in ENV_FILES), ":(exclude,top).aew", cwd=root)
-        names = [_unquoted(n) for n in listed.splitlines() if n]
-    else:
-        names = []
-        for top, dirs, files in os.walk(root):
-            dirs[:] = [d for d in dirs if not (top == str(root) and d in (".git", ".aew")) and d != ".git"]
-            names += [os.path.relpath(os.path.join(top, f), root) for f in files]
     out: set[str] = set()
-    for name in names:
-        base = os.path.basename(name)
-        if not any(fnmatchcase(base, p) for p in ENV_FILES) or any(fnmatchcase(base, p) for p in ENV_DOCS):
+    stack = [root]
+    while stack:
+        top = stack.pop()
+        try:
+            with os.scandir(top) as it:
+                entries = list(it)
+        except OSError:  # not listable by this account, so not by a run either
             continue
-        real = _real(root / name)
-        if os.path.isfile(real) and not _sandbox_own(real):
-            out.add(real)
+        for entry in entries:
+            name = entry.name
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    if name != ".git" and not (top == root and name == ".aew"):
+                        stack.append(entry.path)
+                    continue
+            except OSError:
+                continue
+            if not any(fnmatchcase(name, p) for p in ENV_FILES) or any(fnmatchcase(name, p) for p in ENV_DOCS):
+                continue
+            real = _real(entry.path)
+            if os.path.isfile(real) and not _sandbox_own(real):
+                out.add(real)
     return sorted(out)
-
-
-def _unquoted(name: str) -> str:
-    """A path as ``git ls-files`` prints it, read back: one in double quotes holds C-style escapes of its bytes."""
-    if not (len(name) > 1 and name.startswith('"') and name.endswith('"')):
-        return name
-    import codecs
-
-    return os.fsdecode(codecs.escape_decode(name[1:-1].encode("ascii"))[0])
 
 
 def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:

@@ -5416,7 +5416,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** PR #603 (`1b854d6b`): `scripted_operator.settle_tool_offers` answers the consent screen before the first open from the owner (`consent.ask`), each decline recorded as a `setup_fixture` and never counted, and `vertical-uat.md`'s setup boundary quotes the ruling. In its vertical run at `637bc652` the five fresh-terminal reopens reached E330's seat resume with no takeover; they still fail strict on other clusters (C12's fallbacks, C1 to C4's counters). Whether the alpha gate now passes is for a rerun of the vertical to confirm
+**By:** PR #603 (`1b854d6b`): `scripted_operator.settle_tool_offers` answers the consent screen before the first open from the owner (`consent.ask`), each decline recorded as a `setup_fixture` and never counted, and `vertical-uat.md`'s setup boundary quotes the ruling. In its vertical run at `637bc652` the five fresh-terminal reopens reached E330's seat resume with no takeover; they still fail strict on other clusters, among them C12's fallbacks and C1 to C4's counters. Whether the alpha gate now passes is for a rerun of the vertical to confirm
 
 *Later notes: `notes.d/E376/`, oldest first (`python tools/register.py show E376`).*
 

@@ -83,7 +83,7 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | counter | `seat_operations` | C13 | V2's same-shell extra and V4 |
 | counter | `lifecycle_steps` | none | not breached |
 | counter | `manifest_adopts` | C13 | V4 |
-| counter | `pin_reentries` | C7 | not breached; once C7 lands the resume code counts on Linux until REATTACH_LEAD lands (Q5's answer keeps it counted) |
+| counter | `pin_reentries` | C7 | not breached; since C7 (#603) the resume code counts on Linux until REATTACH_LEAD lands (Q5's answer keeps it counted) |
 | counter | `windows_console_challenges` | none | not breached on Linux; Windows is outside the enforced gate |
 | counter | `help_calls` | C5, C7, C9, C11 | the gap ladder's `explain` |
 | counter | `guessed_commands` | C3 | `ticket_draft` on an empty project |
@@ -141,7 +141,9 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 1. **C15** (E385, done: #602 merged on 2026-11-26). It turns G3 #213 green and does not touch the alpha.
 2. **C1** (E335, done: #597). It clears the alpha's V1 line.
 3. **C7 + C8** (E376 and E377, done: #603). It clears the V2-forced line. **The alpha is then
-   expected to PASS**, which a rerun must confirm: the resume path has not yet been seen to reach a result. Q5's
+   expected to PASS**, which a rerun must confirm. #603's own run (`637bc652`) saw the five fresh-terminal reopens reach E330's seat
+   resume, with the implementer's run left running and no V2-forced takeover; the alpha then still failed on V1's line
+   (C1), since cleared by #597. Q5's
    answer settles its counting: the consent screen is a setup fixture, and the resume code counts under
    `pin_reentries`.
 

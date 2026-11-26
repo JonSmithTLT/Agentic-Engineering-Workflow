@@ -168,6 +168,28 @@ def test_a_workers_oversized_submission_is_refused_saying_so_through_its_own_rou
     assert parsed.handler(parsed) == {"ok": "submit"} and got == [("submit", 5)]
 
 
+def test_a_typed_tools_oversized_call_is_the_callers_invalid_arguments_never_an_unreachable_broker(accepting,
+                                                                                                    monkeypatch):
+    """The typed route (``lead.tool``, #610's review, M1): its client reported every ``UsageError`` of the bridge as
+    ``BROKER_UNREACHABLE``, which dropped the reason, the size and the limit, with the broker reachable."""
+    from aew.surface import client
+    from aew.surface.errors import AdapterInputError
+
+    srv, got = accepting
+    monkeypatch.setenv(client.ENV_ENDPOINT, srv.address)
+    monkeypatch.setenv(client.ENV_KEY, srv.key_hex)
+    with pytest.raises(AdapterInputError) as refused:
+        client.forward("ticket.note", {"text": "x" * (bridge.MAX_REQUEST + 1)}, ingress="mcp", profile="lead")
+    assert refused.value.code == "INVALID_ARGUMENTS" and "nothing was sent" in refused.value.message
+    details = refused.value.details
+    assert details["reason"] == bridge.REQUEST_TOO_LARGE and details["limit"] == bridge.MAX_REQUEST
+    assert details["size"] > bridge.MAX_REQUEST and got == []
+    monkeypatch.delenv(client.ENV_ENDPOINT)  # no bridge at all is still the unreachable broker
+    with pytest.raises(AdapterInputError) as unreachable:
+        client.forward("ticket.note", {"text": "x"}, ingress="mcp", profile="lead")
+    assert unreachable.value.code == "BROKER_UNREACHABLE" and unreachable.value.details == {"cause": "USAGE"}
+
+
 def test_a_closed_bridge_is_stale_authority(server):
     srv, _ = server
     srv.close()

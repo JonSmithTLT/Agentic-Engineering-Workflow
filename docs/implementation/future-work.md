@@ -5012,7 +5012,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too, and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
+**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
 
 *Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 

@@ -6347,7 +6347,8 @@ sections:
     By: '#610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge
       closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST`
       before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker''s commands and the
-      typed tools get it too, and the Lead''s own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`'
+      typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610''s
+      review), and the Lead''s own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`'
 
   - '#': E251
     Was: 'A printed `aew manifest adopt` runs as printed: the switch offer''s review counted 21 printed mentions in 8 files

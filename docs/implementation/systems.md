@@ -134,11 +134,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E293's maps profile next, 1-2 PRs); decided by the operator
+**Who:** Lead (F22.2 and F22.3 after their benchmark); decided by the operator
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — E293, V-01's maps profile: the built maps held against A-14's obligations, the profile written, each divergence fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code (E293); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** E293, V-01's maps profile: the built maps held against A-14's obligations, the profile written, each divergence fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code — E293 — 1-2 PRs (estimate)
+**Own slices left:** 1 — F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) — F22.2 — many PRs, unsized (estimate)
 
 **Switch:** maps.pack_slices — default: off (a new project: structural) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
@@ -188,7 +188,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 1 — AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes (E225) — **Next:** AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes — E225 — 1 PR (estimate)
+**Own slices left:** 0 — none — **Next:** none
 
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
@@ -406,9 +406,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Not counted
 
-**Members:** 19 — SYS-18, SYS-12, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
-
-**SYS-18 — Ticket revisions:** freeze
+**Members:** 19 — SYS-12, SYS-01, SYS-03, SYS-11, SYS-14, SYS-15, SYS-16, SYS-18, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36, SYS-49, SYS-50, SYS-52
 
 **SYS-12 — Discovery layer, D2 (output and text rules):** freeze
 
@@ -423,6 +421,8 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **SYS-15 — Operator settings surface and fresh-project configuration:** cut
 
 **SYS-16 — Plan assurance before mutating dispatch (ASSURED):** keep
+
+**SYS-18 — Ticket revisions:** freeze
 
 **SYS-21 — Operator attention (attention spine, observability, fact-owner registry, blocked-on-you):** freeze
 

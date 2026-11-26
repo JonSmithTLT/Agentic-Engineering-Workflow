@@ -633,10 +633,30 @@ def test_a_jobless_cancel_with_two_possible_successors_stays_an_attribution_gap(
     [{**NEW, "workflow_id": 1}],
     [{**NEW, "created_at": "2026-11-15T18:00:00Z"}],  # created before the cancelled run: it cannot have replaced it
     [{**NEW, "pull_requests": []}],  # its group cannot be established
-], ids=["none", "other-pr", "fork", "push", "other-workflow", "earlier", "no-group"])
+    # Created in the cancelled run's own second with a lower id: its predecessor, never its successor (#615, finding 2).
+    [{**NEW, "id": OLD["id"] - 1, "created_at": OLD["created_at"]}],
+], ids=["none", "other-pr", "fork", "push", "other-workflow", "earlier", "no-group", "same-second-predecessor"])
 def test_a_jobless_cancel_with_no_established_successor_stays_an_attribution_gap(monkeypatch, history):
     check, asked = _record_jobless(monkeypatch, JOBLESS, history)
     assert asked and check["conclusion"] == "failure"
+    assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
+    assert "Superseded" not in check["output"]["summary"]
+
+
+def test_a_same_second_run_with_a_higher_id_is_still_the_jobless_runs_successor(monkeypatch):
+    # The other side of the id order: created in the same second, after the cancelled run.
+    check, _ = _record_jobless(monkeypatch, JOBLESS, [{**NEW, "created_at": JOBLESS["created_at"]}])
+    assert check["conclusion"] == "success" and f"by run {NEW['id']} at" in check["output"]["summary"]
+
+
+def test_a_jobless_re_run_attempt_is_never_attributed_from_history(monkeypatch):
+    # A re-run keeps the first attempt's created_at, so a run that is newer than the first attempt and older than the
+    # re-run would fall inside its window; it cannot have replaced the re-run (#615, finding 1).
+    rerun = {**JOBLESS, "run_attempt": 2, "run_started_at": "2026-11-15T20:00:00Z",
+             "updated_at": "2026-11-15T20:05:00Z"}
+    check, asked = _record_jobless(monkeypatch, rerun, [NEW])
+    assert NEW["created_at"] < rerun["run_started_at"]
+    assert not asked and check["conclusion"] == "failure"
     assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
     assert "Superseded" not in check["output"]["summary"]
 

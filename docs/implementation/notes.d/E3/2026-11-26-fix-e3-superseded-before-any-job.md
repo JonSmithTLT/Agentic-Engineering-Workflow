@@ -25,9 +25,13 @@ cancellation attribution`.
   would read as superseded. ci.yml cancels a pull request's run for the next one of its group, so that newer run
   would have ended it in any case. The new head's "Superseded predecessor" line
   (`record_cancel_evidence.predecessor`) still needs a cancelled job, so it does not name a jobless predecessor.
+- **After the review of #615.** Only a first attempt is attributed: a re-run keeps the first attempt's `created_at`,
+  so its window took in runs older than the re-run (finding 1). A candidate of the cancelled run's own second counts
+  only with a higher id, since a lower one is its predecessor (finding 2). The `ci.yml` path has one owner,
+  `flake_register.CI_WORKFLOW`, which the recorder, the scorecard and `cancel_evidence` read (finding 4).
 - **The flake register.** `linux-cancel-live-stack` gains the three sightings of 2026-11-26 (PR #606 run 45780063188,
   PR #607 run 45780328190, PR #597 run 45781663365: eight workers in five Linux integration lanes, the first since
-  #573) and a diagnostic observation, and its `cause` no longer says the warning attach failed: in the one reproduced
+  #573), a fourth of the same day (PR #608 run 45787278179, one worker, bundle not read) and a diagnostic observation, and its `cause` no longer says the warning attach failed: in the one reproduced
   case the attach succeeds and the check refuses a stack taken in fixture setup.
 
 **What remains** (2026-11-26): E3 stays a standing watch. `linux-cancel-live-stack` is open with no `planned_fix`:

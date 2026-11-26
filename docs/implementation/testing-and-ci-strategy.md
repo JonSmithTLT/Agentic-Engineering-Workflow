@@ -420,7 +420,9 @@ concludes. A pull request's `ci` run cancelled before any of its jobs existed ha
 its group: the completed-run record derives the group from the run and names the successor from run history alone
 (`cancel_evidence.superseded_before_any_job`), under the same rule, exactly one other run of that group created within
 the cancelled run's life. It then reads "Superseded before any job was recorded" and counts no gap; with no such run,
-or more than one, or a run of any other workflow or event, the `[cancel-reason]` gap stays.
+or more than one, or a run of any other workflow or event, the `[cancel-reason]` gap stays. It is an inference from
+run history, made for a first attempt only (a re-run keeps the first attempt's creation time), and a run of the same
+second counts only with a higher id.
 
 A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
 The lane supervisor at the signal, on either platform, or the cancellation collection, then records

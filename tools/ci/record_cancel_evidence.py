@@ -15,7 +15,16 @@ from urllib.parse import quote
 import yaml
 from cancel_evidence import MANUAL, ci_group, classify, observe, run_jobs, superseded_before_any_job
 from evidence_scorecard import format_rows, inspect_run
-from flake_register import INDEX_MEMBER, REGISTER_PATH, _api, _gh_read, _matches_session, _own_ci_run, _pages
+from flake_register import (
+    CI_WORKFLOW,
+    INDEX_MEMBER,
+    REGISTER_PATH,
+    _api,
+    _gh_read,
+    _matches_session,
+    _own_ci_run,
+    _pages,
+)
 from stage_evidence import stage
 
 
@@ -226,7 +235,7 @@ def main():
     args = parser.parse_args()
     repo = os.environ["GITHUB_REPOSITORY"]
     run = _api(repo, f"actions/runs/{args.run}/attempts/{args.attempt}")
-    ci = run["path"] == ".github/workflows/ci.yml"
+    ci = run["path"] == CI_WORKFLOW
     plant = (run["path"] == ".github/workflows/evidence-proof.yml" and run["event"] == "workflow_dispatch"
              and re.fullmatch(r"evidence-cancel-run-[0-9]+-[0-9]+-(?:supersede|manual)-target", run["display_title"]))
     if run["repository"]["full_name"] != repo:

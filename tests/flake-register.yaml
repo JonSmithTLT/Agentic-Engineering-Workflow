@@ -1575,7 +1575,8 @@ entries:
     pre-signal warning attach succeeds and its stack is kept, but the check wants a frame of the test function, which
     a worker outside its test's call cannot have. The Windows collection excuses that state (#561); the Linux warning
     does not (#573: none of its outcomes excuses a stack). A worker that changed tests during the attach is the other
-    candidate.
+    candidate. From 2026-11-26 a sighting's run is the superseded ci run and its job is that run's evidence check
+    run; the earlier rows give the run the check run was filed under, and name the ci run in their note.
   owner: CI flake triage
   row: E3
   evidence:
@@ -1631,6 +1632,12 @@ entries:
     note: >-
       evidence check of this superseded ci run (PR 597 at 72461d35): live-stack for one worker of integration
       6/8 (job 139779707733), ubuntu; outcome in artifact 15100991546, not read.
+  - run: 45787278179
+    job: 139841492855
+    at: '2026-11-26T10:19:52Z'
+    note: >-
+      evidence check of this superseded ci run (PR 608 at 706cf95a, superseded by run 45796343639 at 23e62fce):
+      live-stack for interrupted-2670 of integration 7/8, ubuntu. The bundle was not read.
   - run: 45780063188
     job: 139773657808
     at: '2026-11-26T08:16:49Z'

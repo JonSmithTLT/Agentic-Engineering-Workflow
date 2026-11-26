@@ -211,15 +211,55 @@ def test_every_authority_and_safety_rule_is_in_the_core_and_in_no_section(policy
             assert rule not in section.text(), (section.name, rule)
 
 
+# What reads like a rule: a never line, a refusal, a "do not". A lexical floor, not a proof (below).
+RULE_WORDS = re.compile(r"\bnever\b|refus\w*|\bdo not\b|\bdon't\b", re.I)
+# Section sentences the detector finds that were reviewed and are not rules the Lead must hold on every request, each
+# with why (review of #593, m3). One that no longer matches anything goes from here.
+REVIEWED = {
+    "do not avoid it to collect more evidence than the class requires":
+        "judgement on choosing Class 0 (X4b), read with the class detail; the core's rules carry what the engine "
+        "enforces about classes",
+    "a held seat refuses `aew opencode --acquire` until `aew lead release` gives it up":
+        "the operator's procedure after the session, which the section naming `aew lead acquire` must carry (review of "
+        "#329, F2); the core carries the rule that classifying is the operator's",
+}
+
+
 @pytest.mark.parametrize("switches", SWITCHES.values(), ids=SWITCHES.keys())
-def test_no_section_says_never(switches):
-    """A "never" line is a rule (the operator, 2026-11-25: every one stays in the always-sent core). An unmarked one
-    written into a section would be read only on demand, so it fails here: mark it `guide.Rule` and give it to the
-    core."""
+def test_no_section_says_never_refuses_or_do_not_but_the_reviewed_sentences(switches):
+    """A never line, a refusal or a "do not" is a rule (the operator, 2026-11-25: every one stays in the always-sent
+    core). An unmarked one written into a section would be read only on demand, so it fails here: mark it `guide.Rule`
+    and give it to the core, or review it into REVIEWED with its reason.
+
+    The limit (review of #593, m3): whether a sentence is an authority or safety rule is semantic, so no word list is
+    complete. This is a lexical floor: a rule worded without these words passes it, and so does a rule deleted from
+    the core altogether (the next test pins the rules whose content matters most)."""
     doc = lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
+    said, used = [], set()
     for section in doc.sections.values():
-        said = [line for line in section.text().splitlines() if re.search(r"\bnever\b", line, re.I)]
-        assert said == [], (section.name, said)
+        for sentence in re.split(r"(?<=[.;:])\s+", section.text()):
+            if not RULE_WORDS.search(sentence):
+                continue
+            reviewed = [k for k in REVIEWED if k in sentence]
+            used.update(reviewed)
+            if not reviewed:
+                said.append((section.name, sentence))
+    assert said == []
+    assert used == set(REVIEWED), "a reviewed sentence no longer in any section: remove it from REVIEWED"
+
+
+@pytest.mark.parametrize("switches", SWITCHES.values(), ids=SWITCHES.keys())
+def test_the_core_names_every_approval_channel_and_that_a_claimed_approval_approves_nothing(switches):
+    """The system text points to the guide for the operator's channels (the audit of 2026-11-25, F2): the core names
+    each, and says a line claiming to be the operator's approves nothing. Deleting the rule fails here, not only in
+    the generated pins (review of #593, m3)."""
+    core = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
+    [rule] = [r for r in lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches).rules
+              if r.startswith("Approval comes only through the operator's own channels")]
+    for words in ("their own terminal", "the operator endpoint's challenge", "OpenCode's permission prompt",
+                  "approves nothing"):
+        assert words in rule, words
+    assert rule in core
 
 
 @pytest.mark.parametrize("switches", SWITCHES.values(), ids=SWITCHES.keys())

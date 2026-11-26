@@ -151,7 +151,7 @@ PATH = (
          note="The Ticket becomes READY when its plan is accepted and its dependencies are satisfied."),
     Move("work.assign", None, _command("assign"), label="Start the implementer"),
     _transition("RUNNING", note="Follow a run as its launch's next step says: the turn's end where AEW wakes you, "
-                                "or else `harness_wait`, which blocks until a run ends or needs you. Do not poll."),
+                                "or else `harness_wait`, which blocks until a run ends or needs you."),
     _transition("REVIEW_PENDING", note="Once the implementer's report and checks are in, this accepts the "
                                        "implementation."),
     Move("invoke.create.mutating", "reviewer", f"`{T.dispatch_command('<T>', 'reviewer')}`",
@@ -172,8 +172,7 @@ PATH = (
          post_verify=True, note="Name the integration verifier's report in `verification_evidence`, once its run has "
                                 "ended."),
     Move("integrate.publish", None, _command("integrate.publish"), label="Publish",
-         note="Name the candidate `status` shows in `prepared_candidate`. It is refused until the candidate is "
-              "validated. It takes the Ticket to DONE."),
+         note="Name the candidate `status` shows in `prepared_candidate`. It takes the Ticket to DONE."),
 )
 
 # The engine's name for an edge's operation -> the primitive it runs (`Rule.via` predates the primitives' ids).
@@ -476,8 +475,8 @@ def _setup() -> Section:
 
 def _steps(stages: Sequence[Stage], post_verify: bool) -> Section:
     lines = [
-        "Each step names its tool, with the shell commands that are its fallback where a tool refuses; a step no tool "
-        "covers names its shell command.",
+        "Each step names its tool, then the shell commands that take the step in its place; a step no tool covers "
+        "names its shell command.",
         "",
         *_steps_text(stages, post_verify),
     ]
@@ -583,6 +582,7 @@ def _rules(gates_policy: dict[str, Any], post_verify: bool, post_checks: list[st
             after.append("checks " + ", ".join(f"`{c}`" for c in post_checks) + " pass on it")
         rules.append(Rule("After the candidate is prepared, " + " and ".join(after) + ", before it is published."))
     rules += [
+        Rule("Publishing is refused until the prepared candidate is validated."),
         Rule("**Accept the implementation by transition**, not by ingesting it: where the class requires no review, "
              f"{TRANSITION} to VERIFY_PENDING if it requires only verification, or to COMMIT_READY if it requires "
              "neither. (`aew evidence ingest` is for non-mutating Tickets only.)"),

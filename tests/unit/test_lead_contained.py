@@ -25,6 +25,8 @@ from aew.harness import lead_broker, procs
 from aew.harness.containment import client_cert, netns
 from aew.harness.opencode import lead, login, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
+from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+from aew.surface import lead_text
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003",
         "mystery": "synthetic-mystery-0004"}
@@ -1117,7 +1119,7 @@ def test_the_leads_git_reads_ask_for_a_comparison_outside_the_working_tree_and_f
         assert effect(rules, "shell", command) == "ask", command
     for command in ("git diff", "git log -5", "git show HEAD", "git diff HEAD -- src/aew", "git log --oneline -3"):
         assert effect(rules, "shell", command) == "allow", command
-    assert "your read tool refuses them; `.env.example` is readable" in " ".join(projection.LEAD_SYSTEM.split())
+    assert "your read tool refuses them (`.env.example` is readable)" in " ".join(projection.LEAD_SYSTEM.split())
     assert "Containment hides the project's `.env` files" in projection.lead_contained_text({})
     assert "Containment hides" not in projection.LEAD_SYSTEM  # an uncontained Lead has no masks, so no such claim
     assert "a `.env` file named among them" in " ".join(projection.LEAD_SYSTEM.split())
@@ -1138,7 +1140,9 @@ def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_
             "the operator, and it runs once they approve. That prompt is the approval: you may say in a line what you "
             "are about to run, but do not wait for a reply in chat first. If they decline, do not try it another "
             "way.") in system
-    assert "You cannot edit files in this session" in system
+    # That it cannot edit files is the guide's core's to say, once (E367), and the Lead is given both.
+    full = projection.lead_config(lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS))["agents"][projection.LEAD_AGENT]
+    assert "You cannot edit files" in full["system"] and "You cannot edit files" not in system
     assert "Editing files and committing stay with invocations, whatever the command: dispatch one for them." in system
     line = projection.lead_contained_text(LABEL)
     assert "Do not work around a refusal:" not in line

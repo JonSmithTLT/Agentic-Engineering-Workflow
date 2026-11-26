@@ -696,19 +696,27 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
     the mask hides at both paths; a link to nothing, or to a directory, is not.
 
     The scan, at each launch, is a walk of the whole tree, whatever git makes of it: tracked, untracked and ignored
-    files alike, and a nested repository's or a submodule's own, as each is in the tree a run sees. It skips each
-    ``.git`` directory and the project's ``.aew`` (the store, and the runs' own directories, which have masks of their
-    own), and follows no link to a directory, so it ends: a directory outside the project that a link inside it points
-    at is not walked. Its cost is the tree's size (about 0.3 s for 200,000 entries in ignored vendored directories).
+    files alike, and a nested repository's or a submodule's own, as each is in the tree a run sees. It leaves out only
+    the project's own ``.aew`` (the store, and the runs' own directories, which have masks of their own; a read-only
+    mount of its own in the Lead's tree, so nothing is moved under it), never a directory by its name alone: a ``.git``
+    directory is walked as any other, so a file of git's own with such a name (a branch named ``x.env``) is masked
+    too. It follows no link to a directory, so it ends: a directory outside the project that a link inside it points
+    at is not walked. Its cost is the tree's size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored
+    vendored directories, measured on a loaded host, about twice the walk without the stats.
 
-    It fails closed, and never refuses for it (the quick checks of #592): every entry is checked by its own stat,
-    never by the listing alone, and a directory the walk cannot list, or one holding an entry it cannot stat (a
-    directory that can be listed but not searched), is in ``dirs``, masked whole by an empty directory as a
-    containment.hide directory is, as a `.env` file in it may still be read by name; one whose path is too long to
-    list, its deepest directory the walk reached. One gone during the walk is not there to hide. The project itself
-    must be listable and searchable: AEW reads its store there. Present at the launch only: a file first created, or
-    replaced by rename on the host, during the session is seen inside until the next launch, as a containment.hide
-    entry in the run's own tree is."""
+    It fails closed, and refuses for no directory below the project (the quick checks of #592): every entry is
+    checked by its own stat, never by the listing alone, and a directory the walk cannot list, or one holding an entry
+    it cannot stat (a directory that can be listed but not searched), is in ``dirs``, masked whole by an empty
+    directory as a containment.hide directory is, as a `.env` file in it may still be read by name; one whose path is
+    too long to list, its deepest directory the walk reached. One gone during the walk is not there to hide. The
+    project itself is never masked whole, as AEW reads its store there: one that cannot be listed, or that holds at
+    its top an entry that cannot be checked, is refused (``project_unlistable``).
+
+    Its limits: a directory masked whole hides all it holds, what a run needs there included (a containment.writable
+    root in it is refused), so taking such a directory's permissions away stops the project's contained launches until
+    they are given back; that hides, and shows nothing. Present at the launch only: a file first created, or replaced
+    by rename on the host, during the session is seen inside until the next launch, as a containment.hide entry in the
+    run's own tree is."""
     root = _real(project)
     try:
         if not stat.S_ISDIR(os.stat(root).st_mode):
@@ -743,7 +751,10 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
                 except FileNotFoundError:  # gone during the walk
                     continue
                 if stat.S_ISDIR(mode):
-                    if entry.name != ".git" and not (top == root and entry.name == ".aew"):
+                    # Only the project's own `.aew` is left out: a read-only mount of its own in the Lead's tree, so
+                    # nothing in the tree can be moved under it. A directory left out by its name alone (`.git`) would
+                    # be one any directory can be moved under, or given the name of.
+                    if not (top == root and entry.name == ".aew"):
                         below.append(entry.path)
                     continue
                 name = entry.name

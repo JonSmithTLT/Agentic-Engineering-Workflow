@@ -2279,9 +2279,13 @@ system text that said the same: the guarantee is containment's, and the `read` d
   paths. Nothing under `.aew` is scanned: the store and the runs' own directories have masks of their own.
 - **How they are found** (`layout.project_env_masks`), at each launch: a walk of the whole tree, whatever git makes of
   it (the quick check of #592). That covers tracked, untracked and ignored files alike, and a nested repository's or a
-  submodule's own, as each is in the tree a run sees. It skips each `.git` directory and the project's `.aew`, and
-  follows no link to a directory, so it ends. Its cost is the tree's size: about 0.3 s for 200,000 entries in ignored
-  vendored directories.
+  submodule's own, as each is in the tree a run sees. It follows no link to a directory, so it ends. Its cost is the
+  tree's size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored vendored directories, measured on a
+  loaded host, about twice the walk without the stats.
+- **What the walk leaves out:** only the project's own `.aew`. That is a read-only mount of its own in the Lead's
+  tree, so no directory of the tree can be moved under it. No directory is left out by its name alone: a `.git`
+  directory, the project's own or one below, is walked as any other, since a directory can be moved under one, or
+  given that name. So a file of git's own with such a name (the ref of a branch named `x.env`) is masked too.
 - **It fails closed** (the quick checks of #592). Each entry is checked by its own stat, never by the listing alone,
   and what the walk cannot check is masked whole by an empty directory, as a `containment.hide` directory is, because
   a `.env` file in it could still be read by name:
@@ -2291,11 +2295,12 @@ system text that said the same: the guarantee is containment's, and the `read` d
   - for a path too long to list, the deepest directory the walk reached.
 
   Each is named on the Lead's launch line ("a project directory the .env scan cannot read"), and none refuses the
-  launch. So a Lead that takes a directory's read or search permission away in one session finds it empty from the
-  next, and cannot give the permission back or move the directory there. The same holds for a `containment.hide`
-  entry in the Lead's own tree: where its directory cannot be searched, so that it would read as absent, the
-  directory is masked whole. Only the project itself must be listable and searchable, since AEW reads its store
-  there; one that is not is refused (`project_unlistable`).
+  launch by itself (the last limit below). So a Lead that takes a directory's read or search permission away in one
+  session finds it empty from the next, and cannot give the permission back or move the directory there. The same
+  holds for a `containment.hide` entry in the Lead's own tree: where its directory cannot be searched, so that it
+  would read as absent, the directory is masked whole. Only the project itself is never masked whole, since AEW
+  reads its store there: one that cannot be listed, or that holds at its top an entry that cannot be checked, is
+  refused (`project_unlistable`).
 - **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
   in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
   bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
@@ -2311,7 +2316,11 @@ system text that said the same: the guarantee is containment's, and the `read` d
   - a hard link to a masked file under another name is not masked;
   - other names are not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively);
   - a `.env` file in a directory outside the project is not masked, even where a link inside the project points at
-    that directory.
+    that directory;
+  - a directory masked whole hides all it holds, what a run needs there included. A `containment.writable` root in
+    it is refused, and a run that needs anything else there does not find it. So a Lead that takes away the
+    permissions of a directory a run needs stops the project's contained launches, its own next one included, until
+    the operator gives them back. That hides, and shows nothing.
 
   Anything else is named in `containment.hide`.
 - **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
@@ -2324,9 +2333,11 @@ system text that said the same: the guarantee is containment's, and the `read` d
   are unchanged.
 - **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
   - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
-  - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked;
+  - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked, each `.git`
+    directory included;
   - a directory the scan cannot list or search is masked whole and the run still launches, and so is the directory
     of a `containment.hide` entry in the Lead's tree that cannot be checked;
+  - a `containment.writable` root in a directory masked whole is refused;
   - a project the scan cannot list is refused;
   - a project with too many files to mask is refused;
   - the read rules derive from the names.
@@ -2337,4 +2348,5 @@ system text that said the same: the guarantee is containment's, and the `read` d
   same holds in a nested repository, in a submodule's checkout, and for names that begin or end with a space. It also
   holds in a directory the scan cannot list or search, for the Lead and a worker, and for a Lead that takes a
   directory's permissions away in one session (modes 000, 300, 100, 400, 600 and 444) and gives them back, or moves
-  the directory, in the next.
+  the directory, in the next. It holds under a directory named `.git` too: for a worker, and for a Lead that moves a
+  directory under one, or gives it that name, in one session and reads it in the next.

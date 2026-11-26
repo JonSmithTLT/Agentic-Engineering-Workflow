@@ -541,6 +541,27 @@ def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_l
         sec.chmod(0o700)
 
 
+def test_a_lead_that_moves_a_directory_under_a_git_directory_finds_its_env_file_empty_from_the_next_launch(lead_lab):
+    """The scan leaves no directory out by its name: a Lead that moves a directory holding a `.env` file under a
+    directory named `.git` in one session, or gives it that name, reads the file as empty in the next, there and
+    wherever it moves the directory back to. Only the project's own `.aew` is left out, and nothing can be moved
+    under it: it is a read-only mount of its own in the Lead's tree. Synthetic values only."""
+    lab = lead_lab
+    for d in ("apps/web", "apps/api"):
+        (lab.repo / d).mkdir(parents=True)
+        (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    first = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
+                   "mkdir -p stash/.git && mv apps/web stash/.git/web; echo rc=$?; mv apps/api apps/.git; echo rc=$?; "
+                   "mv apps/.git .aew/api 2>/dev/null; cat stash/.git/web/.env apps/.git/.env; echo end")
+    assert first.stdout.split() == ["rc=0", "rc=0", "end"], first.stdout + first.stderr
+    assert (lab.repo / "stash" / ".git" / "web" / ".env").is_file() and (lab.repo / "apps" / ".git" / ".env").is_file()
+    done = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
+                  "cat stash/.git/web/.env apps/.git/.env; grep -rh SYNTHETIC . 2>/dev/null; "
+                  "mv stash/.git/web web && cat web/.env; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
 # ------------------------------------------------------------------------------------------- outcome 6, rows
 
 def lead_establish(lab: LeadLab, monkeypatch, *, terminal: bool = True, mode: str | None = None,

@@ -1909,7 +1909,9 @@ def test_a_workers_layout_masks_the_projects_env_files_in_place_at_any_depth(tmp
 def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole_tree_is_walked(tmp_path):
     """`.env` is also a virtual environment's usual name: a directory is not one of the project's `.env` files, nor a
     link to one, so a run that needs it keeps it. A `.env` that links to a file masks that file, which hides it at both
-    paths. The whole tree is walked, at any depth, past `.git` and the project's `.aew`, in a git work tree or not."""
+    paths. The whole tree is walked, at any depth, in a git work tree or not: only the project's own `.aew` is left
+    out, and no directory by its name alone, so a `.git` directory is walked as any other, at the top and below, and
+    so is an `.aew` that is not the project's own."""
     repo = tmp_path / "plain"
     (repo / ".env" / "bin").mkdir(parents=True)
     (repo / "secrets").mkdir()
@@ -1918,11 +1920,14 @@ def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole
     (repo / "svc" / ".env").symlink_to(repo / "secrets" / "app.cfg")
     (repo / "svc" / "deep").mkdir()
     (repo / "svc" / "deep" / "x.env").write_text("SYNTHETIC=1\n")
-    for hidden in (".git", ".aew"):
-        (repo / hidden).mkdir()
-        (repo / hidden / ".env").write_text("SYNTHETIC=1\n")
+    for walked in (".git", ".aew", "svc/.git/moved", "svc/.aew"):
+        (repo / walked).mkdir(parents=True)
+        (repo / walked / ".env").write_text("SYNTHETIC=1\n")
     real = os.path.realpath(repo)
-    assert L.project_env_masks(repo) == L.EnvScan(sorted([os.path.join(real, "secrets", "app.cfg"),
+    assert L.project_env_masks(repo) == L.EnvScan(sorted([os.path.join(real, ".git", ".env"),
+                                                         os.path.join(real, "secrets", "app.cfg"),
+                                                         os.path.join(real, "svc", ".aew", ".env"),
+                                                         os.path.join(real, "svc", ".git", "moved", ".env"),
                                                          os.path.join(real, "svc", "deep", "x.env")]), [])
     assert L.project_env_masks(tmp_path / "missing") == L.EnvScan([], [])
     # In a git work tree too: a link to a directory is not masked, nor one to nothing, and a non-ASCII name is found
@@ -1991,10 +1996,27 @@ def test_a_containment_hide_entry_in_the_leads_tree_that_cannot_be_checked_masks
     real = os.path.realpath(repo)
     keys = os.path.join(real, "keys")
     with listing_as_unprivileged(monkeypatch, unsearchable=(keys,)):
-        layout = lead_layout(tmp_path, policy={"containment": {"hide": [str(repo / "keys" / "deploy.key")]}})
-    assert keys in layout.hide_dirs and keys in dict(layout.tree_masks)
+        layout = lead_layout(tmp_path, policy={"hide": [str(repo / "keys" / "deploy.key")]})
+    # masked for the entry, by what names it: not only as a directory the `.env` scan could not read
+    assert keys in layout.hide_dirs and dict(layout.tree_masks)[keys] == L.POLICY_HIDE
+    assert keys not in layout.env_dirs
     assert not [p for p, _ in layout.tree_absent if p.startswith(keys)]
     assert C.bwrap_argv(layout, ["agent"]).count(keys) >= 2  # the mask, and its remount read-only
+
+
+def test_a_writable_root_in_a_directory_the_env_scan_masks_whole_is_refused(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+    """A directory masked whole hides all it holds, so a `containment.writable` root in one is refused, as a root
+    under any mask is: it is never bound back over the mask, where the scan did not look. That stops the launch until
+    the directory's permissions are given back, and shows nothing."""
+    repo = tmp_path / "repo"
+    (repo / "tools" / "out").mkdir(parents=True)
+    tools = os.path.join(os.path.realpath(repo), "tools")
+    with listing_as_unprivileged(monkeypatch, unlistable=(tools,)), \
+            pytest.raises(ContainmentUnavailable, match="containment.writable root") as refused:
+        lead_layout(tmp_path, policy={"writable": [str(repo / "tools" / "out")]})
+    assert [(e["path"], e["what"].startswith(L.ENV_DIR_WHAT)) for e in refused.value.details["exposes"]] \
+        == [(tools, True)]
 
 
 def test_a_project_the_env_scan_cannot_list_is_refused_naming_it(tmp_path, fake_bwrap, monkeypatch):

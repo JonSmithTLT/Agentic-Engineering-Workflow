@@ -246,6 +246,22 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
     assert (repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
+def test_containment_hides_env_files_under_a_directory_named_git_from_a_worker(lab):
+    """The scan leaves no directory out by its name, so a `.env` file under a directory named `.git`, in the project's
+    own git directory or anywhere below, reads as empty from a worker's sandbox too, by absolute path and to a search
+    of the project. Synthetic values only."""
+    names = (".git/moved/.env", "vendor/.git/.env", "vendor/.git/web/.env.local")
+    for name in names:
+        (lab.repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    paths = " ".join(shlex.quote(str(lab.repo / n)) for n in names)
+    layout = lab.layout("implementer")
+    assert {str((lab.repo / n).resolve()) for n in names} <= set(layout.env_masks)
+    done = lab.sh(layout, f"cat {paths}; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; git status --short; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
 def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch):
     """The scan fails closed for a worker too: a project directory it cannot list as the launching account (searchable
     but not readable, 0311), or can list but not search (0400), is masked whole, so a `.env` file there cannot be read

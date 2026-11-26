@@ -23,6 +23,9 @@
 - **Nature:** a new record kind beside control state. Nothing here creates authority: a message moves knowledge, never
   project state (F9 invariant 1), and no gate, transition, dispatch or evidence path reads one.
 
+For current delivery, default activation and result finality, see the
+[MS5b amendment of 2026-11-25](#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).
+
 ## Context
 
 F9-A1 asks for a durable, bounded path between the current Lead generation and an active worker that creates no
@@ -355,6 +358,54 @@ returns `WAIT_BINDING_LOST_ON_RECONNECT`. After a new step starts, an observed f
 bind. A reconnect alone provides no evidence of a step or call's lifetime. Run events record each drop and reconnect
 and identify the first drop since the last observed boundary when refusing an unbound wait.
 
+## Amendment of 2026-11-25: report finality and turn-end delivery (MS5b)
+
+This amendment updates D5, D6, D8, and the default described in the consequences below. The original descriptions
+remain as adopted. It follows the F9-A plan v4 amendment 2 (v10) and the operator's approval of default activation.
+
+**Timing and recording.** `message_send` and `aew harness send` accept `next-step` (OpenCode steer, the default)
+and `turn-end` (OpenCode queue). Each timing keeps its own order. Steer may overtake queue. Both commands record
+through the same coordination store while enabled. An ordinary message sent to a held session stays staged. A
+recorded shell send can wake the session with either timing and keeps that behavior on retry. With both snapshots
+disabled, shell next-step uses the existing request path and turn-end is refused with `TURN_END_NEEDS_MESSAGING`.
+If the project and launch switches disagree, either timing yields `MESSAGING_SNAPSHOT_MISMATCH` and asks the Lead
+to relaunch. Refusals write nothing and the store path never falls back to an unrecorded send.
+
+**Default activation.** Fresh projects write an enabled policy and an init registration. Upgrades and migrations
+preserve existing policy bytes and explicit disabled settings. An older project that has never enabled messaging
+keeps its prior policy and control bytes until the operator adopts the offer. Turning messaging off preserves a
+prior registration and its read-only history. The disabled worker surface and M4-H's treatment stay byte-identical.
+
+**Report finality.** A previously admitted Lead message that remains unincorporated in a worker report triggers
+`PENDING_LEAD_MESSAGE` for either timing. An admitted message was recorded at or before the thread sequence the engine saved in `coordination_through` at submission. A later report from the same invocation incorporates it once
+that report lists it as delivered in `coordination_inputs`. A reply or POST alone does not establish delivery. The guard
+excludes three cases: an unposted line that fails D-36 against the submission's `coordination_rev`, an unposted message
+from a superseded generation, and a superseded POST for which there is no confirmed delivery. A later final admission
+check may confirm the last case and make the earlier report insufficient again.
+
+The supervisor checks its tracked POSTs and the continuation launch prompt against the provider within one five-second
+budget before submission takes the control lock. A reply can free a recording slot before its message is admitted, so
+the check considers all tracked offers up to the thread's existing bound. The submission records confirmed admissions
+for its own run, then snapshots the sequence and revision under that lock. A report without the sequence is treated as
+earlier only if it predates its invocation's first message or there is no thread. A timestamp tie is treated
+conservatively. The comparison on old reports depends on the two writers' clocks. When messaging is on in the project
+or the run, a report before the first message records a zero sequence. A previously used thread still counts when messaging is switched off.
+
+A message recorded after a report leaves the report valid. If accepting the report ends the invocation, the result
+warns the Lead about the work it may leave behind. With messaging on or a retained thread,
+`resume` can read up to 500 newest transitions, stopping at seven days or its 20-entry projection. This is the bounded
+exception in the [ADR-0011 H4 amendment](0011-hot-cold-control-state.md#amendment-of-2026-11-25-bounded-lost-message-recovery-in-resume).
+The cost can rise with the recent window even when output is empty. The read-only `aew message lost` reports the seven-day
+window with a 10,000-transition cap. Both distinguish a missed message from an unconfirmed POST.
+`message.wait` and its transport hold apply only to next-step. A turn-end message carried at relaunch names its
+after-current-work instruction in the continuation.
+A worker can read and reply without a delivery receipt. Those messages remain eligible for delivery so a subsequent
+report can account for them. The recovery rule for an already delivered and answered message is unchanged.
+
+MS5b registers a new project with `coordination_store: {since_rev: 0, decision: null, via: init}`. An existing project
+with no key stays disabled until adopting the offer. The record schema preserves old next-step bytes and refuses new
+turn-end or recorded shell-send fields when read by the previous closed schema.
+
 ## Build status
 
 | Slice | What | Status |
@@ -366,7 +417,8 @@ and identify the first drop since the last observed boundary when refusing an un
 | MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | **Built (2026-11-11)**: own-thread reply/read/wait, enabled-only launch snapshots; qualified Linux 2.2.6 wait binding, deterministic fake/process tests on both hosts; Windows runtime NOT RUN |
 | MS5 | Live delivery and the continuation | OpenCode step-boundary delivery, held-session staging and relaunch delivery. The supervisor confirms admission independently of the offer. |
 | MS6 | Lead attention: the wait, `resume`, untrusted rendering | **Built (2026-11-11)**: verified live/sealed overlays, bounded wait/wake bodies, typed durable receipts and generation-local relayed told/wake posted suppression; shared switch-aware guidance |
-| MS7 | F19 hooks, acceptance, live qualification | Not built |
+| MS5b | Both timings, report finality, recorded shell sends and default activation | Recorded `harness send` wakes a held run. New projects enable messaging at init. Existing settings are preserved. |
+| MS7 | Live provider qualification | Operator run pending |
 
 **MS4/MS6 as built (2026-11-11, PR 2).** The historical 2.0.18 transport observations in D8 are not a current
 qualification claim. The committed `messaging-2.2.6-linux.json` record and semantic pin cover the approved isolated
@@ -409,8 +461,7 @@ Guide/system/catalog use the broker's one post-offer adopted switch snapshot, in
 authority. On guidance names `messages` as worker data and `message_send` to answer/steer, with the relayed-relisting
 cost line once. Off system/catalog/wake pins remain unchanged. The wire/prose naming oracle and the syntax detector's
 documented limits are in `test_messaging_guidance.py` and `tests/helpers/catalog_reads.py`; neither is a semantic
-proof of every emitted hint. Finality, both timings, recorded harness send, default-on and
-MS7 provider evidence remain later slices. No default or qualification pin is changed by this build-status update.
+proof of every emitted hint. MS7 live-provider evidence remains pending. The qualification pin is unchanged.
 
 ## Consequences
 
@@ -419,6 +470,8 @@ MS7 provider evidence remain later slices. No default or qualification pin is ch
   and then only bounded keys.
 - With messaging off, which is the default and M4-H's treatment, every surface MS1 to MS6 touches is byte-identical,
   proven by disabled-state identity tests in each slice.
+
+The [MS5b amendment](#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b) updates the default and finality.
 
 ## Amendment 2026-11-25 — scoped control bindings (E329)
 

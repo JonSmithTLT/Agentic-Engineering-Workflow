@@ -204,12 +204,15 @@ def test_final_worker_reply_survives_submit_seal_and_a_post_submit_continuation(
     from aew.harness import told_messages as T
 
     run, sync = launch(lab, tmp_path, [
+        {"do": "aew", "args": ["message", "wait", "--timeout", "5"]},
         {"do": "aew", "args": ["message", "reply", MID, "--file", "-"],
          "stdin": "Final reply before the implementation report."}, *IMPLEMENT])
     send(lab)
     (sync / "go").touch()
-    assert steps_done(lab, run, 2, "wait.condition")["exit"] == 0
-    steps_done(lab, run, 5, "wait.condition")  # real worker submit, not an inserted report or sealed owner fact
+    receipt = steps_done(lab, run, 2, "wait.condition")
+    assert receipt["exit"] == 0 and [m["id"] for m in json.loads(receipt["stdout"])["messages"]] == [MID], receipt
+    assert steps_done(lab, run, 3, "wait.condition")["exit"] == 0
+    steps_done(lab, run, 6, "wait.condition")  # real worker submit, not an inserted report or sealed owner fact
     e = Engine.discover(lab.root)
     inv = e.store.read()["invocations"]["INV-0001"]
     mid = "MSG-INV-0001-2"

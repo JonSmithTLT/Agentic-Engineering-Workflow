@@ -196,18 +196,16 @@ def _steering(c: Call) -> Any:
 
 
 def _message_send(c: Call) -> Any:
-    # Timing is advertised now, but no turn-end record exists until MS5b's finality guard is built.
-    if c.a.get("when", "next-step") != "next-step":
-        raise errors.UsageError("turn-end is not available yet; use next-step",
-                                reason="turn_end_not_built")
     out = c.engine.message_record_lead(
         token=c.token(), to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
         in_reply_to=c.a.get("in_reply_to"), refs=c.a.get("refs"), idempotency_id=c.a.get("idempotency_id"),
+        when=c.a.get("when", "next-step"),
         channel=("lead_mcp" if c.ctx.ingress == "mcp" else "lead_broker" if c.ctx.lead_session is not None else "cli"))
     next_step = {"no_live_run": "This message can be carried when the invocation is next launched.",
                  "unsupported": "This adapter cannot deliver live. Relaunch to carry the message.",
                  "held": "The worker remains held. The message can arrive when the worker is resumed.",
-                 "live_pending": "The supervisor will offer this message at a worker step boundary."}
+                 "live_pending": "The supervisor will offer this message at a worker step boundary.",
+                 "turn_end_pending": "The worker receives this at turn end and must submit again after receiving it."}
     return out | {"next": next_step[out["delivery"]]}
 
 

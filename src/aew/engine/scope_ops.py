@@ -598,8 +598,7 @@ class ScopeCorrections:
         return runlog.observed_status(runlog.run_dir(self.k.aew_root, run))[0]
 
     def messaging(self, state: dict[str, Any]) -> bool:
-        """Whether the project's adopted coordination messaging is on: then `harness send` is refused, and a message for
-        a live worker is recorded with `message_send` (``harness.contract.wake_advice``; PR #545 review, m2)."""
+        """Whether scope guidance should use the typed coordination send for a live worker (PR #545 review, m2)."""
         return self.coordination.project_switch(state) == X.MESSAGING_ENABLED
 
     @staticmethod
@@ -611,9 +610,9 @@ class ScopeCorrections:
         card, as a gate replacement's result names it (ITEMS 55 addendum 3; PR #540 review, m5). ``harness send``
         takes only a STARTING or RUNNING run, so an implementer whose run has ended, or whose status cannot be read,
         is re-dispatched too: a fresh invocation on the kept workspace (``run_status``; PR #540 quick check, m-b).
-        With coordination ``messaging`` on, `harness send` is always refused, so a message is recorded for a live
-        implementer with `message_send` to its invocation instead (PR #545 review, m2); its delivery is not built yet.
-        Its arguments are the full request for `message_send` (PR #545 quick check, m6)."""
+        With coordination ``messaging`` on, the scope guidance uses `message_send` to record a live implementer's
+        message and preserve a held session (PR #545 review, m2).
+        Its arguments are whole, as `message_send` takes them (PR #545 quick check, m6)."""
         why = f"`{path}` was added to {work_id}'s scope on the record, so this invocation's context pack changed"
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):

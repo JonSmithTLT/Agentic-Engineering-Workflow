@@ -60,7 +60,7 @@ SHORT = {"implementation_report": "impl", "review": "review", "verification": "v
 # silently overwritten, so forged bindings or control decisions are visible failures.
 ENGINE_OWNED = {"schema", "id", "kind", "work_unit", "created_at", "evaluated_snapshot", "plan_revision",
                 "seq", "integrity", "sealed_by", "attempt", "subject",
-                "coordination_inputs"}  # the Lead messages it had (F9-A plan D-35)
+                "coordination_inputs", "coordination_through", "coordination_rev"}  # F9-A D-35 and MS5b
 # Producer fields the engine records from control state (ADR-0010): identity, the pinned execution, and
 # the credential and harness run that presented the submission. A submitter may only *declare* the rest.
 ENGINE_OWNED_PRODUCER = {"kind", "role", "invocation", "role_card", "execution_profile", "run", "credential",

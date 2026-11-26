@@ -13,8 +13,7 @@ holds it against the fact's owner, and each is planted with the line the audit f
   core is there and is said once, and a guide section it names exists (F2 and #593's m5: "as the guide says" and "as
   the guide's first step shows" pointed at text the Lead was not given);
 - no line overrides another (U1: "whatever the line above on a timed-out wait says");
-- no value the tool list offers is one its runner always refuses, but those the designer has yet to rule on, each
-  of which the tool's description says is refused (F4: `message_send`'s `turn-end`);
+- no value the tool list offers is one its runner always refuses (F4: `message_send`'s `turn-end` before MS5b);
 - a typed `status` or `resume` holds no large value twice, and costs no more than the shell's `aew status` (the audit's
   R1 to R3: the hints twice, and 7,231 B against 3,520 B).
 
@@ -203,11 +202,6 @@ def test_no_line_overrides_another_and_a_timed_out_wait_is_told_once(switches, p
 
 # ------------------------------------------------------------------------------------- no value is always refused
 
-# Values the tool list offers that the runner always refuses, until the designer rules on the schema change that drops
-# them (E367's designer list, B1: the value is ADR-0017 MS3's choice to advertise). Each row's description says so.
-DESIGNER_PENDING = {("message_send", "when", "turn-end"): "Turn-end refused"}
-
-
 class Reached(Exception):
     """The runner got past its own checks to the engine: the value is not refused there."""
 
@@ -240,11 +234,8 @@ def always_refused(switches: frozenset[str]) -> dict[tuple[str, str, Any], str]:
 
 
 @pytest.mark.parametrize("switches", [frozenset(), ON], ids=["off", "on"])
-def test_no_value_the_tool_list_offers_is_always_refused_unless_its_description_says_so(switches):
-    refused = always_refused(switches)
-    assert set(refused) == {k for k in DESIGNER_PENDING if k[0] in {t.name for t in contract.exposed(NORMAL, switches)}}
-    for key, description in refused.items():
-        assert DESIGNER_PENDING[key] in description, key
+def test_no_value_the_tool_list_offers_is_always_refused(switches):
+    assert always_refused(switches) == {}
 
 
 def test_a_value_a_runner_newly_refuses_as_not_built_is_found(monkeypatch):

@@ -41,6 +41,14 @@ def test_the_compact_presentation_changes_only_descriptions():
     assert "message_send" not in compact  # no standalone compact policy switch is enabled by this slice
 
 
+def test_the_compact_message_send_listing_describes_both_delivery_timings():
+    [message] = [row for row in mcp.tools_list("normal", contract.ALL_SWITCHES)["tools"]
+                 if row["name"] == "message_send"]
+    assert message["description"] == ("Message an active worker's invocation. Deliver at its next step (default), "
+                                      "turn end or on relaunch.")
+    assert message["inputSchema"]["properties"]["when"]["enum"] == ["next-step", "turn-end"]
+
+
 @pytest.mark.parametrize("switches", [frozenset(), contract.ALL_SWITCHES], ids=["off", "on"])
 @pytest.mark.parametrize("profile", ["normal", "recovery"])
 def test_every_built_row_is_offered_on_exactly_its_declared_profiles(switches, profile):

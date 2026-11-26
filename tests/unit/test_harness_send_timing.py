@@ -12,7 +12,7 @@ import pytest
 
 from aew.coordination import layout as L
 from aew.engine.harness_ops import run_messaging_snapshot, send_route
-from aew.errors import HarnessSendNeedsStore, MessagingSnapshotMismatch, TurnEndNeedsMessaging
+from aew.errors import MessagingSnapshotMismatch, TurnEndNeedsMessaging
 from aew.policy import execution as X
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,8 +62,8 @@ def test_harness_send_help_states_both_timings_and_their_order(capsys, monkeypat
                    "a `next-step` message sent after a `turn-end` one arrives first",
                    "up to 1 MiB (4,000 characters when coordination messaging is on)",
                    "every send is recorded as a coordination message, and still wakes a held session",
-                   "a report the worker submitted before receiving a message of either timing is not final until it "
-                   "submits again",
+                   "A message of either timing recorded before submission must be accounted for in a final report",
+                   "A message recorded after submission leaves that report final and may produce a Lead advisory",
                    "--when {next-step,turn-end}"):
         assert phrase in text, phrase
     assert "after its current step" not in text  # the old claim, true only of `steer`
@@ -74,18 +74,16 @@ def test_harness_send_help_states_both_timings_and_their_order(capsys, monkeypat
 
 
 @pytest.mark.parametrize("when", [L.NEXT_STEP, L.TURN_END])
-def test_send_route_decides_every_cell_and_refuses_all_but_the_request_file(when):
+def test_send_route_selects_one_delivery_path_or_refuses(when):
     """§3.1's two values: both off is the request file for `next-step` and `TURN_END_NEEDS_MESSAGING` for `turn-end`;
-    both on is `HARNESS_SEND_NEEDS_STORE` until MS5b; a disagreement is `MESSAGING_SNAPSHOT_MISMATCH` either way."""
+    both on uses the store and a disagreement is `MESSAGING_SNAPSHOT_MISMATCH` either way."""
     if when == L.NEXT_STEP:
         assert send_route(OFF, OFF, when) == "request"
     else:
         with pytest.raises(TurnEndNeedsMessaging) as refused:
             send_route(OFF, OFF, when)
         assert "--when next-step" in refused.value.message and "operator to enable messaging" in refused.value.message
-    with pytest.raises(HarnessSendNeedsStore) as refused:
-        send_route(ON, ON, when)
-    assert "not yet available" in refused.value.message and "nothing was sent" in refused.value.message
+    assert send_route(ON, ON, when) == "coordination"
     for project, snapshot in ((ON, OFF), (OFF, ON)):
         with pytest.raises(MessagingSnapshotMismatch) as refused:
             send_route(project, snapshot, when, invocation="INV-0007")

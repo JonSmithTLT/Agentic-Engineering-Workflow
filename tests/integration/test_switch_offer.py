@@ -36,11 +36,11 @@ from aew.maps import service as maps
 from aew.policy import execution as X
 
 ZERO = "0" * 64
-MUTATING, TABLE, MAPS = (o.switch for o in switch_offer.OFFERS)
+MUTATING, TABLE, MAPS, MESSAGING = (o.switch for o in switch_offer.OFFERS)
 EXECUTION = "policy/execution.yaml"
 GATES, PRICES, MANIFEST = "policy/gates.yaml", "policy/pricing.yaml", "project.yaml"
 BOTH = [MUTATING, TABLE]  # the rows a project from before the first two defaults moved is offered
-ROWS = [o.switch for o in switch_offer.OFFERS]  # every row: the shared row tests run over each
+ROWS = [MUTATING, TABLE, MAPS]  # these fixtures predate the original offers and retain the messaging default
 FROZEN = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
 
 
@@ -85,8 +85,14 @@ def old(tmp_path, request):
                      newline="\n")
     _manifest(p, lambda policy: policy.pop("pricing"))
     (p.root / ".aew" / PRICES).unlink()
-    if "row" in getattr(getattr(request.node, "callspec", None), "params", {}):
+    row = getattr(getattr(request.node, "callspec", None), "params", {}).get("row")
+    if row is not None:
         _strip_maps(p)
+    if getattr(row, "switch", row) == MESSAGING:
+        path = p.root / ".aew" / EXECUTION
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data.pop("coordination", None)
+        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
     p.adopt_policy()
     return p
 

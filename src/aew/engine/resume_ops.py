@@ -37,6 +37,7 @@ from aew.util import parse_frontmatter
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import (
+        CoordinationPort,
         GatesPort,
         HarnessPort,
         HierarchyPort,
@@ -93,7 +94,7 @@ class Resume:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, inputs: InputsPort, gates: GatesPort,
                  hierarchy: HierarchyPort, lead: LeadPort, views: StatusViewsPort, harness: HarnessPort,
-                 history: HistoryCommandsPort, kinds: KindRegistry) -> None:
+                 history: HistoryCommandsPort, kinds: KindRegistry, coordination: CoordinationPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -105,6 +106,7 @@ class Resume:
         self.harness = harness
         self.history = history
         self.kinds = kinds
+        self.coordination = coordination
 
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(NEXT_ACTIONS, MUTATING, self._ticket_next_actions),
@@ -296,8 +298,16 @@ class Resume:
         ingested = {e["id"] for e in u.get("evidence", [])}
         active = {i for i in u.get("invocations", []) if state["invocations"][i]["status"] == "active"}
         records, _ = E.scan(self.k.aew_root, wid)
-        return [e["id"] for e in records
-                if e["kind"] == kind and e["producer"]["invocation"] in active and e["id"] not in ingested]
+        available = []
+        for ev in records:
+            if ev["kind"] != kind or ev["producer"]["invocation"] not in active or ev["id"] in ingested:
+                continue
+            try:
+                self.coordination.require_final(state, ev)
+            except (AEWError, OSError):
+                continue  # report_view names the reason in resume, rather than suggesting a refused ingest
+            available.append(ev["id"])
+        return available
 
     def _ticket_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
         st = u["state"]
@@ -613,6 +623,13 @@ class Resume:
                 guidance = (f"This session's Lead broker does not hold Lead authority ({session.get('detail')}). "
                             f"{guidance}")
         catalog = self.roles.role_catalog()
+        reports = [row | {"work_unit": wid} for wid in state["work"]
+                   for row in self.coordination.report_view(state, wid, active_only=True)]
+        try:
+            lost = self.coordination.message_lost(state, resume=True)
+        except IntegrityError as exc:
+            lost = {"messages": [], "problem": exc.message}
+        waits = [f"{row['work_unit']} report {row['id']}: {row['next']}" for row in reports if row.get("next")]
         return {
             "order": RESUME_ORDER,
             "spec_set": SPEC_SET,
@@ -637,7 +654,9 @@ class Resume:
             "role_catalog_problems": catalog.problems,
             "tree": self.hierarchy.work_tree()["lines"],
             "lead_note": state.get("next_action"),
-            "next_actions": self.next_actions(state),
+            "next_actions": waits + self.next_actions(state),
+            **({"report_finality": reports} if reports else {}),
+            **({"lost_lead_messages": lost} if len(lost) > 1 or lost["messages"] else {}),
             "contradictions": self.views.contradictions(state) + [f"evidence: {p}" for u in state["work"]
                                                             for p in E.scan(self.k.aew_root, u)[1]],
             **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
@@ -684,6 +703,13 @@ class Resume:
                 lines.append(f"- {s['intent']} ({s['tool']}, {s['subject'] or 'project'}): {s['steps_committed']} of "
                              f"{s['steps_planned']} step(s), generation {s['owner_generation']}; safe to continue: "
                              f"{'yes' if s['safe_to_continue'] else 'no (' + '; '.join(failing) + ')'}")
+        if lost := r.get("lost_lead_messages"):
+            lines += ["", "## Unadmitted Lead messages"]
+            lines.extend(f"- {m['id']} ({m['when']}, {m['work_unit']}): {m['next']}" for m in lost["messages"])
+            if omitted := lost.get("omitted"):
+                lines.append(f"- At least {omitted['at_least']} more.")
+            if note := lost.get("note") or lost.get("problem"):
+                lines.append(f"- {note}")
         lines += ["", "## Next actions", *(f"- {a}" for a in r["next_actions"] or ["(none)"])]
         if r["lead_note"]:
             lines += ["", f"Lead's note: {r['lead_note']}"]

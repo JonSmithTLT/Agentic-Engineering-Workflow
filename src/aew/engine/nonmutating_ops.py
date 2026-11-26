@@ -35,6 +35,7 @@ from aew.engine.seams import (
     GATE,
     GATE_CONTEXT,
     INGEST,
+    INGEST_QUERY,
     INVOKE,
     NON_MUTATING,
     SOURCE,
@@ -681,6 +682,41 @@ class NonMutating:
         return {"evaluated_snapshot": inv["snapshot"], "attempt": inv["attempt"], "result": result,
                 section: submitted.get(section) or {}}
 
+    def _check_execute_record(self, state: dict[str, Any], work_id: str, evidence_id: str) -> dict[str, Any]:
+        unit = self.units.unit(state, work_id)
+        self._require_nm_ticket(unit, work_id, "`aew evidence ingest`")
+        if unit["state"] != "RUNNING":
+            raise IllegalTransition(f"{work_id} is {unit['state']}; records are ingested while RUNNING")
+        execution = unit.get("execution") or {}
+        ev = self.inputs.find_unit_evidence(work_id, evidence_id)
+        inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
+        problems: dict[str, Any] = {}
+        if ev["kind"] != execution.get("expected_kind"):
+            problems["kind"] = {"record": ev["kind"], "expected": execution.get("expected_kind")}
+        if (ev["producer"]["invocation"] != execution.get("invocation")
+                or ev.get("attempt") != execution.get("attempt")):
+            problems["attempt"] = {"record_attempt": ev.get("attempt"), "current_attempt": execution.get("attempt")}
+        if inv.get("status") != "active" or execution.get("ended"):
+            problems["executor"] = f"the attempt's executor is {inv.get('status')}; its records are history"
+        plan = unit.get("plan") or {}
+        if ev.get("plan_revision") != E.plan_binding(plan):
+            problems["plan"] = {"record": ev.get("plan_revision"), "accepted": plan.get("accepted")}
+        if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != (inv.get("snapshot") or {}).get(
+                "relevant_inputs_fingerprint"):
+            problems["observation"] = "the record is not bound to its executor's observation snapshot"
+        binding = self.units.dispatch_binding_problem(state, work_id)
+        if binding:
+            problems["dependencies"] = binding
+        if problems:
+            raise GateUnsatisfied(f"{evidence_id} cannot be accepted for {work_id}'s current attempt; it remains "
+                                  "history", **problems)
+        self.require_observation_intact(ev["producer"]["invocation"], inv)  # changed since submission?
+        return ev
+
+    def evidence_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        return self.gates.query_report_finality(
+            state, args, lambda: self._check_execute_record(state, work_id, str(args.get("evidence"))))
+
     def evidence_ingest(self, *, token: str, work_id: str, evidence_id: str) -> dict[str, Any]:
         """Lead accepts the current attempt's execute record into control state (it is not yet DONE)."""
         with self.k.lead_txn(token, "evidence.ingest") as ctx:
@@ -688,34 +724,9 @@ class NonMutating:
                                "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            self._require_nm_ticket(unit, work_id, "`aew evidence ingest`")
-            if unit["state"] != "RUNNING":
-                raise IllegalTransition(f"{work_id} is {unit['state']}; records are ingested while RUNNING")
-            execution = unit.get("execution") or {}
-            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
-            inv = state["invocations"].get(ev["producer"]["invocation"]) or {}
-            problems: dict[str, Any] = {}
-            if ev["kind"] != execution.get("expected_kind"):
-                problems["kind"] = {"record": ev["kind"], "expected": execution.get("expected_kind")}
-            if (ev["producer"]["invocation"] != execution.get("invocation")
-                    or ev.get("attempt") != execution.get("attempt")):
-                problems["attempt"] = {"record_attempt": ev.get("attempt"), "current_attempt": execution.get("attempt")}
-            if inv.get("status") != "active" or execution.get("ended"):
-                problems["executor"] = f"the attempt's executor is {inv.get('status')}; its records are history"
-            plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != E.plan_binding(plan):
-                problems["plan"] = {"record": ev.get("plan_revision"), "accepted": plan.get("accepted")}
-            if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != (inv.get("snapshot") or {}).get(
-                    "relevant_inputs_fingerprint"):
-                problems["observation"] = "the record is not bound to its executor's observation snapshot"
-            binding = self.units.dispatch_binding_problem(state, work_id)
-            if binding:
-                problems["dependencies"] = binding
-            if problems:
-                raise GateUnsatisfied(f"{evidence_id} cannot be accepted for {work_id}'s current attempt; it remains "
-                                      "history", **problems)
-            self.require_observation_intact(ev["producer"]["invocation"], inv)  # changed since submission?
-            self.gates.ingest_ref(unit, ev)
+            ev = self._check_execute_record(state, work_id, evidence_id)
+            execution = unit["execution"]
+            self.gates.pin_evidence(ctx, unit, ev)
             execution["record"] = {"id": ev["id"], "sha256": ev["_sha256"], "kind": ev["kind"], "result": ev["result"]}
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             execution.update(ended="completed", ended_at=utc_now(), end_reason=f"record {ev['id']} ingested")
@@ -724,7 +735,7 @@ class NonMutating:
             self.units.before_commit(ctx)
         self.prune_observations()
         return {"ok": True, "work_id": work_id, "record": execution["record"],
-                "revision": ctx.session.committed_revision}
+                "revision": ctx.session.committed_revision, **ctx.result_advisories()}
 
     def execute_record_status(self, state: dict[str, Any], work_id: str, records: dict[str, dict[str, Any]],
                               commit: str | None) -> dict[str, Any]:
@@ -779,7 +790,8 @@ class NonMutating:
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(GATE_CONTEXT, NON_MUTATING, self.evidence_gate_context),
                 KindRegistration(INVOKE, NON_MUTATING, self.invoke_evidence_unit),
-                KindRegistration(INGEST, NON_MUTATING, self.ingest_evidence_unit_report)]
+                KindRegistration(INGEST, NON_MUTATING, self.ingest_evidence_unit_report),
+                KindRegistration(INGEST_QUERY, NON_MUTATING, self._query_ingest_report)]
 
     def guard_registrations(self) -> list[GuardRegistration]:
         """Lead-transition guards for non-mutating Tickets (mutating Tickets keep their M1 guards): each replaces the
@@ -951,6 +963,33 @@ class NonMutating:
                                  "location": f.get("location"), "required": f["required"],
                                  "status": "open" if f["required"] else "noted", "source": evidence_id})
 
+    def check_ingest_report(self, state: dict[str, Any], work_id: str, evidence_id: str,
+                            kind: str) -> dict[str, Any]:
+        unit = self.units.unit(state, work_id)
+        self._require_nm_ticket(unit, work_id, "this ingest")
+        expected_state = "REVIEW_PENDING" if kind == "review" else "VERIFY_PENDING"
+        if unit["state"] != expected_state:
+            raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}. "
+                                    f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
+        ev = self.inputs.find_unit_evidence(work_id, evidence_id)
+        inv = state["invocations"][ev["producer"]["invocation"]]
+        role = "reviewer" if kind == "review" else "verifier"
+        if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id:
+            raise IllegalTransition(f"{evidence_id} is not a {kind} of {work_id}")
+        record = (unit.get("execution") or {}).get("record") or {}
+        if ev.get("subject") != {"id": record.get("id"), "sha256": record.get("sha256")}:
+            raise GateUnsatisfied(f"{evidence_id} evaluated {ev.get('subject')}, not {work_id}'s current record "
+                                  f"{record.get('id')} (stale)")
+        plan = unit.get("plan") or {}
+        if ev.get("plan_revision") != E.plan_binding(plan):
+            raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
+        self.require_observation_intact(ev["producer"]["invocation"], inv)
+        return ev
+
+    def _query_ingest_report(self, state: dict[str, Any], work_id: str, args: dict[str, Any], kind: str) -> Any:
+        return self.gates.query_report_finality(state, args,
+            lambda: self.check_ingest_report(state, work_id, str(args.get("evidence")), kind))
+
     def ingest_evidence_unit_report(self, *, token: str, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
         """Lead ingests a review/verification of a non-mutating Ticket's accepted record."""
@@ -960,27 +999,10 @@ class NonMutating:
                                "evidence_kind": "review" if kind == "review" else "verification", "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            self._require_nm_ticket(unit, work_id, "this ingest")
-            expected_state = "REVIEW_PENDING" if kind == "review" else "VERIFY_PENDING"
-            if unit["state"] != expected_state:
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not {expected_state}. "
-                                        f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
-            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
-            inv = state["invocations"][ev["producer"]["invocation"]]
-            role = "reviewer" if kind == "review" else "verifier"
-            if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id:
-                raise IllegalTransition(f"{evidence_id} is not a {kind} of {work_id}")
-            record = (unit.get("execution") or {}).get("record") or {}
-            if ev.get("subject") != {"id": record.get("id"), "sha256": record.get("sha256")}:
-                raise GateUnsatisfied(f"{evidence_id} evaluated {ev.get('subject')}, not {work_id}'s current record "
-                                      f"{record.get('id')} (stale)")
-            plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != E.plan_binding(plan):
-                raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one")
-            self.require_observation_intact(ev["producer"]["invocation"], inv)
+            ev = self.check_ingest_report(state, work_id, evidence_id, kind)
             if kind == "review":
                 self.record_review_findings(unit, ev, evidence_id)
-            self.gates.ingest_ref(unit, ev)
+            self.gates.pin_evidence(ctx, unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             gc = self.gates.gate_context(state, work_id)
             change = None
@@ -1005,7 +1027,7 @@ class NonMutating:
             self.units.before_commit(ctx)
         self.prune_observations()
         return {"ok": True, "work_id": work_id, "transition": change, "pending": pending,
-                "revision": ctx.session.committed_revision}
+                "revision": ctx.session.committed_revision, **ctx.result_advisories()}
 
     def plan_adopt(self, *, token: str, work_id: str, evidence_id: str, source: str,
                    reason: str | None = None, review: list[str] | None = None, verify: list[str] | None = None,

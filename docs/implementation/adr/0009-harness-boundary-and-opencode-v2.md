@@ -689,6 +689,8 @@ organization gateway the relay speaks TLS to; here the Provider Gateway always c
 
 ## Amendment 2026-10-10 — `harness send` takes `--when`, and posts `steer` by default (register E55)
 
+For the current enabled path, see the [MS5b amendment](#amendment-2026-11-25--recorded-harness-send-e175).
+
 The F9-A MS0 probe of OpenCode 2.0.18 ([ADR-0017](0017-coordination-messages.md) D8, its
 [evidence](evidence/f9a-delivery-probe-2026-10-10/probe-results.md)) found that a `queue` input is admitted only when
 the agent's loop would end, after its turn, while `steer` is admitted at the next step boundary. The designer's
@@ -2266,6 +2268,14 @@ expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read 
 `test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
 The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
 only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
+
+## Amendment 2026-11-25 — recorded harness send (E175)
+
+The MS5b rules replace the transitional messaging-enabled refusals in HS1. When both the adopted project switch
+and the run's launch snapshot are enabled, `aew harness send` records either timing in the coordination store.
+A recorded shell send can wake a held session. A switch mismatch refuses both timings and asks the Lead to relaunch
+under the adopted policy. When both are disabled, the original next-step request path and the turn-end refusal
+still apply. See the [coordination amendment](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).
 
 ## Amendment 2026-11-25 — scoped control bindings (E329)
 

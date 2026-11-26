@@ -408,6 +408,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.sent: list[str] = []
         self._coordination_prompts: set[str] = set()
         self._staged_coordination: list[str] = []
+        self._waking_coordination: set[str] = set()
         self._coordination_input_lock = threading.Lock()
         self._coordination_launch_id: str | None = None
         self.turn = "starting"          # running | held (after a Lead interrupt) | ended
@@ -1021,24 +1022,30 @@ class OpenCodeAdapter(HarnessAdapter):
     def coordination_launch_prompt(self) -> str | None:
         return self._coordination_launch_id
 
-    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool) -> str:
+    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                          delivery: str = "steer", wake: bool = False) -> str:
         with self._coordination_input_lock:
-            return self._coordination_post(prompt_id, text, metadata, retry=retry)
+            return self._coordination_post(prompt_id, text, metadata, retry=retry, delivery=delivery, wake=wake)
 
-    def _coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool) -> str:
+    def _coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                           delivery: str, wake: bool) -> str:
         assert self.client is not None and self.session is not None
         with self._lock:
             if self.turn == "ended":
                 return "session_lost"
-            staged = self.turn == "held" or self._lead_interrupted or (retry and self.turn != "running")
+            staged = not wake and (self.turn == "held" or self._lead_interrupted
+                                   or (retry and self.turn != "running"))
+            waking = wake and (self.turn == "held" or self._lead_interrupted)
             self._coordination_prompts.add(prompt_id)
-            if not staged and prompt_id not in self.sent:
+            if waking:
+                self._waking_coordination.add(prompt_id)
+            if not (staged or waking or prompt_id in self.sent):
                 self.sent.append(prompt_id)
                 self._idle_seen = None
         try:
             receipt = self.client.post(
                 f"/api/session/{self.session}/prompt",
-                {"id": prompt_id, "text": text, "delivery": "steer", "metadata": metadata, "resume": not staged},
+                {"id": prompt_id, "text": text, "delivery": delivery, "metadata": metadata, "resume": not staged},
                 timeout=2,
             )
         except OpenCodeUnavailable:
@@ -1054,13 +1061,15 @@ class OpenCodeAdapter(HarnessAdapter):
         item = receipt.get("data") if isinstance(receipt, dict) else None
         payload = item.get("payload") if isinstance(item, dict) else None
         if not isinstance(item, dict) or not isinstance(payload, dict) or (
-                payload.get("text") != text or item.get("id") != prompt_id):
+                payload.get("text") != text or item.get("id") != prompt_id or item.get("delivery") != delivery):
             return "delivery_mismatch"
         if staged:
             with self._lock:
                 if prompt_id not in self._staged_coordination:
                     self._staged_coordination.append(prompt_id)
-        self.emit({"event": "opencode.prompt", "message": prompt_id, "delivery": "steer",
+        else:
+            self._observe_coordination_wake(prompt_id)
+        self.emit({"event": "opencode.prompt", "message": prompt_id, "delivery": delivery,
                    "resume": not staged, "staged": staged, "bytes": len(text.encode("utf-8"))})
         self._wake.set()
         return "offered"
@@ -1080,11 +1089,28 @@ class OpenCodeAdapter(HarnessAdapter):
             return "delivery_mismatch"
         if text is not None and item.get("text") != text:
             return "delivery_mismatch"
+        self._observe_coordination_wake(prompt_id)
         return "admitted"
+
+    def _observe_coordination_wake(self, prompt_id: str) -> None:
+        """Only an accepted waking input can put a held adapter back on its ordinary watch path."""
+        with self._lock:
+            if prompt_id not in self._waking_coordination:
+                return
+            self._waking_coordination.remove(prompt_id)
+            if self.turn == "ended":
+                return
+            self.sent.extend(m for m in self._staged_coordination if m not in self.sent)
+            if prompt_id not in self.sent:
+                self.sent.append(prompt_id)
+            self.turn = "running"
+            self._lead_interrupted = False
+            self._idle_seen = None
 
     def coordination_abandon(self, prompt_id: str) -> None:
         with self._lock:
             self._coordination_prompts.discard(prompt_id)
+            self._waking_coordination.discard(prompt_id)
             if prompt_id in self.sent:
                 self.sent.remove(prompt_id)
             if prompt_id in self._staged_coordination:

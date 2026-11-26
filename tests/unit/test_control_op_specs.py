@@ -96,7 +96,7 @@ class EntryScan(ast.NodeVisitor):
                         self._record(expr, node.lineno)
                 else:
                     self.unreadable.add((self.file, node.lineno, ast.unparse(node)))
-            if name == "_write" and self.function == "message_record_lead":
+            if name == "_record_lead" and self.function == "message_record_lead":
                 self.entries.add(self.function.replace("_", ".", 1))
         self.generic_visit(node)
 

@@ -7,17 +7,19 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from aewflow import stand_in_containment
 from fake_harness import credential_hits
 from harness_conformance import FakeOpenCodeDriver
 from invariants import coordination_violations
 from racing_read import read_text_or_none
-from test_coordination_store import world
+from test_coordination_store import CP, world
 from test_worker_messages import launch, send
 
+from aew.coordination import layout as L
 from aew.engine.api import Engine
 from aew.engine.authority import token_id_of
 from aew.errors import IllegalTransition
-from aew.harness import contract, procs, runlog, worker_messages
+from aew.harness import bridge, contract, procs, runlog, worker_messages
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 from aew.harness.supervisor import Supervisor
@@ -36,7 +38,10 @@ def live_lab(tmp_path):
 
 @pytest.fixture
 def worker(tmp_path, monkeypatch):
-    w = world(tmp_path, model="fakeprov/fake-model")
+    return worker_with_credentials(world(tmp_path, model="fakeprov/fake-model"), monkeypatch)
+
+
+def worker_with_credentials(w, monkeypatch):
     credentials = {}
 
     def spawn(invocation, run, credential):
@@ -66,7 +71,8 @@ class Session:
         if self.before_post:
             self.before_post()
         self.posts.append(body)
-        item = self.offers.setdefault(body["id"], {"id": body["id"], "payload": {"text": body["text"]}})
+        item = self.offers.setdefault(body["id"], {"id": body["id"], "payload": {"text": body["text"]},
+                                                  "delivery": body["delivery"]})
         if self.lose_response:
             raise OpenCodeUnavailable("lost response")
         return {"data": item}
@@ -189,7 +195,7 @@ def test_a_pending_steer_never_prevents_an_interrupted_session_from_being_held(t
             active = False
             return {}
         assert path.endswith("/prompt")
-        item = {"id": body["id"], "payload": {"text": body["text"]}}
+        item = {"id": body["id"], "payload": {"text": body["text"]}, "delivery": body["delivery"]}
         queued.append(item)
         active = active or body.get("resume", True)
         return {"data": item}
@@ -222,12 +228,15 @@ def test_a_pending_steer_never_prevents_an_interrupted_session_from_being_held(t
     assert [item["id"] for item in queued] == adapter.sent[1:]
 
 
-def test_a_successor_carries_only_unanswered_messages_and_records_only_its_confirmed_prompt(worker):
+def test_a_successor_omits_received_and_answered_messages_and_records_only_its_confirmed_prompt(worker):
     w, keys = worker
     delivery, session, first = transport(worker)
     w.send("Earlier unconfirmed")
     delivery.tick(select=True)
     replied = w.send("Omit this answered message")["message"]["id"]
+    received = []
+    w.e.message_deliver_wait(invocation_token=keys[first], after="", send=received.append)
+    assert [message["id"] for message in received[0]["messages"]] == [replied]
     w.reply(replied, invocation_token=keys[first])
     pending = w.send("Current undelivered")["message"]["id"]
     next_run = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
@@ -240,7 +249,7 @@ def test_a_successor_carries_only_unanswered_messages_and_records_only_its_confi
     assert "Earlier unconfirmed" not in str(context.to_record())
     w.e.message_confirm_delivery(credential=keys[next_run], run=next_run,
                                  ids=context.continuation["messages"], via="continuation", transport_ref="msg_launch")
-    assert "DELIVERED" not in facts(w)[1]
+    assert facts(w)[1].count("DELIVERED") == 1
     assert all("DELIVERED" in facts(w)[index] for index in (0, 3))
 
 
@@ -435,6 +444,165 @@ def test_a_worker_wait_can_consume_a_message_before_the_transport_is_allowed_to_
     assert not session.posts
 
 
+def test_an_active_wait_holds_next_step_but_never_consumes_or_holds_turn_end(worker):
+    w, keys = worker
+    delivery, session, run = transport(worker)
+    queued = w.send("Follow up after the turn.", when="turn-end")["message"]["id"]
+    next_step = w.send("Look at the current step.")["message"]["id"]
+    assert [m["id"] for m in w.e.message_waiting(invocation_token=keys[run], after="")["messages"]] == [next_step]
+    delivery._pending = 1
+    delivery.tick(select=True)
+    assert [(p["metadata"]["aew_message"], p["delivery"]) for p in session.posts] == [(queued, "queue")]
+
+
+@pytest.mark.parametrize("when,mode", [("next-step", "steer"), ("turn-end", "queue")])
+def test_a_recorded_harness_send_wakes_a_held_agent_and_retains_staging_order(worker, when, mode):
+    w, _ = worker
+    delivery, session, run = transport(worker)
+    delivery.owner.adapter.turn = "held"
+    directory = runlog.run_dir(w.e.aew_root, run)
+    runlog.write_record(directory, {"status": contract.RUNNING})
+    runlog.beat(directory)
+    w.send("Stay staged until resumed.")
+    delivery.tick(select=True)
+    snap = w.control_bytes()
+    result = w.e.harness_send(token=w.token, run=run, text="Wake the held run.", when=when)
+    assert result["message"]["origin"] == "harness_send" and result["message"]["run"] == run
+    assert result["revision"] == w.rev() and w.control_bytes() == snap
+    assert not list(runlog.run_dir(w.e.aew_root, run).glob("requests/*"))
+    delivery.tick(select=True)
+    assert [(p["delivery"], p["resume"]) for p in session.posts] == [("steer", False), (mode, True)]
+    assert delivery.owner.adapter.inspect()["turn"] == "running"
+    assert delivery.owner.adapter.sent == [p["id"] for p in session.posts]
+
+
+@pytest.mark.parametrize("admitted", [False, True])
+def test_a_waking_send_with_a_lost_response_retries_only_if_not_yet_admitted(worker, admitted):
+    w, _ = worker
+    delivery, session, run = transport(worker)
+    delivery.owner.adapter.turn = "held"
+    directory = runlog.run_dir(w.e.aew_root, run)
+    runlog.write_record(directory, {"status": contract.RUNNING})
+    runlog.beat(directory)
+    w.e.harness_send(token=w.token, run=run, text="Continue after that", when="turn-end")
+    session.lose_response = True
+    delivery.tick(select=True)
+    assert delivery.owner.adapter.inspect()["turn"] == "held"
+    session.lose_response = False
+    if admitted:
+        session.admit_all()
+    delivery.tick(select=True)
+    assert len(session.posts) == (1 if admitted else 2)
+    assert all(post["resume"] is True for post in session.posts)
+    assert delivery.owner.adapter.inspect()["turn"] == "running"
+    assert ("DELIVERED" in facts(w)[0]) is admitted
+
+
+def _submit_through_run_bridge(w, keys, run, delivery):
+    directory = runlog.run_dir(w.e.aew_root, run)
+    sup = Supervisor(directory, {"run": run, "invocation": w.inv, "credential": keys[run],
+                                 "repo_root": str(w.root), "aew_root": str(w.e.aew_root)}, ack=None)
+    sup.messaging, sup.messages, sup.adapter = True, delivery, delivery.owner.adapter
+    delivery.owner = sup
+    bridge_server = bridge.BridgeServer(sup.handle)
+    sup.bridge = bridge_server
+    bridge_server.start()
+    try:
+        out = bridge.call("submit", {"kind": "implementation_report", "text": CP.submission(CP.REPORT)},
+                          endpoint=bridge_server.address, key=bridge_server.key_hex)
+        assert bridge_server.outcomes == {"submit": {"ok": 1}}
+        return out
+    finally:
+        bridge_server.close()
+        assert bridge_server.wait_stopped()
+
+
+@pytest.mark.parametrize("when", ["next-step", "turn-end"])
+def test_submit_settles_admission_before_the_next_delivery_tick(worker, when):
+    w, keys = worker
+    delivery, session, run = transport(worker)
+    w.send(when=when)
+    delivery.tick(select=True)
+    assert facts(w) == [["RECORDED", "POSTED"]]
+    session.admit_all()
+    out = _submit_through_run_bridge(w, keys, run, delivery)
+    assert out["pending_lead_messages"] == 0
+    assert session.observations[-1] == "admission" and "interrupt" not in session.observations
+    assert facts(w) == [["RECORDED", "POSTED", "DELIVERED"]]
+
+
+@pytest.mark.parametrize("final_check", [False, True], ids=["submit", "revoked"])
+def test_settlement_can_confirm_every_post_after_replies_free_send_slots(worker, final_check):
+    w, keys = worker
+    delivery, session, run = transport(worker)
+    messages = []
+    for index in range(L.MAX_UNDELIVERED_LEAD + 1):
+        mid = w.send(f"Follow-up {index}", when="turn-end")["message"]["id"]
+        messages.append(mid)
+        delivery.tick(select=True)
+        w.reply(mid, invocation_token=keys[run])
+
+    assert len(session.posts) == len(messages)
+    session.admit_all()
+    if final_check:
+        w.lead("harness_launch", invocation=w.inv, replace=True)
+        delivery.stop()
+        captured = delivery.capture_final_admissions()
+        assert list(captured.admitted) == messages
+        delivery.record_final_admissions(captured)
+    else:
+        admitted, continued = delivery.submit_admissions()
+        assert list(admitted) == messages and continued is None
+        result = w.e.submit(invocation_token=keys[run], kind="implementation_report", text=CP.submission(CP.REPORT),
+                            admitted=admitted)
+        assert result["pending_lead_messages"] == 0
+
+    entries = w.e.message_thread(w.inv)["messages"]
+    assert [m["id"] for m in entries if any(f["kind"] == L.DELIVERED for f in m["facts"])] == messages
+
+
+@pytest.mark.parametrize("when", ["next-step", "turn-end"])
+def test_the_first_successor_report_captures_an_admitted_continuation_before_the_tick(tmp_path, monkeypatch, when):
+    stand_in_containment(monkeypatch, {"guarantee": "dev", "effective": "workdir_separation_only"})
+    w, keys = worker_with_credentials(world(tmp_path, checks=True, model="fakeprov/fake-model"), monkeypatch)
+    delivery, session, _ = transport((w, keys))
+    mid = w.send("Carry this into the successor", when=when)["message"]["id"]
+    run = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
+    carried = w.e.harness_contract(w.e.store.read(), w.inv, run).continuation
+    assert carried["messages"] == [mid]
+    delivery.owner.run, delivery.owner._credential = run, keys[run]
+    delivery.owner.adapter._coordination_launch_id = "launch-prompt"
+    delivery.launched(carried)
+    session.admitted["launch-prompt"] = {"id": "launch-prompt", "text": "Admitted launch with continuation"}
+    assert facts(w) == [["RECORDED"]]
+
+    for rel, text in CP.PATCH.items():
+        (w.workspace / rel).write_text(text, encoding="utf-8", newline="\n")
+    w.e.check_run(invocation_token=keys[run], check_id="unit")
+    submitted = _submit_through_run_bridge(w, keys, run, delivery)
+    assert submitted["pending_lead_messages"] == 0
+    assert facts(w) == [["RECORDED", "DELIVERED"]]
+    assert w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")["ok"]
+
+
+def test_continuation_recovers_a_replied_but_unconfirmed_message_without_repeating_a_delivered_reply(worker):
+    w, keys = worker
+    delivery, session, run = transport(worker)
+    unconfirmed = w.send("First", when="turn-end")["message"]["id"]
+    delivery.tick(select=True)
+    w.reply(unconfirmed, invocation_token=keys[run])
+    confirmed = w.send("Second")["message"]["id"]
+    delivery.tick(select=True)
+    offer = session.posts[-1]
+    session.admitted[offer["id"]] = {"id": offer["id"], "text": offer["text"]}
+    delivery.tick(select=False)
+    w.reply(confirmed, invocation_token=keys[run])
+    successor = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
+    contract = w.e.harness_contract(w.e.store.read(), w.inv, successor)
+    assert contract.continuation["message_categories"] == {unconfirmed: "unconfirmed"}
+    assert "after you finish your main task" in contract.coordination_text[0]
+
+
 def test_a_lead_message_reaches_the_worker_at_the_next_step_boundary(live_lab, tmp_path):
     run, sync = launch(live_lab, tmp_path, [], live=True)
     engine = Engine.discover(live_lab.root)
@@ -448,15 +616,19 @@ def test_a_lead_message_reaches_the_worker_at_the_next_step_boundary(live_lab, t
     live_lab.until(lambda: len(event_rows("opencode.session.step.started")) >= 2,
                    "watchdog", what="worker blocked in its second step")
     second = event_rows("opencode.session.step.started")[1]["assistantMessageID"]
+    queued = engine.message_record_lead(token=live_lab.project.token, to="INV-0001", body="Follow up after your turn.",
+                                        when="turn-end")
+    engine.message_record_lead(token=live_lab.project.token, to="INV-0001", body="Also document the follow-up.",
+                               when="turn-end")
     mid = send(live_lab, "Check the shutdown edge before your next step.")["message"]["id"]
 
     def observed():
         result = engine.message_thread("INV-0001")["messages"]
         return [fact for message in result if message["id"] == mid for fact in message["facts"]]
 
-    live_lab.until(lambda: len(event_rows("opencode.session.inbox.enqueued")) >= 2,
-                   "watchdog", what="OpenCode enqueued the live offer during the second step")
-    prompt = event_rows("opencode.session.inbox.enqueued")[1]["inboxID"]
+    live_lab.until(lambda: len(event_rows("opencode.session.inbox.enqueued")) >= 4,
+                   "watchdog", what="OpenCode enqueued all three live offers during the second step")
+    queued_prompt, next_queued, prompt = [r["inboxID"] for r in event_rows("opencode.session.inbox.enqueued")[1:4]]
     assert [fact["kind"] for fact in observed()] == ["RECORDED", "POSTED"]
     (sync / "go").touch()
     live_lab.until(lambda: len(observed()) == 3, "watchdog", what="confirmed next-step admission")
@@ -471,5 +643,19 @@ def test_a_lead_message_reaches_the_worker_at_the_next_step_boundary(live_lab, t
                     and row["inboxID"] == prompt)
     third_start = [i for i, row in enumerate(rows) if row["event"] == "opencode.session.step.started"][2]
     assert second_end < admitted < third_start
+    assert not any(r.get("inboxID") == queued_prompt for r in event_rows("opencode.session.inbox.delivered"))
     (sync / "end").touch()
     live_lab.wait(run)
+    rows = event_rows()
+    third = rows[third_start]["assistantMessageID"]
+    third_end = next(i for i, r in enumerate(rows) if r["event"] == "opencode.session.step.ended"
+                     and r["assistantMessageID"] == third)
+    queued_at = next(i for i, r in enumerate(rows) if r["event"] == "opencode.session.inbox.delivered"
+                     and r["inboxID"] == queued_prompt)
+    queued_again_at = next(i for i, r in enumerate(rows) if r["event"] == "opencode.session.inbox.delivered"
+                           and r["inboxID"] == next_queued)
+    assert third_end < queued_at < queued_again_at
+    assert any(r["event"] == "opencode.session.step.ended" for r in rows[queued_at + 1:queued_again_at])
+    assert any(r["event"] == "opencode.prompt" and r["message"] == queued_prompt and r["delivery"] == "queue"
+               for r in rows)
+    assert engine.message_thread("INV-0001")["messages"][0]["id"] == queued["message"]["id"]

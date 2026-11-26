@@ -22,11 +22,14 @@ def test_retired_revision_arguments_are_refused_at_each_public_boundary(project)
     revision = project.rev()
     with pytest.raises(TypeError, match="expect_rev"):
         e.checkpoint(token=project.token, expect_rev=revision)
+    with pytest.raises(TypeError, match="expect_rev"):
+        e.harness_send(token=project.token, run="R-INV-0001-1", text="Keep going.", expect_rev=revision)
     with pytest.raises(AdapterInputError, match="arguments do not match") as exc:
         run_tool(e, SurfaceContext.outside_session(), "checkpoint", {"expect_rev": revision}, token=project.token)
     assert exc.value.code == "INVALID_ARGUMENTS"
-    cli = project.aew("checkpoint", "--expect-rev", str(revision), env={"AEW_LEAD_TOKEN": project.token})
-    assert cli.returncode == 2 and "--expect-rev" in cli.stderr
+    for cmd in (("checkpoint",), ("harness", "send", "R-INV-0001-1", "--text", "Keep going.")):
+        cli = project.aew(*cmd, "--expect-rev", str(revision), env={"AEW_LEAD_TOKEN": project.token})
+        assert cli.returncode == 2 and "--expect-rev" in cli.stderr
     assert project.rev() == revision
 
 

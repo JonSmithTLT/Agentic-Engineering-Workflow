@@ -144,10 +144,15 @@ class TxnContext:
     replayed: dict[str, Any] | None = None
     request_ref: tuple[str, str] | None = None
     request_metadata: dict[str, Any] = field(default_factory=dict)
+    post_report_message_pending: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
         return self.session.state
+
+    def result_advisories(self) -> dict[str, Any]:
+        pending = self.post_report_message_pending
+        return {"post_report_message_pending": pending} if pending else {}
 
 
 class Kernel:

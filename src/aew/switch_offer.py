@@ -36,6 +36,7 @@ from aew import operator, process_kind
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge.manifest import DEFAULT_GATES, MANIFEST, default_manifest
+from aew.policy import execution as X
 from aew.util import atomic_write, load_yaml, safe_dump_yaml, sha256_bytes, utc_now
 
 REMEMBERED = "local/switch-offers.json"  # gitignored and never pinned: an answer is not policy
@@ -312,6 +313,15 @@ OFFERS: tuple[SwitchOffer, ...] = (
               legality=True, schema="execution", text=_maps_text,
               done=lambda o: (f"project maps are now {o.to}, adopted as your decision. To change it, edit "
                               f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
+    key_offer("coordination_messaging", label="Lead–worker messaging", file=_policy_rel("execution"),
+              policy_key="execution", key_path=("coordination", "messaging"), old_values=(),
+              to_value=lambda: X.NEW_PROJECT_MESSAGING, effective=lambda _: X.messaging(None),
+              legality=False, schema="execution",
+              text=lambda o: (f"New projects start with Lead–worker messaging {o.to}. This project keeps it {o.held} "
+                              "until you adopt it. Adopting it records sends and replies on their invocation thread. "
+                              "Existing runs keep their launch settings until relaunched."),
+              done=lambda o: (f"Lead–worker messaging is now {o.to}, adopted as your decision. To change it, "
+                              f"edit .aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
 )
 
 

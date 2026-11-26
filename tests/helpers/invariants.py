@@ -61,6 +61,10 @@ def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str,
     state = dict(state)
     if "steering" not in schema["properties"]:
         state.pop("steering", None)
+    registration = schema["properties"].get("coordination_store", {})
+    registration_sources = registration.get("properties", {}).get("via", {}).get("enum", ())
+    if (state.get("coordination_store") or {}).get("via") == "init" and "init" not in registration_sources:
+        state.pop("coordination_store")
     lead = dict(state["lead"])
     properties = schema["properties"]["lead"]["properties"]
     for key in ("host_uid", "start"):
@@ -1281,7 +1285,7 @@ def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
     if any(str(op).startswith("message.") for op in ops.values()):
         problems.append("58: a transition records a message operation")
     if store is not None:
-        wrote = "migrate" if store.get("via") == "migrate" else "manifest.adopt"  # a v1 adoption registers at migrate
+        wrote = store.get("via", "manifest.adopt")
         if ops.get(store["since_rev"], wrote) != wrote:
             problems.append(f"58: coordination_store was written by {ops[store['since_rev']]}, not {wrote}")
     seen_lines: list[dict[str, Any]] = []

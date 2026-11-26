@@ -23,7 +23,7 @@ from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
 from aew.engine.request_ids import ControlRequest
-from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
+from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INGEST_QUERY, INVOKE, PARENT, KindRegistration
 from aew.errors import (
     DependencyUnsatisfied,
     GateUnsatisfied,
@@ -276,6 +276,7 @@ class Hierarchy:
         return [KindRegistration(GATE_CONTEXT, PARENT, self.evidence_gate_context),
                 KindRegistration(INVOKE, PARENT, self.invoke_evidence_unit),
                 KindRegistration(INGEST, PARENT, self.ingest_evidence_unit_report),
+                KindRegistration(INGEST_QUERY, PARENT, self._query_ingest_report),
                 KindRegistration(CLASSIFY_VERIFICATION, PARENT, self.classify_parent_verification)]
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -365,6 +366,47 @@ class Hierarchy:
                 "dispatch": decision.to_dict(),
                 "revision": ctx.session.committed_revision}
 
+    def check_ingest_report(self, state: dict[str, Any], work_id: str, evidence_id: str,
+                            kind: str) -> dict[str, Any]:
+        unit = self.units.unit(state, work_id)
+        if unit["state"] != "ACCEPTANCE_PENDING":
+            raise IllegalTransition(f"{work_id} is {unit['state']}, not ACCEPTANCE_PENDING")
+        ev = self.inputs.find_unit_evidence(work_id, evidence_id)
+        invocation = ev["producer"]["invocation"]
+        inv = state["invocations"][invocation]
+        role = "reviewer" if kind == "review" else "verifier"
+        if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id or inv.get("scope") != "parent":
+            raise IllegalTransition(f"{evidence_id} is not a parent {kind} of {work_id}")
+        gc = self._parent_gate_context(state, work_id)
+        cancel = fields_command(f"aew invoke cancel {invocation}", "reason",
+                                "the parent report evaluated a stale snapshot")
+        snap = ev["evaluated_snapshot"]
+        if not (self.same_children(unit, self.bound_children(snap["relevant_inputs_fingerprint"]),
+                                   gc["snapshot"]["children_digest"])
+                and self.inputs.same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
+            raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
+                                  f"parent snapshot (stale). Cancel {invocation} with:\n\n{cancel}",
+                                  evaluated=snap, current=gc["snapshot"])
+        edges = effective_edge_set(state, work_id)
+        if inv.get("dependencies") != edges:
+            raise GateUnsatisfied(f"{evidence_id} was dispatched under other dependencies than {work_id}'s current "
+                                  f"ones (stale). Cancel {invocation} with:\n\n{cancel}",
+                                  dispatched_with=inv.get("dependencies"), current=edges)
+        plan = unit.get("plan") or {}
+        if ev.get("plan_revision") != E.plan_binding(plan):
+            raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one (stale). "
+                                  f"Cancel {invocation} with:\n\n{cancel}")
+        if kind != "review" and ev["result"] == "fail":
+            unmet = self._classification_unmet(work_id, unit, gc)
+            if unmet:
+                raise GateUnsatisfied(f"{evidence_id} is held: {unmet}")
+        self.nm.require_observation_intact(ev["producer"]["invocation"], inv)
+        return ev
+
+    def _query_ingest_report(self, state: dict[str, Any], work_id: str, args: dict[str, Any], kind: str) -> Any:
+        return self.gates.query_report_finality(state, args,
+            lambda: self.check_ingest_report(state, work_id, str(args.get("evidence")), kind))
+
     def ingest_evidence_unit_report(self, *, token: str, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
         """Lead ingests a review/verification of a Story or Epic's acceptance."""
@@ -374,53 +416,24 @@ class Hierarchy:
                                "evidence_kind": "review" if kind == "review" else "verification", "ids": [evidence_id]})
             state = ctx.state
             unit = self.units.unit(state, work_id)
-            if unit["state"] != "ACCEPTANCE_PENDING":
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not ACCEPTANCE_PENDING")
-            ev = self.inputs.find_unit_evidence(work_id, evidence_id)
-            invocation = ev["producer"]["invocation"]
-            inv = state["invocations"][invocation]
-            role = "reviewer" if kind == "review" else "verifier"
-            if ev["kind"] != kind or inv["role"] != role or inv["work_unit"] != work_id or inv.get("scope") != "parent":
-                raise IllegalTransition(f"{evidence_id} is not a parent {kind} of {work_id}")
-            gc = self._parent_gate_context(state, work_id)
-            cancel = fields_command(f"aew invoke cancel {invocation}", "reason",
-                                    "the parent report evaluated a stale snapshot")
-            snap = ev["evaluated_snapshot"]
-            if not (self.same_children(unit, self.bound_children(snap["relevant_inputs_fingerprint"]),
-                                       gc["snapshot"]["children_digest"])
-                    and self.inputs.same_source(snap.get("base_revision"), gc["snapshot"]["base_revision"])):
-                raise GateUnsatisfied(f"{evidence_id} evaluated another source or child set than {work_id}'s current "
-                                      f"parent snapshot (stale). Cancel {invocation} with:\n\n{cancel}",
-                                      evaluated=snap, current=gc["snapshot"])
-            edges = effective_edge_set(state, work_id)
-            if inv.get("dependencies") != edges:
-                raise GateUnsatisfied(f"{evidence_id} was dispatched under other dependencies than {work_id}'s current "
-                                      f"ones (stale). Cancel {invocation} with:\n\n{cancel}",
-                                      dispatched_with=inv.get("dependencies"), current=edges)
-            plan = unit.get("plan") or {}
-            if ev.get("plan_revision") != E.plan_binding(plan):
-                raise GateUnsatisfied(f"{evidence_id} was produced under another plan than the accepted one (stale). "
-                                      f"Cancel {invocation} with:\n\n{cancel}")
-            if kind != "review" and ev["result"] == "fail":
-                unmet = self._classification_unmet(work_id, unit, gc)
-                if unmet:
-                    raise GateUnsatisfied(f"{evidence_id} is held: {unmet}")
-            self.nm.require_observation_intact(ev["producer"]["invocation"], inv)
+            ev = self.check_ingest_report(state, work_id, evidence_id, kind)
+            self.gates.pin_evidence(ctx, unit, ev)
             if kind == "review":
                 self.nm.record_review_findings(unit, ev, evidence_id)
             else:
                 unit["last_verification"] = {"evidence": evidence_id, "result": ev["result"], "scope": "parent"}
                 if ev["result"] == "fail":
+                    snapshot = self._parent_gate_context(state, work_id)["snapshot"]
                     unit["parent_verification"] = {"awaiting_classification": evidence_id,
-                                                   "children_digest": gc["snapshot"]["children_digest"],
-                                                   "plan_revision": plan.get("accepted")}
-            self.gates.ingest_ref(unit, ev)
+                                                   "children_digest": snapshot["children_digest"],
+                                                   "plan_revision": (unit.get("plan") or {}).get("accepted")}
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             ctx.refs.append(ev["_path"])
             ctx.summary = f"{work_id} parent {kind} {evidence_id} ingested ({ev['result']})"
             self.units.before_commit(ctx)
         self.nm.prune_observations()
-        return {"ok": True, "work_id": work_id, "result": ev["result"], "revision": ctx.session.committed_revision}
+        return {"ok": True, "work_id": work_id, "result": ev["result"], "revision": ctx.session.committed_revision,
+                **ctx.result_advisories()}
 
     def classify_parent_verification(self, *, token: str, work_id: str, classification: str,
                                      reason: str, binding: str | None = None) -> dict[str, Any]:

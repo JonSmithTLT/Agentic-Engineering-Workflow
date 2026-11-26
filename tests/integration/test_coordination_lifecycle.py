@@ -56,10 +56,15 @@ def w(tmp_path) -> World:
 # ---------------------------------------------------------------------------------------------- helpers
 
 
-def talk(w: World, inv: str, token: str, *, replies: int = 1, body: str = "Check shutdown while recv() blocks.") -> \
+def talk(w: World, inv: str, token: str, *, replies: int = 1, body: str = "Check shutdown while recv() blocks.",
+         deliver: bool = False) -> \
         tuple[str, list[str]]:
     """A Lead message to ``inv`` and ``replies`` worker replies to it: the thread exists, and the replies are unseen."""
     lead = w.send(body, to=inv)["message"]["id"]
+    if deliver:
+        received: list[dict[str, Any]] = []
+        w.e.message_deliver_wait(invocation_token=token, after="", send=received.append)
+        assert [message["id"] for message in received[0]["messages"]] == [lead]
     out = [w.reply(lead, f"reply {n}", invocation_token=token)["message"]["id"] for n in range(1, replies + 1)]
     return lead, out
 
@@ -173,7 +178,7 @@ def _redispatch(w: World, mp: Any) -> list[tuple[str, str]]:
 
 
 def _transition(w: World, mp: Any) -> list[tuple[str, str]]:
-    talk(w, w.inv, w.worker)
+    talk(w, w.inv, w.worker, deliver=True)
     implement(w)
     w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")  # the implementer's report is ingested: it ends
     return [(w.wid, w.inv)]
@@ -961,17 +966,17 @@ def test_no_known_ending_path_needs_the_seal_fallback(tmp_path, monkeypatch):
     redispatch, transition, queue retirement, handoff acceptance, takeover); every ended thread is sealed, and no
     transition carries a ``coordination.seal_fallback`` event."""
     w = world(tmp_path, checks=True)
-    talk(w, w.inv, w.worker)
+    talk(w, w.inv, w.worker, deliver=True)
     implement(w)
     w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")  # the implementer ends by its report's ingest
     out = w.lead("invoke_create", work_id=w.wid, role="reviewer")
-    talk(w, out["invocation"], out["invocation_token"])
+    talk(w, out["invocation"], out["invocation_token"], deliver=True)
     review = w.e.submit(invocation_token=out["invocation_token"], kind="review",
                         text=CP.submission(CP.REVIEW))["evidence"]
     w.lead("review_ingest", work_id=w.wid, evidence_id=review)  # the reviewer ends by ingest
     w.lead("work_transition", work_id=w.wid, to="VERIFY_PENDING")
     out = w.lead("invoke_create", work_id=w.wid, role="verifier")
-    talk(w, out["invocation"], out["invocation_token"])
+    talk(w, out["invocation"], out["invocation_token"], deliver=True)
     w.lead("verify_ingest", work_id=w.wid, evidence_id=verification(w, out["invocation_token"], "ticket"))
     w.lead("work_transition", work_id=w.wid, to="COMMIT_READY")
     w.lead("integrate_prepare", work_id=w.wid)

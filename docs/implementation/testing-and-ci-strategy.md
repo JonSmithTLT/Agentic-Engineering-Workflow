@@ -451,3 +451,19 @@ Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent
 `python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
 kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker
 as assurance and excludes the proof workflow.
+
+**A live worker's interruption stack.** A worker that a cancellation observes alive inside a test's protocol owes a
+stack taken at that interruption (the Linux supervisor's pre-signal warning, or the cancellation collection) that
+holds a frame of its test function; without one the check reports `[live-stack]`. A worker outside its test's call has
+no such frame to give, so its typed outcome stands in for it, only for the same worker, test and collection instant,
+and only with a retained stack of the same interruption whose frames classify the same
+(`evidence_files.STACK_NOT_OWED`, `evidence_problems.outside_call`): setup, teardown or between tests at the
+cancellation collection (#561), and setup or teardown at the Linux warning. The second reverses #573's rule that none
+of the warning's outcomes excuses a stack: asked whether a Linux worker caught in setup or teardown at the cancel
+signal should be accepted as Windows already accepts it, the operator answered "Yes" (2026-11-26). Nothing else of the
+warning's is accepted: a dump inside the call without the test's frame, a worker that changed tests or exited during
+the attach, and a failed attach all still owe the stack. The defect names the typed outcome, for example
+`interrupted-2470.txt: live worker lacks its interruption stack (warning outcome: straddled a test change)`, so a
+sighting needs no artifact download. The proof's Linux cancel plant spends its odd cases' seconds in a fixture's
+setup, so its supersede control can catch a worker there; `verify_evidence.observe_cancel` accepts for it exactly
+what the check accepts and prints how many workers it caught outside their call.

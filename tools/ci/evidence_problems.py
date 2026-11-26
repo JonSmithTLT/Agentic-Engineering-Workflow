@@ -22,13 +22,13 @@ from evidence_files import (  # noqa: E402
     INTERRUPTION_REASONS,
     LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
-    OUTSIDE_CALL,
+    OUTCOME_FILES,
     PREFIX,
     SAMPLING_POLICY,
+    STACK_NOT_OWED,
     WARNING,
     WATCHDOG_HEADER,
     WORKER_PHASES,
-    cancel_outcome,
     entries,
     failure_overflow,
     finished_without_tests,
@@ -47,23 +47,40 @@ from evidence_files import (  # noqa: E402
 )
 
 
+def interruption_outcomes(texts: dict, observed: dict):
+    """Each typed outcome an interruption's capture left for this observation, with the interruption's sample reason:
+    the outcome of the same worker identity, test and collection instant, and no other's."""
+    pid, start = observed["pid"], observed["start"]
+    for reason, named in OUTCOME_FILES.items():
+        for row in rows_named(texts, named(pid, start)):
+            if ((row.get("pid"), row.get("start"), row.get("node")) == (pid, start, observed["node"])
+                    and observed.get("collect_at") is not None and row.get("collect_at") == observed["collect_at"]):
+                yield reason, row.get("outcome")
+
+
+def outcome_note(texts: dict, observed: dict) -> str:
+    """The typed outcomes of an observation as a defect names them, so a sighting says why with no artifact download
+    (register E3): `` (warning outcome: straddled a test change)``, or nothing when none was left."""
+    why = "; ".join(f"{reason} outcome: {outcome}" for reason, outcome in interruption_outcomes(texts, observed))
+    return f" ({why})" if why else ""
+
+
 def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) -> bool:
-    """A live worker owes no interruption stack only by a typed cancellation outcome the bundle bears out (register
-    E3), and only for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no
-    retained sample of its identity and no failed sampling attach of it, or one in setup, teardown or between tests by
-    the frames its cancellation collection retained. A worker inside its test's call always owes one."""
+    """A live worker owes no interruption stack only by a typed outcome the bundle bears out (register E3), and only
+    for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no retained sample of
+    its identity and no failed sampling attach of it, or one outside its test's call (STACK_NOT_OWED: in setup,
+    teardown or between tests at the cancellation collection; in setup or teardown at the Linux pre-signal warning,
+    by the operator's decision of 2026-11-26) by the frames that same interruption retained. A worker inside its
+    test's call always owes one."""
     pid, start = observed["pid"], observed["start"]
     policies = list(rows_named(texts, SAMPLING_POLICY))
     failed = any(path.name == sampling_failures(pid, start) for path in texts)
-    for row in rows_named(texts, cancel_outcome(pid, start)):
-        if ((row.get("pid"), row.get("start"), row.get("node")) != (pid, start, observed["node"])
-                or observed.get("collect_at") is None or row.get("collect_at") != observed["collect_at"]):
-            continue
-        if (row.get("outcome") == NOT_SAMPLED and not sampled and not failed and policies
+    for reason, outcome in interruption_outcomes(texts, observed):
+        if (reason == CANCEL_COLLECTION and outcome == NOT_SAMPLED and not sampled and not failed and policies
                 and not any(policy_samples(policy) for policy in policies)):
             return True
-        if row.get("outcome") in OUTSIDE_CALL and any(
-                reason == CANCEL_COLLECTION and pytest_phase(frames) == row["outcome"] for reason, frames in stacks):
+        if outcome in STACK_NOT_OWED[reason] and any(
+                taken == reason and pytest_phase(frames) == outcome for taken, frames in stacks):
             return True
     return False
 
@@ -368,7 +385,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                               and sample.get("reason") in INTERRUPTION_REASONS and abs(sample["at"] - seen) <= 10]
                     if (not any(test_frame(observed["node"], frames) for _, frames in stacks)
                             and not outside_call(texts, observed, stacks, sampled=bool(samples))):
-                        report("live-stack", f"{path.name}: live worker lacks its interruption stack")
+                        report("live-stack", f"{path.name}: live worker lacks its interruption stack"
+                               + outcome_note(texts, observed))
                 except (KeyError, TypeError, ValueError):
                     report("death-record", f"{path.name}: unreadable live-worker observation")
         if kind == "oom":

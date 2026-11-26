@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import yaml
-from cancel_evidence import MANUAL, ci_group, classify, observe, run_jobs
+from cancel_evidence import MANUAL, ci_group, classify, observe, run_jobs, superseded_before_any_job
 from evidence_scorecard import format_rows, inspect_run
 from flake_register import INDEX_MEMBER, REGISTER_PATH, _api, _gh_read, _matches_session, _own_ci_run, _pages
 from stage_evidence import stage
@@ -59,8 +59,13 @@ def record(repo, run, report_dir=None):
         jobs = run_jobs(repo, run["id"], run["run_attempt"])
         status = "Cancelled before any job was recorded" if not jobs else "No canceled job was recorded"
         reason = classify(run, {}, [{"path": ".github", "message": MANUAL}]) if run.get("cancelled_by") else {}
+        # With no job there is no annotation to read: only run history can name what replaced the run (E3).
+        successor = None if jobs or reason.get("actor") else superseded_before_any_job(repo, run)
         if reason.get("actor"):
             summary += f"\n\n{status}. {MANUAL} Actor: {reason['actor']}."
+        elif successor:
+            summary += (f"\n\nSuperseded before any job was recorded, by run {int(successor['id'])} at "
+                        f"{successor['head_sha'][:12]} ({successor['event']}).")
         else:
             summary += f"\n\n{status}. Run evidence defect: [cancel-reason] no available cancellation attribution."
             missing += 1

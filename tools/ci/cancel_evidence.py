@@ -21,6 +21,8 @@ MANUAL = "The operation was canceled."
 LOGIN = r"[a-zA-Z0-9-]+(?:\[bot\])?"
 CANCEL_ACTOR = re.compile(rf"The run was cancel(?:ed|led) by @({LOGIN})\.")
 REASON_FILE = "runner-resources-cancel-reason.txt"
+# ci_group names this workflow's own concurrency group: another workflow's run is not in it.
+CI_WORKFLOW = ".github/workflows/ci.yml"
 
 
 def priority_group(notes):
@@ -146,6 +148,28 @@ def observe(repo, run, job, jobs):
     if group and re.fullmatch(r"ci-[0-9]+", group):
         newer = [with_pull_group(repo, r) for r in newer if r["id"] != run["id"]]
     return classify(run, job, notes, newer, jobs)
+
+
+def superseded_before_any_job(repo, run):
+    """The one run that replaced a ci pull-request run cancelled before any of its jobs existed, or None.
+
+    Such a run has no check run, so no annotation names its concurrency group (`observe` starts from one). The group
+    is derived from the run instead (`ci_group`), and the successor comes from run history under `replacement`'s own
+    rule: exactly one other run of that group created within this run's life. ci.yml cancels a pull request's run in
+    progress for the next one of its group, so that run is what ended this one. No candidate, or more than one, names
+    nothing: the caller keeps its attribution gap.
+    """
+    if (run.get("path") != CI_WORKFLOW or run.get("event") != "pull_request" or run.get("conclusion") != "cancelled"
+            or not run.get("updated_at")):
+        return None
+    run = with_pull_group(repo, run)
+    group = ci_group(run)
+    if not group:
+        return None
+    newer = [with_pull_group(repo, r) for r in candidates(repo, run["workflow_id"], run["head_branch"], run["event"],
+                                                          run["created_at"], run["updated_at"])
+             if r["id"] != run["id"]]
+    return replacement(run, group, newer, [])
 
 
 def may_inherit_run_wide(run):

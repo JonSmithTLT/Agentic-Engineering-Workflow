@@ -416,7 +416,11 @@ where one is available. A canceled job with a failed phase in its partial report
 supersessions retain their job IDs and do not count as failed test runs. A verified run-wide cancellation also
 covers sibling jobs with no annotation of their own, such as the matrix jobs GitHub creates unrendered after the job
 that defines their matrix was cancelled, both in the completed run and in assurance, which reads its run before it
-concludes.
+concludes. A pull request's `ci` run cancelled before any of its jobs existed has no check run, so no annotation names
+its group: the completed-run record derives the group from the run and names the successor from run history alone
+(`cancel_evidence.superseded_before_any_job`), under the same rule, exactly one other run of that group created within
+the cancelled run's life. It then reads "Superseded before any job was recorded" and counts no gap; with no such run,
+or more than one, or a run of any other workflow or event, the `[cancel-reason]` gap stays.
 
 A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
 The lane supervisor at the signal, on either platform, or the cancellation collection, then records

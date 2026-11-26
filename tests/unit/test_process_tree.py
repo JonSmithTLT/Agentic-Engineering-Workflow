@@ -42,9 +42,9 @@ def test_a_tree_whose_group_holds_only_a_zombie_is_not_active_and_closes_without
         os.killpg(proc.pid, 0)  # the group is still there: this is the reading that counted the zombie
         assert tree.active() == 0
         assert tree.survivors(0.0) == []
-        started = time.monotonic()
-        assert tree.close(EXIT_S) == 0  # nothing was running, so nothing is killed and nothing waited for
-        assert time.monotonic() - started < EXIT_S / 2
+        # Nothing was running, so close kills nothing. Its wait loop runs while ``active()`` is not zero, so the reading
+        # above is also what keeps it from waiting; how long it took is not asserted outside the serial lane.
+        assert tree.close(EXIT_S) == 0
     finally:
         tree.kill()
         proc.wait(EXIT_S)

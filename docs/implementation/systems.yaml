@@ -1270,21 +1270,17 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: The design's R9 surface (`aew usage show` and `aew usage runs`) and the bounded `aew status --json` summary
-    total each run, Ticket and project from the existing projections, with cost when a price table is adopted. The surface
-    has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
+  finish_line: The design's R9 surface (`aew usage show`, whose `show <invocation>` rows stand in for `aew usage runs`)
+    and the bounded `aew status --json` summary total each run, Ticket and project from the existing projections, with cost
+    when a price table is adopted, and `aew usage show` also shows requests, tokens in the declared rate basis and the largest
+    request. The surface has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: R9's `aew usage show [WORK-ID] [--all]` and `aew usage runs`, and the status summary, over the existing projections
-      (unit_projection, project_projection, Reader.invocation), with the surface-map entry; it shows requests, tokens in
-      the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 2)
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07) also shows
+      requests, tokens in the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Until R9 merges, the two texts that name `aew usage show --all` as if it existed say it is designed, not built:
-      implementation-status.md:247 (listed in BOARD v2 §6''s docs PR) and the code comment at engine/api.py:349 (not listed
-      there)'
-    row: row owed
-    estimate: part of BOARD v2 §6's docs PR (estimate)
+    estimate: 1 small PR (estimate)
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized
@@ -1298,9 +1294,9 @@ systems:
     item 6'
   recommendation: freeze
   who: designer (the HOLD-21 match), then operator (release the CLI and status line), then Lead
-  reason: The write side runs on every launch and every Lead transaction, and nothing totals or shows it. The read side's
-    projections exist with no caller, so a CLI and status line over them is small. It is held in HOLD-21, so the operator
-    decides after the designer's match.
+  reason: The write side runs on every launch and every Lead transaction, and the read side is built over its projections
+    (`aew usage show` and the status line, F25's note of 2026-11-07; the price table at init and `/aew-usage`, its note of
+    2026-11-08). Left are ruling 2's fields in `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
   evidence:
   - src/aew/harness/usage.py (262 lines), src/aew/engine/usage_ops.py (705), src/aew/harness/usage_live.py (751) (wc -l
     at c11a61ea)
@@ -1314,13 +1310,11 @@ systems:
   - src/aew/harness/supervisor.py:543, :584-592 result.usage_record recorded with wall time
   - src/aew/harness/runlog.py:33 LIVE_FILE; :119 write_live; :125-133 read_live checks only the schema tag (:133)
   - src/aew/schemas/__init__.py:35-37 run-usage, usage-live and pricing schemas registered
-  - unit_projection, project_projection and runlog.read_live have no caller in src/aew (grep); Reader.invocation is called
-    only inside them (usage_ops.py:664, :687)
-  - 'grep -rn ''add_parser("usage"'' src/aew/cli finds nothing: no usage command'
+  - src/aew/engine/usage_read.py calls Reader.invocation, unit_projection and project_projection (`aew usage show`'s read);
+    runlog.read_live has no caller in src/aew (grep)
+  - src/aew/cli/usage_commands.py registers `aew usage show`; src/aew/engine/api.py Engine.usage_show is its one projection
   - docs/design/cost-usage-ledger-design-v0.2.md:311 R9 names `aew usage show [WORK-ID] [--all]`, `aew usage runs` and `aew
     usage lead`; :422 the surface names and the bounded `aew status --json` summary
-  - docs/implementation/implementation-status.md:247 and src/aew/engine/api.py:349 name `aew usage show --all`, which is
-    designed (R9) and not built
   - docs/implementation/implementation-status.md:243 only OpenCode 2.0.18 with openai qualified; every other provider unknown
     and never priced
   - 'docs/implementation/implementation-status.md:251 slice 2b''s rest: `aew usage`, the status summary, H2 re-measure;

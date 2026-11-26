@@ -350,6 +350,8 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `race-repeat` | Serial lane ×10, then 200 racing writes per writer | Heavier race and kill repetition |
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
 
+`race-repeat`'s and `crash-extended`'s sessions run in one process with no shard, so the shard sizer does not size them. Their `--test-timeout`, `--session-deadline` and job deadline are pinned to fit the recorded time of the tests they run (`tests/durations.json`), with a cold start and a margin, and so that a hang anywhere in a pass fails by name before its session ends (`tests/unit/test_repetition_fit.py`, register E75). When the pin fails, first find which tests grew against the record. For a test that got slower, find why: a slower test is a regression to find, not a budget to raise. Raise the budget to what the pin prints only for growth that new tests bring. The pin sees tests' time only, not collection time.
+
 **Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python, GitHub Actions and JavaScript/TypeScript (the dashboard, since F20.1) on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
 
 ## 12. Known cost drivers and follow-ups

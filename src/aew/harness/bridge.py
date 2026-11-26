@@ -72,6 +72,7 @@ MAP_OPERATIONS: Operations = {
     "map.search": {"text": str, "kind": str, "limit": str},
 }
 MAX_REQUEST = 16 * 1024 * 1024
+REQUEST_TOO_LARGE = "request_too_large"  # the reason code of ``call``'s refusal of a request over MAX_REQUEST
 IS_WINDOWS = sys.platform == "win32"
 
 
@@ -337,9 +338,17 @@ def available() -> bool:
     return bool(os.environ.get(ENV_ENDPOINT))
 
 
+def request_bytes(op: str, args: dict[str, Any]) -> bytes:
+    """One request as the client sends it, which is what ``MAX_REQUEST`` bounds: JSON, with its escapes."""
+    return json.dumps({"op": op, "args": args}).encode("utf-8")
+
+
 def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str | None = None,
          env_names: tuple[str, str] = (ENV_ENDPOINT, ENV_KEY)) -> Any:
-    """The client side: forward one operation to the bridge named by ``env_names`` (or given explicitly)."""
+    """The client side: forward one operation to the bridge named by ``env_names`` (or given explicitly).
+
+    A request over ``MAX_REQUEST`` is refused here, before anything is sent, on every route (register E241): the
+    server would drop the connection without an answer, which reads as a closed bridge."""
     endpoint = endpoint or os.environ.get(env_names[0])
     key = key or os.environ.get(env_names[1])
     if not endpoint or not key:
@@ -349,6 +358,11 @@ def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str
         authkey = bytes.fromhex(key)
     except ValueError:
         raise errors.UsageError(f"{ENV_KEY} is not a bridge key") from None
+    payload = request_bytes(op, args)
+    if len(payload) > MAX_REQUEST:
+        raise errors.UsageError(f"this {op} request is {len(payload)} bytes with its text, and an AEW bridge takes at "
+                                f"most {MAX_REQUEST}: nothing was sent, so split the text or shorten it",
+                                op=op, size=len(payload), limit=MAX_REQUEST, reason=REQUEST_TOO_LARGE)
     try:
         conn = Client(endpoint, family=family, authkey=authkey)
     except AuthenticationError:
@@ -357,7 +371,7 @@ def call(op: str, args: dict[str, Any], *, endpoint: str | None = None, key: str
         raise errors.StaleAuthority("this AEW bridge is closed: its run or session ended, was superseded, or lost "
                                     "its authority; nothing more can be done through it", endpoint=endpoint) from None
     try:
-        conn.send_bytes(json.dumps({"op": op, "args": args}).encode("utf-8"))
+        conn.send_bytes(payload)
         reply = json.loads(conn.recv_bytes(MAX_REQUEST).decode("utf-8"))
     except (OSError, EOFError):
         raise errors.StaleAuthority("the AEW bridge closed during the request; its outcome was not confirmed",

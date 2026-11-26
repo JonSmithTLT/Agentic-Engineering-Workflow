@@ -324,6 +324,28 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     assert Engine.discover(op.root).store.current()["policy_sha256"]["policy/execution.yaml"] == sha256_file(execution)
 
 
+def test_the_offline_world_settles_its_tool_offers_in_setup_recorded_and_never_counted(tmp_path):
+    """The operator's ruling on Q5 (2026-11-26): AEW's tool offers are a setup fixture of the offline world, recorded
+    but not counted. Each tool offered is declined in the register the world's own `aew` reads, so a reopen on the
+    operator's terminal meets no consent screen; where AEW places no tools, nothing is offered or recorded."""
+    from aew.capability import consent
+
+    op = operator(tmp_path)
+    res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
+    assert res.returncode == 0, res.stderr
+    declined = S.settle_tool_offers(op.lab, op.ledger)
+    recorded = [o for o in op.ledger.observations if str(o.get("fixture", "")).startswith("tool offer declined")]
+    assert set(op.ledger.counts().values()) == {0}, op.ledger.counts()
+    if not consent.binds_here():
+        assert declined == [] and recorded == []
+        return
+    assert "ripgrep" in declined and [o["fixture"] for o in recorded] == [f"tool offer declined: {n}" for n in declined]
+    listed = run_aew("-C", str(op.root), "capability", "list", "--json", env=op.lab.env)
+    assert listed.returncode == 0, listed.stderr
+    assert "the operator declined to download it" in listed.stdout, listed.stdout[-2000:]
+
+
 def test_a_fixture_is_checked_with_the_bytes_it_changes(tmp_path):
     """The hook pins nothing itself: a fixture the policy refuses is refused by the real path, with nothing written."""
     op = operator(tmp_path)

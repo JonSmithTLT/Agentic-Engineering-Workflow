@@ -336,3 +336,20 @@ def test_a_usage_message_listing_launch_does_not_ask_for_it(tmp_path: Path) -> N
     lead.gap_hint(f"work assign {T} {K.EXPECT_REV}", PROJECTION)
     assert len(lead.ran) == 1
     assert lead.kinds() == ["gap", "hint_usage_error"]
+
+
+def test_the_leads_first_words_are_the_readable_head_of_resumes_text_never_its_json() -> None:
+    """The scripted Lead's status line says what ``resume`` says to a person: the head of the MCP text block
+    (``aew.surface.readable``), before the JSON it carries for a model (the V-01 re-measure of 2026-11-26, C8)."""
+    from vertical.lead import _text, _words
+
+    from aew.surface import readable
+
+    result = {"ok": True, "tool": "resume", "stopped": None, "result": {"work": [{"id": T, "kind": "ticket"}]},
+              "projection": {"subject": "project", "hints": [f"{T} waits for its implementer"]}}
+    text = readable.render(result)
+    words = _words(_text({"content": [{"type": "text", "text": text}], "structuredContent": result}))
+    assert words == text.split(readable.JSON_MARKER, 1)[0].strip()
+    assert words and words.startswith("resume: done") and f"{T} waits for its implementer" in words
+    assert readable.JSON_MARKER not in words and '"work"' not in words
+    assert _words(_text({"structuredContent": result})) is None  # no text block: no words, never the data

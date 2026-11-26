@@ -1310,8 +1310,8 @@ systems:
   - src/aew/harness/supervisor.py:543, :584-592 result.usage_record recorded with wall time
   - src/aew/harness/runlog.py:33 LIVE_FILE; :119 write_live; :125-133 read_live checks only the schema tag (:133)
   - src/aew/schemas/__init__.py:35-37 run-usage, usage-live and pricing schemas registered
-  - unit_projection, project_projection and runlog.read_live have no caller in src/aew (grep); Reader.invocation is called
-    only inside them (usage_ops.py:664, :687)
+  - src/aew/engine/usage_read.py calls Reader.invocation, unit_projection and project_projection (`aew usage show`'s read);
+    runlog.read_live has no caller in src/aew (grep)
   - src/aew/cli/usage_commands.py registers `aew usage show`; src/aew/engine/api.py Engine.usage_show is its one projection
   - docs/design/cost-usage-ledger-design-v0.2.md:311 R9 names `aew usage show [WORK-ID] [--all]`, `aew usage runs` and `aew
     usage lead`; :422 the surface names and the bounded `aew status --json` summary

@@ -31,6 +31,7 @@ NOT_DISPATCHING = {
     "integrate reconcile", "integrate reorder", "integrate requeue", "integrate validate",  # under the lease (M4-D5)
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
+    "lead telemetry",
     "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
     # The `resolve` tool's CLI form (M4-E E3c). Abandon never dispatches. Continue makes no decision of its own: each
     # remaining step is a registered primitive whose own commit takes its dispatch decision (the M4-A choke point),

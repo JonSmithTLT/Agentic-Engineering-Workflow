@@ -14,7 +14,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 9020
-  guide_bytes: 8522
+  guide_bytes: 8090
   join_bytes: 2
   mcp_bytes: 11900
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -56,16 +56,17 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then adds
-# its 200 B. E231's guide core and pointers (2026-11-25) sends the guide's core only: measured with the pool gate's own
-# render at main 5649d832, the guide is 17445 B -> 9555 B with messaging on (system 9380, join 2, MCP 12022: 38849 B ->
-# 30959 B) and 17267 B -> 9332 B off (system 9121, MCP 12067: 38457 B -> 30522 B). The 7890 B messaging-on saving lowers the baseline's guide bytes
-# (16412 - 7890 = 8522) and the cap (42971 - 7890 = 35081) by the same amount, under the rule above; the allocations
-# stay as recorded (the maps entry's line is now behind a pointer, inside this saving). The operator approves the new
-# cap or allocates part of the saving; until then the drop applies.
+# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then
+# adds its 200 B. E231's guide core and pointers (2026-11-25) sends only the guide's core. Measured with the pool
+# gate's own render at main 5649d832, the guide is 17445 B -> 9123 B with messaging on (system 9380, join 2, MCP
+# 12022: 38849 B -> 30527 B) and 17267 B -> 8903 B off (system 9121, MCP 12067: 38457 B -> 30093 B). The 8322 B
+# messaging-on saving lowers the baseline's guide bytes (16412 - 8322 = 8090) and the cap (42971 - 8322 = 34649) by
+# the same amount, under the rule above. The allocations stay as recorded (the maps entry's line is now behind a
+# pointer, inside this saving). The operator approves the new cap or allocates part of the saving; until then the
+# drop applies, and the 42971 B cap it replaces is kept in approval_history.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
-  ceiling_bytes: 35081
+  ceiling_bytes: 34649
   operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
   date: '2026-11-15'
 # The approved drop after PR 3 still applies.
@@ -88,13 +89,17 @@ approval_history:
   - ceiling_bytes: 42992
     operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
     date: '2026-11-15'
+  # E328 retired a 21 B guide example: the same approval, 21 B lower. E231's guide core then lowered it again.
+  - ceiling_bytes: 42971
+    operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
+    date: '2026-11-15'
 # E231's guide core and pointers: the guide's bytes in the pool gate's render, before and after, messaging on and off.
 # A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
 guide_core:
   measured: '2026-11-25'
-  messaging_on: {before: 17445, after: 9555}
-  messaging_off: {before: 17267, after: 9332}
-  saving_bytes: 7890
+  messaging_on: {before: 17445, after: 9123}
+  messaging_off: {before: 17267, after: 8903}
+  saving_bytes: 8322
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:
 #   count: <approved byte ceiling>

@@ -7,16 +7,17 @@ which the system text's "as the guide says" pointed to with nothing behind it. `
 contained Lead, so it adds no tool and no bytes to the tool list.
 
 **Measured with the pool gate's own render**, at main 5649d832, where E160's plan-assessment line, now in the core,
-is part of the guide. With messaging on, the guide went from 17,445 B to 9,555 B, a saving of 7,890 B. With messaging
-off, it went from 17,267 B to 9,332 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
-8,522 B and the cap from 42,971 B to 35,081 B. The operator approves that cap, or records an allocation from the
+is part of the guide. With messaging on, the guide went from 17,445 B to 9,123 B, a saving of 8,322 B. With messaging
+off, it went from 17,267 B to 8,903 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
+8,090 B and the cap from 42,971 B to 34,649 B. The operator approves that cap, or records an allocation from the
 saving.
 
 **The failure criterion's counters.** Each line of the broker's typed-tool log now names its Lead session and
-generation. The same log also holds a line for each relayed `aew guide` read and each `--help` lookup the Lead's shell
-makes. `tool_calls.counters` counts these per session, and `aew lead telemetry` prints them for UAT, the dogfood and
-the probe: typed calls; refused calls, defects and calls with invalid arguments; guide reads by section; and help
-lookups by command.
+generation. The same log also holds a line for each `aew guide` read and each `--help` lookup the Lead's shell makes:
+a contained session's broker counts the reads it relays, and an uncontained session's `aew` tells its broker. A guide
+read records only a section name the guide has. `tool_calls.counters` counts these per session, and `aew lead
+telemetry` prints them for UAT, the dogfood and the probe: typed calls; calls that stopped, by error code (a stop is
+not always misuse); defects and calls with invalid arguments; guide reads by section; and help lookups by command.
 
 **What remains.**
 - The worker packs come next, under the same principle and failure criterion.
@@ -30,14 +31,15 @@ lookups by command.
 **The scripted probe, before and after.** These runs used the pinned OpenCode 2.2.6 in a loopback-only namespace,
 with the same scripted turns.
 - At main ee89c341, the Lead's first request carried 34,161 B of instructions in a 55,932 B body.
-- At this branch's commit 6445f91f (its core 10 B shorter than the final one), it carried 26,272 B of instructions in a 48,003 B body.
+- At this branch's commit 6445f91f, it carried 26,272 B of instructions in a 48,003 B body. The
+  head's core is 314 B shorter.
 - The tool list was 21,112 B in both, so the request is 7,929 B smaller.
 - The branch's session showed up in `aew lead telemetry` with 3 typed calls and no misuse. The scripted model makes no
   guide reads or help lookups, so behaviour is UAT's to judge.
 
 **What to watch in UAT** (`aew lead telemetry`, per session, beside the transcript):
-- Typed-tool misuse: refused calls, defects and calls with invalid arguments. Failure is misuse that rises against an
-  earlier session's figures, or a step taken from the shell where a tool covers it.
+- Typed-tool misuse: calls that stopped, read by error code, defects and calls with invalid arguments. Failure is
+  misuse that rises against an earlier session's figures, or a step taken from the shell where a tool covers it.
 - Help lookups: `--help` on a command the core names, or the same command looked up again and again, means the core
   failed to tell the Lead how to do it.
 - Guide reads by section: a section read in nearly every session belongs back in the core, or its pointer's trigger

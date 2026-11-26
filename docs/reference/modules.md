@@ -2451,6 +2451,7 @@ None.
 ### `aew.surface.contract`
 
 - `aew.coordination.layout`
+- `aew.engine.primitives`
 - `aew.knowledge.evidence`
 - `aew.priority_levels`
 - `aew.surface.context`
@@ -2484,6 +2485,7 @@ None.
 
 ### `aew.surface.presentation`
 
+- `aew.engine.primitives`
 - `aew.surface.contract`
 
 ### `aew.surface.projection`

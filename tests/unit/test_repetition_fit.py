@@ -27,6 +27,11 @@ knobs' ratio and ``longest`` its longest test's:
 - the job's ``AEW_JOB_DEADLINE`` holds its setup and every session at the slow night's pace, its repetitions included.
 
 Known limits:
+- :data:`COLD_START_S` is two nights' observation (69.8 s and 46.3 s), not a measurement anything keeps. The record
+  holds tests' time only, so the pin cannot see collection grow: a collection that doubles fails the nightly, not this
+  pin (register E75's note of 2026-11-25 names it as a fact to own);
+- a knob is seen in the workflow's, the job's and the step's env and in the command's leading ``NAME=value`` words
+  (``bounds.Lane.env``), not in a variable an earlier line of the script exports or a step writes to ``$GITHUB_ENV``;
 - a test the record does not hold yet is weighed as ``lanes.weights`` estimates it, by its file's or directory's
   mean. The serial lane's slowest new test (``test_validation_coverage_disclosure``, 26.3 s on Windows on 11-25) was
   estimated at 3.8 s, so until the record is refreshed (register E111, N4) the margin carries it;
@@ -68,7 +73,16 @@ SCALES = {
     "AEW_RACE_WRITES": ("tests/integration/test_store_processes.py", "RACE_WRITES_DEFAULT"),
     "AEW_CRASH_ITERATIONS": ("tests/unit/test_store.py", "CRASH_ITERATIONS_DEFAULT"),
 }
+# The AEW_ variables a fitted session sees that change no test's work, each with why.
+UNSCALED = {
+    "AEW_TEST_FRESH_WORLDS": "turns off conftest's template copy, which only the fast and integration lanes take; the "
+                             "serial lane never does, and the crash test builds its store with init(), not a copy",
+    "AEW_CRASH_SEED": "picks which crash points run, not how many",
+}
 TABLE = ROOT / "tests" / "durations.json"
+NEXT_STEPS = ("first find which tests grew, against tests/durations.json; for a test that got slower, find why (a "
+              "slower test is a regression to find, testing-and-ci-strategy.md §1); raise the budget only for growth "
+              "that new tests bring, from the record (nightly.yml's race-repeat comment)")
 
 
 def fitted_sessions(workflows: Path = WORKFLOWS) -> list[bounds.Lane]:
@@ -98,8 +112,8 @@ def scale(session: bounds.Lane, root: Path = ROOT) -> float:
 
 
 def unscaled_knobs(session: bounds.Lane) -> list[str]:
-    """The AEW_ knobs a session's job or step sets that :data:`SCALES` does not say how to scale."""
-    return sorted(k for k in session.env if k.startswith("AEW_") and k not in SCALES)
+    """The AEW_ variables a session sees that neither :data:`SCALES` nor :data:`UNSCALED` decides."""
+    return sorted(k for k in session.env if k.startswith("AEW_") and k not in SCALES and k not in UNSCALED)
 
 
 def selected(session: bounds.Lane, suite: Mapping[str, str]) -> list[str]:
@@ -189,10 +203,12 @@ def suite(request) -> dict[str, str]:
     if plugin is not None and plugin.lanes and _whole_suite(request.config):
         return dict(plugin.lanes)
     report = Path(request.getfixturevalue("tmp_path_factory").mktemp("collection")) / "lanes.json"
-    subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-                    f"--lane-report={report}"], cwd=ROOT, capture_output=True, text=True,
-                   timeout=bounds.seconds(bounds.WATCHDOG), stdin=subprocess.DEVNULL,
-                   creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "-p",
+                           "no:xdist", f"--lane-report={report}"], cwd=ROOT, capture_output=True, text=True,
+                          timeout=bounds.seconds(bounds.WATCHDOG), stdin=subprocess.DEVNULL,
+                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    assert done.returncode == 0 and report.is_file(), (
+        f"the suite's collection exited {done.returncode}:\n{done.stdout[-4000:]}\n{done.stderr[-4000:]}")
     return json.loads(report.read_text(encoding="utf-8"))["lanes"]
 
 
@@ -202,13 +218,16 @@ def test_every_nightly_repetition_session_and_its_job_fit_the_recorded_time_of_i
     assert any(s.lane == "serial" and s.repeats > 1 for s in sessions)
     assert {s.job for s in sessions} >= {"race-repeat", "crash-extended"}
     problems = fit_problems(sessions, suite, json.loads(TABLE.read_text(encoding="utf-8")))
-    assert problems == [], "raise the budget to fit, from the record (nightly.yml's race-repeat comment):\n" + \
-        "\n".join(problems)
+    assert problems == [], f"{NEXT_STEPS}:\n" + "\n".join(problems)
 
 
 def test_every_knob_a_fitted_session_sets_says_how_it_scales_the_recorded_time():
     unscaled = {s.label: unscaled_knobs(s) for s in fitted_sessions() if unscaled_knobs(s)}
-    assert unscaled == {}, "add each knob to SCALES with the module constant of its merge-gate value"
+    assert unscaled == {}, ("add each knob to SCALES with the module constant of its merge-gate value, or to UNSCALED "
+                            "with why it changes no test's work")
+    # The workflow's env and the crash command's inline seed are both seen (review of #595, F4).
+    crash = next(s for s in fitted_sessions() if s.job == "crash-extended")
+    assert {"AEW_TEST_FRESH_WORLDS", "AEW_CRASH_SEED", "AEW_CRASH_ITERATIONS"} <= set(crash.env)
     assert all(module_constant(*where) > 0 for where in SCALES.values())
 
 
@@ -259,3 +278,23 @@ def test_a_session_selects_by_its_lane_its_keyword_and_its_paths_and_scales_by_i
     (tmp_path / "tests" / "unit" / "test_store.py").write_text("CRASH_ITERATIONS_DEFAULT = 200\n", encoding="utf-8")
     assert scale(_session(env={"AEW_CRASH_ITERATIONS": "2000", "AEW_OTHER": "1"}), root=tmp_path) == 10.0
     assert unscaled_knobs(_session(env={"AEW_CRASH_ITERATIONS": "2000", "AEW_OTHER": "1"})) == ["AEW_OTHER"]
+
+
+def test_a_knob_set_by_the_workflow_or_inline_on_the_command_reaches_the_session_and_inline_wins(tmp_path):
+    (tmp_path / FITTED).write_text("""env:
+  AEW_TOP: "1"
+  AEW_CRASH_ITERATIONS: "300"
+jobs:
+  crash-extended:
+    env:
+      AEW_CRASH_ITERATIONS: "400"
+    steps:
+      - shell: bash
+        run: |
+          AEW_CRASH_ITERATIONS=5000 AEW_CRASH_SEED="$X" python -m pytest -q --test-timeout 60 \\
+            --session-deadline 90 "tests/unit/test_store.py::test_randomized_crash_iterations"
+""", encoding="utf-8")
+    [crash] = fitted_sessions(tmp_path)
+    assert crash.env == {"AEW_TOP": "1", "AEW_CRASH_ITERATIONS": "5000", "AEW_CRASH_SEED": "$X"}
+    assert crash.paths == ("tests/unit/test_store.py::test_randomized_crash_iterations",)
+    assert unscaled_knobs(crash) == ["AEW_TOP"]

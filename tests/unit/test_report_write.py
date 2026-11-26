@@ -19,10 +19,12 @@ from aewflow import (
 
 from aew.engine import reports
 from aew.engine.api import Engine
-from aew.errors import GateUnsatisfied, NotFound, UsageError, ValidationFailed
+from aew.engine.faults import InjectedFault
+from aew.engine.store import ControlStore
+from aew.errors import GateUnsatisfied, IntegrityError, NotFound, UsageError, ValidationFailed
 from aew.knowledge import evidence
 from aew.knowledge.records import read_record
-from aew.surface import run
+from aew.surface import readable, run
 from aew.surface.context import NORMAL, SurfaceContext
 from aew.surface.validate import AdapterInputError
 
@@ -102,6 +104,36 @@ def test_report_size_refusal_names_the_byte_limit_and_commits_nothing(lab):
     assert refused["completed_steps"] == [] and p.rev() == rev
 
 
+def test_resume_bounds_recent_titles_without_reading_report_files_or_duplicating_the_list(lab, monkeypatch):
+    p, engine = lab
+    older = write(p, engine)["result"]["id"]
+    generation = engine.store.current()["lead"]["generation"]
+    context = SurfaceContext({"holds": True, "generation": generation, "session_id": "LS-0123456789ab"}, generation,
+                             profile=NORMAL, ingress="mcp")
+    title = "😀" * reports.MAX_TITLE
+    newest = []
+    for _ in range(reports.MAX_PER_SESSION):
+        result = write(p, engine, context=context, title=title)
+        assert result["ok"], result["stopped"]
+        newest.insert(0, result["result"]["id"])
+    assert [entry["id"] for entry in engine.store.read_committed()[reports.RECENT_KEY]] == newest
+
+    def no_report_read(*args):
+        pytest.fail("an automatic view opened a report file")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports, "read", no_report_read)
+        resumed = run.run_tool(engine, context, "resume", {})
+        summary = resumed["projection"]["reports"]
+        assert "reports" not in resumed["result"] and engine.resume()["reports"] == summary
+        assert 0 < len(summary["items"]) < len(newest)
+        assert [item["id"] for item in summary["items"]] == newest[:len(summary["items"])]
+        assert all(item["title"] == title for item in summary["items"])
+        assert len(json.dumps(summary).encode("ascii")) <= reports.SUMMARY_BYTES
+        assert len(readable.render(resumed).encode("utf-8")) < readable.CUT_BYTES
+    assert engine.report_show(older)["body"] == BODY
+
+
 def test_the_backend_report_view_checks_the_supplied_snapshot_and_reads_plain_text(lab, monkeypatch):
     p, engine = lab
     before = p.rev()
@@ -122,6 +154,33 @@ def test_the_backend_report_view_checks_the_supplied_snapshot_and_reads_plain_te
     assert path.value.details["reason"] == "report_not_found"
     assert reports.read_view(engine.aew_root, report_id, current) == {
         "id": report_id, "title": "An answer", "body": text, "format": "text", "label": reports.LABEL}
+
+
+def test_the_read_only_view_reports_a_pending_apply_and_the_status_command_recovers_it(lab, monkeypatch):
+    p, engine = lab
+    revision = p.rev()
+    with monkeypatch.context() as patch:
+        patch.setenv("AEW_FAULT", "txn.after_replace")
+        patch.setenv("AEW_FAULT_MODE", "raise")
+        with pytest.raises(InjectedFault):
+            engine.report_write(token=p.token, expect_rev=revision, title="An answer", body=BODY)
+    state = engine.store.read_committed()
+    assert state["revision"] == revision + 1
+    [entry] = state[reports.RECENT_KEY]
+    report_id = entry["id"]
+    assert not (engine.aew_root / "reports" / f"{report_id}.json").exists()
+
+    def forbid_lock(*args, **kwargs):
+        pytest.fail("the report view tried to take the control lock")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ControlStore, "control_lock", forbid_lock)
+        with pytest.raises(IntegrityError) as pending:
+            reports.read_view(engine.aew_root, report_id, state["revision"])
+    assert pending.value.details["reason"] == "report_pending_apply"
+    assert "aew status" in pending.value.message
+    p.ok("status", "--json")
+    assert reports.read_view(engine.aew_root, report_id, state["revision"])["body"] == BODY
 
 
 def test_report_count_refusal_names_the_session_limit_and_a_new_session_has_its_own(lab, monkeypatch):
@@ -220,3 +279,5 @@ def test_work_show_preserves_the_direct_answer_and_explain_mode(lab, tmp_path):
     assert explain["result"] == engine.dispatch_explain(work)
     assert missing["stopped"]["error"]["code"] == "NOT_FOUND"
     assert plain["revision"] == explain["revision"] == missing["revision"] == p.rev()
+    with pytest.raises(AdapterInputError, match="work_show: name a work_id"):
+        run.run_tool(engine, ctx, "work_show", {"explain": True})

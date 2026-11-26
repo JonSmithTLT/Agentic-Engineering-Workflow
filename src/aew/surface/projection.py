@@ -145,7 +145,8 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     part: dict[str, Any] = {"revision": state["revision"],
                             "generation": int((state.get("lead") or {}).get("generation") or 0),
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
-                            "blockers": [], "anomalies": _anomalies(state, subject)}
+                            "blockers": [], "anomalies": _anomalies(state, subject),
+                            reports.RECENT_KEY: state.get(reports.RECENT_KEY, ())}
     _stage_decisions(part, state, subject)
     _anomaly_decisions(part, engine, state)
     _gate_decisions(part, engine, state, subject)
@@ -619,7 +620,7 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         ids = [m["id"] for m in coordination["awaiting_lead"]]
         if ids:
             hints.append(f"{len(ids)} worker message(s) await the Lead: {', '.join(ids)}")
-    if found := reports.summaries(Path(engine.aew_root), part["revision"]):
+    if found := reports.summaries(part):
         out["reports"] = found
     return out
 

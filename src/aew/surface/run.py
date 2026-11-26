@@ -379,6 +379,8 @@ def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
     if name not in FULL or not isinstance(payload, dict) or "project" not in payload:
         return payload
     out = dict(payload)
+    if name == "resume" and "reports" in projection:
+        out.pop("reports", None)  # the projection already carries the recent titles
     if "next_actions" in out and out["next_actions"] == projection.get("hints"):
         del out["next_actions"]
         if isinstance(out.get("order"), list):  # a resume's list of its parts names only the parts it holds (m2)

@@ -638,7 +638,7 @@ class Resume:
             "work": work,
             **({"finished": finished} if (finished := finished_summary(state)) else {}),
             "latest_handoff": handoff,
-            **({"reports": summaries} if (summaries := reports.summaries(self.k.aew_root, state["revision"])) else {}),
+            **({"reports": summaries} if (summaries := reports.summaries(state)) else {}),
             "open_review_findings": findings,
             "verification_failures": failures,
             "accepted_authority": self.k.manifest["authority"]["accepted"],
@@ -691,7 +691,7 @@ class Resume:
             lines += ["", "## Verification failures / blockers", *(f"- {f['work_unit']}: {f['state']}"
                                                                    for f in r["verification_failures"])]
         if listed := r.get("reports"):
-            lines += ["", f"## Lead reports — {listed['label']}",
+            lines += ["", f"## Recent Lead reports — {listed['label']}",
                       *(f"- {entry['id']}: {entry['title']}" for entry in listed["items"])]
         if r.get("harness_runs"):
             lines += ["", "## Harness runs (local telemetry; a run decides nothing)",

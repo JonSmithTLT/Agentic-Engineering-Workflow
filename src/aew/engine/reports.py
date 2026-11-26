@@ -7,7 +7,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from aew.errors import IntegrityError, NotFound, UsageError, ValidationFailed
+from aew.engine.store import ControlStore, read_replaced
+from aew.errors import AEWError, IntegrityError, NotFound, UsageError, ValidationFailed
 from aew.harness.contract import redact
 from aew.schemas import validate
 from aew.util import escape_display_controls, utc_now
@@ -22,6 +23,10 @@ DIRECTORY = "reports"
 MAX_BYTES = 8000
 MAX_PER_SESSION = 20
 MAX_TITLE = 120  # this title is listed in automatic context without its body
+RECENT_KEY = "recent_lead_reports"
+RECENT_LIMIT = 20
+# ASCII JSON for the summary must leave room for the rest of a result under OpenCode's whole-line cut.
+SUMMARY_BYTES = 8 * 1024
 REPORT_ID = re.compile(r"LR-(\d+)-(LS-[0-9a-f]{12}|LG-\d+)", re.ASCII)
 BROKER_SESSION_ID = re.compile(r"LS-[0-9a-f]{12}")
 
@@ -47,9 +52,12 @@ def read(root: Path, report_id: str, revision: int) -> dict[str, Any]:
     if not _visible_revision(report_id, revision):
         raise NotFound(f"no Lead report {report_id!r}", reason="report_not_found")
     try:
-        record = json.loads((root / _rel(report_id)).read_text(encoding="utf-8"))
+        record = json.loads(read_replaced(root / _rel(report_id)).decode("utf-8"))
         validate("report", record, source=report_id)
     except FileNotFoundError:
+        if _pending_apply(root, report_id):
+            raise IntegrityError(f"Lead report {report_id} is awaiting publication. Retry after `aew status` "
+                                 "applies the committed writes.", reason="report_pending_apply") from None
         raise NotFound(f"no Lead report {report_id!r}", reason="report_not_found") from None
     except (OSError, ValueError, ValidationFailed) as exc:
         raise IntegrityError(f"Lead report {report_id} cannot be read", reason="report_unreadable") from exc
@@ -58,18 +66,30 @@ def read(root: Path, report_id: str, revision: int) -> dict[str, Any]:
     return record
 
 
-def summaries(root: Path, revision: int) -> dict[str, Any] | None:
-    """A labelled list of visible reports. Its entries carry only id and title."""
-    visible = ((created, path.stem) for path in (root / DIRECTORY).glob("LR-*.json")
-               if (created := _visible_revision(path.stem, revision)))
-    items = []
-    for _, report_id in sorted(visible, reverse=True):
-        try:
-            title = read(root, report_id, revision)["title"]
-        except (NotFound, IntegrityError):
-            continue  # an optional report must never block a workflow query; an explicit read gives the reason
-        items.append({"id": report_id, "title": escape_display_controls(title)})
-    return {"label": LABEL, "items": items} if items else None
+def _pending_apply(root: Path, report_id: str) -> bool:
+    store = ControlStore(root)
+    try:
+        state = store.read_committed()
+    except AEWError:
+        return False
+    transition = state.get("last_transition") or {}
+    return (transition.get("op") == "report.write" and _rel(report_id) in transition.get("refs", ())
+            and not store.applied(state["revision"]))
+
+
+def summaries(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Project recent titles from the caller's committed snapshot without reading any report files."""
+    items: list[dict[str, str]] = []
+    view = {"label": LABEL, "items": items}
+    remaining = SUMMARY_BYTES - len(json.dumps(view))
+    for report in state.get(RECENT_KEY, ()):
+        item = {"id": report["id"], "title": escape_display_controls(report["title"])}
+        size = len(json.dumps(item)) + (2 if items else 0)  # ASCII JSON, including the separator between items
+        if size > remaining:
+            break
+        items.append(item)
+        remaining -= size
+    return view if items else None
 
 
 def read_view(root: Path, report_id: str, revision: int) -> dict[str, str]:
@@ -123,6 +143,8 @@ class Reports:
             validate("report", record, source=report_id)
             path = _rel(report_id)
             ctx.session.write(path, json.dumps(record, ensure_ascii=False) + "\n")
+            recent = ctx.state.get(RECENT_KEY, [])
+            ctx.state[RECENT_KEY] = [{"id": report_id, "title": record["title"]}, *recent][:RECENT_LIMIT]
             ctx.refs.append(path)
             ctx.summary = f"Lead report {report_id} written"
         return {"ok": True, "id": report_id, "label": LABEL, "show": show_command(report_id),

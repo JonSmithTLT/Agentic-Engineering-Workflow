@@ -521,6 +521,20 @@
         }
       }
     },
+    "recent_lead_reports": {
+      "description": "Recent Lead-authored report titles, newest first. Report bodies are stored separately.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string", "maxLength": 120}
+        }
+      }
+    },
     "archived_refs": {
       "description": "Facts about archived units that hot dependency edges still need (plan R4), counted by those edges.",
       "type": "object",

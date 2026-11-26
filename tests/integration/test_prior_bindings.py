@@ -47,6 +47,7 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, request, 
 
     p = sample_project(tmp_path)
     engine = Engine.discover(p.root)
+    values = {"<parent>": "none", "<kind>": "story", "<title>": "Promoted", "<reason>": "reviewed"}
     if route == "relaunch_text":
         from fake_harness import HarnessLab
 
@@ -85,7 +86,15 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, request, 
         assert result["mode"] == "crawl"
         return
     if route in {"move", "promote"}:
-        argv = engine.status(wid)["hierarchy_argv"][f"work.{route}"]
+        op = f"work.{route}"
+        argv = engine.status(wid)["hierarchy_argv"][op]
+        command = [values.get(arg, arg) for arg in argv[:-2]]
+        refused = p.aew(*command, env={"AEW_LEAD_TOKEN": p.token})
+        assert refused.returncode != 0 and refused.error["code"] == "CHANGED_SINCE_READ"
+        next_step = refused.error["details"]["next_step"]
+        read = _printed_argv(next_step, p.rev())
+        assert read == ["status", wid, "--json"] and "hierarchy_argv" in next_step
+        argv = p.aew(*read).json["hierarchy_argv"][op]
     elif route == "staff":
         argv = engine.work_roles(wid)["staff_argv"]
     else:
@@ -101,7 +110,6 @@ def test_a_prefilled_binding_reaches_its_caller(tmp_path, monkeypatch, request, 
             assert argv[-2:] == ["--prior-value", entry["state"]]
         else:
             argv = projected(engine, SurfaceContext.outside_session(), wid)["cli_fallback"][f"integrate.{route}"]
-    values = {"<parent>": "none", "<kind>": "story", "<title>": "Promoted", "<reason>": "reviewed"}
     before = p.rev()
     result = run_cli(engine, p.token, [values.get(arg, arg) for arg in argv], str(p.root), "",
                      channel="lead.cli")["result"]

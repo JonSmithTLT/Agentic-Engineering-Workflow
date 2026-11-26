@@ -112,6 +112,9 @@ def _binding_step(op: str, subject: str, field: str, work_id: str | None) -> str
         return ("Review the changed files shown by `aew manifest adopt --reason <reason>` at the operator terminal. "
                 "API callers read `manifest_approval()` and pass its result as `binding`.")
     status = f"aew status {work_id or subject}"
+    if op in {"work.move", "work.promote"}:
+        return (f"Read `{status} --json` and copy the `--prior-value` (`prior_value`) for "
+                f"`{op}` from `hierarchy_argv`.")
     if op in {"integrate.defer", "integrate.requeue"}:
         return (f"Read the queue decision for {work_id or subject} with `work_show` and pass the shown "
                 "`--prior-value` from its CLI fallback.")

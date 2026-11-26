@@ -118,11 +118,11 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
                   ("integration_verification",), "control_state+credential+harness_process", "expected_revision",
                   "verify.ingest.integration"),
-    # The Lead's publication decision (M4-E E6a: completed with `integration_publish`). Its step is the intent
-    # commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE follow it as its
-    # effect: the authoritative ref, the integration worktree and a removable Ticket workspace (`workspace`), and DONE's
-    # revocations (the lease's custody credential, `credential`; a live run's supervisor ends its harness,
-    # `harness_process`). A moved head commits the one rebuild instead. Its guard is its own query.
+    # The publication decision (M4-E E6a: completed with `integration_publish`), whose owner is `owner_of`'s. Its step
+    # is the intent commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE
+    # follow it as its effect: the authoritative ref, the integration worktree and a removable Ticket workspace
+    # (`workspace`), and DONE's revocations (the lease's custody credential, `credential`; a live run's supervisor ends
+    # its harness, `harness_process`). A moved head commits the one rebuild instead. Its guard is its own query.
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),
                   ("integration_validation",), "authoritative_ref+control_state+workspace+credential+harness_process",
                   "candidate", "integrate.publish"),
@@ -178,6 +178,15 @@ PRIMITIVE_OWNERS: dict[str, str] = {
 def owner_of(primitive_id: str) -> str:
     """The owner of a primitive's judgment: its entry in ``PRIMITIVE_OWNERS``, else the operator."""
     return PRIMITIVE_OWNERS.get(primitive_id, OPERATOR)
+
+
+def whose(owner: str | None, *, to_lead: bool = False) -> str:
+    """An owner as text says it ("the Lead's", "the operator's"; "your" in text addressed to the Lead about its own),
+    so wording about whose decision something is derives from the owner, never restates it. No owner, or one this
+    table does not name, reads as the operator's."""
+    if owner == LEAD:
+        return "your" if to_lead else "the Lead's"
+    return "the operator's"
 
 
 # The Lead transactions a primitive commits under, where they are not just its own id: the three creations share

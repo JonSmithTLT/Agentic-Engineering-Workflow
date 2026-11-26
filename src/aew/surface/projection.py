@@ -215,11 +215,11 @@ def _anomaly_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any])
 
 
 def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], subject: str) -> None:
-    """A parent's mandatory gate that no unit type under it can satisfy is the Lead's to replace on the record (ITEMS
-    55; designer, addendum 4): a decision naming the item, whose replacement gate is the Lead's judgment (no default),
-    and a blocker whose details say why, the candidates, the units stuck on it and the live invocations a replacement
-    would make stale (its preview, addendum 3). A gate some unit type can satisfy is the operator's (addendum 5): the
-    decision is blocked, and the blocker names those unit types."""
+    """A parent's mandatory gate that no unit type under it can satisfy is replaced on the record (ITEMS 55; designer,
+    addendum 4): a decision naming the item, whose replacement gate is a judgment (no default) and whose owner is the
+    owner table's (``decision_owner``), and a blocker whose details say why, the candidates, the units stuck on it and
+    the live invocations a replacement would make stale (its preview, addendum 3). A gate some unit type can satisfy
+    is the operator's (addendum 5): the decision is blocked, and the blocker names those unit types."""
     try:
         items = engine.gate_items(subject, state=state)
     except AEWError:  # the catalogue or policy cannot be read now: doctor says so
@@ -530,7 +530,8 @@ def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
                      blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """A test path the Ticket's change touches outside its scope can be added to the scope on the record (register
     E126; the designer's decisions of 2026-11-03, §2, "The door"): one decision per such path, while the gate context
-    reports it, with the add's own query for its availability. Its rationale is the Lead's, so it has no default; a
+    reports it, with the add's own query for its availability. Its rationale is a judgment, so it has no default, and
+    its owner is the owner table's (``decision_owner``); a
     path the add would refuse, one that needs a sign-off included, is BLOCKED and adds the refusal to ``blockers``.
     Read now: it reads the workspace. A path that is not test code, or not one exact printable path (rule 1), is not
     offered: the guardrail's refusal says what to do with it."""

@@ -134,3 +134,24 @@ def test_the_result_contract_requires_an_owner_and_names_exactly_the_tables_owne
                 {**shown, "owner": "mechanical"}):
         with pytest.raises(ValidationFailed):
             validate_def("surface", "decision", bad, source="test")
+
+
+def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table():
+    """The review of #597, m1: text that says whose decision a call or a stop is derives it from the owner, never
+    restates it. PUBLISH is the operator's, so neither catalog calls `integration_publish` the Lead's decision, and the
+    steering loop's stop names each decision's own owner (a decision with none reads as the operator's)."""
+    from aew.harness import steering_loop
+    from aew.surface import contract, presentation
+
+    publish = P.whose(P.owner_of("integrate.publish"), to_lead=True)
+    assert publish == "the operator's"
+    for text in (contract.tool("integration_publish").description, presentation.DESCRIPTIONS["integration_publish"]):
+        assert f"carries out {publish} publication decision" in text and "your" not in text
+    project = {"anomalies": [], "blockers": [], "decisions_required": []}
+    for owner, said in ((P.LEAD, "the Lead's"), (P.OPERATOR, "the operator's"), (None, "the operator's")):
+        decisions = [{"decision": "PUBLISH", "evidence": [], **({"owner": owner} if owner else {})}]
+        unit = {"subject": "T-0001", "actions": [], "blockers": [], "decisions_required": decisions}
+        stop = steering_loop.select(project, [unit])
+        assert isinstance(stop, steering_loop.Stop) and stop.message == f"T-0001: PUBLISH is {said}", stop
+        loose = steering_loop.select({**project, "decisions_required": decisions}, [])
+        assert isinstance(loose, steering_loop.Stop) and loose.message.endswith(f"is {said}"), loose

@@ -68,7 +68,7 @@ from typing import Any
 from aew import errors
 from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
-from aew.engine.primitives import spec_for
+from aew.engine.primitives import spec_for, whose
 from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 from aew.harness import contract as K
 from aew.harness import event_spool, runlog
@@ -183,7 +183,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
     loose = [d for d in project.get("decisions_required") or [] if not set(d.get("evidence") or []) & owned]
     if loose:
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
-                                       "the Lead's")
+                                       f"{whose(loose[0].get('owner'))}")
     stops: list[Stop] = []
 
     def place(u: dict[str, Any]) -> tuple[int, int, str]:
@@ -196,7 +196,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
         why: Stop | None = None
         if p.get("decisions_required"):
             d = p["decisions_required"][0]
-            why = Stop(DECISION_REQUIRED, f"{subject}: {d['decision']} is the Lead's", subject)
+            why = Stop(DECISION_REQUIRED, f"{subject}: {d['decision']} is {whose(d.get('owner'))}", subject)
         elif p.get("blockers"):
             b = p["blockers"][0]
             why = Stop(BLOCKED, f"{subject}: {b['code']}: {b['message']}", subject)

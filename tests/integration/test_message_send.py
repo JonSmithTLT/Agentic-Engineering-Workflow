@@ -23,10 +23,12 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 # description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
 # among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`); E160 slice 2b's `assess_plan` choice in
 # `resolve`'s enum and its description naming it (`dispatches` is not advertised); and E183's `steering` row, which
-# offers `lower` and `request_raise` only and says what works (nothing else moved).
-OFF_LIST_SHA = {"normal": "3a447dc1feed23ca0e6747c9809fb03e25fe46879fa54932152843cbec1b7acb",
-                "recovery": "4d9953ff4642884992c913f01c593b8e95aab7c0068ea818b9b5925b3a1a38be"}
-OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
+# offers `lower` and `request_raise` only and says what works; and E335, where `integration_publish`'s description
+# (standard and compact) says whose publication decision it carries out from the owner table, the operator's, and the
+# compact `resume` says each decision names its owner (nothing else moved).
+OFF_LIST_SHA = {"normal": "3b2f0fb52ebdcf4abffba6a10d648e469e386457a93fb37bb94325df8d4e2822",
+                "recovery": "71ff78cd300fa7f53543812eb0939a8c1519f3b3eef544bce74ee4ec4d2e9506"}
+OFF_CLI_SHA = "969cfc4bc70bee703e8468c6408a50204ebc1e0554b2ad14d9cc000916a53304"
 
 
 def digest(value):
@@ -217,7 +219,9 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                                        "and launch the verifiers policy requires.",
         "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
                           "Publication stays a separate decision.",
-        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        # E335: PUBLISH is the operator's (the owner table's), so the text no longer calls it the Lead's.
+        "integration_publish": "Publish the prepared integration candidate: calling this carries out the operator's "
+                               "publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
                         "Deliver at the next step or on relaunch. Turn-end refused.",
     }

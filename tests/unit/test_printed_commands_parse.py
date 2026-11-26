@@ -417,12 +417,13 @@ def test_each_next_step_a_refusal_names_parses(state: str) -> None:
 @pytest.mark.parametrize("post_verify", [False, True])
 def test_every_command_the_rendered_guide_prints_passes(post_verify: bool) -> None:
     """Blind spot 2 at its largest: the guide joins its moves from the transition table at run time. Rendered for the
-    default policy (and with a post-integration verifier), every command it prints passes the check."""
+    default policy (and with a post-integration verifier), every command it prints, in its core or a section `aew guide`
+    prints (E231), passes the check."""
     from aew.surface import lead_text
 
     gates = {**DEFAULT_GATES, "post_integration": {**(DEFAULT_GATES.get("post_integration") or {}),
                                                    "verification": post_verify}}
-    printed = P.commands(lead_text.render(gates, DEFAULT_CHECKS))
+    printed = P.commands(lead_text.document(gates, DEFAULT_CHECKS).full())
     assert len(printed) > 30  # a floor on the finder: E130's guide prints each command once, not per move
     # The guide names these commands in its explanations. Its runnable examples are checked below.
     references = {

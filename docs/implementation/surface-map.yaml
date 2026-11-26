@@ -224,8 +224,12 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [guide]
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    probe: [[guide], [guide, steps], [guide, core, --json], [guide, --json]]
+    relayed: contained-lead
+    refusals: [NOT_FOUND, PROJECT_NOT_FOUND, USAGE]
+    note: "register E231: with no section it lists the guide's sections, and `aew guide <section>` prints the core or
+      one section; an unknown section is NOT_FOUND, naming the sections. Relayed for the contained Lead so its broker
+      counts each read in the session's telemetry, though the policy it reads is in the sandbox"
   - name: checkpoint
     home: product
     users: [lead]
@@ -253,6 +257,18 @@ commands:
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [lead, show]
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: lead telemetry
+    home: diagnostic
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: it reads the Lead broker's local log (.aew/local/lead/tool-calls*.jsonl) lock-free and
+      writes nothing"
+    diagnostic_justification: "observes the Lead sessions' local telemetry (typed-tool misuse, guide reads and help
+      lookups, per session) for the operator's UAT, the dogfood and the probe; no supported normal workflow needs it"
+    probe: [[lead, telemetry], [lead, telemetry, --json]]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "register E231: the failure criterion's counters, read per Lead session"
   - name: lead acquire
     home: operator-admin
     users: [operator]

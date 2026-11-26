@@ -188,6 +188,43 @@ def test_a_relayed_file_argument_is_read_where_the_client_runs(tmp_path):
         lab.cleanup()
 
 
+def test_the_contained_lead_reads_a_guide_section_through_its_broker_and_its_lookups_are_counted(tmp_path):
+    """E231, from a real contained session: the Lead's system text carries the guide's core only, and its shell, in the
+    sandbox, reads a section with `aew guide <section>`, relayed to its broker on the host. An unknown section is
+    refused with the names that exist. Each read and a `--help` lookup are counted against this session in the
+    broker's telemetry, which `aew lead telemetry` reads."""
+    from aew.engine import guide
+    from aew.engine.api import Engine
+    from aew.harness import tool_calls
+    from aew.surface import lead_text
+
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        sync = tmp_path / "sync"
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([
+            {"do": "dump_env", "path": str(sync / "env")},
+            {"do": "aew", "args": ["guide", "steps"]},
+            {"do": "aew", "args": ["guide", "nope"]},
+            {"do": "aew", "args": ["work", "show", "--help"]}]))
+        done = at_the_terminal(lab, home)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        doc = lead_text.document_for(Engine.discover(lab.root))
+        config = json.loads(json.loads((sync / "env").read_text())["OPENCODE_CONFIG_CONTENT"])
+        system = config["agents"][projection.LEAD_AGENT]["system"]
+        assert system.endswith(doc.core) and doc.sections["steps"].text() not in system
+        steps = {e["i"]: e["result"] for e in map(json.loads, (tui / "tui.jsonl").read_text().splitlines())}
+        assert steps[1]["exit"] == 0 and steps[1]["stdout"] == doc.sections["steps"].text(), steps[1]
+        refused = steps[2]["stderr_json"]["error"]
+        assert steps[2]["exit"] == 2 and refused["details"]["sections"] == doc.names() == [guide.CORE, *doc.sections]
+        assert steps[3]["exit"] == 0 and "usage: aew work show" in steps[3]["stdout"], steps[3]
+        [row] = [r for r in tool_calls.counters(tool_calls.read(lab.aew_root)).values() if r["guide_reads"]]
+        assert (row["guide_sections"], row["help_commands"]) == ({"steps": 1, "(unknown)": 1}, {"work show": 1})
+    finally:
+        lab.cleanup()
+
+
 # --------------------------------------------------------------------------------------------------- outcome 3
 
 def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_holds_only_sentinels(tmp_path):

@@ -202,7 +202,9 @@ def test_a_retry_with_a_different_when_never_uses_the_original_explicit_identity
 def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     w = world(tmp_path)
     text = lead_text.guide_for(w.e)
-    assert text.startswith(lead_text.guide_for(w.e, switches=frozenset()))
+    off = lead_text.guide_for(w.e, switches=frozenset())
+    # Messaging on only adds to the guide's core (E231): `message_send`'s line and its two rules; no line goes.
+    assert [line for line in off.splitlines() if line not in text.splitlines()] == []
     assert "`message_send`" in text
     # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
     expected = {
@@ -229,7 +231,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                         "Deliver at next step (default), turn end or relaunch.",
     }
     assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
-    assert expected["ticket_start"] in text
+    assert expected["ticket_start"] in lead_text.document_for(w.e).sections["steps"].text()
 
 
 def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp_path, monkeypatch):

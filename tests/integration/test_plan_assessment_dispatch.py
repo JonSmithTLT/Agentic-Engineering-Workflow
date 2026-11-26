@@ -558,3 +558,22 @@ def test_a_gate_replacement_with_an_active_plan_assessor_is_recorded_and_its_ent
     record = yaml.safe_load((p.root / ".aew" / pointer["path"]).read_text(encoding="utf-8"))
     assert entry in record["stale_invocations"] and ("operator" in entry) == custom
     follow_the_assessors_entry(lab, tmp_path, entry, card)
+
+
+def test_an_assessor_that_follows_its_pack_submits_an_assessment_that_is_recorded(tmp_path):
+    """Register E366: the report format an assessor's pack prints, filled in as its placeholders ask and nothing
+    added, is a plan assessment the engine records; and the pack asks for nothing its scope refuses."""
+    import re
+
+    import yaml
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    role, out = assess(p, wid)
+    pack = run_aew("-C", str(p.root), "context", "show", out["invocation"]).stdout
+    assert "resolved_findings" not in pack and "re-review" not in pack and "diff" not in pack.lower().split(
+        "## accepted plan")[0]
+    fence = re.search(r"^```markdown\n---\n(.*?)\n---\n", pack, re.S | re.M)
+    filled = re.sub(r"<[^>\n]+>", "as found in the plan and the source", fence.group(1))
+    rec = role.submit(E.PLAN_ASSESSMENT, yaml.safe_load(filled), "Followed the pack.\n")
+    assert rec["result"] == "pass"

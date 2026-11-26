@@ -961,6 +961,25 @@ sources:
       "Appendix A. Validation record": evidence; the one probe run, and what was inspected but not run
       "Appendix B. Source index": citations
 
+  - prefix: TVS
+    path: docs/research/e231-typed-vs-shell-2026-11-25.md
+    role: research
+    # E231's measurement of the typed Lead surface against the shell fallback, for the operator (2026-11-25): evidence
+    # for the operator's E231 decision, not that decision. It proposes nothing; the operator's direction it quotes is
+    # recorded on E231 (its note of 2026-11-25), and TLS-21's tool ceiling stays the designer's.
+    no_requirements:
+      "Summary": the measured figures
+      "Method": how the figures were measured
+      "What was not run, and why": evidence limits
+      "The break-even model": the arithmetic and its assumptions
+      "Numbers": heading; the measured tables are its subsections
+      "Fixed cost per request": measured figures
+      "Each row, messaging on (bytes per request, comma included)": measured figures
+      "The reads (bytes the Lead's context gains per use)": measured figures
+      "Break-even: uses per session at which the typed row costs no more (N = 34)": derived figures
+      "The guide's core plus pointers": an estimate of two splits, neither designed
+      "What the evidence supports": evidence for the operator, and the operator's direction quoted from E231's note
+
 requirements:
   # ---- KCA: knowledge capture and admission design v0.4 (adopted 2026-10-09; F21) -----------------------------
   KCA-01: {section: "2. Goals", kind: requirement, tracked_by: [F21], statement: "Retain evidence-backed Cases first, distill semantic Lessons selectively, keep raw canonical history searchable when distillation abstains or is off; the twelve goals (no model impressions as truth, exact provenance, abstention succeeds, provider-neutral, air-gap compatible, no operator curation of low-risk cases)"}

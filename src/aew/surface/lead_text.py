@@ -49,6 +49,36 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
+# When the Lead reaches for each typed tool that is not a step of the Ticket path (E231: the core's map of the tools).
+# The path's stages need no line here: the core derives them from the transition table. A test fails when a tool the
+# Lead is offered is named nowhere in the core, or a line here names no tool in the catalog.
+WHEN = {
+    "status": "the state and your next actions, or one unit's control record",
+    "resume": "first, after any restart",
+    "work_show": "one unit in full",
+    "explain": "why a dispatch or a stage's step is blocked now, before you retry it",
+    "harness_status": "a run's record; for a lost run, the way to relaunch it",
+    "harness_wait": "wait on runs; never poll",
+    "checkpoint": "before a pause or a handoff",
+    "steering": "lower your steering mode, or ask the operator to raise it or confirm an action",
+    "message_send": "steer a running worker",
+}
+
+
+def uses(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tuple[guide.ToolUse, ...]:
+    """The tools on ``profile`` that have a line in :data:`WHEN`, in catalog order."""
+    return tuple(guide.ToolUse(t.name, WHEN[t.name]) for t in contract.exposed(profile, switches) if t.name in WHEN)
+
+
+def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
+             switches: frozenset[str] = frozenset()) -> guide.Guide:
+    """The guide for a policy, core and sections, with the normal profile's stages and tools for the supplied
+    switches."""
+    return guide.document(gates_policy, checks_policy, stages(switches=switches),
+                          messaging=contract.MESSAGING in switches, uses=uses(switches=switches),
+                          plan_assessment=plan_assessment(switches=switches))
+
+
 def typed_route(primitive: str, profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> str | None:
     """How a Lead reaches ``primitive`` through a `resolve` choice, from the catalog: the tool, the choice and the
     subject it takes, or None when the profile offers no such route. Today only the plan assessor's (E160 slice 2b)."""
@@ -67,15 +97,20 @@ def plan_assessment(profile: str = NORMAL, switches: frozenset[str] = frozenset(
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
            switches: frozenset[str] = frozenset()) -> str:
-    """The guide for a policy, with the normal profile's stages for the supplied switches."""
-    return guide.render(gates_policy, checks_policy, stages(switches=switches),
-                        messaging=contract.MESSAGING in switches, plan_assessment=plan_assessment(switches=switches))
+    """The guide's core for a policy: what the Lead's system text carries."""
+    return document(gates_policy, checks_policy, switches=switches).core
 
 
-def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
-    """The guide for this project's own policy (`aew guide`, and the Lead's system text)."""
+def document_for(engine: Any, *, switches: frozenset[str] | None = None) -> guide.Guide:
+    """The guide for this project's own policy, core and sections (`aew guide`)."""
     from aew.surface.context import switches_for
 
     selected = switches_for(engine) if switches is None else switches
-    return str(engine.lead_guide(stages(switches=selected), plan_assessment=plan_assessment(switches=selected),
-                                **({"messaging": True} if contract.MESSAGING in selected else {})))
+    return engine.lead_guide_document(stages(switches=selected), uses=uses(switches=selected),
+                                      plan_assessment=plan_assessment(switches=selected),
+                                      **({"messaging": True} if contract.MESSAGING in selected else {}))
+
+
+def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
+    """The guide's core for this project's own policy: the Lead's system text carries it."""
+    return str(document_for(engine, switches=switches).core)

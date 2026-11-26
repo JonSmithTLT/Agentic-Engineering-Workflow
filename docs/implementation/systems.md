@@ -8,7 +8,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-40, SYS-47, SYS-48
 
-**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-45, SYS-51, SYS-53
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -16,11 +16,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
+**designed_only:** 17 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
 
 **Waiting on your sign-off:** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-40, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-51, SYS-53
+**Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-45, SYS-51, SYS-53
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-42, SYS-43, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-40, SYS-46, SYS-47, SYS-48
+**Members:** 19 — SYS-02, SYS-05, SYS-09, SYS-42, SYS-43, SYS-45, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-40, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -89,6 +89,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 31
 
 **Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
+
+**Wired:** none
+
+### SYS-45 — Branch review and document work (ref_review, technical_writer)
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 35
+
+**Own slices left:** 2 — raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) — E170 — 1 small PR (estimate; the designer's reading, skills design (e))
 
 **Wired:** none
 
@@ -258,7 +270,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 10 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 9 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -280,7 +292,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 24
 
-**Own slices left:** 3 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate on E135's row, outside this finish line (E135); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
+**Own slices left:** 3 — E136: what its three batches left, each waiting on the operator: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once their drafts are updated; `empirical-evaluation`, `ci-evidence-triage` and `frontend-design`, which no decision places on a card; and a foundational skill in `skills:` per role, its cost measured first (E136); E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate on E135's row, outside this finish line (E135); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: what its three batches left, each waiting on the operator: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once their drafts are updated; `empirical-evaluation`, `ci-evidence-triage` and `frontend-design`, which no decision places on a card; and a foundational skill in `skills:` per role, its cost measured first — E136 — 1 or 2 batched PRs after the operator's answers (estimate)
 
 **Wired:** pack
 
@@ -309,18 +321,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** maps.reads — default: off (a new project: structural) — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
 **Wired:** cli:map search
-
-### SYS-45 — Branch review and document work (ref_review, technical_writer)
-
-**Board state:** designed_only
-
-**Who:** Lead
-
-**Now:** 34
-
-**Own slices left:** 3 — the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) (E167); raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) — E167 — inside SYS-22's estimate
-
-**Wired:** none
 
 ### SYS-06 — Typed agent surfaces (the Lead's catalog and transports)
 

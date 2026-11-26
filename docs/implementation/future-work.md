@@ -65,7 +65,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
 | 32 | E161 | The Lead's skills, after E127 |
 | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-| 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -1902,18 +1902,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E166/`, oldest first (`python tools/register.py show E166`).*
 
-### E167
-
-**Work:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
-
-**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work (v2), (c)
-
-**When:** **Now.** Item 34 of the Now list, with E136's batches. Part of E168's new system, under the same limit
-
-**Notes:** Filed by the Lead. Data, the designer's reading
-
-*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
-
 ### E168
 
 **Work:** A review of any local branch or ref, as a non-mutating Ticket: the ref is resolved at dispatch and pinned to a commit, with its merge-base against the authoritative branch (AEW fetches nothing), and observed read-only there. A new record kind, `ref_review`, isn't source-bound to the authoritative commit: when the ref moves, the record says so and doesn't gate. A `branch_reviewer` card on the investigator archetype, which gains the kind, takes the requirement and the diff from the merge-base; its skill is the Lead's fit choice, checked in the PR. It never changes code or integrates
@@ -3522,18 +3510,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
 
-### E335
-
-**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator's; its gaps are E350 and E351
-
-**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
-
-*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -3929,6 +3905,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Reproduced at #608's head: a tree with a sleeping member, then a second `spawn`
 
 *Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
+
+### E388
+
+**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
+
+**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E373
 
@@ -5068,6 +5056,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
 
+### E167
+
+**Was:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
+
+**Closed:** 2026-11-26
+
+**By:** #611, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
+
+*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
+
 ### E171
 
 **Was:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
@@ -5327,6 +5325,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #463 (`c2c11c78`): `checks.<id>.caches` declares a check's caches, which leave the working snapshot, `changed_paths` and the Ticket commit, with tracked paths and `include_ignored` taking precedence; adoption refuses a pattern that would hide project paths; the starter kit declares pytest's caches and the vertical's U14 fallback is gone (ADR-0002, amendment of 2026-11-11). The quick check's remaining nit on the long-pathspec test is E370
 
 *Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
+
+### E335
+
+**Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Closed:** 2026-11-26
+
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
 
 ### E337
 

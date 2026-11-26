@@ -335,9 +335,10 @@ def staffing_text() -> str:
     """Which implementer card to staff, so a language card's skills load (the designer's ruling of 2026-11-04, §6: the
     Lead had only the cards' ``use_when``). Derived, never a list here: from the built-in implementer cards whose
     ``skills:`` AEW ships, each with its first ``use_when``; the archetype's default card with the shipped skills its
-    run is offered (``optional_skills``) that a language card requests; and the shipped skills every implementer card
-    offers (the intersection of their ``optional_skills``), which are not about the language (E136's review, m1). Empty
-    when no card has a shipped skill."""
+    run is offered (``optional_skills``) that a language card requests; and the shipped skills the implementer cards
+    that offer any all offer (the intersection of their ``optional_skills``), which are not about the language (E136's
+    review, m1). Those cards are named when a card offers none, as `technical_writer` does (E167), so the sentence
+    never says "every" of a card it is not true of. Empty when no card has a shipped skill."""
     from aew import roles, skills
 
     shipped = skills.shipped()
@@ -352,11 +353,17 @@ def staffing_text() -> str:
     offered = [s for s in (default.meta.get("optional_skills") or []) if s in by_language] if default else []
     rest = (f" Otherwise the default, `{default.id}`, whose run may load "
             f"{' or '.join(f'`{n}`' for n in offered)} when its task matches." if default and offered else "")
-    every = sorted(frozenset.intersection(*(frozenset(c.meta.get("optional_skills") or []) for c in cards)) & shipped)
-    also = (f" Every implementer card's run may also load {' or '.join(f'`{n}`' for n in every)} when its task "
-            "matches." if every else "")
-    return ("Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each "
-            f"card's `use_when` and skills): {picks}.{rest}{also}")
+    offering = [c for c in cards if c.meta.get("optional_skills")]
+    shared = (frozenset.intersection(*(frozenset(c.meta["optional_skills"]) for c in offering)) if offering
+              else frozenset())
+    every = sorted((shared & shipped) - frozenset(offered))  # the default's clause has already named `offered`
+    whose = ("Every implementer card's run" if len(offering) == len(cards) else
+             f"The run of `{offering[0].id}`" if len(offering) == 1 else
+             f"The runs of {', '.join(f'`{c.id}`' for c in offering[:-1])} and `{offering[-1].id}`") if every else ""
+    its = "its" if len(offering) in (1, len(cards)) else "their"
+    also = (f" {whose} may also load {' or '.join(f'`{n}`' for n in every)} when {its} task matches." if every else "")
+    return ("Staff the implementer by the change's language or surface, with the Ticket's `card` (`aew role list` "
+            f"shows each card's `use_when` and skills): {picks}.{rest}{also}")
 
 
 class Rule(str):

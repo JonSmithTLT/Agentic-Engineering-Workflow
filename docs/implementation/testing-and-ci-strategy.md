@@ -145,11 +145,13 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 
 - **The register rows a pull request names (2026-11-26).** On a pull request, `static` runs `python tools/register.py
   cited --base <base sha> --event "$GITHUB_EVENT_PATH"`: an open register row that the pull request's title, or the
-  lead of one of its own commits' subjects, names must be closed, edited or noted at its head, so a change that does a
-  row's work closes it or says what it did (the operator, 2026-11-26, on rows left open after their work merged). A
-  change that only cites a row adds a note saying so (`python tools/register.py note <id>`), which is the recorded
-  escape; no flag or label skips it. It reads the commits, not the checkout, and leaves out merges and a review's
-  finding labels (`F1`, `N4`); its limits are in `tools/register.py`, *Rows a change names*. Locally:
+  lead of one of its own commits' subjects, names must at its head be closed, or carry a note the change adds with a
+  fixed marker: `**What remains**` for a row it leaves open, or `**Cited, not implemented**` for one it only cites
+  (`python tools/register.py note <id>`). That note is the recorded escape; no flag or label skips it, and a note
+  that only says "built", or an edit of the row's cells, does not pass (the operator, 2026-11-26, on rows left open
+  after their work merged; the review of #598). It reads the commits, not the checkout, and leaves out merges and a
+  review's finding labels (`F1`, `N4`). It cannot see a row filed after its work merged, work that never names its
+  row, or a title edited after the last push; its limits are in `tools/register.py`, *Rows a change names*. Locally:
   `python tools/register.py cited --base origin/main --title "<the title>"`.
 - **The generated reference's counts.** `static` also runs `python tools/reference.py counts` and puts the counts in the run's summary: reported, never gating (`continue-on-error`). The reference's index is not committed (operator, 2026-11-05), so this is where each pull request's counts are measured; the fast lane's `check` gates the pages.
 - **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).

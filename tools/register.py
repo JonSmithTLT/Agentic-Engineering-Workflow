@@ -33,15 +33,19 @@ or text is malformed, or whose name collides with another's (``note_problems``).
 
 **Rows a change names** (``cited``; the operator, 2026-11-26, after rows stayed open weeks past the merge of their
 work). A pull request whose title, or the lead of one of its own commits' subjects (``cited_ids``), names an open row
-must, at its head, have closed the row, edited its cells (a Work narrowed to what remains) or added a note on it:
-implementing a row then closes it or says what it did in the same change. A change that only cites a row (a related
-row, a Ruff code that shares an id) adds a note saying so, which is its recorded escape; no flag or label skips the
-check. It reads the commits, never the checkout: the register at the base and at HEAD, the subjects of
-``base..HEAD``'s commits that are not merges, and the note files HEAD adds. CI runs it on every pull request (the
-``static`` job), with the title from the event's payload. Its limits: it reads titles and subject leads, not
-descriptions, commit bodies or the rest of a subject, which cite rows as related far more often than they implement
-them; a change that does a row's work without naming it passes; a row named in a range (``E222 to E259``) is read at
-its two ends only; and a branch stacked on another that merged by squash carries that branch's commits as its own.
+must, at its head, have closed the row, or added a note on it that carries one of two fixed markers
+(``NOTE_MARKERS_RE``): ``**What remains**``, saying what is left of a row the change leaves open, or ``**Cited, not
+implemented**``, for a change that only cites it (a related row, a Ruff code that shares an id). That note is the
+recorded escape; no flag or label skips the check. A note that says only "built", or an edit of the row's cells
+(``When: being built``), does not pass: that is how E332 to E334 stayed open (the review of #598, F1). It reads the
+commits, never the checkout: the register at the base and at HEAD, the subjects of ``base..HEAD``'s commits that are
+not merges, and the note files HEAD adds, as HEAD holds them. CI runs it on every pull request (the ``static`` job),
+with the title from the event's payload. Its limits: it reads titles and subject leads, not descriptions, commit bodies
+or the rest of a subject, which cite rows as related far more often than they implement them; a change that does a
+row's work without naming it passes; a row filed after its work merged was not open at that change's base, so it is
+never checked (E332 and E333 were filed so); a marker is judged present, not true; a title edited after the last push
+is not checked again, since CI does not run on an edit; a row named in a range (``E222 to E259``) is read at its two
+ends only; and a branch stacked on another that merged by squash carries that branch's commits as its own.
 
 **Decisions due.** ``docs/implementation/decisions-due.yaml`` lists what the operator or the designer still owes the
 register: each item names its register row, what is needed (a decision, a design, or the adoption of one), its owner,
@@ -168,10 +172,20 @@ NOW_CLOSED = "closed:"  # an item whose rows have closed, which keeps its number
 # A row id as a pull request's title or a commit's subject names it (``cited``): a finding or engineering row (``E``),
 # a design row (``F``) or a build stage. A letter after the number is another plan's name (M4-E's ``E3a``), not a row.
 CITED_RE = re.compile(r"\b([EF][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})\b")
-# A review's finding labels after the pull request or the review that raised them share the ids' shape ("#296 F1 to
-# F4", "#366 N4", "#294 m1 and n1", "review F3", "the review's points (F1 to F3)"): they are read as labels, not rows.
+# A commit subject's lead is read without case (``fix(e231): ...``); a title is read as written.
+CITED_LEAD_RE = re.compile(CITED_RE.pattern, re.IGNORECASE)
+# A review's finding labels after the pull request or the review that raised them share the F rows' shape ("#296 F1
+# to F4", "#366 N4", "#294 m1 and n1", "review F3", "the review's points (F1 to F3)"): they are read as labels, not
+# rows. A label is a letter other than E and one or two digits, so a row named right after a pull request
+# ("#551 review, E372", "#296 F15.8") is still read.
+_LABEL = r"[A-DF-Za-df-z][0-9]{1,2}(?![0-9.])"
 FINDINGS_RE = re.compile(r"(?:#[0-9]+(?:'s)?(?: (?:review|quick check))?|\breview(?:'s points)?|\bquick check),? \(?"
-                         r"[A-Za-z][0-9]+(?:(?:,| and| to|-) ?[A-Za-z]?[0-9]+)*")
+                         + _LABEL + r"(?:(?:,| and| to|-) ?" + _LABEL + r")*")
+# What a note on a row the change leaves open must carry to count (``cited_problems``): the row stays open with what
+# remains, or the change only cites it. A note that says only "built" does not count (the review of #598, F1).
+REMAINS_MARKER = "**What remains**"
+CITES_MARKER = "**Cited, not implemented**"
+NOTE_MARKERS_RE = re.compile(r"\*\*(?:What\s+remains|Cited,\s+not\s+implemented)\b", re.IGNORECASE)
 
 
 # libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
@@ -837,22 +851,25 @@ def show(data: dict[str, Any], due: dict[str, Any], rid: str, files: list[tuple[
 def cited_ids(text: str, *, subject: bool = False) -> list[str]:
     """The row ids ``text`` names, in order, with a review's finding labels left out (``FINDINGS_RE``). A commit's
     subject names its own work before its first ": " (``E160 slice 1: the review's points (F1 to F3)``,
-    ``fix(E140): ...``), or in its first word when it has none; what follows cites, so only that lead is read."""
+    ``fix(E140): ...``), or in its first word when it has none; what follows cites, so only that lead is read, and
+    without case (``fix(e231): ...``)."""
     if subject:
         text = text.split(": ", 1)[0] if ": " in text else text.split(" ", 1)[0]
+        return [m.group(1).upper() for m in CITED_LEAD_RE.finditer(FINDINGS_RE.sub(" ", text))]
     return [m.group(1) for m in CITED_RE.finditer(FINDINGS_RE.sub(" ", text))]
 
 
 def cited_problems(base: dict[str, Any], head: dict[str, Any], cited: list[tuple[str, str]],
-                   noted: set[str]) -> list[str]:
+                   noted: dict[str, list[str]]) -> list[str]:
     """The open rows a change names and says nothing about (``cited``): one line per row, naming where it was named.
 
     ``cited`` is each place the change names its work, as (where, text): the pull request's title and each of its own
     commits' subjects (a ``where`` that starts with "commit" is read as a subject, ``cited_ids``). A row counts when
-    its id is named there and it is open at ``base``. It passes when, at
-    ``head``, it is closed (or gone), its cells changed, or ``noted`` (the rows the change adds a note on) holds it. So
-    work that names a row either closes it, narrows it, or says what it did, and a change that only cites a row says so
-    in a note, which is the recorded escape (no flag or label skips the check)."""
+    its id is named there and it is open at ``base``. It passes when, at ``head``, it is closed (or gone), or one of
+    the notes the change adds on it (``noted``: row id to the added notes' texts) carries a marker
+    (``NOTE_MARKERS_RE``): what remains of a row left open, or that the change only cites it. So work that names a row
+    closes it or says what is left, and a change that only cites a row says so in a note, which is the recorded
+    escape (no flag or label skips the check)."""
     open_base = {r["id"]: r["row"] for r in rows(base) if r["id"] and r["id"] != "Gate"}
     open_head = {r["id"]: r["row"] for r in rows(head) if r["id"] and r["id"] != "Gate"}
     out: list[str] = []
@@ -862,20 +879,22 @@ def cited_problems(base: dict[str, Any], head: dict[str, Any], cited: list[tuple
             if rid in seen or rid not in open_base:
                 continue
             seen.add(rid)
-            if rid not in open_head or rid in noted or open_head[rid] != open_base[rid]:
+            if rid not in open_head or any(NOTE_MARKERS_RE.search(t) for t in noted.get(rid, ())):
                 continue
-            out.append(f"{where} names open register row {rid}, and this change neither closes it, edits it nor adds "
-                       f"a note on it. If it does {rid}'s work, close the row in §9 (By: the pull request and its "
-                       f"merge commit), or add a note naming what merged and what remains; if it only cites {rid}, "
-                       f"add a note that says so and why (`python tools/register.py note {rid}`)")
+            said = "adds a note on it without a marker" if rid in noted else "adds no note on it"
+            out.append(f"{where} names open register row {rid}, and this change leaves it open and {said}. If it "
+                       f"does {rid}'s work, close the row in §9 (By: the pull request and its merge commit); if the "
+                       f"row stays open, add a note with a paragraph headed {REMAINS_MARKER} saying what is left; if "
+                       f"it only cites {rid}, add a note headed {CITES_MARKER} saying why "
+                       f"(`python tools/register.py note {rid}`)")
     return out
 
 
 def cited_inputs(root: Path, base_ref: str, title: str | None, head: str = "HEAD") -> tuple[Any, ...]:
     """What ``cited_problems`` reads, from the commits alone (a gate reads the commit, AGENTS.md §6): the register at
     ``base_ref`` and at ``head``, the title and the subject of every commit in ``base_ref..head`` that is not a
-    merge (a merge of main brings main's subjects, which this change did not write), and the rows ``head`` adds a
-    note on."""
+    merge (a merge of main brings main's subjects, which this change did not write), and the notes ``head`` adds,
+    by row, with their text as ``head`` holds it."""
     def git(*args: str) -> str:
         done = _git(root, *args)
         if done.returncode:
@@ -891,13 +910,16 @@ def cited_inputs(root: Path, base_ref: str, title: str | None, head: str = "HEAD
         cited.append((f"commit {sha[:8]} ({subject[:60]!r})", subject))
     notes_rel = NOTES.relative_to(ROOT).as_posix()
     added = git("diff", "--name-only", "--diff-filter=A", "--no-renames", base, head, "--", notes_rel).splitlines()
-    noted = {p[len(notes_rel) + 1:].split("/")[0] for p in added if p.count("/") == notes_rel.count("/") + 2}
+    noted: dict[str, list[str]] = {}
+    for path in added:
+        if path.count("/") == notes_rel.count("/") + 2:
+            noted.setdefault(path[len(notes_rel) + 1:].split("/")[0], []).append(git("show", f"{head}:{path}"))
     return registers[0], registers[1], cited, noted
 
 
 def cited_main(root: Path, base_ref: str, title: str | None, event: str | None) -> int:
-    """``cited``: 0 when every open row the change names is closed, edited or noted; 1 naming each that is not; 2 when
-    the commits or the event cannot be read."""
+    """``cited``: 0 when every open row the change names is closed or carries a marked note; 1 naming each that does
+    not; 2 when the commits or the event cannot be read."""
     try:
         if event:
             payload = json.loads(Path(event).read_text(encoding="utf-8"))
@@ -910,7 +932,7 @@ def cited_main(root: Path, base_ref: str, title: str | None, event: str | None) 
     for problem in found:
         print("problem:", problem)
     print(f"{len(found)} open row(s) named and left unsaid" if found else
-          f"every open row this change names is closed, edited or noted ({len(cited)} titles and subjects read)")
+          f"every open row this change names is closed or noted with a marker ({len(cited)} titles and subjects read)")
     return 1 if found else 0
 
 

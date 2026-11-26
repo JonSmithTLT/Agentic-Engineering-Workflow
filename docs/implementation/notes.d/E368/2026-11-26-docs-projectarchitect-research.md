@@ -1,16 +1,21 @@
-**Evaluation method: C1, judge a brief by what its recipient achieves** (the [ProjectArchitect concept research
-plan](../../../research/projectarchitect-concepts-and-evaluation-2026-11-25.md), its first-priority concept, filed with
-the operator's approval of 2026-11-26). This row's rewrite is judged by what a worker does with the new pack, not by the
-bytes it saves. [R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) (its last section) applies it:
-- the false lines are truth fixes and need no experiment;
-- the size and selection change is Experiment A's treatment (A1) against today's pack (A0), with worker, model, task
-  and budget fixed, measured by verified completion, constraint preservation and additional source discovery; the
-  audit's 36 to 42% is a diagnostic, counted only when those hold. The experiment is E389, on F19's instrument;
-- until E389 runs, this row's pull request shows delivery (before-and-after packs, a scripted pass of the context-pack
-  rehearsal) and claims no effectiveness;
-- from R0's checklist: the contract's "Required knowledge (included below)" drops undelivered items silently
-  (`src/aew/knowledge/context.py:363-364`), so the pointers name what is not delivered and why (R0's D3); the mandatory
-  constraints stay in the core, never behind a pointer.
+**The operator on R0, 2026-11-26: "Yes start R1 prep, ship truth fixes now, cap is fine but will only be able to be
+done when I get back home anyways".** For this row, that decides one thing: its truth fixes ship now. They are the
+corrections of what the worker texts say (the verifier's shell, the system text's "first message" line, the skills'
+contradictions): the texts are wrong today, so the fixes need no experiment. The Lead's reading of that reply, for the
+rest of the row: the core-plus-pointers rewrite is held as the treatment of Experiment A (E389), and this row's pull
+requests claim delivery only, not effectiveness.
 
-**What remains:** all of this row's work. Nothing here changes its pack text, its place in the Now list or its order
-after E367.
+**Proposed, not decided:** [R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) (its last section)
+recommends judging the rewrite by C1 of the
+[ProjectArchitect concept research plan](../../../research/projectarchitect-concepts-and-evaluation-2026-11-25.md),
+that is, by what a worker achieves with the new pack and not by the bytes it saves. These are the operator's to take:
+- the rewrite would run as Experiment A's A1 against today's pack (A0), with worker, model, task and budget fixed,
+  measured by verified completion, constraint preservation and additional source discovery. The audit's 36 to 42%
+  would be a diagnostic, counted only when those hold;
+- from R0's checklist: the contract's "Required knowledge (included below)" drops undelivered items silently
+  (`src/aew/knowledge/context.py:363-364`). R0's D3 proposes that the pointers name what is not delivered and why. It
+  adds nothing to this row's scope unless the operator takes it;
+- the mandatory constraints would stay in the core, never behind a pointer.
+
+**What remains:** all of this row's work. The truth fixes are being built in their own pull request. Nothing here
+changes this row's place in the Now list or its order after E367.

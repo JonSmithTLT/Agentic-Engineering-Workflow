@@ -6,6 +6,15 @@
 2026-11-26 ("Yup file and run r0."). It is read-only: no model ran and no product code changed. It is evidence for the
 experiments' row, E389, and decides nothing: every proposal below is the operator's to place when E389 runs.
 
+**The operator's reply to R0, 2026-11-26:** "Yes start R1 prep, ship truth fixes now, cap is fine but will only be able
+to be done when I get back home anyways". So three things are decided, and nothing else below is:
+- R1 preparation may start now: fixtures, frozen configurations, oracles and the preregistration, with no model run
+  and no spend;
+- E368 ships its truth fixes now (§"Where E368's rewrite should use C1");
+- the cap is approved as proposed below, and paid runs wait until the operator is home.
+
+The fixture set, the worker profile and the decision thresholds are still proposals.
+
 **Basis.** AEW `main` at `eece01e5`, the revision the plan itself pins. Every `file:line` below is at that commit.
 
 ## Summary
@@ -121,7 +130,9 @@ Observed in order:
 - `aew resume` gave the next action "inspect workspace/artifacts and reconcile (interrupted in RUNNING); success is never
   assumed" (`resume_ops.py:395-397`) and the Lead's next-action line. Its JSON (and the Lead's typed `resume` tool,
   `src/aew/surface/run.py:96-99`) carries the handoff's full text (`resume_ops.py:589-592, 623`); the CLI text view
-  (`render_resume`, `resume_ops.py:653-689`) prints only the next-action line, not the note.
+  (`render_resume`, `resume_ops.py:653-689`) prints only the next-action line, not the note. The text view labels that
+  line "Lead's note:" (`resume_ops.py:685-686`), but it is the checkpoint's `--next` value: the checkpoint's note text
+  is not printed.
 - The workspace kept the partial work: `MM calc/core.py` and `?? tests/test_partial.py`, before and after the takeover.
 - Leaving INTERRUPTED takes a reconcile with a reason, to a phase no later than the interrupted one
   (`src/aew/engine/transitions.py:126-129`).
@@ -154,7 +165,7 @@ Each item is classified **present**, **deficient** or **unverified**, with its e
 |---|---|---|---|
 | B1 | Task objective and explicit exclusions | present | Requirement, title, body and scope (`context.py:435-476`); Prohibited (`:373`); the contract criteria ("changes stay within calc/ and tests/") |
 | B2 | Acceptance conditions and verification method | present | Goal-backwards and contract criteria (`context.py:444-449`); completion criteria per role (`:400-432`); available checks (`:499-505`) |
-| B3 | Relevant settled constraints | present | Guardrails, governing authority (`context.py:492-496`), inherited obligations and corrections (`:521-539`), the accepted plan pinned by sha256 (`:359`) |
+| B3 | Relevant settled constraints | present | Guardrails, governing authority (`context.py:492-496`), inherited obligations and corrections (`:521-539`), the accepted plan pinned by sha256 (`:359`). A consumed research record's `constraints` are not carried: that gap is counted under B6 |
 | B4 | Source basis and evidence locators | present | Evaluated snapshot (`context.py:357`); check results with evidence ids and logs (`:514-519`); the map slice's commit and freshness; sources with sha256 on the invocation (`context_ops.py:341-356`) |
 | B5 | Dependency outcomes and their status | present | Consumed inputs with freshness, basis and acknowledgement, and "Recheck consequential claims" (`context.py:541-552`); a verifier reads implementer claims as "NOT evidence" (`:760`) |
 | B6 | Open questions and known limitations | **deficient** | No pack section holds them; `_input_summaries` keeps facts, hypotheses, conclusions and subjects but drops `unresolved_questions`, `uncertainties` and `constraints` (`context_ops.py:74-89`); `open_questions` is undelivered (E198) |
@@ -186,11 +197,11 @@ envelope and ordinary source reads.
 | K1 | Verified completion against a stated state | present | Check evidence sealed to the snapshot; unmet gates per Ticket in `resume` (`resume_ops.py:560`) |
 | K2 | Unfinished work: which files or actions remain | **deficient** | Nothing records it, and the replacement pack is silent (the two-line diff above); the Lead is told only to "inspect workspace/artifacts" (`resume_ops.py:396`) |
 | K3 | Investigation state: current against rejected hypotheses | **deficient** | The Lead's checkpoint note is free text (`resume_ops.py:691-698`); a worker has no channel (F36's handoff note is not built); a `discovery_record` has hypotheses but no rejected ones |
-| K4 | Pending work: active children, queued handbacks, unread results | present | The handoff's in-flight invocations (`lead_ops.py:472-474`); `resume`'s harness runs with their evidence (`harness_ops.py:953-977`); the Lead's wakes in `aew status` (`resume_ops.py:700-714`) |
+| K4 | Pending work: active children, queued handbacks, unread results | present | The handoff's in-flight invocations (`lead_ops.py:472-474`); `resume`'s harness runs with their evidence (`harness_ops.py:953-977`); the Lead's wakes in `aew status` (`resume_ops.py:700-714`). A limit, read from code and not observed: `harness_resume` lists active invocations only (`harness_ops.py:964`), and a takeover interrupts the in-flight ones, so this holds for a Lead that resumes in the same generation. Whether a finished child's unread result is shown after a takeover is unverified (C-F2) |
 | K5 | Recovery observation: reconstructed against recorded | present | `resume` rebuilds from durable artifacts in the Knowledge Contract's order (`resume_ops.py:52-56`) and lists contradictions; the handoff says it does not replace them. The CLI text view omits the handoff's note (`resume_ops.py:653-689`); the JSON and the typed tool carry it |
 | K6 | Next action | present | `checkpoint --next` (`resume_ops.py:691-698`); deterministic next actions per unit (`resume_ops.py:395-397`) |
 | K7 | Staged, unstaged and untracked work covered, or what was not preserved stated | **deficient** | The worktree kept unstaged and untracked work (observed); a contained run's staging is scratch (`layout.py:888-905`); nothing records or states either to a successor |
-| K8 | Bound to task, attempt, source state and custody | present | The handoff's generation and base revision (`lead_ops.py:456-462`); each invocation's snapshot, workspace and attempt |
+| K8 | Bound to task, attempt, source state and custody | present | Task, attempt and source state: each invocation's snapshot (base commit and inputs fingerprint, as of dispatch), workspace and attempt. Custody: the handoff's generation and `base_revision` (`lead_ops.py:456-462`), which is the control-state revision, not a source commit. A limit: the source state bound is the one at dispatch; the workspace's state at the interruption is recorded nowhere (K2, K7) |
 | K9 | Custody reconciled before a new worker or a completion claim | present | INTERRUPTED leaves only by a reasoned reconcile, never past its phase (`transitions.py:126-129`); a lost harness run is not an interruption (`harness_ops.py:957`) |
 
 ### C5 to C8
@@ -243,7 +254,7 @@ and a model trial only where a functional test cannot decide:
 | Id | Case | Functional form |
 |---|---|---|
 | C-F1 | Planned rollover | `checkpoint`, `lead handoff offer` and `accept` |
-| C-F2 | Parent ends before reading a finished child's report | A takeover after a run ended with evidence (`harness_ops.py:975-977`) |
+| C-F2 | Parent ends before reading a finished child's report | A takeover after a run ended with evidence. The takeover interrupts the invocation, and `harness_resume` lists active invocations only (`harness_ops.py:964`), so the test asserts what `resume` then shows of that run's evidence; R0 did not observe this case |
 | C-F3 | Restart while a child is live or its state is unknown | A live and an unreadable run record at `resume` |
 | C-F4 | Staged, unstaged and untracked work | R0's probe, plus a contained run on Linux |
 | C-F5 | A rejected hypothesis whose evidence would be lost | Needs a model trial: no channel holds it today (K3) |
@@ -276,7 +287,8 @@ Not proposed: a retrieval service, an outline index (C5 stays on F22.2), a decis
 - retries, escalations, operator interventions and infrastructure failures, counted and never excluded;
 - preparation (map generation, fixture builds) apart from warmed execution, and included in the total.
 
-**A proposed cap, for the operator to set at preregistration** (F19 pins budget there):
+**The cap, proposed here and approved by the operator on 2026-11-26** ("cap is fine"; paid runs wait until the operator
+is home; F19 pins budget at preregistration). The worker profile in its first line is still a proposal:
 - one worker profile per experiment, already qualified: the lower-bound lane's `opencode/gpt-5-nano#high` cost $0.066
   for its whole qualification run, and `lbq-v2-deepseek-v4-1-flash` $0.22 for six ceiling runs;
 - at most $0.50 and 20 minutes per top-level attempt, helpers and consequence runs included;
@@ -287,8 +299,10 @@ Not proposed: a retrieval service, an outline index (C5 stays on F22.2), a decis
 
 ## Predeclared decision criteria
 
-Set before any treatment result is seen (plan §8.5). Mandatory constraints, evidence and custody are pass or fail. "Not
-worse" allows one attempt in 24 per family as the quality tolerance.
+Set before any treatment result is seen (plan §8.5), and proposals until the operator sets them at preregistration.
+Mandatory constraints, evidence and custody are pass or fail. "Not worse" is the quality tolerance: across an arm's 24
+attempts (8 fixtures, 3 repetitions), the treatment may have at most one verified completion fewer than the baseline,
+and no task family may have more than one fewer.
 
 **Experiment A** (A0 today's pack; A1 one named delta, or E368's rewrite):
 - **Fail, whatever else:** any attempt in A1 that breaks a mandatory constraint (scope, prohibited, guardrails) where
@@ -318,7 +332,8 @@ worse" allows one attempt in 24 per family as the quality tolerance.
 E368 rewrites the worker packs as a core plus pointers, with an estimate of 36 to 42% less per run. C1 says to judge
 that rewrite by what the worker achieves with it:
 - **The false lines are truth fixes.** E368's corrections of what the texts say (the verifier's shell, the system
-  text's "first message" line, the skills' contradictions) need no experiment: they are wrong today.
+  text's "first message" line, the skills' contradictions) need no experiment: they are wrong today. The operator,
+  2026-11-26: "ship truth fixes now".
 - **The size and selection change is a treatment.** Run it as Experiment A's A1 against today's pack as A0, worker,
   model, task and budget fixed, measured by verified completion, constraint preservation and additional source discovery.
   The bytes saved are a diagnostic, counted only when outcomes hold.

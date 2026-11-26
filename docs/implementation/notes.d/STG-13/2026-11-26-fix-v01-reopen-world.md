@@ -10,8 +10,11 @@ clusters C7 and C8 of the V-01 re-measure of 2026-11-26.
 - **C8, the first words.** The scripted Lead's status line was always `"words": null`, because it read only
   `structuredContent`. It now reads `resume`'s text, the MCP `content[0].text` (`aew.surface.readable`): the
   paragraph a person reads, before the JSON carried for a model. The JSON is never counted as words.
+- **Measured locally (Linux).** In all five fresh-terminal V2 cases (four exit and kill cases, and forced mid-stage)
+  the reopen reaches E330's seat resume. Each now shows takeovers 0, credentials 0 and `pin_reentries` 1 (the resume
+  code). None leaves the Ticket INTERRUPTED or needs a reconcile, and the implementer's run is still running after
+  the reopen. The first words name T-0001 through `resume`'s run line (`run: R-INV-0001-1 implementer T-0001:
+  running`). The alpha's V2-forced line is gone.
 
-**What remains** is the product gap C8 found. The readable head of `resume` does not name the open Ticket: on a
-project whose T-0001 is RUNNING, it says `resume: done (project)` and the project's next step. V2's "told where things
-stand in words" check, which wants T-0001 in the first words, therefore still fails until `resume`'s readable text
-says where the work stands. The rest of STG-13 is V-01's other clusters.
+**What remains** of STG-13 is V-01's other clusters. The alpha gate still fails on its V1 decisions line (C1, E335),
+and every V2 case still fails strict on C12's fallbacks, the C1 to C4 counters and `pin_reentries` 1.

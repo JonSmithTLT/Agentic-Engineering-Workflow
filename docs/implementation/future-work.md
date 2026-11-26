@@ -4146,6 +4146,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E393/`, oldest first (`python tools/register.py show E393`).*
 
+### E399
+
+**Work:** An evidence record whose body holds a lone carriage return (one not followed by a line feed) is accepted at `submit`, and then its seal fails on every read. Later `evidence ingest` and `work accept` on that unit are refused too, also for a clean second record, until the file is removed by hand. The place to fix is the shared seal read, `knowledge.evidence.read`: it reads the file with universal newlines, so the carriage return comes back as a line feed and the text no longer matches the seal made at `submit`. Either the read keeps the bytes it sealed, or `submit` refuses or normalises such a body; a carriage return and line feed pair is unaffected. With a test that submits such a body and then ingests and accepts on the same unit
+
+**Source:** Found while building E170's CLI half (#623); the later refusals were found and confirmed by its review (m6), which asked for this row
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by #623, which does not fix it: the seal read is shared. That pull request's carriage-return test goes through a work unit's body, which is read as bytes
+
+*Later notes: `notes.d/E399/`, oldest first (`python tools/register.py show E399`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

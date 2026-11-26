@@ -124,7 +124,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 35
 
-**Own slices left:** 2 — raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) — E170 — 1 small PR (estimate; the designer's reading, skills design (e))
+**Own slices left:** 2 — the site's half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its surface-map entry (E170's note of 2026-11-26) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the site's half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its surface-map entry (E170's note of 2026-11-26) — E170 — 1 small PR, the web developer's (estimate; the designer's reading, skills design (e))
 
 **Wired:** none
 

@@ -320,6 +320,7 @@ None.
 ### `aew.cli.history_commands`
 
 - `aew.cli.commands`
+- `aew.coordination.render`
 
 ### `aew.cli.main`
 
@@ -1001,6 +1002,7 @@ None.
 - `aew.history.index`
 - `aew.history.manifest`
 - `aew.history.store`
+- `aew.knowledge.evidence`
 - `aew.knowledge.records`
 - `aew.process_kind`
 - `aew.util`

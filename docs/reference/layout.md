@@ -27,13 +27,13 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `evidence`
 
-- `evidence` (kept in git); read by `aew.engine.coordination_ops`: `Coordination._ref_evidence`, `Coordination._ref_finding`; `aew.knowledge.evidence`: `_scan`, `next_seq`
+- `evidence` (kept in git); read by `aew.engine.coordination_ops`: `Coordination._ref_evidence`, `Coordination._ref_finding`; `aew.knowledge.evidence`: `_scan`, `locate`, `next_seq`
   - Written by
     - None
 - `evidence/project` (kept in git); read by `aew.knowledge.evidence`: `_scan`, `read`
   - Written by
     - None
-- `evidence/{}` (kept in git); read by `aew.dashboard.projections`: `Projector._evidence_exists`, `Projector._evidence_unit`, `Projector.locate_evidence`; `aew.engine.archive_ops`: `_bytes`; `aew.engine.coordination_ops`: `Coordination._ref_evidence`; `aew.knowledge.evidence`: `_scan`, `next_seq`, `read`
+- `evidence/{}` (kept in git); read by `aew.dashboard.projections`: `Projector._evidence_exists`, `Projector._evidence_unit`, `Projector.locate_evidence`; `aew.engine.archive_ops`: `_bytes`; `aew.engine.coordination_ops`: `Coordination._ref_evidence`; `aew.knowledge.evidence`: `_scan`, `locate`, `next_seq`, `read`
   - Written by
     - `aew.engine.evidence_ops:EvidenceCommands.check_run`
     - `aew.engine.evidence_ops:EvidenceCommands.submit`
@@ -633,6 +633,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.evidence_ops`: `EvidenceCommands.check_run` (Path.exists), `Gates._gates_at` (sha256_file), `Gates.plan_gate_status` (sha256_file)
 - `aew.engine.faults`: `pause` (os.path.exists)
 - `aew.engine.harness_ops`: `Harness._control_identity` (os.stat)
+- `aew.engine.history_ops`: `HistoryCommands._current_evidence_body` (Path.read_bytes), `HistoryCommands._unit_body` (Path.read_bytes)
 - `aew.engine.integration_ops`: `Integration._build_candidate` (Path.is_dir), `Integration._post_integration_ok` (Path.is_dir), `Integration._prune_retired_candidates` (Path.exists), `Integration._require_integrable` (Path.is_dir)
 - `aew.engine.lock`: `FileLock._is_path` (os.stat)
 - `aew.engine.migrate_ops`: `Migration.discard_unreachable` (Path.is_file)

@@ -1437,8 +1437,10 @@ def build_sample(base: Path) -> Sample:
     Engine.discover(root).manifest_adopt(token=token, expect_rev=int(rev()), reason="the probe's sample",
                                          authorization={"authorized_by": "operator-tty"})
     (base / "plan.md").write_text("Change the README.\n", encoding="utf-8")
+    (base / "objective.md").write_text("The probe's Ticket.\n", encoding="utf-8")  # a body, for `record body` (E170)
     invocation_token = ""
-    for argv in (["work", "create", "ticket", "--title", "probe", "--class", "2", "--scope", "src/**"],
+    for argv in (["work", "create", "ticket", "--title", "probe", "--class", "2", "--scope", "src/**", "--body-file",
+                  str(base / "objective.md")],
                  ["plan", "propose", "T-0001", "--file", str(base / "plan.md"), "--assurance", "none"],
                  ["plan", "accept", "T-0001", "--revision", "1"],
                  ["work", "assign", "T-0001"]):

@@ -140,9 +140,11 @@ def test_the_result_contract_requires_an_owner_and_names_exactly_the_tables_owne
 def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table():
     """The review of #597, m1: text that says whose decision a call or a stop is derives it from the owner, never
     restates it. PUBLISH is the operator's, so neither catalog calls `integration_publish` the Lead's decision, and the
-    steering loop's stop names each decision's own owner (a decision with none reads as the operator's)."""
+    steering loop's stop names each decision's own owner (a decision with none reads as the operator's). The quick
+    check of #597, m1: the readable head, the text the Lead's model reads first, tells the Lead to decide only a
+    decision that is its own; another's is named as theirs, with the call that carries it out."""
     from aew.harness import steering_loop
-    from aew.surface import contract, presentation
+    from aew.surface import contract, presentation, readable
 
     publish = P.whose(P.owner_of("integrate.publish"), to_lead=True)
     assert publish == "the operator's"
@@ -157,3 +159,12 @@ def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table(
         assert isinstance(stop, steering_loop.Stop) and stop.message == f"T-0001: PUBLISH is {said}", stop
         loose = steering_loop.select({**project, "decisions_required": decisions}, [])
         assert isinstance(loose, steering_loop.Stop) and loose.message.endswith(f"is {said}"), loose
+        offered = {**decisions[0], "subject": "T-0001", "availability": "AVAILABLE", "tool": "integration_publish",
+                   "arguments": {"work_id": "T-0001"}, "cli_fallback": None}
+        result = {"tool": "status", "completed_steps": [], "stopped": None,
+                  "projection": {"subject": "T-0001", "actions": [], "decisions_required": [offered]}}
+        head = readable.render(result).split("\n\n" + readable.JSON_MARKER)[0].split("\n")
+        call = "integration_publish work_id=T-0001"
+        assert head[1] == (f"decide PUBLISH on T-0001: {call}" if owner == P.LEAD else
+                           f"{said} decision, PUBLISH on T-0001; it is carried out by: {call}"), head
+        assert head[2] == f"decision: PUBLISH on T-0001, {said} (AVAILABLE)", head

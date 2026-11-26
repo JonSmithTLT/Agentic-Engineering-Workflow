@@ -283,6 +283,16 @@ control-state keys the seal and the registration need (the unit's seal pointer `
 sealed an ending the operation's path missed (an engine defect, recorded so CI's walk finds it), and every sealing commit
 names its seal records in the transition's `refs`, so the log names every seal (ADR-0017's recovery read walks them).
 
+## Note of 2026-11-26: the operator's confirmation a commit uses (E350)
+
+The operator's confirmation of a plan acceptance or a publish (register E350, the operator's ruling of 2026-11-26) is
+held beside control state and commits nothing, like a coordination message, so a Lead's call at the revision it read is
+not refused as stale. The Lead session's commit that uses it drops the held record once it lands. So that commit
+declares one more operation-declared kind, `confirmation.used {id, decision, work, binds, at, generation, by}`: the
+confirmation's id, what it binds (the plan's SHA-256 or the candidate commit), when and under which Lead generation it
+was given, and the operator endpoint's principal (`operator_decisions.consume`). The ids are counted in `.aew/local`,
+which is not kept, so the binding and the time beside each id keep the log unambiguous if they count again.
+
 ## Checks before relying on this ADR
 
 - The probes ran against `tree/` at `dcd43f1` with a venv in this directory (`.venv/`, editable install of `tree/`). Re-run `repro/log_growth_probe.py` then `repro/log_recovery_probe.py` (the second needs the token the first leaves in `repro/work/token.txt`).

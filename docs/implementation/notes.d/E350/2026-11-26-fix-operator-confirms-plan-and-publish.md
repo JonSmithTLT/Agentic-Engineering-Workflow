@@ -9,13 +9,18 @@ want it to".
   records the confirmation with the principal only it constructs, one per decision and unit, in
   `.aew/local/operator/confirmations.json`, which a contained run cannot see (`src/aew/engine/operator_decisions.py`).
   It is held beside control state and moves no revision, so the Lead's call at the revision it asked at is not
-  refused as stale; the commit that uses it names it in the transition log.
+  refused as stale. The commit that uses it declares its provenance in the transition log (`confirmation.used`: its
+  id, what it binds, when, under which Lead generation and by which principal; ADR-0012's note of 2026-11-26).
+- **How long one stands:** it does not end with the Lead's generation, as a steering raise does. It stands until a
+  Lead session's call uses it, the operator's own `plan accept` or publish of that unit drops it, or the operator
+  confirms the same decision on the same unit again. No command withdraws one.
 - **What a Lead session needs.** `plan accept` and `integrate publish` stay in `LEAD_REACHABLE`, and a Lead session's
   call (the broker's relay, the typed `integration_publish`, the steering loop) is refused with
   `OPERATOR_AUTHORIZATION_REQUIRED` until a confirmation of exactly that plan or candidate stands
   (`operator_confirmation_required`, `operator_confirmation_stale`), and uses it up. The refusal names the command to
   ask the operator for. No argument, flag or reason string carries a confirmation, and `aew operator confirm` is
-  refused in a Lead session (`lead_broker.OPERATOR_CONFIRMS`).
+  refused in a Lead session (`lead_broker.OPERATOR_CONFIRMS`) and with no terminal (`no_terminal`). The engine
+  records none from a principal the endpoint did not construct (`operator_confirmation_not_endpoint`).
 - **The operator's own call** (`aew plan accept`, `aew integrate publish` at their terminal with the Lead credential)
   is the decision itself and asks nothing more. Who is asked is read from the call's dispatch channel: the broker's
   ingresses and the steering loop are a Lead session's.

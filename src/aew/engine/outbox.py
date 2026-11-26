@@ -62,9 +62,12 @@ SEGMENT_SCHEMA = "aew/transition-segment/v1"
 DERIVED_KINDS = ("lead.generation", "work.state", "invocation.status", "run.added", "credential.revoked",
                  "history.appended", "unit.archived", "queue.entry", "queue.lease", "work.binding")
 # `coordination.seal_fallback` is declared by the store on the operation's behalf: the commit sealed a thread the
-# operation's path missed (F9-A plan D-16, R3; ADR-0017 D7).
+# operation's path missed (F9-A plan D-16, R3; ADR-0017 D7). `confirmation.used`: the operator's confirmation a Lead
+# session's plan acceptance or publish used, and its provenance (``operator_decisions.consume``; ADR-0012's note of
+# 2026-11-26).
+CONFIRMATION_USED = "confirmation.used"
 DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded",
-                  "coordination.seal_fallback")
+                  "coordination.seal_fallback", CONFIRMATION_USED)
 
 
 # ---------------------------------------------------------------------------------------------- derivation (D2)

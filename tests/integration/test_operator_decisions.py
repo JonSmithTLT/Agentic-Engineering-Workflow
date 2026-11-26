@@ -20,7 +20,7 @@ from operator_confirms import confirm, principal
 
 from aew import errors
 from aew.cli.main import build_parser
-from aew.engine import dispatch
+from aew.engine import dispatch, outbox
 from aew.engine import operator_decisions as OD
 from aew.engine.api import Engine
 from aew.harness import lead_broker, operator_client, operator_endpoint, steering_loop
@@ -157,8 +157,9 @@ def test_a_flag_or_argument_from_the_lead_never_counts_as_the_confirmation(proje
     engine = Engine.discover(project.root)
     bound = engine.operator_confirmation_preview("plan", wid)
     for fake in (Lookalike(), {"authorized_by": "operator-tty"}, None):
-        with pytest.raises(errors.OperatorAuthorizationRequired):
+        with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
             engine.operator_confirm(fake, bound)  # type: ignore[arg-type]
+        _refusal(refused, OD.NOT_ENDPOINT)
     assert not OD.standing(project.root / ".aew") and _accepted(project, wid) is None
 
 
@@ -226,6 +227,53 @@ def test_a_lead_sessions_publish_needs_the_operators_confirmation_and_the_operat
     assert_control_invariants(project)
 
 
+def _used(p, since: int) -> list[dict[str, Any]]:
+    """The confirmations the transitions after revision ``since`` used, as their log records declare them."""
+    aew = p.root / ".aew"
+    return [dict(e, revision=r) for r in range(since + 1, p.rev() + 1)
+            for e in outbox.complete_events(aew, outbox.read_record(aew, r) or {}) or []
+            if e["kind"] == outbox.CONFIRMATION_USED]
+
+
+def test_a_used_confirmation_leaves_its_provenance_on_the_decision_it_authorised(tmp_path):
+    """The held confirmation is dropped once the commit that used it lands; that commit's log record keeps who
+    confirmed what and when (review of #618, m1). The ids count again if `.aew/local` is removed, so the binding and
+    the time beside each id keep two of the same id apart."""
+    project = sample_project(tmp_path)
+    first, _ = to_commit_ready(project, tmp_path)
+    integ = prepare_and_validate(project, first)
+    before = project.rev()
+    given = confirm(project.root, "publish", first)
+    assert _lead_publish(project, first, integ["candidate"])["ok"]
+    [used] = _used(project, before)
+    assert not OD.standing(project.root / ".aew")
+    assert used["id"] == given["confirmation"] and used["decision"] == "publish" and used["work"] == first
+    assert used["binds"] == integ["candidate"] and used["by"] == principal().record() and used["at"]
+    assert outbox.read_record(project.root / ".aew", used["revision"])["op"] == "integrate.publishing"
+
+    (project.root / ".aew" / OD.REL).unlink()  # the counter goes with it
+    wid = _proposed(project, tmp_path)
+    before = project.rev()
+    again = confirm(project.root, "plan", wid)
+    assert again["confirmation"] == given["confirmation"]  # the same id, for another decision
+    done = _session_cli(project, ["plan", "accept", wid, "--revision", "1"])["result"]
+    [used] = _used(project, before)
+    sha = load_control(project.root)["work"][wid]["plans"][0]["sha256"]
+    assert used["revision"] == done["revision"] and used["decision"] == "plan" and used["work"] == wid
+    assert used["binds"] == sha != integ["candidate"] and used["by"] == principal().record()
+    assert outbox.read_record(project.root / ".aew", done["revision"])["op"] == "plan.accept"
+    assert_control_invariants(project)
+
+
+def test_the_operators_own_call_uses_no_confirmation_and_declares_none(project, tmp_path):
+    """A confirmation the operator's own acceptance drops was not used: no provenance is claimed for it."""
+    wid = _proposed(project, tmp_path)
+    confirm(project.root, "plan", wid)
+    before = project.rev()
+    assert project.lead("plan", "accept", wid, "--revision", "1")["accepted"] == 1
+    assert _used(project, before) == [] and not OD.standing(project.root / ".aew")
+
+
 def test_the_operator_confirms_only_from_their_own_terminal(project):
     """`aew operator confirm` is the operator's: a Lead session's broker refuses it, and with no terminal to type the
     code back at it is refused before the endpoint is asked."""
@@ -234,6 +282,7 @@ def test_the_operator_confirms_only_from_their_own_terminal(project):
     assert refusal and "operator's own confirmation" in refusal and "ask the operator" in refusal
     res = run_aew("-C", str(project.root), "operator", "confirm", "plan", "T-0001")
     assert res.returncode != 0 and res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
+    assert res.error["details"]["reason"] == OD.NO_TERMINAL, res.error
     assert "aew operator confirm plan T-0001" in res.error["message"] and "terminal" in res.error["message"]
     res = run_aew("-C", str(project.root), "operator", "confirm", "plan", "T-0001",
                   env={"AEW_LEAD_BROKER": "x", "AEW_LEAD_BROKER_KEY": "y"})

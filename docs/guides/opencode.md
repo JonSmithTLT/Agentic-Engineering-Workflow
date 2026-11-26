@@ -153,6 +153,14 @@ one. Nothing the Lead passes counts as your confirmation, and `aew operator conf
 run `aew plan accept` or `aew integrate publish` yourself, at your own terminal with the Lead credential, that is the
 decision and nothing more is asked.
 
+A confirmation does not end with the Lead's session or generation. It stands until the Lead uses it, you accept or
+publish that Ticket yourself, or you confirm the same step again, which replaces it. There is no command to withdraw
+one.
+
+`aew opencode` has usually started an endpoint in the background already. On Windows it shows the code in a window of
+its own. On Linux it cannot show one: your first `aew operator confirm` is refused, and the background endpoint stops so
+that `aew operator serve --dev` can start (it is refused while that endpoint is live). Start it then, and confirm again.
+
 The Lead's permissions: reading and searching, `aew`, and `git status|diff|log|show` are allowed; editing files and subagents are denied; any other shell command or tool asks you.
 
 ### When AEW's default for a switch has moved

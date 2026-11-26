@@ -1593,8 +1593,8 @@ commands:
                USAGE]
     note: "the operator's ruling of 2026-11-26 (register E350): lead_broker.OPERATOR_CONFIRMS keeps it from a Lead
       session; NOT_FOUND: no operator endpoint runs; ILLEGAL_TRANSITION: no proposed plan or prepared candidate to
-      confirm; OPERATOR_AUTHORIZATION_REQUIRED: no terminal to type the code at, or the plan or candidate moved while
-      it was shown (operator_confirmation_moved)"
+      confirm; OPERATOR_AUTHORIZATION_REQUIRED: no terminal to type the code at (no_terminal), or the plan or
+      candidate moved while it was shown (operator_confirmation_moved)"
   - name: operator ping
     home: diagnostic
     users: [operator]

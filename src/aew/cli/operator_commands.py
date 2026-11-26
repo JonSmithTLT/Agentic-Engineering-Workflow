@@ -118,7 +118,7 @@ def _confirm(a: argparse.Namespace) -> Any:
         raise OperatorAuthorizationRequired(
             f"`{operator_decisions.command(a.decision, a.work_id)}` is answered from your terminal, with the code the "
             "operator endpoint shows, and this process has none (a harness tool call, a pipe or a scheduled job); run "
-            "it yourself in a terminal", detail="no terminal")
+            "it yourself in a terminal", detail="no terminal", reason=operator_decisions.NO_TERMINAL)
     return operator_client.request_confirmation(engine.aew_root, a.decision, a.work_id, revision=a.revision)
 
 

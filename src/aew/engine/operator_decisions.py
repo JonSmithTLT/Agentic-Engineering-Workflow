@@ -12,14 +12,20 @@ raise` uses (A1 §1.1):
    back at their terminal.
 3. The endpoint records the confirmation (:func:`confirm`), with the ``OperatorPrincipal`` only it constructs, bound
    to that plan or candidate: one per decision and unit, in :data:`REL` under ``.aew``, written under the control lock.
-4. The Lead's `plan accept` or publish uses it in its own commit, once (:func:`consume`), and that commit's summary
-   names it. A plan or candidate other than the one confirmed is refused, and so is a call with no confirmation: the
-   refusal says what to ask the operator.
+4. The Lead's `plan accept` or publish uses it in its own commit, once (:func:`consume`). That commit's summary names
+   it, and the commit declares its provenance (:data:`aew.engine.outbox.CONFIRMATION_USED`: the id, what it binds,
+   when and by which principal), so the record outlives the held one it drops. A plan or candidate other than the one
+   confirmed is refused, and so is a call with no confirmation: the refusal says what to ask the operator.
 
 **Why it is not a control commit.** A Lead asks the operator at the revision it read, and its call states that
 revision (`--expect-rev`). A confirmation that moved the revision would refuse the very call it answers as stale, on
 every plan and every publish. So it is held beside control state, changes no revision, and enters the transition log
 with the commit that uses it.
+
+**How long one stands.** A confirmation does not end with the Lead's generation, as a steering raise does: the
+generation it was given under is recorded, never checked. It stands until a Lead session's call uses it, the
+operator's own `plan accept` or publish of that unit drops it, or the operator confirms the same decision on the same
+unit again, which replaces it. There is no command that withdraws one.
 
 **Nothing a Lead passes counts.** No argument, flag or reason string carries a confirmation: the engine reads it only
 from what the endpoint recorded, and a Lead session cannot reach the endpoint (`lead_broker.OPERATOR_ENDPOINT`).
@@ -40,7 +46,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from aew.engine import dispatch
+from aew.engine import dispatch, outbox
 from aew.engine.base import V2
 from aew.errors import IllegalTransition, MigrationRequired, NotFound, OperatorAuthorizationRequired, UsageError
 from aew.knowledge.records import format_id
@@ -64,6 +70,8 @@ SCHEMA = "aew/operator-confirmations/v1"
 # Reason codes of the refusals (stable: the Lead's text and tests read them).
 REQUIRED, STALE = "operator_confirmation_required", "operator_confirmation_stale"
 MOVED = "operator_confirmation_moved"
+NOT_ENDPOINT = "operator_confirmation_not_endpoint"  # a principal the operator endpoint did not construct
+NO_TERMINAL = "no_terminal"  # `aew operator confirm` with no terminal to type the code back at
 
 
 def command(decision: str, work_id: str, revision: int | str | None = None) -> str:
@@ -133,7 +141,7 @@ def confirm(k: Kernel, principal: Any, bound: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(principal, OperatorPrincipal):
         raise OperatorAuthorizationRequired("a plan or publish confirmation is the operator's, through the operator "
                                             "endpoint (`aew operator serve`); nothing else can give it",
-                                            reason=REQUIRED)
+                                            reason=NOT_ENDPOINT)
     decision, work_id = bound["decision"], bound["work_id"]
     with k.store.session() as s:  # the lock and the state as it stands; nothing is committed
         state = s.state
@@ -184,6 +192,10 @@ def consume(k: Kernel, ctx: TxnContext, decision: str, work_id: str, binds: str,
             f"{binds[:12]} this would commit: ask the operator to run `{then}` again for the current one, then call "
             "this again", reason=STALE, decision=decision, work_id=work_id, confirmed=held["binds"], current=binds,
             ask_operator=then)
+    # Its provenance goes into this commit's record, since the held one is dropped once the commit lands (review of
+    # #618, m1). The ids count again if `.aew/local` is removed, so what it binds and when stand beside the id.
+    ctx.events.append({"kind": outbox.CONFIRMATION_USED, "id": held["id"], "decision": decision, "work": work_id,
+                       "binds": held["binds"], "at": held["at"], "generation": held["generation"], "by": held["by"]})
     return str(held["id"])
 
 

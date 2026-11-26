@@ -279,7 +279,7 @@ EVENT_EFFECTS: dict[str, frozenset[str]] = {
     "history.appended": CONTROL, "unit.archived": CONTROL, "queue.entry": CONTROL, "queue.lease": CONTROL,
     "work.binding": CONTROL,
     "decision.recorded": CONTROL, "handoff.recorded": CONTROL, "evidence.ingested": CONTROL, "audit.recorded": CONTROL,
-    "coordination.seal_fallback": frozenset({"coordination_record"}),
+    "coordination.seal_fallback": frozenset({"coordination_record"}), "confirmation.used": CONTROL,
 }
 
 

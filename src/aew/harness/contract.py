@@ -652,3 +652,17 @@ MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"
 # "handoff", while `aew lead handoff cancel` is Lead-reachable).
 SEAT_COMMANDS = ("aew lead acquire", "aew lead takeover", "aew lead release", "aew lead handoff offer",
                  "aew lead handoff accept")
+
+
+def relaunchable(status: str) -> bool:
+    """Whether a run observed in ``status`` leaves its active invocation with no live run and nothing to ingest: it
+    ended, crashed, was stopped, was lost or never started, without its expected output. The invocation keeps its
+    authority and is relaunched or cancelled (M3-B1): the engine's guidance says so for exactly these, and the action
+    projection offers the relaunch (register E233). A record that cannot be read is neither."""
+    return status not in (*LIVE_RUNS, ENDED_WITH_EVIDENCE, UNREADABLE)
+
+
+def launch_command(invocation: str) -> str:
+    """The command that launches, or relaunches, a harness run for ``invocation``: the ASSIGNED hint and the action
+    projection's launch both read it here (#612 review, N3)."""
+    return f"aew harness launch {invocation} {EXPECT_REV}"

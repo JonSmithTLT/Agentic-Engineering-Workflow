@@ -80,3 +80,22 @@ def test_interrupted_reconcile_is_bounded():
     assert rule.guard == "not_beyond_interrupted_phase" and rule.reason_required
     with pytest.raises(IllegalTransition):
         t.check("INTERRUPTED", "DONE", "reconcile")
+
+
+def test_the_leads_moves_are_the_forward_transitions_of_the_states_no_stage_starts_from(monkeypatch):
+    """Register E233: where no stage takes a Ticket on, the Lead's own transitions do, and the hints and the action
+    projection both read them here. Each is an edge `aew work transition` makes, with its whole command."""
+    moves = {state: t.lead_moves(state) for state in t.STATES}
+    assert {state: found for state, found in moves.items() if found} == {
+        "ASSIGNED": ["RUNNING"], "REVIEW_FAILED": ["RUNNING"],
+        "VERIFICATION_INCONCLUSIVE": ["VERIFY_PENDING", "RUNNING"],
+        "ESCALATED": ["RUNNING", "REVIEW_PENDING", "VERIFY_PENDING"]}
+    for state, found in moves.items():
+        for dst in found:
+            rule = t.RULES[(state, dst)]
+            assert rule.via == "transition" and dst not in t._EXCEPTIONAL
+            assert ("--reason <reason>" in str(t.command(state, dst, "T-0001"))) == rule.reason_required
+    assert not any(moves[src] for src, _dst in t.STAGE_AT), "where a stage starts, the stage is the move"
+    # Planted: a stage that came to start from ASSIGNED would take its move over.
+    monkeypatch.setitem(t.STAGE_AT, ("ASSIGNED", "RUNNING"), "ticket_start")
+    assert t.lead_moves("ASSIGNED") == []

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import SPEC_SET
 from aew.engine import approval, gate_ops
@@ -27,6 +27,7 @@ from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.queue_ops import unfinished_publish
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
 from aew.errors import AEWError, IntegrityError
+from aew.harness import contract as K
 from aew.harness.contract import EXPECT_REV, HELD_SEAT, MANIFEST_ADOPT
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
@@ -87,6 +88,19 @@ def _priority(unit: dict[str, Any]) -> dict[str, Any]:
 
 def _bound_command(command: str, digest: str | None) -> str:
     return f"{command} --approval-digest {digest}" if digest else command
+
+
+class WorkerNeeded(NamedTuple):
+    """A fresh worker a Ticket waits on (``Resume.worker_needed``): its role, its scope, and the whole command that
+    dispatches and launches it."""
+
+    role: str
+    scope: str
+    command: str
+
+
+# The role whose report a pending state waits on, and that report's evidence kind.
+_REPORT_OF = {"REVIEW_PENDING": ("reviewer", "review"), "VERIFY_PENDING": ("verifier", "verification")}
 
 
 class Resume:
@@ -330,10 +344,11 @@ class Resume:
                     f"--execute <card> {EXPECT_REV}`)"]
         implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
+            running = T.command("ASSIGNED", "RUNNING", wid)
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
-                return [f"implementer {implementer} was launched: `aew work transition {wid} --to RUNNING "
-                        f"{EXPECT_REV}`"]
-            return [f"launch the implementer from its pack ({implementer}), then move to RUNNING"]
+                return [f"implementer {implementer} was launched: `{running}`"]
+            return [f"launch the implementer from its pack ({implementer}): `{K.launch_command(str(implementer))}` "
+                    f"launches it; then move to RUNNING (`{running}`)"]
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
@@ -343,7 +358,7 @@ class Resume:
                     return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
-            return [f"dispatch a fresh implementer (`{T.dispatch_command(wid, 'implementer')}`)"]
+            return [f"dispatch a fresh implementer (`{self._needed(state, wid, u)}`)"]
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
@@ -352,9 +367,10 @@ class Resume:
                         for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
-            return [f"dispatch the next planned reviewer card (`{T.dispatch_command(wid, 'reviewer')}`)"]
+            return [f"dispatch the next planned reviewer card (`{self._needed(state, wid, u)}`)"]
         if st == "REVIEW_FAILED":
-            return ["return to RUNNING and dispatch an implementer with the findings"]
+            return ["return to RUNNING and dispatch an implementer with the findings "
+                    f"({self._moves(st, wid)})"]
         if st == "REVIEW_PASSED":
             return ["advance to VERIFY_PENDING (or COMMIT_READY if no verification is required)"]
         if st == "VERIFY_PENDING":
@@ -365,25 +381,22 @@ class Resume:
                         for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
-            return [f"dispatch the next planned verifier card (`{T.dispatch_command(wid, 'verifier')}`)"]
+            return [f"dispatch the next planned verifier card (`{self._needed(state, wid, u)}`)"]
         if st == "VERIFICATION_FAILED":
             failure = (u.get("last_verification") or {}).get("evidence")
             classification = _bound_command(f"aew verify classify {wid} --as <CLASS> --reason <reason> "
                                             f"{EXPECT_REV}", approval.failure_digest(u, failure) if failure else None)
             return [f"classify the failure (Lead only): `{classification}`"]
         if st == "VERIFICATION_INCONCLUSIVE":
-            return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING"]
+            return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING, or to RUNNING for "
+                    f"more work (one of {self._moves(st, wid)})"]
         if st == "VERIFIED":
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
             status = (u.get("integration") or {}).get("status")
-            stuck = next((s for s in (VO.stuck_run((u.get("integration") or {}).get(slot), wid) for slot in VO.SLOTS)
-                          if s), None)
-            if stuck:  # a checks-mode validation run left running (M4-D5): settle it before anything else
-                return [stuck]
-            waiting = self._queue_wait(state, wid)
-            if waiting and status != "publishing":
-                return [waiting]
+            held = self._candidate_held(state, wid, u)
+            if held:
+                return [held]
             checks_mode = V.obligation(state, wid, self.k.policy("gates"))["mode"] == V.CHECKS
             # Every command here is offered to be run as given, so each is written whole (D2's O-CMD; E140's triage).
             prepare = f"`aew integrate prepare {wid} {EXPECT_REV}`"
@@ -408,8 +421,38 @@ class Resume:
         if st == "REPLAN_REQUIRED":
             return ["propose and accept a new plan revision"]
         if st == "ESCALATED":
-            return ["record the escalation outcome and return the Ticket"]
+            return ["record the escalation outcome and return the Ticket, no later than the phase it left (one of "
+                    f"{self._moves(st, wid)})"]
         return []
+
+    @staticmethod
+    def _moves(st: str, wid: str) -> str:
+        """The Lead's own transitions on from ``st`` (``transitions.lead_moves``), each as its whole command."""
+        return ", or ".join(f"`{T.command(st, dst, wid)}`" for dst in T.lead_moves(st))
+
+    def worker_needed(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> WorkerNeeded | None:
+        """The fresh worker a mutating Ticket's state waits on, or None: the role whose report moves the Ticket on,
+        where none is submitted and no invocation works on it (a prepared candidate's integration verifier, in
+        verifier mode, where none is routed or running and the queue holds nothing up). The hints tell a Lead to
+        dispatch it and the action projection offers the same command, both from here (register E233)."""
+        st = u["state"]
+        active = [i for i in u.get("invocations", []) if state["invocations"][i]["status"] == "active"]
+        if st == "RUNNING":
+            waits_on, idle = "implementer", u.get("implementer_invocation") not in active
+        elif st in _REPORT_OF:
+            waits_on = _REPORT_OF[st][0]
+            idle = not active and not self._submitted(state, wid, u, _REPORT_OF[st][1])
+        elif st == "COMMIT_READY":
+            return self._integration_verifier_needed(state, wid, u)
+        else:
+            return None
+        return WorkerNeeded(waits_on, "ticket", T.dispatch_command(wid, waits_on)) if idle else None
+
+    def _needed(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> str:
+        """The command of the dispatch ``worker_needed`` names, for a hint whose branch is that case."""
+        found = self.worker_needed(state, wid, u)
+        assert found is not None  # the hint's branch and `worker_needed` read the same facts
+        return found.command
 
     def _led(self, state: dict[str, Any], wid: str, frm: str, dst: str, command: str) -> str:
         """The way to take ``frm -> dst``: the stage first, where it is a whole step for this Ticket (E130; #331 review
@@ -435,22 +478,52 @@ class Resume:
         """A prepared verifier-mode candidate's next step (E130). `ticket_prepare` launches its verifier, and a shell
         `aew integrate prepare` does not: only that last case needs one dispatched, and telling a Lead to dispatch one
         the stage launched is refused (LEASE_NOT_HELD, once its custodian released the lease to VALIDATED)."""
-        queue = state.get("queue") or {}
-        entry = next((e for e in (queue.get("entries") or {}).values() if e["work"] == wid), {})
-        report = (entry.get("validated") or {}).get("report")
+        report, running = self._integration_verifier_standing(state, wid)
         if report:
             return (f"its integration verifier's report {report} is clean: "
                     f"{self._publish(state, wid, report)}")
-        custodian = (queue.get("lease") or {}).get("custodian")
-        running = [i for i, inv in state["invocations"].items()
-                   if custodian and inv.get("custodian") == custodian and inv.get("scope") == "integration"
-                   and inv.get("status") == "active"]
         if running:
             # True whether its run is still going or has ended and its report waits to be routed (#331 review F7).
             return (f"integration verifier {running[0]} checks the candidate: once its run has ended (`harness_wait`), "
                     f"{self._publish(state, wid, '<its report>')}")
-        return (f"dispatch post-integration verification (`aew invoke create {wid} --scope integration --launch "
-                f"{EXPECT_REV}`)")
+        return f"dispatch post-integration verification (`{self._integration_dispatch(wid).command}`)"
+
+    @staticmethod
+    def _integration_verifier_standing(state: dict[str, Any], wid: str) -> tuple[str | None, list[str]]:
+        """A prepared candidate's integration verification as it stands: the report its entry was routed, and the
+        active integration verifiers under the lease's custodian."""
+        queue = state.get("queue") or {}
+        entry = next((e for e in (queue.get("entries") or {}).values() if e["work"] == wid), {})
+        custodian = (queue.get("lease") or {}).get("custodian")
+        return (entry.get("validated") or {}).get("report"), [
+            i for i, inv in state["invocations"].items()
+            if custodian and inv.get("custodian") == custodian and inv.get("scope") == "integration"
+            and inv.get("status") == "active"]
+
+    @staticmethod
+    def _integration_dispatch(wid: str) -> WorkerNeeded:
+        return WorkerNeeded("verifier", "integration",
+                            f"aew invoke create {wid} --scope integration --launch {EXPECT_REV}")
+
+    def _integration_verifier_needed(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> WorkerNeeded | None:
+        """``worker_needed`` for a COMMIT_READY Ticket: the hint's own last case (``_integration_verifier``), reached
+        the way ``_ticket_actions`` reaches it."""
+        if (u.get("integration") or {}).get("status") != "prepared" or self._candidate_held(state, wid, u):
+            return None
+        if V.obligation(state, wid, self.k.policy("gates"))["mode"] == V.CHECKS:
+            return None
+        report, running = self._integration_verifier_standing(state, wid)
+        return None if report or running else self._integration_dispatch(wid)
+
+    def _candidate_held(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> str | None:
+        """What comes before a COMMIT_READY Ticket's own next step, or None: a checks-mode validation run left running
+        (M4-D5), which is settled before anything else, or what the integration queue says of it."""
+        integration = u.get("integration") or {}
+        stuck = next((s for s in (VO.stuck_run(integration.get(slot), wid) for slot in VO.SLOTS) if s), None)
+        if stuck:
+            return stuck
+        waiting = self._queue_wait(state, wid)
+        return waiting if waiting and integration.get("status") != "publishing" else None
 
     def _custodian_validates(self, state: dict[str, Any], wid: str) -> str:
         """A prepared checks-mode candidate's next step (M4-E E6a; plan v3 §2.3): its lease's custodian validates it,

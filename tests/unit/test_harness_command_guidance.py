@@ -298,3 +298,27 @@ def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         harness.harness_send(token="token", run=run, text="hello")
     assert "`aew harness launch INV-0012 --expect-rev <revision from aew status>`" in raised.value.message
+
+
+@pytest.mark.parametrize("status", [harness_contract.STARTING, harness_contract.RUNNING, harness_contract.UNREADABLE,
+                                    harness_contract.ENDED_WITH_EVIDENCE, harness_contract.LAUNCH_FAILED,
+                                    harness_contract.ENDED_WITHOUT_EVIDENCE, harness_contract.CRASHED,
+                                    harness_contract.TERMINATED, harness_contract.UNCONFIRMED, harness_contract.LOST])
+def test_a_run_is_relaunchable_exactly_where_the_guidance_says_relaunch(status, tmp_path, monkeypatch):
+    """Register E233: the action projection offers a relaunch where ``contract.relaunchable`` says so, and that is
+    where the engine's own guidance for the run tells the Lead to relaunch it, for every status a run is observed
+    in, an ordinary end and a rejected credential alike."""
+    harness = Harness.__new__(Harness)
+    harness.k = SimpleNamespace(tmp=tmp_path, aew_root=tmp_path, execution_policy=lambda: ({"provider_env": []}, None),
+                                store=SimpleNamespace(current=lambda: {"lead": {}}))
+    harness._wait_on = lambda runs, _state: f"wait on {runs}"  # type: ignore[method-assign]
+    harness._after_run = lambda *_args: "ingest it"  # type: ignore[method-assign]
+    monkeypatch.setattr(runlog, "run_dir", lambda *_args: tmp_path)
+    monkeypatch.setattr("aew.engine.harness_ops.E.scan", lambda *_args: ([], None))
+    state = {"invocations": {"INV-1": {"status": "active", "work_unit": "WU-1", "role": "implementer",
+                                         "runs": [{"run": "RUN-1"}]}}}
+    relaunch = f"`aew harness launch INV-1 {harness_contract.EXPECT_REV}`"
+    for record in (None, _PROVIDER_AUTH):
+        monkeypatch.setattr(runlog, "observed_status", lambda *_args, record=record: (status, record))
+        [row] = harness.harness_resume(state)
+        assert (relaunch in row["action"]) == harness_contract.relaunchable(status), row["action"]

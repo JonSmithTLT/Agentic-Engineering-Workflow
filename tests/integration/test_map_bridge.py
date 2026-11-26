@@ -71,18 +71,18 @@ def test_map_ops_are_offered_only_when_the_launch_snapshot_turns_them_on(tmp_pat
     assert set(bridge.MAP_OPERATIONS) <= set(offered) and cooperative == frozenset(bridge.MAP_OPERATIONS)
 
 
-# The worker preamble before map reads existed (origin/main at 2962f12e), for an investigator and for a reviewer with
-# messaging on: with the switch off a run's prompt is these bytes exactly, so M4-H's treatment is unchanged. The
-# harness is one with no measured wait, so the messaging line is the same on every platform (`preamble_wait_supported`).
-# The first differs from 2962f12e's (98ab21a1...) in one token: the check command is the pack's own,
-# `aew check run <check-id>`, where it read `<check>` (E368's truth fixes, #613 review m3). The second names no check
-# command and is unchanged.
+# The worker preamble with map reads off, for an investigator and for a reviewer with messaging on. The second is the
+# bytes from before map reads existed (origin/main at 2962f12e). The first is those bytes (98ab21a1...) with one token
+# changed by E368's truth fixes (#613 review m3): `aew check run <check-id>` where it read `<check>`. So the switch adds
+# nothing when it is off; a role that may run a check no longer gets 2962f12e's bytes, and no M4-H run was recorded on
+# them. The harness is one with no measured wait, so the messaging line is the same on every platform
+# (`preamble_wait_supported`).
 PREAMBLE_SHA256 = ("a03df6c0b4e72312b003875d2e29d407a14f3615b1c816c3e085994f305a4d06",
                    "d5f53501542bfa2d0da969aca8d9eac777b16e4e10c4b91838487bcaaec5babc")
 
 
 def test_with_the_switch_off_the_worker_prompt_and_operations_are_byte_identical(tmp_path):
-    """F15.8: switched off, the run's prompt is the earlier bytes, its operations are its role's, and its bridge offers
+    """F15.8: switched off, the run's prompt is the pinned bytes, its operations are its role's, and its bridge offers
     what it always did; switched on, one line is added, built from the bridge rows' own names."""
     plain = contract(["check.run", "context.read", "submit.discovery_record"])
     messaging = contract(["context.read", "submit.review"], {"coordination": {"messaging": "enabled"}})

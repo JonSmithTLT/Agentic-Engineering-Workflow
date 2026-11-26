@@ -721,6 +721,18 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/STG-12/`, oldest first (`python tools/register.py show STG-12`).*
 
+### STG-13
+
+**Work:** V-01's oracle rebuilt: the frozen vertical instrument re-derived as V-01's oracle and retired in the same PR (exempted by the operator)
+
+**Source (governing):** the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption); the register rebaseline (design workspace, `b598fdc`)
+
+**Belongs to or gated by:** **Stage.** STG-13; V-01's first row. The rebuild merged as #306 (`efc98baa`); the Linux lane measures again from #307
+
+**Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
+
+*Later notes: `notes.d/STG-13/`, oldest first (`python tools/register.py show STG-13`).*
+
 ### STG-14
 
 **Work:** I-6, the resource, model and host policy: the first of the wire increments V-01 needs, with O-01 0.8 (42 actions) as the selected command wire
@@ -6171,16 +6183,6 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** G3-A, G3-B and G3-D (#269, #282, #286); E82 (#363); G3-C (#365, #374, #386 and #389), whose first protected action is the steering raise (`SET_STEERING_MODE`), on the operator's decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied through G3-C's overlay as the operator chose on 2026-11-08; and the operator's root session on a Linux host, 2026-11-10, which installed G3 and passed the raise's acceptance: approved in the confirmer with the PIN and admitted once by its owner, a replay refused, and after a weaker launch the next raise on the typed code with the standing's reason. `ATTACH_LEAD` and `REATTACH_LEAD` stay proposed, with no row. G3 on Windows is E223
 
 *Later notes: `notes.d/STG-03/`, oldest first (`python tools/register.py show STG-03`).*
-
-### STG-13
-
-**Was:** V-01's oracle rebuilt: the frozen vertical instrument re-derived as V-01's oracle and retired in the same PR (exempted by the operator)
-
-**Closed:** 2026-11-26
-
-**By:** #306 (`efc98baa`: the oracle rebuilt and the frozen instrument retired in one PR), #307 (the Linux lane measures again) and #308 (the Lead's containment minimums raised). The #213 hang diagnosis's test-fixture fix on Linux is tracked as V-01 cluster C15; switching `VERTICAL_MODE` to `enforce` stays the operator's (the operator, 2026-11-26; STG-13's note of 2026-11-26)
-
-*Later notes: `notes.d/STG-13/`, oldest first (`python tools/register.py show STG-13`).*
 
 ### U2
 

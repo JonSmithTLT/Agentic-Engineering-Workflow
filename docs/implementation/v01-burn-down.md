@@ -2,8 +2,8 @@
 
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
-and each question below is the operator's or the designer's. The operator answered Q1, Q5 and Q7 on 2026-11-26; Q10 is
-open. It changes no threshold: those are
+and each question below is the operator's or the designer's. The operator answered Q1, Q5, Q7 and Q10 on 2026-11-26.
+It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -165,20 +165,22 @@ G3 #213 and V1 compatible-move.
 
 ## Questions
 
-The operator's three, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
-Q8 and Q9) and the operator's Q10 are open, and are owned by [what the operator and designer owe](decisions-due.md),
-each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351, Q9 on E374 and Q10 on E375
-(`python tools/register.py show <row>`).
+The operator's four, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
+Q8 and Q9) are open, and are owned by [what the operator and designer owe](decisions-due.md), each on the row it holds:
+Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "For q1 yes. That honestly just seems like a bug and sint how aew works now."
     With steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. That
     part of C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which
     E375's pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
-- **Q10 (operator; vertical-uat.md §3, "Steering on"), open, raised at this page's review:** with steering on, does a
-  BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end, and
-  not at once, as the scripted Lead counts it today? It decides whether the Lead's push after a self-clearing stop is
+- **Q10 (operator; vertical-uat.md §3, "Steering on"), raised at this page's review:** with steering on, does a
+  BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end (b),
+  or at once, as the scripted Lead counts it today (a)? It decides whether the Lead's push after a self-clearing stop is
   the spec's counted exception or a mechanical call.
+  - **Answered (b)** (operator, 2026-11-26): "5. B yes its meant to make sure the lead doesnt do menial labor." A
+    BLOCKED stop counts as a decline only when its blocker is still present after the run ends; the Lead's push after
+    a self-clearing stop is a mechanical call and is counted. E375's pull request amends `vertical-uat.md` §3 with it.
 - **Q5 (operator):** "Is AEW's tool-consent screen at a reopen a setup fixture of the offline world (recorded, never counted), or an operator step the vertical counts? And until REATTACH_LEAD lands, is the seat-resume confirmation code meant to count under `pin_reentries` on Linux, as `Ledger.console_challenge` counts it today?"
   - **Answered** (operator, 2026-11-26): a setup fixture, recorded but not counted. "The vertical was meant to fix ux
     issues. Aew saying a critical item is missing isnt a ux failure its common sense." The seat-resume code still

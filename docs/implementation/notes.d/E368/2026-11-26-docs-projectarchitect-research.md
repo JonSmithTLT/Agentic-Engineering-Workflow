@@ -6,15 +6,16 @@ contradictions): the texts are wrong today, so the fixes need no experiment.
 **The rewrite waits. This is the Lead's recommendation, not an operator ruling.** The Lead recommended to the operator
 "ship the truth fixes now and hold the rewrite as the experiment's treatment", and the operator answered "ship truth
 fixes now". So the truth fixes are the operator's decision. Holding the rewrite is the Lead's recommendation, which the
-reply did not contradict. "Held" means the core-plus-pointers rewrite is not built until Experiment A (E389) is ready
-to run it as its treatment, A1. Until then this row's pull requests carry the truth fixes only, and claim delivery, not
-effectiveness.
+reply did not contradict. The operator decided later that day that E389 refines F19 and is not a separate system
+(F19's note of 2026-11-26), so there is no separate Experiment A to wait for. "Held" now means the core-plus-pointers
+rewrite is kept as a held draft, not merged, until the refined F19 can measure it as a treatment. Until then this
+row's pull requests carry the truth fixes only, and claim delivery, not effectiveness.
 
 **Proposed, not decided:** [R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) (its last section)
 recommends judging the rewrite by C1 of the
 [ProjectArchitect concept research plan](../../../research/projectarchitect-concepts-and-evaluation-2026-11-25.md),
 that is, by what a worker achieves with the new pack and not by the bytes it saves. These are the operator's to take:
-- the rewrite would run as Experiment A's A1 against today's pack (A0), with worker, model, task and budget fixed,
+- the rewrite would be measured as a treatment against today's pack, with worker, model, task and budget fixed,
   measured by verified completion, constraint preservation and additional source discovery. The audit's 36 to 42%
   would be a diagnostic, counted only when those hold;
 - from R0's checklist: the contract's "Required knowledge (included below)" drops undelivered items silently

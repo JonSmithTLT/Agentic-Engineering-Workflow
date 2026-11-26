@@ -986,10 +986,12 @@ sources:
     # pinned revision, for independent AEW design; it imports no code. The operator approved filing it and running its
     # R0 on 2026-11-26 ("Yup file and run r0."). Its ids record what it proposes, read against the rows that own the
     # work; a proposal here is not adopted by being here. Its concept labels C1 to C8 are not register entries: the
-    # experiments are E389. The operator's reply to R0, 2026-11-26 ("Yes start R1 prep, ship truth fixes now, cap is
-    # fine but will only be able to be done when I get back home anyways"), starts R1 preparation, ships E368's truth
-    # fixes and approves R0's cap; R0 recommends C1 as how E368's rewrite is judged (E368's note of 2026-11-26), which
-    # is a proposal. R0 is PAB.
+    # row is E389. The operator's reply to R0, 2026-11-26 ("Yes start R1 prep, ship truth fixes now, cap is fine but
+    # will only be able to be done when I get back home anyways"), ships E368's truth fixes and approves R0's cap; its
+    # "start R1 prep" is superseded by the operator's decision later that day that E389 is "a refinement on f19s eval
+    # architecture not a seperate sustem". So the plan's experiments (A, B, C; R1 to R5) are input to the F19
+    # refinement proposal, not a plan of record, and no separate track runs. R0 recommends C1 as how E368's rewrite is
+    # judged (E368's note of 2026-11-26), which is a proposal. R0 is PAB.
     no_requirements:
       "2. Research basis and limits": heading; its subsections
       "2.1 Pinned sources": provenance; the revisions inspected
@@ -1006,7 +1008,9 @@ sources:
     path: docs/research/projectarchitect-r0-baseline-2026-11-26.md
     role: research
     # R0 of PAE (2026-11-26): a read-only baseline at eece01e5, no model run. Its observations and classifications are
-    # evidence; what it proposes (fixtures, deltas, accounting, criteria) is the operator's to place when E389 runs.
+    # evidence. What it proposes (fixtures, accounting, criteria) is input to the F19 refinement proposal (E389), not
+    # a plan of record (the operator, 2026-11-26); its cap stays approved, to be carried into F19's metering. Its
+    # deltas go to their owners: D1 is built directly (F36).
     no_requirements:
       "Summary": a digest of the record below
       "Method": how the baseline was rendered, and what was not run

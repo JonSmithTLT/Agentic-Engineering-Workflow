@@ -5430,28 +5430,29 @@ sections:
       not from today's online documentation
 
   - '#': E389
-    Work: 'The ProjectArchitect concept experiments, the research plan''s R1 to R5: A, brief effectiveness (its C1 and C3),
-      whether one named change to how a pack is assembled improves an otherwise unchanged worker''s verified outcome; B,
-      question-scoped retrieval (C2), for which question classes an investigator Ticket beats a worker''s direct map and
-      source reads; C, continuation (C4), whether added continuation fields let a successor resume correctly after six kinds
-      of interruption. Each judges a brief by what its recipient then achieves (C1), counts every attempt and every participating
-      agent, and ends in one of the plan''s four decisions. R0 names the fixtures, the candidate deltas and their owners
-      (F36, E198, E368), the accounting, a proposed cap and the decision criteria. Concepts only: no ProjectArchitect code,
-      prompts or runtime, and no new retrieval service, memory store or controller. Done when R5''s results memo routes
-      each concept to its owner as retained, a narrow change, deferred or rejected'
-    Source: The operator, 2026-11-26 ("Yup file and run r0."), on the [ProjectArchitect research plan](../research/projectarchitect-concepts-and-evaluation-2026-11-25.md)
+    Work: 'Refine F19, the evaluation instrument, with the ProjectArchitect research plan''s concepts: merge the good parts
+      of the plan into F19''s architecture and modernise F19 where needed, so that one instrument measures the value of
+      AEW''s features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built
+      from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves,
+      its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture
+      lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect
+      code, prompts or runtime. Done when the proposal is adopted and F19''s plan and rows carry the result'
+    Source: 'The operator, 2026-11-26. On filing: "Yup file and run r0.", on the [ProjectArchitect research plan](../research/projectarchitect-concepts-and-evaluation-2026-11-25.md)
       (research, not adopted; ledger PAE); its R0 is [the R0 baseline](../research/projectarchitect-r0-baseline-2026-11-26.md)
-      (ledger PAB)
-    When: '**Evaluation.** The operator, 2026-11-26, on R0 ("Yes start R1 prep, ship truth fixes now, cap is fine but will
-      only be able to be done when I get back home anyways"): R1 preparation starts now, with no model run and no spend;
-      the paid runs wait until the operator is home, within the cap R0 proposed and the operator approved ($0.50 and 20
-      minutes per attempt, at most 132 top-level attempts, a hard total of $75 with a stop for review at half). Proposed,
-      not decided: that each experiment is preregistered on F19''s instrument, and R0''s fixture set, worker profile and
-      decision thresholds'
-    Notes: Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), and R0 proposes
-      using its instrument as it stands. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26).
-      R0's findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built
-      directly, so Experiment C measures its benefit) and E198 (D2)
+      (ledger PAB). On how this row relates to F19, in order: "Oh no no no definetly not. We are not playing the two seperate
+      subsystem game again that needs a discussion"; "Riggt that is what I was thinking e389 was a refinement on f19s eval
+      architecture not a seperate sustem. What unwanted was to take the good parts of 389 blender it with f19 and modernize
+      it if needed since it seems a ton of aew has a question mark on value."; and, asked whether to rework the filing this
+      way and commission a read-only merge proposal, "Yup do so"'
+    When: '**Evaluation.** The proposal now. F19 itself stays frozen (the operator, 2026-11-06, item 8) until the operator
+      unfreezes it, and nothing is built from the proposal until the operator has read it'
+    Notes: 'Filed with the plan and R0. R0 is done (PAE-15). The operator''s earlier reply to R0, 2026-11-26 ("Yes start
+      R1 prep, ship truth fixes now, cap is fine but will only be able to be done when I get back home anyways"): its "start
+      R1 prep" is superseded by the decision in Source, so no separate R1 preparation runs; E368''s truth fixes ship now;
+      and the cap stays approved for these cells ($0.50 and 20 minutes per attempt, at most 132 top-level attempts, a hard
+      total of $75 with a stop for review at half), to be carried into F19''s metering by the proposal. R0 recommends C1
+      as how E368''s rewrite is judged, a proposal (E368''s note of 2026-11-26). R0''s findings are also noted on the rows
+      that own them, F36 (D1, which the operator decided on 2026-11-26 is built directly) and E198 (D2)'
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)

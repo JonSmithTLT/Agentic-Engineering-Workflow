@@ -3,8 +3,10 @@
 **Status:** research record, 2026-11-26. It is R0 of the
 [ProjectArchitect concept research and evaluation plan](projectarchitect-concepts-and-evaluation-2026-11-25.md) (§9,
 "Baseline and overlap" and the "Lead's first assignable task"), which the operator approved for filing with R0 on
-2026-11-26 ("Yup file and run r0."). It is read-only: no model ran and no product code changed. It is evidence for the
-experiments' row, E389, and decides nothing: every proposal below is the operator's to place when E389 runs.
+2026-11-26 ("Yup file and run r0."). It is read-only: no model ran and no product code changed. Its findings are
+evidence about AEW at that revision. It decides nothing. Its row is E389, which refines F19, the evaluation instrument:
+the experiments, fixtures, accounting and criteria below are input to that refinement's proposal, not a plan of record
+(the operator's decision of 2026-11-26, below).
 
 **The operator's reply to R0, 2026-11-26:** "Yes start R1 prep, ship truth fixes now, cap is fine but will only be able
 to be done when I get back home anyways". So three things are decided, and nothing else below is:
@@ -14,8 +16,26 @@ to be done when I get back home anyways". So three things are decided, and nothi
 - the cap is approved as proposed below, and paid runs wait until the operator is home.
 
 The operator separately decided the same day that D1 is built directly, as a slice of F36 (F36's note of 2026-11-26).
-So Experiment C measures D1's benefit and does not decide whether it is built. The fixture set, the worker profile and
-the decision thresholds are still proposals.
+So a measurement of D1 shows its benefit and does not decide whether it is built. The fixture set, the worker profile
+and the decision thresholds are still proposals.
+
+**The operator's later decision the same day: this is a refinement of F19, not a separate system.** Told that the
+experiments would run as their own track beside F19, the operator said, in order:
+1. "Oh no no no definetly not. We are not playing the two seperate subsystem game again that needs a
+   discussion"
+2. "Riggt that is what I was thinking e389 was a refinement on f19s eval architecture not a seperate sustem. What
+   unwanted was to take the good parts of 389 blender it with f19 and modernize it if needed since it seems a ton of
+   aew has a question mark on value."
+3. Asked whether to rework this filing that way and commission a read-only merge proposal: "Yup do so"
+
+So:
+- **"R1 preparation may start" above is superseded.** No separate R1 preparation runs: no experiment directories, no
+  protocol document and no preregistration are built from this record.
+- **The experiments, fixture lists, accounting and thresholds below are input to the F19 refinement proposal.** They
+  are kept as written and marked with their status at the head of each section.
+- **The cap stays approved** for these cells ($0.50 and 20 minutes per attempt, at most 132 attempts, a $75 hard total
+  with a stop at half). The proposal carries it into F19's metering.
+- **Unchanged:** E368's truth fixes ship now, D1 is built directly, and the findings below stand.
 
 **Basis.** AEW `main` at `eece01e5`, the revision the plan itself pins. Every `file:line` below is at that commit.
 
@@ -217,6 +237,10 @@ envelope and ordinary source reads.
 
 ## Proposed fixture set
 
+**Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The fixture
+lists for Experiments A, B and C are candidates for one instrument's cells, not a second set of experiments beside
+F19's. Nothing here is built or run from this record. The proposal decides what F19 takes from it.
+
 The plan's planning figure is eight fixtures and three repetitions per arm (§8.1). Each fixture below is public or
 synthetic; held-out material stays under F19's rules. "Existing" means it is in `eval/experiments/` or the test helpers
 at `eece01e5`.
@@ -278,6 +302,11 @@ Not proposed: a retrieval service, an outline index (C5 stays on F22.2), a decis
 
 ## Run accounting and resource cap
 
+**Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The
+accounting is a candidate for F19's own metering. The cap stays approved by the operator for these cells, and the
+proposal carries it into F19's metering. Nothing here is built or run from this record. The proposal decides what F19
+takes from it.
+
 **Accounting**, per attempt, in F19's attempt ledger (`aew/eval-attempt/v1`), every attempt registered before launch:
 - each participant's calls apart: parent, worker, helper (B1's investigator), verification, downstream consequence run;
 - tokens in, out, cache read and cache write as observed, never assumed;
@@ -300,6 +329,10 @@ is home; F19 pins budget at preregistration). The worker profile in its first li
   observed rates the expected spend is a few dollars.
 
 ## Predeclared decision criteria
+
+**Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The rules
+and thresholds for Experiments A, B and C are candidates for F19's decision rules, and none is set. Nothing here is
+built or run from this record. The proposal decides what F19 takes from it.
 
 Set before any treatment result is seen (plan §8.5), and proposals until the operator sets them at preregistration.
 Mandatory constraints, evidence and custody are pass or fail. "Not worse" is the quality tolerance: across an arm's 24
@@ -330,6 +363,10 @@ and no task family may have more than one fewer.
 - A failure the baseline shares is recorded for its owner, never counted as a pass.
 
 ## Where E368's rewrite should use C1
+
+**Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** "Experiment
+A" and "until E389 runs" below now mean the refined F19 measuring the rewrite as a treatment. The truth fixes still
+ship now. Nothing here is built or run from this record. The proposal decides what F19 takes from it.
 
 E368 rewrites the worker packs as a core plus pointers, with an estimate of 36 to 42% less per run. C1 says to judge
 that rewrite by what the worker achieves with it:

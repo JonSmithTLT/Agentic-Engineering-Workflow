@@ -1,13 +1,20 @@
-**Cited, not implemented: R0 proposes that the ProjectArchitect experiments run on this instrument.** The operator
-approved filing the
+**Cited, not implemented: E389 is a refinement of this instrument, not a second system (the operator, 2026-11-26).**
+The operator approved filing the
 [ProjectArchitect concept research plan](../../../research/projectarchitect-concepts-and-evaluation-2026-11-25.md) and
-running its R0 ("Yup file and run r0.", 2026-11-26). Its three experiments, A (brief effectiveness), B (question-scoped
-retrieval) and C (continuation), are E389. [R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) proposes
-that each is preregistered here with every attempt in the attempt ledger, and proposes the fixtures (the lower-bound
-lane, the context-pack rehearsal and the verifier-disposition cases among them) and the accounting. That use of the
-instrument is a proposal, not an operator decision.
+running its R0 ("Yup file and run r0."). Told that the plan's experiments would run as their own track beside F19, the
+operator said, in order:
+1. "Oh no no no definetly not. We are not playing the two seperate subsystem game again that needs a discussion"
+2. "Riggt that is what I was thinking e389 was a refinement on f19s eval architecture not a seperate sustem. What
+   unwanted was to take the good parts of 389 blender it with f19 and modernize it if needed since it seems a ton of
+   aew has a question mark on value."
+3. Asked whether to rework the filing this way and commission a read-only merge proposal: "Yup do so"
 
-Decided by the operator on R0, 2026-11-26 ("Yes start R1 prep, ship truth fixes now, cap is fine but will only be able
-to be done when I get back home anyways"): R1 preparation starts now, with no model run and no spend, and R0's cap is
-approved, with paid runs waiting until the operator is home. This note changes nothing of F19: no instrument code,
-schema or experiment changes, and F19 stays frozen.
+So E389 is a proposal to refine F19: merge the good parts of the plan into this instrument's architecture and modernise
+it where needed, so that one instrument measures the value of AEW's features. The plan's experiments A, B and C, and
+the fixtures, accounting and decision criteria that
+[R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) lists, are input to that proposal and not a plan of
+record. The cap the operator approved on R0 ($0.50 and 20 minutes per attempt, at most 132 attempts, a $75 hard total)
+stays approved for those cells, and the proposal carries it into F19's metering.
+
+This note changes nothing of F19: no instrument code, schema or experiment changes. F19 stays frozen until the operator
+unfreezes it, and nothing is built from the proposal until the operator has read it.

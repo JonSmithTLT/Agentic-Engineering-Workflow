@@ -36,11 +36,13 @@ from typing import Any
 
 from aew.engine import approval
 from aew.engine import hierarchy as H
+from aew.engine import operator_decisions as OD
 from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import JUDGMENT_BEARING, spec_for
+from aew.engine.work_ops import awaiting_acceptance
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
@@ -105,8 +107,10 @@ def _action(name: str, arguments: dict[str, Any], *, kind: str, availability: st
 # The primitives each decision kind carries out, from which its one owner is read (register E335; the designer's
 # ruling of 2026-11-11: one owner per decision kind, from one table of primitive owners,
 # ``owners.PRIMITIVE_OWNERS``). PUBLISH accepts the integration verifier's report and publishes, or publishes a
-# validated candidate.
+# validated candidate. PLAN accepts a proposed plan revision (register E351; the kind's name is the operator's ruling of
+# 2026-11-26).
 DECISION_PRIMITIVES: dict[str, tuple[str, ...]] = {
+    "PLAN": ("plan.accept",),
     "ACCEPT_REVIEW_EVIDENCE": ("review.ingest",),
     "ACCEPT_VERIFICATION": ("verify.ingest",),
     "PUBLISH": ("integrate.publish", "verify.ingest.integration"),
@@ -174,6 +178,8 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
         kind = str(b.get("kind") or "blocked")
         part["blockers"].append(_blocker(kind.upper(), kind.replace("_", " "),
                                          {k: v for k, v in b.items() if k != "kind"}))
+    if subject in state["work"]:
+        _plan_decisions(part, state["work"][subject], subject)
     if unit.get("kind") == "ticket":
         _ticket_actions(part, subject)
         if subject in state["work"]:  # the marked findings the Ticket records and the Lead has not disposed of (E5b)
@@ -264,6 +270,20 @@ def _dispose(item: dict[str, Any], engine: Any, *,
         argv.extend(["--approval-digest", shown["digest"]])
     return {"decision": "DISPOSE_FINDING" if item["kind"] == "finding" else "DISPOSE_CLAIM", "tool": "resolve",
             "evidence": [item["id"]], "arguments": args, "availability": AVAILABLE, "cli": argv}
+
+
+def _plan_decisions(part: dict[str, Any], unit: dict[str, Any], wid: str) -> None:
+    """A proposed plan revision that ``plan accept`` would take now (``work_ops.awaiting_acceptance``) is the PLAN
+    decision (register E351): the operator's (``decision_owner``; the operator's ruling of 2026-11-26), with no
+    default. Its command is the acceptance bound to the plan's SHA-256 (``approval.command``), which the operator runs
+    at their own terminal, or which a Lead session runs once the operator has confirmed that plan: ``ask_operator``
+    is the confirmation's command (``operator_decisions.command``), which a Lead session's acceptance waits for."""
+    for plan in awaiting_acceptance(unit):
+        n = int(plan["revision"])
+        part["decisions"].append({
+            "decision": "PLAN", "tool": None, "arguments": None, "evidence": [str(plan["path"])],
+            "availability": AVAILABLE, "ask_operator": OD.command(OD.PLAN, wid, n),
+            "cli": approval.command("plan.accept", wid, str(plan["sha256"]), "--revision", str(n))})
 
 
 def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) -> None:
@@ -596,6 +616,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                 out[-1]["stopped"] = d["stopped"]
             if "approval_options" in d:
                 out[-1]["approval_options"] = d["approval_options"]
+            if "ask_operator" in d:
+                out[-1]["ask_operator"] = d["ask_operator"]
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"work_id": subject, d["argument"]: e, **d.get("with", {})}

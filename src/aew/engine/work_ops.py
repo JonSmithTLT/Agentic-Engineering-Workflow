@@ -45,6 +45,22 @@ PARENT_KINDS = H.PARENT_KINDS
 # Ticket states in which a new accepted plan may be adopted (M1); parents accept plans in any non-terminal state.
 PLAN_ACCEPT_TICKET_STATES = {"BLOCKED", "READY", "REPLAN_REQUIRED"}
 
+
+def plan_accept_states(unit: dict[str, Any]) -> set[str]:
+    """The states in which ``unit`` may accept a plan: a Ticket's (M1), or any non-terminal state of a parent."""
+    return (set(H.PARENT_STATES) - H.TERMINAL) | {"OPEN"} if H.is_parent(unit) else PLAN_ACCEPT_TICKET_STATES
+
+
+def awaiting_acceptance(unit: dict[str, Any]) -> list[dict[str, Any]]:
+    """The proposed plan revisions of ``unit`` that ``plan accept`` would take now, oldest first: in a state that may
+    accept a plan, and proposed against the plan accepted now (``plan_accept``'s own refusals). The action projection
+    offers each as the operator's PLAN decision (register E351)."""
+    if unit.get("state") not in plan_accept_states(unit):
+        return []
+    current = (unit.get("plan") or {}).get("accepted")
+    return [p for p in unit.get("plans") or [] if p.get("status") == "proposed" and p.get("supersedes") == current]
+
+
 # The reason codes (details["reason"]) of a refused entry into a phase through a hub: an escalation return or a
 # reconcile after an interruption (EW-U06.f).
 BEYOND_THE_PHASE_LEFT = "beyond_the_phase_left"  # later than the phase the unit left for the hub
@@ -765,11 +781,7 @@ class WorkCommands:
                     binding: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, "plan.accept") as ctx:
             unit = self.units.unit(ctx.state, work_id)
-            if H.is_parent(unit):
-                allowed = (set(H.PARENT_STATES) - H.TERMINAL) | {"OPEN"}
-            else:
-                allowed = PLAN_ACCEPT_TICKET_STATES
-            if unit["state"] not in allowed:
+            if unit["state"] not in plan_accept_states(unit):
                 raise IllegalTransition(
                     f"{work_id} is {unit['state']}; move it to REPLAN_REQUIRED before changing the accepted plan",
                 )

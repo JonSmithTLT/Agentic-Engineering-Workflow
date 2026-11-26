@@ -125,7 +125,9 @@
             }
           }
         },
-        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]}
+        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]},
+        "ask_operator": {"type": "string", "minLength": 1,
+                         "description": "The operator's confirmation command, run at their own terminal, which a Lead session's call of the decision waits for (register E351)."}
       }
     },
     "blocker": {

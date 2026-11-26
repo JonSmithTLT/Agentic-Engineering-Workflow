@@ -186,6 +186,19 @@ def submit_operations(operations: Iterable[str], role: str, scope: str | None) -
     return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
 
 
+# The capability a configured check's evidence names as its method (``check_run``, and a validation run's checks):
+# running one is targeted test execution, sealed and bound to the snapshot. So the operation that runs a check serves
+# that capability for a role that holds it, and such a role is never sent to its shell for it: a shell run records
+# nothing it can cite (register E368, the worker-pack audit's F3: the verifier was told to use its shell).
+CHECK_CAPABILITY = "targeted_test_execution"
+OPERATION_CAPABILITIES: dict[str, tuple[str, ...]] = {"check.run": (CHECK_CAPABILITY,)}
+
+
+def served_by_operation(operations: Iterable[str]) -> dict[str, str]:
+    """Each capability that one of ``operations`` serves, with that operation (``OPERATION_CAPABILITIES``)."""
+    return {capability: op for op in operations for capability in OPERATION_CAPABILITIES.get(op, ())}
+
+
 def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None) -> None:
     if kind not in ROLE_KINDS.get(role, set()):
         raise PermissionDenied(f"role {role} may not submit {kind} evidence", role=role, kind=kind)

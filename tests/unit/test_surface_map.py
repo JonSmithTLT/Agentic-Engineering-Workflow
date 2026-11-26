@@ -742,13 +742,47 @@ def home_runs(reg: dict[str, Any], home: str) -> tuple[str, set[str]] | None:
     return (PROPOSED, set(proposal.get("expands_to") or [])) if proposal else None
 
 
+LATER = "later"  # the one `lands` key that names no register row
+CLOSED_ROW = "E131"  # a row the register closed (2026-11-11), for the planted case: a closed row never reopens
+
+
+@cache
+def register_rows() -> tuple[frozenset[str], frozenset[str]]:
+    """The register's rows (docs/implementation/future-work.yaml), read through its own tool: (open, every)."""
+    spec = importlib.util.spec_from_file_location("register_for_surface_map", ROOT / "tools" / "register.py")
+    assert spec is not None and spec.loader is not None
+    register = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(register)
+    data = register.load()
+
+    def ids(**which: Any) -> frozenset[str]:  # `Gate` (a §1 gate) and None are ids of no row
+        return frozenset(r["id"] for r in register.rows(data, **which) if r["id"] and register.ID_RE.fullmatch(r["id"]))
+
+    return ids(), ids(open_only=False)
+
+
+def lands_problems(reg: dict[str, Any]) -> list[str]:
+    """The lands guard (register E233; the designer's ruling of 2026-11-08): every key of the vocabulary's `lands` is
+    an open register row, or `later`. A slice name of a plan nobody builds, and a row that has closed, are both a
+    place nothing will land: the row moves to the row that took the work over, or to `later`. Every `lands` a planned
+    row, a proposal or an `uncovered` states is one of these keys (``planned_problems``, ``check_planned_coverage``),
+    so each of them names a live row or `later` too."""
+    live, every = register_rows()
+    return [f"the vocabulary's `lands` key {key!r} is "
+            + ("a closed register row" if key in every else "no register row")
+            + f": name the open row that owns the work, or `{LATER}`"
+            for key in (reg.get("vocabulary") or {}).get("lands") or {} if key != LATER and key not in live]
+
+
 def planned_problems(reg: dict[str, Any]) -> list[str]:
     """The planned rows' and the proposals' shape (part of `fields`): a planned row is exactly an undecided command,
-    with a planned disposition, homes that resolve, a primitive that names it, a landing slice and a reason; a typed
-    plan names its primitive and other plans home nothing; every proposal is some planned row's home."""
+    with a planned disposition, homes that resolve, a primitive that names it, a landing row and a reason; a typed
+    plan names its primitive and other plans home nothing; every proposal is some planned row's home. The landing
+    rows themselves are live (``lands_problems``)."""
     lands = set((reg.get("vocabulary") or {}).get("lands") or {})
-    out = [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
-           if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
+    out = lands_problems(reg)
+    out += [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
+            if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
     homed: set[str] = set()
     for name, e, plan in planned_rows(reg):
         it = f"`aew {name}`'s plan"
@@ -2040,6 +2074,29 @@ def test_the_baseline_only_shrinks():
     assert proposal_pin_problems(load()) == []
 
 
+def test_every_lands_key_names_a_live_register_row_or_later(monkeypatch):
+    """The lands guard (register E233): nothing in the map lands on a plan nobody builds or a row that has closed.
+    Every stated `lands` is a key of the vocabulary, and every key is an open register row or `later`. Ablated: the
+    register, read through its own tool, loses the row, and the guard names the key."""
+    reg = load()
+    keys = set(reg["vocabulary"]["lands"])
+    stated = ({plan["lands"] for _, _, plan in planned_rows(reg)}
+              | {plan["uncovered"]["lands"] for _, _, plan in planned_rows(reg) if "uncovered" in plan}
+              | {p["lands"] for section in ("proposed_tools", "proposed_choices") for p in reg[section]})
+    assert stated <= keys and LATER in keys
+    assert lands_problems(reg) == []
+    live, every = register_rows()
+    assert keys - {LATER} <= live <= every and CLOSED_ROW in every - live
+    row = sorted(keys - {LATER})[0]
+    monkeypatch.setattr(sys.modules[__name__], "register_rows", lambda: (live - {row}, every))
+    assert lands_problems(reg) == [f"the vocabulary's `lands` key {row!r} is a closed register row: name the open row "
+                                   f"that owns the work, or `{LATER}`"]
+    monkeypatch.setattr(sys.modules[__name__], "register_rows", lambda: (live - {row}, every - {row}))
+    assert lands_problems(reg) == [f"the vocabulary's `lands` key {row!r} is no register row: name the open row that "
+                                   f"owns the work, or `{LATER}`"]
+    assert any(row in f for f in check_fields(reg)), "the `fields` check carries the guard"
+
+
 def test_the_registry_is_versioned_and_states_its_vocabulary():
     reg = load()
     assert reg["schema"] == "aew/surface-map/v1" and isinstance(reg["version"], int) and reg["version"] >= 1
@@ -2093,7 +2150,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("registered", _drop("tool", "ticket_start"), "tool `ticket_start` exists but is not registered"),
     ("registered", _drop("tool", "message_send"), "tool `message_send` exists but is not registered"),
     ("mutates", lambda r: _entry(r, "message_send", "tool").update(mutates="no"), "tool `message_send`: mutates"),
-    ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "F9-A"}),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "E175"}),
      "proposed tool `message_send` is built now"),
     ("live", lambda r: r["commands"].append({"name": "work teleport"}), "`aew work teleport` is registered but no"),
     ("live", lambda r: r["tools"].append({"name": "ticket_fly"}), "tool `ticket_fly` is registered but no longer"),
@@ -2201,13 +2258,18 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("fields", lambda r: _entry(r, "work staff")["planned"].update(lands="someday"),
      "`aew work staff`'s plan: lands 'someday' is not in the vocabulary"),
     ("fields", lambda r: _entry(r, "work staff")["planned"].pop("reason"), "`aew work staff`'s plan gives no reason"),
-    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "A2"}),
+    # The lands guard (register E233): a dead plan's slice name, and a row that has closed, are no place to land.
+    ("fields", lambda r: r["vocabulary"]["lands"].update({"A2": "the dead plan's slice"}),
+     "the vocabulary's `lands` key 'A2' is no register row"),
+    ("fields", lambda r: r["vocabulary"]["lands"].update({CLOSED_ROW: "a row that closed"}),
+     f"the vocabulary's `lands` key '{CLOSED_ROW}' is a closed register row"),
+    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "E233"}),
      "proposed_tools `ticket_fly` homes no planned row"),
     ("fields", lambda r: r["proposed_choices"].append({"name": "teleport", "pairs": {}, "lands": "A9"}),
      "proposed_choices `teleport`: lands 'A9' is not in the vocabulary"),
-    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "A2"}),
+    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "E233"}),
      "proposed choice `continue` is built now"),
-    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "A2"}),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "E233"}),
      "proposed tool `ticket_start` is built now"),
     # The A1-0 review's F1: a typed plan accounts for every use of its command (`planned_coverage`).
     ("planned_coverage", lambda r: _entry(r, "work transition")["planned"].pop("options"),

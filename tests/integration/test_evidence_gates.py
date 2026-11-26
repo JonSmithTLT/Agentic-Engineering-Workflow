@@ -20,6 +20,7 @@ from aewflow import (
 )
 from conftest import run_aew
 
+from aew.knowledge.evidence import CHECK_CAPABILITY
 from aew.util import dump_yaml, load_yaml
 
 
@@ -50,6 +51,8 @@ def test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_la
     out = impl.check("unit")
     meta, _ = parse_frontmatter((calc.root / f".aew/evidence/{wid}/{out['evidence']}.md").read_text(encoding="utf-8"),
                                 source="evidence")
+    # A configured check's evidence names the capability a pack prints the check command beside (register E368)
+    assert meta["method"]["capability"] == CHECK_CAPABILITY
     import conftest
 
     left = list((calc.root / ".aew/local/harness/runs").glob("check-*"))

@@ -65,7 +65,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
 | 32 | E161 | The Lead's skills, after E127 |
 | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-| 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -1902,18 +1902,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E166/`, oldest first (`python tools/register.py show E166`).*
 
-### E167
-
-**Work:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
-
-**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work (v2), (c)
-
-**When:** **Now.** Item 34 of the Now list, with E136's batches. Part of E168's new system, under the same limit
-
-**Notes:** Filed by the Lead. Data, the designer's reading
-
-*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
-
 ### E168
 
 **Work:** A review of any local branch or ref, as a non-mutating Ticket: the ref is resolved at dispatch and pinned to a commit, with its merge-base against the authoritative branch (AEW fetches nothing), and observed read-only there. A new record kind, `ref_review`, isn't source-bound to the authoritative commit: when the ref moves, the record says so and doesn't gate. A `branch_reviewer` card on the investigator archetype, which gains the kind, takes the requirement and the diff from the merge-base; its skill is the Lead's fit choice, checked in the PR. It never changes code or integrates
@@ -2550,18 +2538,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E234/`, oldest first (`python tools/register.py show E234`).*
 
-### E235
-
-**Work:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set. Fix the lookup with a test on the real folder name, and weigh the desktop's `Programs\ai.opencode.desktop\resources\` copy, whose path moved in that update. Read from the code, not yet run
-
-**Source:** Found by the Lead, 2026-11-08; works out of the box is the operator's rule
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
-
 ### E237
 
 **Work:** Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server = None`: the thread then reaches `os._exit(0)` and kills the test worker
@@ -2609,18 +2585,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E240/`, oldest first (`python tools/register.py show E240`).*
-
-### E241
-
-**Work:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route. Read, not reproduced
-
-**Source:** The quick check of #388, 2026-11-08
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E242
 
@@ -2681,18 +2645,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E246/`, oldest first (`python tools/register.py show E246`).*
-
-### E247
-
-**Work:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked
-
-**Source:** The review of #394, 2026-11-09
-
-**When:** **Unscheduled**, for checking
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
 
 ### E248
 
@@ -3558,18 +3510,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
 
-### E335
-
-**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator's; its gaps are E350 and E351
-
-**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
-
-*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -3953,6 +3893,78 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface, not from today's online documentation
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
+
+### E395
+
+**Work:** A frontend-focused specialised role card, which carries the `frontend-design` skill. The operator: "It'll also align with the mcp servers and utilities we were planning on jnckuding anyway." Until it exists `frontend-design` stays an unserved candidate, since no built-in card fits it. The card's archetype, its capabilities and what it requests or offers are the designer's to shape
+
+**Source:** The operator, 2026-11-26, on E136's remaining skills: "for 3 we should just track making a front-end focused specialized role card. It'll also align with the mcp servers and utilities we were planning on jnckuding anyway."
+
+**When:** **Unscheduled.** After the designer shapes the card; E136 leaves `frontend-design` to this row
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E395/`, oldest first (`python tools/register.py show E395`).*
+
+### E396
+
+**Work:** A source-research skill, the `researcher` card's one foundational skill. The Lead suggests it cover: finding and preferring primary sources; naming the subject, its version and the source for every conclusion; provenance, so a reader can find the source again; and stated uncertainty where the sources are silent or disagree. `researcher` holds no skill in `skills:` until it exists, and takes it there when it ships. The operator has it created ("so I can have them created"), and it reaches the repository as a candidate with its public-text check
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." What the skill should cover is the Lead's suggestion, not the operator's requirement
+
+**When:** **Unscheduled.** When the operator has had the skill created
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E396/`, oldest first (`python tools/register.py show E396`).*
+
+### E397
+
+**Work:** A general implementation skill, the `engineer` card's one foundational skill, replacing `test-design`, which it holds in the interim. The Lead suggests it cover how an implementer proceeds whatever the language: reading the Ticket, the plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally and running the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan. When it ships, `engineer` requests it and offers `test-design` again. The operator has it created ("so I can have them created")
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a general implementation skill and a standalone plan-review skill, so those two cards aren't left on borrowed ones? I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should cover is the Lead's suggestion, not the operator's requirement
+
+**When:** **Unscheduled.** When the operator has had the skill created
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E397/`, oldest first (`python tools/register.py show E397`).*
+
+### E398
+
+**Work:** A standalone plan-review skill, the `plan_assessor` card's one foundational skill, replacing `adversarial-review`, which it holds in the interim. It is split from `adversarial-review`'s plan-review reference, so an assessor does not load the code-review procedure to reach it. The Lead suggests it cover judging a plan before the work starts: whether the plan meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers, and whether its tests and verification can show the work done. When it ships, `plan_assessor` requests it. The interim has a known gap: `adversarial-review`'s core steps 5 and 6 need execution a plan assessor lacks, and no run has checked how an assessor behaves with it. The operator has it created ("so I can have them created")
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a general implementation skill and a standalone plan-review skill, so those two cards aren't left on borrowed ones? I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should cover is the Lead's suggestion, not the operator's requirement
+
+**When:** **Unscheduled.** When the operator has had the skill created
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
+
+### E394
+
+**Work:** A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree, and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree say it holds one command
+
+**Source:** Found by the builder of #608 while testing E247, 2026-11-26; its review's M2 asks for the row
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Reproduced at #608's head: a tree with a sleeping member, then a second `spawn`
+
+*Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
+
+### E388
+
+**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
+
+**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E373
 
@@ -5092,6 +5104,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
 
+### E167
+
+**Was:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
+
+**Closed:** 2026-11-26
+
+**By:** #611, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
+
+*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
+
 ### E171
 
 **Was:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
@@ -5212,6 +5234,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E227/`, oldest first (`python tools/register.py show E227`).*
 
+### E235
+
+**Was:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set
+
+**Closed:** 2026-11-26
+
+**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version's, a pre-release's or another suffix's (#609's review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
+
+*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
+
 ### E236
 
 **Was:** `tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port` fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process's own listener, though it answers requests. CI's Windows passes. The E75 diagnostic loses its listener row on such a host, so the fix is the diagnostic saying so, with the test holding that, not a skip
@@ -5221,6 +5253,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E241
+
+**Was:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route
+
+**Closed:** 2026-11-26
+
+**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
+
+*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
+
+### E247
+
+**Was:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout
+
+**Closed:** 2026-11-26
+
+**By:** #608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()` now reads the group's members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`
+
+*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
 
 ### E251
 
@@ -5322,6 +5374,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
 
+### E335
+
+**Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Closed:** 2026-11-26
+
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
+
 ### E337
 
 **Was:** A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may spend the operator's stored OpenCode API-key login for its pinned provider when the policy's `provider_env` names that provider's key variable (the operator's consent for each provider) and the provider's upstream is the built-in one. A usable export where AEW launches wins; otherwise the engine's readiness check and the supervisor read the store on the host, read-only and bounded, and the key goes only to the run's relay, never to the sandbox, a harness configuration, the launch contract, a record, a log or an error. Never off the relay route, never to an upstream override, never a second credential after an upstream rejects one, never a write, and never a refreshing (OAuth) login. `aew doctor` and each launch record name the source, never the value. Each of the designer's seven custody conditions is a planted case with an ablation; a certificate-only provider makes no store read. ADR-0009's dated amendment, the login docstring, the OpenCode guide, the quickstart and init's `next` land in the same PR
@@ -5381,6 +5443,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E389
+
+**Was:** Refine F19, the evaluation instrument, with the ProjectArchitect research plan's concepts: merge the good parts of the plan into F19's architecture and modernise F19 where needed, so that one instrument measures the value of AEW's features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves, its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect code, prompts or runtime. Done when the proposal is adopted and F19's plan and rows carry the result, or the operator refuses it and a note on this row gives the reason
+
+**Closed:** 2026-11-26
+
+**By:** Closed into F19 as F19's feature-cell backlog, where its work continues (the operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the second of the Lead's seven questions was "E389: close it into F19 as F19's feature-cell backlog, or keep the row? I recommend closing it into F19, which matches what you said about not having two systems.", so the yes is to the Lead's stated recommendation). Delivered: [the F19 refinement proposal](../research/f19-refinement-proposal-2026-11-26.md) (research, not adopted; ledger FRP), filed and answered in part, not adopted. What the operator decided and what stays open are in F19's note of 2026-11-26
+
+*Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
 
 ### F1
 

@@ -202,7 +202,12 @@ registry records the plan, not the decision:
     `R(<choice>)` (built in `RESOLVE_CHOICE_PRIMITIVE`, or under `proposed_choices`), that will reach it. An empty list
     means no home is designed yet (`work dispatch` and `work redispatch`, an A2 design item). Other plans have none.
   - `primitive`: the step the homes run, named like a typed door's (or `none`).
-  - `lands`: the slice that builds the homes and decides the row, from the vocabulary's `lands`.
+  - `lands`: the live register row whose work builds the homes and decides the row, or `later`, from the
+    vocabulary's `lands`. The plan named its slices here; its A2 is dead, and register E233 owns the typed-surface
+    hole it left (the designer's ruling of 2026-11-08). So the `fields` check holds the **lands guard**: every key of
+    the vocabulary's `lands` is an open row of the register (`docs/implementation/future-work.yaml`, read through
+    `tools/register.py`) or `later`. When the row closes, the guard fails until each entry that lands there is
+    decided, or moved to the row that took the work over, or to `later`.
 - **`proposed_tools`** (with the `expands_to` each will have) and **`proposed_choices`** (with their
   `(subject kind: primitive)` pairs): the homes not built yet.
 - **Shrink-only.** The planned rows and both proposal lists are pinned in the test by their digests. The registry
@@ -338,7 +343,7 @@ each check.
 |---|---|---|
 | `registered` | enforce | a live command or tool has no entry |
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
-| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing slice or reason is missing or invalid (below); a proposal homes no planned row |
+| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing row or reason is missing or invalid (below); a key of the vocabulary's `lands` is neither an open register row nor `later` (the lands guard); a proposal homes no planned row |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
 | `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
@@ -364,7 +369,7 @@ each check.
 | `planned_coverage` | enforce | a typed plan's `uncovered` differs from what the four scans derive (transition edges, entrypoints, state-selected entrypoint uses, options); it does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
 | `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
 | `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
-| `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |
+| `planned_by_slice` | report | the planned rows, by the register row they land in: until every row is decided |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the

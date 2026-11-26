@@ -1057,7 +1057,7 @@ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     cwd = Path(args.cwd or os.getcwd()).resolve()
     sent, stdin = _as_bytes(argv, args, cwd)
     request = {"argv": sent, "cwd": str(cwd), "stdin": stdin}
-    size = len(json.dumps({"op": "lead.cli", "args": request}).encode("utf-8"))  # as bridge.call sends it, escapes too
+    size = len(bridge.request_bytes("lead.cli", request))  # as bridge.call sends it, escapes too
     if size > bridge.MAX_REQUEST:
         raise errors.UsageError(f"this command and its text make a {size}-byte request, and a Lead session's broker "
                                 f"takes at most {bridge.MAX_REQUEST}: nothing was sent, so split the text or shorten "

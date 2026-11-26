@@ -48,6 +48,16 @@ if TYPE_CHECKING:
     )
 
 
+REVOKE_REASON_MAX = 300  # the characters kept of a reason recorded with an invocation's revoked credential
+
+
+def _one_line(reason: str) -> str:
+    """``reason`` as one line (every run of whitespace a space), cut to ``REVOKE_REASON_MAX`` with the cut counted."""
+    line = " ".join(reason.split())
+    more = len(line) - REVOKE_REASON_MAX
+    return line if more <= 0 else f"{line[:REVOKE_REASON_MAX]} [… {more} more characters]"
+
+
 class Invocations:
     """Evaluated snapshots and invocations: issue, pin, complete, the workspace an invocation may act in, and recording
     run 1 of a `--launch` dispatch (ADR-0009)."""
@@ -127,12 +137,21 @@ class Invocations:
                          risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request,
                          identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
 
-    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
+    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed", *,
+                            reason: str | None = None, decision: str | None = None) -> None:
+        """``reason``: why it was ended (the Lead's words for `invoke cancel` and a redispatch, the engine's for a
+        released workspace), kept with the credential's revocation, the one record of why an invocation's authority
+        ended; a replacement's recovery section quotes it (register F36). It is recorded as one line of at most
+        ``REVOKE_REASON_MAX`` characters with the cut counted, since the Lead's text is free: the same record is the
+        refusal the ended worker's next call gets, the `credential.revoked` event, its run's stop reason and the
+        dashboard's authority line (review of #614, m5). ``decision``: the id of the decision that records the ending
+        (a redispatch's), appended after the bounded reason, so a long reason never cuts it off (quick check, m7)."""
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
             if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
-                revoke(state, inv["token_id"], f"invocation {status}")
+                revoke(state, inv["token_id"], f"invocation {status}" + (f": {_one_line(reason)}" if reason else "")
+                       + (f" ({decision})" if decision else ""))
         obs = inv.get("observation")
         if obs and obs.get("status") == "active":
             obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)
@@ -169,7 +188,7 @@ class Invocations:
             ws["status"] = f"released ({why})"
         for inv_id in unit.get("invocations", []):
             if not is_custodian(ctx.state["invocations"].get(inv_id)):  # the queue ends it (M4-D)
-                self.complete_invocation(ctx.state, inv_id, "cancelled")
+                self.complete_invocation(ctx.state, inv_id, "cancelled", reason=why)
 
     def require_launchable(self, state: dict[str, Any], inv_id: str, *, relaunch: bool = True) -> dict[str, Any]:
         inv = state["invocations"].get(inv_id)

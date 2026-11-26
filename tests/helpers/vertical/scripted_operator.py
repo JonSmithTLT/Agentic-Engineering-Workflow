@@ -49,6 +49,8 @@ from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_re
 from fake_harness import SCRIPTS_ENV, HarnessLab
 from fake_opencode import TUI_SCRIPT, write_launcher
 
+from aew import hoststate
+from aew.capability import consent
 from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
@@ -426,9 +428,11 @@ class Operator:
 # ---------------------------------------------------------------------------------------------- the world
 
 
-def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
+def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None,
+              host_data: Path | None = None) -> HarnessLab:
     """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
-    sample declares check caches in policy and has no `.gitignore` entry for them."""
+    sample declares check caches in policy and has no `.gitignore` entry for them. ``host_data`` is the world's
+    host-state base where AEW places its tools: a caller that has already built a synthetic home passes its own."""
     files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
@@ -448,7 +452,41 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
            # The operator's OpenCode login: one synthetic key, which the contained Lead relays and the fake TUI never
            # calls. A contained Lead with no provider relayed is refused at start (the designer's ruling of 2026-11-06).
            "OPENCODE_DB": str(operator_login(tmp / "operator-opencode"))}
+    if consent.binds_here():
+        # The world's own host state, so the tool offers it settles in setup (:func:`settle_tool_offers`) are its
+        # own and no other test's: the session's shared base would carry its "no" into every later test. Only where
+        # AEW places its tools: elsewhere nothing is offered as needed, and the host's base stays the session's.
+        env[hoststate.base_variable()] = str(host_data or tmp / "host-data")
     return HarnessLab(Project(repo), tmp, env)
+
+
+def settle_tool_offers(lab: HarnessLab, ledger: Ledger) -> list[str]:
+    """Setup's fixture of the offline world: AEW's tool offers settled before the first open, so a reopen on the
+    operator's terminal meets no consent screen. The operator's ruling of 2026-11-26 (question Q5 of the V-01
+    re-measure), in part: "setup fixture that is recorded but not counted. [...] Aew saying a critical item is missing
+    isnt a ux failure its common sense. [...]" The world has no route to a tool's source, so it answers the screen
+    ``none``: each needed tool is declined and no optional one, which is what :func:`consent.ask` gives for that
+    answer, in the register the world's ``aew`` reads. Each decline is recorded, never counted. AEW's line at the
+    start naming a declined needed tool stays, and counts nothing. Returns the tools declined.
+
+    Setup only: its one vertical caller is ``configure``, before the first open, and it records under ``init``
+    whenever it is called. A tool that becomes needed after setup is not settled: its screen meets the next reopen."""
+    from aew.capability import store
+
+    base = lab.env.get(hoststate.base_variable())
+    if base is None:  # where AEW places no tools (:func:`new_world`), nothing needed is offered
+        return []
+    with mock.patch.object(store, "ROOT_OVERRIDE", None), \
+            mock.patch.dict(os.environ, {hoststate.base_variable(): base}):
+        directory = store.root()  # where the world's `aew` keeps its register, from the owner
+    # The screen's own answer, from its owner: what `none` declines is `consent.ask`'s to say (review of #603, m1).
+    shown = [offer for offer in consent.offers(directory) if not offer.declined_at]
+    declined = consent.ask(shown, lambda _prompt: consent.NONE).declined
+    consent.decline(declined, directory)
+    for offer in declined:
+        ledger.observe("setup_fixture", step="init", fixture=f"tool offer declined: {offer.provider}",
+                       needed=offer.needed)
+    return [offer.provider for offer in declined]
 
 
 def operator_login(directory: Path) -> Path:
@@ -490,7 +528,8 @@ def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str,
     writable = [lab.env[SCRIPTS_ENV], str(lab.tmp / "sync")]
     # The test's children directory, where the Lead's TUI writes its childdiag files (``mark_helper_dir`` names it in
     # the scripts). Outside the writable roots, the contained TUI wrote them into the sandbox's private /tmp, and
-    # the #213 autopsy found no ``events-*`` (STG-13's note of 2026-10-30; the V-01 re-measure of 2026-11-26, C15).
+    # the #213 autopsy found no ``events-*`` (STG-13's note ``2026-10-30-test-stg13-vertical-linux-pty.md``; the V-01
+    # re-measure of 2026-11-26, C15).
     # The product's own TUI diagnostics are its XDG directories, which the Lead's layout already makes writable.
     children = autopsy.child_dir()
     if children is not None:

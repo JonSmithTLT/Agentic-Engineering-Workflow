@@ -19,10 +19,11 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-# E329 removes the global input and advertises the scoped inputs on the full catalogs with messaging off.
-OFF_LIST_SHA = {"normal": "258b782a6e1737eff0a1f5686d5a0b9f6cf4fb1110118289125a4e1cf8d84c0d",
-                "recovery": "473afe5071386dce34d908e0a7247b0be36d8807e2b78a69ea3c43cb7be46172"}
-OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
+# The off catalogs carry E329's scoped inputs and E335's integration publication owner wording.
+# The compact resume description also says decisions name their owners.
+OFF_LIST_SHA = {"normal": "9a454fb7e34704d47dcb53be2a754ed873e6b02ec88c6518568d8fe99a8a68e8",
+                "recovery": "9b7cdfc98188f4c2d39bae721a88248761a42f07ec65c01838986dc7333e2099"}
+OFF_CLI_SHA = "969cfc4bc70bee703e8468c6408a50204ebc1e0554b2ad14d9cc000916a53304"
 
 
 def digest(value):
@@ -223,7 +224,9 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                                        "and launch the verifiers policy requires.",
         "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
                           "Publication stays a separate decision.",
-        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        # E335: PUBLISH is the operator's (the owner table's), so the text no longer calls it the Lead's.
+        "integration_publish": "Publish the prepared integration candidate: calling this carries out the operator's "
+                               "publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
                         "Deliver at next step (default), turn end or relaunch.",
     }

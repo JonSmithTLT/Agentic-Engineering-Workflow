@@ -278,8 +278,8 @@ def test_the_schema_refuses_an_auto_runnable_wait_or_unknown_action():
 
 
 def test_a_decision_never_carries_a_default():
-    decision = {"decision": "PUBLISH", "subject": "T-0001", "evidence": [], "tool": None, "arguments": None,
-                "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
+    decision = {"decision": "PUBLISH", "subject": "T-0001", "owner": "operator", "evidence": [], "tool": None,
+                "arguments": None, "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
     validate_def("surface", "decision", decision, source="test")
     with pytest.raises(ValidationFailed):
         validate_def("surface", "decision", {**decision, "default": "PUBLISH"}, source="test")

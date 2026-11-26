@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 5
+version: 6
 
 vocabulary:
   homes:
@@ -47,17 +47,19 @@ vocabulary:
     forbidden-to-lead: operator, admin or diagnostic authority; exposed through neither Lead door (it leaves
       LEAD_REACHABLE)
     undecided: until A2's plan decides it, with its reason
-  # Where a `planned` row's disposition lands (the A1 slice plan, reviewed CLEAR, section 6): the slice whose change
-  # builds its homes and decides it.
+  # Where a `planned` row's disposition lands: the live register row (docs/implementation/future-work.yaml) whose work
+  # builds its homes and decides it, or `later`. The A1 slice plan (reviewed CLEAR, section 6) named slices here
+  # (A1a-1, A1a-2, A1b, A2, A4, C5b, F9-A); that plan's A2 is dead, and register E233 owns the typed-surface hole it
+  # left (the designer's ruling of 2026-11-08, items 6 and 7). A key names a row only where the row's own text takes
+  # the work; a row whose slice no live row says it takes (A1b, A4, C5b; E349 and E350 touch part, E233's note) is
+  # `later`, and its `reason` still says what the plan meant for it. The guard: every key here is an open register
+  # row or `later` (the `fields` check).
   lands:
-    A1a-1: projection v2 and the `harness_status` fold; `ticket_rework` (blocked on the G3 budget question)
-    A1a-2: "`resolve`'s `accept_plan` and `reconcile`"
-    A1b: the handoff and its acknowledged cursor
-    A2: the Lead's remaining typed homes, `work_amend` and the A2 debts
-    A4: the shell door closed; the operator paths (after B1)
-    C5b: the dead-custodian detector and the engine's own paths
-    F9-A: F9-A's typed message send
-    later: not in this plan; the row stays undecided and reachable, with its reason
+    E233: "the Lead's exits: the typed homes the plan placed in A1a and A2 (`ticket_rework`, `work_amend`, `resolve`'s remaining choices) and the A2 debts"
+    E163: "a typed `plan accept` (the plan's `accept_plan`)"
+    E175: "the recorded `harness send` path, under messaging (the plan's F9-A)"
+    E248: a typed harness interrupt
+    later: no live register row owns it; the row stays undecided and reachable, with its reason
 
 # Every entry's `refusals` lists the aew.errors codes it is known to raise: the floor its arguments imply (any
 # command: USAGE; a Lead credential: PERMISSION_DENIED and STALE_AUTHORITY; an expected revision: STALE_REVISION;
@@ -85,70 +87,70 @@ proposed_tools:
   - name: ticket_rework
     expands_to: [work.transition, invoke.create.mutating, dispatch.launch]
     transitions: [[REVIEW_FAILED, RUNNING]]
-    lands: A1a-1
+    lands: E233
     note: "the mutating rework stage, shaped like ticket_request_review; blocked on the G3 budget question"
   - name: work_amend
     expands_to: [work.move, work.promote, work.reclassify, work.depend]
-    lands: A2
+    lands: E233
     note: "one decomposition tool, with `change: move|promote|reclassify|depend`"
 proposed_choices:
   - name: accept_plan
     pairs: {plan: plan.accept}
-    lands: A1a-2
+    lands: E163
     note: "subject PLAN:<T>@<n>; arguments operator_answer (the quoted chat answer) and rationale"
   - name: reconcile
     pairs: {unit: work.reconcile}
-    lands: A1a-2
+    lands: E233
     note: "subject UNIT:<T>, while INTERRUPTED; arguments to (an offered phase) and rationale"
   - name: adopt_proposal
     pairs: {plan: plan.adopt}
-    lands: A2
+    lands: E233
   - name: reconfirm
     pairs: {plan: plan.reconfirm}
-    lands: A2
+    lands: E233
   - name: classify
     pairs: {unit: verify.classify}
-    lands: A2
+    lands: E233
     note: "while VERIFICATION_FAILED; argument class"
   - name: cancel
     pairs: {unit: work.cancel, invocation: invoke.cancel}
     transitions: [["*", CANCELLED]]
-    lands: A2
+    lands: E233
     note: "a unit, or a live invocation"
   - name: close
     pairs: {unit: work.close}
-    lands: A2
+    lands: E233
     note: "a Story or Epic at ACCEPTANCE_PENDING"
   - name: relaunch
     pairs: {run: harness.launch}
-    lands: A2
+    lands: E233
     note: "a failed run whose invocation is active"
   - name: acknowledge_input
     pairs: {input: work.acknowledge-input}
-    lands: A2
+    lands: E233
   - name: waive
     pairs: {gate: gate.waive}
-    lands: A2
+    lands: E233
   - name: accept_record
     pairs: {unit: work.accept}
-    lands: A2
+    lands: E233
     note: "a non-mutating unit with a record"
   - name: defer
     pairs: {queue: integrate.defer}
-    lands: A2
+    lands: E233
   - name: requeue
     pairs: {queue: integrate.requeue}
-    lands: A2
+    lands: E233
   # The A1-0 review's F1: escalation and its return, the A2 design item of the A1 slice plan §2.7.
   - name: escalate
     pairs: {unit: work.transition}
     transitions: [["*", ESCALATED]]
-    lands: A2
+    lands: E233
     note: "a judgment with a rationale; its typed home is the A2 design item (§2.7)"
   - name: return_escalated
     pairs: {unit: work.transition}
     transitions: [[ESCALATED, RUNNING], [ESCALATED, REVIEW_PENDING], [ESCALATED, VERIFY_PENDING]]
-    lands: A2
+    lands: E233
     note: "the escalation's outcome, with a rationale; the returns the phase order admits (§2.7, §3.1a)"
 
 # Operator modules are invoked with Python, outside the aew parser.
@@ -303,7 +305,7 @@ commands:
       disposition: forbidden-to-lead
       homes: []
       primitive: none
-      lands: A4
+      lands: later
       reason: "joins OPERATOR_ONLY with the handoff family: reattach replaces the handoff (after B1)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -524,11 +526,11 @@ commands:
       disposition: typed
       homes: [ticket_draft]
       primitive: work.staff
-      lands: A2
+      lands: E233
       reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, with one execute card, so re-staffing an existing Ticket and a several-card execute plan have no typed home yet (`uncovered`, the A1-0 review's F2 and the re-review's N3)"
       options: {"--prior-value": homes, work_id: uncovered, "--execute": uncovered, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "option --execute"
           - "option --forbid"
@@ -551,11 +553,11 @@ commands:
       disposition: typed
       homes: [ticket_rework, ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare, "R(escalate)", "R(return_escalated)"]
       primitive: work.transition
-      lands: A2
+      lands: E233
       reason: "the stage steps, the rework (`ticket_rework`, blocked on the G3 budget question) and escalation and its return (A2) type some of its edges, and cancelling is `work cancel`'s; the replans, the regressions and the re-verification have no typed home yet (`uncovered`, the A1-0 review's F1), so it is decided in A2 at the earliest"
       options: {"--prior-value": homes, work_id: homes, "--to": homes, "--reason": homes}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "transition ASSIGNED -> REPLAN_REQUIRED"
           - "transition ASSIGNED -> RUNNING"
@@ -595,11 +597,11 @@ commands:
       disposition: typed
       homes: []
       primitive: work.dispatch
-      lands: A2
+      lands: E233
       reason: "policy picks the executor and the loop runs it; its non-mutating start home is A2's design item, and it stays reachable until then"
       options: {work_id: uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "entrypoint work.dispatch"
           - "option --card"
@@ -622,11 +624,11 @@ commands:
       disposition: typed
       homes: []
       primitive: work.redispatch
-      lands: A2
+      lands: E233
       reason: "retrying is judgment; its non-mutating start home is A2's design item (not the mutating `ticket_rework`), and it stays reachable until then"
       options: {work_id: uncovered, "--reason": uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "entrypoint work.redispatch"
           - "option --card"
@@ -651,7 +653,7 @@ commands:
       disposition: typed
       homes: ["R(accept_record)"]
       primitive: work.accept
-      lands: A2
+      lands: E233
       reason: "evidence acceptance is the Lead's judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -668,7 +670,7 @@ commands:
       disposition: typed
       homes: ["R(close)"]
       primitive: work.close
-      lands: A2
+      lands: E233
       reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -685,7 +687,7 @@ commands:
       disposition: typed
       homes: ["R(cancel)"]
       primitive: work.cancel
-      lands: A2
+      lands: E233
       reason: "cancelling a unit is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -702,7 +704,7 @@ commands:
       disposition: typed
       homes: [work_amend]
       primitive: work.move
-      lands: A2
+      lands: E233
       reason: "decomposition; the engine keeps its own guards (no moving a committed Ticket)"
       options: {"--prior-value": homes, work_id: homes, "--parent": homes, "--reason": homes}
     owner: pending (A1)
@@ -719,7 +721,7 @@ commands:
       disposition: typed
       homes: [work_amend]
       primitive: work.promote
-      lands: A2
+      lands: E233
       reason: "decomposition; the engine keeps its own guards"
       options: {"--prior-value": homes, work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
     owner: pending (A1)
@@ -736,7 +738,7 @@ commands:
       disposition: typed
       homes: [work_amend]
       primitive: work.reclassify
-      lands: A2
+      lands: E233
       reason: "decomposition; risk only rises (the engine's guard)"
       options: {work_id: homes, "--class": homes, "--reason": homes}
     owner: pending (A1)
@@ -753,7 +755,7 @@ commands:
       disposition: typed
       homes: [work_amend]
       primitive: work.depend
-      lands: A2
+      lands: E233
       reason: "decomposition; the engine keeps its own guards"
       options: {work_id: homes, "--add": homes, "--remove": homes, "--reason": homes}
     owner: pending (A1)
@@ -770,7 +772,7 @@ commands:
       disposition: typed
       homes: ["R(acknowledge_input)"]
       primitive: work.acknowledge-input
-      lands: A2
+      lands: E233
       reason: "acknowledging an input is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
@@ -795,7 +797,7 @@ commands:
       disposition: typed
       homes: ["R(reconcile)"]
       primitive: work.reconcile
-      lands: A1a-2
+      lands: E233
       reason: "V2's reconcile, with the phases the engine offers; until then its recovery home covers V2"
       options: {work_id: homes, "--to": homes, "--reason": homes}
     owner: pending (A1)
@@ -887,7 +889,7 @@ commands:
       disposition: typed
       homes: ["R(accept_plan)"]
       primitive: plan.accept
-      lands: A1a-2
+      lands: E163
       reason: "asked of the operator and recorded by the Lead (decided_by: lead, quoting the chat answer); until then a recovery command"
       options: {"--approval-digest": homes, work_id: homes, "--revision": homes}
     owner: pending (A1)
@@ -906,11 +908,11 @@ commands:
       disposition: typed
       homes: ["R(adopt_proposal)"]
       primitive: plan.adopt
-      lands: A2
+      lands: E233
       reason: "adopting a proposal is judgment"
       options: {work_id: homes, "--evidence": uncovered, "--from": uncovered, "--reason": homes, "--review": uncovered, "--verify": uncovered, "--assurance": uncovered}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "option --assurance"
           - "option --evidence"
@@ -949,7 +951,7 @@ commands:
       disposition: typed
       homes: ["R(reconfirm)"]
       primitive: plan.reconfirm
-      lands: A2
+      lands: E233
       reason: "reconfirming a plan is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -968,11 +970,11 @@ commands:
       disposition: typed
       homes: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish, ticket_rework]
       primitive: invoke.create.mutating
-      lands: A2
+      lands: E233
       reason: "the request stages launch the attempts they reach through their own transitions, and `ticket_rework` a new implementer attempt from REVIEW_FAILED (blocked on the G3 budget question, a recovery exception until then); `integration_publish` re-creates a lost integration verifier. No home starts in ASSIGNED, RUNNING, REVIEW_PENDING or VERIFY_PENDING to replace a lost implementer, reviewer or verifier, nor creates an attempt without launching it, nor runs the non-mutating and parent-acceptance dispatches (`uncovered`, the A1-0 review's F1 and the re-review's N2 and N3)"
       options: {work_id: homes, "--card": uncovered, "--role": homes, "--scope": homes, "--profile": homes, "--model": homes, "--effort": homes, "--launch": uncovered}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "entrypoint invoke.create.mutating in ASSIGNED"
           - "entrypoint invoke.create.mutating in REVIEW_PENDING"
@@ -998,7 +1000,7 @@ commands:
       disposition: typed
       homes: ["R(cancel)"]
       primitive: invoke.cancel
-      lands: A2
+      lands: E233
       reason: "cancelling a live invocation is judgment; ended invocations close themselves (C5)"
       options: {invocation: homes, "--reason": homes}
     owner: pending (A1)
@@ -1066,11 +1068,11 @@ commands:
       disposition: typed
       homes: ["R(relaunch)"]
       primitive: harness.launch
-      lands: A2
+      lands: E233
       reason: "relaunching a failed run is judgment"
       options: {"--prior-value": homes, invocation: homes, "--replace": uncovered}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "option --replace"
     owner: pending (A1)
@@ -1113,7 +1115,7 @@ commands:
       disposition: forbidden-to-lead
       homes: []
       primitive: none
-      lands: A4
+      lands: later
       reason: "retired, a half-state: A4 removes the command, and `resolve`'s cancel is the only stop"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1129,10 +1131,10 @@ commands:
       disposition: typed
       homes: [message_send]
       primitive: message.send
-      lands: F9-A
+      lands: E175
       reason: "The typed message_send records both timings. The shell send also wakes a held run."
       options: {run: homes, "--text": homes, "--file": homes, "--when": uncovered, "--idempotency-id": homes}
-      uncovered: {lands: A4, uses: ["option --when"]}
+      uncovered: {lands: later, uses: ["option --when"]}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE, STALE_REVISION,
                MESSAGING_SNAPSHOT_MISMATCH, TURN_END_NEEDS_MESSAGING, COORDINATION_LIMIT, IDEMPOTENCY_CONFLICT,
@@ -1150,7 +1152,7 @@ commands:
       disposition: undecided
       homes: []
       primitive: none
-      lands: later
+      lands: E248
       reason: "E248 owns the undesigned typed interrupt; message_send is not its home. The shell interrupt remains reachable until that design decides its disposition."
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1182,11 +1184,11 @@ commands:
       disposition: typed
       homes: ["R(waive)"]
       primitive: gate.waive
-      lands: A2
+      lands: E233
       reason: "waiving a gate is the Lead's (operator, 2026-10-06); `R(waive)` pairs only a gate, so waiving a required finding (`--finding`) has no typed home yet (`uncovered`, the A1-0 review's F2)"
       options: {"--approval-digest": homes, work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
       uncovered:
-        lands: A2
+        lands: E233
         uses:
           - "option --finding"
     owner: pending (A1)
@@ -1203,7 +1205,7 @@ commands:
       disposition: engine-owned
       homes: []
       primitive: evidence.ingest
-      lands: C5b
+      lands: later
       reason: "mechanical: the engine ingests at a run's end, attributed to the run; acceptance stays the Lead's (`work accept`). Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1243,7 +1245,7 @@ commands:
       disposition: typed
       homes: ["R(classify)"]
       primitive: verify.classify
-      lands: A2
+      lands: E233
       reason: "classifying a verification failure is judgment"
       options: {"--approval-digest": homes, work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
@@ -1284,7 +1286,7 @@ commands:
       disposition: engine-owned
       homes: []
       primitive: integrate.reconcile
-      lands: C5b
+      lands: later
       reason: "determined by the ref's compare-and-set: the dead-custodian detector runs it under the original publish's approval. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1300,7 +1302,7 @@ commands:
       disposition: engine-owned
       homes: []
       primitive: integrate.validate
-      lands: C5b
+      lands: later
       reason: "the custodian's work: the engine spawns a custodian for a prepared candidate. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE,
@@ -1343,7 +1345,7 @@ commands:
       disposition: typed
       homes: ["R(defer)"]
       primitive: integrate.defer
-      lands: A2
+      lands: E233
       reason: "deferring a queue entry is judgment"
       options: {"--prior-value": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -1360,7 +1362,7 @@ commands:
       disposition: typed
       homes: ["R(requeue)"]
       primitive: integrate.requeue
-      lands: A2
+      lands: E233
       reason: "requeueing a queue entry is judgment"
       options: {"--prior-value": homes, work_id: homes, "--reason": homes}
     owner: pending (A1)
@@ -1377,7 +1379,7 @@ commands:
       disposition: forbidden-to-lead
       homes: []
       primitive: integrate.reorder
-      lands: A4
+      lands: later
       reason: "an operator command (OPERATOR_ONLY, after B1): queue order changes from day to day"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1439,7 +1441,7 @@ commands:
       disposition: typed
       homes: [ticket_draft, ticket_rework]
       primitive: history.load
-      lands: A2
+      lands: E233
       reason: "a brief's input, as `context_refs`"
       options: {record_id: homes, "--into": homes, "--reason": homes}
     owner: pending (A1)
@@ -1456,7 +1458,7 @@ commands:
       disposition: forbidden-to-lead
       homes: []
       primitive: none
-      lands: A4
+      lands: later
       reason: "integrity maintenance is the operator's: doctor runs the advisory audit, and recording it is OPERATOR_ONLY (after B1)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
@@ -1784,7 +1786,7 @@ commands:
       disposition: engine-owned
       homes: []
       primitive: message.unseen
-      lands: A1b
+      lands: later
       reason: "the handoff serves unseen messages, triggered by the Lead's acknowledgment of a typed resume. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]

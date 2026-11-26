@@ -343,15 +343,23 @@ class LaunchContract:
         return preamble(self) + "\n\n" + self.pack_text + (continuation_text(self) or "")
 
 
+# The preamble's title: what a run's first message starts with (``LaunchContract.prompt``: the preamble, then the pack),
+# which the run's own text names when it says what that message holds.
+RUN_HEADING = "# AEW harness run"
+
+
 def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
     # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
-    # 2026-09-30, R-INV-0007-1).
-    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+    # 2026-09-30, R-INV-0007-1). The check command is the pack's own, since this says "exactly as the contract shows"
+    # (#613 review, m3); imported here because the pack's module imports the bridge, which imports this one.
+    from aew.knowledge.context import OPERATION_COMMANDS
+
+    commands = ", ".join([*([OPERATION_COMMANDS["check.run"]] if "check.run" in c.operations else []),
                           "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
-        f"# AEW harness run {c.run}",
+        f"{RUN_HEADING} {c.run}",
         "",
         f"You are AEW invocation **{c.invocation}**: a bounded `{c.role}` (role card `{card}`) for "
         f"work unit **{c.work_unit}**. The AEW launch contract below is authoritative; this harness session is "

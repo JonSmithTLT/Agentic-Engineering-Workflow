@@ -82,9 +82,9 @@ allocations:
 # messaging-on saving lowers the baseline's system bytes by 3186 (9020 -> 5834) and its MCP bytes by 48 (11900 ->
 # 11852), and the cap stays the operator's 40000 B: the saving grows operator_reserve (5320 -> 8554), as the rule above
 # the reserve says.
-# E329 measured again on E367's merged main, 84547df7. Messaging on, the system stays 6194 B, the core goes from
-# 9154 to 9149 B, and MCP from 11974 to 10967 B. The 1012 B saving adds to the reserve. Off, the system stays 6024 B,
-# the core goes from 8934 to 8929 B, and MCP from 12067 to 11167 B. The 40000 B cap stays fixed.
+# E329 measured against main c588e66f. Messaging on, the system stays 6194 B, the core goes from 9154 to
+# 9149 B, and MCP from 12019 to 11012 B. The 1012 B saving adds to the reserve. Off, the system stays
+# 6024 B, the core goes from 8934 to 8929 B, and MCP from 12086 to 11186 B. The 40000 B cap stays fixed.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
   ceiling_bytes: 40000

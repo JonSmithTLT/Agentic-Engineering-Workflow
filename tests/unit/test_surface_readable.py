@@ -236,7 +236,7 @@ def test_a_long_next_step_wraps_to_at_most_three_rows():
 def test_the_next_step_prefers_the_lead_s_decision_then_a_move_then_a_wait_then_a_hint_then_a_blocker():
     decision = {"decision": "DISPOSE_ANOMALY", "subject": "A-1", "evidence": ["A-1"], "tool": "resolve",
                 "arguments": {"subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
-                "cli_fallback": None}
+                "owner": "lead", "cli_fallback": None}
     wait = action("harness_wait", kind="wait", arguments={"runs": ["R-1"]}, cli_fallback=None)
     query = action("status", kind="query", arguments={}, cli_fallback=None)
     hint, blocker = ["do this"], [{"code": "PLAN_NOT_ACCEPTED", "message": "plan not accepted"}]
@@ -284,7 +284,7 @@ def test_only_what_holds_the_work_up_follows_the_steps():
         "decisions_required": [decision], "blockers": [{"code": "B1", "message": "m1"}],
         "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run]})
     head = render(result).split("\n\n" + JSON_MARKER)[0].split("\n")
-    assert head[2:] == ["decision: CHOOSE on T-0001 (BLOCKED)", "blocker: B1: m1", "anomaly: A1: m2",
+    assert head[2:] == ["decision: CHOOSE on T-0001, the operator's (BLOCKED)", "blocker: B1: m1", "anomaly: A1: m2",
                         "run: R-1 reviewer T-0001: running"]
 
 

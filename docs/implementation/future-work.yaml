@@ -6482,7 +6482,7 @@ sections:
       and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so
       the Lead asks every decision and the vertical's exact-decision check fails
     Closed: '2026-11-26'
-    By: '#597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`primitives.PRIMITIVE_OWNERS`),
+    By: '#597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`),
       and one the table does not state is the operator''s; the review and Ticket-verification acceptances are the Lead''s
       and the scripted Lead takes them. `test_decision_owners` pins E350''s four gaps; E351 is the plan''s own kind'
 

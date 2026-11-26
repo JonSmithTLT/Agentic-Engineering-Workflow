@@ -5126,7 +5126,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`primitives.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
 
 *Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
 

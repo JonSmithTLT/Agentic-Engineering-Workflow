@@ -1,4 +1,5 @@
-**The owners the Lead holds, and their sources** (#597). `primitives.PRIMITIVE_OWNERS` gives the Lead five primitives:
+**The owners the Lead holds, and their sources** (#597). `aew.owners.PRIMITIVE_OWNERS` (outside the engine, so the
+Lead's MCP transport can word text from it) gives the Lead five primitives:
 
 - `review.ingest` and `verify.ingest` (a Ticket's own verification): the two acceptances this row names.
 - `work.dispose` (DISPOSE_FINDING, DISPOSE_CLAIM, DISPOSE_ANOMALY): M4-E plan v3 §2.4, operator-approved 2026-10-07,

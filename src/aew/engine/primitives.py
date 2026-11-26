@@ -118,7 +118,7 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
                   ("integration_verification",), "control_state+credential+harness_process", "expected_revision",
                   "verify.ingest.integration"),
-    # The publication decision (M4-E E6a: completed with `integration_publish`), whose owner is `owner_of`'s. Its step
+    # The publication decision (M4-E E6a: completed with `integration_publish`), whose owner is `aew.owners`'. Its step
     # is the intent commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE
     # follow it as its effect: the authoritative ref, the integration worktree and a removable Ticket workspace
     # (`workspace`), and DONE's revocations (the lease's custody credential, `credential`; a live run's supervisor ends
@@ -156,37 +156,8 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
                                                     "unknown", "unknown", None, declared=False)
 
 
-# Whose judgment a primitive carries out: the one table of primitive owners (register E335; the designer's ruling of
-# 2026-11-11 on E334 and E335, part 2). The action projection reads each decision kind's one owner from it. A primitive
-# it does not list is the operator's: the Lead is given an owner only by an entry here, never by default.
-LEAD = "lead"
-OPERATOR = "operator"
-OWNERS = (LEAD, OPERATOR)
-PRIMITIVE_OWNERS: dict[str, str] = {
-    # The acceptances that are the Lead's by design: a review report, and a Ticket's own verification report.
-    "review.ingest": LEAD,
-    "verify.ingest": LEAD,
-    # The Lead's disposition of a finding, claim or anomaly (plan v3 §2.4), and its resolution of an unfinished stage
-    # (M4-E E3c). Register E350 names the operator's decisions a Lead session can reach; these are not among them.
-    "work.dispose": LEAD,
-    "stage.resolve": LEAD,
-    # Finishing a publication whose intent is already committed (E137): the publish decision was made before it.
-    "integrate.reconcile": LEAD,
-}
-
-
-def owner_of(primitive_id: str) -> str:
-    """The owner of a primitive's judgment: its entry in ``PRIMITIVE_OWNERS``, else the operator."""
-    return PRIMITIVE_OWNERS.get(primitive_id, OPERATOR)
-
-
-def whose(owner: str | None, *, to_lead: bool = False) -> str:
-    """An owner as text says it ("the Lead's", "the operator's"; "your" in text addressed to the Lead about its own),
-    so wording about whose decision something is derives from the owner, never restates it. No owner, or one this
-    table does not name, reads as the operator's."""
-    if owner == LEAD:
-        return "your" if to_lead else "the Lead's"
-    return "the operator's"
+# The owner of each primitive's judgment is `aew.owners` (register E335), outside the engine so that the Lead's MCP
+# transport can word text from it.
 
 
 # The Lead transactions a primitive commits under, where they are not just its own id: the three creations share

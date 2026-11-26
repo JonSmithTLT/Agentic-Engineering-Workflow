@@ -92,6 +92,10 @@ None.
 - `aew.harness.procs`
 - `aew.util`
 
+### `aew.owners`
+
+None.
+
 ### `aew.priority_levels`
 
 - `aew.schemas`
@@ -1903,6 +1907,7 @@ None.
 - `aew.harness.event_spool`
 - `aew.harness.operator_client`
 - `aew.harness.runlog`
+- `aew.owners`
 - `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
@@ -2451,8 +2456,8 @@ None.
 ### `aew.surface.contract`
 
 - `aew.coordination.layout`
-- `aew.engine.primitives`
 - `aew.knowledge.evidence`
+- `aew.owners`
 - `aew.priority_levels`
 - `aew.surface.context`
 - `aew.surface.presentation`
@@ -2485,7 +2490,7 @@ None.
 
 ### `aew.surface.presentation`
 
-- `aew.engine.primitives`
+- `aew.owners`
 - `aew.surface.contract`
 
 ### `aew.surface.projection`
@@ -2500,6 +2505,7 @@ None.
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.knowledge.evidence`
+- `aew.owners`
 - `aew.surface.availability`
 - `aew.surface.classify`
 - `aew.surface.context`

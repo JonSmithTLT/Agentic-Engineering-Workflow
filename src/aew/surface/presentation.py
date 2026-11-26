@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
-from aew.engine.primitives import owner_of, whose
+from aew.owners import owner_of, whose
 
 if TYPE_CHECKING:
     from aew.surface.contract import Tool

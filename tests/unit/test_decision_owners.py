@@ -1,6 +1,6 @@
 """Every decision the action projection asks for states its owner (register E335; the designer's ruling of 2026-11-11
 on E334 and E335, part 2): one owner per decision kind, read from one table of primitive owners
-(``primitives.PRIMITIVE_OWNERS``), and an owner the table does not state is the operator's.
+(``owners.PRIMITIVE_OWNERS``), and an owner the table does not state is the operator's.
 
 The owners are then held against what a Lead session can reach (``lead_broker.LEAD_REACHABLE``): a decision the Lead
 owns is one it can carry out, and a decision the operator owns is not one it can carry out by itself, except the gaps
@@ -14,8 +14,9 @@ import inspect
 
 import pytest
 
+from aew import owners as P
 from aew.cli.main import build_parser
-from aew.engine import primitives as P
+from aew.engine import primitives as PR
 from aew.errors import ValidationFailed
 from aew.harness import lead_broker
 from aew.schemas import schema, validate_def
@@ -56,7 +57,7 @@ def _commands(primitive: str) -> set[frozenset[str]]:
     command exists (``stage.resolve`` commits as ``stage continue`` or ``stage abandon``)."""
     def words(op: str) -> frozenset[str]:
         return frozenset(op.split(".")[:2])
-    return {words(op) for op in {primitive, *P.commit_ops(primitive)}} & _every_command()
+    return {words(op) for op in {primitive, *PR.commit_ops(primitive)}} & _every_command()
 
 
 def _every_command() -> set[frozenset[str]]:
@@ -78,7 +79,7 @@ def test_every_decision_kind_the_projection_emits_has_its_primitives_in_the_owne
     for kind, primitives in projection.DECISION_PRIMITIVES.items():
         assert primitives, kind
         for p in primitives:
-            assert p in P.SPECS or p in P.CONTROL_OP_SPECS, f"{kind}: {p} is no primitive or control op"
+            assert p in PR.SPECS or p in PR.CONTROL_OP_SPECS, f"{kind}: {p} is no primitive or control op"
 
 
 def test_one_owner_per_decision_kind_and_its_primitives_agree_on_it():
@@ -92,7 +93,7 @@ def test_an_owner_the_table_does_not_state_is_the_operators():
     assert P.owner_of("no.such.primitive") == P.OPERATOR
     assert projection.decision_owner("NO_SUCH_DECISION") == P.OPERATOR
     assert set(P.PRIMITIVE_OWNERS.values()) <= set(P.OWNERS)
-    assert all(p in P.SPECS or p in P.CONTROL_OP_SPECS for p in P.PRIMITIVE_OWNERS)
+    assert all(p in PR.SPECS or p in PR.CONTROL_OP_SPECS for p in P.PRIMITIVE_OWNERS)
 
 
 def test_the_lead_owns_the_review_and_verification_acceptances_and_the_operator_owns_publication():
@@ -145,7 +146,8 @@ def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table(
 
     publish = P.whose(P.owner_of("integrate.publish"), to_lead=True)
     assert publish == "the operator's"
-    for text in (contract.tool("integration_publish").description, presentation.DESCRIPTIONS["integration_publish"]):
+    standard = contract.tool("integration_publish", switches=contract.ALL_SWITCHES).description
+    for text in (standard, presentation.DESCRIPTIONS["integration_publish"]):
         assert f"carries out {publish} publication decision" in text and "your" not in text
     project = {"anomalies": [], "blockers": [], "decisions_required": []}
     for owner, said in ((P.LEAD, "the Lead's"), (P.OPERATOR, "the operator's"), (None, "the operator's")):

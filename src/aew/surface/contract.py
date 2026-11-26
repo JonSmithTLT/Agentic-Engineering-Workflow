@@ -22,8 +22,8 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
-from aew.engine.primitives import owner_of, whose
 from aew.knowledge import evidence as E
+from aew.owners import owner_of, whose
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no

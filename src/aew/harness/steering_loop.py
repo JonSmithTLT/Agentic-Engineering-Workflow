@@ -68,10 +68,11 @@ from typing import Any
 from aew import errors
 from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
-from aew.engine.primitives import spec_for, whose
+from aew.engine.primitives import spec_for
 from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 from aew.harness import contract as K
 from aew.harness import event_spool, runlog
+from aew.owners import whose
 from aew.util import replace_with_retry, sha256_bytes, utc_now
 
 # Stop codes. The first group returns control to the Lead in the ordinary way; the rest need attention (notified).

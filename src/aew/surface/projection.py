@@ -37,10 +37,11 @@ from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
-from aew.engine.primitives import OPERATOR, owner_of, spec_for
+from aew.engine.primitives import spec_for
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
+from aew.owners import OPERATOR, owner_of
 from aew.surface import availability as SA
 from aew.surface import contract, stage
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
@@ -96,7 +97,7 @@ def _action(name: str, arguments: dict[str, Any], *, kind: str, availability: st
 
 # The primitives each decision kind carries out, from which its one owner is read (register E335; the designer's
 # ruling of 2026-11-11: one owner per decision kind, from one table of primitive owners,
-# ``primitives.PRIMITIVE_OWNERS``). PUBLISH accepts the integration verifier's report and publishes, or publishes a
+# ``owners.PRIMITIVE_OWNERS``). PUBLISH accepts the integration verifier's report and publishes, or publishes a
 # validated candidate.
 DECISION_PRIMITIVES: dict[str, tuple[str, ...]] = {
     "ACCEPT_REVIEW_EVIDENCE": ("review.ingest",),

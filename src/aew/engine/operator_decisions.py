@@ -171,11 +171,13 @@ def consume(k: Kernel, ctx: TxnContext, decision: str, work_id: str, binds: str,
         return None
     then = command(decision, work_id, revision)
     if held is None:
+        # Says what the operator does, never what they are challenged with: the challenge is the operator's and
+        # stays at their terminal (O-SECRET: a model is never asked for a code).
         raise OperatorAuthorizationRequired(
-            f"the {_what(decision)} of {work_id} is the operator's decision, and they have not confirmed it: ask the "
-            f"operator to run `{then}` at their own terminal and type back the code the operator endpoint shows, then "
-            "call this again. Nothing this session passes counts as their confirmation", reason=REQUIRED,
-            decision=decision, work_id=work_id, ask_operator=then)
+            f"the {_what(decision)} of {work_id} is the operator's decision, and it waits for their confirmation, "
+            f"which they give in their own channel: tell the operator it waits for them to run `{then}` at their own "
+            "terminal, and call this again once they have confirmed it. Nothing this session passes counts as their "
+            "confirmation", reason=REQUIRED, decision=decision, work_id=work_id, ask_operator=then)
     if held["binds"] != binds:
         raise OperatorAuthorizationRequired(
             f"the operator confirmed the {_what(decision)} of {work_id} for {held['binds'][:12]}, not the "

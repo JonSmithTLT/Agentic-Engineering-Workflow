@@ -74,8 +74,9 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
    stated owner is exactly `lead` or `mechanical`, the Lead takes itself and never asks, and the ledger lists it
    apart. Any other stated owner is asked of the operator, compared like any question, and recorded as a finding
    (`unknown_owner`).
-   **Until the projection states owners** (projection v2), no decision has one: the Lead asks the operator, as
-   today, and the summary shows "owner not stated" for each.
+   **The projection states each decision's owner** (register E335: one owner per decision kind, read from the
+   table of primitive owners, and one the table does not state is the operator's). A question with no owner, such as
+   a fallback's, is asked of the operator, and the summary shows "owner not stated" for it.
 3. Otherwise call the single action the projection marks as next, with **exactly the arguments the projection
    supplied**. Today's projection marks no action as next, so a single AVAILABLE action is taken as the next one; if
    several are AVAILABLE, `ambiguous_next_action` is recorded and the first in order is taken.
@@ -219,8 +220,8 @@ workaround no counter sees (editing git's own exclude file, for example) can nev
 **Operator decisions** are listed, not counted against: every question AEW or the Lead put to the operator, with the
 answer. V1 must list exactly `plan`, `publish`. Any other question fails that comparison and is reviewed by hand: is it
 a real product, policy or safety judgement? The summary shows, for each decision, the tool its answer drives and
-whose decision the projection says it is ("owner not stated" until the projection carries owners); the test does not
-settle that ownership. **v2:** only operator-owned decisions are the operator's. A decision the projection gives to the
+whose decision the projection says it is ("owner not stated" for a question no decision carries, such as a
+fallback's); the test does not settle that ownership. **v2:** only operator-owned decisions are the operator's. A decision the projection gives to the
 Lead or the mechanism is never put to the operator, and the summary lists it apart ("not the operator's"). Every
 question that does reach the operator is compared, whatever owner it names, so a question cannot leave the
 comparison by its label.
@@ -349,7 +350,7 @@ Approved by the operator on 2026-10-11 (Q8: every listed amendment). Each thresh
 | Amendment | Where it is implemented |
 |---|---|
 | The scripted Lead supplies the projection's `judgment_inputs`, where present | §2; `vertical/lead.py` (`judged`) |
-| `decisions_required` counts operator-owned decisions only; until the projection states owners, "owner not stated" and today's behaviour | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
+| `decisions_required` counts operator-owned decisions only; the projection states owners (E335), and a question with none shows "owner not stated" | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
 | The evidence-mismatch sub-scenario no longer relies on `__pycache__` | **already met** in v1 (the check rewrites the tracked `ledger/build-stamp.txt`) |
 | The `open` row opens the operator console and asks for the PIN; the auto-opened console is not counted; until then the ideal attempt fails and today's fallback is counted | retired with the frozen path (STG-13): `open` is step 3 of V-01's path (§3), and `console_opened` still records a console |
 | A live-UAT check of auto-open | §6, the live variant |

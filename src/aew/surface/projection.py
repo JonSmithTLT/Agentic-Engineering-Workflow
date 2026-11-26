@@ -19,7 +19,8 @@ how their answer can change:
 
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
-never for a query or a wait, never dependent on the profile). Decisions never carry a default.
+never for a query or a wait, never dependent on the profile). Decisions never carry a default, and each states its
+owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
-from aew.engine.primitives import spec_for
+from aew.engine.primitives import OPERATOR, owner_of, spec_for
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
@@ -93,11 +94,39 @@ def _action(name: str, arguments: dict[str, Any], *, kind: str, availability: st
             "reason_codes": sorted(set(reason_codes)), "cli_fallback": cli_fallback}
 
 
+# The primitives each decision kind carries out, from which its one owner is read (register E335; the designer's
+# ruling of 2026-11-11: one owner per decision kind, from one table of primitive owners,
+# ``primitives.PRIMITIVE_OWNERS``). PUBLISH accepts the integration verifier's report and publishes, or publishes a
+# validated candidate.
+DECISION_PRIMITIVES: dict[str, tuple[str, ...]] = {
+    "ACCEPT_REVIEW_EVIDENCE": ("review.ingest",),
+    "ACCEPT_VERIFICATION": ("verify.ingest",),
+    "PUBLISH": ("integrate.publish", "verify.ingest.integration"),
+    "FINISH_PUBLISH": ("integrate.reconcile",),
+    "CLASSIFY_FAILURE": ("verify.classify",),
+    "RECONCILE": ("work.reconcile",),
+    "RESOLVE_STAGE": ("stage.resolve",),
+    "DISPOSE_ANOMALY": ("work.dispose",),
+    "DISPOSE_FINDING": ("work.dispose",),
+    "DISPOSE_CLAIM": ("work.dispose",),
+    "REPLACE_GATE": ("work.gate_replace",),
+    "ADD_SCOPE": ("work.scope_add",),
+}
+
+
+def decision_owner(name: str) -> str:
+    """A decision kind's one owner, read from its primitives' owners. A kind with no primitives here, or whose
+    primitives name different owners, is the operator's: an unstated owner never falls to the Lead."""
+    owners = {owner_of(p) for p in DECISION_PRIMITIVES.get(name, ())}
+    return owners.pop() if len(owners) == 1 else OPERATOR
+
+
 def _decision(name: str, subject: str, *, tool: str | None, arguments: dict[str, Any] | None,
               cli_fallback: list[str] | None, evidence: list[str] | None = None,
               availability: str = UNKNOWN) -> dict[str, Any]:
-    return {"decision": name, "subject": subject, "evidence": list(evidence or []), "tool": tool,
-            "arguments": arguments, "availability": availability, "default": "NONE", "cli_fallback": cli_fallback}
+    return {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
+            "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
+            "cli_fallback": cli_fallback}
 
 
 def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:

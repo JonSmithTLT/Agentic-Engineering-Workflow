@@ -156,6 +156,30 @@ def spec_for(primitive_id: str) -> PrimitiveSpec:
                                                     "unknown", "unknown", None, declared=False)
 
 
+# Whose judgment a primitive carries out: the one table of primitive owners (register E335; the designer's ruling of
+# 2026-11-11 on E334 and E335, part 2). The action projection reads each decision kind's one owner from it. A primitive
+# it does not list is the operator's: the Lead is given an owner only by an entry here, never by default.
+LEAD = "lead"
+OPERATOR = "operator"
+OWNERS = (LEAD, OPERATOR)
+PRIMITIVE_OWNERS: dict[str, str] = {
+    # The acceptances that are the Lead's by design: a review report, and a Ticket's own verification report.
+    "review.ingest": LEAD,
+    "verify.ingest": LEAD,
+    # The Lead's disposition of a finding, claim or anomaly (plan v3 §2.4), and its resolution of an unfinished stage
+    # (M4-E E3c). Register E350 names the operator's decisions a Lead session can reach; these are not among them.
+    "work.dispose": LEAD,
+    "stage.resolve": LEAD,
+    # Finishing a publication whose intent is already committed (E137): the publish decision was made before it.
+    "integrate.reconcile": LEAD,
+}
+
+
+def owner_of(primitive_id: str) -> str:
+    """The owner of a primitive's judgment: its entry in ``PRIMITIVE_OWNERS``, else the operator."""
+    return PRIMITIVE_OWNERS.get(primitive_id, OPERATOR)
+
+
 # The Lead transactions a primitive commits under, where they are not just its own id: the three creations share
 # `invoke.create`, and steering is a lowering or a request. The stage journal refuses a step whose commit is not one of
 # its planned primitive's (M4-E E3).

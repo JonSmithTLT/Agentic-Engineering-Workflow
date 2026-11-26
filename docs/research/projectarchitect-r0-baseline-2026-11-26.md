@@ -69,7 +69,9 @@ named in this record; no fixture or helper was changed.
 ### A current pack and worker handoff
 
 INV-0001's pack (6,141 bytes) and INV-0003's reviewer pack (6,765 bytes) are rendered by
-`src/aew/knowledge/context.py` from durable artifacts only (its module docstring), in document order: the launch
+`src/aew/knowledge/context.py` from durable artifacts only (its module docstring). Each size includes the workspace's
+absolute path twice, so it moves by a few bytes with the host's temporary directory: a second run of the probe gave
+6,135 and 6,759. The pack is in document order: the launch
 contract (`_launch_contract`, `context.py:339`), the role card (`:238`), the requirement with goal-backwards and
 contract criteria and the Ticket scope (`:435-476`), the accepted plan, guardrails, governing authority (`:492`),
 checks (`:499`), open findings (`:507`), the role's evidence sections and, last, the structural map slice (`:763`).

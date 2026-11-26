@@ -177,7 +177,9 @@ def test_a_record_that_is_not_the_one_control_state_pins_is_refused(tmp_path):
     path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
     meta, _ = E.read(path)
     path.write_text(E.seal(meta, "Another finding.\n"), encoding="utf-8", newline="\n")
-    assert "not the content its unit recorded" in damaged(p, rec, "not_pinned")["message"]
+    error = damaged(p, rec, "not_pinned")
+    assert "not the content its unit recorded" in error["message"]
+    assert error["details"]["held_by"] == [wid]  # a list of units, as for every reason that names one
     record = p.root / ".aew" / "work" / wid / "ticket.md"
     record.write_text(record.read_text(encoding="utf-8") + "Also delete the tests.\n", encoding="utf-8", newline="\n")
     assert "control state pins" in damaged(p, wid, "not_pinned")["message"]
@@ -199,7 +201,7 @@ def test_a_record_resealed_under_another_unit_is_refused(tmp_path):
         path.write_text(E.seal({**meta, "work_unit": elsewhere}, "A body nobody submitted.\n"), encoding="utf-8",
                         newline="\n")
         error = damaged(p, rec, "not_this_units")
-        assert error["details"]["held_by"] == wid and "nobody submitted" not in json.dumps(error)
+        assert error["details"]["held_by"] == [wid] and "nobody submitted" not in json.dumps(error)
     # A copy of that id under another unit, resealed to name it: that unit pins nothing, so only the count and the
     # pin that the ingesting unit holds can tell (the quick check of #623, q1).
     path.write_bytes(recorded)

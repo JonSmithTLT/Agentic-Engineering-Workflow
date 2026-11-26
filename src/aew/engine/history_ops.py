@@ -255,11 +255,11 @@ class HistoryCommands:
         if meta["id"] != evidence_id or meta["work_unit"] != work_id:
             raise self._damaged(f"the record in {rel} says it is {meta['id']} of {meta['work_unit']}, not "
                                 f"{evidence_id} of {work_id}, whose evidence it lies in", reason="not_this_units",
-                                path=rel, held_by=work_id)
+                                path=rel, held_by=[work_id])
         pinned = next((r for r in state["work"][work_id].get("evidence") or [] if r["id"] == evidence_id), None)
         if pinned is not None and pinned["sha256"] != sha256_bytes(raw):
             raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the content its unit recorded",
-                                reason="not_pinned", path=rel, held_by=work_id)
+                                reason="not_pinned", path=rel, held_by=[work_id])
         return self._evidence_body(evidence_id, meta, body, archived=False)
 
     def _unit_body(self, work_id: str, unit: dict[str, Any], *, archived: bool) -> dict[str, Any]:

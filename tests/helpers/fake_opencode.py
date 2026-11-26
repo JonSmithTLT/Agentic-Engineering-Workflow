@@ -612,10 +612,13 @@ class FakeOpenCode:
             info = {"id": sid, "projectID": "fake", "title": body.get("title"), "agent": body.get("agent"),
                     "model": {"variant": "default", **(body.get("model") or {})}, "location": body.get("location"),
                     "permissions": body.get("permissions") or [], "metadata": body.get("metadata") or {},
-                    "cost": 0, "tokens": {"input": 0, "output": 0}, "time": {"created": now_ms()}}
+                    "cost": 0, "tokens": {"input": 0, "output": 0},
+                    # `updated` is required in the pinned schema (Session.Info.time): the Lead broker's poster picks
+                    # the session to wake by it (`lead_wake.LeadPoster.session`)
+                    "time": {"created": now_ms()}}
+            info["time"]["updated"] = info["time"]["created"]
             if self.knobs.get("live_usage") is not None:
                 info["tokens"] = zero_usage()
-                info["time"]["updated"] = info["time"]["created"]
             with self.lock:
                 self.sessions[sid] = Session(info)
             self.persist()
@@ -992,13 +995,16 @@ def tui(argv: list[str], scripts: Path) -> int:
     """The Lead's TUI (``--server``): the Lead's model acts in the server's environment, which AEW sets to the TUI's,
     without the password the real server removes from it (``--stdio``, measured on 2.2.6)."""
     (scripts / TUI_ARGV).write_text(json.dumps(argv), encoding="utf-8")
-    for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"):
-        os.environ.pop(name, None)
+    popped = [os.environ.pop(name, None) for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD")]
+    password = next((p for p in popped if p), "")
     spec = json.loads((scripts / TUI_SCRIPT).read_text(encoding="utf-8"))
     if isinstance(spec, dict) and spec.get("driver") == "vertical":  # the vertical UAT's scripted Lead (a policy)
         from vertical import lead
 
-        return lead.main(scripts / TUI_SCRIPT)
+        # The TUI keeps the password to reach its server, where the broker posts wakes; its model's shell never
+        # gets it (vertical-uat.md §2: the wake channel).
+        url = argv[argv.index("--server") + 1] if "--server" in argv[:-1] else None
+        return lead.main(scripts / TUI_SCRIPT, server=(url, password) if url else None)
     import fake_agent
 
     sys.argv = ["fake_agent", "--script", str(scripts / TUI_SCRIPT), "--transcript", str(scripts / TUI_TRANSCRIPT)]

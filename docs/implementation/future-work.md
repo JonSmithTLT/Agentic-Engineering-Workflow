@@ -3990,18 +3990,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E374/`, oldest first (`python tools/register.py show E374`).*
 
-### E375
-
-**Work:** The scripted Lead's steering-on policy: with steering on, it honours a wait the projection marks `woken` (`src/aew/surface/projection.py:558`) by ending its turn until a wake or the operator arrives, with the fake TUI given a wake channel to it (today it reads only chat, `tests/helpers/vertical/lead.py:167-191`, and calls the single AVAILABLE action, `:355-364`). A second part is proposed and not approved: counting a BLOCKED loop stop as a decline only when its blocker is still present after the run ends (today `loop_acts` counts it at once, `:379-382`, while the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`). It changes how `vertical-uat.md` §3 ("Steering on": "only when the loop declined") is read, so it waits for the operator's answer to the plan's Q10
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical's re-measure of 2026-11-26 at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case
-
-**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("For q1 yes. That honestly just seems like a bug and sint how aew works now."). Q1 asked only about the wait marked `woken`, so the answer approves that part and the matching amendment of `vertical-uat.md` §2's Lead policy, which this row's pull request makes with the code. The BLOCKED-stop part and any change to §3 wait for the operator's answer to Q10, which the answer to Q1 does not cover
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E375/`, oldest first (`python tools/register.py show E375`).*
-
 ### E378
 
 **Work:** A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED), with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today `_ticket_actions` emits no decision there (`src/aew/surface/projection.py:246-299`), the only guidance is a hint to `aew integrate requeue` (`src/aew/engine/resume_ops.py:471-476`), and after each requeue `ticket_prepare` is projected AVAILABLE and refused `ILLEGAL_TRANSITION`. The scripted Lead's gap key includes the revision (`tests/helpers/vertical/lead.py:510-525`), so it loops on that hint until its step budget ends: this row also gives it a loop breaker
@@ -5409,6 +5397,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #594: the archetype's text is scope-neutral, `knowledge.context._scope_duties` adds each scope's duties only where the pack delivers their input, and `test_pack_truth`'s scope-fit guard holds it. Parent scope, outside the row, gained only the change duty for the child diffs its pack carries, on #594's review (m1) (`notes.d/E366/`)
 
 *Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
+
+### E375
+
+**Was:** The scripted Lead's steering-on policy in the vertical UAT (cluster C6 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`): it called a wait the projection marks `woken`, and took a self-clearing BLOCKED loop stop as a decline, so each steering-on V1 and V2 case counted `mechanical_calls`
+
+**Closed:** 2026-11-26
+
+**By:** PR #627: with steering on, the scripted Lead ends its turn on a `woken` wait until a wake reaches the fake TUI's session on the Lead's server or the operator speaks, and takes a BLOCKED stop as a decline only once its blocker still stands after the run ends, read with the loop's own selection; `vertical-uat.md` §2 and §3 amended with the operator's answers to the plan's Q1 and Q10 (2026-11-26). `mechanical_calls` fell from 5, 5 and 4 to 0 in the steering-on V1, V2-exit and V2-kill cases
+
+*Later notes: `notes.d/E375/`, oldest first (`python tools/register.py show E375`).*
 
 ### E376
 

@@ -667,6 +667,10 @@ skipped:
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
       every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_the_contained_lead_reads_a_guide_section_through_its_broker_and_its_lookups_are_counted: >-
+      Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
+      relayed guide read and its telemetry run on every platform through a real broker in
+      tests/integration/test_lead_relayed_reads.py. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_lead_contained_session.py::test_a_relayed_file_argument_is_read_where_the_client_runs: >-
       Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
       client read runs on every platform through a real broker in

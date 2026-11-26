@@ -45,6 +45,7 @@ import json
 import math
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -70,8 +71,11 @@ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin":
                                  # one typed Lead surface call (F15.1): arguments are JSON text
                                  "lead.tool": {"name": str, "arguments": str, "ingress": str, "profile": str},
                                  # one read relayed for the contained Lead (RELAYED_READS)
-                                 "lead.read": {"argv": list, "cwd": str}}
-COOPERATIVE = frozenset({"lead.tool", "lead.read"})
+                                 "lead.read": {"argv": list, "cwd": str},
+                                 # a lookup the Lead's shell made, for the session's telemetry (E231): a `--help`,
+                                 # or an `aew guide` it ran itself (not relayed: a Lead session not contained)
+                                 "lead.lookup": {"argv": list, "exit": int}}
+COOPERATIVE = frozenset({"lead.tool", "lead.read", "lead.lookup"})
 # Provenance. Its values also pick the refusal text of a command kept out of a Lead session (:func:`run_cli`).
 INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}
 
@@ -163,6 +167,9 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("map diff", ("operands", "json")),
     # F25 R6: a provisional run's usage is read from its run directory under `.aew/local`, which the sandbox masks
     ("usage show", ("target", "all", "since", "until", "json")),
+    # E231: the guide's sections. It reads committed policy, which the sandbox shows, but it is relayed so the broker
+    # sees each read and counts it in the session's telemetry (`tool_calls.lookup`), as the failure criterion asks.
+    ("guide", ("section", "json")),
 )}
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
 # The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
@@ -187,7 +194,7 @@ _WRITER = "it writes under `.aew`, which a non-writer is refused: the operator r
 # session keeps out: #286 review F1).
 CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for path, why in (
     ("authority list", _LOCAL), ("context show", _LOCAL + " (it renders the pack, as in a worker's sandbox)"),
-    ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("guide", _LOCAL), ("invoke show", _LOCAL),
+    ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("invoke show", _LOCAL),
     ("history links", _LOCAL), ("history list", _LOCAL), ("history log", _LOCAL), ("history show", _LOCAL),
     ("history search", _LOCAL + " (its derived index is rebuilt privately)"),
     ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message thread", _LOCAL),
@@ -198,6 +205,8 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("doctor", _HERE), ("harness config", _HERE),
     ("dashboard status", "the operator's dashboard, found from its endpoint under `.aew/local`, which the sandbox "
                          "masks: there it reports none running, and the operator sees it at their own terminal"),
+    ("lead telemetry", "the Lead sessions' telemetry, under `.aew/local`, which the sandbox masks: there it reports "
+                       "none, and the operator reads it at their own terminal (E231)"),
     ("context pack", _WRITER), ("history compact", _WRITER), ("history reindex", _WRITER),
     ("init", "the operator's own"), ("lead session", "the operator's own: it starts a Lead session"),
     ("opencode", "the operator's own: it starts a Lead session"),
@@ -298,6 +307,9 @@ class LeadBroker:
         self._require_lead(state, token)  # only the current Lead's credential is ever brokered
         self.generation = int(state["lead"]["generation"])  # the generation this session acts for
         self.session_label = state["lead"].get("session_label")
+        # This session's name in its telemetry (`tool_calls`; E231): one per broker, so a later session of the same
+        # generation (the operator's `aew opencode` again, without --acquire) is counted apart.
+        self.session_id = f"LS-{secrets.token_hex(6)}"
         from aew.surface.context import switches_for
 
         self.surface_switches = switches_for(engine)
@@ -467,9 +479,12 @@ class LeadBroker:
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
             receipts: list[Callable[[], None]] = []
             token = self._token  # taken while serving: close() clears its own copy when its teardown ends
+            parsed: list[argparse.Namespace] = []
             answer = run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
                               on_result=lambda result, ns: self._read_receipt_unlocked(result, ns, token=token),
-                              defer_receipt=receipts.append)
+                              defer_receipt=receipts.append, parsed=parsed)
+            if parsed and command_path(parsed[0]) == GUIDE_READ:
+                self._lookup(tool_calls.GUIDE, "guide", section=parsed[0].section, ok=answer["exit"] == 0)
 
             def deliver_read(send: Callable[[Any], None]) -> None:
                 with self.server.serialized():
@@ -481,6 +496,13 @@ class LeadBroker:
                             receipt()
 
             return bridge.ResultDelivery(deliver_read)
+        if op == "lead.lookup":  # cooperative: telemetry only, needing no Lead authority and changing nothing
+            argv = list(args["argv"])
+            if is_help_lookup(argv):
+                self._lookup(tool_calls.HELP, help_command(argv))
+            elif (read := guide_read(argv)) is not None:
+                self._lookup(tool_calls.GUIDE, "guide", section=read[0], ok=args["exit"] == 0)
+            return {"recorded": True}
         problem = self._authority_lost()
         if problem:
             self.superseded = problem
@@ -490,6 +512,12 @@ class LeadBroker:
             lead = self.engine.store.current()["lead"]
             return {"generation": lead["generation"], "session_label": lead.get("session_label")}
         return self._run_cli(list(args["argv"]), args["cwd"], args["stdin"])
+
+    def _lookup(self, kind: str, command: str, *, section: str | None = None, ok: bool | None = None) -> None:
+        root = getattr(self.engine, "aew_root", None)
+        if root is not None:
+            tool_calls.lookup(root, kind=kind, session=self.session_id, generation=self.generation, command=command,
+                              section=section_named(section), ok=ok)
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
         return run_cli(self.engine, self._token, argv, cwd, stdin, channel="lead_broker")
@@ -609,7 +637,8 @@ class LeadBroker:
             raise defect from exc
         finally:
             tool_calls.record(
-                self.engine.aew_root, tool=args.get("name"), arguments=args.get("arguments"),
+                self.engine.aew_root, session=self.session_id, generation=self.generation,
+                tool=args.get("name"), arguments=args.get("arguments"),
                 ingress=args.get("ingress"), profile=args.get("profile"), result=(answer or {}).get("stage_result"),
                 input_error=(answer or {}).get("adapter_input_error"),
                 error=refused,
@@ -757,7 +786,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
 def run_read(engine: Any, argv: list[str], cwd: str,
              track: Callable[[subprocess.Popen[str], bool], None] | None = None, *,
              on_result: Callable[[dict[str, Any], argparse.Namespace], None] | None = None,
-             defer_receipt: Callable[[Callable[[], None]], None] | None = None) -> dict[str, Any]:
+             defer_receipt: Callable[[Callable[[], None]], None] | None = None,
+             parsed: list[argparse.Namespace] | None = None) -> dict[str, Any]:
     """Run one read relayed for the contained Lead (``RELAYED_READS``; STG-05 CS-4 addendum 4, ruling 1) on the host,
     and return what it printed, as it printed it, with its exit status. The request is parsed against the command's
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
@@ -768,7 +798,8 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
     writer, records that (:func:`record_delivery`), as the Lead's typed wait records it: the triggers it returned are
     returned once, and an end it returned is no wake. The live bridge supplies ``defer_receipt`` so both these marks
-    and ``on_result`` message receipts run only after its successful send; direct helper callers complete inline."""
+    and ``on_result`` message receipts run only after its successful send; direct helper callers complete inline.
+    ``parsed`` is given the request as parsed once every check has passed, for the session's telemetry."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
@@ -816,6 +847,8 @@ def run_read(engine: Any, argv: list[str], cwd: str,
         if Engine.discover(place).aew_root != project:
             raise errors.PermissionDenied("a read relayed for this Lead session runs on its own project only",
                                           project=str(project), reason="relayed_project")
+    if parsed is not None:
+        parsed.append(ns)
     env = procs.engine_imports(scrubbed_env())  # the broker's own `aew`, and no credential
     for variable in ENV_NAMES:
         env.pop(variable, None)
@@ -900,6 +933,85 @@ def relays(args: argparse.Namespace) -> bool:
 def relay_read(argv: list[str]) -> dict[str, Any]:
     """Client side: send one relayed read to this Lead session's broker, from the shell's working directory."""
     return bridge.call("lead.read", {"argv": list(argv), "cwd": str(Path.cwd().resolve())}, env_names=ENV_NAMES)
+
+
+GUIDE_READ = frozenset({"guide"})
+HELP_FLAGS = frozenset({"-h", "--help"})
+HELP_WORDS_MAX = 4  # sub-command words kept: `aew` nests three deep today
+
+
+def is_help_lookup(argv: list[str]) -> bool:
+    """A lookup of the CLI's own help (E231's failure criterion): `-h` or `--help` before any `--`, `aew help ...`, or
+    `aew` alone, which prints the help."""
+    head = argv[:argv.index("--")] if "--" in argv else argv
+    return not argv or argv[0] == "help" or any(a in HELP_FLAGS for a in head)
+
+
+def help_command(argv: list[str]) -> str:
+    """The command a help lookup asked about (``work create`` for ``aew work create --help``): the leading words that
+    are sub-commands of the live parser, past `aew`'s own `-C <dir>` and a leading `help`. Never anything else: the
+    telemetry holds no text the Lead wrote."""
+    from aew.cli.main import build_parser
+
+    rest = [a for a in argv if isinstance(a, str)]
+    if rest[:1] == ["-C"]:
+        rest = rest[2:]
+    if rest[:1] == ["help"]:
+        rest = rest[1:]
+    # Every switch on, as the command walks build it: a switched command's words count too (review of #593, m2). It
+    # only reads the words; nothing runs.
+    parser, words = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True), []
+    for arg in rest[:HELP_WORDS_MAX]:
+        sub = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sub is None or arg not in sub.choices:
+            break
+        words.append(arg)
+        parser = sub.choices[arg]
+    return " ".join(words)
+
+
+UNKNOWN_SECTION = "(unknown)"
+
+
+def section_named(section: str | None) -> str | None:
+    """What a guide read's line records of the section asked for: a name the guide has, or :data:`UNKNOWN_SECTION`
+    for any other, never the text the Lead typed (review of #593, m1: the log holds no authored text)."""
+    from aew.engine import guide
+
+    if section is None or section in (guide.CORE, *guide.SECTION_NAMES):
+        return section
+    return UNKNOWN_SECTION
+
+
+def guide_read(argv: list[str]) -> tuple[str | None] | None:
+    """``(section,)`` for an `aew guide` command line (the section ``None`` for the listing), or ``None`` for any other
+    command. Read from the words alone: `aew`'s own `-C <dir>`, then `guide`, then its first word that is not an
+    option."""
+    rest = [a for a in argv if isinstance(a, str)]
+    if rest[:1] == ["-C"]:
+        rest = rest[2:]
+    if rest[:1] != ["guide"]:
+        return None
+    return (next((a for a in rest[1:] if not a.startswith("-")), None),)
+
+
+def note_lookup(argv: list[str], exit_status: int = 0) -> None:
+    """Client side: tell this Lead session's broker of a lookup its shell made, for its telemetry: a help lookup, or an
+    `aew guide` the shell ran itself, with its exit status. Best effort and silent: what the command prints is printed
+    whatever happens here, and a session that cannot record it loses only a count."""
+    with contextlib.suppress(Exception):  # telemetry: never a reason a command's output is lost
+        bridge.call("lead.lookup", {"argv": [str(a) for a in argv][:16], "exit": int(exit_status)},
+                    env_names=ENV_NAMES)
+
+
+def notes_guide_read(argv: list[str]) -> bool:
+    """Whether this process tells the broker of an `aew guide` it ran: in a Lead session whose reads are not relayed
+    (not contained, so the broker never sees them; review of #593, M1). A contained session's broker counts the read
+    it relays (:meth:`LeadBroker.handle`), so it is never counted twice."""
+    from aew import process_kind
+
+    return (bool(os.environ.get(ENV_ENDPOINT)) and not os.environ.get(process_kind.LEAD_CONTAINED_ENV)
+            and guide_read(argv) is not None and not is_help_lookup(argv))
 
 
 def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO) -> list[str]:

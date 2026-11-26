@@ -153,3 +153,26 @@ def test_a_parents_proposed_plan_is_the_operators_plan_decision_too(project, tmp
     project.lead("plan", "propose", "--assurance", "none", story, "--file", str(plan))
     [d] = _plans(project, story)
     assert d["owner"] == OPERATOR and d["ask_operator"] == OD.command(OD.PLAN, story, 1)
+
+
+def test_a_revision_proposed_while_the_ticket_is_past_ready_is_offered_only_once_it_is_replan_required(
+        project, tmp_path):
+    """The state half (review of #628, m1): a replan proposed while the Ticket is ASSIGNED is one `plan accept` refuses,
+    so no decision is offered; once the Ticket is REPLAN_REQUIRED, the decision appears and its command accepts it."""
+    wid = _ticket(project)
+    _propose(project, tmp_path, wid, "1. First.\n")
+    project.lead("plan", "accept", wid, "--revision", "1")
+    project.lead("work", "assign", wid)  # ASSIGNED, no harness launched
+    two = _propose(project, tmp_path, wid, "1. Second.\n", "--reason", "the plan missed a step")
+    assert load_control(project.root)["work"][wid]["state"] == "ASSIGNED"
+    assert _plans(project, wid) == []
+    res = project.aew("plan", "accept", wid, "--revision", str(two), "--expect-rev", str(project.rev()),
+                      env={"AEW_LEAD_TOKEN": project.token})
+    assert res.returncode != 0 and res.error["code"] == "ILLEGAL_TRANSITION", res.stderr
+
+    project.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", "the plan missed a step")
+    [d] = _plans(project, wid)
+    assert d["ask_operator"] == OD.command(OD.PLAN, wid, two)
+    assert project.ok(*d["cli_fallback"], env={"AEW_LEAD_TOKEN": project.token})["accepted"] == two
+    assert _plans(project, wid) == []
+    assert_control_invariants(project)

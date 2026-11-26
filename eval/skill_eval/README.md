@@ -74,7 +74,7 @@ These change what the evaluation means, so the runner does not choose them. Each
 ## Limits
 
 - **Public cases make a pilot.** The cases under `docs/skills/candidates/` are development material and their oracles are public. F19 refuses a held-out case on a model arm until its evaluator/arm-host split exists, so a benefit claim on private cases waits for that.
-- **Hidden means the filesystem.** On Linux a contained arm is refused unless its layout hides the evaluator's directory, the cases and this checkout's `docs/skills`. An arm that is not contained (Windows, or `contain: false`) can read what its user can, and its lane is a pilot. Nothing here limits an arm's network.
+- **Hidden means the filesystem.** On Linux a contained arm is refused unless its layout hides the evaluator's directory, the cases and the directory the cases' source file is in (its oracles and rubric). An arm that is not contained (Windows, or `contain: false`) can read what its user can, and its lane is a pilot. Nothing here limits an arm's network.
 - **The listing is not read back.** A run records what was delivered and re-hashed, and what the session loaded. It does not ask the server what the `skill` tool listed. The first live step of a qualification is a model-free check that the pinned OpenCode lists exactly an arm's exposed ids under these rules; no OpenCode binary was at hand when this was built, and the tests use the repository's fake server, which applies no skill rules.
 - **A case with no artifact files cannot run.** F19 builds a case from a fixture tree and refuses an empty one, so `materialize` refuses such a case by name; leave it out with `--only`.
 - **One candidate per experiment.** A bundle of skills is another experiment (guide §3).

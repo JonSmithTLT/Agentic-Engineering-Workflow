@@ -75,9 +75,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.cmd == "check":
                 out = plan.shape(frozen)
             elif args.cmd == "run":
+                source_dir = Path(cases.load_key(args.evaluator)["source_dir"])
                 out = lane_run.run(frozen, cases=cases.manifests(args.cases), lane=args.lane,
-                                   evaluator=[args.evaluator, args.cases], deadline_s=args.deadline_s,
-                                   limit=args.limit)
+                                   evaluator=[args.evaluator, args.cases, source_dir],
+                                   deadline_s=args.deadline_s, limit=args.limit)
             elif args.cmd == "packets":
                 out = report.packets(frozen, args.lane / "ledger", cases.manifests(args.cases))
             else:

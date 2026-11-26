@@ -97,9 +97,9 @@ def hidden_from_arms(frozen: dict[str, Any], work: Path, evaluator: list[Path]) 
     refused otherwise); an arm that is not contained, or not a model, can read whatever its user can."""
     if not all(a["config"].get("contain") is True for a in frozen["arms"]):
         return False
-    # every public candidate's oracle is in this checkout, whatever else the caller names
-    material = [*evaluator, *(p for p in (runner.ROOT / "docs" / "skills",) if p.exists())]
-    seen = arms.readable_inside(material, work / "r000", binary=raw.harness_binary())
+    if not evaluator:
+        return False  # nothing was named, so nothing is known to be hidden
+    seen = arms.readable_inside(evaluator, work / "r000", binary=raw.harness_binary())
     if seen:
         raise Invalid(f"a contained arm could read the evaluator's material at {', '.join(seen)}: keep it under the "
                       "home directory, outside the lane's work directory, where the arm's layout hides it")
@@ -111,7 +111,8 @@ def run(frozen: dict[str, Any], *, cases: dict[str, Path], lane: Path, evaluator
     """Run the cells of ``frozen`` that still need an attempt, in schedule order; at most ``limit`` attempts.
 
     ``lane`` holds the experiment's ledger (``ledger/``) and scratch (``work/``), outside every git work tree;
-    ``evaluator`` names what no arm may read (the key's directory, the cases' source). Returns what happened:
+    ``evaluator`` names what no arm may read (the key's directory, the cases, and the directory their source file
+    is in, which holds its oracles and rubric: the command line passes all three). Returns what happened:
     ``stopped`` is ``done``, ``limit``, ``budget`` or ``lane_error``. Raises :class:`aew_eval.schemas.Invalid` before
     anything is registered when the preregistration is not a paired skill evaluation, and F19's ``Refused`` when its
     runner refuses a cell."""

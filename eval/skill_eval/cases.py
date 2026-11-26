@@ -98,7 +98,9 @@ def materialize(source: Path, cases_dir: Path, evaluator_dir: Path, *, only: lis
         if folder.exists():
             raise Invalid(f"{folder} exists: cases are materialized into fresh directories")
     chosen = [case for case in data["cases"] if only is None or case["id"] in only]
+    # where the source is, so a run can require its directory (the oracles, the rubric) hidden from a contained arm
     key: dict[str, Any] = {"schema": KEY, "skill": data["skill"], "source": source.name,
+                           "source_dir": str(source.parent.resolve()),
                            "source_sha256": hashlib.sha256(source.read_bytes().replace(b"\r\n", b"\n")).hexdigest(),
                            "answer_file": answer_file, "cases": {}, "preregistration_cases": []}
     for case in chosen:

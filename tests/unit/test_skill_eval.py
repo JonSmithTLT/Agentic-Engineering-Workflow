@@ -397,6 +397,10 @@ def test_the_evaluators_material_must_be_hidden_from_a_contained_arm(lane, tmp_p
         lane_run.hidden_from_arms(contained, scratch.parent, [outside])
     # An arm that is not contained can read what its user can: its lane says so, and its report is a pilot.
     assert lane_run.hidden_from_arms(freeze(lane), scratch.parent, [outside]) is False
+    # Hidden is a claim about named paths: with none named, a contained lane is still not called hidden.
+    assert lane_run.hidden_from_arms(contained, scratch.parent, []) is False
+    assert lane_run.hidden_from_arms(contained, scratch.parent, [home / "skill-eval" / "evaluator"]) is True
+    assert Path(lane["key"]["source_dir"]) == lane["source"].parent.resolve()
 
 
 # ---------------------------------------------------------------------------------------------- the report

@@ -43,3 +43,5 @@ def test_aew_guide_explains_this_projects_flow_from_its_own_policy(tmp_path):
     assert "the implementer's local checks pass on the change as submitted (`unit`)" in gates  # this project's checks
     assert "Checks not configured yet" not in gates  # the sample project configures `unit`
     assert "`aew guide gates`" in p.aew("guide").stdout  # with no section, it lists them
+    listed = p.ok("guide", "--json")["sections"]  # each entry has the same shape (review of #593, n2)
+    assert listed[0]["name"] == "core" and all(set(e) == {"name", "topic", "when"} for e in listed)

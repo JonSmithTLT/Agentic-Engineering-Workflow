@@ -311,7 +311,8 @@ def _guide(args: argparse.Namespace) -> Any:
     if args.section is None:
         if not args.json:
             return doc.listing()
-        return {"sections": [{"name": doc.names()[0], "topic": "the core, which every Lead request carries"},
+        return {"sections": [{"name": doc.names()[0], "topic": "the core, which every Lead request carries",
+                              "when": "always: it comes with every request"},
                              *({"name": s.name, "topic": s.topic, "when": s.when} for s in doc.sections.values())]}
     text = doc.read(args.section)
     return {"section": args.section, "text": text} if args.json else text

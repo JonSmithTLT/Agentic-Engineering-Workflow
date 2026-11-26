@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -1186,3 +1187,106 @@ def test_every_register_row_a_harness_feature_verdict_names_exists():
         for entry in (doc.get("versions") or {}).values():
             named |= {str(v["row"]) for v in entry.get("verdicts") or [] if v.get("row")}
     assert named and named <= rows, sorted(named - rows)
+
+
+# ------------------------------------------------------------------------------------- the rows a change names (cited)
+
+def _open_rows(data: dict[str, Any], prefix: str, n: int) -> list[str]:
+    return [r["id"] for r in register.rows(data) if r["id"] and r["id"].startswith(prefix)][:n]
+
+
+def _closing(data: dict[str, Any], rid: str) -> dict[str, Any]:
+    """``data`` with row ``rid`` moved to §Closed, as a change that does its work leaves it."""
+    out = copy.deepcopy(data)
+    closed = next(s for s in out["sections"] if s["title"].startswith("Closed"))
+    for section in out["sections"]:
+        found = [r for r in section["rows"] if next(iter(r.values())) == rid]
+        if found and section is not closed:
+            section["rows"].remove(found[0])
+            closed["rows"].append({"#": rid, "Was": "w", "Closed": "2026-11-26", "By": "#1 (`0000000`)"})
+    return out
+
+
+def _named(problems: list[str]) -> list[str]:
+    return [p.split(" names open register row ")[1].split(",")[0] for p in problems]
+
+
+def test_a_change_that_names_an_open_row_must_close_edit_or_note_it():
+    """The guard of 2026-11-26: rows stayed open for weeks after the pull request that did their work merged (E332 to
+    E334). A title or a commit that names an open row passes only when the change closes the row, edits its cells or
+    adds a note on it; the note is the recorded escape for a row it only cites."""
+    named, edited, noted, closed = _open_rows(DATA, "E", 4)
+    title = [("the pull request's title", f"Fix {named}, {edited}, {noted} and {closed}")]
+    found = register.cited_problems(DATA, DATA, title, set())
+    assert _named(found) == [named, edited, noted, closed]
+    assert all("close the row" in p and "python tools/register.py note " in p for p in found)
+    head = _closing(DATA, closed)
+    row = next(r["row"] for r in register.rows(head) if r["id"] == edited)
+    row["Work"] += ", narrowed to what remains"
+    assert _named(register.cited_problems(DATA, head, title, {noted})) == [named]
+    assert register.cited_problems(DATA, head, title, {noted, named}) == []
+
+
+def test_a_row_closed_at_the_base_or_unknown_is_never_a_problem():
+    closed = next(r["id"] for r in register.rows(DATA, open_only=False)
+                  if r["section"] == 9 and r["id"] and r["id"].startswith("E"))
+    assert register.cited_problems(DATA, DATA, [("t", f"{closed} follow-on, and E99999")], set()) == []
+
+
+def test_a_review_label_or_another_plans_name_is_not_read_as_a_row():
+    """Review findings are labelled F1, N4 or m1, the shape of the register's F rows; M4-E's slices are E3a and E4b."""
+    assert register.cited_ids("test: flake step 1B's follow-ons (#294 m1 and n1, #296 F1 to F4)") == []
+    assert register.cited_ids("ITEMS 55 review F3: judge waivable_gates by the same predicate") == []
+    assert register.cited_ids("M4-E E3a: the StageIntent journal in the engine") == []
+    assert register.cited_ids("F9-A HS1 (E55): harness send --when") == ["F9", "E55"]
+    assert register.cited_ids("STG-05 CS-4 B1: the relay; F15.8: map reads (E334).") == ["STG-05", "F15.8", "E334"]
+
+
+def test_a_commits_subject_names_its_own_work_only_before_its_first_colon():
+    """A subject's lead names the work; what follows cites other rows, as review points and neighbours."""
+    assert register.cited_ids("E160 slice 1: the review's points (F1 to F3, N1)", subject=True) == ["E160"]
+    assert register.cited_ids("fix(E140): the review of #555 (m1, n1, n2)", subject=True) == ["E140"]
+    assert register.cited_ids("E330 Carry E336 guide and discovery follow-ons", subject=True) == ["E330"]
+    assert register.cited_ids("register: STG-14 note, a maps opt-out waits on E331", subject=True) == []
+    assert register.cited_ids("Two blank lines before a top-level test (E302)", subject=True) == []
+    named = _open_rows(DATA, "E", 1)[0]
+    assert register.cited_problems(DATA, DATA, [("commit 0123abcd", f"register: a note on {named}")], set()) == []
+    assert register.cited_problems(DATA, DATA, [("the pull request's title", f"register: {named}")], set())
+
+
+def _git_in(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], cwd=repo, check=True,
+                   capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def test_cited_reads_the_commits_never_the_checkout_and_skips_merges(tmp_path, monkeypatch, capsys):
+    """The gate reads what the commits hold (AGENTS.md §6): a note left uncommitted in the checkout does not pass, a
+    committed one does, and a merge's subject (main's work, brought in) is not read."""
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
+    repo = tmp_path / "repo"
+    yaml_path = repo / register.YAML.relative_to(register.ROOT)
+    yaml_path.parent.mkdir(parents=True)
+    yaml_path.write_bytes(register.YAML.read_bytes())
+    _git_in(tmp_path, "init", "-q", "-b", "main", str(repo))
+    _git_in(repo, "add", "-A")
+    _git_in(repo, "commit", "-q", "-m", "base")
+    named, merged = _open_rows(DATA, "E", 2)
+    _git_in(repo, "checkout", "-q", "-b", "feat")
+    _git_in(repo, "commit", "-q", "--allow-empty", "-m", f"{named}: the work")
+    _git_in(repo, "checkout", "-q", "main")
+    _git_in(repo, "commit", "-q", "--allow-empty", "-m", f"{merged}: main's own work")
+    _git_in(repo, "checkout", "-q", "feat")
+    _git_in(repo, "merge", "-q", "--no-ff", "-m", f"{merged}: merge main into feat", "main")
+    note = repo / register.NOTES.relative_to(register.ROOT) / named / "2026-11-26-feat.md"
+    note.parent.mkdir(parents=True)
+    note.write_text("What merged, and what remains.\n", encoding="utf-8")
+    assert register.cited_main(repo, "main", f"Fix {named}", None) == 1  # the note is in the checkout, not a commit
+    out = capsys.readouterr().out
+    assert _named([line for line in out.splitlines() if line.startswith("problem:")]) == [named]
+    _git_in(repo, "add", "-A")
+    _git_in(repo, "commit", "-q", "-m", "register: the note")
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"pull_request": {"title": f"Fix {named}"}}), encoding="utf-8")
+    assert register.cited_main(repo, "main", None, str(event)) == 0
+    assert register.cited_main(repo, "no-such-ref", None, None) == 2

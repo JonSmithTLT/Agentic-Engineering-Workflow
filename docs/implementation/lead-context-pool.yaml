@@ -4,6 +4,8 @@
 # Messaging on also limits unused bytes below the cap to the remaining estimates.
 # A smaller rendered pool must lower the baseline and cap by the saving.
 # Growth without an allocation can pass while it fits inside the reserved room.
+# An operator reserve (kind: reserve, with the operator's words and date) is room the operator keeps under the cap on
+# purpose; it counts with the estimates as unused room, and only an operator-attributed reserve can.
 # System, guide and join are UTF-8 bytes. MCP is compact JSON bytes with ASCII escapes.
 # The pool counts built rows only. Retiring D13's test drops its coverage of designed normal rows.
 schema: aew/lead-context-pool/v1
@@ -56,19 +58,26 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then
-# adds its 200 B. E231's guide core and pointers (2026-11-25) sends only the guide's core. Measured with the pool
-# gate's own render at main 5649d832, the guide is 17445 B -> 9123 B with messaging on (system 9380, join 2, MCP
-# 12022: 38849 B -> 30527 B) and 17267 B -> 8903 B off (system 9121, MCP 12067: 38457 B -> 30093 B). The 8322 B
-# messaging-on saving lowers the baseline's guide bytes (16412 - 8322 = 8090) and the cap (42971 - 8322 = 34649) by
-# the same amount, under the rule above. The allocations stay as recorded (the maps entry's line is now behind a
-# pointer, inside this saving). The operator approves the new cap or allocates part of the saving; until then the
-# drop applies, and the 42971 B cap it replaces is kept in approval_history.
+  # The room between the derived ceiling (baseline 29012 + the allocations above 5637 = 34649 B) and the operator's
+  # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
+  operator_reserve:
+    bytes: 5351
+    kind: reserve
+    source: "E231's guide core lowered the pool; the operator set the cap at 40000 B as an anti-bloat guard, above the 34649 B the pool's rule computes, and this is the difference: 40000 - 34649 = 5351 B, unallocated."
+    operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
+    date: '2026-11-26'
+# Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
+# sends only the guide's core; measured with the pool gate's own render at main 5649d832, the guide is 17445 B ->
+# 9123 B with messaging on (system 9380, join 2, MCP 12022: 38849 B -> 30527 B) and 17267 B -> 8903 B off (system
+# 9121, MCP 12067: 38457 B -> 30093 B). Under the rule above, the 8322 B messaging-on saving lowers the baseline's guide
+# bytes (16412 - 8322 = 8090), and the derived ceiling to 34649 B (42971 - 8322). The operator chose 40000 B over that
+# figure; the 5351 B between them is the operator_reserve allocation. The 42971 B cap it replaces is in
+# approval_history.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
-  ceiling_bytes: 34649
-  operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
-  date: '2026-11-15'
+  ceiling_bytes: 40000
+  operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
+  date: '2026-11-26'
 # The approved drop after PR 3 still applies.
 approval_history:
   - ceiling_bytes: 42405

@@ -207,3 +207,10 @@ Because the cap is legality, the screen says that a stage open at that moment st
 **The limit:** a project with no key isn't covered. The key isn't required, and an absent key reads as the default, so
 such a project moved from 1 to 2 when the default did, with no line and no digest move. It isn't offered, since there's
 nothing to switch to. Init has always written the key, so only a key deleted by hand gets here.
+
+## Amendment 2026-11-25 — report-ingest query forms (E175)
+
+MS5b adds read-only review and verification ingest forms for non-mutating Tickets and parent work, as well as the
+execution-record ingest form for non-mutating Tickets. The query and action share the submitted report's finality
+check. The earlier mention of non-mutating review and verification in the 2026-10-25 amendment describes the forms
+available then. A guard without its own query form still projects `UNKNOWN` and its direct command still runs the guard.

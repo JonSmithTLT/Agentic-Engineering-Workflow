@@ -201,6 +201,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `map select-architecture`
 - `map show`
 - `message list`
+- `message lost`
 - `message read`
 - `message reply`
 - `message thread`

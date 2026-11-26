@@ -57,6 +57,7 @@ from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, PermissionDenied, UsageError
 from aew.harness import contract as K
+from aew.harness.delivery import DEFAULT_WHEN
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
 from aew.knowledge.manifest import (
@@ -572,7 +573,7 @@ class Engine:
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
         self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, guards=guards,
-                                    archive=archive)
+                                    archive=archive, coordination=coordination)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
         self._scope = scope = ScopeCorrections(k, units=units, gates=gates, assurance=assurance,
@@ -611,7 +612,8 @@ class Engine:
         self._views = views = StatusViews(k)
         self._usage = UsageReads(k, archive=archive)  # the ledger's read surfaces (F25 R9)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
-                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds)
+                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds,
+                                       coordination=coordination)
         self._steering = steering = Steering(k)
         self._configuration = Configuration(k)  # the configuration read projection (F46.1)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
@@ -638,6 +640,7 @@ class Engine:
         self._guard_queries = queries = GuardQueries(dispatch.decide)
         queries.register("work.transition", units.transition_query)
         queries.register("review.ingest", evidence.review_ingest_query)
+        queries.register("evidence.ingest", nm.evidence_ingest_query)
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
         queries.register("work.gate_replace", gate_repair.replace_query)
@@ -763,6 +766,7 @@ class Engine:
         rel = (manifest.get("policy") or {}).get("execution") or X.REL_PATH
         raw = raws.get(rel)
         policy = X.parse(raw, source=f"{AEW_DIR}/{rel}") if raw is not None else None
+        Coordination.register_at_init(state, policy)
         files.update(steering_mod.seed_at_init(state, policy, policy_digests_of(manifest, raws, aew_root)))
         ControlStore(aew_root).create(state, files)
         return cls(repo_root, aew_root)
@@ -1003,8 +1007,10 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text, when=when)
+    def harness_send(self, *, token: str, run: str, text: str, when: str = DEFAULT_WHEN,
+                     expect_rev: int | None = None, idempotency_id: str | None = None) -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when, expect_rev=expect_rev,
+                                          idempotency_id=idempotency_id)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         out = self._harness.harness_status(invocation)
@@ -1172,10 +1178,11 @@ class Engine:
 
     def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
                             in_reply_to: str | None = None, refs: list[str] | None = None,
-                            idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
+                            idempotency_id: str | None = None, channel: str = "cli",
+                            when: str = DEFAULT_WHEN) -> dict[str, Any]:
         return self._coordination.message_record_lead(token=token, expect_rev=expect_rev, to=to, body=body, kind=kind,
                                                       in_reply_to=in_reply_to, refs=refs,
-                                                      idempotency_id=idempotency_id, channel=channel)
+                                                      idempotency_id=idempotency_id, channel=channel, when=when)
 
     def message_record_worker(self, *, invocation_token: str, in_reply_to: str | None, body: str,
                               kind: str | None = None, refs: list[str] | None = None,
@@ -1213,8 +1220,9 @@ class Engine:
     def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
         self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
 
-    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool]) -> dict[str, Any]:
-        return self._coordination.message_next_post(credential=credential, run=run, permit=permit)
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool],
+                          blocked: set[str] | None = None) -> dict[str, Any]:
+        return self._coordination.message_next_post(credential=credential, run=run, permit=permit, blocked=blocked)
 
     def message_confirm_delivery(self, *, credential: str, run: str, ids: list[str],
                                  via: str, transport_ref: str) -> None:
@@ -1231,6 +1239,9 @@ class Engine:
 
     def message_unseen(self, *, token: str | None = None) -> dict[str, Any]:
         return self._coordination.message_unseen(token=token)
+
+    def message_lost(self) -> dict[str, Any]:
+        return self._coordination.message_lost(self._k.store.read_committed())
 
     def message_mark_shown(self, *, token: str, messages: list[str]) -> dict[str, Any]:
         return self._coordination.message_mark_shown(token=token, messages=messages)
@@ -1473,8 +1484,12 @@ class Engine:
     def stage_intent(self, intent: str) -> dict[str, Any]:
         return self._stages.read(self._k.store.current(), intent)
 
-    def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
-        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)
+    def submit(self, *, invocation_token: str, kind: str, text: str,
+               admitted: dict[str, str] | None = None,
+               continued: tuple[str, list[str]] | None = None) -> dict[str, Any]:
+        """Only the supervisor supplies observed live and continuation admissions."""
+        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text,
+                                     admitted=admitted, continued=continued)
 
     # ---------------------------------------------------------------- history (ADR-0011)
 

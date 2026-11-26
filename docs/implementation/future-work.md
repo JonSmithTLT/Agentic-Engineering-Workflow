@@ -2694,18 +2694,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E246/`, oldest first (`python tools/register.py show E246`).*
 
-### E247
-
-**Work:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked
-
-**Source:** The review of #394, 2026-11-09
-
-**When:** **Unscheduled**, for checking
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
-
 ### E248
 
 **Work:** A typed `harness_interrupt`. It stays out of push wake PR 3, as `harness_send` does (E131 owns send)
@@ -5017,6 +5005,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E247
+
+**Was:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout
+
+**Closed:** 2026-11-26
+
+**By:** #608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()` now reads the group's members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`
+
+*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
 
 ### E251
 

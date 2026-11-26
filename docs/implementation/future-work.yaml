@@ -3350,13 +3350,6 @@ sections:
     When: '**Unscheduled**, looked at again at the next weekly triage'
     Notes: Filed by the week's register PR
 
-  - '#': E247
-    Work: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an
-      unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked'
-    Source: 'The review of #394, 2026-11-09'
-    When: '**Unscheduled**, for checking'
-    Notes: Filed by the week's register PR
-
   - '#': E248
     Work: A typed `harness_interrupt`. It stays out of push wake PR 3, as `harness_send` does (E131 owns send)
     Source: Push wake PR 3's migration, 2026-11-09
@@ -6347,6 +6340,15 @@ sections:
     Closed: '2026-11-08'
     By: '#383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered
       (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip'
+
+  - '#': E247
+    Was: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped
+      `Popen` for a tree member waits its full timeout'
+    Closed: '2026-11-26'
+    By: '#608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie
+      holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()`
+      now reads the group''s members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the
+      group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`'
 
   - '#': E251
     Was: 'A printed `aew manifest adopt` runs as printed: the switch offer''s review counted 21 printed mentions in 8 files

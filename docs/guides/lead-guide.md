@@ -131,7 +131,7 @@ EOF
 
 ## Staffing the implementer
 
-Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each card's `use_when` and skills): `c_engineer` when the Ticket's change surface is C/C++ source, so its run loads `c-development`; `python_engineer` when the Ticket's change surface is primarily Python, so its run loads `python-development`. Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its task matches. Every implementer card's run may also load `debugging-root-cause-analysis` or `test-design` when its task matches.
+Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each card's `use_when` and skills): `c_engineer` when the Ticket's change surface is C/C++ source, so its run loads `c-development`; `python_engineer` when the Ticket's change surface is primarily Python, so its run loads `python-development`; `technical_writer` when the Ticket's change surface is the repository's documentation, so its run loads `technical-writing`. Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its task matches. The runs of `c_engineer`, `engineer` and `python_engineer` may also load `debugging-root-cause-analysis` or `test-design` when their task matches.
 
 ## When things go wrong
 

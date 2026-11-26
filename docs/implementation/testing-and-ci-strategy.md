@@ -151,7 +151,9 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
   that only says "built", or an edit of the row's cells, does not pass (the operator, 2026-11-26, on rows left open
   after their work merged; the review of #598). It reads the commits, not the checkout, and leaves out merges and a
   review's finding labels (`F1`, `N4`). It cannot see a row filed after its work merged, work that never names its
-  row, or a title edited after the last push; its limits are in `tools/register.py`, *Rows a change names*. Locally:
+  row, or a title edited after the last push; its limits are in `tools/register.py`, *Rows a change names*. Its
+  expected effect: replayed over the last 100 merged pull requests, it flags 36, mostly slice pull requests on rows
+  that stay open, which would each have needed a `**What remains**` note. Locally:
   `python tools/register.py cited --base origin/main --title "<the title>"`.
 - **The generated reference's counts.** `static` also runs `python tools/reference.py counts` and puts the counts in the run's summary: reported, never gating (`continue-on-error`). The reference's index is not committed (operator, 2026-11-05), so this is where each pull request's counts are measured; the fast lane's `check` gates the pages.
 - **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).

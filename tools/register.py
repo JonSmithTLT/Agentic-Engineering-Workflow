@@ -43,7 +43,9 @@ not merges, and the note files HEAD adds, as HEAD holds them. CI runs it on ever
 with the title from the event's payload. Its limits: it reads titles and subject leads, not descriptions, commit bodies
 or the rest of a subject, which cite rows as related far more often than they implement them; a change that does a
 row's work without naming it passes; a row filed after its work merged was not open at that change's base, so it is
-never checked (E332 and E333 were filed so); a marker is judged present, not true; a title edited after the last push
+never checked (E332 and E333 were filed so); a marker is judged present, not true; an F row of one or two digits
+named right after a pull request's number or "review" reads as a finding label (``#596 F15 map`` names no row,
+``FINDINGS_RE``), while one with a point (``#596 F15.8``) is read; a title edited after the last push
 is not checked again, since CI does not run on an edit; a row named in a range (``E222 to E259``) is read at its two
 ends only; and a branch stacked on another that merged by squash carries that branch's commits as its own.
 

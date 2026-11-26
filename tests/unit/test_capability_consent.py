@@ -817,16 +817,24 @@ def test_each_shipped_tools_purpose_is_its_descriptions_first_clause():
      ["Capabilities no tool of AEW's serves (use your shell and the project's own commands): documentation_lookup"]),
     ([], [], ["Other capabilities requested: none"]),
     (["source_mutation"], [], ["Other capabilities requested: none"]),  # authority-sensitive: its own line
+    # Register E368: what one of the role's own operations serves is named with its command, never sent to the shell
+    (["targeted_test_execution", "build_execution"], [],
+     ["Capabilities an AEW command serves (it records the evidence you cite): "
+      "targeted_test_execution (`aew check run <check-id>`)",
+      "Capabilities no tool of AEW's serves (use your shell and the project's own commands): build_execution"]),
 ])
 def test_the_pack_splits_a_cards_capabilities_by_whether_a_tool_serves_them(monkeypatch, required, optional, said):
-    """The pending line is gone. The split is the card's alone, never this host's: with no shipped record at all the
-    lines are the same, so a pack's hash never moves with what a host has."""
+    """The pending line is gone. The split is the card's and its role's operations', never this host's: with no shipped
+    record at all the lines are the same, so a pack's hash never moves with what a host has."""
+    from aew import roles
     from aew.knowledge import context as ctxmod
 
     card = {"display_name": "X", "role": "x", "extends": "implementer", "purpose": "p",
             "required_capabilities": required, "optional_capabilities": optional}
     inputs = ctxmod.PackInputs.__new__(ctxmod.PackInputs)
-    object.__setattr__(inputs, "card", card)
+    for name, value in {"card": card, "role": "implementer", "role_def": roles.archetype("implementer"),
+                        "scope": "ticket"}.items():
+        object.__setattr__(inputs, name, value)
     lines = ctxmod._card_section(inputs)
     assert not any("workbench resolution pending" in x for x in lines)
     start = next(i for i, x in enumerate(lines) if x.startswith("Authority-sensitive")) + 1

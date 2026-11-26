@@ -66,22 +66,44 @@ systems:
       R+ arms, S10 deliverable and review, S12 seals
     row: F19
     estimate: about 7 PRs (estimate)
-  - slice: 'S13 the A arm: after M4-E''s E7c, or the G3-backed confirmation A-37 points it at (F15.5 is held in HOLD-19)'
+  - slice: 'S13 the A arm: planned after M4-E''s E7c, or the G3-backed confirmation A-37 points it at. No hold blocks it:
+      F15.5 closed on 2026-11-06, merged into STG-14 as a note, and SYS-04''s entry says E7c was superseded or lapsed that
+      day. What it stands on now is open for the designer'
     row: F19
-    estimate: 1-2 PRs (estimate), blocked on HOLD-19
-  - slice: 'S14 the F25 binding: after F25 L4 (F25 is held in HOLD-21)'
+    estimate: 1-2 PRs (estimate); frozen, and its footing is open for the designer
+  - slice: 'S14 the F25 binding: after F25 L4. No hold blocks it: HOLD-21 closed on 2026-11-06 and F25 was restored at
+      V-01'
     row: F19
-    estimate: 1 PR (estimate), blocked on HOLD-21
+    estimate: 1 PR (estimate), after F25 L4; frozen
   - slice: 'S15 to S18: scoring, audit and report; CF evidence; host image; the metering proxy as an evaluator client of
-      the gateway''s accounting hook (F18.15, held in HOLD-20)'
+      the gateway''s accounting hook. No hold blocks it: HOLD-20 closed on 2026-11-06 and F18.15 closed that day, merged
+      into E97, the relay''s meter, as a note'
     row: F19
-    estimate: 3-5 PRs (estimate)
-  decision: 'decided: frozen (operator, 2026-11-06 (design workspace decision record: board decisions))'
+    estimate: 3-5 PRs (estimate); frozen
+  - slice: 'Feature cells, unfrozen (operator, 2026-11-26): the role-run arm, the shared walker and report, and the cells.
+      The operator agreed the order of the cells, which F19''s note of 2026-11-26 records (the pack pilot, the E368 deciding
+      run, skills, the recovery section, maps, the verifier). The order of building is not decided. It is the suggestion
+      of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3: the role-run arm first, once the designer has
+      settled how a feature cell expresses its treatment, then the shared walker and report, then the first cell'
+    row: F19
+    estimate: 3 PRs to the first cell (the estimate of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3)
+  decision: 'decided: frozen except feature cells (operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the first
+    of the Lead''s seven questions was "Unfreeze F19 for feature cells only (the role-run arm, the shared walker and report),
+    leaving the large comparison and its slices frozen? I recommend yes."). The large comparison (Q7, M4-H) and its slices
+    stay frozen (operator, 2026-11-06 (design workspace decision record: board decisions); and the sixth question, same
+    answer: "The large comparison (Q7, M4-H): keep frozen and decide after three cells whether it is still wanted. I
+    recommend yes.")'
   recommendation: freeze
   who: operator
-  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. The critical path (S8b, S12,
-    S13) waits on rows held until the trace: E7c in HOLD-19 and F25 in HOLD-21 (BOARD v2 §4: "its next slices depend on
-    held rows (E7c, F25)"). M4-H is not on the Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
+  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. When it was frozen on
+    2026-11-06, the board''s reason was that the critical path (S8b, S12, S13) waited on rows held until the trace (BOARD
+    v2 §4: "its next slices depend on held rows (E7c, F25)"). Corrected on 2026-11-26 from the register and this board:
+    no hold blocks those slices now. HOLD-20 and HOLD-21 closed on 2026-11-06; F25 was restored from HOLD-21 at V-01; F18.15
+    closed that day into E97, and F15.5 into STG-14, so HOLD-19 holds F46 only; and SYS-04''s entry says E7c was superseded
+    or lapsed that day. The large comparison''s slices stay frozen by the operator''s decision, not by a hold. Feature cells
+    are unfrozen (the decision above); the recommendation stays freeze, so this system is still not counted toward the
+    limit, and whether feature-cell work makes it a counted system has not been put to the operator. M4-H is not on the
+    Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
     under src/aew imports aew_eval, so freezing it costs the product nothing. The as-built reference covers only src/aew,
     so eval/aew_eval has no reference records. That is why as_built is empty, not because nothing is built.'
   evidence:
@@ -100,6 +122,16 @@ systems:
   - 'docs/implementation/future-work.yaml (row HOLD-20, at c11a61ea) (F18.15: S18 is an evaluator client of the gateway''s
     accounting hook; a HOLD-20 member)'
   - docs/implementation/future-work.yaml (row HOLD-21, at c11a61ea) (HOLD-21, holding F25)
+  - 'docs/implementation/future-work.yaml (rows HOLD-20 and HOLD-21, at a21e49cd) (both closed 2026-11-06: every member
+    matched by the hold match of that day)'
+  - docs/implementation/future-work.yaml (row F25, at a21e49cd) (restored from HOLD-21 by the hold match, at V-01)
+  - docs/implementation/future-work.yaml (row F18.15, at a21e49cd) (closed 2026-11-06, merged into E97 as a note)
+  - 'docs/implementation/future-work.yaml (rows F15.5 and HOLD-19, at a21e49cd) (F15.5 closed 2026-11-06, merged into
+    STG-14 as a note; HOLD-19: 1 row still held, F46)'
+  - 'docs/implementation/systems.yaml (SYS-04, reason, at a21e49cd) ("Nothing is held: E7c and E6b were superseded or
+    lapsed on 2026-11-06"; the record it rests on is in the design workspace and was not read for this correction)'
+  - 'docs/implementation/notes.d/F19/2026-11-26-docs-f19-refinement-decisions.md (the operator''s answer of 2026-11-26
+    to the Lead''s seven questions on docs/research/f19-refinement-proposal-2026-11-26.md)'
 - id: SYS-02
   name: Agent containment (the Linux core; its follow-ons are SYS-49's)
   purpose: An OS-enforced sandbox (bubblewrap, a private network, masks, a launch self-test) for every worker run, check
@@ -130,6 +162,7 @@ systems:
   - E118
   - E143
   - E247
+  - E394
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress
@@ -181,9 +214,9 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'On Linux it is already built, wired, on and used: every worker run, check and Lead session runs contained
-    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged, with E247 (a small
-    POSIX check of ProcessTree.active()) riding along; E100 (an explicit required refuses the launch on every platform)
-    and E92 (plain http:// forwarded through the egress under R-6) are merged and closed. Narrowed to that Linux core
+    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged; E100 (an explicit
+    required refuses the launch on every platform), E92 (plain http:// forwarded through the egress under R-6) and E247
+    (ProcessTree.active() counts no zombie on Linux) are built and their rows closed. Narrowed to that Linux core
     by the operator on 2026-11-25:
     the CS-4 addenda 12 to 14, a headless contained Lead (E113) and the Windows work (F48''s backend, E222''s network
     containment, E250''s std handles) are SYS-49''s, outside this finish line, so Windows keeps its label and doctor''s
@@ -194,21 +227,19 @@ systems:
       and the login seed checks the credential table''s columns first (E118''s note of 2026-11-24)'
     row: E118
     estimate: 1 small PR (estimate; BOARD v2 §0), after the designer's choice
-  - slice: ProcessTree.active() with a group holding only a zombie, for checking
-    row: E247
-    estimate: 1 small PR (estimate)
   decision: 'decided: E100 and E92 unfrozen as this system''s buildable slices, and the finish line narrowed to the Linux
     core with E118, E100 and E92; the CS-4 addenda 12 to 14 and the Windows work moved to SYS-49 (the operator, 2026-11-25:
     "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md). E118''s server move stays,
     waiting on the designer''s choice of mechanism. Earlier: only its slot items finish, the rest frozen by the reset
     of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: designer (E118's mechanism), then Lead (E118, E247)
+  who: designer (E118's mechanism), then Lead (E118)
   reason: 'The Linux core is on, used and gating every launch. What is left is small: E118''s server move once the
     designer chooses its mechanism (its other two parts are built). E100 and E92, unfrozen on 2026-11-25, are merged and
     their rows closed: an explicit required refuses the launch on every platform (containment/__init__.py:84-86), and
-    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is small and
-    POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
+    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is built and
+    closed too: on Linux a process tree whose group holds only zombies is not active (ProcessTree.active in procs.py).
+    The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
     work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings:
     E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained Lead; it may
     belong with SYS-05.'
@@ -778,10 +809,12 @@ systems:
       core plus pointers (the operator, 2026-11-25)'
     row: E367
     estimate: 1-2 PRs (estimate)
-  - slice: 'Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator,
-      2026-11-25)'
+  - slice: 'Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator,
+      2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now").
+      The Lead''s plan, not an operator ruling: the rewrite is written as a draft and held unmerged until it can be measured;
+      whether it waits for the refined F19 is the operator''s to confirm'
     row: E368
-    estimate: 2 PRs (estimate)
+    estimate: 1 PR (estimate)
   decision: 'decided: finished by the finish line''s own alternative, HOLD-06 recorded as staying held (the operator,
     2026-11-25: "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); the worker-side
     role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen
@@ -2333,7 +2366,7 @@ systems:
     says what was offered and loaded; exercised in a real run; E135''s evaluation runner built. E135''s qualification
     is a release gate before anything beyond the personal alpha, kept on E135''s row, not a condition of finishing this
     system (the operator, 2026-11-25). The Lead is one more recipient (E161): a `lead` list in the manifest (engineering-planning,
-    requirements-clarification, delegation-handoffs, all optional) read by `lead_config` through the same helper that
+    requirements-clarification, delegation-handoffs and, from E136''s fourth batch, ci-evidence-triage, all optional) read by `lead_config` through the same helper that
     decides exposure for a run; the contained Lead gets its own rule list (allow each exposed id, deny every other, compatibility
     plugin off, skills copied into a folder of each start''s own, bound read-only); the uncontained Lead gets AEW''s path
     and ids with other skills left at ask; exposed and loaded skills recorded in the Lead session''s own record, with
@@ -2341,18 +2374,16 @@ systems:
     checks the absolute `skills` path and a colliding id; exercised in a real Lead run. AEW-declared MCP servers are not
     in the Lead''s alpha.'
   remaining:
-  - slice: 'E136: what its three batches left, each waiting on the operator: the two security skills on `security_reviewer`
-      (the designer''s fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds
-      it) once their drafts are updated; `empirical-evaluation`, `ci-evidence-triage` and
-      `frontend-design`, which no decision places on a card; and a foundational skill in `skills:` per role, its cost measured
-      first'
+  - slice: 'E136: what its four batches left: the two security skills on `security_reviewer` (the designer''s fit, designer-decisions-2026-11-04-skills-by-fit.md
+      section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`''s
+      one foundational skill, once the source-research skill is written (E396)'
     row: E136
     estimate: 1 or 2 batched PRs after the operator's answers (estimate)
   - slice: 'E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate
       on E135''s row, outside this finish line'
     row: E135
     estimate: 1 PR for the runner (estimate)
-  - slice: 'the Lead''s skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the
+  - slice: 'the Lead''s skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the
       per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record.
       Left: the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a
       colliding id, the listing''s and a loaded body''s cost, and which skills were loaded) and a real Lead run; the Lead''s
@@ -2369,18 +2400,23 @@ systems:
   reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
     E136's first batch adds two optional ones, E161 the Lead's three, E136's second batch two more and its third `technical-writing`,
     with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
-    staged for the rest of the rollout. Of E136's skills, the two security ones wait on the operator's update of their
-    drafts and three on a card fit nobody has decided, and
+    staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
+    second also on the Lead's list. Of E136's skills, the two security ones wait on the operator's update of their
+    drafts and `frontend-design` waits for its own card (E395). Every card but `researcher` requests one foundational skill
+    (the operator, 2026-11-26, a ruling for every role card; its cost is reported for each card and is no longer a precondition); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
+    hold interim ones (E397, E398). Also
     E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:16, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
-    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`)
+    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`); from E136's fourth batch
+    every built-in card but `researcher` requests exactly one
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
     lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
     E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,
-    mechanical-enumeration and technical-writing, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
+    mechanical-enumeration, technical-writing, empirical-evaluation and ci-evidence-triage, and E161''s delegation-handoffs,
+    engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills

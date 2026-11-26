@@ -57,6 +57,7 @@ from vertical.scripted_operator import (
     lead_events,
     lead_spec,
     new_world,
+    settle_tool_offers,
     stage_intents,
     staled_by,
     world_fixtures,
@@ -106,6 +107,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         caches=["__pycache__/", "*.pyc", ".pytest_cache/"])
     res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)
     assert res.returncode == 0, res.stderr
+    settle_tool_offers(op.lab, op.ledger)  # a recorded fixture of setup, never counted (the operator, Q5, 2026-11-26)
 
 
 def open_session(op: Operator, step: str, *, steering: bool = False, credential_path: bool = False):

@@ -84,7 +84,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<card>": "default",  # a role card
     "<check id>": "unit",  # the same, as each text spells it
     "<check-id>": "unit",
-    "<check>": "unit",
     "<kind>": "implementation_report",  # an expected output's kind
     "<file>": "report.md",  # a report file, as each text spells it
     "<that file>": "report.md",

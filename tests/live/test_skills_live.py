@@ -174,8 +174,9 @@ def test_live_the_copy_is_loaded_bound_read_only_and_nothing_else(tmp_path):
         lab.wait(run, timeout=300)
         record = lab.record(run)
         planned = record["contract"]["extra"]["skills"]
-        offered = sorted(roles.builtin_cards()["engineer"].meta["optional_skills"])  # the card owns its list
-        assert planned["offered"] == offered == planned["exposed"]
+        engineer = roles.builtin_cards()["engineer"].meta  # the card owns its lists
+        assert planned["offered"] == sorted(engineer["optional_skills"])
+        assert planned["exposed"] == sorted(engineer["skills"] + engineer["optional_skills"])
         assert record["launch"]["skills"] == planned
         wrote = lab.step(run, 0)
         contained = record["containment"]["filesystem"] == "os_readonly_roots"
@@ -294,7 +295,8 @@ def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path)
             record_result({"test": "listing", "model": model, "card": card, "run": listing[card]})
         finally:
             lab.cleanup()
-    assert listing["engineer"]["exposed"] == sorted(roles.builtin_cards()["engineer"].meta["optional_skills"])
+    engineer = roles.builtin_cards()["engineer"].meta
+    assert listing["engineer"]["exposed"] == sorted(engineer["skills"] + engineer["optional_skills"])
     assert listing["plain_engineer"]["exposed"] == []
 
     lab = model_lab(tmp_path / "probe", choice)

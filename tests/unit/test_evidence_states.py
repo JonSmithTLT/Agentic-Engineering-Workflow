@@ -515,6 +515,76 @@ def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, m
     assert calls == ([] if scanner_only else [tmp_path / "evidence-tools"])
 
 
+def _scanner_download(monkeypatch, tmp_path, outcomes):
+    """Fake curl: each call takes the next outcome, an exception to raise or the bytes to write at --output. The
+    pinned archive's digest is replaced by the digest of a fake archive holding the platform's binary."""
+    installer = _load("install_evidence")
+    binary = "gitleaks.exe" if installer.sys.platform == "win32" else "gitleaks"
+    archive_name, _digest = installer.GITLEAKS[installer.sys.platform]
+    built = tmp_path / "built" / archive_name
+    built.parent.mkdir(parents=True)
+    if installer.sys.platform == "win32":
+        with installer.zipfile.ZipFile(built, "w") as bundle:
+            bundle.writestr(binary, b"scanner")
+    else:
+        (tmp_path / "built" / binary).write_bytes(b"scanner")
+        with installer.tarfile.open(built, "w:gz") as bundle:
+            bundle.add(tmp_path / "built" / binary, arcname=binary)
+    archive = built.read_bytes()
+    monkeypatch.setitem(installer.GITLEAKS, installer.sys.platform,
+                        (archive_name, installer.hashlib.sha256(archive).hexdigest()))
+    calls, sleeps = [], []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        outcome = outcomes[len(calls) - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        Path(command[command.index("--output") + 1]).write_bytes(archive if outcome is None else outcome)
+
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    monkeypatch.setattr(installer.time, "sleep", sleeps.append)
+    return installer, binary, calls, sleeps
+
+
+def test_a_scanner_download_that_times_out_once_is_retried_and_still_checksum_verified(tmp_path, monkeypatch):
+    stalled = _load("install_evidence").subprocess.TimeoutExpired(["curl"], 25)
+    installer, binary, calls, sleeps = _scanner_download(monkeypatch, tmp_path, [stalled, None])
+    target = tmp_path / "tools"
+    target.mkdir()
+    installer.install_scanner(target)
+    assert (target / binary).read_bytes() == b"scanner"
+    assert len(calls) == 2 and sleeps == [installer.SCANNER_BACKOFF_S[0]]
+    for command, kwargs in calls:  # every attempt is bounded, by curl and by the subprocess
+        assert command[command.index("--max-time") + 1] == "20" and "--speed-time" in command
+        assert kwargs["timeout"] == 25 and kwargs["check"] is True
+        assert command[-1] == installer.GITLEAKS_URL + installer.GITLEAKS[installer.sys.platform][0]
+    # The retried download is verified like the first: bytes that do not match the pinned digest install nothing.
+    tampered = tmp_path / "tampered"
+    tampered.mkdir()
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path / "again", [stalled, b"tampered"])
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        installer.install_scanner(tampered)
+    assert not (tampered / binary).exists() and len(calls) == 2
+
+
+def test_a_scanner_download_that_fails_every_bounded_attempt_still_reports_the_scanner_unavailable(tmp_path,
+                                                                                                    monkeypatch):
+    subprocess = _load("install_evidence").subprocess
+    failures = [subprocess.CalledProcessError(28, ["curl"]), subprocess.TimeoutExpired(["curl"], 25),
+                subprocess.CalledProcessError(28, ["curl"])]
+    installer, binary, calls, sleeps = _scanner_download(monkeypatch, tmp_path / "again", failures)
+    assert len(failures) == installer.SCANNER_ATTEMPTS == len(installer.SCANNER_BACKOFF_S) + 1
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("GITHUB_PATH", str(tmp_path / "path"))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    installer.main(scanner_only=True)
+    assert output.read_text().splitlines() == ["scanner=false"]
+    assert len(calls) == installer.SCANNER_ATTEMPTS and sleeps == list(installer.SCANNER_BACKOFF_S)
+    assert not (tmp_path / "evidence-tools" / binary).exists()
+
+
 def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, monkeypatch):
     stage = _load("stage_evidence")
     source = tmp_path / "source"

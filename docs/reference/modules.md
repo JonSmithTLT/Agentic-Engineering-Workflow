@@ -2399,6 +2399,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.store`
 - `aew.errors`
+- `aew.harness.operator_client`
 - `aew.knowledge.manifest`
 - `aew.process_kind`
 - `aew.stg02.outage_host`

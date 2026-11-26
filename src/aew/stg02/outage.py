@@ -87,10 +87,11 @@ def refuse(reason: str, title: str = "", **details: Any) -> OutageReadRefused:
 def _project_root(start: Path, *, listing: bool) -> Path | None:
     from aew.engine.base import Kernel
     from aew.engine.store import control_lock_visible
+    from aew.harness.operator_client import lead_session_problem
 
     # Session markers can refuse only. The actual project lock is masked from contained processes.
-    if any(os.environ.get(name) for name in (process_kind.AGENT_ENDPOINT_ENV, process_kind.LEAD_CONTAINED_ENV,
-                                             "AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY")):
+    if (os.environ.get(process_kind.AGENT_ENDPOINT_ENV) or os.environ.get(process_kind.LEAD_CONTAINED_ENV)
+            or lead_session_problem()):
         raise refuse("authentication_unqualified", REFUSAL)
     try:
         _, root = Kernel.locate(start)

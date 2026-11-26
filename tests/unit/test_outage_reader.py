@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import socket
+import stat
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,12 +23,12 @@ from aew.cli.main import main
 from aew.engine import outbox
 from aew.engine.api import Engine
 from aew.engine.store import LOCK_REL, ControlStore
-from aew.harness import event_spool, notify, runlog
+from aew.harness import event_spool, lead_broker, notify, runlog
 from aew.stg02 import adopted, outage, outage_host, wire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
-from aewflow import create_investigation, dispatch, sample_project, submit_record  # noqa: E402
+from aewflow import complete_investigation, create_investigation, dispatch, sample_project, submit_record  # noqa: E402
 
 OPENAPI = Path(__file__).resolve().parents[2] / "docs/contracts/A-25/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml"
 PATHS = yaml.safe_load(OPENAPI.read_text(encoding="utf-8"))["paths"]
@@ -104,9 +105,19 @@ def fixture_routes(engine, wid, inv):
         yield path, request
 
 
-def tree_hashes(root):
-    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in root.rglob("*") if p.is_file()}
+def tree_inventory(root):
+    inventory = {}
+    if root.exists():
+        for path in (root, *root.rglob("*")):
+            info = path.lstat()
+            if stat.S_ISREG(info.st_mode):
+                content = hashlib.sha256(path.read_bytes()).hexdigest()
+            elif stat.S_ISLNK(info.st_mode):
+                content = os.readlink(path)
+            else:
+                content = None
+            inventory[path.relative_to(root).as_posix()] = (info.st_mode, info.st_size, info.st_mtime_ns, content)
+    return inventory
 
 
 def test_every_route_answers_without_a_service_and_validates_against_its_own_wire_schema(project, monkeypatch, capsys):
@@ -175,32 +186,40 @@ def test_every_route_never_writes_opens_a_control_lock_or_runs_recovery(project,
     monkeypatch.setattr(ControlStore, "_recover", never)
     monkeypatch.setattr(ControlStore, "read_committed", committed)
     monkeypatch.setenv("AEW_PROFILE", str(engine.aew_root / "local/profile.jsonl"))
-    before = tree_hashes(engine.repo_root)
+    roots = (engine.repo_root, Path(os.environ["XDG_STATE_HOME"]), Path(os.environ[hoststate.base_variable()]))
+    before = {root: tree_inventory(root) for root in roots}
     for _, request in routes:
         command(engine, capsys, request)
         command(engine, capsys, request, human=True)
-    assert tree_hashes(engine.repo_root) == before
+    assert {root: tree_inventory(root) for root in roots} == before
 
 
-@pytest.mark.parametrize("environment", ({}, {"AEW_LEAD_BROKER": "test", "AEW_LEAD_BROKER_KEY": "fixture"},
-                                          {"AEW_AGENT_ENDPOINT": "test"}, {"AEW_LEAD_CONTAINED": "1"}))
-def test_refusal_has_the_same_d01_problem_before_route_or_store_read(project, monkeypatch, capsys, environment):
+@pytest.mark.parametrize("marker", [None, lead_broker.ENV_ENDPOINT, lead_broker.ENV_KEY,
+                                   process_kind.AGENT_ENDPOINT_ENV, process_kind.LEAD_CONTAINED_ENV])
+def test_refusal_has_the_same_d01_problem_before_route_or_store_read(project, monkeypatch, capsys, marker):
     engine, _, _ = project
-    if not environment:
-        (engine.aew_root / LOCK_REL).unlink()
-    for name, value in environment.items():
-        monkeypatch.setenv(name, value)
+    if marker is None:
+        shutil.rmtree(engine.aew_root / "local")
+    else:
+        monkeypatch.setenv(marker, "fixture")
 
     def no_store(*args, **kwargs):
         pytest.fail("a refused caller got as far as the control file")
 
-    monkeypatch.setattr(ControlStore, "read_committed", no_store)
-    code, body = command(engine, capsys, "/not/a/route")
-    assert code != 0
-    assert body == {"type": "about:blank", "title": REFUSAL, "status": 401, "code": "authentication_unqualified",
-                    "retry": "reauthenticate", "correlation_id": body["correlation_id"]}
-    _, human = command(engine, capsys, "/not/a/route", human=True)
-    assert human.strip() == f"authentication_unqualified: {REFUSAL}"
+    with monkeypatch.context() as patch:
+        patch.setattr(ControlStore, "read_committed", no_store)
+        code, body = command(engine, capsys, "/not/a/route")
+        assert code != 0
+        assert body == {"type": "about:blank", "title": REFUSAL, "status": 401, "code": "authentication_unqualified",
+                        "retry": "reauthenticate", "correlation_id": body["correlation_id"]}
+        _, human = command(engine, capsys, "/not/a/route", human=True)
+        assert human.strip() == f"authentication_unqualified: {REFUSAL}"
+    if marker is None:
+        assert main(["-C", str(engine.repo_root), "status"]) == 0
+        capsys.readouterr()
+        assert (engine.aew_root / LOCK_REL).is_file()
+        code, body = command(engine, capsys, "/v1/read/work")
+        assert code == 0 and body["items"]
 
 
 def test_outage_stamps_use_the_wire_shape_and_never_claim_current_entitlement(project, capsys):
@@ -246,7 +265,7 @@ def test_integrity_damage_reports_the_exact_degraded_shape_without_repair(projec
         unit_record.unlink()
     else:
         (engine.aew_root / outbox.record_path(state["revision"] - 1)).unlink()
-    before = tree_hashes(engine.repo_root)
+    before = tree_inventory(engine.repo_root)
     routes = (("/v1/read/work", "/v1/read/work"),
               ("/v1/read/work/{work_kind}/{work_id}", f"/v1/read/work/ticket/{wire.b64url(wid)}"),
               ("/v1/read/continuation-state/{work_id}", f"/v1/read/continuation-state/{wire.b64url(wid)}"))
@@ -265,7 +284,40 @@ def test_integrity_damage_reports_the_exact_degraded_shape_without_repair(projec
                 stamps = [field["source"] for field in body["items"][0]["field_sources"]]
                 expected = "unavailable" if damage == "pin_missing" else "stale"
                 assert any(s["owner"] == "WIS" and s["observation_state"] == expected for s in stamps)
-    assert tree_hashes(engine.repo_root) == before
+    assert tree_inventory(engine.repo_root) == before
+
+
+@pytest.mark.parametrize("damage", [False, True], ids=["intact", "damaged"])
+def test_archived_work_reads_its_pins_or_falls_back_to_the_committed_summary(tmp_path, capsys, damage):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path, title="Archived investigation")
+    evidence = complete_investigation(p, wid)
+    engine = Engine.discover(p.root)
+    assert wid not in engine.store.read_committed()["work"]
+    if damage:
+        bundle = engine.aew_root / "work" / wid / "archive.yaml"
+        bundle.write_text("uncommitted archive marker", encoding="utf-8")
+
+    before = tree_inventory(engine.repo_root)
+    route = f"/v1/read/work/ticket/{wire.b64url(wid)}"
+    code, body = command(engine, capsys, route)
+    assert code == 0
+    assert_schema("/v1/read/work/{work_kind}/{work_id}", body)
+    [item] = body["items"]
+    assert item["ref"]["id"] == wid
+    assert "Archived investigation [DONE]" in item["data"]["narrative"]["text"]
+    if damage:
+        assert body["outcome"] == "partial" and "partial_source" in body["limitations"]
+        assert item["source"]["observation_state"] == "stale"
+        assert "uncommitted archive marker" not in json.dumps(body)
+    else:
+        assert item["source"]["observation_state"] == "historical"
+        code, packages = command(engine, capsys, route + "/packages")
+        assert code == 0
+        assert_schema("/v1/read/work/{work_kind}/{work_id}/packages", packages)
+        [package] = packages["items"]
+        assert package["ref"]["id"] == evidence and package["source"]["observation_state"] == "historical"
+    assert tree_inventory(engine.repo_root) == before
 
 
 def test_unknown_membership_and_empty_rendering_only_claim_committed_absence(project, capsys, monkeypatch):

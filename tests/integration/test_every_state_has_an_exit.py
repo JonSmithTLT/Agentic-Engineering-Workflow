@@ -7,11 +7,15 @@ count: the guard could not say, and the call itself still answers. What has no e
 with its reason and the hint it does have; that list may only shrink. Register row E233 owns it (E133 left eleven).
 
 An exit must land (register E233). Every command the walk is offered, an action's or a decision's, parses as the real
-CLI takes it and is one a Lead session reaches (``lands``). And the walk goes on by the moves it is offered, run as
-offered: the Lead's transitions from ASSIGNED, a failed review, an inconclusive verification and an escalation; a
-reviewer's dispatch and a never-launched implementer's launch, where a harness is routed. The verifiers' dispatches
-are the reviewer's command with another role or scope: they are parsed, and asked of their own dispatch decision, and
-not launched here. A relaunch counts as an exit in whatever state its run ended, as the engine's own guidance offers it.
+CLI takes it and is one a Lead session reaches (``lands``). The walk is made in projects whose execution policy routes
+to a harness, as a Lead session's does, and it goes on by the one next step the readable result gives (``follow_next``)
+where that step is a command: a never-launched implementer's launch and then its move to RUNNING, the return from a
+failed review, a reviewer's dispatch. A move that carries the Lead's reason is never the next step, so the returns
+from an inconclusive verification and from an escalation are taken by name, with a reason (``follow``). The verifiers'
+dispatches are the reviewer's command with another role or scope: they are parsed, held equal to the hint's, and
+asked of their own dispatch decision and of the launch's profile, and not launched here. A relaunch counts as an exit
+in whatever state its run ended, as the engine's own guidance offers it. With no execution profile no dispatch is an
+exit: one leg walks that, and it is pinned.
 
 COMMIT_READY is walked by integration status and by queue entry state where those differ in what is offered. The walk
 does not enumerate every sub-case of every other state."""
@@ -34,7 +38,7 @@ from aew.engine.api import Engine
 from aew.engine.store import Transition
 from aew.harness import contract as K
 from aew.harness import lead_broker
-from aew.surface import contract, projection, run
+from aew.surface import contract, projection, readable, run
 from aew.surface.context import SurfaceContext
 
 CTX = SurfaceContext.outside_session()
@@ -62,10 +66,15 @@ DEAD_ENDS = {
     "REPLAN_REQUIRED": {
         "why": "a new plan revision is the way on; nothing offers it (as for a Ticket with no plan)",
         "hint": "propose and accept a new plan revision"},
+    "REVIEW_PENDING, no report, no execution profile": {
+        "why": "the dispatch offered launches its worker, and with no execution profile no run has a harness: it is "
+               "BLOCKED, with what to configure. Every dispatch is, in such a project; this state stands for them",
+        "hint": "dispatch the next planned reviewer card (`aew invoke create T-"},
 }
 # Only ever lowered: an entry leaves when its exit lands, and this number goes down with it. E133 left eleven; E233's
-# first slice took seven.
-MOST_DEAD_ENDS = 4
+# first slice took seven, and added the one it found: a project with no execution profile, which E133's walk, made
+# in one, counted nowhere.
+MOST_DEAD_ENDS = 5
 # What a reader puts where an offered command leaves a word to them.
 REASON = "the cause is settled"
 
@@ -112,6 +121,14 @@ def follow(p: Project, found: dict[str, Any], action: str, **arguments: Any) -> 
                 env={"AEW_LEAD_TOKEN": p.token})
 
 
+def follow_next(p: Project, found: dict[str, Any], *command: str) -> Any:
+    """Do what a Lead reading the result would: run its one next step, which is ``command`` printed whole (#612
+    review, F1: the walk follows the step the product gives, never a move picked by name)."""
+    line = found["next"]
+    assert line.startswith("next: aew " + " ".join(command) + " "), line
+    return p.ok(*shlex.split(line.removeprefix("next: aew ")), env={"AEW_LEAD_TOKEN": p.token})
+
+
 def differences(seen: dict[str, dict[str, Any]], pinned: dict[str, Any], most: int) -> list[str]:
     """What is wrong with ``pinned`` against what the projection offered: a new dead end, one that has an exit now, a
     state no walk reached, or a list that grew."""
@@ -124,18 +141,37 @@ def differences(seen: dict[str, dict[str, Any]], pinned: dict[str, Any], most: i
               else [])]
 
 
-def _project(tmp_path: Path, name: str) -> Project:
-    (tmp_path / name).mkdir()
-    return sample_project(tmp_path / name)
+def status(p: Project, wid: str) -> dict[str, Any]:
+    return run.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid})
 
 
 def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """The walk, in projects whose execution policy routes to the fake harness, as a Lead session's does: a dispatch
+    the projection offers launches its worker, so it is an exit only where a launch has a harness (#612 review, F2).
+    Their workers are still run by hand where the walk needs their reports. One leg has no execution profile."""
+    labs: list[Any] = []
+    try:
+        return _walk(tmp_path, monkeypatch, held, labs)
+    finally:
+        for lab in labs:
+            lab.cleanup()
+
+
+def _walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str], labs: list[Any]) -> dict[str, dict[str, Any]]:
     seen: dict[str, dict[str, Any]] = {}
 
+    def _project(tmp_path: Path, name: str) -> Project:
+        (tmp_path / name).mkdir()
+        p = sample_project(tmp_path / name)
+        labs.append(launching(p, tmp_path / name, monkeypatch))
+        return p
+
     def look(p: Project, wid: str, label: str | None = None) -> None:
+        """The Ticket's projection, with the one next step the readable result gives a Lead for it (``next``)."""
         projection.clear_cache()
-        found = projection.project(Engine.discover(p.root), CTX, wid)
-        seen[label or found["state"]] = found
+        result = status(p, wid)
+        seen[label or result["projection"]["state"]] = {**result["projection"],
+                                                        "next": readable.render(result).split("\n")[1]}
 
     p = _project(tmp_path, "path")
     wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--contract", "c",
@@ -145,7 +181,9 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
     look(p, wid)
     assigned = p.lead("work", "assign", wid)
     look(p, wid)
-    follow(p, seen["ASSIGNED"], "work.transition", to="RUNNING")
+    # By hand here: this leg's implementer is run by hand for its report, so the walk does not take the launch that
+    # is the next step. The "launched" leg below does, and goes on to RUNNING by the next step after it.
+    p.lead("work", "transition", wid, "--to", "RUNNING")
     look(p, wid, "RUNNING, no report")
     implement(Role(p, assigned["invocation_token"], Path(assigned["workspace"]["path"])))
     look(p, wid, "RUNNING, reported")
@@ -171,7 +209,7 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
     finding = {"id": "F-1", "severity": "major", "summary": "the change is wrong"}
     p.lead("review", "ingest", wid, "--evidence", review(p, wid, disposition="changes_required", findings=[finding]))
     look(p, wid)
-    follow(p, seen["REVIEW_FAILED"], "work.transition", to="RUNNING")
+    follow_next(p, seen["REVIEW_FAILED"], "work", "transition")
     look(p, wid, "RUNNING, sent back with findings")
 
     p = _project(tmp_path, "failed-verification")
@@ -253,8 +291,7 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
         implement(assign(p, wid))
         p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
         look(p, wid, "REVIEW_PENDING, no report and no live run, a harness routed")
-        follow(p, seen["REVIEW_PENDING, no report and no live run, a harness routed"], "invoke.create.mutating",
-               role="reviewer")
+        follow_next(p, seen["REVIEW_PENDING, no report and no live run, a harness routed"], "invoke", "create")
         lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the reviewer to start")
         run = live(p, wid, "reviewer")
         (sync / "release").touch()
@@ -267,17 +304,30 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
         wid = create_planned_ticket(p, tmp_path / "launched")
         p.lead("work", "assign", wid)  # no `--launch`: an implementer no harness was launched for
         look(p, wid, "ASSIGNED, never launched")
-        follow(p, seen["ASSIGNED, never launched"], "harness.launch")
+        follow_next(p, seen["ASSIGNED, never launched"], "harness", "launch")  # the launch first, as the hint says
         lab.until(lambda: (sync / "ready").exists(), "wait.condition", what="the implementer to start")
         run = live(p, wid, "implementer")
         look(p, wid, "ASSIGNED, launched")
         assert "harness.launch" not in offers(seen["ASSIGNED, launched"]), "a live run is never offered a launch"
-        follow(p, seen["ASSIGNED, launched"], "work.transition", to="RUNNING")
+        follow_next(p, seen["ASSIGNED, launched"], "work", "transition")
         (sync / "release").touch()
         lab.wait(run)
         look(p, wid, "RUNNING, its run ended with no report")
     finally:
         lab.cleanup()
+
+    # No execution profile (workers run by hand): the dispatch's launch has no harness, so it is no exit, and the
+    # blocker says what to configure.
+    (tmp_path / "by-hand").mkdir()
+    p = sample_project(tmp_path / "by-hand")
+    wid = create_planned_ticket(p, tmp_path / "by-hand")
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    look(p, wid, "REVIEW_PENDING, no report, no execution profile")
+    [offered_] = [a["cli_fallback"] for a in seen["REVIEW_PENDING, no report, no execution profile"]["actions"]
+                  if a["action"] == "invoke.create.mutating"]
+    tried = p.aew(*offered_, env={"AEW_LEAD_TOKEN": p.token})  # run as offered, it is refused: the BLOCKED is true
+    assert tried.returncode != 0 and "has no execution profile" in tried.stdout + tried.stderr, tried
 
     routed("routed-clean", "pass", "COMMIT_READY, prepared, entry VALIDATED")
     routed("routed-failing", "fail", "COMMIT_READY, prepared, entry awaits the Lead on a report that is not clean")
@@ -300,6 +350,14 @@ def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tm
                         "ASSIGNED, never launched": "harness.launch",
                         "RUNNING, its run ended with no report": "harness.launch"}.items():
         assert move in offers(seen[label]), (label, seen[label]["actions"])
+    # The launch comes first where an implementer was never launched, and the next step is the launch (F1).
+    assert [a["action"] for a in seen["ASSIGNED, never launched"]["actions"]][:2] == ["harness.launch",
+                                                                                       "work.transition"]
+    # With no execution profile the dispatch is refused at its launch, so it is BLOCKED and says what to configure.
+    by_hand = seen["REVIEW_PENDING, no report, no execution profile"]
+    [refused] = [a for a in by_hand["actions"] if a["action"] == "invoke.create.mutating"]
+    assert refused["availability"] == "BLOCKED" and refused["reason_codes"] == ["ILLEGAL_TRANSITION"], refused
+    assert any("configure policy/execution.yaml" in b["message"] for b in by_hand["blockers"]), by_hand["blockers"]
     dispatches = {label: a["arguments"] for label, found in seen.items() for a in found["actions"]
                   if a["action"] == "invoke.create.mutating"}
     assert dispatches["VERIFY_PENDING, no report and no live run"] == {
@@ -308,8 +366,10 @@ def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tm
     # One owner: a move's command is the one the engine's hint for the Ticket names, at this projection's revision.
     for label, found in seen.items():
         for a in found["actions"]:
-            if a["kind"] == contract.PRIMITIVE and a["action"] in ("work.transition", "invoke.create.mutating"):
-                words = [w for w in a["cli_fallback"] if w not in ("--prior-value", found["state"])]
+            if a["kind"] == contract.PRIMITIVE:
+                words = list(a["cli_fallback"])
+                if "--prior-value" in words:  # the binding to the state or run it was offered on, which no hint prints
+                    del words[words.index("--prior-value"):words.index("--prior-value") + 2]
                 rev = words.index("--expect-rev")
                 printed = "aew " + " ".join([*words[:rev], K.EXPECT_REV, *words[rev + 2:]])
                 assert any(f"`{printed}`" in hint for hint in found["hints"]), (label, printed, found["hints"])

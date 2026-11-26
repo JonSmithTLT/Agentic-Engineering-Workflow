@@ -122,10 +122,31 @@ class Invocations:
 
     def _resolve_execution(self, ctx: TxnContext, archetype: str, work_id: str, card: Any) -> dict[str, Any] | None:
         """The harness/provider/model/effort pin for a new invocation (ADR-0010); never changed afterwards."""
+        return self._execution(ctx.state, archetype, work_id, getattr(card, "id", None), ctx.execution_request)
+
+    def _execution(self, state: dict[str, Any], archetype: str, work_id: str, card_id: str | None,
+                   request: dict[str, Any] | None) -> dict[str, Any] | None:
         policy, sha = self.k.execution_policy()
-        return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
-                         risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request,
+        return X.resolve(policy, sha, archetype=archetype, card_id=card_id,
+                         risk_class=G.effective_class(state, work_id), request=request,
                          identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
+
+    @staticmethod
+    def unprofiled(what: str) -> IllegalTransition:
+        """The refusal of a launch with no execution profile: what cannot be launched, why, and what to configure."""
+        return IllegalTransition(
+            f"{what} has no execution profile, so no harness, provider or model is pinned for it: configure "
+            "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
+
+    def launch_refusal(self, state: dict[str, Any], work_id: str, role: str) -> IllegalTransition | None:
+        """Why a dispatch of ``role`` for ``work_id`` made with `--launch` and no selection of its own would be
+        refused at its launch now, or None: the execution policy pins no profile for it, so the run it would launch
+        has no harness (``require_launchable``'s refusal, which a `--launch` dispatch meets in its own transaction;
+        register E233). The dispatch decision does not ask this: it decides the invocation, not its run. With no
+        selection of its own a dispatch is pinned nothing only while the policy is unconfigured, whatever its card."""
+        if self._execution(state, role, work_id, None, None):
+            return None
+        return self.unprofiled(f"a {role} dispatched for {work_id}")
 
     def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]
@@ -179,9 +200,7 @@ class Invocations:
             raise IllegalTransition(f"{inv_id} is {inv['status']}; only an active invocation is launched")
         profile = inv.get("execution_profile")
         if not profile:
-            raise IllegalTransition(
-                f"{inv_id} has no execution profile, so no harness, provider or model is pinned for it: configure "
-                "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
+            raise self.unprofiled(inv_id)
         adapter = registry.load(profile["harness"])  # fails before any commit when it cannot even be loaded
         admission = self._require_provider_key(profile, adapter.PROVIDER_RELAY)
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction

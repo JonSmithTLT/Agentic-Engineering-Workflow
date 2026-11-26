@@ -6,9 +6,9 @@ decision kind and no always-sent text.
 
 | Dead end E133 left | Now offered |
 |---|---|
-| ASSIGNED | `work transition` to RUNNING, and `harness launch` for an implementer no harness was launched for |
+| ASSIGNED | `harness launch` first for an implementer no harness was launched for, then `work transition` to RUNNING |
 | REVIEW_PENDING, no report and no live run | the reviewer's dispatch (`invoke create --role reviewer --launch`) |
-| REVIEW_FAILED | `work transition` to RUNNING, then the implementer's dispatch |
+| REVIEW_FAILED | `work transition` to RUNNING; there the implementer's dispatch is offered, second (below) |
 | VERIFY_PENDING, no report and no live run | the verifier's dispatch |
 | VERIFICATION_INCONCLUSIVE | `work transition` to VERIFY_PENDING (or RUNNING), with the Lead's reason |
 | COMMIT_READY, prepared with no report | the integration verifier's dispatch (`invoke create --scope integration --launch`) |
@@ -29,9 +29,16 @@ In any state, an active invocation whose latest run ended without its output is 
   verifier dispatches are the reviewer's command with another role or scope: parsed, and asked of their own dispatch
   decision, not launched by the walk.
 
+- **A dispatch is an exit only where its launch has a harness.** The offered command carries `--launch`, and the
+  dispatch decision does not ask the launch. So while the execution policy pins no profile the dispatch is BLOCKED,
+  with a blocker that says what to configure (`Engine.launch_refusal`). The walk is made in projects that route to a
+  harness, as a Lead session's does, and one leg with no profile is pinned as a dead end the walk found.
+- **The walk follows the one next step** the readable result gives, where that step is a command, and takes a move
+  by name only where it carries the Lead's reason.
+
 **What remains**
 
-Four of the eleven, each needing a decision this row's builder does not make:
+Four of the eleven, each needing a decision this row's builder does not make, and two things found on the way:
 - **BLOCKED with no plan, and REPLAN_REQUIRED.** The way on is a plan revision. Proposing one takes the plan's body
   on standard input and one of three assurance forms, so no single offered command states it, and accepting it is
   being changed to need the operator's confirmation, in work now in flight. The typed home is E163's. Recommended:
@@ -45,6 +52,15 @@ Four of the eleven, each needing a decision this row's builder does not make:
   UNKNOWN, which the steering loop reads as a stop only the Lead clears; and whose decision a queue disposition is
   belongs to E335 and E350. The projection still carries the requeue's bound command under `cli_fallback`. Recommended: give
   `integrate.requeue` a guard query, and offer it once E335 states its owner.
+
+- **After a return to RUNNING the next step is still the review request, on the unchanged work.** From REVIEW_FAILED
+  (and from an inconclusive verification or an escalation returned to RUNNING) the old implementation report still
+  satisfies `ticket_request_review`'s gate, so it is offered first, AVAILABLE and auto-runnable, and the implementer's
+  dispatch second. This is as on `main`, where the hint's command led to the same place. `ticket_rework`'s decision
+  is meant to fix it: one step that returns the Ticket and dispatches the implementer with the findings.
+- **A project with no execution profile** offers no dispatch (above): the operator's hand-run flow dispatches without
+  `--launch`, which a Lead session is refused. Whether the projection should name that form for an operator is not
+  decided here.
 
 Also left, as the row says: `work_amend` stays undecided until a real Lead needs it, and `ticket_rework` stays
 proposed. These moves reach rework from the shell door only (`work transition`, then `invoke create`); whether

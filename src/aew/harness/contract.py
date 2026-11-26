@@ -652,3 +652,9 @@ def relaunchable(status: str) -> bool:
     authority and is relaunched or cancelled (M3-B1): the engine's guidance says so for exactly these, and the action
     projection offers the relaunch (register E233). A record that cannot be read is neither."""
     return status not in (*LIVE_RUNS, ENDED_WITH_EVIDENCE, UNREADABLE)
+
+
+def launch_command(invocation: str) -> str:
+    """The command that launches, or relaunches, a harness run for ``invocation``: the ASSIGNED hint and the action
+    projection's launch both read it here (#612 review, N3)."""
+    return f"aew harness launch {invocation} {EXPECT_REV}"

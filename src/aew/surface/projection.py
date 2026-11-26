@@ -414,7 +414,8 @@ def _asked(engine: Any, ask: Any) -> tuple[str, list[str]]:
     return (AVAILABLE if decision.get("allowed") else BLOCKED), [str(c) for c in decision.get("reason_codes") or []]
 
 
-def _lead_moves(engine: Any, part: dict[str, Any], wid: str, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _lead_moves(engine: Any, part: dict[str, Any], wid: str,
+                runs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """The Lead's own moves for a mutating Ticket that no stage and no report takes on (register E233; E133 left
     these states with a hint and nothing a Lead can rely on). Each is a primitive with its whole command, never
     auto-runnable, and with the availability its own guard answers now:
@@ -428,14 +429,16 @@ def _lead_moves(engine: Any, part: dict[str, Any], wid: str, runs: list[dict[str
       (``Engine.harness_unlaunched``). Past ASSIGNED an invocation with no run is a worker run by hand from its pack,
       which the engine's guidance leaves to report.
 
-    They add no blocker: a move its guard refuses is listed BLOCKED with the guard's reason codes, and the stop is
-    the engine's to state when the move is tried. Read now: the dispatch decisions read policy and telemetry."""
+    A dispatch's command launches its worker, so it is BLOCKED, with the refusal as a blocker, while the execution
+    policy pins no profile for it (``Engine.launch_refusal``): its own decision does not ask that. Nothing else here
+    adds a blocker: a move its guard refuses is listed BLOCKED with the guard's reason codes, and the stop is the
+    engine's to state when the move is tried. Read now: the dispatch decisions read policy and telemetry."""
     unit = part["unit"]
     if unit is None or unit["kind"] != "ticket" or not unit["mutating"] or part["state"] in T.TERMINAL:
-        return []
+        return [], []
     rev, st = int(part["revision"]), str(part["state"])
     state = engine.store.current()
-    out = []
+    moves, blockers = [], []
     for dst in T.lead_moves(st):
         reason = T.RULES[(st, dst)].reason_required
         found = engine.guard_query("work.transition", wid, {"to": dst, **({"reason": "<reason>"} if reason else {})},
@@ -443,28 +446,39 @@ def _lead_moves(engine: Any, part: dict[str, Any], wid: str, runs: list[dict[str
         # The engine's own command, held to the state it was offered in. The exits walk parses every argv offered
         # (``lands``); the static printed-command check reads only a literal list at the key.
         cli = [*_argv(str(T.command(st, dst, wid)), rev), "--prior-value", st]
-        out.append(_action("work.transition", {"work_id": wid, "to": dst, "prior_value": st}, kind=contract.PRIMITIVE,
-                           availability=found["availability"], reason_codes=found["reason_codes"], judgment=reason,
-                           cli_fallback=cli))
+        moves.append(_action("work.transition", {"work_id": wid, "to": dst, "prior_value": st},
+                             kind=contract.PRIMITIVE, availability=found["availability"],
+                             reason_codes=found["reason_codes"], judgment=reason, cli_fallback=cli))
     try:
         needed = engine.worker_needed(state, wid)
+        unlaunchable = engine.launch_refusal(state, wid, needed.role) if needed is not None else None
     except AEWError:  # the gates or the policy cannot be read now: the engine's own guidance says so
-        needed = None
+        needed = unlaunchable = None
     if needed is not None:
         found = engine.guard_query("invoke.create.mutating", wid, {"role": needed.role, "scope": needed.scope},
                                    state=state)
-        out.append(_action("invoke.create.mutating", {"work_id": wid, "role": needed.role, "scope": needed.scope},
-                           kind=contract.PRIMITIVE, availability=found["availability"],
-                           reason_codes=found["reason_codes"], cli_fallback=_argv(needed.command, rev)))
+        availability, reasons = found["availability"], list(found["reason_codes"])
+        if unlaunchable is not None and availability != BLOCKED:
+            # The command launches, and its launch would be refused in the dispatch's own transaction: no exit.
+            availability, reasons = BLOCKED, [*reasons, unlaunchable.code]
+            blockers.append(_blocker(unlaunchable.code, unlaunchable.message, dict(unlaunchable.details)))
+        moves.append(_action("invoke.create.mutating", {"work_id": wid, "role": needed.role, "scope": needed.scope},
+                             kind=contract.PRIMITIVE, availability=availability, reason_codes=reasons,
+                             cli_fallback=_argv(needed.command, rev)))
     ended = {r["invocation"] for r in runs if K.relaunchable(r["status"])}
+    unlaunched = set(engine.harness_unlaunched(state, wid) if st == "ASSIGNED" else ())
     invocations = state.get("invocations") or {}  # a run read a moment ago may name one this state no longer holds
-    for invocation in sorted(ended | set(engine.harness_unlaunched(state, wid) if st == "ASSIGNED" else ())):
+    first = []
+    for invocation in sorted(ended | unlaunched):
         availability, reasons = _asked(engine, lambda i=invocation: engine.dispatch_explain(wid, invocation=i))
-        out.append(_action("harness.launch", {"invocation": invocation}, kind=contract.PRIMITIVE,
-                           availability=availability, reason_codes=reasons,
-                           cli_fallback=approval.bound_argv(("harness", "launch", invocation), rev,
-                                                            approval.run_value(invocations.get(invocation) or {}))))
-    return out
+        cli = approval.bound_argv(tuple(_argv(K.launch_command(invocation), rev)[:-2]), rev,
+                                  approval.run_value(invocations.get(invocation) or {}))
+        launch = _action("harness.launch", {"invocation": invocation}, kind=contract.PRIMITIVE,
+                         availability=availability, reason_codes=reasons, cli_fallback=cli)
+        # An implementer no harness was launched for is launched before the Ticket moves to RUNNING, as the hint
+        # says: past ASSIGNED its launch is no longer offered (#612 review, F1).
+        (first if invocation in unlaunched and availability == AVAILABLE else moves).append(launch)
+    return [*first, *moves], blockers
 
 
 def _runs(engine: Any, subject: str) -> list[dict[str, Any]]:
@@ -624,7 +638,9 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
     actions[:0] = staged
     blockers.extend(stage_blockers)
     runs = _runs(engine, subject)
-    actions.extend(_lead_moves(engine, part, subject, runs))
+    moves, unlaunchable = _lead_moves(engine, part, subject, runs)
+    actions.extend(moves)
+    blockers.extend(unlaunchable)
     live = [r["run"] for r in runs if r["status"] in LIVE]
     if live:
         actions.append(_action("harness_wait", {"runs": live}, kind=contract.WAIT, availability=AVAILABLE,

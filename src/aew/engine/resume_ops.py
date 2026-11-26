@@ -27,6 +27,7 @@ from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.queue_ops import unfinished_publish
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
 from aew.errors import AEWError, IntegrityError
+from aew.harness import contract as K
 from aew.harness.contract import EXPECT_REV, HELD_SEAT, MANIFEST_ADOPT
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
@@ -346,8 +347,8 @@ class Resume:
             running = T.command("ASSIGNED", "RUNNING", wid)
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
                 return [f"implementer {implementer} was launched: `{running}`"]
-            return [f"launch the implementer from its pack ({implementer}): `aew harness launch {implementer} "
-                    f"{EXPECT_REV}` launches it; then move to RUNNING (`{running}`)"]
+            return [f"launch the implementer from its pack ({implementer}): `{K.launch_command(str(implementer))}` "
+                    f"launches it; then move to RUNNING (`{running}`)"]
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
@@ -387,8 +388,8 @@ class Resume:
                                             f"{EXPECT_REV}", approval.failure_digest(u, failure) if failure else None)
             return [f"classify the failure (Lead only): `{classification}`"]
         if st == "VERIFICATION_INCONCLUSIVE":
-            return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING "
-                    f"({self._moves(st, wid)})"]
+            return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING, or to RUNNING for "
+                    f"more work (one of {self._moves(st, wid)})"]
         if st == "VERIFIED":
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
@@ -420,7 +421,8 @@ class Resume:
         if st == "REPLAN_REQUIRED":
             return ["propose and accept a new plan revision"]
         if st == "ESCALATED":
-            return [f"record the escalation outcome and return the Ticket ({self._moves(st, wid)})"]
+            return ["record the escalation outcome and return the Ticket, no later than the phase it left (one of "
+                    f"{self._moves(st, wid)})"]
         return []
 
     @staticmethod

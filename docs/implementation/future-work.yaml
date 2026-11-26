@@ -151,6 +151,11 @@ sections:
     | 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
     | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
     | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
+    | 42 | E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25) |
+    | 43 | E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25) |
+    | 44 | E367 | The Lead's system text and tool list rewritten, with a truth test, after the guide's core plus pointers |
+    | 45 | E368 | Worker packs as a core plus pointers, after E367 |
+    | 46 | E369 | The always-sent context audit, a standing item the operator schedules |
 
     **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
@@ -5187,64 +5192,22 @@ sections:
     When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the register PR for A-58
 
-  - '#': E327
-    Work: 'The revision check''s PR 2, the C bindings, optional until the switch-on (E329): `work.gate_replace` and a gate''s
-      waiver bind the gate context shown; `manifest.adopt` compares the bytes the operator saw, which closes the switch
-      offer''s race; and the authority attribution fix, where `authority accept` stops defaulting `decided_by` to the Lead
-      and `authority reject` records who decided. Its test: `test_an_approval_never_pins_content_the_approver_was_not_shown`'
-    Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
-      parts 1, 3(a) item 4 and 4, decided by the operator the same day: "Yes, all three"'
-    When: '**Unscheduled**, the revision check''s chain, after E326'
-    Notes: Filed by the register PR of 2026-11-10
-
-  - '#': E328
-    Work: 'The revision check''s PR 3, the B bindings and `CHANGED_SINCE_READ`: every `work.transition`, move, promote,
-      staff, launch, `integrate.defer`, `integrate.requeue` and `steering.lower` carries the prior value its caller read,
-      with a two-writer test for each. A refusal is `CHANGED_SINCE_READ`, naming the item, the field, the expected and current
-      values, and the commit or record that changed it. Lead and loop callers are prefilled from their last result; at the
-      operator''s terminal the command reads the value itself, so no operator flag becomes required'
-    Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
-      parts 1, 2 and 4, decided by the operator the same day: "Yes, all three"'
-    When: '**Unscheduled**, the revision check''s chain, after E327'
-    Notes: Filed by the register PR of 2026-11-10
-
   - '#': E329
     Work: 'The revision check''s PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without
       its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`,
-      takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is accepted and ignored for one release, then
-      removed; open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists
-      (the specification''s WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface,
-      crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation`
-      for every A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit
-      order, the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
+      takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is removed outright (the operator, 2026-11-25);
+      open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification''s
+      WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded
+      recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every
+      A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit order,
+      the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
     Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
       parts 2, 4 and 5; the operator''s yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"'
-    When: '**Unscheduled**, the revision check''s chain, after E328, and after E330, which changes the same seat code'
+    When: '**Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking
+      place and expect rev doesnt really save us from anything"). The last of the revision check''s chain: E326, E327, E328
+      and E330, which it follows, are closed'
     Notes: 'Filed by the register PR of 2026-11-10. What the operator accepted with it: an A operation that is legal but
       rests on an old reading of unrelated state can commit; the generation still stops a stale Lead'
-
-  - '#': E330
-    Work: 'Seat resume: `aew opencode` resumes a held seat with a new seat operation, distinct from takeover. It applies
-      only when the seat was taken by `aew opencode` (the seat records the acquisition''s kind, host and user), on the same
-      host and user, the old session''s recorded process is gone, no handoff is pending, and the caller is not inside an
-      AEW session, is not a non-writer process and has a terminal. It moves to a new generation with the old credentials
-      revoked, carries the active invocations so no worker is killed, and records a `seat_resume` decision naming the operator,
-      both generations, what was carried and the processes left. A typed-back code is asked once, only when invocations
-      are carried or processes are left, and it names each. A live other Lead, a seat not taken that way, another host or
-      user, a pending handoff or a failed check refuses, naming the holder and `aew lead takeover`. With it: `aew opencode`
-      takes a vacant seat without `--acquire`, and the typed-token route stays when `AEW_LEAD_TOKEN` is set or a flag asks
-      for the hidden prompt; and the vertical driver''s `reopen()` starts `aew opencode` on the held seat, so resume takes
-      it, where the alpha verdict fails the takeover branch and the strict instrument keeps it as its counted fallback.
-      The amendments (ADR-0005''s resume paragraph, ADR-0009''s held-seat lines, and the flagless start''s, which the designer
-      words) land with it'
-    Source: The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
-      part 3(b), decided by the operator the same day with the code when work is carried or processes are left (decision
-      3); the operator's answers of 2026-11-10 on the alpha's G3-held steps (design workspace record `2026-11-11-operator-alpha-g3-steps.md`),
-      question 6 and part 1's driver
-    When: '**Unscheduled** as a row: the seat-resume PR #447, open (2026-11-11), in the seat and settings chain, after E336;
-      it can be built beside E326 to E328'
-    Notes: Filed by the register PR of 2026-11-10. Takeover keeps its code and its interruption as written. The rest of
-      V2 joins the personal alpha's gate once this merges (the operator, 2026-11-10)
 
   - '#': E331
     Work: 'Settings adopted at the operator''s terminal, with no Lead token: `aew manifest adopt`, E164''s `aew policy model
@@ -5591,6 +5554,63 @@ sections:
       line
     When: '**Unscheduled**, once the requirements trace is in the repository'
     Notes: Filed by the Lead. SYS-48 owns it, outside its finish line
+
+  - '#': E366
+    Work: 'The plan assessor''s pack says what is true at its scope. The pack renders the reviewer archetype''s text (`src/aew/roles/archetypes/reviewer.yaml:7-19`,
+      through `knowledge/context.py`) unchanged at every scope. At `plan_assessment` scope it tells the assessor to report
+      "findings about the change", to read a "diff and check output" and to state which earlier findings are resolved; there
+      is no change, diff or earlier review, and an assessor that follows the text is refused by `evidence.schema.json`.
+      At observation scope the same text asks for a diff the reviewer does not have, though its `review` is accepted. Fix:
+      the archetype''s text is fitted to the scope it is rendered at, and a pack-truth test holds that no pack tells a role
+      to do what its scope cannot give or its record kind refuses (scope fit). Both scopes are in this row and on SYS-43,
+      since one change to the archetype''s text serves both. Parent scope is not in it: its pack carries each child''s integrated
+      diff and the aggregate diffstat'
+    Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the worker packs,
+      the plan assessor''s pack at `plan_assessment` scope'
+    When: '**Now**, first in the always-sent context work (the operator''s order of 2026-11-25)'
+    Notes: Filed by the always-sent audit register PR. It follows E160's assessor entrypoint, whose pack it corrects
+
+  - '#': E367
+    Work: 'The Lead''s system text and tool list, rewritten so every line is true and needed. The false lines: "A shell
+      mutation still needs `--expect-rev`" (`harness/opencode/projection.py:454`); approval channels "as the guide says"
+      (`:463`), which the guide never states; Lead "handoff … refused" (`:486`), though `handoff cancel` is allowed; and
+      `message_send`''s `when: turn-end`, which is always refused. The rewrite saves about 4.4 KB per request and needs
+      no ruling. The typed `status` and `resume` results get a compact payload, about 3.9 KB less per status call. A Lead-text
+      truth test checks each claim the text makes against the parser, `lead_broker` and the enums. For the designer: four
+      schema changes worth about 3.1 KB, and whether the MCP server''s instructions count in the Lead''s pool. Related:
+      E162 (the Lead text fixes, frozen on SYS-51), which this row does not absorb: it corrects and shortens the lines the
+      Lead is told today, and E162''s additions stay E162''s, whose unfreezing is the operator''s'
+    Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the Lead''s
+      system text, guide and tool list'
+    When: '**Now**, after the Lead guide''s core plus pointers (E231''s next part, on branch `feat/e231-guide-core-pointers`);
+      second in the always-sent context work (the operator''s order of 2026-11-25)'
+    Notes: Filed by the always-sent audit register PR. The four schema changes and the MCP instructions' place in the pool
+      are the designer's (decisions-due). The cap is an anti-bloat guard, raised by measured amounts (E231's notes)
+
+  - '#': E368
+    Work: 'Worker packs as a core plus pointers. The false lines: the verifier is told to run tests with its shell; the
+      system text says "The first message is your AEW launch contract" (`harness/opencode/projection.py:256`); the skills''
+      texts contradict each other. Also: text duplicated across the system text, the pack and the skills; the map sent twice;
+      no size budget in production; no pointer to re-read after compaction (`aew context show <INV> --section`, limited
+      to the worker''s own invocation). The audit estimates about 36 to 42% less per run. Pack-truth extensions: scope fit,
+      restated values, the wrong mechanism, the consistency of all three texts with every switch on, a size budget, and
+      references that resolve. Related: E150 (turn endings), E198 (the inputs no pack delivers), E224 (pack prose has a
+      budget) and E134 (a pack golden per role)'
+    Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the worker packs'
+    When: '**Now**, after E367; third in the always-sent context work (the operator''s order of 2026-11-25)'
+    Notes: Filed by the always-sent audit register PR
+
+  - '#': E369
+    Work: 'The always-sent context audit, recurring: the Lead''s system text, guide and tool list and every worker pack,
+      checked for truth, necessity, clarity, duplication, size and result bloat, with run records mined for refusals, rejected
+      submissions, repeated lookups and turns that end in a question. Each audit re-renders the full card × scope × switch
+      matrix, with byte diffs against the last one. A failure is the operator''s: "a failure is recognized if the lead when
+      after we strip it down now fails to use typed tools correctly, is using help all the time for shell commands, etc".
+      Its cadence: before each release, and when a set number of features has touched always-sent text'
+    Source: 'The operator, 2026-11-25, with the always-sent context audit reports of that day: "these are probably some
+      of the highest value roi items to get perfect we have"; "I''ll set it up as a scheduled audit"'
+    When: '**Now**, a standing item: the operator schedules it from their own environment'
+    Notes: Filed by the always-sent audit register PR. Its findings become rows; E366 to E368 are the first audit's
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
@@ -6443,6 +6463,47 @@ sections:
       coverage test; optional request ids for the six create operations, committed with their effects; the single-active
       reviewer and verifier guards per Ticket card and the parent verifier''s; and `plan.adopt` comparing the proposal''s
       sha with the accepted record''s'
+
+  - '#': E327
+    Was: 'The revision check''s PR 2, the C bindings, optional until the switch-on (E329): `work.gate_replace` and a gate''s
+      waiver bind the gate context shown; `manifest.adopt` compares the bytes the operator saw, which closes the switch
+      offer''s race; and the authority attribution fix, where `authority accept` stops defaulting `decided_by` to the Lead
+      and `authority reject` records who decided. Its test: `test_an_approval_never_pins_content_the_approver_was_not_shown`'
+    Closed: '2026-11-14'
+    By: '#464 (`46b06058`): optional approval bindings for the class-C operations, checked inside the transaction; `manifest.adopt`
+      compares the policy bytes offered to the operator, the switch offer''s path included; `authority accept` and `reject`
+      record who decided, with no default to the Lead. The project-wide revision check stays in force until E329'
+
+  - '#': E328
+    Was: 'The revision check''s PR 3, the B bindings and `CHANGED_SINCE_READ`: every `work.transition`, move, promote, staff,
+      launch, `integrate.defer`, `integrate.requeue` and `steering.lower` carries the prior value its caller read, with
+      a two-writer test for each. A refusal is `CHANGED_SINCE_READ`, naming the item, the field, the expected and current
+      values, and the commit or record that changed it. Lead and loop callers are prefilled from their last result; at the
+      operator''s terminal the command reads the value itself, so no operator flag becomes required'
+    Closed: '2026-11-20'
+    By: '#488 (`ae1dc628`): optional prior-value bindings for the eight class-B operations, compared under the control lock,
+      with `CHANGED_SINCE_READ` as the one changed-since-read refusal (the class-C one folded into it), a two-writer test
+      per operation generated from `CONTROL_OP_SPECS`, and Lead and loop callers prefilled. `expect_rev` is unchanged; E329
+      makes the bindings required'
+
+  - '#': E330
+    Was: 'Seat resume: `aew opencode` resumes a held seat with a new seat operation, distinct from takeover. It applies
+      only when the seat was taken by `aew opencode` (the seat records the acquisition''s kind, host and user), on the same
+      host and user, the old session''s recorded process is gone, no handoff is pending, and the caller is not inside an
+      AEW session, is not a non-writer process and has a terminal. It moves to a new generation with the old credentials
+      revoked, carries the active invocations so no worker is killed, and records a `seat_resume` decision naming the operator,
+      both generations, what was carried and the processes left. A typed-back code is asked once, only when invocations
+      are carried or processes are left, and it names each. A live other Lead, a seat not taken that way, another host or
+      user, a pending handoff or a failed check refuses, naming the holder and `aew lead takeover`. With it: `aew opencode`
+      takes a vacant seat without `--acquire`, and the typed-token route stays when `AEW_LEAD_TOKEN` is set or a flag asks
+      for the hidden prompt; and the vertical driver''s `reopen()` starts `aew opencode` on the held seat, so resume takes
+      it, where the alpha verdict fails the takeover branch and the strict instrument keeps it as its counted fallback.
+      The amendments (ADR-0005''s resume paragraph, ADR-0009''s held-seat lines, and the flagless start''s, which the designer
+      words) land with it'
+    Closed: '2026-11-12'
+    By: '#447 (`a41a0866`): plain `aew opencode` takes a vacant seat or resumes an eligible held one on the same host and
+      user, carrying the active invocations, with one terminal confirmation when work is carried or processes are left;
+      the vertical driver starts it on the held seat; the E330 amendments of ADR-0005 and ADR-0009'
 
   - '#': E337
     Was: 'A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may

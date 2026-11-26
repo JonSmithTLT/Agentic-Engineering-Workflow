@@ -362,8 +362,8 @@ def staffing_text() -> str:
              f"The runs of {', '.join(f'`{c.id}`' for c in offering[:-1])} and `{offering[-1].id}`") if every else ""
     its = "its" if len(offering) in (1, len(cards)) else "their"
     also = (f" {whose} may also load {' or '.join(f'`{n}`' for n in every)} when {its} task matches." if every else "")
-    return ("Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each "
-            f"card's `use_when` and skills): {picks}.{rest}{also}")
+    return ("Staff the implementer by the change's language or surface, with the Ticket's `card` (`aew role list` "
+            f"shows each card's `use_when` and skills): {picks}.{rest}{also}")
 
 
 class Rule(str):

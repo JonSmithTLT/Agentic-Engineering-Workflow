@@ -711,9 +711,11 @@ def test_an_error_reading_loaded_never_reaches_the_run(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------------------------- the Lead
 
 
-def test_the_lead_is_told_to_staff_by_language_from_the_cards_and_the_install(monkeypatch):
+def test_the_lead_is_told_to_staff_by_language_or_surface_from_the_cards_and_the_install(monkeypatch):
     """11-04 §6: the Lead had only the cards' ``use_when``. Derived: a card's skill that stops shipping leaves it."""
     text = guide.staffing_text()
+    # A card may be picked by language or by surface (`technical_writer`: documentation), and the opening covers both.
+    assert text.startswith("Staff the implementer by the change's language or surface, with the Ticket's `card`")
     for card in ("python_engineer", "c_engineer", "technical_writer"):
         meta = roles.builtin_cards()[card].meta
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text

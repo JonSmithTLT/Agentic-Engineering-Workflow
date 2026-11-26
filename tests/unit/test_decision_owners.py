@@ -4,8 +4,7 @@ on E334 and E335, part 2): one owner per decision kind, read from one table of p
 
 The owners are then held against what a Lead session can reach (``lead_broker.LEAD_REACHABLE``): a decision the Lead
 owns is one it can carry out, and a decision the operator owns is not one it can carry out by itself, except the gaps
-it names (register E350's, and those of the owners awaiting the designer, E335's note of 2026-11-26), which this test
-pins exactly so that a new one fails and a fixed one is taken off."""
+register E350 names, which this test pins exactly so that a new one fails and a fixed one is taken off."""
 
 from __future__ import annotations
 
@@ -27,11 +26,6 @@ from aew.surface import projection
 # command accepts a Ticket's own verification, which is the Lead's).
 E350_KNOWN_GAPS = frozenset({frozenset({"integrate", "publish"}), frozenset({"verify", "ingest"}),
                              frozenset({"verify", "classify"}), frozenset({"work", "reconcile"})})
-# The commands of the three owners left unstated, so the operator's, until the designer confirms them (the operator,
-# 2026-11-26: "might as well do the safe default for now"; E335's note): dispositions, stage resolution and a publish's
-# finish. Named here as gaps of their own, not folded into E350's four.
-AWAITING_DESIGNER_GAPS = frozenset({frozenset({"work", "dispose"}), frozenset({"stage", "continue"}),
-                                    frozenset({"stage", "abandon"}), frozenset({"integrate", "reconcile"})})
 
 
 def _constants(node: ast.expr) -> set[str]:
@@ -109,9 +103,8 @@ def test_the_lead_owns_the_review_and_verification_acceptances_and_the_operator_
     assert projection.decision_owner("ACCEPT_VERIFICATION") == P.LEAD
     assert projection.decision_owner("PUBLISH") == P.OPERATOR
     assert {k for k in projection.DECISION_PRIMITIVES if projection.decision_owner(k) == P.LEAD} == {
-        "ACCEPT_REVIEW_EVIDENCE", "ACCEPT_VERIFICATION"}
-    for kind in ("DISPOSE_ANOMALY", "DISPOSE_CLAIM", "DISPOSE_FINDING", "RESOLVE_STAGE", "FINISH_PUBLISH"):
-        assert projection.decision_owner(kind) == P.OPERATOR, kind  # awaiting the designer (E335's note)
+        "ACCEPT_REVIEW_EVIDENCE", "ACCEPT_VERIFICATION", "DISPOSE_ANOMALY", "DISPOSE_CLAIM", "DISPOSE_FINDING",
+        "FINISH_PUBLISH", "RESOLVE_STAGE"}
 
 
 def test_a_decision_the_lead_owns_is_one_a_lead_session_can_carry_out():
@@ -121,15 +114,13 @@ def test_a_decision_the_lead_owns_is_one_a_lead_session_can_carry_out():
                 assert _commands(p) & lead_broker.LEAD_REACHABLE, f"{kind}: the Lead cannot reach {p}"
 
 
-def test_a_decision_the_operator_owns_is_not_lead_reachable_but_for_the_named_known_gaps():
-    """These commands are in LEAD_REACHABLE while the owner table makes them the operator's: register E350's four, and
-    the four of the owners awaiting the designer. The set is pinned exactly: a new gap fails here, and so does one that
-    closes, until it is taken off."""
+def test_a_decision_the_operator_owns_is_not_lead_reachable_but_for_e350s_known_gaps():
+    """Register E350: these commands are in LEAD_REACHABLE while the owner table makes them the operator's. The set is
+    pinned exactly: a new gap fails here, and so does one E350 closes, until it is taken off."""
     gaps = {c for kind, primitives in projection.DECISION_PRIMITIVES.items()
             if projection.decision_owner(kind) == P.OPERATOR
             for p in primitives for c in _commands(p) & lead_broker.LEAD_REACHABLE}
-    known = E350_KNOWN_GAPS | AWAITING_DESIGNER_GAPS
-    assert gaps == known, sorted(map(sorted, gaps ^ known))
+    assert gaps == E350_KNOWN_GAPS, sorted(map(sorted, gaps ^ E350_KNOWN_GAPS))
 
 
 def test_the_result_contract_requires_an_owner_and_names_exactly_the_tables_owners():

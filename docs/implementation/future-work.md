@@ -65,7 +65,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
 | 32 | E161 | The Lead's skills, after E127 |
 | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #605 |
+| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -4870,7 +4870,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** #605, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
+**By:** #611, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
 
 *Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
 

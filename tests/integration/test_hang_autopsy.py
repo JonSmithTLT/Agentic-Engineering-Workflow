@@ -1308,9 +1308,9 @@ def test_a_process_tree_whose_member_was_orphaned_closes_completely():
     gate = os.environ.get("G3_TEST_REAP_GATE")
     if gate:
         Path(gate).write_text("1", encoding="utf-8")  # only now does the reaper look
-    tree.close()  # ends the orphan, and waits (at most 10 s) until its process group is gone
+    tree.close()  # ends the orphan, and waits (at most 10 s) until no member of its process group runs
     if sys.platform != "win32":  # Windows re-parents nothing, and a closed tree's job is gone
-        assert tree.active() == 0  # a zombie still in the group would read as a live member
+        assert tree.active() == 0  # before E247 a zombie still in the group read as a live member
 '''
 
 

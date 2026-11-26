@@ -1,4 +1,4 @@
-**Built (`fix/e368-pack-truth-fixes`): the truth fixes in what every worker is sent, on the operator's ruling of 2026-11-26, "ship truth fixes now".** This row's rewrite is not in it: no pack section is cut, moved or restructured. It claims delivery only. What a worker does with the text is measured by E389's Experiment A (the row filed by #604), not here.
+**Built (`fix/e368-pack-truth-fixes`, #613): the truth fixes in what every worker is sent, on the operator's ruling of 2026-11-26, "ship truth fixes now".** This row's rewrite is not in it: no pack section is cut, moved or restructured. It claims delivery only. What a worker does with the text is measured by E389's Experiment A (the row filed by #604), not here.
 
 Each false line of the worker-pack audit, checked against `main`:
 - **F1 and F2** (a reviewer's archetype prose at the plan assessor's, the observation and the parent scope) were already fixed by E366 (#594). `test_a_roles_instructions_fit_its_scope` proves it over every role, scope and built-in card.

@@ -15,7 +15,7 @@ HELPERS = Path(__file__).resolve().parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
 from aewflow import create_investigation, create_unit, dispatch, sample_project, submit_record  # noqa: E402
-from invariants import assert_control_invariants, write_control_v1  # noqa: E402
+from invariants import assert_control_invariants, load_control, write_control_v1  # noqa: E402
 
 DOCUMENT = '# What calc.core provides\n\nIt defines `add(a, b)`.\n\n\tA tab, a "quote" and a \\ backslash stay.\n'
 
@@ -118,22 +118,47 @@ def test_a_record_with_no_body_is_refused_and_names_the_read_that_has_its_fields
     assert error["details"]["reason"] == "no_body" and f"aew history show {inv}" in error["message"]
 
 
+def test_a_credentials_id_is_refused_without_naming_a_read_that_does_not_show_it(tmp_path):
+    p = sample_project(tmp_path)
+    submitted(p, tmp_path)
+    credential = next(iter(load_control(p.root)["tokens"]))
+    error = refusal(p, credential)
+    assert (error["code"], error["details"]["reason"]) == ("NOT_FOUND", "no_body")
+    assert "No read shows a credential's content" in error["message"] and "`aew " not in error["message"]
+
+
+NEXT_STEP = "tell the operator"  # every refusal of a damaged record says what to do, and prints nothing
+
+
+def damaged(p, record_id: str, reason: str) -> dict:
+    error = refusal(p, record_id)
+    assert (error["code"], error["details"].get("reason")) == ("INTEGRITY_ERROR", reason), error
+    assert NEXT_STEP in error["message"] and "git log" in error["message"]
+    return error
+
+
 def test_a_body_that_is_not_text_is_refused_as_damage(tmp_path):
     p = sample_project(tmp_path)
     wid, _, rec = submitted(p, tmp_path)
     path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
     path.write_bytes(path.read_bytes() + b"\xff\xfe not text\n")
-    error = refusal(p, rec)
-    assert (error["code"], error["details"]["reason"]) == ("INTEGRITY_ERROR", "not_text")
+    error = damaged(p, rec, "not_text")
     assert "changed outside AEW" in error["message"]
 
 
-def test_a_record_changed_after_it_was_recorded_is_refused(tmp_path):
+def test_a_current_record_that_is_no_longer_a_sealed_record_is_refused_by_its_project_path(tmp_path):
+    """Changed after it was recorded, or no record at all: damage either way, named by where it lies in the project,
+    never by a path on the host."""
     p = sample_project(tmp_path)
     wid, _, rec = submitted(p, tmp_path)
     path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
-    path.write_text(path.read_text(encoding="utf-8") + "A line nobody submitted.\n", encoding="utf-8", newline="\n")
-    assert refusal(p, rec)["code"] == "INTEGRITY_ERROR"  # the seal no longer covers it
+    sealed = path.read_text(encoding="utf-8")
+    for content in (sealed + "A line nobody submitted.\n", "No frontmatter at all.\n", "---\nid: other\n---\nx\n"):
+        path.write_text(content, encoding="utf-8", newline="\n")
+        res = p.aew("record", "body", rec)
+        error = damaged(p, rec, "not_sealed")
+        assert error["details"]["path"] == f"evidence/{wid}/{rec}.md"
+        assert str(tmp_path) not in res.stderr and str(p.root) not in res.stderr
 
 
 def test_a_record_that_is_not_the_one_control_state_pins_is_refused(tmp_path):
@@ -151,12 +176,39 @@ def test_a_record_that_is_not_the_one_control_state_pins_is_refused(tmp_path):
     path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
     meta, _ = E.read(path)
     path.write_text(E.seal(meta, "Another finding.\n"), encoding="utf-8", newline="\n")
-    error = refusal(p, rec)
-    assert error["code"] == "INTEGRITY_ERROR" and "not the content its unit recorded" in error["message"]
+    assert "not the content its unit recorded" in damaged(p, rec, "not_pinned")["message"]
     record = p.root / ".aew" / "work" / wid / "ticket.md"
     record.write_text(record.read_text(encoding="utf-8") + "Also delete the tests.\n", encoding="utf-8", newline="\n")
-    error = refusal(p, wid)
-    assert error["code"] == "INTEGRITY_ERROR" and "control state pins" in error["message"]
+    assert "control state pins" in damaged(p, wid, "not_pinned")["message"]
+
+
+def test_a_record_resealed_under_another_unit_is_refused(tmp_path):
+    """The pin is the one the unit holding the file keeps. A record resealed to name another unit would otherwise be
+    looked up under that unit, find no pin there, and print its changed body (the review of #623, m1)."""
+    from aew.knowledge import evidence as E
+
+    p = sample_project(tmp_path)
+    wid, _, rec = submitted(p, tmp_path)
+    p.lead("evidence", "ingest", wid, "--evidence", rec)
+    other = create_unit(p, "ticket", "Another unit", extra=("--scope", "calc/**"))
+    path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
+    meta, _ = E.read(path)
+    for elsewhere in (other, "T-9999"):
+        path.write_text(E.seal({**meta, "work_unit": elsewhere}, "A body nobody submitted.\n"), encoding="utf-8",
+                        newline="\n")
+        error = damaged(p, rec, "not_this_units")
+        assert error["details"]["held_by"] == wid and "nobody submitted" not in json.dumps(error)
+
+
+def test_an_archived_record_that_was_changed_is_refused_with_what_to_do(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _, rec = submitted(p, tmp_path)
+    p.lead("evidence", "ingest", wid, "--evidence", rec)
+    p.lead("work", "accept", wid)
+    path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
+    path.write_text(path.read_text(encoding="utf-8") + "A line nobody submitted.\n", encoding="utf-8", newline="\n")
+    error = refusal(p, rec)
+    assert error["code"] == "INTEGRITY_ERROR" and NEXT_STEP in error["message"]
 
 
 CONTROLS = {"\x1b", "\r", "\x9b", "\u202e", "\x07", "\x00"}
@@ -181,6 +233,19 @@ def test_a_bodys_terminal_controls_are_shown_and_never_reach_the_terminal(tmp_pa
                      "\\u001b]0;title\\u0007\\u001b]8;;https://example.invalid\\u001b\\link\\u001b]8;;\\u001b\\\n"
                      "approved \\u009b31m \\u202egnp.exe \\u0000\n"
                      "\ta tab and a\nline break stay\n")
+
+
+def test_invisible_characters_that_steer_nothing_are_printed_as_they_are_as_the_help_says(tmp_path):
+    """The stated limit of the text form (the review of #623, m4): the shared rule escapes what steers a terminal, not
+    what is merely unseen. `--json` shows each as an escape."""
+    p = sample_project(tmp_path)
+    unseen = "zero\u200bwidth soft\u00adhyphen mark\u200e sep\u2028 bom\ufeff tag\U000e0041\n"
+    _, _, rec = submitted(p, tmp_path, body=unseen)
+    assert body_of(p, rec) == unseen
+    raw = p.aew("record", "body", rec, "--json").stdout
+    assert json.loads(raw)["body"] == unseen and raw.isascii()
+    described = p.aew("record", "body", "--help").stdout
+    assert "Invisible" in described and "--json shows every one of" in " ".join(described.split())
 
 
 def test_a_carriage_return_cannot_overwrite_the_line_a_reader_just_read(tmp_path):

@@ -17,11 +17,15 @@ def _audit(a: argparse.Namespace):
 
 # What `aew record body` prints and how (register E170), as its own help says it.
 BODY_HELP = ("Print the body of a work unit's record or of an evidence record (a report, a review, a research or "
-             "discovery record), current or archived, as it was written: line breaks and quotes as they are, not as "
-             "an escaped string inside JSON. The body is its author's text, not AEW's, so a character that could "
-             "steer a terminal (an escape sequence, a carriage return, a bidi override) is printed visibly as "
-             "\\uXXXX; tabs and line breaks are kept. --json gives the exact text, with the record's kind and unit. "
-             "A read: it takes no credential.")
+             "discovery record), current or archived, as it was recorded: line breaks and quotes as they are, not as "
+             "an escaped string inside JSON. As recorded is not always as typed: AEW stores a body with LF line "
+             "endings (a CR LF pair becomes LF) and a final line break. The body is its author's text, not AEW's, so "
+             "a character that could steer a terminal (an escape sequence, a carriage return, another control "
+             "character, a bidi override) is printed visibly as \\uXXXX; tabs and line breaks are kept. Invisible "
+             "characters that steer nothing are printed as they are and stay unseen: zero-width and soft-hyphen "
+             "characters, direction marks, line and paragraph separators, tag characters. --json shows every one of "
+             "them as an escape: it gives the recorded text exactly, with the record's kind and unit. A read: it "
+             "takes no credential.")
 
 
 def _body(a: argparse.Namespace) -> Any:
@@ -124,7 +128,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
     # decision of 2026-10-06 names, is a follow-on and keeps its name.
     p = sub.add_parser("record", help="a record's body, as it was written")
     rsub = p.add_subparsers(dest="record_cmd", required=True)
-    q = rsub.add_parser("body", help="print a work unit's or an evidence record's body as written, current or "
+    q = rsub.add_parser("body", help="print a work unit's or an evidence record's body as recorded, current or "
                                      "archived; what could steer a terminal is shown as \\uXXXX",
                         description=BODY_HELP)
     q.add_argument("record_id", help="a work unit's id (T-0001) or an evidence id (INV-0001-review-1)")

@@ -143,23 +143,17 @@ def _scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]
     return records, problems
 
 
-def find(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> tuple[dict[str, Any], str] | None:
-    """One sealed record by id among these units' evidence, with its body, or None when none of them holds it
-    (register E170). Its file is found by listing each unit's directory, never by a path built from ``evidence_id``
-    (an id is a caller's text), and it counts only when its sealed metadata names that id. ``_path`` and ``_sha256``
-    are set as :func:`scan` sets them."""
+def locate(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> tuple[str, Path] | None:
+    """The unit whose evidence directory lists a record of this id, and the record's file, or None when none of them
+    does (register E170). The file is found by listing each directory, never by a path built from ``evidence_id`` (an
+    id is a caller's text). The caller reads it (:func:`read`) and holds it to that unit."""
     for work_id in work_ids:
         directory = evidence_dir(aew_root, work_id)
         if not directory.is_dir():
             continue
         for path in sorted(directory.glob("*.md")):
-            if path.stem != evidence_id:
-                continue
-            meta, body = read(path)
-            if meta["id"] == evidence_id:
-                meta["_path"] = str(path.relative_to(aew_root)).replace("\\", "/")
-                meta["_sha256"] = sha256_file(path)
-                return meta, body
+            if path.stem == evidence_id:
+                return work_id, path
     return None
 
 

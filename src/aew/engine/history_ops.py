@@ -45,6 +45,7 @@ from aew.errors import (
     StaleRevision,
     Unavailable,
     UsageError,
+    ValidationFailed,
 )
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
@@ -182,22 +183,13 @@ class HistoryCommands:
         unit = state["work"].get(record_id)
         if unit is not None:
             return self._unit_body(record_id, unit, archived=False)
-        try:
-            live = E.find(self.k.aew_root, sorted(state["work"]), record_id)
-        except UnicodeDecodeError as exc:
-            raise self._not_text(record_id) from exc
-        if live is not None:
-            meta, body = live
-            holder = state["work"].get(meta["work_unit"]) or {}  # the engine binds a record to its unit at submit
-            pinned = next((r for r in holder.get("evidence") or [] if r["id"] == record_id), None)
-            if pinned is not None and pinned["sha256"] != meta["_sha256"]:
-                raise IntegrityError(f"evidence record {record_id} is not the content its unit recorded",
-                                     held_by=meta["work_unit"])
-            return self._evidence_body(record_id, meta, body, archived=False)
+        listed = E.locate(self.k.aew_root, sorted(state["work"]), record_id)
+        if listed is not None:
+            return self._current_evidence_body(state, record_id, *listed)
         if record_id in state["invocations"]:
-            raise self._no_body(record_id, "an invocation", f"aew invoke show {record_id}")
+            raise self._no_body(record_id, "an invocation", f"Read its fields with `aew invoke show {record_id}`")
         if record_id in state["tokens"]:
-            raise self._no_body(record_id, "a credential", "aew authority list")
+            raise self._no_body(record_id, "a credential", "No read shows a credential's content")
         unknown = NotFound(f"no record {record_id}: it is not a work unit, an evidence record, or anything the "
                            "history holds. `aew work list` gives the units, `aew work show <unit>` a unit's evidence "
                            "ids, and `aew history list` the finished work", reason="unknown_record")
@@ -207,31 +199,67 @@ class HistoryCommands:
             entry, held_as = self._found(state, record_id)
         except NotFound:
             raise unknown from None
-        doc = self.archive.record(entry)
-        if held_as is None and entry["kind"] == "unit":
-            return self._unit_body(record_id, doc["unit"], archived=True)
-        if held_as == "evidence":
-            try:
+        try:
+            doc = self.archive.record(entry)
+            if held_as is None and entry["kind"] == "unit":
+                return self._unit_body(record_id, doc["unit"], archived=True)
+            if held_as == "evidence":
                 _, meta, body = held_evidence(self.k.aew_root, doc, record_id)
-            except UnicodeDecodeError as exc:
-                raise self._not_text(record_id) from exc
-            return self._evidence_body(record_id, meta, body, archived=True)
+                return self._evidence_body(record_id, meta, body, archived=True)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"{record_id}'s record is not UTF-8 text", reason="not_text") from exc
+        except IntegrityError as exc:  # the archive's own refusal, with what to do about it
+            if exc.message.endswith(self.DAMAGED):
+                raise
+            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **exc.details) from exc
         kind = {"invocations": "an invocation", "tokens": "a credential"}.get(
             held_as or "", f"a history record of kind `{entry['kind']}`")
-        raise self._no_body(record_id, kind, f"aew history show {record_id}")
+        raise self._no_body(record_id, kind, f"Read its fields with `aew history show {record_id}`")
+
+    # What every refusal of a damaged record ends with: nothing here repairs one, and the records are kept in git.
+    DAMAGED = ("Nothing is printed. Its file under `.aew/` was changed outside AEW: tell the operator. The records are "
+               "kept in git, so `git log` on that file shows the change and the recorded content, and `aew history "
+               "audit --full` checks every record of the finished work")
+
+    def _damaged(self, what: str, **details: Any) -> IntegrityError:
+        return IntegrityError(f"{what}. {self.DAMAGED}", **details)
+
+    def _current_evidence_body(self, state: dict[str, Any], evidence_id: str, work_id: str,
+                               path: Any) -> dict[str, Any]:
+        """A current unit's evidence record, held to the unit whose directory lists it: a sealed record that names
+        that unit and, once the unit ingested it, the content the unit pins."""
+        rel = str(path.relative_to(self.k.aew_root)).replace("\\", "/")
+        try:
+            meta, body = E.read(path)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not UTF-8 text", reason="not_text",
+                                path=rel) from exc
+        except (IntegrityError, ValidationFailed) as exc:  # their messages name the file by its path on this host
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the sealed record AEW wrote",
+                                reason="not_sealed", path=rel) from exc
+        if meta["id"] != evidence_id or meta["work_unit"] != work_id:
+            raise self._damaged(f"the record in {rel} says it is {meta['id']} of {meta['work_unit']}, not "
+                                f"{evidence_id} of {work_id}, whose evidence it lies in", reason="not_this_units",
+                                path=rel, held_by=work_id)
+        pinned = next((r for r in state["work"][work_id].get("evidence") or [] if r["id"] == evidence_id), None)
+        if pinned is not None and pinned["sha256"] != sha256_bytes(path.read_bytes()):
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the content its unit recorded",
+                                reason="not_pinned", path=rel, held_by=work_id)
+        return self._evidence_body(evidence_id, meta, body, archived=False)
 
     def _unit_body(self, work_id: str, unit: dict[str, Any], *, archived: bool) -> dict[str, Any]:
         rel = unit["record"]
         try:
             raw = (self.k.aew_root / rel).read_bytes()
         except OSError as exc:
-            raise IntegrityError(f"{work_id}'s record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+            raise self._damaged(f"{work_id}'s record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
         if unit.get("record_sha256") and sha256_bytes(raw) != unit["record_sha256"]:
-            raise IntegrityError(f"{work_id}'s record {rel} does not hold the content control state pins", path=rel)
+            raise self._damaged(f"{work_id}'s record {rel} does not hold the content control state pins",
+                                reason="not_pinned", path=rel)
         try:
             _, body = parse_frontmatter(raw.decode("utf-8"), source=rel)
         except UnicodeDecodeError as exc:
-            raise self._not_text(work_id) from exc
+            raise self._damaged(f"{work_id}'s record {rel} is not UTF-8 text", reason="not_text", path=rel) from exc
         if not body.strip():
             raise NotFound(f"{work_id}'s record has no body: the {unit['kind']} was created without one, so there is "
                            f"nothing to print. Its title, scope and acceptance are fields: `aew work show {work_id}` "
@@ -251,14 +279,7 @@ class HistoryCommands:
     @staticmethod
     def _no_body(record_id: str, kind: str, instead: str) -> NotFound:
         return NotFound(f"{record_id} is {kind}, which has no body: only a work unit's record and an evidence record "
-                        f"have one. Read its fields with `{instead}`", reason="no_body")
-
-    @staticmethod
-    def _not_text(record_id: str) -> IntegrityError:
-        return IntegrityError(f"{record_id}'s record is not UTF-8 text, so it is not what AEW recorded and there is "
-                              "no body to print: its file under `.aew/` was changed outside AEW. Tell the operator; "
-                              "`aew history audit --full` checks every record of the finished work",
-                              reason="not_text")
+                        f"have one. {instead}", reason="no_body")
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:

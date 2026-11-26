@@ -475,6 +475,27 @@ def test_a_guide_read_and_a_help_lookup_are_counted_in_the_sessions_telemetry(la
         "sessions"]), shown.stdout
 
 
+def test_a_lead_session_that_is_not_contained_counts_the_guide_reads_its_shell_runs_itself(lab, broker):
+    """Review of #593, M1: a Lead session that is not contained (every Windows Lead runs labelled so) runs `aew guide`
+    in its own shell, never relayed, so its broker never sees the read. The `aew` that ran it tells the broker, with
+    its exit status, and the read is counted against the session as a relayed one is, and only once."""
+    from aew.harness import tool_calls
+
+    uncontained = {**lab.env, **broker.env}
+    assert process_kind.LEAD_CONTAINED_ENV not in uncontained
+    shown = run_aew("guide", "classes", cwd=lab.root, env=uncontained)
+    assert shown.returncode == 0 and shown.stdout.startswith("## Choosing a risk class"), shown.stderr
+    listed = run_aew("guide", cwd=lab.root, env=uncontained)
+    assert listed.returncode == 0 and "`aew guide classes`" in listed.stdout
+    refused = run_aew("guide", "nope", cwd=lab.root, env=uncontained)
+    assert refused.returncode == 2
+    assert broker.server.drain(20)
+    lines = [x for x in tool_calls.read(lab.aew_root) if x.get("lookup") == tool_calls.GUIDE]
+    assert [(x["session"], x["ok"]) for x in lines] == [(broker.session_id, True)] * 2 + [(broker.session_id, False)]
+    [row] = [r for name, r in tool_calls.counters(tool_calls.read(lab.aew_root)).items() if name == broker.session_id]
+    assert row["guide_reads"] == 3 and row["help_lookups"] == 0
+
+
 def test_a_relayed_read_runs_on_the_leads_own_project_only(lab, broker, tmp_path):
     """Condition 3: neither `-C` nor the shell's directory takes a relayed read to another project."""
     other = sample_project(tmp_path / "other")

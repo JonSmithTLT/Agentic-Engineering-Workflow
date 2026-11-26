@@ -72,8 +72,9 @@ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin":
                                  "lead.tool": {"name": str, "arguments": str, "ingress": str, "profile": str},
                                  # one read relayed for the contained Lead (RELAYED_READS)
                                  "lead.read": {"argv": list, "cwd": str},
-                                 # a `--help` lookup the Lead's shell made, for the session's telemetry (E231)
-                                 "lead.lookup": {"argv": list}}
+                                 # a lookup the Lead's shell made, for the session's telemetry (E231): a `--help`,
+                                 # or an `aew guide` it ran itself (not relayed: a Lead session not contained)
+                                 "lead.lookup": {"argv": list, "exit": int}}
 COOPERATIVE = frozenset({"lead.tool", "lead.read", "lead.lookup"})
 # Provenance. Its values also pick the refusal text of a command kept out of a Lead session (:func:`run_cli`).
 INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}
@@ -496,7 +497,11 @@ class LeadBroker:
 
             return bridge.ResultDelivery(deliver_read)
         if op == "lead.lookup":  # cooperative: telemetry only, needing no Lead authority and changing nothing
-            self._lookup(tool_calls.HELP, help_command(list(args["argv"])))
+            argv = list(args["argv"])
+            if is_help_lookup(argv):
+                self._lookup(tool_calls.HELP, help_command(argv))
+            elif (read := guide_read(argv)) is not None:
+                self._lookup(tool_calls.GUIDE, "guide", section=read[0], ok=args["exit"] == 0)
             return {"recorded": True}
         problem = self._authority_lost()
         if problem:
@@ -963,11 +968,35 @@ def help_command(argv: list[str]) -> str:
     return " ".join(words)
 
 
-def note_help_lookup(argv: list[str]) -> None:
-    """Client side: tell this Lead session's broker of a help lookup, for its telemetry. Best effort and silent: the
-    help is printed whatever happens here, and a session that cannot record it loses only a count."""
-    with contextlib.suppress(Exception):  # telemetry: never a reason the help is not printed
-        bridge.call("lead.lookup", {"argv": [str(a) for a in argv][:16]}, env_names=ENV_NAMES)
+def guide_read(argv: list[str]) -> tuple[str | None] | None:
+    """``(section,)`` for an `aew guide` command line (the section ``None`` for the listing), or ``None`` for any other
+    command. Read from the words alone: `aew`'s own `-C <dir>`, then `guide`, then its first word that is not an
+    option."""
+    rest = [a for a in argv if isinstance(a, str)]
+    if rest[:1] == ["-C"]:
+        rest = rest[2:]
+    if rest[:1] != ["guide"]:
+        return None
+    return (next((a for a in rest[1:] if not a.startswith("-")), None),)
+
+
+def note_lookup(argv: list[str], exit_status: int = 0) -> None:
+    """Client side: tell this Lead session's broker of a lookup its shell made, for its telemetry: a help lookup, or an
+    `aew guide` the shell ran itself, with its exit status. Best effort and silent: what the command prints is printed
+    whatever happens here, and a session that cannot record it loses only a count."""
+    with contextlib.suppress(Exception):  # telemetry: never a reason a command's output is lost
+        bridge.call("lead.lookup", {"argv": [str(a) for a in argv][:16], "exit": int(exit_status)},
+                    env_names=ENV_NAMES)
+
+
+def notes_guide_read(argv: list[str]) -> bool:
+    """Whether this process tells the broker of an `aew guide` it ran: in a Lead session whose reads are not relayed
+    (not contained, so the broker never sees them; review of #593, M1). A contained session's broker counts the read
+    it relays (:meth:`LeadBroker.handle`), so it is never counted twice."""
+    from aew import process_kind
+
+    return (bool(os.environ.get(ENV_ENDPOINT)) and not os.environ.get(process_kind.LEAD_CONTAINED_ENV)
+            and guide_read(argv) is not None and not is_help_lookup(argv))
 
 
 def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO) -> list[str]:

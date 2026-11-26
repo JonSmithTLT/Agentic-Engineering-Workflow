@@ -183,6 +183,23 @@
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 3-5 (cryptography, secret lifetime, untrusted input) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   },
+  "technical-writing": {
+   "version": "0.2.1",
+   "label": "unevaluated",
+   "sha256": "4a08d0ac7fd5fb0742a13080ff9321c7cc50760f377f5237bef72b1c6eae181d",
+   "files": {
+    "references/explanations.md": "dadc4a97a4ebc03c962026c8ab1a43ceb484c29aa456f15f34f39c563ab4c0c2",
+    "references/guides-and-reference.md": "04009e0462c60f3ed9f2cd8e36ead67cde4f8c5ecb16407d8ed97e1a4df5e8e5",
+    "references/messages-and-records.md": "bd94781902ee29cd9a780fef07f7f498c60ba6d077bdf157651ce2f02a74c017",
+    "references/specifications-and-contracts.md": "2df5a3631ed64d4f9602082f91f1fdaa64494cf3f12065e87f01fa9e8c2dfef8",
+    "SKILL.md": "8d7e9fa05ada8fe75e2f94159e6157ff45b474b54485a1072d9dea726bfdd796"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/technical-writing",
+    "snapshot": "technical-writing-0.2.1-8d7e9fa0",
+    "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
   "test-design": {
    "version": "0.3.0",
    "label": "unevaluated",

@@ -19,6 +19,7 @@ from vertical import lead as L
 from vertical.lead import Lead, WakeChannel
 from vertical.ledger import Ledger
 
+from aew.harness import contract as K
 from aew.harness import steering_loop as LOOP
 from aew.harness.opencode.lead_wake import LeadPoster
 
@@ -75,9 +76,13 @@ class _Lead(Lead):
         return [e["kind"] for e in self.events()]
 
 
-def _ticket(*actions: dict[str, Any], blockers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _ticket(*actions: dict[str, Any], blockers: list[dict[str, Any]] | None = None,
+            run: str = K.ENDED_WITH_EVIDENCE) -> dict[str, Any]:
+    """The Ticket's projection, with its run in status ``run`` (the projection's ``runs``, which say whether a run is
+    live; the wait it offers for a live run is listed or not by the test)."""
     return {"revision": REV, "subject": T, "state": "RUNNING", "actions": list(actions), "blockers": blockers or [],
-            "decisions_required": [], "anomalies": [], "hints": []}
+            "decisions_required": [], "anomalies": [], "hints": [],
+            "runs": [{"run": "R-INV-0001-1", "work_unit": T, "role": "implementer", "status": run}]}
 
 
 def _project(stop: dict[str, Any] | None, revision: int = REV) -> dict[str, Any]:
@@ -99,7 +104,7 @@ def _ledger(lead: _Lead) -> Ledger:
 
 def test_with_steering_on_the_scripted_lead_waits_out_a_woken_wait_instead_of_calling_harness_wait(
         tmp_path: Path) -> None:
-    ticket = _ticket(WAIT_ACTION)
+    ticket = _ticket(WAIT_ACTION, run=K.RUNNING)
     lead = _Lead(tmp_path, unit=lambda n: {"projection": ticket, "result": {}})
     lead.wakes = _Wakes([[], [], ["msg_wake"]])  # type: ignore[assignment]  # the wake lands on the third look
     assert lead.tick()
@@ -110,7 +115,7 @@ def test_with_steering_on_the_scripted_lead_waits_out_a_woken_wait_instead_of_ca
 
 
 def test_an_operator_line_ends_the_woken_wait_too(tmp_path: Path) -> None:
-    ticket = _ticket(WAIT_ACTION)
+    ticket = _ticket(WAIT_ACTION, run=K.RUNNING)
     lead = _Lead(tmp_path, unit=lambda n: {"projection": ticket, "result": {}})
     lead.wakes = _Wakes([])  # type: ignore[assignment]
     lead.inbox.put({"text": "Where do things stand?"})
@@ -123,7 +128,7 @@ def test_a_woken_wait_with_no_wake_in_its_bound_is_called_and_counted(tmp_path: 
                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing wake is recorded, and the wait is called as before: the counter shows it."""
     monkeypatch.setattr(L, "WAKE_WAIT_S", 0.05)
-    ticket = _ticket(WAIT_ACTION)
+    ticket = _ticket(WAIT_ACTION, run=K.RUNNING)
     lead = _Lead(tmp_path, unit=lambda n: {"projection": ticket, "result": {}})
     lead.wakes = _Wakes([])  # type: ignore[assignment]
     assert lead.tick()
@@ -132,9 +137,28 @@ def test_a_woken_wait_with_no_wake_in_its_bound_is_called_and_counted(tmp_path: 
     assert _ledger(lead).counts()["mechanical_calls"] == 1
 
 
+def test_a_wake_channel_that_keeps_failing_is_recorded_once_per_new_error(tmp_path: Path) -> None:
+    """A server that does not answer is looked at again every poll; each error is recorded when it changes, not on
+    every look."""
+    errors = [OSError("refused")] * 5 + [ValueError("bad json")] * 3 + [OSError("refused")]
+
+    class Failing:
+        def news(self) -> list[str]:
+            if errors:
+                raise errors.pop(0)
+            return ["msg_wake"]
+
+    lead = _Lead(tmp_path, unit=lambda n: {"projection": _ticket(WAIT_ACTION, run=K.RUNNING), "result": {}})
+    lead.wakes = Failing()  # type: ignore[assignment]
+    assert lead.tick()
+    assert [e["error"] for e in lead.events() if e["kind"] == "wake_read_error"] == [
+        "OSError: refused", "ValueError: bad json", "OSError: refused"]
+    assert lead.kinds()[-1] == "woken"
+
+
 @pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "no-wake-channel"])
 def test_without_steering_or_a_wake_channel_the_woken_wait_is_called(tmp_path: Path, steering: bool) -> None:
-    ticket = _ticket(WAIT_ACTION)
+    ticket = _ticket(WAIT_ACTION, run=K.RUNNING)
     lead = _Lead(tmp_path, steering=steering, unit=lambda n: {"projection": ticket, "result": {}})
     assert lead.wakes is None
     assert lead.tick()
@@ -150,6 +174,7 @@ def test_the_brokers_poster_finds_the_tuis_session_and_its_wake_reaches_the_lead
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         channel = WakeChannel(f"http://127.0.0.1:{server.server_address[1]}", app.password)
+        launched = fake_opencode.now_ms() - 1  # as the vertical's poster: sessions touched since the Lead launched
         session = channel.open()
 
         class Client:  # the poster's client, on the same routes
@@ -159,7 +184,7 @@ def test_the_brokers_poster_finds_the_tuis_session_and_its_wake_reaches_the_lead
             def post(self, path: str, body: Any) -> Any:
                 return app.route("POST", path, {}, body)[1]
 
-        poster = LeadPoster(lambda: Client(), since_ms=0.0)  # type: ignore[arg-type,return-value]
+        poster = LeadPoster(lambda: Client(), since_ms=launched)  # type: ignore[arg-type,return-value]
         assert poster.session() == session
         assert channel.news() == []
         poster.post("msg_wake1", "AEW wake: run R-INV-0001-1 ended")
@@ -173,11 +198,10 @@ def test_the_brokers_poster_finds_the_tuis_session_and_its_wake_reaches_the_lead
 # ---------------------------------------------------------------------------------------------- the BLOCKED stop (Q10)
 
 
-def test_a_blocked_stop_whose_blocker_clears_by_the_runs_end_is_not_a_decline_and_the_leads_push_counts(
-        tmp_path: Path) -> None:
+def test_a_blocked_stop_whose_blocker_clears_by_the_runs_end_is_not_a_decline(tmp_path: Path) -> None:
     """The run is live, then it ends and the gate's blocker goes with it, then the loop acts. The Lead never takes the
-    stop as a decline and pushes nothing; had it pushed after that stop, the push would be a mechanical call."""
-    phases = [_ticket(PUSH, WAIT_ACTION, blockers=[GATE])] * 3 + [_ticket(PUSH)] * 3
+    stop as a decline and pushes nothing."""
+    phases = [_ticket(PUSH, WAIT_ACTION, blockers=[GATE], run=K.RUNNING)] * 3 + [_ticket(PUSH)] * 3
 
     def project(n: int) -> dict[str, Any]:
         return _project(STOP, revision=REV if n < 12 else REV + 1)  # the loop acts at last
@@ -190,9 +214,36 @@ def test_a_blocked_stop_whose_blocker_clears_by_the_runs_end_is_not_a_decline_an
     assert readings[0] == {"code": LOOP.BLOCKED, "message": f"{T}: GATE_UNSATISFIED: {GATE['message']}",
                            "run_live": True, "stands": False}
     assert readings[-1] == {"action": PUSH["action"], "stands": False}
-    # the push after a self-clearing stop is a mechanical call, and counted
-    lead.push(PUSH)
+    assert lead.calls == []
+
+
+def test_the_leads_push_after_a_self_clearing_blocked_stop_is_a_counted_mechanical_call(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Driven through the Lead's own turn: the blocker clears when the run ends, the loop has not acted within the
+    Lead's bound, and the Lead pushes the step itself. The stop was no decline, so the push is a mechanical call."""
+    monkeypatch.setattr(L, "LOOP_WAIT_S", 0.05)
+    phases = [_ticket(PUSH, WAIT_ACTION, blockers=[GATE], run=K.RUNNING)] * 3 + [_ticket(PUSH)]
+    lead = _Lead(tmp_path, project=lambda n: _project(STOP),
+                 unit=lambda n: {"projection": phases[min(len(phases) - 1, n // 2)], "result": {}})
+    assert lead.tick()
+    declined = [e for e in lead.events() if e["kind"] == "loop_declined"]
+    assert len(declined) == 1 and declined[0]["stop"] is None and not declined[0]["now"]["stands"]
+    assert [(c[0], c[2]) for c in lead.calls] == [(PUSH["action"], True)]
     assert _ledger(lead).counts()["mechanical_calls"] == 1
+
+
+def test_a_live_run_keeps_a_blocked_stop_from_being_a_decline_even_with_no_wait_offered(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whether a run is live is the projection's ``runs`` with the contract's ``LIVE_RUNS``, not the wait it offers: a
+    profile that cannot call ``harness_wait`` still has a live run, and its blocker can still clear when it ends."""
+    monkeypatch.setattr(LOOP, "COARSE_S", 0.0)
+    monkeypatch.setattr(L, "LOOP_WAIT_S", 0.05)
+    lead = _Lead(tmp_path, project=lambda n: _project(STOP),
+                 unit=lambda n: {"projection": _ticket(PUSH, blockers=[GATE], run=K.STARTING)})
+    assert not lead.loop_acts({"revision": REV})
+    declined = [e for e in lead.events() if e["kind"] == "loop_declined"]
+    assert len(declined) == 1 and declined[0]["stop"] is None  # only the Lead's own bound ended the wait
+    assert declined[0]["now"]["run_live"] and not declined[0]["now"]["stands"]
 
 
 def test_a_blocked_stop_whose_blocker_is_still_present_after_the_run_ends_is_a_decline(

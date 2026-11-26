@@ -90,6 +90,7 @@ import bounds
 import childdiag
 
 from aew.harness import steering_loop as LOOP
+from aew.harness.contract import LIVE_RUNS
 from aew.surface.contract import WAIT
 from vertical.chat import Gone, Mailbox
 from vertical.hints import NotFollowable, fill_hint, is_usage_error, parse_failed
@@ -460,11 +461,15 @@ class Lead:
         self.event("turn_ended", action=a["action"], arguments=a.get("arguments"))
         self.doing("turn_ended", action=a["action"])
         deadline = time.monotonic() + WAKE_WAIT_S
+        failed: str | None = None
         while time.monotonic() < deadline:
             try:
                 news = self.wakes.news()
             except (OSError, ValueError) as exc:  # the server did not answer: looked at again within the bound
-                self.event("wake_read_error", error=f"{type(exc).__name__}: {exc}"[:300])
+                error = f"{type(exc).__name__}: {exc}"[:300]
+                if error != failed:  # each new error once, as loop_acts records each new reading
+                    self.event("wake_read_error", error=error)
+                    failed = error
                 news = []
             if news:
                 self.event("woken", wakes=news)
@@ -525,12 +530,14 @@ class Lead:
     def loop_reads(self, project: dict[str, Any]) -> dict[str, Any]:
         """What the loop's own selection (``steering_loop.select``) makes of what the Lead reads now: the project and
         the Lead's Ticket, which in the vertical are every live unit. ``stands`` when it still stops, and is not a
-        BLOCKED stop whose subject's run is still live (that blocker can clear when the run ends)."""
+        BLOCKED stop whose subject's run is still live (that blocker can clear when the run ends). A run is live by its
+        status in the projection's ``runs``, as the harness contract owns it (``LIVE_RUNS``), never by the wait the
+        projection offers for it (review of #627, m3)."""
         units = [self.call("status", {"work_id": self.subject}).get("projection") or {}] if self.subject else []
         picked = LOOP.select(project, units)
         if not isinstance(picked, LOOP.Stop):
             return {"action": picked.action.get("action"), "stands": False}  # the loop acts on its next look
-        live = any(a.get("kind") == WAIT for u in units for a in u.get("actions") or [])
+        live = any(r.get("status") in LIVE_RUNS for u in units for r in u.get("runs") or [])
         return {"code": picked.code, "message": picked.message, "run_live": live,
                 "stands": picked.code != LOOP.BLOCKED or not live}
 

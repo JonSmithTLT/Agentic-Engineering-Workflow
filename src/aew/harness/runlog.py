@@ -287,6 +287,12 @@ def heartbeat_age(directory: Path, *, distinguish_unreadable: bool = False) -> f
     """The heartbeat's age, or None when there is none. Only a regular file beats: the file is not followed, and a
     link, a directory or one that cannot be read is no heartbeat (the run reads as ``lost``), never an error that
     fails the reader (#137 re-review: the run's own user can replace it)."""
+    observed_at = heartbeat_time(directory, distinguish_unreadable=distinguish_unreadable)
+    return max(0.0, time.time() - observed_at) if observed_at is not None else None
+
+
+def heartbeat_time(directory: Path, *, distinguish_unreadable: bool = False) -> float | None:
+    """The file timestamp used by the run owner's liveness calculation."""
     from aew.engine.store import retry_lock_free
 
     try:
@@ -303,7 +309,7 @@ def heartbeat_age(directory: Path, *, distinguish_unreadable: bool = False) -> f
         return None
     if not stat.S_ISREG(info.st_mode):
         return None
-    return max(0.0, time.time() - info.st_mtime)
+    return info.st_mtime
 
 
 def observed_status(directory: Path, *, require_readable: bool = False) -> tuple[str, dict[str, Any] | None]:

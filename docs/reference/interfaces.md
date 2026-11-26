@@ -219,6 +219,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `plan lint`
 - `plan propose`
 - `plan reconfirm`
+- `read`
 - `record body`
 - `resume`
 - `review ingest`

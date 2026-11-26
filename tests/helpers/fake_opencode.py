@@ -123,6 +123,19 @@ def tool_parts(step: dict[str, Any]) -> list[dict[str, Any]] | None:
             for path in sorted(step.get("files") or {})]
 
 
+def skill_parts(step: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The tool part a completed ``skill`` call leaves (``{"do": "skill", "id": ID}``): what a run's ``loaded`` record
+    counts (``adapter.skill_loads``: ``state.status`` and ``state.input.id``). The fake applies no skill rules, so the
+    script says which id the "model" loaded; whether the run exposed it is the reader's question."""
+    if step.get("do") != "skill":
+        return None
+    at = now_ms()
+    return [{"type": "tool", "id": new_id("call"), "name": "skill", "executed": True,
+             "time": {"created": at, "ran": at, "completed": at},
+             "state": {"status": "completed", "input": {"id": step.get("id")}, "metadata": {"truncated": False},
+                       "content": [{"type": "text", "text": "loaded"}]}}]
+
+
 def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(12)}"
 
@@ -371,7 +384,7 @@ class FakeOpenCode:
     def run_step(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
         msg = self.assistant(s, i, "tool-calls", tool="shell",
-                             parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
+                             parts=skill_parts(step) or (tool_parts(step) if self.knobs.get("tool_parts") else None))
         call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
         self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell",
                                                  "assistantMessageID": msg["id"]})
@@ -395,7 +408,7 @@ class FakeOpenCode:
         if do == "hang":
             s.interrupted.wait()
             return "interrupted"
-        if do == "model_step":
+        if do in ("model_step", "skill"):  # a skill call runs no process of the agent's
             return None
         step_file = self.state / "steps" / f"{i}.json"
         step_file.parent.mkdir(exist_ok=True)

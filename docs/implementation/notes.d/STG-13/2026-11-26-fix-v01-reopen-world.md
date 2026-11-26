@@ -9,7 +9,7 @@ clusters C7 and C8 of the V-01 re-measure of 2026-11-26.
   host-state directory of the world's own: each needed tool is declined (today `ripgrep`) and no optional one, and
   each decline is recorded as a `setup_fixture`, never counted. The seat-resume confirmation code still counts under
   `pin_reentries` on Linux. The ruling is also quoted in `vertical-uat.md`, under the setup boundary.
-- **Open: the operator's closing question.** "is that how aew works? I thought at that point it would automatically
+- **Open: the operator's closing question (E382).** "is that how aew works? I thought at that point it would automatically
   reattach already?" It is not answered here, and nothing on this branch decides it. The current fact: a
   fresh-terminal reopen asks for the seat-resume confirmation code (E330), and that is the one `pin_reentries` each
   V2 case counts. An automatic reattach waits on `REATTACH_LEAD` reaching the wire: it is still a proposed command.

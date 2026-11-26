@@ -128,7 +128,9 @@ class Reads:
         except SourceUnavailable:
             snap, limitations = None, limitations + ["source_unavailable", "partial_source"]
         if snap is not None:
-            items += [self._aew_waiting(wid, u, snap, recipient) for wid, u in sorted(snap.state["work"].items())
+            items += [committed_waiting(wid, u, self._aew_stamp("CNI", f"aew:waiting:{wid}", snap),
+                                        self._aew_stamp("WIS", f"aew:work:{wid}", snap), self._disclosure(recipient))
+                      for wid, u in sorted(snap.state["work"].items())
                       if u.get("state") in WAITING_STATES]
         items.sort(key=lambda i: i["ref"]["id"])
         page, info = self._page(items, "waiting", recipient, None, limit, cursor)
@@ -156,24 +158,6 @@ class Reads:
                                   {"field_path": "data.progress",
                                    "source": self._fx_stamp("HEB", f"fixture:heb-progress-{ref}")}]}
 
-    def _aew_waiting(self, wid: str, u: dict[str, Any], snap: Any, recipient: str) -> dict[str, Any]:
-        """A real AEW work unit in a waiting state: the engine's own record, reported (WIS facts, CNI listing)."""
-        blockers = [b for b in u.get("blocked_by") or [] if isinstance(b, dict) and b.get("id")]
-        refs = [W.subject("ticket", str(b["id"])) for b in blockers][:50]
-        reason = u.get("state_reason")
-        work = self._aew_stamp("WIS", f"aew:work:{wid}", snap)
-        return {"resource_type": "waiting", "ref": W.subject("waiting_condition", f"aew:waiting:{wid}"),
-                "source": self._aew_stamp("CNI", f"aew:waiting:{wid}", snap), "disclosure": self._disclosure(recipient),
-                "data": {"work": W.subject(_kind(u), wid, revision=_revision(u)), "cause": WAITING_STATES[u["state"]],
-                         "basis_refs": {"visibility": "partial_visible" if refs else "unknown", "refs": refs},
-                         "responsible_owner": "WIS", "progress": "blocked", "action_status": "read_only",
-                         "narrative": ({"text": f"{u['state']}: {reason}", "render": "inert_text",
-                                        "provenance": {"kind": "service_observation", "owner_or_author": ENGINE_ISSUER,
-                                                       "source_ref": f"aew:work:{wid}"}} if reason else None)},
-                "links": [],
-                "field_sources": [{"field_path": p, "source": work} for p in
-                                  ("data.work", "data.cause", "data.basis_refs", "data.progress")]}
-
     # ------------------------------------------------------------------ 2. GET /v1/read/runs/{execution_id}
 
     def run(self, recipient: str, execution_id: str, now: datetime, correlation: str) -> dict[str, Any]:
@@ -196,33 +180,12 @@ class Reads:
             item, lim = self._aew_run(execution_id, inv, snap, recipient, now)
         return self._result("detail", [item], None, lim, recipient, now, correlation)
 
-    def _run_data(self, inv_ref: str, work: dict[str, Any] | None, **kw: Any) -> dict[str, Any]:
-        data = {"invocation_ref": W.subject("execution_activity", inv_ref), "work_ref": work, "attachment_ref": None,
-                "phase": "UNKNOWN", "progress_basis_ref": None, "started_at": None, "last_progress_at": None,
-                "elapsed_observed_seconds": None, "elapsed_basis_ref": None, "custody_state": "UNKNOWN",
-                "custody_basis_ref": None,
-                "resource_state": {"accounting_class": "UNKNOWN", "monetary_amount": None, "currency": None,
-                                   "usage_units": None, "observation_class": "UNKNOWN",
-                                   "outstanding_exposure": "UNKNOWN",
-                                   "original_operation_ref": None, "accounting_domain": "IF10_MODEL_DELIVERY_ONLY"},
-                "resource_basis_ref": None, "source_epoch": None, "limitations": ["source_unqualified"],
-                "authority_effect": "READ_ONLY_NO_LIFECYCLE_EFFECT", "phase_observation_class": "UNKNOWN",
-                "phase_basis_ref": None, "stall_assessment": "NOT_ESTABLISHED", "stall_basis_ref": None,
-                "wake_assessment": "NOT_ESTABLISHED", "wake_basis_ref": None, "remote_effect_state": "NOT_ESTABLISHED",
-                "remote_effect_basis_ref": None, "remote_effect_domain": "IF12_MODEL_DELIVERY_ONLY",
-                "non_model_effect_state": "NOT_ESTABLISHED", "non_model_effect_basis_ref": None,
-                "non_model_resource_exposure": "UNKNOWN", "non_model_resource_basis_ref": None,
-                "whole_invocation_effect_clearance": "NOT_ESTABLISHED",
-                "whole_invocation_resource_clearance": "NOT_ESTABLISHED"}
-        data.update(kw)
-        return data
-
     def _fx_run(self, r: dict[str, Any], recipient: str, now: datetime) -> tuple[dict[str, Any], list[str]]:
         w = self.fx.work(r["work_ref"])
         work = W.subject(w["kind"], w["work_ref"], revision=w["work_revision"]) if w else None
         ident = r["execution_id"].removeprefix(W.FIXTURE)
         phase = r["phase"]
-        kw: dict[str, Any] = {"phase": phase, "phase_observation_class": _phase_class(phase),
+        kw: dict[str, Any] = {"phase": phase, "phase_observation_class": phase_class(phase),
                               "phase_basis_ref": r["phase_basis_ref"], "progress_basis_ref": r["phase_basis_ref"],
                               "started_at": self.fx.at(r["started_offset_s"]),
                               "last_progress_at": self.fx.at(r["last_progress_offset_s"]),
@@ -247,7 +210,7 @@ class Reads:
         kw["limitations"] = lim
         item = {"resource_type": "run", "ref": W.subject("execution_activity", r["execution_id"]),
                 "source": self._fx_stamp("R01", f"fixture:r01-run-{ident}"), "disclosure": self._disclosure(recipient),
-                "data": self._run_data(r["execution_id"], work, **kw),
+                "data": run_data(r["execution_id"], work, **kw),
                 "links": [], "field_sources": fs}
         return item, ["source_unqualified"]
 
@@ -263,15 +226,15 @@ class Reads:
             status = self.engine.observed(str(last["run"])) if self.engine is not None else "unknown"
             phase = ("REPORTED_ACTIVE" if status in RUNNING else "REPORTED_FINISHED" if status in _terminal()
                      else "UNKNOWN")
-            kw.update(phase=phase, phase_observation_class=_phase_class(phase),
+            kw.update(phase=phase, phase_observation_class=phase_class(phase),
                       phase_basis_ref=f"aew:run:{last['run']}" if phase != "UNKNOWN" else None,
                       started_at=str(runs[0].get("launched_at")) if runs[0].get("launched_at") else None)
         work = self._aew_stamp("WIS", f"aew:work:{inv.get('work_unit')}", snap)
         item = {"resource_type": "run", "ref": W.subject("execution_activity", inv_id),
                 "source": self._aew_stamp("R01", f"aew:invocation:{inv_id}", snap),
                 "disclosure": self._disclosure(recipient),
-                "data": self._run_data(inv_id, W.subject(_kind(unit), str(inv.get("work_unit")),
-                                                         revision=_revision(unit)), **kw),
+                "data": run_data(inv_id, W.subject(work_kind(unit), str(inv.get("work_unit")),
+                                                         revision=work_revision(unit)), **kw),
                 "links": [],
                 "field_sources": [{"field_path": "data.phase",
                                    "source": self._aew_stamp("R01", f"aew:invocation:{inv_id}", snap)},
@@ -305,62 +268,36 @@ class Reads:
         lim = ["source_unqualified", "G3_unqualified"] + (["source_unavailable"] if unknown else [])
         return self._result("detail", [item], None, lim, recipient, now, correlation)
 
-    @staticmethod
-    def _axis_unavailable() -> dict[str, Any]:
-        return {"state": "unknown", "owner_epoch": None, "source_version": None, "basis_ref": None, "observed_at": None,
-                "valid_until": None, "qualification": "not_established", "reason_code": "SOURCE_UNAVAILABLE"}
-
-    @staticmethod
-    def _axis_reported(epoch: str, version: str, basis: str, observed_at: str) -> dict[str, Any]:
-        """An owner fact we can name but not qualify: its state stays unknown (FR_OwnerAxis: ok and blocked need a
-        qualified fact), with the slice's interim reason SOURCE_UNQUALIFIED (gap STG02-BE-05)."""
-        return {"state": "unknown", "owner_epoch": epoch, "source_version": version, "basis_ref": basis,
-                "observed_at": observed_at, "valid_until": None, "qualification": "unqualified",
-                "reason_code": "SOURCE_UNQUALIFIED"}
-
-    def _vector(self, recipient: str, ref_id: str, work_ref: str, revision: str, generation: str, binding: str,
-                axes: dict[str, dict[str, Any]], stamps: dict[str, dict[str, Any]], item_source: dict[str, Any],
-                ) -> dict[str, Any]:
-        pins = {"data.work_ref": "WIS", "data.work_revision": "WIS", "data.generation_ref": "HEB",
-                "data.binding_ref": "HEB", "data.operation": "HEB", "data.informational_only": "HEB"}
-        fs = [{"field_path": f"data.axes.{x}", "source": stamps[f"axis:{x}"]} for x in sorted(AXES)]
-        fs += [{"field_path": p, "source": stamps[o]} for p, o in sorted(pins.items())]
-        return {"resource_type": "continuation_vector",
-                "ref": W.subject("continuation_state", ref_id, revision=revision, generation=generation),
-                "source": item_source, "disclosure": self._disclosure(recipient),
-                "data": {"binding_ref": binding, "work_ref": work_ref, "work_revision": revision,
-                         "generation_ref": generation, "operation": "CONTINUE_ELIGIBLE_WORK", "axes": axes,
-                         "informational_only": True},
-                "links": [], "field_sources": fs}
-
     def _fx_continuation(self, w: dict[str, Any], recipient: str, now: datetime) -> dict[str, Any]:
         ref, heb = w["work_ref"].removeprefix(W.FIXTURE), self.fx.heb
         axes, stamps = {}, {}
         for x in AXES:
             spec = w["axes"].get(x)
             if spec is None:
-                axes[x], stamps[f"axis:{x}"] = self._axis_unavailable(), self._unavailable(x, now)
+                axes[x], stamps[f"axis:{x}"] = axis_unavailable(), self._unavailable(x, now)
             else:
                 o = x.lower()
-                axes[x] = self._axis_reported(f"fixture:{o}-epoch-1", f"fixture:{o}-v1", spec["basis_ref"],
+                axes[x] = axis_reported(f"fixture:{o}-epoch-1", f"fixture:{o}-v1", spec["basis_ref"],
                                               self.fx.at(0))
                 stamps[f"axis:{x}"] = self._fx_stamp(x, spec["basis_ref"])
         stamps["WIS"] = self._fx_stamp("WIS", f"fixture:wis-work-{ref}")
         stamps["HEB"] = self._fx_stamp("HEB", f"fixture:heb-continuation-{ref}")
-        return self._vector(recipient, f"fixture:continuation-{ref}", w["work_ref"], w["work_revision"],
-                            heb["generation_ref"], heb["binding_ref"], axes, stamps, stamps["HEB"])
+        return continuation_item(self._disclosure(recipient), f"fixture:continuation-{ref}", w["work_ref"],
+                                 w["work_revision"], heb["generation_ref"], heb["binding_ref"],
+                                 axes, stamps, stamps["HEB"])
 
     def _aew_continuation(self, wid: str, u: dict[str, Any], snap: Any, recipient: str,
                           now: datetime) -> dict[str, Any]:
         """A real AEW work unit: WIS's axis is the engine's record; HEB, ADC, AEV, R-01 and IF-10 have no source."""
-        axes = {x: self._axis_unavailable() for x in AXES}
+        axes = {x: axis_unavailable() for x in AXES}
         stamps = {f"axis:{x}": self._unavailable(x, now) for x in AXES}
-        axes["WIS"] = self._axis_reported(f"aew:project:{snap.project_id}", f"aew:rev:{snap.revision}",
+        axes["WIS"] = axis_reported(f"aew:project:{snap.project_id}", f"aew:rev:{snap.revision}",
                                           f"aew:work:{wid}", snap.generated_at)
         stamps["axis:WIS"] = stamps["WIS"] = self._aew_stamp("WIS", f"aew:work:{wid}", snap)
         stamps["HEB"] = self._unavailable("HEB", now)
-        return self._vector(recipient, f"aew:continuation:{wid}", wid, _revision(u) or "none", "unavailable:HEB",
-                            "unavailable:HEB", axes, stamps, stamps["HEB"])
+        return continuation_item(self._disclosure(recipient), f"aew:continuation:{wid}", wid,
+                                 work_revision(u) or "none", "unavailable:HEB", "unavailable:HEB",
+                                 axes, stamps, stamps["HEB"])
 
     # ------------------------------------------------------------------ 5. GET /v1/read/owner-operations
 
@@ -402,16 +339,87 @@ class Reads:
                 "links": [], "field_sources": []}
 
 
-def _kind(u: dict[str, Any]) -> str:
+def committed_waiting(wid: str, u: dict[str, Any], source: dict[str, Any], work: dict[str, Any],
+                      disclosure: dict[str, Any]) -> dict[str, Any]:
+    """A real AEW work unit in a waiting state: the engine's own record, reported (WIS facts, CNI listing)."""
+    blockers = [b for b in u.get("blocked_by") or [] if isinstance(b, dict) and b.get("id")]
+    refs = [W.subject("ticket", str(b["id"])) for b in blockers][:50]
+    reason = u.get("state_reason")
+    return {"resource_type": "waiting", "ref": W.subject("waiting_condition", f"aew:waiting:{wid}"),
+            "source": source, "disclosure": disclosure,
+            "data": {"work": W.subject(work_kind(u), wid, revision=work_revision(u)),
+                     "cause": WAITING_STATES[u["state"]],
+                     "basis_refs": {"visibility": "partial_visible" if refs else "unknown", "refs": refs},
+                     "responsible_owner": "WIS", "progress": "blocked", "action_status": "read_only",
+                     "narrative": ({"text": f"{u['state']}: {reason}", "render": "inert_text",
+                                    "provenance": {"kind": "service_observation", "owner_or_author": work["issuer_ref"],
+                                                   "source_ref": work["fact_ref"]}} if reason else None)},
+            "links": [],
+            "field_sources": [{"field_path": p, "source": work} for p in
+                              ("data.work", "data.cause", "data.basis_refs", "data.progress")]}
+
+
+def run_data(inv_ref: str, work: dict[str, Any] | None, **kw: Any) -> dict[str, Any]:
+    data = {"invocation_ref": W.subject("execution_activity", inv_ref), "work_ref": work, "attachment_ref": None,
+            "phase": "UNKNOWN", "progress_basis_ref": None, "started_at": None, "last_progress_at": None,
+            "elapsed_observed_seconds": None, "elapsed_basis_ref": None, "custody_state": "UNKNOWN",
+            "custody_basis_ref": None,
+            "resource_state": {"accounting_class": "UNKNOWN", "monetary_amount": None, "currency": None,
+                               "usage_units": None, "observation_class": "UNKNOWN",
+                               "outstanding_exposure": "UNKNOWN",
+                               "original_operation_ref": None, "accounting_domain": "IF10_MODEL_DELIVERY_ONLY"},
+            "resource_basis_ref": None, "source_epoch": None, "limitations": ["source_unqualified"],
+            "authority_effect": "READ_ONLY_NO_LIFECYCLE_EFFECT", "phase_observation_class": "UNKNOWN",
+            "phase_basis_ref": None, "stall_assessment": "NOT_ESTABLISHED", "stall_basis_ref": None,
+            "wake_assessment": "NOT_ESTABLISHED", "wake_basis_ref": None, "remote_effect_state": "NOT_ESTABLISHED",
+            "remote_effect_basis_ref": None, "remote_effect_domain": "IF12_MODEL_DELIVERY_ONLY",
+            "non_model_effect_state": "NOT_ESTABLISHED", "non_model_effect_basis_ref": None,
+            "non_model_resource_exposure": "UNKNOWN", "non_model_resource_basis_ref": None,
+            "whole_invocation_effect_clearance": "NOT_ESTABLISHED",
+            "whole_invocation_resource_clearance": "NOT_ESTABLISHED"}
+    data.update(kw)
+    return data
+
+
+def axis_unavailable() -> dict[str, Any]:
+    return {"state": "unknown", "owner_epoch": None, "source_version": None, "basis_ref": None, "observed_at": None,
+            "valid_until": None, "qualification": "not_established", "reason_code": "SOURCE_UNAVAILABLE"}
+
+
+def axis_reported(epoch: str, version: str, basis: str, observed_at: str) -> dict[str, Any]:
+    """An owner fact we can name but not qualify: its state stays unknown (FR_OwnerAxis: ok and blocked need a
+    qualified fact), with the slice's interim reason SOURCE_UNQUALIFIED (gap STG02-BE-05)."""
+    return {"state": "unknown", "owner_epoch": epoch, "source_version": version, "basis_ref": basis,
+            "observed_at": observed_at, "valid_until": None, "qualification": "unqualified",
+            "reason_code": "SOURCE_UNQUALIFIED"}
+
+
+def continuation_item(disclosure: dict[str, Any], ref_id: str, work_ref: str, revision: str, generation: str,
+                      binding: str, axes: dict[str, dict[str, Any]], stamps: dict[str, dict[str, Any]],
+                      item_source: dict[str, Any]) -> dict[str, Any]:
+    pins = {"data.work_ref": "WIS", "data.work_revision": "WIS", "data.generation_ref": "HEB",
+            "data.binding_ref": "HEB", "data.operation": "HEB", "data.informational_only": "HEB"}
+    fs = [{"field_path": f"data.axes.{x}", "source": stamps[f"axis:{x}"]} for x in sorted(AXES)]
+    fs += [{"field_path": p, "source": stamps[o]} for p, o in sorted(pins.items())]
+    return {"resource_type": "continuation_vector",
+            "ref": W.subject("continuation_state", ref_id, revision=revision, generation=generation),
+            "source": item_source, "disclosure": disclosure,
+            "data": {"binding_ref": binding, "work_ref": work_ref, "work_revision": revision,
+                     "generation_ref": generation, "operation": "CONTINUE_ELIGIBLE_WORK", "axes": axes,
+                     "informational_only": True},
+            "links": [], "field_sources": fs}
+
+
+def work_kind(u: dict[str, Any]) -> str:
     return str(u["kind"]) if u.get("kind") in ("epic", "story", "ticket") else "ticket"
 
 
-def _revision(u: dict[str, Any]) -> str | None:
+def work_revision(u: dict[str, Any]) -> str | None:
     accepted = (u.get("plan") or {}).get("accepted")
     return f"plan-{accepted}" if accepted else None
 
 
-def _phase_class(phase: str) -> str:
+def phase_class(phase: str) -> str:
     for prefix, cls in (("OBSERVED_", "HEB_OBSERVED"), ("REPORTED_", "AGENT_REPORTED"),
                         ("INFERRED_", "MODEL_INFERRED")):
         if phase.startswith(prefix):

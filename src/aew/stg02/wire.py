@@ -61,10 +61,10 @@ def correlation_id() -> str:
     return "corr:" + uuid.uuid4().hex
 
 
-def problem(code: str, correlation: str) -> tuple[int, dict[str, Any]]:
-    status, retry, title = PROBLEM_CODES[code]
-    return status, {"type": "about:blank", "title": title, "status": status, "code": code, "retry": retry,
-                    "correlation_id": correlation}
+def problem(code: str, correlation: str, *, title: str | None = None) -> tuple[int, dict[str, Any]]:
+    status, retry, default_title = PROBLEM_CODES[code]
+    return status, {"type": "about:blank", "title": title or default_title, "status": status, "code": code,
+                    "retry": retry, "correlation_id": correlation}
 
 
 # ------------------------------------------------------------------------------------------- path identifiers
@@ -100,22 +100,21 @@ RENEWAL_NONE: dict[str, Any] = {"kind": "none", "source_proof_ref": None, "valid
 
 
 def stamp(owner: str, fact_ref: str, epoch: str, version: str, observed_at: str, *, coverage_ref: str,
-          issuer_ref: str) -> dict[str, Any]:
+          issuer_ref: str, observation_state: str = "unknown") -> dict[str, Any]:
     """An unqualified report of an owner fact we can name (a real AEW record or a labelled fixture). Its currentness
     is not established by any owner renewal, so it is never ``present_current`` (OP-03)."""
     return {"owner": owner, "fact_ref": fact_ref, "source_epoch": epoch, "source_version": version,
-            "coverage_ref": coverage_ref, "observed_at": observed_at, "qualification": "unqualified",
-            "observation_state": "unknown", "renewal": dict(RENEWAL_NONE), "closures": [],
+            "coverage_ref": coverage_ref, "observed_at": observed_at,
+            "qualification": "not_established" if observation_state == "unavailable" else "unqualified",
+            "observation_state": observation_state, "renewal": dict(RENEWAL_NONE), "closures": [],
             "authority_class": "unqualified_report", "governing_owner": None, "issuer_ref": issuer_ref,
             "owner_coverage_class": "not_established"}
 
 
 def unavailable(owner: str, observed_at: str, *, coverage_ref: str) -> dict[str, Any]:
     """An owner with no source this backend can read: not established (OP-03, the transport reason)."""
-    s = stamp(owner, f"unavailable:{owner}", "unavailable", "unavailable", observed_at, coverage_ref=coverage_ref,
-              issuer_ref=f"unavailable:{owner}")
-    s.update(qualification="not_established", observation_state="unavailable")
-    return s
+    return stamp(owner, f"unavailable:{owner}", "unavailable", "unavailable", observed_at, coverage_ref=coverage_ref,
+                 issuer_ref=f"unavailable:{owner}", observation_state="unavailable")
 
 
 def subject(kind: str, ident: str, *, revision: str | None = None, generation: str | None = None) -> dict[str, Any]:

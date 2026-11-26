@@ -2272,29 +2272,43 @@ only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
 It corrects what the projection's `.env` rule claimed above ("`.env` and `.env.*` are not readable"), and the Lead's
 system text that said the same: the guarantee is containment's, and the `read` deny is defence in depth.
 
-- **What is masked:** each entry at the project's top level whose name matches `*.env` or `*.env.*` and not
+- **What is masked:** every file in the project, at any depth, whose name matches `*.env` or `*.env.*` and not
   `*.env.example` (`layout.ENV_FILES`, `layout.ENV_DOCS`: the names the read rules already used, the designer's of
   2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
-  `.env` is also a virtual environment's usual name. A link to a file is, with its target.
-- **Where:** in every layout `for_run` makes, as every layout shows the project read-only. The mask is a
-  `containment.hide` entry's (`_mask_plan`, through `layout.project_env_masks`), so it behaves as one: in the Lead's
-  own tree each file is masked in place by the empty read-only file and named on the launch line ("the project's .env
-  files"), and in a worker's view it is left out of the project, whose other entries are put back. A masked file reads
-  as empty or absent to every tool, OpenCode's and the shell's alike, and a write to it fails.
-- **The top level only.** A walk of the whole tree at every launch would cost in proportion to the tree, and in a
-  worker's view each directory a file is left out of is emptied and refilled entry by entry, under bubblewrap's
-  argument limit (CS-4 addendum 9). A nested `.env` file is named in `containment.hide`. As with a `containment.hide`
-  entry, a file absent at the launch is not masked, and a mask covers its path only, not a committed copy.
+  `.env` is also a virtual environment's usual name. A link to a file is masked by its target, which hides it at both
+  paths. Nothing under `.aew` is scanned: the store and the runs' own directories have masks of their own.
+- **How they are found** (`layout.project_env_masks`), at each launch: in a git work tree, one
+  `git ls-files --cached --others` with the two names as pathspecs, so tracked and untracked files alike, ignored ones
+  included. Git walks the tree in C, so the cost is the tree's size: about 0.2 s for 200,000 files in ignored vendored
+  directories. A project that is not a git work tree is walked without following links, past `.git` and `.aew`.
+- **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
+  in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
+  bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
+  project's .env files"), and a write to it fails, naming the mask. A masked file reads as empty to every tool,
+  OpenCode's and the shell's alike. Each mask takes three of bubblewrap's arguments, and a project with more `.env`
+  files than the limit allows is refused before bubblewrap starts (`bwrap_argument_limit`, with `env_masks`, naming the
+  count; CS-4 addendum 9).
+- **A tracked `.env` is masked too** (the review of #592, F1). That is the safer default, as such a file can still hold
+  a local edit. Inside, git shows it as modified with its content deleted, and a program that loads it reads it as
+  empty. Its committed content stays in the history (`git show HEAD:.env`), which a mask never covers.
+- **Its limits** (the review of #592): a file first created, or replaced by rename on the host, during the session is
+  seen inside until the next launch; a hard link to a masked file under another name is not masked; other names are
+  not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively). Anything else is named in
+  `containment.hide`.
 - **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
-- **Workers:** a worker's worktree holds only what is committed, so no ignored `.env`; the project, visible read-only in
-  its sandbox, is where the mask applies.
+- **Workers:** a worker's worktree holds only what is committed, so it has no ignored `.env`. The project is visible
+  read-only in a worker's sandbox, and the mask applies there.
 - **Not claimed:** where the run is not contained (Windows, or `containment.mode: allow_weaker`, labelled
   `workdir_separation_only`) there are no masks, and only the `read` rule applies. The Lead's base system text says only
   that its read tool refuses `.env` files; the line that a contained Lead's text gains (`lead_contained_text`) states
   that containment hides them. Eval's own sandboxes (`eval/aew_eval`) run over eval task copies, not an AEW project, and
   are unchanged.
-- **Tests:** `tests/unit/test_containment_layout.py` (the Lead's layout masks them in place and keeps `.env.example`;
-  a worker's leaves them out of the project; a directory named `.env` is not masked; the read rules derive from the
-  names), and, in a real sandbox on Linux, `tests/integration/test_lead_containment.py` and
-  `tests/integration/test_containment.py` (a read by name or by absolute path, a search of the tree and another
-  program's read find none of them, from the Lead's sandbox and from a worker's).
+- **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
+  - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
+  - a directory named `.env` is not masked, a link masks its file, and a tree that is not a git work tree is walked;
+  - a project with too many files to mask is refused;
+  - the read rules derive from the names.
+
+  In a real sandbox on Linux, `tests/integration/test_lead_containment.py` and `tests/integration/test_containment.py`
+  check the Lead's sandbox and a worker's. A read by name or by absolute path, a search of the tree and another
+  program's read find no nested or top-level `.env` file's content, while each `.env.example` reads as it is.

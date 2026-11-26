@@ -1850,65 +1850,88 @@ def test_no_contained_environment_builder_passes_a_display_variable(tmp_path):
         assert not {k.upper() for k in env} & set(L.DISPLAY_ENV), sorted(env)
 
 
-ENV_NAMES = (".env", ".env.local", "prod.env")  # what the projection's read rules name, at the project's top level
+# What the projection's read rules name, at the project's top level and nested, as a monorepo keeps them
+ENV_NAMES = (".env", ".env.local", "prod.env", "apps/web/.env", "apps/web/config/.env.production", "docker/.env")
+ENV_KEPT = (".env.example", "apps/web/.env.example", ".aew/local/scratch/.env")
 
 
 def plant_env_files(repo: Path) -> None:
-    """Synthetic `.env` files at the project's top level, the documentation copy beside them, a virtual environment
-    named `.env`'s sibling and a nested one, made before the layout."""
-    repo.mkdir(parents=True, exist_ok=True)
-    for name in (*ENV_NAMES, ".env.example"):
+    """Synthetic `.env` files at the project's top level and nested, the documentation copies beside them, and one under
+    `.aew`, which the store's own masks cover, made before the layout."""
+    for name in (*ENV_NAMES, *ENV_KEPT):
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text("SYNTHETIC=1\n")
-    (repo / "pkg").mkdir()
-    (repo / "pkg" / ".env").write_text("SYNTHETIC=1\n")
 
 
-def test_the_contained_leads_layout_masks_the_projects_env_files_and_keeps_env_example(tmp_path, fake_bwrap,
-                                                                                      tmp_unmasked):
-    """Containment hides the project's `.env` files, as the Lead's system text states: in the Lead's own tree each is
-    masked in place by the empty read-only file, and named on the launch line by what put it there. `.env.example`
-    stays, and so does a nested one, which only containment.hide names (the top level only)."""
+def env_masked(layout: C.Layout, repo: str, names: tuple[str, ...]) -> set[str]:
+    """Which of ``names`` (relative to ``repo``) the layout masks in place by the empty file, from its argv."""
+    argv = C.bwrap_argv(layout, ["agent"])
+    binds = {argv[i + 2] for i, a in enumerate(argv[:-2]) if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
+    return {n for n in names if os.path.join(repo, n) in binds}
+
+
+def test_the_contained_leads_layout_masks_the_projects_env_files_at_any_depth_and_keeps_env_example(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """Containment hides the project's `.env` files, as the Lead's system text states: at any depth, each is masked in
+    place by the empty read-only file and named on the launch line by what put it there. `.env.example` stays, and so
+    does what lies under `.aew`, which the store's own masks cover."""
     plant_env_files(tmp_path / "repo")
     layout = lead_layout(tmp_path)
     repo = os.path.realpath(tmp_path / "repo")
     want = {os.path.join(repo, n) for n in ENV_NAMES}
-    assert set(layout.hide_files) >= want
+    assert set(layout.env_masks) == want and set(layout.hide_files) >= want
     assert {p: by for p, by in layout.tree_masks if p in want} == dict.fromkeys(want, L.PROJECT_ENV)
-    kept = {os.path.join(repo, ".env.example"), os.path.join(repo, "pkg", ".env")}
-    masked = {*layout.hide_files, *layout.hide_dirs, *layout.left_out, *(p for p, _ in layout.tree_masks)}
-    assert not kept & masked
-    argv = C.bwrap_argv(layout, ["agent"])
-    for path in want:
-        at = argv.index(path)
-        assert argv[at - 2:at] == ["--ro-bind", layout.mask_file], path
+    assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES)
     assert all(p in C.tree_masks_line(layout) for p in want)
 
 
-def test_a_workers_layout_leaves_the_projects_env_files_out_of_the_project_it_shows(tmp_path, fake_bwrap,
-                                                                                    tmp_unmasked):
+def test_a_workers_layout_masks_the_projects_env_files_in_place_at_any_depth(tmp_path, fake_bwrap, tmp_unmasked):
     """Every worker's layout shows the project read-only, so containment hides the project's `.env` files there too:
-    each is left out of the project, whose other entries are put back, `.env.example` among them. The worker's own
+    each masked in place by the empty file, with no directory of the project emptied and refilled. The worker's own
     worktree holds none of them, as a worktree holds only what is committed."""
     for role in ("implementer", "reviewer"):
         plant_env_files(tmp_path / role / "repo")
         layout = run_layout(tmp_path / role, role)
         repo = os.path.realpath(tmp_path / role / "repo")
         assert repo in layout.visible
-        assert {os.path.join(repo, n) for n in ENV_NAMES} <= set(layout.left_out), role
-        assert repo in layout.left_out_of and os.path.join(repo, ".env.example") in layout.put_back, role
-        assert not [p for p in (*layout.left_out, *layout.hide_files) if p.endswith("/pkg/.env")], role
-        assert ("--tmpfs", repo) in L.order(layout), role
+        assert set(layout.env_masks) == {os.path.join(repo, n) for n in ENV_NAMES}, role
+        assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES), role
+        assert not [d for d in layout.left_out_of if L._within(d, repo)], role
         assert not [n for n in os.listdir(tmp_path / role / "ws") if n.startswith(".env")], role
 
 
-def test_a_directory_named_env_is_not_masked_and_a_project_without_env_files_masks_nothing_more(tmp_path, fake_bwrap):
+def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_a_tree_without_git_is_walked(tmp_path):
     """`.env` is also a virtual environment's usual name: a directory is not one of the project's `.env` files, so a run
-    that needs it keeps it. With none at the top level, the layout masks nothing in the project."""
-    (tmp_path / "with" / "repo" / ".env" / "bin").mkdir(parents=True)
-    layout = lead_layout(tmp_path / "with")
-    assert L.project_env_masks(tmp_path / "with" / "repo") == []
-    assert layout.tree_masks == () and layout.hide_dirs == () and layout.hide_files == ()
+    that needs it keeps it. A `.env` that links to a file masks that file, which hides it at both paths. A project that
+    is not a git work tree is walked, at any depth, past `.git` and `.aew`."""
+    repo = tmp_path / "plain"
+    (repo / ".env" / "bin").mkdir(parents=True)
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / "app.cfg").write_text("SYNTHETIC=1\n")
+    (repo / "svc").mkdir()
+    (repo / "svc" / ".env").symlink_to(repo / "secrets" / "app.cfg")
+    (repo / "svc" / "deep").mkdir()
+    (repo / "svc" / "deep" / "x.env").write_text("SYNTHETIC=1\n")
+    for hidden in (".git", ".aew"):
+        (repo / hidden).mkdir()
+        (repo / hidden / ".env").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(repo)
+    assert L.project_env_masks(repo) == sorted([os.path.join(real, "secrets", "app.cfg"),
+                                                os.path.join(real, "svc", "deep", "x.env")])
     assert L.project_env_masks(tmp_path / "missing") == []
+
+
+def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_path, fake_bwrap, tmp_unmasked):
+    """Each `.env` file is masked on its own, with three arguments, so a project with more than bubblewrap can take is
+    refused before it starts, with the typed refusal that names how many there are and what to do."""
+    repo = tmp_path / "repo"
+    for i in range(3100):
+        (repo / f"d{i}").mkdir(parents=True)
+        (repo / f"d{i}" / ".env").write_text("SYNTHETIC=1\n")
+    with pytest.raises(ContainmentUnavailable, match="keep fewer .env files in the project") as refused:
+        run_layout(tmp_path, "reviewer")
+    assert refused.value.details["reason"] == "bwrap_argument_limit"
+    assert refused.value.details["env_masks"] == 3100
 
 
 def test_the_projections_env_read_rules_name_what_containment_masks():

@@ -44,8 +44,9 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 * the capability register is bound read-only, and the context's own directory of entries is read-only and first on
   every process's ``PATH`` (:meth:`Layout.contained_path`, ``aew.capability.bind``), so OpenCode's ripgrep lookup never
   misses and its download is never reached (CAPR-04; the designer's CAP-1 ruling 1);
-* the project's `.env` files at its top level are among the secret masks in every layout, since every layout shows the
-  project (:func:`project_env_masks`), so containment hides them from every tool; `.env.example` stays.
+* the project's `.env` files present at the launch, at any depth, are masked in place by the empty read-only file in
+  every layout, since every layout shows the project (:func:`project_env_masks`), so containment hides them from every
+  tool; `.env.example` stays.
 
 The claim is filesystem integrity, not confidentiality: apart from the masks, a contained process can read what
 the operator's account can read.
@@ -220,6 +221,7 @@ class Layout:
     hide_runs: tuple[str, ...] = ()          # empty tmpfs at its depth, then read-only: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``: a secret file in a tree the run writes
+    env_masks: tuple[str, ...] = ()          # the project's `.env` files among them, in every layout
     left_out: tuple[str, ...] = ()           # absent inside: left out of their directories, ``left_out_of``
     left_out_of: tuple[str, ...] = ()        # empty tmpfs at its depth, its other entries put back, then read-only
     put_back: tuple[str, ...] = ()           # those other entries, bound back read-only at their depth
@@ -270,7 +272,7 @@ class Layout:
                 "skills_binds": list(self.skills_binds),
                 "tools_first": self.tools_first, "tools_last": self.tools_last,
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files, *self.left_out],
-                "left_out_of": list(self.left_out_of),
+                "left_out_of": list(self.left_out_of), "env_masks": list(self.env_masks),
                 "tree_masks": [{"path": p, "by": by} for p, by in self.tree_masks],
                 "tree_absent": [{"path": p, "by": by} for p, by in self.tree_absent],
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
@@ -359,14 +361,19 @@ def _refuse_too_many_arguments(layout: Layout, argv: list[str]) -> None:
     held = Counter(os.path.dirname(p) for p in (*layout.put_back, *(p for p, _ in layout.put_back_links))
                    if os.path.dirname(p) in masked).most_common()
     listed = ", ".join(f"{d} ({n} entries)" for d, n in held) or "none"
-    step = (f"move entries out of {held[0][0]} into a subdirectory, so it has fewer to put back" if held else
+    envs = len(layout.env_masks)
+    # the step for whichever takes more of the arguments: the entries put back, or the project's .env files
+    step = (f"keep fewer .env files in the project (it has {envs}, each masked on its own)"
+            if envs and envs >= sum(n for _, n in held) else
+            f"move entries out of {held[0][0]} into a subdirectory, so it has fewer to put back" if held else
             "list fewer secret paths or writable roots")
     raise ContainmentUnavailable(
         f"this launch needs {count} arguments for bubblewrap, more than the {BWRAP_MAX_ARGS} bubblewrap 0.4.0 takes: "
-        "each entry of a directory a secret is left out of is put back on its own, with three, and the directories "
-        f"whose entries are put back are {listed}; the launch is refused before bubblewrap starts. To launch, {step}. "
+        "each entry of a directory a secret is left out of is put back on its own, with three, and so is each of the "
+        f"project's .env files masked in place ({envs} here); the directories whose entries are put back are "
+        f"{listed}; the launch is refused before bubblewrap starts. To launch, {step}. "
         "This applies to every contained launch, workers included",
-        arguments=count, limit=BWRAP_MAX_ARGS, put_back=dict(held), reason="bwrap_argument_limit")
+        arguments=count, limit=BWRAP_MAX_ARGS, put_back=dict(held), env_masks=envs, reason="bwrap_argument_limit")
 
 
 def _hidden_with_its_tree(layout: Layout, path: str) -> bool:
@@ -494,14 +501,15 @@ class MaskPlan:
 
 HOME_LIST = "the home directory's secret paths"  # what names a path of the home directory's lists (_named)
 POLICY_HIDE = "containment.hide"
-# The project's `.env` files, masked in every layout as a containment.hide entry is (:func:`project_env_masks`), since
-# every layout shows the project. The one owner of the names: the OpenCode projection's read rules derive from these
+# The project's `.env` files, masked in place in every layout (:func:`project_env_masks`), since every layout shows
+# the project. The one owner of the names: the OpenCode projection's read rules derive from these
 # (``opencode.projection.ENV_READ_RULES``; the designer, 2026-11-06), so both layers name the same files. A name
 # ``ENV_FILES`` matches is a `.env` file unless ``ENV_DOCS`` matches it too: `.env.example` is documentation by
 # convention (V2's own default reads it), so it stays.
 ENV_FILES = ("*.env", "*.env.*")
 ENV_DOCS = ("*.env.example",)
-PROJECT_ENV = "the project's .env files"
+PROJECT_ENV = "the project's .env files"  # what puts each there, on the launch line
+ENV_WHAT = "a project .env file"  # what each is, for a refusal that names one
 
 
 def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None, needed: list[tuple[str, str]],
@@ -650,26 +658,61 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str],
     return [(path, source, secret) for path, (source, secret) in seen.items()]
 
 
-def project_env_masks(project: str | os.PathLike[str]) -> list[Named]:
-    """Each `.env` file at the top level of ``project`` (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), as
-    :func:`_named` lists a secret, so containment hides the project's `.env` files as it hides a containment.hide
-    entry: left out of the project where the run does not write it (a worker's view), masked in place by an empty
-    read-only file where it does (the Lead's), and named on the launch line there. A directory is not one: `.env` is
-    also a virtual environment's usual name, and masking that whole would hide the interpreter a run may need. A link
-    to a file is, and its target with it (:func:`_left_out`).
+def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
+    """Every `.env` file in ``project``, at any depth (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), at its real
+    path, sorted: what :func:`for_run` masks in place by the empty read-only file in every layout, so containment hides
+    the project's `.env` files from every tool. A directory is not one: `.env` is also a virtual environment's usual
+    name, and masking that whole would hide the interpreter a run may need. A link to a file is, by its target, which
+    the mask hides at both paths; a link to nothing, or to a directory, is not.
 
-    The top level only, as the files that tools load by convention live there: a walk of the whole tree at every launch
-    costs in proportion to the tree (vendored dependencies, build output), and in a worker's view each directory a mask
-    is left out of is emptied and refilled, entry by entry, under bubblewrap's argument limit (:data:`BWRAP_MAX_ARGS`).
-    A nested one is listed in ``containment.hide``. Present at the launch only, as a containment.hide entry in the run's
-    own tree is: one absent then is not masked, so a launch with none changes nothing."""
-    try:
-        with os.scandir(project) as it:
-            names = sorted(e.name for e in it if not e.is_dir())
-    except OSError:  # no project directory to show, so nothing in it to hide
+    The scan, at each launch: in a git work tree, one ``git ls-files --cached --others`` with the two names as
+    pathspecs, so tracked and untracked files alike, ignored ones included, and none under ``.aew`` (the store, and the
+    runs' own directories, which have masks of their own); git walks the tree in C, so its cost is the tree's size
+    (about 0.2 s for 200,000 files in ignored vendored directories). Elsewhere, a walk of the tree without following
+    links, skipping ``.git`` and ``.aew``. Present at the launch only: a file first created, or replaced by rename on
+    the host, during the session is seen inside until the next launch, as a containment.hide entry in the run's own
+    tree is."""
+    from aew.workspace import git
+
+    root = Path(project)
+    if not root.is_dir():  # no project directory to show, so nothing in it to hide
         return []
-    return [(os.path.join(os.fspath(project), n), PROJECT_ENV, "a project .env file") for n in names
-            if any(fnmatchcase(n, p) for p in ENV_FILES) and not any(fnmatchcase(n, p) for p in ENV_DOCS)]
+    if git.toplevel(root) is not None:
+        listed = git.git("ls-files", "-z", "--cached", "--others", "--",
+                         *(f":(glob)**/{p}" for p in ENV_FILES), ":(exclude,top).aew", cwd=root)
+        names = [n for n in listed.stdout.decode("utf-8", "surrogateescape").split("\0") if n]
+    else:
+        names = []
+        for top, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if not (top == str(root) and d in (".git", ".aew")) and d != ".git"]
+            names += [os.path.relpath(os.path.join(top, f), root) for f in files]
+    out: set[str] = set()
+    for name in names:
+        base = os.path.basename(name)
+        if not any(fnmatchcase(base, p) for p in ENV_FILES) or any(fnmatchcase(base, p) for p in ENV_DOCS):
+            continue
+        real = _real(root / name)
+        if os.path.isfile(real) and not _sandbox_own(real):
+            out.add(real)
+    return sorted(out)
+
+
+def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:
+    """Those of ``paths`` no mask of ``plan`` hides already: one a secret mask covers is left to it."""
+    covered = (*plan.dirs, *plan.left_out)
+    return tuple(p for p in paths if p not in plan.files and not any(_within(p, c) for c in covered))
+
+
+def _env_fields(plan: MaskPlan, env_files: tuple[str, ...], written: list[str]) -> dict[str, Any]:
+    """The :class:`Layout` fields of ``plan`` with the project's `.env` files (:func:`project_env_masks`) masked in
+    place among ``hide_files``, and named on the launch line (``tree_masks``) where they lie in a tree the run writes:
+    the Lead's project."""
+    fields = plan.fields()
+    fields["hide_files"] = (*plan.files, *env_files)
+    fields["env_masks"] = env_files
+    fields["tree_masks"] = (*plan.tree_masks, *((p, PROJECT_ENV) for p in env_files
+                                                 if any(_within(p, w) for w in written)))
+    return fields
 
 
 def _sandbox_own(path: str) -> bool:
@@ -1450,13 +1493,16 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     # the run's own tree, where a secret cannot be left out of its directory (a policy root that holds a mask is
     # refused below: CS-4 addendum 7, ruling 2)
     plan = _mask_plan(home, list(cfg.get("hide") or []), env, needed, tuple(writable),
-                      named_extra=[*client_cert.mask_entries(cfg.get("network")), *project_env_masks(project)])
+                      named_extra=client_cert.mask_entries(cfg.get("network")))
     _refuse_masks(plan.refused, home)
+    # The project's `.env` files, in place in every layout, as every layout shows the project: one bind of the empty
+    # file each, no directory emptied and refilled (the review of #592).
+    env_files = _unmasked(plan, project_env_masks(project))
     hide_host = host_masks()
-    secret = dict(plan.what)
+    secret = {**dict(plan.what), **dict.fromkeys(env_files, ENV_WHAT)}
     guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir,
-                       masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files)), host=hide_host, net_dir=net_dir,
-                       left_out=tuple((p, secret[p]) for p in plan.left_out))
+                       masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files, *env_files)), host=hide_host,
+                       net_dir=net_dir, left_out=tuple((p, secret[p]) for p in plan.left_out))
     operator = []
     for raw, path in roots:
         _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
@@ -1495,7 +1541,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
         hide_runs.append(_real(runs))
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
-                    visible=tuple(visible), hide_runs=tuple(hide_runs), **plan.fields(), mask_file=str(mask),
+                    visible=tuple(visible), hide_runs=tuple(hide_runs), **_env_fields(plan, env_files, writable),
+                    mask_file=str(mask),
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,

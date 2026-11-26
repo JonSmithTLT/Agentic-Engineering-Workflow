@@ -191,23 +191,26 @@ def test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory(lab):
 
 @pytest.mark.parametrize("role", ["implementer", "reviewer"])
 def test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project(lab, role):
-    """Every worker's sandbox shows the project read-only, so containment hides the project's `.env` files there too:
-    a read by absolute path, a search of the project and a read from another program find none, while `.env.example`
-    reads as it is. The worker's worktree holds no `.env`: it has only what is committed. Synthetic values only."""
+    """Every worker's sandbox shows the project read-only, so containment hides the project's `.env` files there too,
+    at any depth: a read by absolute path, a search of the project and a read from another program find each empty,
+    while `.env.example` reads as it is, nested too. The worker's worktree holds no `.env`: it has only what is
+    committed. Synthetic values only."""
     (lab.repo / ".gitignore").write_text(".env\n")
-    for name in (".env", ".env.production"):
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    for name in (".env", ".env.production", "apps/web/.env"):
         (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
-    (lab.repo / ".env.example").write_text("SYNTHETIC-DOC=\n")
-    env = lab.repo / ".env"
-    done = lab.sh(lab.layout(role), f"cat {env} {lab.repo}/.env.production 2>/dev/null; "
-                                    f"test -e {env} || echo ABSENT; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; "
-                                    f"{sys.executable} -I -c \"print(open({str(env)!r}).read())\" 2>/dev/null; "
+    for name in (".env.example", "apps/web/.env.example"):
+        (lab.repo / name).write_text("SYNTHETIC-DOC=\n")
+    nested = lab.repo / "apps" / "web" / ".env"
+    done = lab.sh(lab.layout(role), f"cat {lab.repo}/.env {lab.repo}/.env.production {nested} 2>/dev/null; "
+                                    f"grep -rh SYNTHETIC {lab.repo} 2>/dev/null; "
+                                    f"{sys.executable} -I -c \"print(open({str(nested)!r}).read())\" 2>/dev/null; "
                                     "ls -A; echo end")
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
-    assert "ABSENT" in done.stdout and "SYNTHETIC-DOC=" in done.stdout, done.stdout
+    assert done.stdout.count("SYNTHETIC-DOC=") == 2, done.stdout
     assert not [n for n in os.listdir(lab.ws) if n.startswith(".env")]
-    assert env.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+    assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):

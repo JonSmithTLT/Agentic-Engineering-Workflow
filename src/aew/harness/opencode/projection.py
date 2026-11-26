@@ -13,7 +13,8 @@ Invocation runs:
   anything not named is denied; ``subagent``, ``question`` and ``external_directory`` are always denied,
   except the run's own private OpenCode output directories (V2 saves long tool output there and points the
   model at it); ``read`` denies ``.env`` files (V2's own default asks; ``.env.example`` stays readable), as defence
-  in depth: where the run is contained, containment hides the project's ``.env`` files (``layout.project_env_masks``);
+  in depth: where the run is contained, containment hides the project's ``.env`` files present at the launch, at any
+  depth (``layout.project_env_masks``);
   ``edit`` only for implementers; web access only for cards that request documentation lookup;
   ``skill`` only for the skills the run was given (``aew.skills``: the card's ``skills:`` and ``optional_skills``
   that AEW's install ships, copied into the run's own folder, which is the config's one ``skills`` entry; that
@@ -85,9 +86,10 @@ LEAD_FREE_TOOLS = ("read", "glob", "grep")
 
 # The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
 # Lead's, one list (the designer, 2026-11-06), from the names containment owns (``layout.ENV_FILES``, ``ENV_DOCS``).
-# Defence in depth only: the guarantee is containment's, which hides the project's `.env` files from every tool
-# (``layout.project_env_masks``). A harness permission rule does not cover a shell command the operator approves or
-# the history of a tracked file, and where the run is not contained (Windows, ``allow_weaker``) no other layer applies.
+# Defence in depth only: the guarantee is containment's, which hides the project's `.env` files present at the launch,
+# at any depth, from every tool (``layout.project_env_masks``; its limits are ADR-0009's). A harness permission rule
+# does not cover a shell command the operator approves or the history of a tracked file, and where the run is not
+# contained (Windows, ``allow_weaker``) no other layer applies.
 ENV_READ_RULES = (*(rule("read", "deny", p) for p in ENV_FILES), *(rule("read", "allow", p) for p in ENV_DOCS))
 
 
@@ -385,8 +387,8 @@ def lead_mcp_environment() -> dict[str, str]:
 # refused). A global option before the subcommand (`git -C dir diff`) matches none of these allows, so it asks too.
 LEAD_GIT_READS = ("git status*", "git diff*", "git log*", "git show*")
 # They also ask for a comparison outside the working tree and for a read naming a `.env` file (the designer,
-# 2026-11-06). Other spellings and shell globs aren't matched: containment hides the project's `.env` files
-# (``layout.project_env_masks``), and these asks are defence in depth.
+# 2026-11-06). Other spellings and shell globs aren't matched: containment hides the project's `.env` files present at
+# the launch (``layout.project_env_masks``), and these asks are defence in depth.
 LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for option in ("--output", "--ext-diff")),
                  "git diff*--no-index*", "git diff*/dev/null*",
                  *(f"git {cmd}*.env*" for cmd in ("diff", "log", "show")))
@@ -565,7 +567,8 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
     return (f"- This Lead session is contained (`{label.get('filesystem')}`, network `{net.get('mode')}`): only the "
             "working tree is writable. `.aew/` and the git metadata are read-only, so a commit fails here, while "
             "`git status`, `diff`, `log` and `show` work and your Lead `aew` commands still reach the broker, which "
-            "writes AEW state for you. Containment hides the project's `.env` files (`.env.example` stays). "
+            "writes AEW state for you. Containment hides the project's `.env` files that were there when this session "
+            "started, at any depth (`.env.example` stays). "
             "The session reaches " + (" and ".join(reach) or "nothing outside it")
             + ". The desktop, the clipboard bus, browser tools and private or host addresses are refused by design. "
             "A refusal is what a deny rule or this containment returns. Do not work around one: tell the operator "

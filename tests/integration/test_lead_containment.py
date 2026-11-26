@@ -432,22 +432,24 @@ def test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it(lead_l
 
 
 def test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_sandbox(lead_lab):
-    """Containment hides the project's `.env` files, as the Lead's system text states: inside, a read by name, a search
-    of the tree and a read from another program all find each empty, and a write fails; `.env.example` reads as it is.
-    The host's files are unchanged. Synthetic values only."""
+    """Containment hides the project's `.env` files, as the Lead's system text states, at any depth: inside, a read by
+    name, a search of the tree and a read from another program all find each empty, and a write fails; `.env.example`
+    reads as it is, nested too. The host's files are unchanged. Synthetic values only."""
     lab = lead_lab
-    for name in (".env", ".env.local"):
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    for name in (".env", ".env.local", "apps/web/.env"):
         (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
-    (lab.repo / ".env.example").write_text("SYNTHETIC-DOC=\n")
+    for name in (".env.example", "apps/web/.env.example"):
+        (lab.repo / name).write_text("SYNTHETIC-DOC=\n")
     layout = lab.layout(env={"HOME": str(lab.home)})
-    env = lab.repo / ".env"
-    done = lab.sh(layout, f"cat .env .env.local; grep -rh SYNTHETIC . 2>/dev/null; "
-                          f"{sys.executable} -I -c \"print(open({str(env)!r}).read())\"; "
-                          f"echo x > .env; echo rc=$?; echo end")
+    nested = lab.repo / "apps" / "web" / ".env"
+    done = lab.sh(layout, f"cat .env .env.local apps/web/.env; grep -rh SYNTHETIC . 2>/dev/null; "
+                          f"{sys.executable} -I -c \"print(open({str(nested)!r}).read())\"; "
+                          f"echo x > .env; echo rc=$?; echo y > apps/web/.env; echo rc=$?; echo end")
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
-    assert "SYNTHETIC-DOC=" in done.stdout, done.stdout  # the search ran, and the documentation copy stays
-    assert env.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+    assert done.stdout.count("SYNTHETIC-DOC=") == 2, done.stdout  # the search ran, and both documentation copies stay
+    assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

@@ -10,5 +10,6 @@ open-questions section. E389's Experiment A would test it on fixtures A-F4 and A
 
 The operator's view of R0's findings, 2026-11-26, said of the replacement-worker case on F36: "There is benefit to
 starting fresh cintext workers. That case above does not seem to be one kf them. Aew kind of forces replacement or
-follow on workers to kind of rediscover whats already been done which ks not optimal". Whether D2 is built directly or
-tested first is pending the operator's decision. This note builds nothing and changes nothing of this row.
+follow on workers to kind of rediscover whats already been done which ks not optimal". The operator has since decided
+that F36's case is built directly (F36's note of this day). D2 has no such decision: whether it is built directly or
+tested first is pending the operator. This note builds nothing and changes nothing of this row.

@@ -195,6 +195,39 @@ def test_a_missing_optional_part_leaves_no_empty_section():
     assert "Historical reference context" not in pack.text
 
 
+def recovery(role: str = "implementer", paths: int = 3) -> dict[str, Any]:
+    """A replacement's pinned observation, as ``ContextPacks.recovery`` builds it; only an implementer's has the
+    workspace. A role outside ``RECOVERY_ROLES`` gets no section from it."""
+    out: dict[str, Any] = {
+        "predecessor": "INV-0", "role": role, "scope": "ticket", "status": "interrupted", "workspace_id": "ws-1",
+        "reason": ctx.bounded_text("Lead takeover"),
+        "evidence": ctx.recovery_evidence([{"id": "E-9", "kind": "check_result"}])}
+    if role == "implementer":
+        listed = [{"path": ctx.bounded_text(f"src/m{i:03}.py"), "untracked": True} for i in range(paths)]
+        out["workspace"] = {"id": "ws-1", "base": "b" * 40, "staged": 0, "deleted": 0, "untracked": paths,
+                            "paths": ctx.bounded(listed, ctx.RECOVERY_MAX_PATHS)}
+    return out
+
+
+@pytest.mark.parametrize("role", sorted(ctx.RECOVERY_ROLES))
+def test_room_a_whole_section_could_not_use_never_funds_a_lower_tier(role):
+    """Review of #621, its observation on #614: the recovery section is kept or omitted whole, and across a band of
+    budgets it was omitted while the room it left funded a historical record, so evidence was given up before recall.
+    At every budget: a historical record is in the pack only when nothing of the source and evidence was cut."""
+    p = inputs(role, history=1, scope="ticket" if role == "implementer" else "observation", recovery=recovery(role))
+    parts = ctx.sections(p)
+    assert {"recovery", "history"} <= {s.name for s in parts}
+    mandatory, total = ctx.assemble(p).mandatory_size, sum(s.size() for s in parts)
+    seen = set()
+    for budget in range(mandatory, total + 1):
+        pack = ctx.assemble(p, budget)
+        evidence_cut = any(c.tier == "source and evidence" for c in pack.truncations)
+        seen.add((evidence_cut, RECALL_MARK in pack.text))
+        assert not (evidence_cut and RECALL_MARK in pack.text), budget
+        assert "## Recovery reference" in pack.text or "- recovery (source and evidence): omitted entirely" in pack.text
+    assert seen == {(True, False), (False, False), (False, True)}
+
+
 # ------------------------------------------------------------------------------------------------- a property
 
 def random_inputs(rng: random.Random) -> ctx.PackInputs:
@@ -212,6 +245,8 @@ def random_inputs(rng: random.Random) -> ctx.PackInputs:
     p.inputs = [dict(i, open=ctx.open_items({"research": {
         "uncertainties": [f"doubt {'y' * rng.randint(0, 300)}"] * rng.randint(0, 14),
         "constraints": ["a limit"] * rng.randint(0, 3)}})) for i in p.inputs]
+    if rng.random() < 0.5:  # a replacement's recovery section (register F36): kept or omitted whole
+        p.recovery = recovery(role, paths=rng.randint(0, 40))
     return p
 
 
@@ -246,6 +281,19 @@ def test_random_sections_and_budgets_never_cut_a_higher_tier_before_a_lower_one(
         if "source and evidence" in cut_tiers:
             recall = {x.name for x in parts if x.tier == ctx.RECALL}
             assert {c.section for c in pack.truncations if c.dropped_entirely} >= recall, (seed, budget)
+        # 3a. A section that is kept or omitted whole (review of #621): a record's open questions are whole lists, so
+        #     no count is shown without its items and no heading without one; an implementer's failure evidence is
+        #     funded before them; and a recovery section is never there in part.
+        lines = text.split("\n")
+        for s in parts:
+            if s.name == "open-questions":
+                whole = [unit for unit in s.units if unit[0] in lines]
+                assert all("\n".join(unit) in text for unit in whole), (seed, budget)
+                assert whole == s.units[:len(whole)] and (s.head[1] in lines) == bool(whole), (seed, budget)
+                if whole:
+                    assert "failure-evidence" not in {c.section for c in pack.truncations}, (seed, budget)
+            if s.name == "recovery":
+                assert all(line in lines for line in s.head) or s.head[1] not in lines, (seed, budget)
         # 4. What the notice lists is exactly what the structured record lists.
         for c in pack.truncations:
             assert f"- {c.section} ({c.tier}): " in text

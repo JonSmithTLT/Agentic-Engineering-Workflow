@@ -74,15 +74,16 @@ class ContextPacks:
             inherited["corrections"] = corrections
         return chain, inherited
 
-    def _input_summaries(self, inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Each consumed input with what its record holds: the summary lines, and under ``open`` what its author
-        recorded as unresolved, uncertain or a constraint (``ctxmod.open_items``; register E198), absent when it
-        recorded none, so such a pack is what it was."""
+    def _input_summaries(self, inputs: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
+        """Each consumed input with what its record holds: the summary lines, and for a role that produces the work
+        (``ctxmod.OPEN_ROLES``), under ``open``, what its author recorded as unresolved, uncertain or a constraint
+        (``ctxmod.open_items``; register E198). ``open`` is absent when the record holds none, and for an evaluator,
+        whose pack inputs are what they were."""
         out = []
         for i in inputs:
             ev = next((e for e in E.scan(self.k.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
             summary: list[str] = []
-            left_open = ctxmod.open_items(ev) if ev else []
+            left_open = ctxmod.open_items(ev) if ev and role in ctxmod.OPEN_ROLES else []
             if ev:
                 d, r, pr = ev.get("discovery") or {}, ev.get("research") or {}, ev.get("proposal") or {}
                 summary += [f"fact: {f['statement']}" for f in d.get("facts", [])]
@@ -104,7 +105,7 @@ class ContextPacks:
         chain, inherited = self._hierarchy_context(state, wid)
         extras["hierarchy"] = chain
         extras["inherited"] = inherited if (inherited["non_waivable"] or inherited["floor"] is not None) else None
-        extras["inputs"] = self._input_summaries(inv.get("inputs") or [])
+        extras["inputs"] = self._input_summaries(inv.get("inputs") or [], inv["role"])
         execution = unit.get("execution") or {}
         if inv["role"] in {"investigator", "researcher", "planner"}:
             extras["expected_kind"] = execution.get("expected_kind")

@@ -640,13 +640,15 @@ class Resume:
             **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
         }
 
-    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False, plan_assessment: str | None = None) -> str:
-        """How work flows in AEW for this project's Lead, from its own policy (F16) and the typed stages the caller
-        hands in (E130: the engine never imports the surface). Read-only."""
+    def lead_guide_document(self, stages: Sequence[Any], *, messaging: bool = False,
+                            uses: Sequence[Any] = (), plan_assessment: str | None = None) -> Any:
+        """How work flows in AEW for this project's Lead, from its own policy (F16) and the typed stages, tool uses and
+        plan assessment route the caller hands in (E130: the engine never imports the surface): the core and its
+        sections (E231). Read-only."""
         from aew.engine import guide
 
-        return guide.render(self.k.policy("gates"), self.k.policy("checks"), stages, messaging=messaging,
-                            plan_assessment=plan_assessment)
+        return guide.document(self.k.policy("gates"), self.k.policy("checks"), stages, messaging=messaging, uses=uses,
+                              plan_assessment=plan_assessment)
 
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",

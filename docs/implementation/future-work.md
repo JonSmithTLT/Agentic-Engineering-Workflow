@@ -2586,18 +2586,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E240/`, oldest first (`python tools/register.py show E240`).*
 
-### E241
-
-**Work:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route. Read, not reproduced
-
-**Source:** The quick check of #388, 2026-11-08
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
-
 ### E242
 
 **Work:** Adoption with a repeated path: a manifest naming one path twice is validated under one name only, then every read of the other refuses. Only the operator can adopt it, and it's loud. Refuse a repeated path at adoption
@@ -5217,6 +5205,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E241
+
+**Was:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route
+
+**Closed:** 2026-11-26
+
+**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
+
+*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E251
 

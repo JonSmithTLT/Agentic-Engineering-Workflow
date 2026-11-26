@@ -218,6 +218,22 @@ commands:
     via: [resume]
     relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: read
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "the outage reader is a declared non-writer and uses only lock-free reads"
+    probe: [[read, /v1/read/work], [read, --human, /v1/read/work], [read, --help]]
+    lead_disposition: forbidden-to-lead
+    lead_kept_out_by: "outage._project_root refuses session markers and requires the real project's control lock
+      visible outside containment. The CLI runs this check locally."
+    primitive: none
+    primitive_reason: "the independent reader answers D-01 over the committed store without dispatch"
+    keep_out_probe: [read, /v1/read/work]
+    keep_out_refusal: authentication_unqualified
+    refusals: [OUTAGE_READ_REFUSED, USAGE]
+    note: "the result and refusal use the D-01 read wire"
   - name: guide
     home: product
     users: [lead, operator]

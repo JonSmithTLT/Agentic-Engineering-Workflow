@@ -1609,8 +1609,9 @@ class Engine:
     def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
         return self._history.audit_status(state, policy=policy)
 
-    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]:
-        return self._views.contradictions(state, manifest)
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
+                       pinned_failures: list[str] | None = None) -> list[str]:
+        return self._views.contradictions(state, manifest, pinned_failures=pinned_failures)
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         return self._resume.next_actions(state)

@@ -1698,7 +1698,8 @@ def lead_session_env() -> dict[str, str]:
 
 
 # Codes that mean "not here": the only refusals that can prove a keep-out (PR 215 fourth review, finding 2).
-KEEP_OUT_CODES = ("PERMISSION_DENIED", "OPERATOR_AUTHORIZATION_REQUIRED")
+OUTAGE_KEEP_OUT = "authentication_unqualified"
+KEEP_OUT_CODES = ("PERMISSION_DENIED", "OPERATOR_AUTHORIZATION_REQUIRED", OUTAGE_KEEP_OUT)
 
 # The keep-out claims the test cannot prove by running them, each with its reason (`keep_out_unproved`). Empty, and
 # pinned so: an entry may only leave it (KEEP_OUT_GRADUATED).
@@ -1748,6 +1749,14 @@ def _refusal_text(err: str) -> tuple[str, str] | None:
         return None
 
 
+def _outage_refusal(stdout: str) -> tuple[str, str] | None:
+    try:
+        problem = json.loads(stdout)
+        return str(problem["code"]), str(problem["title"])
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def check_keep_out(reg: dict[str, Any]) -> list[str]:
     """Every claim that the Lead is kept out is proved by behaviour, differentially (PR 215 third and fourth reviews):
     run in a real Lead session's environment against the sample, the command is refused with a "not here" code and
@@ -1774,21 +1783,25 @@ def check_keep_out(reg: dict[str, Any]) -> list[str]:
         s = sample()
         before = snapshot(s)
         env = lead_session_env()
-        code, _, err = run_cli(s.root, fill(argv, s), env=env, stdin="")
-        in_session = _refusal_text(err)
+        code, stdout, err = run_cli(s.root, fill(argv, s), env=env, stdin="")
+        d01 = expected == OUTAGE_KEEP_OUT
+        in_session = _outage_refusal(stdout) if d01 else _refusal_text(err)
         marked = session_marker(err)
-        if code != 0 and marked != set(env):
+        if not d01 and code != 0 and marked != set(env):
             out.append(f"`aew {name}`: its refusal in a Lead session does not say the session caused it: its details "
                        f"carry reason {LEAD_SESSION_REASON!r} and variables naming exactly the session's {sorted(env)} "
                        f"(got {marked})")
         after = snapshot(s)
-        if code == 0 or _refusal(err) != expected:
+        refusal_code = in_session[0] if in_session else None
+        if code == 0 or refusal_code != expected:
             out.append(f"`aew {name}` claims the Lead is kept out, but in a Lead session's environment it "
-                       f"{'ran (exit 0)' if code == 0 else f'answered {_refusal(err) or code!r}'}, not {expected}")
+                       f"{'ran (exit 0)' if code == 0 else f'answered {refusal_code or code!r}'}, not {expected}")
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         if changed:
             out.append(f"`aew {name}` in a Lead session's environment changed {changed}")
-        bare_code, _, bare_err = run_cli(s.root, fill(argv, s), stdin="")
+        bare_code, bare_out, bare_err = run_cli(s.root, fill(argv, s), stdin="")
+        if d01 and (bare_code != 0 or _outage_refusal(bare_out) is not None):
+            out.append(f"`aew {name}`: the outage probe did not answer successfully outside the Lead session")
         if bare_code != 0 and session_marker(bare_err) is not None:
             out.append(f"`aew {name}`: outside a Lead session it is still refused as if in one")
         if bare_code != 0 and _refusal_text(bare_err) == in_session:

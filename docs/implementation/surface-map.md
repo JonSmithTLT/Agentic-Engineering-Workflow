@@ -40,6 +40,9 @@ finding 2).
 - **The comparison.** The same probe also runs without that environment, with an empty stdin. It must not carry the
   session marker, nor end in the same refusal (code and message), so the refusal is the session's, not the probe's
   arguments'.
+- **The outage reader's D-01 refusal.** The probe compares the ordinary JSON read with the session's
+  `authentication_unqualified` Problem. O-02 gives the Problem fixed text and omits caller details, so the comparison
+  uses the Problem code and title and requires an ordinary result outside the session.
 - **Today.** `integrate custody` passes: refused by `custody_ops.refuse_lead_session` in a session, and past it, to
   the credential read, outside one.
 - **Not a keep-out.** A typed-surface transport (`lead mcp`, `lead tool`) is the Lead's door by design, not a

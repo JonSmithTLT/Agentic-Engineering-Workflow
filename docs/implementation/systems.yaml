@@ -772,9 +772,10 @@ systems:
   - slice: The Lead's tool budget, decided before E158
     row: E231
     estimate: a decision, then 0-1 PR (estimate)
-  - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
+  - slice: 'The Lead''s exits: the four dead ends left of eleven, each waiting on a decision (the plan route, the wait
+      at RUNNING, the queue disposition), as E233''s notes of 2026-11-26 say with the lands guard'
     row: E233
-    estimate: not sized (estimate)
+    estimate: decisions first, then 1-3 small PRs (estimate)
   - slice: The worker route's size check
     row: E241
     estimate: 1 small PR (estimate)

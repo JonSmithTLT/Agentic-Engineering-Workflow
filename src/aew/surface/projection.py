@@ -15,7 +15,9 @@ how their answer can change:
     guards are not all queryable is ``UNKNOWN``, never ``BLOCKED``;
   - telemetry: the runs, and the engine's guidance (hints, contradictions), which reads run telemetry and submitted
     evidence. Heartbeats and submissions change them without a commit or a wake; U1's event watermark will key them;
-  - evidence: the reports a decision binds, resolved by kind, scope and producing run in the sealed evidence store.
+  - evidence: the reports a decision binds, resolved by kind, scope and producing run in the sealed evidence store;
+  - the Lead's own moves where no stage and no report takes a Ticket on (register E233): a transition, a dispatch or
+    a launch, each a primitive with its command and its guard's answer.
 
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
@@ -25,6 +27,7 @@ never for a query or a wait, never dependent on the profile). Decisions never ca
 from __future__ import annotations
 
 import os
+import shlex
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -36,7 +39,7 @@ from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
-from aew.engine.primitives import spec_for
+from aew.engine.primitives import JUDGMENT_BEARING, spec_for
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
@@ -84,9 +87,13 @@ def clear_cache() -> None:
 # ---------------------------------------------------------------------------------------------- builders
 
 def _action(name: str, arguments: dict[str, Any], *, kind: str, availability: str, reason_codes: list[str],
-            cli_fallback: list[str] | None) -> dict[str, Any]:
+            cli_fallback: list[str] | None, judgment: bool = False) -> dict[str, Any]:
+    """``judgment``: this call of a primitive carries the Lead's reason, so it is judgment-bearing whatever the
+    primitive's base class (a regression's `--reason`)."""
     t = contract.tool(name)
     klass = effective_class(t, arguments) if t is not None else spec_for(name).operation_class
+    if judgment:
+        klass = JUDGMENT_BEARING
     return {"action": name, "kind": kind, "arguments": arguments, "operation_class": klass,
             "availability": availability, "callable": False,
             "auto_runnable": auto_runnable(t, availability, klass),
@@ -392,6 +399,74 @@ def _nm_dispatch(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[dict
                     reason_codes=reasons, cli_fallback=cli)], blockers
 
 
+def _argv(command: str, rev: int) -> list[str]:
+    """A command the engine prints, as the argv the projection offers: its words after ``aew``, with the revision
+    this projection was read at where the printed command leaves the revision to its reader."""
+    return shlex.split(command.replace(K.EXPECT_REV, f"--expect-rev {rev}"))[1:]
+
+
+def _asked(engine: Any, ask: Any) -> tuple[str, list[str]]:
+    """A dispatch decision as an availability and its reason codes; one that cannot be asked now is UNKNOWN."""
+    try:
+        decision = ask()
+    except AEWError as exc:
+        return UNKNOWN, [exc.code]
+    return (AVAILABLE if decision.get("allowed") else BLOCKED), [str(c) for c in decision.get("reason_codes") or []]
+
+
+def _lead_moves(engine: Any, part: dict[str, Any], wid: str, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Lead's own moves for a mutating Ticket that no stage and no report takes on (register E233; E133 left
+    these states with a hint and nothing a Lead can rely on). Each is a primitive with its whole command, never
+    auto-runnable, and with the availability its own guard answers now:
+
+    * its transitions on from a state no stage starts from (``transitions.lead_moves``): ASSIGNED to RUNNING, a failed
+      review back to RUNNING, an inconclusive verification back to VERIFY_PENDING, and a return from escalation,
+      each with the Lead's reason where its edge requires one, which makes it judgment-bearing;
+    * the dispatch of the worker its state waits on, where none works on it (``Engine.worker_needed``);
+    * the launch of an active invocation that has no live run and nothing to ingest: one whose latest run ended
+      without its output (``contract.relaunchable``), and in ASSIGNED the implementer no harness was launched for
+      (``Engine.harness_unlaunched``). Past ASSIGNED an invocation with no run is a worker run by hand from its pack,
+      which the engine's guidance leaves to report.
+
+    They add no blocker: a move its guard refuses is listed BLOCKED with the guard's reason codes, and the stop is
+    the engine's to state when the move is tried. Read now: the dispatch decisions read policy and telemetry."""
+    unit = part["unit"]
+    if unit is None or unit["kind"] != "ticket" or not unit["mutating"] or part["state"] in T.TERMINAL:
+        return []
+    rev, st = int(part["revision"]), str(part["state"])
+    state = engine.store.current()
+    out = []
+    for dst in T.lead_moves(st):
+        reason = T.RULES[(st, dst)].reason_required
+        found = engine.guard_query("work.transition", wid, {"to": dst, **({"reason": "<reason>"} if reason else {})},
+                                   state=state)
+        # The engine's own command, held to the state it was offered in. The exits walk parses every argv offered
+        # (``lands``); the static printed-command check reads only a literal list at the key.
+        cli = [*_argv(str(T.command(st, dst, wid)), rev), "--prior-value", st]
+        out.append(_action("work.transition", {"work_id": wid, "to": dst, "prior_value": st}, kind=contract.PRIMITIVE,
+                           availability=found["availability"], reason_codes=found["reason_codes"], judgment=reason,
+                           cli_fallback=cli))
+    try:
+        needed = engine.worker_needed(state, wid)
+    except AEWError:  # the gates or the policy cannot be read now: the engine's own guidance says so
+        needed = None
+    if needed is not None:
+        found = engine.guard_query("invoke.create.mutating", wid, {"role": needed.role, "scope": needed.scope},
+                                   state=state)
+        out.append(_action("invoke.create.mutating", {"work_id": wid, "role": needed.role, "scope": needed.scope},
+                           kind=contract.PRIMITIVE, availability=found["availability"],
+                           reason_codes=found["reason_codes"], cli_fallback=_argv(needed.command, rev)))
+    ended = {r["invocation"] for r in runs if K.relaunchable(r["status"])}
+    invocations = state.get("invocations") or {}  # a run read a moment ago may name one this state no longer holds
+    for invocation in sorted(ended | set(engine.harness_unlaunched(state, wid) if st == "ASSIGNED" else ())):
+        availability, reasons = _asked(engine, lambda i=invocation: engine.dispatch_explain(wid, invocation=i))
+        out.append(_action("harness.launch", {"invocation": invocation}, kind=contract.PRIMITIVE,
+                           availability=availability, reason_codes=reasons,
+                           cli_fallback=approval.bound_argv(("harness", "launch", invocation), rev,
+                                                            approval.run_value(invocations.get(invocation) or {}))))
+    return out
+
+
 def _runs(engine: Any, subject: str) -> list[dict[str, Any]]:
     """Local run telemetry, read now: the latest run of every active invocation (of the subject)."""
     observed_at = utc_now()
@@ -549,6 +624,7 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
     actions[:0] = staged
     blockers.extend(stage_blockers)
     runs = _runs(engine, subject)
+    actions.extend(_lead_moves(engine, part, subject, runs))
     live = [r["run"] for r in runs if r["status"] in LIVE]
     if live:
         actions.append(_action("harness_wait", {"runs": live}, kind=contract.WAIT, availability=AVAILABLE,

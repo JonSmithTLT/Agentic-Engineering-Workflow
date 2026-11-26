@@ -219,6 +219,24 @@ def test_a_next_step_that_is_a_printed_command_parses_as_printed():
     P.parse(line.removeprefix("next: "), fenced=False)
 
 
+def test_a_primitive_that_carries_a_judgment_is_offered_and_never_the_one_next_step():
+    """Register E233: a return or a regression is the Lead's to weigh, with its reason, so the next step is the
+    engine's hint, which says what is settled first and names the command. A primitive with no judgment is the next
+    step, as its whole command."""
+    back = ["work", "transition", "T-0001", "--to", "VERIFY_PENDING", "--reason", "<reason>", "--expect-rev", "15",
+            "--prior-value", "VERIFICATION_INCONCLUSIVE"]
+    weighed = action("work.transition", kind="primitive", operation_class="JUDGMENT_BEARING", callable=False,
+                     cli_fallback=back)
+    hint = "resolve the environment/evidence blocker, then return to VERIFY_PENDING"
+    assert lines_of(stage(projection={"actions": [weighed], "hints": [hint]}))[1] == f"next: {hint}"
+    plain = action("work.transition", kind="primitive", operation_class="MECHANICAL", callable=False,
+                   cli_fallback=["work", "transition", "T-0001", "--to", "RUNNING", "--expect-rev", "15",
+                                 "--prior-value", "REVIEW_FAILED"])
+    line = lines_of(stage(projection={"actions": [weighed, plain], "hints": [hint]}))[1]
+    assert line == "next: aew work transition T-0001 --to RUNNING --expect-rev 15 --prior-value REVIEW_FAILED"
+    P.parse(line.removeprefix("next: "), fenced=False)
+
+
 def test_a_next_step_from_a_hint_keeps_its_printed_command_whole_or_not_at_all():
     command = "aew plan accept T-0010 --revision 1 --expect-rev 15"
     whole = lines_of(stage(projection={"hints": [f"T-0010: accept its plan: `{command}`"]}))[1]

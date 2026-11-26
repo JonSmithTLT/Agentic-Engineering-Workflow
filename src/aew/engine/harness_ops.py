@@ -1011,6 +1011,16 @@ class Harness:
                         "action": action})
         return out
 
+    @staticmethod
+    def unlaunched(state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for: a dispatch made without `--launch`,
+        or a stage that stopped before its launch. ``harness_resume`` lists none of them (it reads runs), and a
+        `harness launch` starts each (register E233). Never the lease's custodian (``integration_attempt``), which an
+        engine process works for, not a harness."""
+        return [inv_id for inv_id, inv in sorted(state["invocations"].items())
+                if inv["status"] == "active" and inv["work_unit"] == work_id and not inv.get("runs")
+                and inv.get("kind") != "integration_attempt"]
+
     def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
                    inv_id: str) -> str:
         """What the Lead does with a finished run's evidence, as the command that applies (M3-D8)."""

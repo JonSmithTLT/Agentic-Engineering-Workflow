@@ -5418,7 +5418,7 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
-  - '#': E373
+  - '#': E388
     Work: 'The Lead''s `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM
       and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead
       that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each

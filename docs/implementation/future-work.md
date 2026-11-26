@@ -3966,7 +3966,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
-### E373
+### E388
 
 **Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
 
@@ -3976,7 +3976,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
 
-*Later notes: `notes.d/E373/`, oldest first (`python tools/register.py show E373`).*
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 

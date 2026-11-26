@@ -23,4 +23,4 @@ Designer questions (owners left unstated, so the operator's, until answered):
   decision); whether the tool should stay Lead-callable at all is E350's (W09's G3 approval).
 
 The decisions the Lead owns but cannot complete from the projection alone (no `choice` or `rationale` offered) are
-E373.
+E388.

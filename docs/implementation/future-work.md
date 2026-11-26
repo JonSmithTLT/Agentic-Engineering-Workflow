@@ -135,7 +135,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F3
 
-**Work:** Workspace strategy abstraction, role-sensitive isolation, repository-scale benchmarks
+**Work:** Workspace strategy abstraction (fail-closed selection, a `SHARED_MUTABLE_SERIAL` lock bound to its invocation) and repository-scale benchmarks. Role-sensitive isolation is built, as per-role sandbox layouts (M4-B, #36)
 
 **Source (governing):** Serves `HEB-09.d`, `AEW-FR-37.b`, `HEB-09.e`, `AEW-INV-ISO-004`; contributes to `AEW-INV-RESOURCE-001` (owned by other rows); position A-06; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: isolation design §4 to §14; lessons note, Incident B
 
@@ -291,7 +291,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F15.6
 
-**Work:** Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality recomputed and a durable `retried_after_stale_revision` marker; and R5-3, one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed: 1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint, or project-wide; operator reset), and a relaunch record binding all of it
+**Work:** Bounded recovery, the approved limited slice's R5-3: one relaunch of a `launch_failed` run (`recovery.relaunch_launch_failed: 1`, default 0), fail-closed: a termination proof from every custody mechanism, the old credential revoked and confirmed before a fresh one is bound to the new run id, a positive no-side-effect proof over every effect channel, an implementation-owned allow-list of transient reasons (unknown fails closed), a circuit breaker (recommended 3 in 5 minutes per endpoint, or project-wide; operator reset), and a relaunch record binding all of it. Its R5-1, the single `STALE_REVISION` retry, is built (M4-E E3b, #142)
 
 **Source (governing):** Serves `HEB-08.c`, `AEW-FR-32.c`, `HEB-08.d`, `MSN-Q12`; contributes to `AEW-FR-23.d` (owned by other rows); position A-06; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) (approved, limited slice, 2026-10-05; ledger BRP-01 to BRP-07, BRP-09, BRP-10), as amended by [A2, launch-failure recovery safety](../design/launch-failure-recovery-safety-amendment-v0.1.md) (approved 2026-10-05; ledger LFR-01 to LFR-08); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) (ledger PFS-01 to PFS-04); [A3, policy binding and digests](../design/policy-binding-digest-amendment-v0.1.md) §5 (PBD-06)
 
@@ -423,7 +423,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F22
 
-**Work:** Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first) that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed into one navigation/context view that never becomes an authority source
+**Work:** Project maps: the attributable architecture map, and the maps composed into one navigation/context view that qualifies each claim's contributing versions and never becomes an authority source. The deterministic structural map is built (F22.1, #126 and #143); its language-specific semantic extensions are F22.2 and its sibling derived indexes F22.3
 
 **Source (governing):** Serves `P01-20`, `P01-22`; position A-14; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: KC §8.2 to §8.5, §13; architecture review G3; [architecture review response](../design/architecture-review-response-2026-10-04.md) (accepted 2026-10-05) G3, D-AR6; **the design is [project maps v0.5](../design/project-maps-design-v0.5.md)** (frozen by the designer and adopted by the operator 2026-10-05; ledger PMP; the repository's v0.4 and v0.3 are archived under `archive/superseded/`), with the research behind it in `docs/research/` (ledger CXS, CXP, SEF, QRC, LRB, PUI)
 

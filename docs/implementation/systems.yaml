@@ -1275,16 +1275,11 @@ systems:
     has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: R9's `aew usage show [WORK-ID] [--all]` and `aew usage runs`, and the status summary, over the existing projections
-      (unit_projection, project_projection, Reader.invocation), with the surface-map entry; it shows requests, tokens in
-      the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 2)
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07) also shows
+      requests, tokens in the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Until R9 merges, the two texts that name `aew usage show --all` as if it existed say it is designed, not built:
-      implementation-status.md:247 (listed in BOARD v2 §6''s docs PR) and the code comment at engine/api.py:349 (not listed
-      there)'
-    row: row owed
-    estimate: part of BOARD v2 §6's docs PR (estimate)
+    estimate: 1 small PR (estimate)
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized

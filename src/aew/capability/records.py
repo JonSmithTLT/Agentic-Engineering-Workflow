@@ -368,7 +368,8 @@ def needed(record: dict[str, Any]) -> bool:
 
 # The role cards' capability names (the `role` schema's `required_capabilities` and `optional_capabilities`, ADR-0006)
 # that the register's capabilities serve, each with the capability IDs that serve it. A card name not here has no
-# tool of AEW's: the agent does that work with its shell and the project's own commands. The register owns this table
+# tool of AEW's: the agent does that work with its shell and the project's own commands, unless one of its role's
+# engine operations serves it (``aew.knowledge.evidence.OPERATION_CAPABILITIES``: a check). The register owns this table
 # (the Lead's ruling on card-capability resolution, 2026-11-07); one vocabulary for cards and register is a possible
 # later cleanup, not owed.
 CARD_CAPABILITIES: dict[str, tuple[str, ...]] = {

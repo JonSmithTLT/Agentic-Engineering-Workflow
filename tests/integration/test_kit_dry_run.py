@@ -48,7 +48,8 @@ def offline_kit(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-must-not-reach-child")
     scrub_provider_environment(monkeypatch)
 
-    world = new_world(tmp_path)
+    # The world's host-state base is the synthetic home's own (the XDG assertion below holds it there).
+    world = new_world(tmp_path, host_data=home / "data")
     dest = tmp_path / "kit"
     lab = HarnessLab(Project(dest / "repo"), tmp_path, world.env)
     ledger = Ledger("E117")

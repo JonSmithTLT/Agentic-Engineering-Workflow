@@ -5460,23 +5460,6 @@ sections:
       arguments of an offered RESOLVE_STAGE are E388''s (#597). Owed at the merge: whichever of #597 and #601 merges second
       adds `E388` to C5''s Rows cell in `docs/implementation/v01-burn-down.md`, which nothing checks'
 
-  - '#': E375
-    Work: 'The scripted Lead''s steering-on policy: with steering on, it honours a wait the projection marks `woken` (`src/aew/surface/projection.py:558`)
-      by ending its turn until a wake or the operator arrives, with the fake TUI given a wake channel to it (today it reads
-      only chat, `tests/helpers/vertical/lead.py:167-191`, and calls the single AVAILABLE action, `:355-364`). A second
-      part is proposed and not approved: counting a BLOCKED loop stop as a decline only when its blocker is still present
-      after the run ends (today `loop_acts` counts it at once, `:379-382`, while the loop keeps BLOCKED out of `LEAD_ONLY`,
-      `src/aew/harness/steering_loop.py:162`). It changes how `vertical-uat.md` §3 ("Steering on": "only when the loop declined")
-      is read, so it waits for the operator''s answer to the plan''s Q10'
-    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical''s re-measure of 2026-11-26
-      at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case'
-    When: '**V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan''s Q1
-      yes on 2026-11-26 ("For q1 yes. That honestly just seems like a bug and sint how aew works now."). Q1 asked only about
-      the wait marked `woken`, so the answer approves that part and the matching amendment of `vertical-uat.md` §2''s Lead
-      policy, which this row''s pull request makes with the code. The BLOCKED-stop part and any change to §3 wait for the
-      operator''s answer to Q10, which the answer to Q1 does not cover'
-    Notes: Filed by the V-01 burn-down PR of 2026-11-26
-
   - '#': E378
     Work: 'A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED),
       with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today
@@ -5620,6 +5603,20 @@ sections:
     When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
       answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
     Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E399
+    Work: 'An evidence record whose body holds a lone carriage return (one not followed by a line feed) is accepted at `submit`,
+      and then its seal fails on every read. Later `evidence ingest` and `work accept` on that unit are refused too, also
+      for a clean second record, until the file is removed by hand. The place to fix is the shared seal read, `knowledge.evidence.read`:
+      it reads the file with universal newlines, so the carriage return comes back as a line feed and the text no longer
+      matches the seal made at `submit`. Either the read keeps the bytes it sealed, or `submit` refuses or normalises such
+      a body; a carriage return and line feed pair is unaffected. With a test that submits such a body and then ingests
+      and accepts on the same unit'
+    Source: Found while building E170's CLI half (#623); the later refusals were found and confirmed by its review (m6),
+      which asked for this row
+    When: '**Unscheduled**; the operator places it'
+    Notes: 'Filed by #623, which does not fix it: the seal read is shared. That pull request''s carriage-return test goes
+      through a work unit''s body, which is read as bytes'
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
@@ -6786,6 +6783,17 @@ sections:
     By: '#594: the archetype''s text is scope-neutral, `knowledge.context._scope_duties` adds each scope''s duties only
       where the pack delivers their input, and `test_pack_truth`''s scope-fit guard holds it. Parent scope, outside the
       row, gained only the change duty for the child diffs its pack carries, on #594''s review (m1) (`notes.d/E366/`)'
+
+  - '#': E375
+    Was: 'The scripted Lead''s steering-on policy in the vertical UAT (cluster C6 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`):
+      it called a wait the projection marks `woken`, and took a self-clearing BLOCKED loop stop as a decline, so each steering-on
+      V1 and V2 case counted `mechanical_calls`'
+    Closed: '2026-11-26'
+    By: 'PR #627: with steering on, the scripted Lead ends its turn on a `woken` wait until a wake reaches the fake TUI''s
+      session on the Lead''s server or the operator speaks, and takes a BLOCKED stop as a decline only once its blocker
+      still stands after the run ends, read with the loop''s own selection; `vertical-uat.md` §2 and §3 amended with the
+      operator''s answers to the plan''s Q1 and Q10 (2026-11-26). `mechanical_calls` fell from 5, 5 and 4 to 0 in the steering-on
+      V1, V2-exit and V2-kill cases'
 
   - '#': E376
     Was: 'V2''s reopen reaches the seat resume: the vertical''s offline world settles AEW''s tool offers before the first

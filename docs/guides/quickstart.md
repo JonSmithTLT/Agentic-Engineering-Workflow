@@ -327,6 +327,7 @@ Finished work leaves the active state when it finishes (ADR-0011). Views show co
 aew history list --kind unit --limit 20                     # newest first; --since/--until take UTC times
 aew history show T-0042                                     # the record, its annotations and its trust label
 aew history show INV-0101                                   # an invocation, credential or evidence of finished work
+aew record body INV-0101-discovery-1                        # a record's text as written, current work or finished; --json for the exact text
 aew history links T-0042 --depth 2                          # recorded provenance, in both directions
 aew history load T-0042 --into T-0107 --reason "..."   # reference context for T-0107's next packs
 aew history load INV-0101-discovery-1 --into T-0107 --reason "..."   # or an exact evidence record

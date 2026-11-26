@@ -1526,6 +1526,9 @@ class Engine:
     def history_show(self, record_id: str) -> dict[str, Any]:
         return self._history.history_show(record_id)
 
+    def record_body(self, record_id: str) -> dict[str, Any]:
+        return self._history.record_body(record_id)
+
     def history_log(self, *, since: int, kinds: list[str] | None = None, follow: bool = False, timeout: float = 30.0,
                     limit: int = 500) -> dict[str, Any]:
         """The transition log after revision ``since`` (ADR-0012 D3): each logical transition in order, its complete

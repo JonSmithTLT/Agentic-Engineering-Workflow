@@ -152,8 +152,8 @@ the checks by being labelled diagnostic? No, by construction):
     - a git repository;
     - `aew init`, with messaging and recall search switched on and adopted, so their commands exist;
     - a Lead;
-    - one Ticket with an accepted plan, assigned without a launch, so its invocation `INV-0001`, its workspace and its
-      pack exist.
+    - one Ticket with a body and an accepted plan, assigned without a launch, so its invocation `INV-0001`, its
+      workspace and its pack exist.
 
     It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface. The
     settling may remove only the spent redo records under `.aew/state/txn/`; anything else fails.

@@ -227,7 +227,7 @@ commands:
     probe: [[read, /v1/read/work], [read, --human, /v1/read/work], [read, --help]]
     lead_disposition: forbidden-to-lead
     lead_kept_out_by: "outage._project_root refuses session markers and requires the real project's control lock
-      visible outside containment. The CLI runs this check locally."
+      visible outside containment. The CLI runs this check locally, and custody_ops.LEAD_KEPT_OUT covers the broker."
     primitive: none
     primitive_reason: "the independent reader answers D-01 over the committed store without dispatch"
     keep_out_probe: [read, /v1/read/work]

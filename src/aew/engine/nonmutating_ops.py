@@ -592,7 +592,7 @@ class NonMutating:
             return
         inv = state["invocations"].get(execution["invocation"])
         if inv and inv["status"] == "active":
-            self.invocations.complete_invocation(state, execution["invocation"], status)
+            self.invocations.complete_invocation(state, execution["invocation"], status, reason=why)
         if not execution.get("ended"):
             execution.update(ended=status if inv and inv["status"] == status else (inv or {}).get("status", status),
                              ended_at=utc_now(), end_reason=why)

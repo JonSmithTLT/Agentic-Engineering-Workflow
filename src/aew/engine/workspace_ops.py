@@ -127,12 +127,15 @@ class Invocations:
                          risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request,
                          identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
 
-    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
+    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed", *,
+                            reason: str | None = None) -> None:
+        """``reason``: why the Lead ended it (`invoke cancel`), kept with the credential's revocation, the one record
+        of why an invocation's authority ended; a replacement's recovery section quotes it (register F36)."""
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
             if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
-                revoke(state, inv["token_id"], f"invocation {status}")
+                revoke(state, inv["token_id"], f"invocation {status}" + (f": {reason}" if reason else ""))
         obs = inv.get("observation")
         if obs and obs.get("status") == "active":
             obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)

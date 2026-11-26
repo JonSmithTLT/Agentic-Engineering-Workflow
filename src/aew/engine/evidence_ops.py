@@ -942,7 +942,7 @@ class EvidenceCommands:
                 raise NotFound(f"no invocation {invocation}")
             if inv["status"] != "active":
                 raise IllegalTransition(f"{invocation} is {inv['status']}")
-            self.invocations.complete_invocation(ctx.state, invocation, "cancelled")
+            self.invocations.complete_invocation(ctx.state, invocation, "cancelled", reason=reason)
             ctx.summary = f"{invocation} cancelled"
         return {"ok": True, "revision": ctx.session.committed_revision}
 

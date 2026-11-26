@@ -457,3 +457,21 @@ def changed_paths(workspace: Path, base: str, *, stores: bool | None = None,
                         include_ignored=include_ignored) as idx:
         raw = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
     return [p for p in raw.split(NUL) if p]
+
+
+def workspace_paths(workspace: Path, base: str, *, stores: bool | None = None,
+                    cache_patterns: tuple[tuple[str, ...], ...] = (),
+                    include_ignored: list[str] | None = None) -> dict[str, list[str]]:
+    """What a workspace holds beyond ``base``, for a worker who inherits it (register F36, the recovery section):
+    ``changed`` is :func:`changed_paths`; ``staged`` the paths whose entry in the workspace's own index differs from
+    ``base``; ``untracked`` the changed paths that index does not hold. The index is read from a copy, as
+    :func:`index_tree_id` reads it. A contained run stages into its own private index, which ends with the run, so
+    ``staged`` is never what such a run staged."""
+    changed = changed_paths(workspace, base, stores=stores, cache_patterns=cache_patterns,
+                            include_ignored=include_ignored)
+    workspace = workspace.resolve()
+    with _staged_index(workspace) as idx:
+        staged = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
+        tracked = set(git.out("ls-files", "-z", cwd=workspace, env=idx.env).split(NUL))
+    return {"changed": changed, "staged": [p for p in staged.split(NUL) if p],
+            "untracked": [p for p in changed if p not in tracked]}

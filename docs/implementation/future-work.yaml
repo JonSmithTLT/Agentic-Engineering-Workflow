@@ -5429,6 +5429,24 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
+  - '#': E389
+    Work: 'The ProjectArchitect concept experiments, the research plan''s R1 to R5: A, brief effectiveness (its C1 and C3),
+      whether one named change to how a pack is assembled improves an otherwise unchanged worker''s verified outcome; B,
+      question-scoped retrieval (C2), for which question classes an investigator Ticket beats a worker''s direct map and
+      source reads; C, continuation (C4), whether added continuation fields let a successor resume correctly after six kinds
+      of interruption. Each judges a brief by what its recipient then achieves (C1), counts every attempt and every participating
+      agent, and ends in one of the plan''s four decisions. R0 names the fixtures, the candidate deltas and their owners
+      (F36, E198, E368), the accounting, a proposed cap and the decision criteria. Concepts only: no ProjectArchitect code,
+      prompts or runtime, and no new retrieval service, memory store or controller. Done when R5''s results memo routes
+      each concept to its owner as retained, a narrow change, deferred or rejected'
+    Source: The operator, 2026-11-26 ("Yup file and run r0."), on the [ProjectArchitect research plan](../research/projectarchitect-concepts-and-evaluation-2026-11-25.md)
+      (research, not adopted; ledger PAE); its R0 is [the R0 baseline](../research/projectarchitect-r0-baseline-2026-11-26.md)
+      (ledger PAB)
+    When: '**Evaluation.** After the personal alpha (§1), on F19''s harness and budget: each experiment preregistered on
+      F19''s instrument, its spend set by the operator at preregistration'
+    Notes: Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), so the runs
+      wait on its instrument as it stands; C1 is also E368's evaluation method (E368's note of 2026-11-26)
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

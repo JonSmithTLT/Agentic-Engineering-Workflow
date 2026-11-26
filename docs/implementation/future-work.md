@@ -3978,6 +3978,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
+### E389
+
+**Work:** The ProjectArchitect concept experiments, the research plan's R1 to R5: A, brief effectiveness (its C1 and C3), whether one named change to how a pack is assembled improves an otherwise unchanged worker's verified outcome; B, question-scoped retrieval (C2), for which question classes an investigator Ticket beats a worker's direct map and source reads; C, continuation (C4), whether added continuation fields let a successor resume correctly after six kinds of interruption. Each judges a brief by what its recipient then achieves (C1), counts every attempt and every participating agent, and ends in one of the plan's four decisions. R0 names the fixtures, the candidate deltas and their owners (F36, E198, E368), the accounting, a proposed cap and the decision criteria. Concepts only: no ProjectArchitect code, prompts or runtime, and no new retrieval service, memory store or controller. Done when R5's results memo routes each concept to its owner as retained, a narrow change, deferred or rejected
+
+**Source:** The operator, 2026-11-26 ("Yup file and run r0."), on the [ProjectArchitect research plan](../research/projectarchitect-concepts-and-evaluation-2026-11-25.md) (research, not adopted; ledger PAE); its R0 is [the R0 baseline](../research/projectarchitect-r0-baseline-2026-11-26.md) (ledger PAB)
+
+**When:** **Evaluation.** After the personal alpha (§1), on F19's harness and budget: each experiment preregistered on F19's instrument, its spend set by the operator at preregistration
+
+**Notes:** Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), so the runs wait on its instrument as it stands; C1 is also E368's evaluation method (E368's note of 2026-11-26)
+
+*Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

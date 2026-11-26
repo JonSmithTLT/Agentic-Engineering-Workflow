@@ -4008,7 +4008,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical's re-measure of 2026-11-26 at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case
 
-**When:** **V-01**, the strict track of the burn-down, beside E338; it changes the Lead policy of `vertical-uat.md` §2, so it waits for the operator's answer to the plan's Q1 and the amendment that follows it
+**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("That honestly just seems like a bug and isnt how aew works now"), which approves the matching amendment of `vertical-uat.md` §2's Lead policy; this row's pull request makes it with the code
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 
@@ -4016,11 +4016,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E376
 
-**Work:** V2's reopen reaches the seat resume: the vertical's offline world settles AEW's tool offers before the first open, or the scripted operator answers the tool-consent screen, as the operator rules. Today only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`, `_tools_before_the_tui`; `src/aew/capability/consent.py:401-405`) for a needed tool missing on the host; the screen waits on the terminal for `src/aew/operator.py:28`'s timeout, the driver's own session bound, and the scripted operator answers only the seat-resume code (`scripted_operator.py:316-321`). The takeover fallback then interrupts the implementer, so E330's resume (#447) has not been exercised by any V2 case
+**Work:** V2's reopen reaches the seat resume: the vertical's offline world settles AEW's tool offers before the first open, as a setup fixture that is recorded and never counted (the operator's answer to the plan's Q5); the seat-resume code still counts under `pin_reentries`. Today only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`, `_tools_before_the_tui`; `src/aew/capability/consent.py:401-405`) for a needed tool missing on the host; the screen waits on the terminal for `src/aew/operator.py:28`'s timeout, the driver's own session bound, and the scripted operator answers only the seat-resume code (`scripted_operator.py:316-321`). The takeover fallback then interrupts the implementer, so E330's resume (#447) has not been exercised by any V2 case
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C7), from the vertical's re-measure of 2026-11-26 at `3640b585`: every fresh-terminal reopen (V2's four cases and the forced one) went silent at the consent screen, then took the counted takeover
 
-**When:** **V-01**, the alpha track of the burn-down, after E335: with E335 it is expected to make the alpha gate pass, which a rerun confirms. Whether the consent screen is a setup fixture or a counted operator step waits for the operator's answer to the plan's Q5
+**When:** **V-01**, the alpha track of the burn-down, after E335: with E335 it is expected to make the alpha gate pass, which a rerun confirms. The operator answered Q5 on 2026-11-26: a setup fixture, recorded but not counted ("The vertical was meant to fix ux issues. Aew saying a critical item is missing isnt a ux failure its common sense")
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed, with E377 in the same pull request
 
@@ -4080,7 +4080,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the open fallback in every failing case but G3-213
 
-**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+**When:** **V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator's answer to the plan's Q7, 2026-11-26: "this seems after alpha when we align the wires")
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 
@@ -4092,7 +4092,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the reopen fallback in every V2 case
 
-**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+**When:** **V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator's answer to the plan's Q7, 2026-11-26: "this seems after alpha when we align the wires")
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 
@@ -4104,7 +4104,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the publish fallback in every case that reaches a publish
 
-**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+**When:** **V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator's answer to the plan's Q7, 2026-11-26: "this seems after alpha when we align the wires")
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 

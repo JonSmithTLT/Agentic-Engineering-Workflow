@@ -128,10 +128,18 @@ def test_doctor_runs_only_an_adopted_selector_and_reports_its_explicit_empty_out
     assert len(visible) == 1
 
 
+@pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "adopted"])
 def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_change_acceptance(
-        tmp_path, contained):
+        tmp_path, contained, monkeypatch, declared):
     p = sample_project(tmp_path)
+    if declared:
+        from aew.harness import containment
+
+        # Use the same containment seam as the selector regressions. The copy and both runners are real.
+        monkeypatch.setattr(containment, "establish", lambda **kw: (None, {"filesystem": "os_readonly_roots"}))
+        p = allow_weaker_lead(p)
     policy(p, checks=SMOKE, post=["smoke", "guardrails"])
+    digest = declare(p, ("pytest", ["smoke"]), ("ruff", []), affected_tests=SELECTOR) if declared else None
     wid = prepared(p, tmp_path)
     out = validate(p, wid)
     assert out["ok"] and out["result"] == "pass" and out["integration"] == "validated"
@@ -139,18 +147,35 @@ def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_c
     assert [c["check_id"] for c in coverage["checks"]] == ["smoke", "guardrails"]
     assert all(c["cwd"] and c["definition_sha256"] for c in coverage["checks"])
     assert coverage["summary"]["verdict"] == "validated within its scope"
-    for key in ("ci_tools", "affected_tests"):
-        assert coverage[key] == {"known": False, "reason": "no_project_source"}
+    gaps = coverage["summary"]["known_gaps"]
+    if declared:
+        ref = coverage["selection"]
+        assert sha256_file(p.root / ".aew" / ref["path"]) == ref["sha256"]
+        assert coverage["affected_tests"]["source"] == f"selection:{ref['sha256']}"
+        assert coverage["affected_tests"]["items"] == [
+            {"name": "fast", "ran": False, "reasons": ["not_run_in_this_validation"]}]
+        assert coverage["ci_tools"] == {"known": True, "source": f"declared:{digest}", "items": [
+            {"name": "pytest", "ran": True, "reasons": []},
+            {"name": "ruff", "ran": False, "reasons": ["not_configured"]}]}
+        assert gaps["affected_tests_not_run"] == gaps["ci_tools_not_run"] == 1
+        visible = ("fast: without a completed check", "ruff: not run (not configured)", CV.AFFECTED_TESTS_LIMIT)
+    else:
+        for key in ("ci_tools", "affected_tests"):
+            assert coverage[key] == {"known": False, "reason": "no_project_source"}
+            assert f"{key}_not_run" not in gaps
+        visible = ("Affected tests: not known (no project source)", "Project CI tools: not known (no project source)")
     run = integ(p, wid)[VO.CURRENT]
     assert record_of(p, run)["coverage"] == coverage
+    if declared:
+        # A new operational declaration cannot replace facts about the completed validation.
+        declare(p, ("later-tool", ["smoke"]))
     assert validate(p, wid)["coverage"] == coverage  # cached/noop uses the same pin
     eng = engine(p)
     status = eng.status(wid)
     assert status["coverage"] == coverage
     assert coverage["summary"]["headline"] in eng.render_status(status)
-    text = readable.render({"tool": "status", "result": status})
-    assert "Affected tests: not known" in text.split(readable.JSON_MARKER)[0]
-    assert "Project CI tools: not known" in text.split(readable.JSON_MARKER)[0]
+    text = readable.render({"tool": "status", "result": status}).split(readable.JSON_MARKER)[0]
+    assert all(line in text for line in visible), text
     project = eng.status()
     assert project["validation_coverage"][wid]["summary"] == coverage["summary"]
     for eid in out["evidence"]:
@@ -162,6 +187,7 @@ def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_c
     completion = p.root / ".aew/work" / wid / "completion.md"
     meta, body = parse_frontmatter(completion.read_text(encoding="utf-8"))
     assert meta["coverage"] == coverage and coverage["summary"]["headline"] in body
+    assert all(line in body for line in visible), body
     assert workspace not in body
     assert all(c["command"][0] not in body for c in coverage["checks"] if Path(c["command"][0]).is_absolute())
     assert engine(p).status(wid)["coverage"] == coverage  # archived, after workspace cleanup

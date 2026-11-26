@@ -6524,9 +6524,9 @@ sections:
     Closed: '2026-11-26'
     By: '#65 (M4-D3: the queue, its lease and custodian), #77 (M4-D4: the one rebuild, disposition, defer, requeue and reorder),
       #91 (M4-D5: checks validation), #380 (`mutating_concurrency: 2` for a new project) and #407 (the switch offer for
-      an existing project, which replaces the `gates.yaml` migration): the hold match''s remaining scope, the raise to 2
-      with that migration, is done (F10''s notes of 2026-11-07, 2026-11-08 and 2026-11-26). The real run with two mutating
-      workers stays SYS-39''s sign-off (the operator, 2026-11-26)'
+      an existing project, which replaces the `gates.yaml` migration): the remaining scope of the hold match (`2026-11-06-operator-hold-match-batches.md`),
+      which restored it from HOLD-06, the raise to 2 with that migration, is done (F10''s notes of 2026-11-07, 2026-11-08
+      and 2026-11-26). The real run with two mutating workers stays SYS-39''s sign-off (the operator, 2026-11-26)'
 
   - '#': F11
     Was: Dynamic scheduler

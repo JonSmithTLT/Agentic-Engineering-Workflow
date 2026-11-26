@@ -92,6 +92,14 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
    several are AVAILABLE, `ambiguous_next_action` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator: the diff, an evidence summary and the commit.
 
+**With steering on, a wait the projection marks `woken` ends the Lead's turn** (amended with the operator's answer of
+2026-11-26 to the [V-01 burn-down](v01-burn-down.md)'s Q1: "For q1 yes. That honestly just seems like a bug and sint
+how aew works now."; register E375). `woken` says a broker posts wakes, so the Lead does not call `harness_wait`: it
+ends its turn, and its next turn starts when a wake reaches its session or the operator says something. The fake TUI
+holds a session on the Lead's server, as OpenCode's TUI does, and the broker's wakes land there (`WakeChannel`). A
+wake that does not come within a bound is recorded (`lead.wake_missed`), and the Lead then calls the wait, counted
+under `mechanical_calls`. With steering off the Lead calls the wait, as before.
+
 **Judgment inputs (v2).** Where an action, or a decision owned by the Lead or the mechanism, names `judgment_inputs`,
 the Lead supplies them, as its own judgment, and asks no one (never on an operator's decision, whose choice is the
 operator's): a value the projection offers (or the first of its `options`) fills an argument the
@@ -178,6 +186,13 @@ installed tool: its variables are not the operator's.
   is an operator decision**, recorded under decisions, never a `lifecycle_step`; it is not one of V1's two. With
   steering on, the Lead leaves an action the projection marks `auto_runnable` to the loop: it waits for an event (the
   revision moves, or the loop records a stop) and pushes the action itself, counted, only when the loop declined.
+  **A BLOCKED stop is the loop declining only when its blocker is still present after the run ends** (amended with
+  the operator's answer of 2026-11-26 to the V-01 burn-down's Q10: "5. B yes its meant to make sure the lead doesnt
+  do menial labor."; register E375). The loop keeps BLOCKED out of the stops only the Lead can clear: such a blocker
+  can clear on its own, and the loop then acts. So the Lead reads a BLOCKED stop with the loop's own selection, and
+  takes it as a decline only once the blocker still stands, with no live run, for one of the loop's own looks; any
+  other stop is a decline at once. The Lead's push after a stop that cleared itself is a mechanical call, and is
+  counted. No counter or threshold changes.
 
 ## 4. The burden ledger (the measurement, and the assertions)
 

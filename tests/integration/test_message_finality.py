@@ -351,7 +351,8 @@ def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resu
     mid = w.send()["message"]["id"]
     first = submit(w, token=keys[original])
     set_messaging(w.root, "disabled")
-    w.lead("manifest_adopt", reason="temporarily turn delivery off", authorization=OPERATOR)
+    w.lead("manifest_adopt", reason="temporarily turn delivery off", authorization=OPERATOR,
+           binding=w.e.manifest_approval())
     runlog.write_record(runlog.run_dir(w.e.aew_root, original), {"status": contract.ENDED_WITH_EVIDENCE})
 
     with pytest.raises(PendingLeadMessage) as held:
@@ -362,7 +363,8 @@ def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resu
     assert w.e._coordination.continuation_messages(w.e.store.read(), w.inv)[0] == []
 
     set_messaging(w.root, "enabled")
-    w.lead("manifest_adopt", reason="resume message delivery", authorization=OPERATOR)
+    w.lead("manifest_adopt", reason="resume message delivery", authorization=OPERATOR,
+           binding=w.e.manifest_approval())
     successor = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
     continuation = w.e.harness_contract(w.e.store.read(), w.inv, successor).continuation
     assert continuation["messages"] == [mid]

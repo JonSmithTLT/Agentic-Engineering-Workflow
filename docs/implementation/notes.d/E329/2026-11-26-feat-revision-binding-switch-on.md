@@ -16,4 +16,4 @@ of the removed flag. Its single-owner check covers where the guide says to obtai
 The merge through MS5b keeps both delivery timings, retry identity, policy and run-snapshot checks, and the report
 receipt and finality guard. A recorded message keeps its engine-observed revision stamp without a caller-supplied
 revision. The ordinary `harness send` command refuses the retired option before it writes. MS5b's finality fixtures
-now supply the observed prior state, run or accepted record digest where the corresponding operation requires one.
+now supply the observed prior state, run or approval for the accepted record or changed policy where required.

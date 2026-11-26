@@ -42,7 +42,7 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | **C9** A semantic conflict has no decision | At COMMIT_READY with the queue entry AWAITING_DISPOSITION, `_ticket_actions` emits no decision (`projection.py:246-299`); the only guidance is a requeue hint (`src/aew/engine/resume_ops.py:471-476`); after it `ticket_prepare` is offered and refused, and the Lead's gap key carries the revision (`lead.py:510-525`), so it loops | design, product, oracle | `E378` | None | Counters and fallbacks of the other clusters | M, 1 to 2 PRs | E335; Q2 | open |
 | **C10** A compatible rebuild asks again | PUBLISH binds the validated candidate (`projection.py:270-289`); the rebuilt, re-verified candidate raises a new PUBLISH, asked again | design | `E379` | V1 compatible-move (its verdict filters counters and fallbacks) | Nothing in that case | M, 1 PR | Q3; W09's approval binding | open |
 | **C11** After the evidence-mismatch refusal, nothing is offered | The gate's refusal for a check that changes a tracked file is BLOCKED with no decision (`projection.py:334-372`); the driver appends `--expect-rev` to a hinted read command too (`hints.py:79`), and that refusal counts | design, oracle | `E380` | None | Counters and fallbacks of the other clusters | M, 1 PR plus a driver line | E335; Q6 | open |
-| **C12** The G3-held steps are not on the O-01 wire | The oracle derives them not built: the vendored O-01 registry lacks the actions or holds them registry-only, and the carrier admits one origin (`tests/helpers/vertical/oracle.py:196-210`). `path_problems` fails any operator fallback (`tests/acceptance/test_vertical_path.py:217-226`), so no strict V1, V2 or V4 case passes before it | design (the wire track) | `E381`, `E382`, `E383`, `STG-14` | None, but every strict V1, V2 and V4 green needs it | Nothing it leaves; the alpha excuses it | Many PRs | Q7, answered: after the personal alpha, aligned with STG-14 | open |
+| **C12** V01-01's wire steps are not on the O-01 wire | The oracle derives them not built: the vendored O-01 registry lacks the actions or holds them registry-only, and the carrier admits one origin (`tests/helpers/vertical/oracle.py:196-210`). `path_problems` fails any operator fallback (`tests/acceptance/test_vertical_path.py:217-226`), so no strict V1, V2 or V4 case passes before it | design (the wire track) | `E381`, `E382`, `E383`, `E388`, `E389`, `E390`, `E391`, `E181`, `STG-14` | None, but every strict V1, V2 and V4 green needs it | Nothing it leaves; the alpha excuses it | Many PRs | Q7, answered: after the personal alpha, aligned with STG-14 | open |
 | **C13** The credential route a scenario measures | V2's same-shell extra keeps the credential route by design; V4 changes its setting through acquire, export, a hand-edited policy and a separate adopt: there is no `aew policy route` (only `aew settings show`) | scenario; product for V4 | `E164`, `E331` | None | The other clusters | 2 PRs | E327 (merged) for E331 | open |
 | **C14** Readiness has no seat row | Neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat, so doctor names neither the dead session nor the fix; `V3_HELD` cites G3-C, which merged (`test_vertical_path.py:753`) | product | `E384` | None: the case still takes the G3 open fallback (C12) | C12's open step | S, 1 PR | E330 (merged) | open |
 | **C15** The #213 autopsy cannot see the contained TUI | The TUI writes its childdiag events to the children directory the autopsy names (`tests/helpers/autopsy.py:431-442`), outside the contained Lead's writable roots, the scripts directory and `sync` (`scripted_operator.py:494`) | oracle | `E385` | G3 #213 diagnosis | Nothing in that case | S, test-only | none | in flight (builder started) |
@@ -103,8 +103,18 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | step | `setting` | C12, C13 | G3 fallback |
 | step | `raise` | C12 | G3 fallback |
 
-Steps 4, 6 and 8 (`ask`, `work`, `result`) are wire increments with no operator fallback and no row of their own. Which
-rows carry them is part of Q7, which places the wire track after the personal alpha.
+C12's rows, by step (V-01's actions and reads as the wire sizing of 2026-11-26 names them; each after the personal
+alpha, aligned with STG-14, by Q7's answer):
+- **open** (3): ATTACH_LEAD, E381; its attachments read is E181's.
+- **ask** (4): CREATE_PROPOSED_WORK, E389. E373 is the interim offer on the typed surface.
+- **plan** (5): DECIDE_WORK_PROPOSAL, E388. E351 is the projection's decision kind, not the wire action.
+- **work** (6): DELEGATE_NEW_WORKER, E390. Its CONTINUE_ELIGIBLE_WORK part reaches the STG-02 carrier's fixture owner today,
+  and its production owner goes with E356.
+- **publish** (7): APPROVE_INTEGRATION, E383.
+- **result** (8): the assurance, resolve and work reads, E181's.
+- **reopen** (10): REATTACH_LEAD, E382; attention and attachments are E181's, and waiting and continuation state, which
+  only STG-02 serves today, are E391's with the other two reads E181 does not list.
+- **setting** (12) and **raise** (13): ADOPT_MANIFEST_EDIT and SET_STEERING_MODE, STG-14's.
 
 ## The order
 
@@ -129,7 +139,7 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 7. **C6** (E375), an oracle fix with its `vertical-uat.md` §2 amendment (Q1 answered).
 8. **C14** (E384), with C16 (E386) and C17 (E387) as small fixes beside it.
 9. **C13** (E164, E331).
-10. **C12**, the wire track (E381, E382, E383, STG-14): after the personal alpha, aligned with STG-14 (Q7).
+10. **C12**, the wire track (E381 to E383, E388 to E391, E181, STG-14): after the personal alpha, aligned with STG-14 (Q7).
 
 After 1 to 9, V1's counters and decisions are expected clear, and the V1, V2 and V4 cases fail only on C12's
 fallbacks (and V2 on the resume code under `pin_reentries`, Q5); V1 semantic-conflict and evidence-mismatch also need
@@ -138,26 +148,21 @@ G3 #213 and V1 compatible-move.
 
 ## Questions
 
-Each is quoted as it was put, with who must answer it. The operator answered Q1, Q5 and Q7 on 2026-11-26, quoted
-below each; the designer's, Q2 to Q4, Q6, Q8 and Q9, stay open.
+The operator's three, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
+Q8 and Q9) are open, and are owned by [what the operator and designer owe](decisions-due.md), each on the row it holds:
+Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "That honestly just seems like a bug and isnt how aew works now." With
     steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. C6 (E375) is
     an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which E375's pull request
     makes.
-- **Q2 (designer):** "When an integration candidate conflicts with the moved head and its queue entry awaits disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and through which typed route?"
-- **Q3 (designer; the operator owns the threshold):** "Does the operator's publish approval cover a compatible rebuild of the same change on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further question. The projection asks again.
-- **Q4 (designer):** "On a project with no open Ticket, should the projection offer `ticket_draft`, with its judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"
 - **Q5 (operator):** "Is AEW's tool-consent screen at a reopen a setup fixture of the offline world (recorded, never counted), or an operator step the vertical counts? And until REATTACH_LEAD lands, is the seat-resume confirmation code meant to count under `pin_reentries` on Linux, as `Ledger.console_challenge` counts it today?"
   - **Answered** (operator, 2026-11-26): a setup fixture, recorded but not counted. "The vertical was meant to fix ux
     issues. Aew saying a critical item is missing isnt a ux failure its common sense." The seat-resume code still
     counts under `pin_reentries`. C7 (E376) is in progress.
-- **Q6 (designer):** "When the gate refuses because a check changes a tracked file of its snapshot, which decision does the projection offer, and is it the operator's?"
 - **Q7 (operator):** "No strict V1, V2 or V4 case can pass until ATTACH_LEAD, DECIDE_WORK_PROPOSAL, APPROVE_INTEGRATION, REATTACH_LEAD, SET_STEERING_MODE and ADOPT_MANIFEST_EDIT reach the O-01 wire. ATTACH_LEAD and REATTACH_LEAD 'stay proposed, with no row', and APPROVE_INTEGRATION (I4-06, I4-B7) has none. Which rows and order carry them, or is the alpha's G3 excuse the bar until then?"
   - **Answered** (operator, 2026-11-26): "this seems after alpha when we align the wires." The alpha, with its G3-held
-    steps excused, is the near-term bar; the wire-track rows (E381, E382, E383) come after it, aligned with STG-14.
-- **Q8 (designer, for E351):** "What is the plan decision kind's name? The vertical records a decision under its kind lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."
-- **Q9 (designer, for C5):** E335's branch makes RESOLVE_STAGE the Lead's. "For a stage the steering loop is running, is that decision offered at all, or is it the mechanism's until the loop stops?"
+    steps excused, is the near-term bar; the wire-track rows (C12's) come after it, aligned with STG-14.
 
-Q7 was put before this page filed E381, E382 and E383 for ATTACH_LEAD, REATTACH_LEAD and APPROVE_INTEGRATION.
+Q7 was put before this page filed E381 to E383 and E388 to E391.

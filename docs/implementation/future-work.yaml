@@ -5545,10 +5545,10 @@ sections:
     Notes: Filed by the V-01 burn-down PR of 2026-11-26
 
   - '#': E382
-    Work: '`REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), with its reads (U01''s waiting and attention,
-      C18''s continuation state, L07''s attachments), so the oracle derives the step as landed and V2''s G3 reopen fallback
-      stops. Today `REATTACH_LEAD` is registry-only and the attention and attachments reads are not served. STG-03''s closure
-      left it "proposed, with no row"'
+    Work: '`REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), so that with its reads the oracle derives the
+      step as landed and V2''s G3 reopen fallback stops. Today `REATTACH_LEAD` is registry-only. The step''s reads are other
+      rows'': attention and attachments (U01, L07) are E181''s, and waiting and continuation state (U01, C18), which only
+      STG-02 serves today, are E391''s. STG-03''s closure left it "proposed, with no row"'
     Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical''s re-measure of 2026-11-26
       at `3640b585`: the reopen fallback in every V2 case'
     When: '**V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator''s answer
@@ -5603,6 +5603,52 @@ sections:
     Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C17), from the vertical''s re-measure of 2026-11-26
       at `3640b585`: an observation with no counter; it changes no verdict'
     When: '**V-01**, the strict track of the burn-down'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E388
+    Work: '`DECIDE_WORK_PROPOSAL` on the O-01 wire: V01-01 step 5 (`plan`, W02; WIS the owner, G3-protected), so the operator''s
+      plan approval is a confirmed decision and the oracle derives the step as landed. Today it is not in the vendored O-01
+      registry, and the act is `plan accept` (`src/aew/cli/work_commands.py:367`). Its owner, WIS, is outside the pinned
+      G3 wire''s owner enum (`g3/aew_g3/g3-wire.schema.json`, `ConsumeRequest.owner`), so it cannot be consumed without
+      a G3 wire change. E351 is the plan''s decision kind in the projection, not this wire action'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator''s answer
+      to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E389
+    Work: '`CREATE_PROPOSED_WORK` on the O-01 wire: V01-01 step 4 (`ask`, W15; WIS the owner, the successor-generation origin),
+      so the Lead''s draft of the operator''s request goes through the wire and the oracle derives the step as landed. Today
+      it is not in the vendored O-01 registry, the carrier admits no successor origin (`tests/helpers/vertical/oracle.py:196-210`),
+      and the act is `work create` or the typed `ticket_draft`. E373 is the interim offer on the typed surface, not this
+      wire action'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator''s answer
+      to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E390
+    Work: '`DELEGATE_NEW_WORKER` on the O-01 wire: V01-01 step 6 (`work`, W10; ADC the owner, the successor-generation origin,
+      a grant naming the Lead generation), so the oracle derives the step as landed. Today it is not in the vendored O-01
+      registry, and the act is `work assign` and `invoke create`. The step''s other part, `CONTINUE_ELIGIBLE_WORK` (C17),
+      already reaches an owner, the STG-02 carrier''s fixture HEB; its production owner goes with E356'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator''s answer
+      to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E391
+    Work: 'The four D-01 0.3.4 reads E181 does not list get a production producer: `/v1/read/waiting`, `/v1/read/continuation-state/{work_id}`,
+      `/v1/read/runs/{execution_id}` and `/v1/read/owner-operations`. Today only the STG-02 slice producer serves them (`src/aew/stg02/server.py:220-240`),
+      with unqualified stamps, and E356 retires it. Two are on V01-01 step 10 (`reopen`: U01''s waiting, C18''s continuation
+      state). Each read is qualified before it is claimed, as E181''s are (W1 to W5)'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down: after the personal alpha, aligned with STG-14 (the operator''s answer
+      to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
     Notes: Filed by the V-01 burn-down PR of 2026-11-26
 
 - number: 7

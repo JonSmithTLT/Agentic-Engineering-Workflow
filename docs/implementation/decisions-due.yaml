@@ -20,6 +20,50 @@ items:
   what: 'For the Lead''s always-sent text: whether to make the four schema changes the audit of 2026-11-25 found worth about
     3.1 KB per request, and whether the Lead MCP server''s instructions count in the Lead''s pool'
 
+- row: E351
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q8: "What is the plan decision kind''s name? The vertical records a decision under its kind
+    lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."'
+
+- row: E373
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q4: "On a project with no open Ticket, should the projection offer `ticket_draft`, with its
+    judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"'
+
+- row: E374
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q9: "For a stage the steering loop is running, is that decision offered at all, or is it
+    the mechanism''s until the loop stops?" E335''s branch makes RESOLVE_STAGE the Lead''s.'
+
+- row: E378
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q2: "When an integration candidate conflicts with the moved head and its queue entry awaits
+    disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and
+    through which typed route?"'
+
+- row: E379
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q3: "Does the operator''s publish approval cover a compatible rebuild of the same change
+    on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further
+    question. The projection asks again. The operator owns the threshold.'
+
+- row: E380
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which
+    decision does the projection offer, and is it the operator''s?"'
+
 - row: E99
   needs: design
   owner: designer

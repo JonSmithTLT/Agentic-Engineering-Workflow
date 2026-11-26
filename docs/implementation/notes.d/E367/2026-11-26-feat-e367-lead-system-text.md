@@ -1,4 +1,4 @@
-**Built (`feat/e367-lead-system-text`): the Lead's system text says only what is true and needed, and the typed `status` and `resume` results are compact.** The row stays open for what is the designer's.
+**Built (`feat/e367-lead-system-text`, #599): the Lead's system text says only what is true and needed, and the typed `status` and `resume` results are compact.** The row stays open for what is the designer's.
 
 What changed:
 - **The system text** (`harness/opencode/projection.py`), measured with the pool gate's own render: 9,380 B to 6,193 B with messaging on, 9,121 B to 6,023 B off.

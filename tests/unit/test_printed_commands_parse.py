@@ -300,10 +300,11 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
     guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from discovery.static import rendered_guide
+
     from aew.engine.harness_ops import send_route
     from aew.errors import MessagingSnapshotMismatch
     from aew.policy import execution as X
-    from aew.surface import lead_text
 
     # The fallback invocation placeholder is printed only after the f-string has been evaluated.
     with pytest.raises(MessagingSnapshotMismatch) as mismatch:
@@ -314,7 +315,7 @@ def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     # So is the run a steering step over several runs names (#547 review m1): a value the step passes in.
     steer = [c for c, _ in P.commands(K.wait_step(["R-1", "R-2"], again=True)) if c.startswith("aew harness send")]
     assert [a.run for c in steer for a in P.parse(c, fenced=False)] == ["R-0003"]
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), rendered_guide(),
                          relaunch, *steer, transitions.operation_command("integrate.requeue", "T-0007")])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
@@ -388,12 +389,13 @@ def test_each_next_step_a_refusal_names_parses(state: str) -> None:
 @pytest.mark.parametrize("post_verify", [False, True])
 def test_every_command_the_rendered_guide_prints_passes(post_verify: bool) -> None:
     """Blind spot 2 at its largest: the guide joins its moves from the transition table at run time. Rendered for the
-    default policy (and with a post-integration verifier), every command it prints passes the check."""
+    default policy (and with a post-integration verifier), every command it prints, in its core or a section `aew guide`
+    prints (E231), passes the check."""
     from aew.surface import lead_text
 
     gates = {**DEFAULT_GATES, "post_integration": {**(DEFAULT_GATES.get("post_integration") or {}),
                                                    "verification": post_verify}}
-    printed = P.commands(lead_text.render(gates, DEFAULT_CHECKS))
+    printed = P.commands(lead_text.document(gates, DEFAULT_CHECKS).full())
     assert len(printed) > 30  # a floor on the finder: E130's guide prints each command once, not per move
     # The guide names these commands in its explanations. Its runnable examples are checked below.
     references = {

@@ -71,7 +71,13 @@ FULL = T.Fit(review=True, verification=True, last_review=True, last_verification
 
 
 def rendered() -> str:
+    """The guide's core: what every Lead request carries."""
     return lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+
+
+def full() -> str:
+    """The whole guide: the core and every section `aew guide <section>` prints (E231)."""
+    return lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS).full()
 
 
 def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
@@ -80,7 +86,7 @@ def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
     assert "coverage not recorded" in text.lower() and "validated within its scope" in text.lower()
     documented = (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8")
     assert documented.startswith("<!-- Generated:")
-    assert documented.partition("-->\n\n")[2] == text
+    assert documented.partition("-->\n\n")[2] == full()
 
 
 def system_text() -> str:
@@ -95,8 +101,8 @@ def plant(monkeypatch: pytest.MonkeyPatch, name: str = PLANTED, **kw: Any) -> No
 
 
 def steps(text: str) -> dict[str, str]:
-    """Each numbered step of the mutating path, by what leads it."""
-    section = text.split("## A mutating Ticket, step by step", 1)[1].split("Each state and the moves", 1)[0]
+    """Each numbered step of the mutating path, by what leads it: the `steps` section of the whole guide."""
+    section = text.split("## A mutating Ticket, step by step", 1)[1].split("\n## ", 1)[0]
     found = re.split(r"^\d+\. ", section, flags=re.MULTILINE)[1:]
     return {step.split(":", 1)[0]: step for step in found}
 
@@ -140,8 +146,11 @@ def stray_arguments(text: str) -> list[str]:
 
 
 def lead_texts() -> dict[str, str]:
-    """What a Lead reads as written: the system text with the guide, and each command's template."""
-    return {"system": system_text(), **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
+    """What a Lead reads as written: the system text with the guide's core, each section `aew guide` prints, and each
+    command's template."""
+    doc = lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS)
+    return {"system": system_text(), **{f"aew guide {n}": s.text() for n, s in doc.sections.items()},
+            **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
 
 
 def engine_words() -> dict[str, set[str]]:
@@ -202,7 +211,7 @@ def test_the_list_follows_the_catalog_when_a_tool_goes(monkeypatch):
 
 
 def test_a_step_a_stage_covers_is_led_by_that_stage_and_its_shell_command_follows():
-    stages, found = lead_text.stages(), steps(rendered())
+    stages, found = lead_text.stages(), steps(full())
     moves = covered(stages)
     assert {s.tool for _, s in moves} == set(SA.STAGES)
     for move, stage in moves:
@@ -227,9 +236,11 @@ def test_a_stage_planted_over_a_move_no_stage_covers_takes_it_over_with_no_other
     """The other half of the guard: no second table says which tool takes which step. `plan.accept` has no stage today;
     planting one moves the step to it, the shell command becoming its fallback."""
     shell = next(m.shell for m in guide.PATH if m.primitive == "plan.accept")
-    assert steps(rendered())["Accept the plan"].startswith(f"Accept the plan: {shell}")
+    assert steps(full())["Accept the plan"].startswith(f"Accept the plan: {shell}")
+    assert f"then accept the plan with {shell}" in rendered()  # the core names it too, from the same groups
     plant(monkeypatch, expands_to=("plan.accept",))
-    now = steps(rendered())
+    now = steps(full())
+    assert f"then `{PLANTED}`" in rendered()
     assert "Accept the plan" not in now
     assert shell in now[f"`{PLANTED}`"].split("Shell fallback:", 1)[1]
 
@@ -273,7 +284,7 @@ def contract_edges(state: str) -> list[tuple[str, str]]:
 
 def test_a_move_no_stage_covers_is_led_by_its_shell_command():
     stages, text = lead_text.stages(), rendered()
-    found = steps(text)
+    found = steps(full())
     alone = [m for m in guide.PATH if guide._covering(stages, m) is None]
     assert [m.primitive for m in alone] == ["plan.accept"]
     for move in alone:
@@ -283,7 +294,7 @@ def test_a_move_no_stage_covers_is_led_by_its_shell_command():
 
 
 def test_with_no_stages_every_step_is_the_shell_commands_alone():
-    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS, ())
+    text = guide.document(DEFAULT_GATES, DEFAULT_CHECKS, ()).full()
     assert "Shell fallback" not in text
     for move in guide.PATH:
         assert move.shell and move.shell in text, move.primitive
@@ -292,7 +303,7 @@ def test_with_no_stages_every_step_is_the_shell_commands_alone():
 def test_the_shell_for_what_no_stage_reaches_is_named():
     """Step 1's list: a path without review or verification, rework, a classification, a parent's close and a
     non-mutating dispatch have no stage."""
-    text = rendered()
+    text = full()
     for command in ("aew work transition <T> --to <STATE>", "aew integrate prepare <T>",
                     "aew invoke create <T> --role implementer --launch", "aew verify classify <T>",
                     "aew work close <S>", "aew work dispatch <T> --launch"):
@@ -340,7 +351,7 @@ def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(mo
 
 
 def test_an_argument_a_step_or_command_names_is_taken_by_a_tool_it_names():
-    for lead, step in steps(rendered()).items():
+    for lead, step in steps(full()).items():
         if lead.startswith("`"):
             assert stray_arguments(step) == [], lead
     for name, command in projection.LEAD_COMMANDS.items():
@@ -355,7 +366,7 @@ def test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_
     monkeypatch.setitem(contract.TOOLS, "integration_publish",
                         row._replace(input_schema={**row.input_schema, "properties": props}))
     assert "verification_evidence" in known_words()
-    assert stray_arguments(steps(rendered())["`integration_publish`"]) == ["verification_evidence"]
+    assert stray_arguments(steps(full())["`integration_publish`"]) == ["verification_evidence"]
     hint = resume_with()._integration_verifier(integration_state(report="EV-3"), "T-0007")
     assert stray_arguments(hint) == ["verification_evidence"]
 
@@ -368,13 +379,13 @@ def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_gua
 
     monkeypatch.setattr(contract, "TOOLS", {k: renamed(t) for k, t in contract.TOOLS.items()})
     assert "verification_evidence" not in known_words()
-    assert "verification_evidence" in WORD.findall(system_text())
+    assert "verification_evidence" in WORD.findall("".join(lead_texts().values()))
 
 
 def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
     plant(monkeypatch, "zz_recovery", profiles=(RECOVERY,), expands_to=("plan.accept",))
     plant(monkeypatch, "zz_designed", status=contract.DESIGNED, expands_to=("plan.accept",))
-    text = projection.lead_tools_text() + rendered()
+    text = projection.lead_tools_text() + full()
     assert "zz_recovery" not in text and "zz_designed" not in text
     assert "zz_recovery" in {s.tool for s in lead_text.stages(RECOVERY)}
 
@@ -435,16 +446,16 @@ def test_a_transition_step_says_its_target_and_a_dispatch_says_its_role_or_scope
                                                          for s in by_tool["ticket_prepare"].steps}
 
 
-def test_the_guide_for_a_project_is_rendered_with_the_stages():
+def test_the_guide_for_a_project_is_rendered_with_the_stages_and_the_tools_uses():
     seen: list[Any] = []
 
     class Engine:
-        def lead_guide(self, stages: Any, *, plan_assessment: str | None = None) -> str:
-            seen.append((stages, plan_assessment))
-            return "text"
+        def lead_guide_document(self, stages: Any, *, uses: Any, plan_assessment: str | None = None) -> Any:
+            seen.append((stages, uses, plan_assessment))
+            return SimpleNamespace(core="text")
 
     assert lead_text.guide_for(Engine()) == "text"
-    assert seen == [(lead_text.stages(), lead_text.plan_assessment())]
+    assert seen == [(lead_text.stages(), lead_text.uses(), lead_text.plan_assessment())]
     assert lead_text.plan_assessment() == "`resolve`, choice `assess_plan`, subject `<W>#plan`"
 
 

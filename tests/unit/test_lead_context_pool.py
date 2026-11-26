@@ -44,6 +44,17 @@ def read_baseline(record: dict) -> Pool:
     return Pool(**parts)
 
 
+# Room above the measured pool that the operator keeps on purpose (the operator, 2026-11-26: the cap is "a guard
+# against bloat"). Only an allocation of this kind, carrying the operator's words and date, may stand for unused bytes
+# beside the estimates; an author cannot write one without quoting a decision.
+RESERVE = "reserve"
+
+
+def unused_room(record: dict) -> int:
+    """The bytes the slack rule lets stay unused under the cap: the open estimates and the operator's reserve."""
+    return sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] in {"estimate", RESERVE})
+
+
 def operator_count(entry: object, name: str, count_key: str) -> int:
     location = f"{RECORD_PATH} {name}"
     assert isinstance(entry, dict) and set(entry) == {count_key, "operator", "date"}, (
@@ -66,11 +77,16 @@ def approved_ceiling(record: dict) -> int:
     baseline = read_baseline(record)
     allocations = record["allocations"]
     # These names are operator-approved. A new name needs an operator decision recorded with the allocation.
-    assert set(allocations) == {"E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry"}
+    assert set(allocations) == {"E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry",
+                                "operator_reserve"}
     for name, entry in allocations.items():
         assert type(entry["bytes"]) is int, name
-        assert entry["kind"] in {"estimate", "measured"} and entry["source"].strip(), name
-        assert entry["kind"] != "estimate" or entry["bytes"] > 0, name
+        assert entry["kind"] in {"estimate", "measured", RESERVE} and entry["source"].strip(), name
+        assert entry["kind"] not in {"estimate", RESERVE} or entry["bytes"] > 0, name
+        if entry["kind"] == RESERVE:  # the operator's decision, quoted, or no reserve
+            operator_count({"bytes": entry["bytes"], "operator": entry.get("operator"), "date": entry.get("date")},
+                           f"allocations.{name}", "bytes")
+            assert set(entry) == {"bytes", "kind", "source", "operator", "date"}, f"allocations.{name}"
     ceiling = baseline.total + sum(entry["bytes"] for entry in allocations.values())
     assert ceiling > 0, "the context pool needs a positive ceiling"
     cap = operator_count(record.get("approval"), "approval", "ceiling_bytes")
@@ -118,11 +134,11 @@ def check_pool(pool: Pool, record: dict, *, switches: frozenset[str]) -> None:
         f"In {RECORD_PATH}, record the landed item's measured delta or the operator's wip_allowance."
     )
     if switches == MESSAGING_ON:
-        remaining = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
+        remaining = unused_room(record)
         slack = cap - pool.total
         assert slack <= remaining, (
             f"Lead context pool uses {pool.total} B under its {cap} B cap, leaving {slack} B of slack "
-            f"for {remaining} B of estimates ({component_changes(pool, read_baseline(record))}). "
+            f"for {remaining} B of estimates and operator reserve ({component_changes(pool, read_baseline(record))}). "
             f"Account for the {slack - remaining} B saving in {RECORD_PATH} baseline and lower the recorded cap."
         )
 
@@ -141,6 +157,20 @@ def host_independent_placement(monkeypatch):
 def test_the_contained_normal_lead_fits_its_context_pool(record, switches, host_independent_placement):
     pool = render_pool(record["baseline"]["containment"], switches)
     check_pool(pool, record, switches=switches)
+
+
+@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+def test_the_guides_core_is_the_size_the_pool_records(record, switches, host_independent_placement):
+    """E231: the guide's core is what the Lead's system text carries, and its bytes, messaging on and off, are the
+    measured `after` figures the record gives, with the saving it lowered the baseline and cap by. A change to the
+    core's bytes fails here until the record says what it measures."""
+    pool = render_pool(record["baseline"]["containment"], switches)
+    measured = record["guide_core"]["messaging_on" if switches else "messaging_off"]
+    assert pool.guide_bytes == measured["after"], (
+        f"the guide's core renders {pool.guide_bytes} B, the record says {measured['after']} B: update "
+        f"{RECORD_PATH} guide_core and the baseline")
+    on = record["guide_core"]["messaging_on"]
+    assert record["guide_core"]["saving_bytes"] == on["before"] - on["after"]
 
 
 def check_tool_count(count: int) -> None:
@@ -171,11 +201,10 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     label = record["baseline"]["containment"]
     original = render_pool(label, MESSAGING_ON)
     # Start this synthetic shrink at exactly the reserved slack. The separate live-pool test checks the real cap.
-    estimates = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
-    record["approval"]["ceiling_bytes"] = original.total + estimates
+    record["approval"]["ceiling_bytes"] = original.total + unused_room(record)
     cap = approved_ceiling(record)
-    name, meaning, _example = lead_text.guide.CLASS_TEXT["0"]
-    monkeypatch.setitem(lead_text.guide.CLASS_TEXT, "0", (name, meaning, "x"))
+    # A shorter rule in the guide's core, which the system text carries (a section's text is not in the pool: E231).
+    monkeypatch.setattr(lead_text.guide, "TEST_WORK", "x")
     smaller = render_pool(label, MESSAGING_ON)
     freed = original.guide_bytes - smaller.guide_bytes
     assert freed > 0 and smaller.total == original.total - freed
@@ -242,4 +271,25 @@ def test_baseline_plus_allocations_cannot_raise_the_operator_cap(record, change)
         record["allocations"]["E176"].update(bytes=23_000, kind=change)
     cap = record["approval"]["ceiling_bytes"]
     with pytest.raises(AssertionError, match=rf"{RECORD_PATH}.*{cap} B cap.*wip_allowance"):
+        approved_ceiling(record)
+
+
+def test_only_an_operator_attributed_reserve_lets_bytes_stay_unused_under_the_cap(record, host_independent_placement):
+    """The operator, 2026-11-26: the cap is an anti-bloat guard, set above what the measured pool needs. The room above
+    it is the operator's reserve, and the slack rule accepts it only as that: with the operator's words and date. The
+    same bytes recorded as a measured allocation, or as a reserve without the operator's words, fail."""
+    pool = render_pool(record["baseline"]["containment"], MESSAGING_ON)
+    reserve = record["allocations"]["operator_reserve"]
+    assert reserve["kind"] == RESERVE and reserve["operator"] == record["approval"]["operator"]
+    check_pool(pool, record, switches=MESSAGING_ON)
+    reserve["kind"] = "measured"
+    del reserve["operator"], reserve["date"]
+    with pytest.raises(AssertionError, match=r"slack .*estimates and operator reserve"):
+        check_pool(pool, record, switches=MESSAGING_ON)
+    reserve.update(kind=RESERVE, operator=" ", date="2026-11-26")
+    with pytest.raises(AssertionError, match=r"allocations.operator_reserve requires the operator's words"):
+        approved_ceiling(record)
+    reserve["operator"] = "Synthetic decision"
+    del reserve["date"]
+    with pytest.raises(AssertionError, match=r"allocations.operator_reserve.date must be a quoted ISO date"):
         approved_ceiling(record)

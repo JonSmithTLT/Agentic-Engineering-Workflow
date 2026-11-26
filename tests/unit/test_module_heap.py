@@ -5,6 +5,7 @@ global) is the first case: it fails here the day it lands."""
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import os
 import subprocess
@@ -141,6 +142,10 @@ def test_a_cleared_and_rebuilt_shared_value_is_credited_once_not_twice():
     def value() -> list[list[int]]:
         return [[i] for i in range(100_000)]
 
+    # Garbage an earlier test left in this process (cycles, such as argparse parsers) would be freed by the first
+    # build's own collection and shrink its credit, but not the second's: collect it first, so the two builds are
+    # measured alike, whatever ran before (#593: the help-lookup tests' parsers made it fail in the fast lane).
+    gc.collect()
     before = shared_setup.credited()
     kept = value()
     first = shared_setup.credited() - before

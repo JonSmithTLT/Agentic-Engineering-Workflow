@@ -324,6 +324,22 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     assert Engine.discover(op.root).store.current()["policy_sha256"]["policy/execution.yaml"] == sha256_file(execution)
 
 
+def test_the_contained_tuis_childdiag_directory_is_a_writable_root_the_real_path_accepts(tmp_path):
+    """The Lead's TUI writes its childdiag files to the test's children directory (``autopsy.mark_helper_dir``). The
+    world's writable roots hold it, through the policy the real path checks and pins: otherwise the contained TUI
+    writes them into its sandbox's private /tmp and the #213 autopsy keeps none (V-01 re-measure, C15)."""
+    import autopsy
+
+    children = autopsy.child_dir()
+    assert children is not None  # this suite runs with the autopsy plugin
+    op = operator(tmp_path)
+    res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
+    assert res.returncode == 0, res.stderr
+    doc = yaml.safe_load((op.root / ".aew/policy/execution.yaml").read_text(encoding="utf-8"))
+    assert str(children) in doc["containment"]["writable"], doc["containment"]
+
+
 def test_a_fixture_is_checked_with_the_bytes_it_changes(tmp_path):
     """The hook pins nothing itself: a fixture the policy refuses is refused by the real path, with nothing written."""
     op = operator(tmp_path)

@@ -139,6 +139,7 @@ def created_keys(trees: Mapping[str, ast.Module], packages: frozenset[str], modu
     statically names its function (``steering.seed_at_init`` hands it to ``take_default``, which adds ``steering``)."""
     program = (F.program_of(ctx) if ctx is not None
                else F.Program.of({name: (tree, name in packages) for name, tree in trees.items()}))
+    evaluator = F.Evaluator(program)
     mod = program.modules[module]
     func = mod.funcs[symbol]
     names = {name for name, values in func.assigns.items() if any(v is literal for v in values)}
@@ -162,22 +163,24 @@ def created_keys(trees: Mapping[str, ast.Module], packages: frozenset[str], modu
                 for node in ast.walk(target.node):
                     key = _stored_key(node, params[i])
                     if key is not None:
-                        out.setdefault(key, (target.module, target.qual))
+                        values = evaluator.value(program.modules[target.module], target, key)
+                        if len(values) == 1:
+                            value, = values
+                            if value.kind == F.STR:
+                                out.setdefault(value.text, (target.module, target.qual))
                 pending.append((target, {params[i]}, False))
     return out
 
 
-def _stored_key(node: ast.AST, param: str) -> str | None:
-    """``param["key"] = ...`` or ``param.setdefault("key", ...)``: the constant key, else None."""
+def _stored_key(node: ast.AST, param: str) -> ast.expr | None:
+    """The key written by a subscript assignment or ``setdefault`` on this parameter."""
     if isinstance(node, ast.Assign):
         for t in node.targets:
-            if (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and t.value.id == param
-                    and isinstance(t.slice, ast.Constant) and isinstance(t.slice.value, str)):
-                return t.slice.value
+            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and t.value.id == param:
+                return t.slice
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "setdefault"
-            and isinstance(node.func.value, ast.Name) and node.func.value.id == param and node.args
-            and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
-        return node.args[0].value
+            and isinstance(node.func.value, ast.Name) and node.func.value.id == param and node.args):
+        return node.args[0]
     return None
 
 

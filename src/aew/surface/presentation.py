@@ -28,10 +28,9 @@ DESCRIPTIONS = {
     "ticket_request_verification": "Accept review if due, move to VERIFY_PENDING and launch required verifiers.",
     "ticket_prepare": "Accept verification if due and prepare integration; publication is separate.",
     "integration_publish": "Publish the prepared candidate; this call is your publication decision.",
-    # The guide's core says it changes no scope or authority (`messaging_guide_lines`). `when`'s `turn-end` is refused
-    # until MS5b builds it: dropping the value is a schema change, the designer's (E367).
-    "message_send": "Message an active worker's invocation, delivered at its next step or on relaunch. Turn-end "
-                    "refused.",
+    # The guide's core says it changes no scope or authority (`messaging_guide_lines`).
+    "message_send": "Message an active worker's invocation. Deliver at its next step (default), turn end or on "
+                    "relaunch.",
 }
 # Property descriptions, by tool and property (E367; the audit of 2026-11-25, U3 to U5): where an argument's source or
 # form was not said. Each names where the Lead finds the value.

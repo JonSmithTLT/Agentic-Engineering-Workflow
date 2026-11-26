@@ -21,10 +21,18 @@ def commands(parser):
 
 def test_inside_a_run_the_parser_offers_only_reply_read_and_wait():
     assert commands(build_parser(worker_messaging=True)) == {"reply", "read", "wait"}
-    assert commands(build_parser(coordination_reads=True)) == {"thread", "list", "unseen"}
+    assert commands(build_parser(coordination_reads=True)) == {"thread", "list", "lost", "unseen"}
     assert commands(build_parser()) == set()
     assert commands(build_parser(coordination_reads=True, worker_messaging=True)) == {
-        "reply", "read", "wait", "thread", "list", "unseen"}  # classification walks see both sets
+        "reply", "read", "wait", "thread", "list", "lost", "unseen"}  # classification walks see both sets
+
+
+def test_message_lost_has_no_authority_argument():
+    parser = build_parser(coordination_reads=True)
+    assert parser.parse_args(["message", "lost"]).message_cmd == "lost"
+    with pytest.raises(SystemExit) as refused:
+        parser.parse_args(["message", "lost", "--token"])
+    assert refused.value.code == 2
 
 
 def test_forging_presentation_does_not_add_an_operation_to_an_off_bridge():

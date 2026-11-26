@@ -689,6 +689,8 @@ organization gateway the relay speaks TLS to; here the Provider Gateway always c
 
 ## Amendment 2026-10-10 — `harness send` takes `--when`, and posts `steer` by default (register E55)
 
+For the current enabled path, see the [MS5b amendment](#amendment-2026-11-25--recorded-harness-send-e175).
+
 The F9-A MS0 probe of OpenCode 2.0.18 ([ADR-0017](0017-coordination-messages.md) D8, its
 [evidence](evidence/f9a-delivery-probe-2026-10-10/probe-results.md)) found that a `queue` input is admitted only when
 the agent's loop would end, after its turn, while `steer` is admitted at the next step boundary. The designer's
@@ -2350,3 +2352,11 @@ system text that said the same: the guarantee is containment's, and the `read` d
   directory's permissions away in one session (modes 000, 300, 100, 400, 600 and 444) and gives them back, or moves
   the directory, in the next. It holds under a directory named `.git` too: for a worker, and for a Lead that moves a
   directory under one, or gives it that name, in one session and reads it in the next.
+
+## Amendment 2026-11-25 — recorded harness send (E175)
+
+The MS5b rules replace the transitional messaging-enabled refusals in HS1. When both the adopted project switch
+and the run's launch snapshot are enabled, `aew harness send` records either timing in the coordination store.
+A recorded shell send can wake a held session. A switch mismatch refuses both timings and asks the Lead to relaunch
+under the adopted policy. When both are disabled, the original next-step request path and the turn-end refusal
+still apply. See the [coordination amendment](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).

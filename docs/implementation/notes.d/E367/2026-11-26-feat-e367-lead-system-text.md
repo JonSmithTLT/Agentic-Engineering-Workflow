@@ -17,5 +17,7 @@ What changed:
 - **The truth test** (`tests/unit/test_lead_text_truth.py`) runs over every rendered variant. It checks universal option claims against the parser and `LEAD_REACHABLE`. It checks that named commands exist, and that an operator's command is named only as refused here. Pointers must resolve, and each fact left to the guide must be in its core, said once. No line may override another. No offered enum value may be always refused unless it is pending the designer. Typed project reads must hold no large value twice, and `status` must cost no more than the shell's. Each guard has the audit's line planted, and on `main` it fails in 69 of its 72 cases. That count assumes stubs: the module does not collect on `main`, whose `run` has no `FULL`, so it was run there with that name replaced and the other new names failing as missing attributes.
 
 **What remains** on this row:
-- **The designer's decision** (decisions-due): the four schema changes (B1 drop `message_send.when`, B2 `explain.entrypoint`, B3 the stages' `execution` override, B4 `annotations`), and whether the MCP server's instructions count in the pool. Until B1, `turn-end` stays offered and refused. The truth test pins it as the one such value, and its description says so.
+- **The designer's decision** (decisions-due) covers the four schema changes (B1 drop `message_send.when`,
+  B2 `explain.entrypoint`, B3 the stages' `execution` override, B4 `annotations`) and whether the MCP server's
+  instructions count in the pool. MS5b supports both timings in `message_send.when`.
 - **The `expect_rev` property descriptions** (about 500 B) are left to E329 (#596), which removes `expect_rev` outright.

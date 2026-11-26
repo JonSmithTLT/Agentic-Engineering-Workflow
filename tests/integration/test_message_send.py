@@ -180,14 +180,23 @@ def test_message_send_reports_unseen_replies_on_its_thread(tmp_path):
     assert call(w)["result"]["unseen_replies"] == 0
 
 
-def test_turn_end_is_refused_before_recording_and_names_the_available_timing(tmp_path):
+def test_turn_end_is_recorded_and_discloses_resubmission(tmp_path):
     w = world(tmp_path)
     out = call(w, when="turn-end")
-    assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "turn_end_not_built"
-    assert "use next-step" in out["stopped"]["error"]["message"]
-    assert "MS5b" not in out["stopped"]["error"]["message"]
-    assert not w.coordination_files()
-    assert call(w, when="next-step")["ok"]  # follow the refusal's printed next step
+    assert out["ok"], out["stopped"]
+    assert out["result"]["ingest_blocked_until_resubmission"] is True
+    assert out["result"]["message"]["when"] == "turn-end"
+    next_step = call(w, when="next-step")["result"]["message"]
+    assert "when" not in next_step and next_step["id"] != out["result"]["message"]["id"]
+
+
+def test_a_retry_with_a_different_when_never_uses_the_original_explicit_identity(tmp_path):
+    w = world(tmp_path)
+    assert call(w, idempotency_id="one")['ok']
+    before = w.thread_path().read_bytes()
+    conflict = call(w, idempotency_id="one", when="turn-end")["stopped"]["error"]
+    assert conflict["code"] == "IDEMPOTENCY_CONFLICT" and conflict["details"]["fields"] == ["when"]
+    assert w.thread_path().read_bytes() == before
 
 
 def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
@@ -219,7 +228,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                           "Publication stays a separate decision.",
         "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
-                        "Deliver at the next step or on relaunch. Turn-end refused.",
+                        "Deliver at next step (default), turn end or relaunch.",
     }
     assert {s.tool: s.description for s in lead_text.stages(switches=contract.ALL_SWITCHES)} == expected
     assert expected["ticket_start"] in lead_text.document_for(w.e).sections["steps"].text()

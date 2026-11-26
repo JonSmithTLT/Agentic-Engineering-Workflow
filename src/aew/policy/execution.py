@@ -42,6 +42,8 @@ NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL
 # PR B adds ``facts`` above ``structural``.
 MAPS_READS_OFF, MAPS_READS_STRUCTURAL = "off", "structural"
 NEW_PROJECT_MAPS_READS = MAPS_READS_STRUCTURAL
+MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
+NEW_PROJECT_MESSAGING = MESSAGING_ENABLED
 
 TEMPLATE = """\
 # AEW execution policy (ADR-0010): which harness, provider, model and effort run each invocation.
@@ -101,6 +103,10 @@ steering:
 # it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
 notify:
   command: [aew, notify, desktop]
+# Lead messages and replies are stored on the worker invocation's thread. An existing policy with this key absent
+# stays off until the operator adopts it, and can keep it off explicitly with `disabled`.
+coordination:
+  messaging: """ + NEW_PROJECT_MESSAGING + """
 # Project maps (ADR-0015): each worker's pack carries a bounded, fenced slice of the repository's structural map, made
 # from its Git objects, as navigation and never authority, and the Lead's resume view shows the map's freshness. "off"
 # (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps. `reads`
@@ -211,7 +217,6 @@ def _plan_login_problems(policy: dict[str, Any], *, adoption: bool) -> list[tupl
     return problems
 
 
-MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
 PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
 PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 

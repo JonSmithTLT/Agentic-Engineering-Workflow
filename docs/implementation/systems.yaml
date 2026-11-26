@@ -628,7 +628,7 @@ systems:
     used_in_default_flow: partly
   finish_line: 'OpenCode current on the pin: E35''s probe (done), H-1''s C1 compaction re-probe on the pinned OpenCode
     2.2.6 (whose TESTED_VERSIONS entry and token-semantics row are in place), E235''s default_binary finding OpenCode
-    Desktop 2.2.6''s copy, and the qualified version running the default flow in a real run. Narrowed by the operator
+    Desktop 2.2.6''s copy (built, its row closed), and the qualified version running the default flow in a real run. Narrowed by the operator
     on 2026-11-25: E35''s seams, H-2 and H-3 (open on E35''s row), E149, E150, E152 and a second adapter (F24) are SYS-50''s,
     outside this finish line.'
   remaining:
@@ -636,18 +636,17 @@ systems:
       row are in place; no evidence the re-probe ran)'
     row: E35
     estimate: 1-2 PRs (estimate)
-  - slice: default_binary finds OpenCode Desktop 2.2.6's copy
-    row: E235
-    estimate: 1 small PR (estimate)
   decision: 'decided: narrowed to currency on the pin, E235 and H-1 (the operator, 2026-11-25: "yes approve those four
     too", on the Lead''s finish plan of that day, finish-plan.md); E35''s seams, H-2, H-3, E149, E150, E152 and F24 moved
     to SYS-50. Earlier: only its slot items finish, the rest frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E235, H-1); operator (H-1's live re-probe and the real default-flow run)
+  who: Lead (H-1); operator (H-1's live re-probe and the real default-flow run)
   reason: 'The OpenCode adapter is on and used every run, and the version ''pin'' is a label, not a gate (BOARD v2 §6),
     so currency on the pin is what finishing needs. E35''s probe is done; H-1 probably needs a live model run, so it is
-    partly the operator''s check, and E235 is one small fix. The seams serve a second adapter (F24), and H-2 and H-3 share
+    partly the operator''s check. E235 is built and its row closed: default_binary reads the pinned version''s folder
+    under the Desktop''s cli folder, named for the version alone or for the version, a hyphen and x64, the one architecture
+    name seen, and no other name (harness/opencode/adapter.py). The seams serve a second adapter (F24), and H-2 and H-3 share
     a bundle import with F18.3 (SYS-33), so they moved to SYS-50 with the rate-limit rows. E35 stays this system''s row
     while H-1 is open; its seams, H-2 and H-3 ride on it from SYS-50. Partly built, not staged: its OpenCode adapter is
     on and used in every run (BOARD v2 §5).'
@@ -775,9 +774,6 @@ systems:
   - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
     row: E233
     estimate: not sized (estimate)
-  - slice: The worker route's size check
-    row: E241
-    estimate: 1 small PR (estimate)
   - slice: 'The Lead''s system text and tool list made true and smaller, with a Lead-text truth test, after the guide''s
       core plus pointers (the operator, 2026-11-25)'
     row: E367
@@ -791,10 +787,11 @@ systems:
     role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen
     by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E231's next part, E233, E241, E367, E368)
+  who: Lead (E231's next part, E233, E367, E368)
   reason: 'The Lead''s catalog is on and used and needs nothing to work (BOARD v2 §5). What is left inside the finish
-    line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief), E233''s exits and E241''s
-    size check, then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
+    line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief) and E233''s exits (E241''s
+    size check is built and its row closed: bridge.call refuses a request over MAX_REQUEST on every route, in harness/bridge.py),
+    then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
     then the worker packs (E368). The unbuilt worker half (F15.3, F15.8) stays held, as HOLD-06 placed it after first use (BOARD v2 §3),
     and moved to SYS-51 with the other frozen slices. F15.3 changes the form of what workers already have through the
     bridge (whoami, check.run, submit over the aew CLI), not the capability.'

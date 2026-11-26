@@ -321,6 +321,65 @@ def test_something_that_is_not_openapi_is_refused():
     assert capabilities.problems("<html>") and capabilities.problems({"paths": None})
 
 
+# ---------------------------------------------------------------------------------------------- the binary
+
+
+@pytest.fixture
+def desktop(tmp_path, monkeypatch):
+    """A Windows machine with OpenCode Desktop and no OpenCode on PATH: its ``cli`` folder, to fill."""
+    monkeypatch.setattr(adapter.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(adapter.shutil, "which", lambda _name: None)
+    monkeypatch.delenv(adapter.BIN_ENV, raising=False)
+    return tmp_path / "ai.opencode.desktop" / "cli"
+
+
+def cli_in(folder: Path) -> Path:
+    folder.mkdir(parents=True)
+    binary = folder / "opencode-cli.exe"
+    binary.write_bytes(b"")
+    return binary
+
+
+PINNED = capabilities.TESTED_VERSIONS[0]
+
+
+def test_the_desktops_cli_is_found_in_the_folder_2_2_6_names_for_its_version_and_architecture(desktop):
+    """Register E235: Desktop 2.2.6 keeps its CLI in ``cli\\2.2.6-x64``, the real folder name, and with neither name
+    on PATH ``aew opencode`` said there was no OpenCode binary."""
+    assert PINNED == "2.2.6"  # the folder below is that version's own; a new pin brings its own folder name here
+    binary = cli_in(desktop / "2.2.6-x64")
+    assert adapter.default_binary() == binary
+    assert adapter.binary_command() == [str(binary)]  # what every launch and `aew opencode` start
+
+
+def test_the_desktops_cli_in_a_folder_named_for_the_version_alone_is_still_found_and_comes_first(desktop):
+    suffixed = cli_in(desktop / f"{PINNED}-{adapter.DESKTOP_CLI_ARCHITECTURES[0]}")
+    assert adapter.default_binary() == suffixed
+    plain = cli_in(desktop / PINNED)  # the layout before 2.2.6
+    assert adapter.default_binary() == plain
+
+
+@pytest.mark.parametrize("other", [
+    f"{PINNED}0-x64", f"1{PINNED}-x64", "2.2.7-x64", f"{PINNED}x64", "9.9.9",  # another version
+    f"{PINNED}-rc.1-x64", f"{PINNED}-beta", f"{PINNED}-evil", f"{PINNED}-x64-old", f"{PINNED}-",  # another suffix
+    f"{PINNED}-arm64",  # an architecture name nobody has seen the Desktop use
+])
+def test_a_folder_of_another_version_a_pre_release_or_an_unseen_suffix_is_never_taken_for_the_pin(desktop, other):
+    assert adapter.DESKTOP_CLI_ARCHITECTURES == ("x64",)  # a name added there has its folder planted above first
+    cli_in(desktop / other)
+    assert adapter.default_binary() is None
+    with pytest.raises(HarnessIncompatible, match="no OpenCode binary"):
+        adapter.binary_command()
+
+
+def test_a_machine_with_no_desktop_folder_falls_back_to_path(desktop, monkeypatch, tmp_path):
+    on_path = tmp_path / "opencode-cli.exe"
+    monkeypatch.setattr(adapter.shutil, "which", lambda name: str(on_path) if name == "opencode-cli" else None)
+    assert not desktop.exists()
+    assert adapter.default_binary() == on_path
+
+
 # ---------------------------------------------------------------------------------------------- environments
 
 

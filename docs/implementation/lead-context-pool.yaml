@@ -37,7 +37,7 @@ allocations:
   E157:
     bytes: 235
     kind: measured
-    source: "The operator approved the 235 B reserve transfer on 2026-11-26 ('1..yup budget is good.'). Against main a21e49cd, remeasured unchanged at 8a6928e6, report_write and the explain fold into work_show add 179 MCP B and 56 guide B with messaging on, for 27559 B and 16 tools. With messaging off they add 95 MCP B and 56 guide B, for 27178 B and 15 tools. The system and join byte counts are unchanged."
+    source: "The operator approved the 235 B reserve transfer on 2026-11-26 ('1..yup budget is good.'). Against main a21e49cd, remeasured unchanged at 456d7cc4, report_write and the explain fold into work_show add 179 MCP B and 56 guide B with messaging on, for 27559 B and 16 tools. With messaging off they add 95 MCP B and 56 guide B, for 27178 B and 15 tools. The system and join byte counts are unchanged."
   E158:
     bytes: 1200
     kind: estimate

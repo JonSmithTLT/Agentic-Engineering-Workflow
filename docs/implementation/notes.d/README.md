@@ -36,6 +36,13 @@ so adding a note changes no shared file.
 or an outcome "is recorded in the register row" (the M4-E and F4 plans say so, for example), a note here is that
 record; the row's cells change only when what they state changes (its work, its source, its target, its closing).
 
+**A note's markers, when a change names a row it leaves open.** A pull request whose title, or the lead of one of its
+own commits' subjects, names an open row that it does not close adds a note on that row carrying one of two fixed
+markers, which `python tools/register.py cited` (CI's `static` job) requires: `**What remains**`, heading what is left
+of a row the change works on and leaves open, or `**Cited, not implemented**`, saying why the change only cites it. A
+note without either, such as one that says only "built", does not satisfy the check (`tools/register.py`, *Rows a
+change names*).
+
 **Rows without an id** (the §1 gates and three closed rows: `E33 (part)`, `Q9 (decisions)`, `Q9 (reconciliation)`)
 take no notes. Progress toward a gate goes in a note on the row that carries the gate's work (the real-repository
 dogfood gate's agent containment, STG-05; the internal-alpha gate's network containment, F28, whose CS-3 build notes

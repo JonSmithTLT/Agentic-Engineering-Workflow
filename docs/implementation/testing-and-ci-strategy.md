@@ -143,6 +143,18 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 | **Pyright** (standard mode) | Types, using the hints the code already has | `src/`, checked twice: as Linux and as Windows, so each platform's branches are checked where they run. Platform branches use `sys.platform == "win32"` directly, which Pyright narrows (an alias such as `IS_WINDOWS` it cannot) |
 | **pip-audit** | Known vulnerabilities (PyPI advisories and OSV) in every installed distribution: the runtime dependencies, the test extras, the lint tools and the `eval` extra (numpy, which only the M4-H analysis on the evaluator imports) | The exact installed set (`pip freeze --exclude-editable`, so AEW itself is left out), audited with `--strict`: any distribution that cannot be audited fails the job |
 
+- **The register rows a pull request names (2026-11-26).** On a pull request, `static` runs `python tools/register.py
+  cited --base <base sha> --event "$GITHUB_EVENT_PATH"`: an open register row that the pull request's title, or the
+  lead of one of its own commits' subjects, names must at its head be closed, or carry a note the change adds with a
+  fixed marker: `**What remains**` for a row it leaves open, or `**Cited, not implemented**` for one it only cites
+  (`python tools/register.py note <id>`). That note is the recorded escape; no flag or label skips it, and a note
+  that only says "built", or an edit of the row's cells, does not pass (the operator, 2026-11-26, on rows left open
+  after their work merged; the review of #598). It reads the commits, not the checkout, and leaves out merges and a
+  review's finding labels (`F1`, `N4`). It cannot see a row filed after its work merged, work that never names its
+  row, or a title edited after the last push; its limits are in `tools/register.py`, *Rows a change names*. Its
+  expected effect: replayed over the last 100 merged pull requests, it flags 36, mostly slice pull requests on rows
+  that stay open, which would each have needed a `**What remains**` note. Locally:
+  `python tools/register.py cited --base origin/main --title "<the title>"`.
 - **The generated reference's counts.** `static` also runs `python tools/reference.py counts` and puts the counts in the run's summary: reported, never gating (`continue-on-error`). The reference's index is not committed (operator, 2026-11-05), so this is where each pull request's counts are measured; the fast lane's `check` gates the pages.
 - **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).
 - **What the first run found and fixed:** the OpenCode client sent the server password to whatever address the server announced, now refused unless it is `http://127.0.0.1:<port>` (S310); several values that could be `None` reaching code that cannot take one (a guardrail check on a workspace without a base commit, a dependency to a unit that vanished, a role slot with no default card, a worktree sync entry with no target); closures binding loop variables late (B023).

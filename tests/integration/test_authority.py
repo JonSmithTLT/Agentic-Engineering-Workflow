@@ -377,9 +377,11 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
 def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leaves(tmp_path):
     """The advice follows the takeover's outcome (independent review of #78). An active integration verifier on a
     prepared candidate: the takeover interrupts the Ticket, which retires its entry and lease, so there is nothing to
-    reconcile. A prepared candidate with no active role invocation: the lease survives its dead custodian and is
-    reconciled. Once its validation releases the lease, the advice again omits reconcile."""
-    from aewflow import sample_project, to_commit_ready, verify
+    reconcile. A verifier-validated candidate with no active role invocation retains its lease, so takeover leaves
+    it for reconciliation."""
+    from aewflow import prepare_and_validate, sample_project, to_commit_ready
+
+    from aew.engine.api import Engine
 
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
@@ -389,15 +391,15 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     assert res.error["details"]["interrupted_work"] == [wid], res.error
     assert "integrate reconcile" not in res.error["message"] and "aew resume" in res.error["message"]
 
-    q = sample_project(tmp_path / "prepared")
-    wid2, _ = to_commit_ready(q, tmp_path / "prepared")
-    q.lead("integrate", "prepare", wid2)
+    q = sample_project(tmp_path / "validated")
+    wid2, _ = to_commit_ready(q, tmp_path / "validated")
+    prepare_and_validate(q, wid2)
+    queue = Engine.discover(q.root).store.read_committed()["queue"]
+    lease = queue["lease"]
+    assert lease is not None and queue["entries"][lease["entry"]]["work"] == wid2
     res = q.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
     assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
-    q.lead("verify", "ingest", wid2, "--evidence", verify(q, wid2, scope="integration"))
-    res = q.aew("lead", "acquire")
-    assert "integrate reconcile" not in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):

@@ -16,7 +16,7 @@ baseline:
   push_wake: true
   switches: [coordination.messaging]
   system_bytes: 8987
-  guide_bytes: 8078
+  guide_bytes: 8116
   join_bytes: 2
   mcp_bytes: 10893
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
@@ -63,9 +63,9 @@ allocations:
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
   # than lowering the cap; any change to the cap itself is the operator's.
   operator_reserve:
-    bytes: 6403
+    bytes: 6365
     kind: reserve
-    source: "The operator's E231 cap is 40000 B. E329 saved a further 1083 B after the core landed on main, so the derived ceiling before reserve is 33597 B and the remaining reserve is 6403 B."
+    source: "The operator's E231 cap is 40000 B. E329 saved a further 1045 B after the core landed on main, so the derived ceiling before reserve is 33635 B and the remaining reserve is 6365 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
@@ -75,8 +75,8 @@ allocations:
 # bytes (16412 - 8291 = 8121), and the derived ceiling to 34680 B (42971 - 8291). The operator chose 40000 B over that
 # figure; the 5320 B between them is the operator_reserve allocation. The 42971 B cap it replaces is in
 # approval_history.
-# E329 measures after E231 on main 96fc6b5d. With messaging on, system 9380 -> 9347 B, core 9154 -> 9111 B and
-# MCP 12022 -> 11015 B reduce the recorded baseline by 1083 B and add the same amount to the reserve.
+# E329 measures after E231 on main 96fc6b5d. With messaging on, system 9380 -> 9347 B, core 9154 -> 9149 B and
+# MCP 12022 -> 11015 B reduce the recorded baseline by 1045 B and add the same amount to the reserve.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
   ceiling_bytes: 40000
@@ -110,9 +110,9 @@ approval_history:
 # A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
 guide_core:
   measured: '2026-11-26'
-  messaging_on: {before: 17445, after: 9111}
-  messaging_off: {before: 17267, after: 8891}
-  saving_bytes: 8334
+  messaging_on: {before: 17445, after: 9149}
+  messaging_off: {before: 17267, after: 8929}
+  saving_bytes: 8296
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:
 #   count: <approved byte ceiling>

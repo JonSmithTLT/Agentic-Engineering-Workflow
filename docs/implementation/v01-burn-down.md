@@ -177,10 +177,33 @@ Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`pyth
     part of C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which
     E375's pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
 - **Q10 (operator; vertical-uat.md §3, "Steering on"), raised at this page's review:** with steering on, does a
-  BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end (b),
-  or at once, as the scripted Lead counts it today (a)? It decides whether the Lead's push after a self-clearing stop is
+  BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end, and
+  not at once, as the scripted Lead counts it today? It decides whether the Lead's push after a self-clearing stop is
   the spec's counted exception or a mechanical call.
-  - **Answered (b)** (operator, 2026-11-26): "5. B yes its meant to make sure the lead doesnt do menial labor." A
+  - **As it was put to the operator:** item 5 of the questions the Lead put in its session on 2026-11-26, verbatim:
+
+    > **5. Q10, what a "BLOCKED" stop counts as in the vertical test**
+    >
+    > With steering on, a background steering loop is supposed to do the routine mechanical steps, so the Lead doesn't
+    > have to. The vertical test counts each time the Lead does one of those steps itself as a "mechanical call", and
+    > too many of them fail the test. The one allowed exception: if the loop declined to act, the Lead stepping in is
+    > fine.
+    >
+    > The question is about one kind of stop. Sometimes the loop stops with BLOCKED, for example because a run is
+    > still finishing, and the blocker then clears on its own a moment later. Today the scripted Lead treats every
+    > BLOCKED stop as the loop declining, so it steps in and that is not counted.
+    >
+    > The choice:
+    > - **(a) Count a BLOCKED stop as declined at once (today's behaviour).** It is lenient: the Lead may do work the
+    >   loop would have done seconds later, and the test won't notice.
+    > - **(b) Count it as declined only if the blocker is still there after the run ends.** It is stricter: a Lead
+    >   that jumps in on a self-clearing stop is doing the loop's job, and that counts against it.
+    >
+    > I recommend (b). It keeps the test honest about whether steering actually removes routine work from the Lead,
+    > which is the point of steering. The cost is that the scripted Lead must wait out self-clearing stops before it
+    > acts, which is a small change to the test helper (E375).
+  - **Answered** (operator, 2026-11-26). To an earlier, shorter version of the item the operator answered "5. Tell me
+    more about this."; to the version above: "5. B yes its meant to make sure the lead doesnt do menial labor." A
     BLOCKED stop counts as a decline only when its blocker is still present after the run ends; the Lead's push after
     a self-clearing stop is a mechanical call and is counted. E375's pull request amends `vertical-uat.md` §3 with it.
 - **Q5 (operator):** "Is AEW's tool-consent screen at a reopen a setup fixture of the offline world (recorded, never counted), or an operator step the vertical counts? And until REATTACH_LEAD lands, is the seat-resume confirmation code meant to count under `pin_reentries` on Linux, as `Ledger.console_challenge` counts it today?"

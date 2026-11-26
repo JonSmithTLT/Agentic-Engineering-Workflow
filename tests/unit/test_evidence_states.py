@@ -1001,14 +1001,8 @@ PHASE_DUMPS = {
     "indeterminate": SUPPORT,  # a dump that lost the main thread: no pytest frame at all
 }
 LIVE_STACK = "evidence defect: [live-stack] cancelled-{}.txt: live worker lacks its interruption stack"
-
-
-def _unnamed(defects):
-    """The defects without the typed outcome a live-stack defect names after its claim: these tests are about whether
-    the stack is owed. What each names is pinned by test_a_live_stack_defect_names_its_typed_outcome."""
-    import re
-
-    return [re.sub(r" \((?:warning|cancel collection) outcome: [^()]*\)$", "", defect) for defect in defects]
+# What a live-stack defect adds when the cancellation collection left a typed outcome for the observation.
+NAMED = " (cancel collection outcome: {})"
 
 
 LANE_JOB = "aew-session-1-evidence-lane-report-Windows-integration-7"
@@ -1113,7 +1107,7 @@ def test_a_failed_cancel_collection_attach_leaves_a_typed_unavailable_marker(tmp
     assert note.startswith("evidence defect: py-spy unavailable for tests/test_a.py::test_case[101] (attempts: ")
     assert note.count("unelevated: exit 1 (os error 5)") == len(calls) == 3 and len(note.splitlines()) == 1
     # Still a defect: the marker names why the stack is missing, it does not excuse it.
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101)]
 
 
 def test_a_cancel_collection_that_spent_its_budget_before_the_first_attach_leaves_a_typed_unavailable_marker(
@@ -1128,7 +1122,7 @@ def test_a_cancel_collection_that_spent_its_budget_before_the_first_attach_leave
     assert (tmp_path / "snapshots/101-unavailable.txt").read_text() == (
         "evidence defect: py-spy unavailable for tests/test_a.py::test_case[101] "
         "(attempts: shared budget spent before its first attach)\n")
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101)]
 
 
 def test_alive_when_observed_is_decided_before_the_capture(tmp_path, monkeypatch):
@@ -1141,7 +1135,7 @@ def test_alive_when_observed_is_decided_before_the_capture(tmp_path, monkeypatch
     assert records[101]["alive_when_observed"] is True
     assert outcomes[101]["outcome"] == "exited during its attach"
     assert outcomes[101]["attempts"] == ["unelevated: exit 1 (os error 87)"]
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format("exited during its attach")]
 
 
 def test_a_worker_that_exits_before_its_attach_is_typed_and_still_owes_its_stack(tmp_path, monkeypatch):
@@ -1158,7 +1152,7 @@ def test_a_worker_that_exits_before_its_attach_is_typed_and_still_owes_its_stack
                                                     same=same)
     assert calls == [] and records[101]["alive_when_observed"] is True
     assert outcomes[101]["outcome"] == "exited before its attach"
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format("exited before its attach")]
 
 
 def _change_test(tmp_path, pid, name):
@@ -1181,7 +1175,7 @@ def test_a_dump_taken_before_a_later_attempt_straddles_a_test_change_is_retained
     assert records[101]["node"] == outcomes[101]["node"] == "tests/test_a.py::test_case[101]"
     ring = (tmp_path / "snapshots/101.txt").read_text()
     assert '"reason": "cancel collection"' in ring and "pytest_runtest_call" in ring
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format("straddled a test change")]
 
 
 def test_a_cancel_collection_that_straddles_a_test_change_retries_against_the_next_test(tmp_path, monkeypatch):
@@ -1221,7 +1215,7 @@ def test_a_straddle_with_no_dump_of_the_next_test_still_owes_its_stack(tmp_path,
     assert calls == [101, 101, 101] and outcomes[101]["outcome"] == "straddled a test change"
     assert records[101]["node"] == "tests/test_a.py::test_case[101]" and "straddled_from" not in records[101]
     assert '"reason": "cancel collection"' not in (tmp_path / "snapshots/101.txt").read_text()
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format("straddled a test change")]
 
 
 def test_a_straddle_is_never_followed_into_another_workers_test(tmp_path, monkeypatch):
@@ -1244,7 +1238,7 @@ def test_a_straddle_is_never_followed_into_another_workers_test(tmp_path, monkey
     assert straddled == [101] and outcomes[101]["outcome"] == "straddled a test change"
     assert records[101]["node"] == "tests/test_a.py::test_case[101]" and "straddled_from" not in records[101]
     assert all(row["pid"] == 101 for row, _ in _entries(tmp_path / "snapshots/101.txt"))
-    assert LIVE_STACK.format(101) in _unnamed(defects)
+    assert LIVE_STACK.format(101) + NAMED.format("straddled a test change") in defects
 
 
 def _entries(path):
@@ -1270,13 +1264,13 @@ def test_a_worker_never_sampled_in_the_ring_gets_a_typed_marker_not_a_demand(tmp
     record = tmp_path / "autopsy/session-test/cancelled-101.txt"
     original = record.read_text()
     record.write_text(original.replace(f'"collect_at": {records[101]["collect_at"]}', '"collect_at": 1.0'))
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101)]
     record.write_text(original)
     # The bundle must bear the outcome out: a retained sample of that identity makes it a demand again.
     worker = ev.Worker(tmp_path / "autopsy/session-test", 101, 202, "tests/test_a.py::test_case[101]", 0, 120)
     assert ev.save_sample(tmp_path, worker, 1, 1, "unelevated", "    test_case (tests/test_a.py:4)\n",
                           reason="periodic")
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101) + NAMED.format(NOT_SAMPLED)]
 
 
 def test_a_worker_its_lane_samples_but_never_sampled_still_owes_its_stack(tmp_path, monkeypatch):
@@ -1284,10 +1278,11 @@ def test_a_worker_its_lane_samples_but_never_sampled_still_owes_its_stack(tmp_pa
 
     records, outcomes, defects = _cancel_collection(tmp_path, monkeypatch, lambda pid, **_: None, sampled=(),
                                                     policy={"periodic": True})
-    assert outcomes[101]["outcome"] == SAMPLING_GAP and _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert outcomes[101]["outcome"] == SAMPLING_GAP
+    assert defects == [LIVE_STACK.format(101) + NAMED.format(SAMPLING_GAP)]
     # A not-sampled claim the lane's recorded policy contradicts is refused.
     _forge(tmp_path, 101, SAMPLING_GAP, "not sampled in the owned tree")
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101) + NAMED.format("not sampled in the owned tree")]
 
 
 def _pid_problems(root, pid):
@@ -1335,7 +1330,7 @@ def test_a_never_sampled_worker_outside_its_session_job_is_never_attached(tmp_pa
                                                     sampled=(), policy={"periodic": True}, job=job)
     assert calls == [] and "admitted_by" not in records[101]
     assert opened[0] == ([LANE_JOB] if case == "not a member" else [])
-    assert outcomes[101]["outcome"] == SAMPLING_GAP and _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert outcomes[101]["outcome"] == SAMPLING_GAP and defects == [LIVE_STACK.format(101) + NAMED.format(SAMPLING_GAP)]
 
 
 def test_a_frameless_periodic_dump_is_recorded_as_a_failed_attach_and_not_kept(tmp_path, monkeypatch):
@@ -1403,11 +1398,11 @@ def test_a_worker_due_for_periodic_sampling_whose_attaches_all_failed_still_rais
     assert periodic_calls == [101]
     failure = json.loads((tmp_path / "snapshots/101-202-sampling-failures.txt").read_text())
     assert failure["reason"] == "periodic" and failure["attempts"] == ["unelevated: exit 1 (os error 5)"]
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format("never sampled although its lane's policy samples it")]
     # Even under a policy that excludes the worker, a failed sampling attach refuses the not-sampled excuse.
     (tmp_path / "runner-resources-sampling.txt").write_text(json.dumps({"periodic": False}))
     _forge(tmp_path, 101, outcomes[101]["outcome"], "not sampled in the owned tree")
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101) + NAMED.format("not sampled in the owned tree")]
     (tmp_path / "snapshots/101-202-sampling-failures.txt").unlink()
     assert _live_stack(tmp_path) == []
 
@@ -1427,7 +1422,7 @@ def test_a_worker_in_teardown_is_reported_as_teardown_not_a_missing_stack(tmp_pa
     # The outcome is accepted only when the retained frames classify so: a claim the frames contradict is a defect.
     other = next(name for name in ("setup", "teardown") if name != phase)
     _forge(tmp_path, 101, f'"outcome": "{phase}"', f'"outcome": "{other}"')
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101) + NAMED.format(other)]
 
 
 @pytest.mark.parametrize("phase", ["call", "indeterminate"])
@@ -1442,10 +1437,10 @@ def test_a_worker_mid_call_without_its_frame_is_still_a_live_stack_defect(tmp_pa
     assert len(calls) == 3, "a dump inside the call is retried for the test's frame"
     assert outcomes[101]["outcome"] == phase
     assert outcomes[101]["attempts"] == ["unelevated: dump has no active test frame"] * 3
-    assert _unnamed(defects) == [LIVE_STACK.format(101)]
+    assert defects == [LIVE_STACK.format(101) + NAMED.format(phase)]
     # Even a forged outside-call outcome cannot excuse a worker whose retained frames show it inside the call.
     _forge(tmp_path, 101, f'"outcome": "{phase}"', '"outcome": "teardown"')
-    assert _unnamed(_live_stack(tmp_path)) == [LIVE_STACK.format(101)]
+    assert _live_stack(tmp_path) == [LIVE_STACK.format(101) + NAMED.format("teardown")]
 
 
 def _linux_interrupt(tmp_path, monkeypatch, first_dump):
@@ -1522,6 +1517,14 @@ def test_a_linux_worker_in_setup_or_teardown_at_the_signal_is_not_a_missing_stac
     assert _live_stack(tmp_path) == [f"{LINUX_STACK} (warning outcome: {other})"]
     outcome.write_text(kept.replace(f'"collect_at": {observed["collect_at"]}', '"collect_at": 1.0'))
     assert _live_stack(tmp_path) == [LINUX_STACK]
+    # The outcome is this worker's and this test's alone: one that names another test or another worker excuses
+    # nothing (review of #617, m2).
+    node = '"node": "tests/test_a.py::test_case[101]"'
+    assert node in kept and '"pid": 101' in kept
+    outcome.write_text(kept.replace(node, '"node": "tests/test_a.py::test_case[102]"'))
+    assert _live_stack(tmp_path) == [LINUX_STACK]
+    outcome.write_text(kept.replace('"pid": 101', '"pid": 102'))
+    assert _live_stack(tmp_path) == [LINUX_STACK]
     outcome.write_text(kept)
     assert _live_stack(tmp_path) == []
     (tmp_path / "snapshots/101.txt").unlink()
@@ -1566,23 +1569,45 @@ def test_a_live_stack_defect_names_its_typed_outcome(tmp_path, monkeypatch):
 
 
 def test_the_linux_cancel_plant_holds_half_its_cases_in_a_fixtures_setup():
-    """The proof's Linux plant can catch a worker outside its call: its odd cases spend their seconds in a fixture's
-    setup, and no case's length changes, so the plant still outlasts its deadline."""
+    """The proof's Linux plant can catch a worker outside its call: the planted test requests the fixture, an odd
+    case spends its seconds in that fixture's setup and none in its call, an even case the reverse, and no case's
+    length changes, so the plant still outlasts its deadline. The hosted proof cannot show this by itself, since it
+    does not require a worker outside its call (review of #617, m3)."""
+    import json
     import subprocess
     import sys
 
-    code = ("import os, sys, importlib.util as u\n"
-            "os.environ['AEW_EVIDENCE_PLANT'] = sys.argv[2]\n"
-            "spec = u.spec_from_file_location('deaths', sys.argv[1]); m = u.module_from_spec(spec)\n"
-            "spec.loader.exec_module(m)\n"
-            "print(m.SETUP_HELD, [m.held_in_setup(s) for s in range(4)], [m.case_seconds(s) for s in range(4)])")
+    # The plant is imported in a process of its own, as its kind: the fixture's own function is called with the
+    # request pytest would give it, and the planted test with the arguments pytest would, under a recording sleep.
+    code = """
+import importlib.util, inspect, json, os, sys, types
+os.environ["AEW_EVIDENCE_PLANT"] = sys.argv[2]
+os.environ.pop("PYTEST_XDIST_WORKER", None)
+spec = importlib.util.spec_from_file_location("deaths", sys.argv[1])
+plant = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(plant)
+slept = []
+plant.time.sleep = slept.append
+fixture = plant.planted_setup
+setup = getattr(fixture, "_get_wrapped_function", lambda: getattr(fixture, "__wrapped__", fixture))()
+cases = []
+for step in range(4):
+    request = types.SimpleNamespace(node=types.SimpleNamespace(callspec=types.SimpleNamespace(params={"step": step})))
+    setup(request)
+    in_setup, slept[:] = list(slept), []
+    plant.test_death(sys.argv[2], step, request, None)
+    in_call, slept[:] = list(slept), []
+    cases.append([in_setup, in_call])
+print(json.dumps({"requested": "planted_setup" in inspect.signature(plant.test_death).parameters, "cases": cases}))
+"""
     plant = str(ROOT / "tests/integration/evidence_plants/deaths.py")
-    out = {kind: subprocess.run([sys.executable, "-c", code, plant, kind], capture_output=True, text=True, check=True,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
-           for kind in ("cancel", "worker-kill")}
-    linux = sys.platform == "linux"
-    assert out["cancel"] == f"{linux} {[False, linux, False, linux]} [2, 3, 4, 5]"
-    assert out["worker-kill"] == "False [False, False, False, False] [2, 3, 4, 5]"
+    seen = {kind: json.loads(subprocess.run(
+        [sys.executable, "-c", code, plant, kind], capture_output=True, text=True, check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout) for kind in ("cancel", "time-limit-github")}
+    in_call = [[[], [2]], [[], [3]], [[], [4]], [[], [5]]]
+    held = [[[], [2]], [[3], []], [[], [4]], [[5], []]]  # odd cases: their seconds in setup, none in the call
+    assert seen["cancel"] == {"requested": True, "cases": held if sys.platform == "linux" else in_call}
+    assert seen["time-limit-github"] == {"requested": True, "cases": in_call}  # every other kind is unchanged
 
 
 def test_bounded_worker_ring_keeps_the_previous_node_and_matches_its_identity(tmp_path, monkeypatch):

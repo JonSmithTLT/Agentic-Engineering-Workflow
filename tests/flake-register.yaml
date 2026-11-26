@@ -1574,7 +1574,7 @@ entries:
   owner: CI flake triage
   row: E3
   planned_fix: >-
-    The pull request of branch fix/e3-linux-setup-teardown-stack (the operator, 2026-11-26): the Linux warning's setup
+    PR 617 (the operator, 2026-11-26): the Linux warning's setup
     or teardown outcome, with its retained stack, is accepted as the Windows collection's is, and the live-stack
     defect names the typed outcome. This entry closes once a superseded Linux integration run shows the typed outcome
     accepted: its lanes cancelled in fixture setup or teardown carry no live-stack defect. A defect that names another

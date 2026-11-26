@@ -333,7 +333,7 @@ class NonMutating:
             commit = self.k.authoritative_commit()
             ev = self.inputs.find_unit_evidence(source, evidence_id)
             approval.compare("input.acknowledge", evidence_id, binding,
-                             approval.input_subject(evidence_id, ev["_sha256"], commit)["digest"])
+                             approval.input_subject(evidence_id, ev["_sha256"], commit)["digest"], work_id=work_id)
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             decision = self.k.new_decision(
                 ctx, "input_acknowledgement",
@@ -878,7 +878,7 @@ class NonMutating:
                 raise GateUnsatisfied(f"{work_id} has no execution record to accept", work_id=work_id,
                                       unmet={"execute_record": "MISSING"})
             approval.compare("work.accept", rec["id"] if rec else work_id, binding,
-                             approval.execution_record_digest(rec) if rec else None)
+                             approval.execution_record_digest(rec) if rec else None, work_id=work_id)
             rule = transitions.check(unit["state"], "DONE", "accept")
             self.units.check_guard(rule.guard, ctx, work_id, unit, "DONE")
             gc = ctx.accepted_gates  # type: ignore[attr-defined]

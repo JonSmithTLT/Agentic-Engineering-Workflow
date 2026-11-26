@@ -786,7 +786,7 @@ class WorkCommands:
                 raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
                                         "accepted now; propose a new revision to change it")
             approval.compare("plan.accept", entry["path"], binding,
-                             sha256_file(self.k.aew_root / entry["path"]))
+                             sha256_file(self.k.aew_root / entry["path"]), work_id=work_id)
             approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
             # The operator's decision (the ruling of 2026-11-26): a Lead session's acceptance needs their confirmation
             # of exactly this plan, given at the operator endpoint, and uses it up.

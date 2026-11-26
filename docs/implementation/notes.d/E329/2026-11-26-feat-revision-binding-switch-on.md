@@ -17,3 +17,7 @@ The merge through MS5b keeps both delivery timings, retry identity, policy and r
 receipt and finality guard. A recorded message keeps its engine-observed revision stamp without a caller-supplied
 revision. The ordinary `harness send` command refuses the retired option before it writes. MS5b's finality fixtures
 now supply the observed prior state, run or approval for the accepted record or changed policy where required.
+
+Class A coverage exercises the admission boundary for every declared variant. Lead acquire, handoff accept, Lead
+message recording and migration use their own handlers. Stage regression tests cover steering mode and legality
+changes after projection, and a missing first transition binding before intent open.

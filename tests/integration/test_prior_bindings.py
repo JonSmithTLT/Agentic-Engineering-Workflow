@@ -18,6 +18,26 @@ B_OPS = sorted(op for op, specs in CONTROL_OP_SPECS.items()
                if any(spec.revision_class == "B" for spec in specs))
 
 
+def test_missing_cli_prior_prints_a_read_that_supplies_the_binding(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    transition = ("work", "transition", wid, "--to", "CANCELLED", "--reason", "no longer needed")
+    env = {"AEW_LEAD_TOKEN": p.token}
+    before = p.rev()
+
+    refused = p.aew(*transition, env=env)
+    assert refused.returncode != 0 and refused.error["code"] == "CHANGED_SINCE_READ"
+    next_step = refused.error["details"]["next_step"]
+    assert "--prior-value" in next_step and p.rev() == before
+    read = _printed_argv(next_step, before)
+    assert read == ["status", wid]
+    status = p.aew(*read, "--json").json
+
+    result = p.aew(*transition, "--prior-value", status["work_unit"]["state"], env=env)
+    assert result.returncode == 0 and p.rev() == before + 1
+    assert p.aew("status", wid, "--json").json["work_unit"]["state"] == "CANCELLED"
+
+
 @pytest.mark.parametrize("route", [
     "move", "promote", "staff", "defer", "requeue", "requeue_deferred_text", "requeue_disposition_text",
     "lower", "relaunch_text",
@@ -185,6 +205,7 @@ def test_missing_or_changed_prior_values_refuse_without_a_commit(tmp_path, monke
         getattr(engine, method)(token=project.token, prior_value=prior, **args)
     details = refused.value.details
     assert details["op"] == op and details["expected"] == prior and details["current"] != prior
+    assert details["reason"] == "changed_since_read"
     assert details["changed_by"] == (changed_by or f"control revision {revision}")
     assert project.rev() == revision and path.read_bytes() == before
 

@@ -812,6 +812,33 @@ def test_auto_run_steps_are_attributed(p):
     assert cold and "steering_loop" in cold[0].read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(("change", "code", "detail"), [
+    ("mode", L.ACTION_STOPPED, {"reason": "steering_moved"}),
+    ("policy", L.STALE_POLICY, {"field": "legality_digest"}),
+])
+def test_stage_open_rechecks_the_loop_projection(p, change, code, detail):
+    mode(p, "walk")
+    observed = {}
+
+    def change_then_run(e, ctx, name, arguments, *, token, auto_run):
+        if change == "mode":
+            e.steering_lower(token=token, mode="crawl", prior_value=e.steering_view()["override_record"])
+        else:
+            drift(p)
+        observed["revision"] = p.rev()
+        observed["result"] = L._run(e, ctx, name, arguments, token=token, auto_run=auto_run)
+        return observed["result"]
+
+    lp = loop(p, Scripted(notes), executor=change_then_run)
+    stop = lp.tick(L.Activation("LA-test", time.monotonic()))
+    assert isinstance(stop, L.Stop) and stop.code == code
+    result = observed["result"]
+    assert result["stage_intent_id"] is None and result["completed_steps"] == []
+    assert result["stopped"]["error"]["details"].items() >= detail.items()
+    assert p.rev() == observed["revision"]
+    assert not hot_intents(p) and "stage_intent" not in load_control(p.root)["counters"]
+
+
 def test_policy_drift_between_steps_is_stale_policy(p, monkeypatch):
     """CWR §11 (the loop's case; E3 built the Lead's): a legality policy adopted between two steps of an auto-run
     stage stops it as STALE_POLICY, and the loop stops on it: no step runs under a policy the stage did not bind."""

@@ -443,7 +443,7 @@ class Hierarchy:
             pv = unit.get("parent_verification") or {}
             if not pv.get("awaiting_classification"):
                 raise IllegalTransition(f"{work_id} has no failed parent verification awaiting classification")
-            ref = approval.failure_ref("verify.classify", unit, pv["awaiting_classification"], binding)
+            ref = approval.failure_ref("verify.classify", unit, pv["awaiting_classification"], binding, work_id=work_id)
             requires = {"LOCAL_IMPLEMENTATION_DEFECT": "a remediation child (the child set must change)",
                         "PLAN_OR_DESIGN_DEFECT": "a new accepted parent plan revision",
                         "CONTRACT_VIOLATION": "a new accepted parent plan revision",

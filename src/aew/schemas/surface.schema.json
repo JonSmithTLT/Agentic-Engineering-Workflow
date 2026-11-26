@@ -81,6 +81,7 @@
       ]
     },
     "kept_stop": {
+      "description": "Historical pre-E329 revision stop retained for reading older stage records.",
       "type": "object", "additionalProperties": false,
       "required": ["n", "boundary", "rev", "error"],
       "properties": {

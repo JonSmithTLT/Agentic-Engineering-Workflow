@@ -38,6 +38,7 @@ from test_stage_runner import call, intent, intervene, launching
 from test_stages_ticket import HANG, _declared, _effects, _observe, _twins
 
 from aew.engine import disposition_ops as DO
+from aew.engine import outbox
 from aew.engine import stage_intents as SI
 from aew.engine.api import Engine
 from aew.surface import contract, projection
@@ -149,6 +150,25 @@ def test_ticket_request_verification_goes_on_from_review_passed_accepting_nothin
     assert "accept_review_evidence" not in si["judgment_inputs"]
     assert si["status"] == SI.COMPLETED and unit(p, wid)["state"] == "VERIFY_PENDING"
     assert_control_invariants(p)
+
+
+def test_request_verification_from_review_passed_requires_binding_before_intent_open(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    e = Engine.discover(p.root)
+    assert unit(p, wid)["state"] == "REVIEW_PASSED"
+    revision = p.rev()
+    assert outbox.read_record(e.aew_root, revision + 1) is None
+
+    result = R.run_tool(e, CTX, "ticket_request_verification", {"work_id": wid}, token=p.token)
+
+    assert not result["ok"] and result["stage_intent_id"] is None and result["completed_steps"] == []
+    error = result["stopped"]["error"]
+    assert error["code"] == "CHANGED_SINCE_READ" and error["details"]["reason"] == "missing_binding"
+    assert p.rev() == revision and outbox.read_record(e.aew_root, revision + 1) is None
+    assert not control(p).get("stage_intents")
 
 
 @pytest.mark.parametrize("step", ["review.ingest", "work.transition", "invoke.create.mutating"])

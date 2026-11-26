@@ -119,7 +119,7 @@ def _record_unrelated_commit(e, *, peer="independent"):
     for op, specs in CONTROL_OP_SPECS.items()
     for spec in specs if spec.revision_class == "A"
 ])
-def test_an_unrelated_commit_never_stales_a_lead_mutation(project, tmp_path, op, variant):
+def test_an_unrelated_commit_allows_class_a_admission_and_direct_writers(project, tmp_path, op, variant):
     """The admission boundary on every A variant, with the four direct writers exercised through their own paths.
 
     The separately enumerated runtime handler coverage pins which operation enters each boundary. Each handler's

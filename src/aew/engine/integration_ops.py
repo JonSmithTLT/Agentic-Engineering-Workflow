@@ -479,7 +479,7 @@ class Integration:
             qid, entry = Q.entry_of(ctx.state, work_id)
             approval.prior("integrate.defer", qid or work_id, "queue entry state", prior_value,
                            entry["state"] if entry else "none",
-                           root=self.k.aew_root, state=ctx.state,
+                           root=self.k.aew_root, state=ctx.state, work_id=work_id,
                            event=lambda e: e["kind"] == "queue.entry"
                                and (e.get("work") == work_id or e["id"] == qid))
             unit = self.units.unit(ctx.state, work_id)
@@ -508,7 +508,7 @@ class Integration:
             qid, entry = Q.entry_of(ctx.state, work_id)
             approval.prior("integrate.requeue", qid or work_id, "queue entry state", prior_value,
                            entry["state"] if entry else "none",
-                           root=self.k.aew_root, state=ctx.state,
+                           root=self.k.aew_root, state=ctx.state, work_id=work_id,
                            event=lambda e: e["kind"] == "queue.entry"
                                and (e.get("work") == work_id or e["id"] == qid))
             moved = self.queue.requeue(ctx.state, work_id, reason=reason)

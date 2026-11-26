@@ -1974,7 +1974,7 @@ tools:
     mutates: "yes"
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, STALE_AUTHORITY]
+    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, STALE_AUTHORITY]
   - name: ticket_request_review
     home: product
     users: [lead]

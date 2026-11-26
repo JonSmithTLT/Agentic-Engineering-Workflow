@@ -283,6 +283,8 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
         getattr(engine, method)(token=project.token, **args)
     assert boundary_of(failure.value) == "refused"
     assert failure.value.details["op"] == op
+    assert failure.value.details["reason"] == (
+        "candidate_mismatch" if op == "integrate.publishing" else "changed_since_read")
     assert failure.value.details["expected"] != failure.value.details["current"]
     assert project.rev() == rev and control_bytes(project) == before
     assert manifest.read_bytes() == manifest_before

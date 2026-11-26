@@ -25,8 +25,8 @@ def prior_state(op: str, subject: str, expected: str | None, current: str, *,
 
 def prior(op: str, subject: str, field: str, expected: str | None, current: str, *,
           root: Path, state: dict[str, Any], event: Callable[[dict[str, Any]], bool] | None = None,
-          record: str | None = None) -> None:
-    require_binding(op, subject, field, expected)
+          record: str | None = None, work_id: str | None = None) -> None:
+    require_binding(op, subject, field, expected, work_id=work_id)
     if expected == current:
         return
     source = ""
@@ -83,34 +83,75 @@ def bound_argv(argv: tuple[str, ...], value: str) -> list[str]:
 
 
 def refuse_change(op: str, subject: str, field: str, expected: Any, current: Any, *,
-                  changed_by: Any = None, next_step: str, **details: Any) -> None:
+                  changed_by: Any = None, next_step: str, reason: str = "changed_since_read", **details: Any) -> None:
     change = f" Changed by {changed_by}." if changed_by is not None else ""
     raise ChangedSinceRead(
         f"{op}: {subject}'s {field} changed since read (expected {expected}, current {current}).{change} {next_step}",
         op=op, subject=subject, field=field, expected=expected, current=current,
-        changed_by=changed_by, next_step=next_step, **details,
+        changed_by=changed_by, next_step=next_step, reason=reason, **details,
     )
 
 
 _Binding = TypeVar("_Binding")
 
 
-def require_binding(op: str, subject: str, field: str, binding: _Binding | None) -> _Binding:
+def require_binding(op: str, subject: str, field: str, binding: _Binding | None, *,
+                    work_id: str | None = None) -> _Binding:
     """Missing observations never become approvals of whatever is current at commit."""
     if binding is None:
+        step = _binding_step(op, subject, field, work_id)
         raise ChangedSinceRead(
-            f"{op}: read {subject}'s {field} before deciding. The call has no binding for it.",
-            op=op, subject=subject, field=field, reason="missing_binding",
-            next_step="Read the subject and decide again.",
+            f"{op}: the call has no binding for {subject}'s {field}. {step}",
+            op=op, subject=subject, field=field, reason="missing_binding", next_step=step,
         )
     return binding
 
 
+def _binding_step(op: str, subject: str, field: str, work_id: str | None) -> str:
+    if op == "manifest.adopt":
+        return ("Review the changed files shown by `aew manifest adopt --reason <reason>` at the operator terminal. "
+                "API callers read `manifest_approval()` and pass its result as `binding`.")
+    status = f"aew status {work_id or subject}"
+    if op in {"integrate.defer", "integrate.requeue"}:
+        return (f"Read the queue decision for {work_id or subject} with `work_show` and pass the shown "
+                "`--prior-value` from its CLI fallback.")
+    if field != "approval subject":
+        command = {
+            "harness.launch": f"aew harness status {subject}",
+            "steering.lower": "aew status --json",
+            "work.staff": f"aew work roles {subject}",
+        }.get(op, status)
+        return (f"Read the current {field} with `{command}` and pass it as `--prior-value` "
+                "(`prior_value` in a typed call).")
+    if op == "integrate.publishing":
+        return (f"Read the current candidate with `{status} --json` and pass it as `--candidate` "
+                "(`prepared_candidate` in the stage call).")
+    if op == "integrate.breaker_reset":
+        return ("Read the current failure list and digest with `aew integrate breaker status`. "
+                "API callers pass the shown digest as `binding`.")
+    if op in {"authority.accept", "authority.reject"}:
+        return ("Review the candidate shown by the authority command at the terminal. API callers read "
+                "`authority_candidate()` and pass its digest as `binding`. An explicit acceptance digest uses "
+                "`--approval-digest`.")
+    if op == "work.gate_replace":
+        return "Read the replacement in the typed `resume` projection and pass its `approval_digest` to `resolve`."
+    if op == "work.dispose":
+        return ("Read the disposition decision in the typed `resume` projection and pass its digest as "
+                "`--approval-digest` (`approval_digest` in `resolve`).")
+    command = {
+        "stage.continue": "aew resume --json",
+        "waive": f"aew gate show {work_id}",
+        "work.close": f"aew gate show {subject}",
+    }.get(op, f"{status} --json")
+    return f"Read the approval subject with `{command}` and pass its digest as `--approval-digest` (`approval_digest`)."
+
+
 def compare(op: str, subject: str, expected: str | None, current: str | None, *,
-            next_step: str = "Read the subject again and decide anew.", **details: Any) -> None:
+            next_step: str = "Read the subject again and decide anew.", work_id: str | None = None,
+            **details: Any) -> None:
     """A digest mismatch may include uncommitted file edits, so it has no general change-record lookup."""
     if op != "manifest.adopt":
-        require_binding(op, subject, "approval subject", expected)
+        require_binding(op, subject, "approval subject", expected, work_id=work_id)
     if expected != current:
         refuse_change(op, subject, "approval subject", expected, current, next_step=next_step, **details)
 
@@ -137,8 +178,9 @@ def failure_digest(unit: dict[str, Any], evidence_id: str | None) -> str:
     return digest({"id": evidence_id, "sha256": sha})
 
 
-def failure_ref(op: str, unit: dict[str, Any], evidence_id: str | None, binding: str | None) -> str | None:
-    compare(op, evidence_id or "verification failure", binding, failure_digest(unit, evidence_id))
+def failure_ref(op: str, unit: dict[str, Any], evidence_id: str | None, binding: str | None, *,
+                work_id: str) -> str | None:
+    compare(op, evidence_id or "verification failure", binding, failure_digest(unit, evidence_id), work_id=work_id)
     return f"{evidence_id}@record:{binding}"
 
 

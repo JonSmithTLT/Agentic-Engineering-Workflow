@@ -1704,7 +1704,7 @@ class EvidenceCommands:
             to = transitions.VERIFICATION_CLASSIFICATIONS[classification]
             transitions.check("VERIFICATION_FAILED", to, "verify.classify")
             failing = (unit.get("last_verification") or {}).get("evidence")
-            ref = approval.failure_ref("verify.classify", unit, failing, binding)
+            ref = approval.failure_ref("verify.classify", unit, failing, binding, work_id=work_id)
             change = {"from": "VERIFICATION_FAILED", "to": to}
             decision = self.k.new_decision(
                 ctx, "verification_failure_classification",
@@ -1735,7 +1735,7 @@ class EvidenceCommands:
             ref = []
             if gate:
                 gc = self.gates.gate_context(ctx.state, work_id)
-                approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate))
+                approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate), work_id=work_id)
                 ref = [f"{work_id}/{gate}@record:{binding}"]
                 if gate in gc["obligations"]["non_waivable"]:
                     raise GateUnsatisfied(f"{gate} is inherited as non-waivable")

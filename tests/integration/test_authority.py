@@ -379,7 +379,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     prepared candidate: the takeover interrupts the Ticket, which retires its entry and lease, so there is nothing to
     reconcile. A prepared candidate with no active role invocation: the lease survives its dead custodian and is
     reconciled. Once its validation releases the lease, the advice again omits reconcile."""
-    from aewflow import prepare_and_validate, sample_project, to_commit_ready
+    from aewflow import sample_project, to_commit_ready, verify
 
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
@@ -395,7 +395,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     res = q.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
     assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
-    prepare_and_validate(q, wid2)
+    q.lead("verify", "ingest", wid2, "--evidence", verify(q, wid2, scope="integration"))
     res = q.aew("lead", "acquire")
     assert "integrate reconcile" not in res.error["message"], res.error
 

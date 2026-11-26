@@ -632,8 +632,12 @@ def test_a_contradiction_is_recorded_and_disposed_of_only_once_it_is_gone(tmp_pa
 
     # The decision answers what the disposal's own query answers (PR 182 review, m4): BLOCKED while still live.
     blocked = decision()
-    assert blocked["availability"] == "BLOCKED"
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {**blocked["arguments"],
+    assert blocked["availability"] == "BLOCKED" and "approval_digest" not in blocked["arguments"]
+    record.write_bytes(original)
+    available = decision()
+    assert available["availability"] == "AVAILABLE"
+    record.write_bytes(original + b"\n# edited outside AEW\n")
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {**available["arguments"],
                                                                "choice": "accept_risk", "rationale": "r"},
                      token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "still_live"

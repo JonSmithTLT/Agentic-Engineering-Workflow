@@ -857,6 +857,9 @@ class NonMutating:
             if unit["kind"] != "ticket":
                 raise IllegalTransition("Stories and Epics are closed with `aew work close`")
             rec = (unit.get("execution") or {}).get("record")
+            if rec is None and is_nm_ticket(unit):
+                raise GateUnsatisfied(f"{work_id} has no execution record to accept", work_id=work_id,
+                                      unmet={"execute_record": "MISSING"})
             approval.compare("work.accept", rec["id"] if rec else work_id, binding,
                              approval.execution_record_digest(rec) if rec else None)
             rule = transitions.check(unit["state"], "DONE", "accept")

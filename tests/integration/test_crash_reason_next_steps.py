@@ -59,8 +59,8 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
     pin = lab.ok("invoke", "show", inv)["execution_profile"]
 
     reason = printed_reason(inv, wid, run)
-    (relaunch,) = INLINE.findall(FENCE.sub("", reason))
-    cancel, create, _redispatch = (block.splitlines() for block in FENCE.findall(reason))
+    relaunch, create = INLINE.findall(FENCE.sub("", reason))
+    cancel, _redispatch = (block.splitlines() for block in FENCE.findall(reason))
 
     # "Relaunch it": accepted, and the pin stays (ADR-0010).
     res = run_printed(lab, relaunch)
@@ -70,7 +70,7 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
 
     # "dispatch a new invocation on another model" while this one is active is refused, for the reason the cancel
     # command above it answers: the old invocation is still active.
-    early = run_printed(lab, create[0], model="fakeprov/other-model")
+    early = run_printed(lab, create, model="fakeprov/other-model")
     assert early.returncode != 0 and "still active" in (early.error or {}).get("message", early.stderr)
 
     # "cancel it": the heredoc body is the reason.
@@ -79,7 +79,7 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
     assert lab.ok("invoke", "show", inv)["status"] == "cancelled"
 
     # "dispatch a new invocation on another model": pinned to it by the Lead.
-    res = run_printed(lab, create[0], model="fakeprov/other-model")
+    res = run_printed(lab, create, model="fakeprov/other-model")
     assert res.returncode == 0, res.stderr or res.stdout
     new_pin = lab.ok("invoke", "show", res.json["invocation"])["execution_profile"]
     assert new_pin["model"] == "other-model" and new_pin["selected_by"] == "lead"

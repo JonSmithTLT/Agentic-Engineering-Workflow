@@ -29,7 +29,10 @@ def parent(tmp_path):
 
 
 def _call(p, method, **kwargs):
-    return getattr(Engine.discover(p.root), method)(token=p.token, **kwargs)
+    engine = Engine.discover(p.root)
+    if method == "work_close" and "binding" not in kwargs:
+        kwargs["binding"] = engine.approval_subject(kwargs["work_id"], "work.close")["digest"]
+    return getattr(engine, method)(token=p.token, **kwargs)
 
 
 def _verify(p, story, evidence):

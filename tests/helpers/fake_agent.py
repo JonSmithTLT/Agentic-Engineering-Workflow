@@ -218,7 +218,7 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
             shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
             argv += ["--candidate", shown["approval_subjects"]["integrate.publishing"]["candidate"]]
         elif argv[:2] == ["harness", "launch"] and "--prior-value" not in argv:
-            shown = json.loads(aew("harness", "status", argv[2], "--json", env=env)["stdout"])
+            shown = aew("harness", "status", argv[2], env=env)["stdout_json"]
             argv += shown["launch_argv"][3:]
         return aew(*argv, env=env, input_bytes=stdin)
     if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it

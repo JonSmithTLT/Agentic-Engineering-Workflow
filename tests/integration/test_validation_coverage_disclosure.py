@@ -417,7 +417,7 @@ def test_every_terminal_record_keeps_coverage_without_manufacturing_a_validation
     if kind == "abandoned":
         eng = engine(p)
         run = eng._validation._pin(VO.Principal(VO.LEAD, p.token), wid, attempt=1, diagnostic=False)
-        eng._validation._abandon(VO.Principal(VO.LEAD, p.token), p.rev(), wid, run["id"],
+        eng._validation._abandon(VO.Principal(VO.LEAD, p.token), wid, run["id"],
                                  "VALIDATION_INTERRUPTED", "synthetic executor interruption after the real pin")
     else:
         validate(p, wid, diagnostic=kind == "advisory")

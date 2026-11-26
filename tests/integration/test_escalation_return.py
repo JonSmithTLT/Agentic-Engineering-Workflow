@@ -382,10 +382,11 @@ def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the
     engine = Engine.discover(p.root)
     monkeypatch.delitem(engine._units.guards._queries, ("findings_recorded", MUTATING))
 
-    def attempt(op: Any) -> AEWError | None:
+    def attempt(op: Any, hub: str) -> AEWError | None:
         rev = engine.store.read()["revision"]
         try:
-            op(token=p.token, work_id=wid, to="RUNNING", reason="the operator answered")
+            observed = {"prior_value": hub} if op == engine.work_transition else {}
+            op(token=p.token, work_id=wid, to="RUNNING", reason="the operator answered", **observed)
         except AEWError as exc:
             assert engine.store.read()["revision"] == rev
             return exc
@@ -395,12 +396,12 @@ def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the
     for op, hub in ((engine.work_transition, "ESCALATED"), (engine.work_reconcile, "INTERRUPTED")):
         seed(p, lambda s, h=hub: s["work"][wid].update(state=h, findings=[], **{
             "escalated_from" if h == "ESCALATED" else "interrupted_from": "REVIEW_FAILED"}))
-        exc = attempt(op)
+        exc = attempt(op, hub)
         assert exc is not None and exc.code == "GATE_UNSATISFIED", (hub, exc)
         assert "requires recorded review findings" in exc.message, (hub, exc.message)
         # Planted control: with an open required finding, the guard admits the same move.
         seed(p, lambda s: s["work"][wid].update(findings=[{**REQUIRED_FINDING[0], "status": "open"}]))
-        assert attempt(op) is None and show(p, wid)["state"] == "RUNNING", hub
+        assert attempt(op, hub) is None and show(p, wid)["state"] == "RUNNING", hub
     assert_control_invariants(p)
 
 

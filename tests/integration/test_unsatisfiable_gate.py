@@ -447,7 +447,7 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     [preview] = status_previews(p)  # what it would make stale, before it is committed (addendum 3)
     [stale] = preview["stale_invocations"]
     assert (stale["invocation"], stale["work_id"]) == (live[0], running)
-    approved = preview["approval_subjects"]["check:unit"]["digest"]
+    approved = preview["approval_digests"]["check:unit"]
     before_revision = p.rev()
     out = resolve(p, item, "check:unit", binding=approved)
     assert out["ok"], out

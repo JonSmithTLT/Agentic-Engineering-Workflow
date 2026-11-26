@@ -185,9 +185,9 @@ def lowered(before, after):
 
 
 def refused_changing_nothing(p, *args):
-    """``aew *args`` as the Lead at the current revision, refused, with the control state as it was: the error."""
+    """An observed Lead decision is refused, leaving its control state as it was."""
     state = load_control(p.root)
-    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     assert load_control(p.root) == state
     return res.error

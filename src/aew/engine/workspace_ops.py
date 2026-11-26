@@ -146,7 +146,8 @@ class Invocations:
         selection of its own a dispatch is pinned nothing only while the policy is unconfigured, whatever its card."""
         if self._execution(state, role, work_id, None, None):
             return None
-        return self.unprofiled(f"a {role} dispatched for {work_id}")
+        article = "an" if role[:1] in "aeiou" else "a"
+        return self.unprofiled(f"{article} {role} dispatched for {work_id}")
 
     def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]

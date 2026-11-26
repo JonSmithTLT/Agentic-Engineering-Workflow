@@ -24,10 +24,9 @@ In any state, an active invocation whose latest run ended without its output is 
 - **A move that carries the Lead's reason** (a return or a regression) is judgment-bearing. The readable result
   lists it, and its one next step stays the engine's hint, which says what is settled first.
 - **An exit must land.** The walk fails on an offered command, an action's or a decision's, that the real CLI does
-  not take as offered or that no Lead session reaches. It goes on by the moves it is offered, run as offered: the four
-  transitions, and a reviewer's dispatch and a never-launched implementer's launch where a harness is routed. The two
-  verifier dispatches are the reviewer's command with another role or scope: parsed, and asked of their own dispatch
-  decision, not launched by the walk.
+  not take as offered or that no Lead session reaches. The two verifier dispatches are the reviewer's command with
+  another role or scope: parsed, held equal to the hint's, and asked of their own dispatch decision and of the
+  launch's profile, not launched by the walk.
 
 - **A dispatch is an exit only where its launch has a harness.** The offered command carries `--launch`, and the
   dispatch decision does not ask the launch. So while the execution policy pins no profile the dispatch is BLOCKED,
@@ -58,6 +57,11 @@ Four of the eleven, each needing a decision this row's builder does not make, an
   satisfies `ticket_request_review`'s gate, so it is offered first, AVAILABLE and auto-runnable, and the implementer's
   dispatch second. This is as on `main`, where the hint's command led to the same place. `ticket_rework`'s decision
   is meant to fix it: one step that returns the Ticket and dispatches the implementer with the findings.
+- **With no execution profile, the blocker also stops the steering loop on a Ticket returned to RUNNING.** There the
+  review request is available and auto-runnable on the old report, and the loop chose it before. Now the Ticket
+  carries the blocker of its implementer's dispatch, so the loop reports BLOCKED and runs nothing, while the readable
+  next step still names the review request. Given the point above this is the safer of the two, and the walk pins
+  it (`steering_loop.select`); `ticket_rework`'s decision is meant to settle both.
 - **A project with no execution profile** offers no dispatch (above): the operator's hand-run flow dispatches without
   `--launch`, which a Lead session is refused. Whether the projection should name that form for an operator is not
   decided here.

@@ -37,7 +37,7 @@ from aew.engine import transitions as T
 from aew.engine.api import Engine
 from aew.engine.store import Transition
 from aew.harness import contract as K
-from aew.harness import lead_broker
+from aew.harness import lead_broker, steering_loop
 from aew.surface import contract, projection, readable, run
 from aew.surface.context import SurfaceContext
 
@@ -68,7 +68,8 @@ DEAD_ENDS = {
         "hint": "propose and accept a new plan revision"},
     "REVIEW_PENDING, no report, no execution profile": {
         "why": "the dispatch offered launches its worker, and with no execution profile no run has a harness: it is "
-               "BLOCKED, with what to configure. Every dispatch is, in such a project; this state stands for them",
+               "BLOCKED, with what to configure. So is every dispatch the projection offers in such a project (none "
+               "names a profile or a model of its own); this state stands for them",
         "hint": "dispatch the next planned reviewer card (`aew invoke create T-"},
 }
 # Only ever lowered: an entry leaves when its exit lands, and this number goes down with it. E133 left eleven; E233's
@@ -328,6 +329,12 @@ def _walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str], labs: list[Any
                   if a["action"] == "invoke.create.mutating"]
     tried = p.aew(*offered_, env={"AEW_LEAD_TOKEN": p.token})  # run as offered, it is refused: the BLOCKED is true
     assert tried.returncode != 0 and "has no execution profile" in tried.stdout + tried.stderr, tried
+    # Sent back to RUNNING there, the Ticket's review request is available again on the old report, and the
+    # implementer's dispatch is blocked for want of a profile (the final assertions read both; #612 quick check, Q1).
+    finding = {"id": "F-1", "severity": "major", "summary": "the change is wrong"}
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid, disposition="changes_required", findings=[finding]))
+    p.lead("work", "transition", wid, "--to", "RUNNING")
+    look(p, wid, "RUNNING, sent back with findings, no execution profile")
 
     routed("routed-clean", "pass", "COMMIT_READY, prepared, entry VALIDATED")
     routed("routed-failing", "fail", "COMMIT_READY, prepared, entry awaits the Lead on a report that is not clean")
@@ -358,6 +365,18 @@ def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tm
     [refused] = [a for a in by_hand["actions"] if a["action"] == "invoke.create.mutating"]
     assert refused["availability"] == "BLOCKED" and refused["reason_codes"] == ["ILLEGAL_TRANSITION"], refused
     assert any("configure policy/execution.yaml" in b["message"] for b in by_hand["blockers"]), by_hand["blockers"]
+    assert "a reviewer dispatched for" in by_hand["blockers"][-1]["message"], by_hand["blockers"]
+    # Q1: sent back to RUNNING with no profile, the blocker of the implementer's dispatch is what the steering loop
+    # reports, so it does not run the review request that is available and auto-runnable beside it. The readable next
+    # step still names that request (E233's note: `ticket_rework`'s decision is meant to settle both).
+    sent_back = seen["RUNNING, sent back with findings, no execution profile"]
+    [request] = [a for a in sent_back["actions"] if a["action"] == "ticket_request_review"]
+    assert request["availability"] == "AVAILABLE" and request["auto_runnable"], request
+    stop = steering_loop.select({}, [sent_back])
+    assert isinstance(stop, steering_loop.Stop) and stop.code == steering_loop.BLOCKED, stop
+    assert "an implementer dispatched for" in stop.message and "configure policy/execution.yaml" in stop.message
+    with_profile = steering_loop.select({}, [seen["RUNNING, sent back with findings"]])
+    assert isinstance(with_profile, steering_loop.Choice) and with_profile.action["action"] == "ticket_request_review"
     dispatches = {label: a["arguments"] for label, found in seen.items() for a in found["actions"]
                   if a["action"] == "invoke.create.mutating"}
     assert dispatches["VERIFY_PENDING, no report and no live run"] == {

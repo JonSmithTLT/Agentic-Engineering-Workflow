@@ -2254,6 +2254,9 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "the vocabulary's `lands` key 'A2' is no register row"),
     ("fields", lambda r: r["vocabulary"]["lands"].update({CLOSED_ROW: "a row that closed"}),
      f"the vocabulary's `lands` key '{CLOSED_ROW}' is a closed register row"),
+    # A §1 gate's id in the register's rows is `Gate`: an id of no row (#606 quick check, N3).
+    ("fields", lambda r: r["vocabulary"]["lands"].update({"Gate": "a gate, not a row"}),
+     "the vocabulary's `lands` key 'Gate' is no register row"),
     ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "E233"}),
      "proposed_tools `ticket_fly` homes no planned row"),
     ("fields", lambda r: r["proposed_choices"].append({"name": "teleport", "pairs": {}, "lands": "A9"}),

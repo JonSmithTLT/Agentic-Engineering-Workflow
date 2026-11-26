@@ -2646,18 +2646,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E246/`, oldest first (`python tools/register.py show E246`).*
 
-### E247
-
-**Work:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked
-
-**Source:** The review of #394, 2026-11-09
-
-**When:** **Unscheduled**, for checking
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
-
 ### E248
 
 **Work:** A typed `harness_interrupt`. It stays out of push wake PR 3, as `harness_send` does (E131 owns send)
@@ -3905,6 +3893,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface, not from today's online documentation
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
+
+### E394
+
+**Work:** A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree, and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree say it holds one command
+
+**Source:** Found by the builder of #608 while testing E247, 2026-11-26; its review's M2 asks for the row
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Reproduced at #608's head: a tree with a sleeping member, then a second `spawn`
+
+*Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
 
 ### E388
 
@@ -5215,6 +5215,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
 
 *Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
+
+### E247
+
+**Was:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout
+
+**Closed:** 2026-11-26
+
+**By:** #608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()` now reads the group's members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`
+
+*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
 
 ### E251
 

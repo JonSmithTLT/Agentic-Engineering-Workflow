@@ -3300,13 +3300,6 @@ sections:
     When: '**Unscheduled**, looked at again at the next weekly triage'
     Notes: Filed by the week's register PR
 
-  - '#': E247
-    Work: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an
-      unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked'
-    Source: 'The review of #394, 2026-11-09'
-    When: '**Unscheduled**, for checking'
-    Notes: Filed by the week's register PR
-
   - '#': E248
     Work: A typed `harness_interrupt`. It stays out of push wake PR 3, as `harness_send` does (E131 owns send)
     Source: Push wake PR 3's migration, 2026-11-09
@@ -5361,6 +5354,16 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
+  - '#': E394
+    Work: 'A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session
+      (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor
+      into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree,
+      and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree
+      say it holds one command'
+    Source: 'Found by the builder of #608 while testing E247, 2026-11-26; its review''s M2 asks for the row'
+    When: '**Unscheduled**, in the small-fixes lane'
+    Notes: 'Reproduced at #608''s head: a tree with a sleeping member, then a second `spawn`'
+
   - '#': E388
     Work: 'The Lead''s `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM
       and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead
@@ -6553,6 +6556,15 @@ sections:
       before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker''s commands and the
       typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610''s
       review), and the Lead''s own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`'
+
+  - '#': E247
+    Was: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped
+      `Popen` for a tree member waits its full timeout'
+    Closed: '2026-11-26'
+    By: '#608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie
+      holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()`
+      now reads the group''s members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the
+      group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`'
 
   - '#': E251
     Was: 'A printed `aew manifest adopt` runs as printed: the switch offer''s review counted 21 printed mentions in 8 files

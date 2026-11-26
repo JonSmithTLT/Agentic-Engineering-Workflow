@@ -130,6 +130,7 @@ systems:
   - E118
   - E143
   - E247
+  - E394
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress
@@ -181,9 +182,9 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'On Linux it is already built, wired, on and used: every worker run, check and Lead session runs contained
-    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged, with E247 (a small
-    POSIX check of ProcessTree.active()) riding along; E100 (an explicit required refuses the launch on every platform)
-    and E92 (plain http:// forwarded through the egress under R-6) are merged and closed. Narrowed to that Linux core
+    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged; E100 (an explicit
+    required refuses the launch on every platform), E92 (plain http:// forwarded through the egress under R-6) and E247
+    (ProcessTree.active() counts no zombie on Linux) are built and their rows closed. Narrowed to that Linux core
     by the operator on 2026-11-25:
     the CS-4 addenda 12 to 14, a headless contained Lead (E113) and the Windows work (F48''s backend, E222''s network
     containment, E250''s std handles) are SYS-49''s, outside this finish line, so Windows keeps its label and doctor''s
@@ -194,21 +195,19 @@ systems:
       and the login seed checks the credential table''s columns first (E118''s note of 2026-11-24)'
     row: E118
     estimate: 1 small PR (estimate; BOARD v2 §0), after the designer's choice
-  - slice: ProcessTree.active() with a group holding only a zombie, for checking
-    row: E247
-    estimate: 1 small PR (estimate)
   decision: 'decided: E100 and E92 unfrozen as this system''s buildable slices, and the finish line narrowed to the Linux
     core with E118, E100 and E92; the CS-4 addenda 12 to 14 and the Windows work moved to SYS-49 (the operator, 2026-11-25:
     "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md). E118''s server move stays,
     waiting on the designer''s choice of mechanism. Earlier: only its slot items finish, the rest frozen by the reset
     of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: designer (E118's mechanism), then Lead (E118, E247)
+  who: designer (E118's mechanism), then Lead (E118)
   reason: 'The Linux core is on, used and gating every launch. What is left is small: E118''s server move once the
     designer chooses its mechanism (its other two parts are built). E100 and E92, unfrozen on 2026-11-25, are merged and
     their rows closed: an explicit required refuses the launch on every platform (containment/__init__.py:84-86), and
-    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is small and
-    POSIX, so it rides along. The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
+    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is built and
+    closed too: on Linux a process tree whose group holds only zombies is not active (ProcessTree.active in procs.py).
+    The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
     work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings:
     E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained Lead; it may
     belong with SYS-05.'

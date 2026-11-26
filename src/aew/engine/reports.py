@@ -7,11 +7,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from aew.coordination.render import escaped
 from aew.errors import IntegrityError, NotFound, UsageError, ValidationFailed
 from aew.harness.contract import redact
 from aew.schemas import validate
-from aew.util import utc_now
+from aew.util import escape_display_controls, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
@@ -69,7 +68,7 @@ def summaries(root: Path, revision: int) -> dict[str, Any] | None:
             title = read(root, report_id, revision)["title"]
         except (NotFound, IntegrityError):
             continue  # an optional report must never block a workflow query; an explicit read gives the reason
-        items.append({"id": report_id, "title": escaped(title)})
+        items.append({"id": report_id, "title": escape_display_controls(title)})
     return {"label": LABEL, "items": items} if items else None
 
 
@@ -81,8 +80,8 @@ def read_view(root: Path, report_id: str, revision: int) -> dict[str, str]:
 
 def render(report: dict[str, str]) -> str:
     """Quote report text as data, with terminal control sequences escaped."""
-    title = escaped(report["title"])
-    body = "\n".join("    " + line for line in escaped(report["body"]).split("\n"))
+    title = escape_display_controls(report["title"])
+    body = "\n".join("    " + line for line in escape_display_controls(report["body"]).split("\n"))
     return f"{LABEL} {report['id']}\nTitle: {title}\nReport text (data):\n\n{body}"
 
 

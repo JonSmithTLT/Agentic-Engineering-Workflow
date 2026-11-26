@@ -23,6 +23,7 @@ from typing import Any, NamedTuple
 from aew import priority_levels
 from aew.coordination import layout as L
 from aew.knowledge import evidence as E
+from aew.owners import owner_of, whose
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -361,7 +362,9 @@ TOOLS: dict[str, Tool] = _catalog(
     # Steps 3 and 4 (the rebuilt candidate's verifier and its launch) are planned in verifier mode on a moved head only,
     # and step 1 only when a report is named and no rebuild is due (``availability.APPLIES``).
     Tool("integration_publish", DECISION, JUDGMENT_BEARING,
-         "Publish the prepared integration candidate: calling this is your publication decision.",
+         # Whose decision it carries out is the owner table's (register E335), never restated here.
+         f"Publish the prepared integration candidate: calling this carries out "
+         f"{whose(owner_of('integrate.publish'), to_lead=True)} publication decision.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
                "prepared_candidate": {"type": "string", "minLength": 1},
                "verification_evidence": EVIDENCE_ID},  # verifier mode: the report accepted (plan v3 B2.5)

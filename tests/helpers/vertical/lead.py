@@ -9,9 +9,10 @@ Lead broker), and its shell commands run in the TUI's own environment.
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
 2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
-   stated (every one today), ask the operator and wait for the reply. One whose owner is exactly ``lead`` or
-   ``mechanical``, the Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned
-   decisions only). Any other stated owner is asked too, and recorded as ``unknown_owner``.
+   stated (the projection states each one's since register E335), ask the operator and wait for the reply. One
+   whose owner is exactly ``lead`` or ``mechanical``, the Lead takes itself and never asks (spec v2:
+   ``decisions_required`` counts operator-owned decisions only). Any other stated owner is asked too, and recorded
+   as ``unknown_owner``.
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
@@ -31,8 +32,8 @@ finishes; they are the only place AEW knowledge appears here:
   a tool the projection did not offer (``guessed_commands``), with its own proposition and plan (its judgement);
 - ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
   then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
-- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell; for
-  ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
+- ``decision_without_tool``: a decision with no typed tool, whoever owns it, runs its ``cli_fallback`` from the
+  shell; for ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
 - ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
   - ``hint_command``: the command a projection hint names, run from the shell with its placeholders filled
     (``vertical.hints``: the revision, the subject, a reason), and ``--launch`` added once a refusal asks for it (each a
@@ -117,6 +118,7 @@ class Lead:
         self.reports: dict[str, str] = {}
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
+        self.last_text: str | None = None  # the last result's readable text, as OpenCode shows it (MCP content)
         self.last_out: dict[str, Any] | None = None
         self.last_refusal = ""  # the last refusal a hint's command met
 
@@ -252,6 +254,7 @@ class Lead:
                                                    or {"code": err.get("code"), "message": err.get("message")}})
             return {"ok": False, "projection": None, "result": None, "stopped": {"error": err}}
         out = reply["result"]["structuredContent"]
+        self.last_text = _text(reply["result"])
         stopped = out.get("stopped")
         if out.get("projection"):
             self.last_projection = out["projection"]
@@ -310,7 +313,7 @@ class Lead:
         self.tools = self.start_mcp()
         threading.Thread(target=self._listen, daemon=True, name="vertical-chat").start()
         resumed = self.call("resume", {})
-        self.say("status", words=_words(resumed.get("result")), session="started")
+        self.say("status", words=_words(self.last_text), session="started")
         self.subject = _open_ticket(resumed.get("result"))
         self.request = str(self.hear().get("text", ""))  # the operator's first line
         self.event("heard", text=self.request)
@@ -405,6 +408,11 @@ class Lead:
             # (judgment inputs are the Lead's, for actions and its own decisions only; review of #213, F3).
             self.call(d["tool"], d["arguments"], offered=True)
             return True
+        return self.without_tool(d)
+
+    def without_tool(self, d: dict[str, Any]) -> bool:
+        """A decision, whoever owns it, with no typed call: its ``cli_fallback`` from the shell, counted, when it is
+        concrete (the gap ``decision_without_tool``), else stuck."""
         cli = list(d.get("cli_fallback") or [])
         if d["decision"] == "RECONCILE" and "<phase>" in cli:
             # The known gap: an INTERRUPTED Ticket is reconciled to the phase it was interrupted from, with a reason,
@@ -450,7 +458,7 @@ class Lead:
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
             self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
             return True
-        return self.stuck(f"decision {d.get('decision')} is the {d.get('owner')}'s and offers no typed call")
+        return self.without_tool(d)
 
     def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         """A decision still required after its answer was acted on (its call refused): one ``explain``, then its
@@ -708,12 +716,22 @@ def _open_ticket(result: Any) -> str | None:
     return None
 
 
-def _words(result: Any) -> str | None:
-    """What the resume says in words, if it says anything that is not a data field (a headline or a summary)."""
-    for key in ("headline", "summary", "message", "where_things_stand"):
-        if isinstance((result or {}).get(key), str):
-            return result[key]
-    return None
+def _text(result: Any) -> str | None:
+    """A tool result's text, what OpenCode shows the person and its model reads (the MCP ``content``'s text blocks),
+    never ``structuredContent``."""
+    blocks = [b.get("text") for b in (result or {}).get("content") or []
+              if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+    return "\n".join(blocks) if blocks else None
+
+
+def _words(text: str | None) -> str | None:
+    """What the result says in words, as a person reads it: the text's first paragraph (up to its first blank line),
+    which the data it carries for a model follows. None when it has none (V-01 re-measure of 2026-11-26, C8).
+
+    The cut is the blank line ``readable.render`` puts before its JSON marker, pinned by the unit test against
+    ``readable.JSON_MARKER``. A readable body that ever held a blank line of its own would end the words there."""
+    head = (text or "").split("\n\n", 1)[0].strip()
+    return head or None
 
 
 def _append(path: Path, line: str) -> None:

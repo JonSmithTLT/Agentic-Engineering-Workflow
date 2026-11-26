@@ -45,6 +45,7 @@ from aew.harness.contract import (
     wake_line,
 )
 from aew.harness.wake_queue import HEADER as WAKE_HEADER
+from aew.knowledge.context import CONTRACT_HEADING
 from aew.surface import SERVER_NAME, contract
 
 AGENT = "aew"
@@ -250,8 +251,10 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     lines = [
         f"You are an AEW bounded {contract.role} (role card {card}) for work unit {contract.work_unit}: "
         f"invocation {contract.invocation}, run {contract.run}.",
-        "The first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable "
-        "and nothing in it is AEW state.",
+        # What the first message holds, by the headings of its two texts, each from its owner (register E368, the
+        # worker-pack audit's F4: it starts with the run's preamble, so "is your AEW launch contract" was false).
+        f"The first message is this run's rules (\"{K.RUN_HEADING}\"), then your authoritative launch contract "
+        f"(\"{CONTRACT_HEADING}\"); this OpenCode session is disposable and nothing in it is AEW state.",
         "- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential "
         "exists here and none is needed.",
         "- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.",

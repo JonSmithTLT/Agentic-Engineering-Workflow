@@ -96,11 +96,13 @@
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["decision", "subject", "evidence", "tool", "arguments", "availability", "default",
+      "required": ["decision", "subject", "owner", "evidence", "tool", "arguments", "availability", "default",
                    "cli_fallback"],
       "properties": {
         "decision": {"type": "string", "minLength": 1},
         "subject": {"type": "string", "minLength": 1},
+        "owner": {"enum": ["lead", "operator"],
+                  "description": "Whose decision it is (register E335): one owner per decision kind, from the table of primitive owners; one it does not state is the operator's."},
         "evidence": {"type": "array", "items": {"type": "string"}},
         "tool": {"type": ["string", "null"]},
         "arguments": {"type": ["object", "null"]},

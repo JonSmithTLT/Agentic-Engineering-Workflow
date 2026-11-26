@@ -23,10 +23,13 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 # description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
 # among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`); E160 slice 2b's `assess_plan` choice in
 # `resolve`'s enum and its description naming it (`dispatches` is not advertised); and E183's `steering` row, which
-# offers `lower` and `request_raise` only and says what works (nothing else moved).
-OFF_LIST_SHA = {"normal": "3a447dc1feed23ca0e6747c9809fb03e25fe46879fa54932152843cbec1b7acb",
-                "recovery": "4d9953ff4642884992c913f01c593b8e95aab7c0068ea818b9b5925b3a1a38be"}
-OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
+# offers `lower` and `request_raise` only and says what works; and E335, where `integration_publish`'s description
+# (standard and compact) says whose publication decision it carries out from the owner table, the operator's, and the
+# compact `resume` says each decision names its owner. E157 adds `report_write` and moves the explanation
+# inputs to `work_show`; every other row matches current main.
+OFF_LIST_SHA = {"normal": "ce40f8525c7eef281f7ffc77cf84e57ac2116144bb79ec9084be769b8bbb647b",
+                "recovery": "2745b00311aa73c99b9cf373c0a17289d147da5973be34b9ecd1cb19c134514b"}
+OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
 
 
 def digest(value):
@@ -209,6 +212,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
     expected = {
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
+        "report_write": "Save a Lead report and return its read command.",
         # E183: what works, and no confirmation request.
         "steering": "Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and "
                     "walk you take each step yourself. Lowering needs the operator's raise first; with no "
@@ -226,7 +230,9 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                                        "and launch the verifiers policy requires.",
         "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
                           "Publication stays a separate decision.",
-        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        # E335: PUBLISH is the operator's (the owner table's), so the text no longer calls it the Lead's.
+        "integration_publish": "Publish the prepared integration candidate: calling this carries out the operator's "
+                               "publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
                         "Deliver at next step (default), turn end or relaunch.",
     }

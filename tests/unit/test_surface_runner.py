@@ -264,6 +264,7 @@ def test_decisions_bind_only_reports_of_their_kind_from_the_current_run_and_carr
     [decision] = out["decisions_required"]
     assert decision["decision"] == "ACCEPT_REVIEW_EVIDENCE" and decision["tool"] == "ticket_request_verification"
     assert decision["evidence"] == ["EV-0007"] and decision["default"] == "NONE"
+    assert decision["owner"] == "lead"  # the Lead's by design, never asked of the operator (register E335)
     assert decision["availability"] == BLOCKED
     assert ("ticket_request_verification", {"work_id": wid, "review_evidence": "EV-0007"}) in asked
     assert decision["arguments"]["review_evidence"] == "EV-0007"

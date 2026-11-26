@@ -193,8 +193,9 @@ def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacem
     stage = _stage_for_route(route, state["work"][wid], original["evidence"])
     if stage:
         name, stage_arguments = stage
-        explained = surface.run_tool(engine, SurfaceContext.outside_session(), "explain",
-                                     {"stage": name, "work_id": wid, "arguments": stage_arguments})["result"]
+        explained = surface.run_tool(engine, SurfaceContext.outside_session(), "work_show", {
+            "explain": True, "stage": name, "work_id": wid, "arguments": stage_arguments,
+        })["result"]
         assert explained["availability"] == "BLOCKED"
         assert "PENDING_LEAD_MESSAGE" in explained["reason_codes"]
     assert engine.store.read_committed() == state and report_path.read_bytes() == old_bytes

@@ -51,9 +51,10 @@ STEERING_ONLY = frozenset({"mechanical_calls"})
 V1_DECISIONS = ("plan", "publish")
 # Whose decision it is, as the projection states it (spec v2): `decisions_required` counts operator-owned decisions
 # only. The scripted Lead puts to the operator only a decision the projection gives to the operator, or one whose owner
-# is not stated (every one, until the projection carries owners: today's behaviour, kept, and the summary says "owner
-# not stated"). One owned by the Lead or the mechanism it takes itself; it is listed apart and never asked. Every
-# question that does reach the operator is an operator decision and is compared, whatever owner it names.
+# is not stated (a fallback's question, which no decision carries: the summary says "owner not stated"; the projection
+# states every decision's owner since register E335). One owned by the Lead or the mechanism it takes itself; it is
+# listed apart and never asked. Every question that does reach the operator is an operator decision and is compared,
+# whatever owner it names.
 OPERATOR_OWNER, OWNER_NOT_STATED = "operator", "not stated"
 # The only owners the Lead takes a decision for. Any other stated owner (a new value, a case variant, an empty
 # string) is asked of the operator and compared like any other question, and is recorded as a finding
@@ -542,7 +543,7 @@ def ledger_dir_name(test_name: str) -> str:
 
 def decision_line(d: dict[str, Any]) -> str:
     """One decision as the summary shows it: what was asked, the tool its answer drives, whose decision the
-    projection says it is ("not stated" until it carries owners: the test does not settle that), and the answer
-    (bounded)."""
+    projection says it is ("not stated" for a question no decision carries: the test does not settle that), and the
+    answer (bounded)."""
     tool = (d.get("detail") or {}).get("tool") or "-"
     return f"{d['label']} [drives {tool}; owner {owner_of(d)}] -> {str(d['answer'])[:40]}"

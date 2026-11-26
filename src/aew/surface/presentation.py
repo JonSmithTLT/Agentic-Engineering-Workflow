@@ -5,12 +5,14 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
+from aew.owners import owner_of, whose
+
 if TYPE_CHECKING:
     from aew.surface.contract import Tool
 
 DESCRIPTIONS = {
     "status": "Project state, decisions and actions, or one unit's record.",
-    "resume": "Rebuild context from durable state, first after any restart.",
+    "resume": "Rebuild context from durable state, first after any restart. Each decision names its owner.",
     "harness_status": "Inspect worker runs and progress; changes nothing.",
     "harness_wait": "Wait for a run to end or need the Lead; one call, no polling.",
     "checkpoint": "Record a bounded handoff note; advances no work.",
@@ -25,7 +27,9 @@ DESCRIPTIONS = {
     "ticket_request_review": "Move a RUNNING Ticket to REVIEW_PENDING and launch required reviewers.",
     "ticket_request_verification": "Accept review if due, move to VERIFY_PENDING and launch required verifiers.",
     "ticket_prepare": "Accept verification if due and prepare integration; publication is separate.",
-    "integration_publish": "Publish the prepared candidate; this call is your publication decision.",
+    # Whose decision it carries out is the owner table's (register E335), never restated here.
+    "integration_publish": f"Publish the prepared candidate; this carries out "
+                           f"{whose(owner_of('integrate.publish'), to_lead=True)} publication decision.",
     # The guide's core says it changes no scope or authority (`messaging_guide_lines`).
     "message_send": "Message an active worker's invocation. Deliver at its next step (default), turn end or on "
                     "relaunch.",

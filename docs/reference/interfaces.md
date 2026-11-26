@@ -210,6 +210,7 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `notify desktop`
 - `notify file`
 - `opencode`
+- `operator confirm`
 - `operator ping`
 - `operator serve`
 - `plan accept`

@@ -34,7 +34,8 @@ MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
 SESSIONS_LOCK_TIMEOUT_S = 5.0  # held for a few file operations; a session that misses it says what to run
-OPERATIONS = ("ping", "mode_raise", "capability_change")  # capability_change: CAP-1, the designer's ruling 1
+# capability_change: CAP-1, the designer's ruling 1; decision_confirm: the operator's ruling of 2026-11-26 (E350)
+OPERATIONS = ("ping", "mode_raise", "capability_change", "decision_confirm")
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
 RESIDUALS = (
@@ -365,6 +366,53 @@ def request_capability_change(aew_root: Path, change: str, args: dict[str, Any],
         _send(conn, "capability_change", {"change": change, "args": args, "requester": who})
         shown = _reply(conn)
         return _answer(conn, lambda: read(capability_prompt(shown, who)))
+    finally:
+        conn.close()
+
+
+def confirmation_text(bound: dict[str, Any]) -> str:
+    """What a confirmation is of, in one line: the challenge's head, here and at the requesting terminal."""
+    s = bound["subject"]
+    if bound["decision"] == "plan":
+        return f"the acceptance of {bound['work_id']}'s plan v{s['revision']}"
+    return f"the publish of {bound['work_id']}'s candidate {str(s['candidate'])[:12]}"
+
+
+def confirmation_lines(bound: dict[str, Any]) -> list[str]:
+    """The exact plan or candidate a confirmation binds, as the operator reads it to decide."""
+    s = bound["subject"]
+    lines = [f"  ticket              : {bound['work_id']}" + (f" ({bound['title']})" if bound.get("title") else "")]
+    if bound["decision"] == "plan":
+        return [*lines, f"  plan                : .aew/{s['path']}", f"  plan SHA-256        : {s['sha256']}"]
+    paths = s.get("changed_paths") or []
+    shown = ", ".join(paths[:5]) + (f" and {len(paths) - 5} more" if len(paths) > 5 else "")
+    return [*lines, f"  candidate commit    : {s['candidate']}", f"  over base           : {s['base']}",
+            f"  changed paths       : {shown or 'none recorded'}",
+            f"  to read the change  : git diff {s['base']} {s['candidate']}"]
+
+
+def confirmation_prompt(shown: dict[str, Any], requester: str) -> str:
+    bound = shown["bound"]
+    return operator.challenge(
+        "", f"CONFIRM {confirmation_text(bound)}", requested_by=requester,
+        purpose=f"the Lead may then carry out this {bound['decision']} once (no credential is issued)",
+        instruction=SHOWN_THERE) + "> "
+
+
+def request_confirmation(aew_root: Path, decision: str, work_id: str, *, revision: int | None = None,
+                         ask: Callable[[str], str] | None = None, requester: str | None = None) -> dict[str, Any]:
+    """``aew operator confirm``: the operator's confirmation of a plan acceptance or a publish (the operator's ruling of
+    2026-11-26; register E350). Ask the endpoint, which shows the exact plan or candidate and its code on its console,
+    read the code typed at **this** terminal, and send it. The endpoint records the confirmation; this side holds no
+    authority."""
+    who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
+    read = ask if ask is not None else (lambda prompt: operator.ask(prompt))
+    conn = _connect(aew_root)
+    try:
+        _send(conn, "decision_confirm", {"decision": decision, "work_id": work_id, "revision": revision,
+                                         "requester": who})
+        shown = _reply(conn)
+        return _answer(conn, lambda: read(confirmation_prompt(shown, who)))
     finally:
         conn.close()
 

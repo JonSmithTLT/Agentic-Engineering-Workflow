@@ -891,9 +891,11 @@ commands:
       reason: "asked of the operator and recorded by the Lead (decided_by: lead, quoting the chat answer); until then a recovery command"
       options: {"--approval-digest": homes, work_id: homes, "--revision": homes}
     owner: pending (A1)
-    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [CHANGED_SINCE_READ, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND,
+               STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted shell fallback after the operator approves the plan; its typed home will be a resolve
-          choice (A2)"
+          choice (A2). OPERATOR_AUTHORIZATION_REQUIRED: from a Lead session, until the operator confirms the plan with
+          `aew operator confirm plan` (register E350)"
   - name: plan adopt
     home: product
     users: [lead]
@@ -1269,7 +1271,10 @@ commands:
     primitive: integrate.publish
     lead_disposition: typed
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION,
+               USAGE]
+    note: "OPERATOR_AUTHORIZATION_REQUIRED (operator_confirmation_required, operator_confirmation_stale): from a Lead
+      session, until the operator confirms this candidate with `aew operator confirm publish` (register E350)"
   - name: integrate reconcile
     home: recovery
     users: [lead]
@@ -1577,6 +1582,19 @@ commands:
     mutates_basis: "runs the operator endpoint, which commits steering raises (authority)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "the steering-on variants: the endpoint the raise goes through. `aew opencode` starts it with --background, which never needs the operator to type it"
+  - name: operator confirm
+    home: operator-admin
+    users: [operator]
+    journeys: [V1, V2, V4]
+    mutates: "yes"
+    mutates_basis: "asks the operator endpoint to record the operator's confirmation of a plan acceptance or a publish
+      (authority), which a Lead session's plan accept or publish then uses up"
+    refusals: [ILLEGAL_TRANSITION, NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND,
+               USAGE]
+    note: "the operator's ruling of 2026-11-26 (register E350): lead_broker.OPERATOR_CONFIRMS keeps it from a Lead
+      session; NOT_FOUND: no operator endpoint runs; ILLEGAL_TRANSITION: no proposed plan or prepared candidate to
+      confirm; OPERATOR_AUTHORIZATION_REQUIRED: no terminal to type the code at, or the plan or candidate moved while
+      it was shown (operator_confirmation_moved)"
   - name: operator ping
     home: diagnostic
     users: [operator]

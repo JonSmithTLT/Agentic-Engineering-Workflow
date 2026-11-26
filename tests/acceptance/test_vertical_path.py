@@ -859,21 +859,11 @@ def raise_steering(op: Operator) -> None:
     adopted action): the operator raises the steering mode to Run at the operator endpoint, a decision, not a
     lifecycle step. The endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed
     back; both terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are
-    real. The endpoint starts with the first raise, and a later raise (after a reopen) uses it again."""
-    from notifier import Console
-
-    from aew.engine.api import Engine
-    from aew.harness import operator_client, operator_endpoint
+    real. The endpoint starts with the first step that needs it (`Operator.endpoint_console`)."""
+    from aew.harness import operator_client
 
     op.workaround("raise", "aew operator serve; aew lead mode raise run, the code typed back")
-    if op.steering_console is None:
-        op.steering_console = Console()
-        endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=op.steering_console, dev=True,
-                                                      timeout=30)
-        endpoint.start()
-        op.closers.append(endpoint.close)
-        op.typed("steering:serve", "aew operator serve --dev")
-    console = op.steering_console
+    console = op.endpoint_console()
     op.typed("steering:raise", "aew lead mode raise run")
     try:
         out = operator_client.request_raise(op.lab.aew_root, "run", ask=lambda prompt: console.code())

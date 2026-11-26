@@ -146,7 +146,7 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
 
     credentials.before(args)  # a credential this command issues must have somewhere safe to go (ADR-0009)
     try:
-        with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
+        with dispatch.channel(dispatch.CLI):  # recorded with any dispatch decision this command makes (M4-A)
             return credentials.deliver(handler(args), args), getattr(args, "json", False)
     finally:
         lead_credential.take_prompted()  # what the operator typed at the prompt was for this command only

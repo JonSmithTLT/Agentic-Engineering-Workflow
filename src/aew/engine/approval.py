@@ -110,11 +110,11 @@ def require_binding(op: str, subject: str, field: str, binding: _Binding | None,
 def _binding_step(op: str, subject: str, field: str, work_id: str | None) -> str:
     if op == "manifest.adopt":
         return ("Review the changed files shown by `aew manifest adopt --reason <reason>` at the operator terminal. "
-                "API callers read `manifest_approval()` and pass its result as `binding`.")
+                "API callers read `manifest_approval()` and pass its result as binding.")
     status = f"aew status {work_id or subject}"
     if op in {"work.move", "work.promote"}:
         return (f"Read `{status} --json` and copy the `--prior-value` (`prior_value`) for "
-                f"`{op}` from `hierarchy_argv`.")
+                f"`{op}` from hierarchy_argv.")
     if op in {"integrate.defer", "integrate.requeue"}:
         return (f"Read the queue decision for {work_id or subject} with `work_show` and pass the shown "
                 "`--prior-value` from its CLI fallback.")
@@ -131,10 +131,10 @@ def _binding_step(op: str, subject: str, field: str, work_id: str | None) -> str
                 "(`prepared_candidate` in the stage call).")
     if op == "integrate.breaker_reset":
         return ("Read the current failure list and digest with `aew integrate breaker status`. "
-                "API callers pass the shown digest as `binding`.")
+                "API callers pass the shown digest as binding.")
     if op in {"authority.accept", "authority.reject"}:
         return ("Review the candidate shown by the authority command at the terminal. API callers read "
-                "`authority_candidate()` and pass its digest as `binding`. An explicit acceptance digest uses "
+                "`authority_candidate()` and pass its digest as binding. An explicit acceptance digest uses "
                 "`--approval-digest`.")
     if op == "work.gate_replace":
         return "Read the replacement in the typed `resume` projection and pass its `approval_digest` to `resolve`."

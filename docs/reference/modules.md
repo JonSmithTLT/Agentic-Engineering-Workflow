@@ -1808,7 +1808,6 @@ None.
 - `aew.harness.wake_queue`
 - `aew.skills`
 - `aew.surface`
-- `aew.surface.context`
 - `aew.surface.contract`
 
 ### `aew.harness.operator_autostart`

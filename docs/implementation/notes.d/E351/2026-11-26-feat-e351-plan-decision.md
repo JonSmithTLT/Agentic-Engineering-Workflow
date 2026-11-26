@@ -3,7 +3,7 @@ named `PLAN` (the V-01 burn-down's Q8, which the decisions-due list held for the
 verbatim: "6 yeah that seems like jts less a choice and more do you like the name? Which sounds good to me". So the
 kind is `PLAN`, and the vertical records it under `plan`, V1's own label, with no mapping.
 
-**Built (`feat/e351-plan-decision`), the row's Work:**
+**Built (#628, `feat/e351-plan-decision`), the row's Work:**
 
 - **The decision.** Each proposed plan revision that `plan accept` would take now (`work_ops.awaiting_acceptance`: the
   unit is in a state that may accept a plan, and the revision was proposed against the plan accepted now) is a `PLAN`

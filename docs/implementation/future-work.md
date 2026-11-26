@@ -5364,7 +5364,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-26
 
-**By:** this PR: a proposed plan revision that `plan accept` would take now is the operator's `PLAN` decision (the kind's name is the operator's ruling of 2026-11-26, Q8), with `plan accept` bound to the plan's SHA-256 as its `cli_fallback` and the operator's confirmation command as `ask_operator`; the steering loop stops on it as the operator's. The wire action is E390, the typed accept E163
+**By:** #628: a proposed plan revision that `plan accept` would take now is the operator's `PLAN` decision (the kind's name is the operator's ruling of 2026-11-26, Q8), with `plan accept` bound to the plan's SHA-256 as its `cli_fallback` and the operator's confirmation command as `ask_operator`; the steering loop stops on it as the operator's. The wire action is E390, the typed accept E163
 
 *Later notes: `notes.d/E351/`, oldest first (`python tools/register.py show E351`).*
 

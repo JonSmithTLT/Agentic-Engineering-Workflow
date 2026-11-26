@@ -45,6 +45,8 @@ def download_scanner(archive: str, path: Path) -> None:
             print(f"evidence scanner download attempt {attempt} of {SCANNER_ATTEMPTS} failed ({exc}); retrying",
                   flush=True)
             time.sleep(SCANNER_BACKOFF_S[attempt - 1])
+
+
 PYSPY = {
     "linux": "6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29",
     "win32": "d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc",

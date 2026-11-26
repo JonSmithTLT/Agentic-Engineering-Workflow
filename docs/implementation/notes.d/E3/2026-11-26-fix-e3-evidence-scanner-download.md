@@ -5,8 +5,9 @@ with 0 bytes for its whole 20 s on three Windows shards: run 45831204645, `regre
 withheld its lane report, so `assurance` failed closed ("shard N/M has no report") although every test had passed.
 
 The fix keeps the gate and makes getting the scanner reliable: up to 3 attempts, 2 s and 4 s apart. Each attempt ends
-after 10 s below 1 KiB/s (a stall) or 20 s in all, so the whole is at most 81 s, taken from the job's absolute test
-deadline. Whatever is finally downloaded is still checked against the pinned digest, a mismatch is not retried, and
+after 10 s below 1 KiB/s (a stall) or 20 s in all, and is bounded at 25 s, so the whole is at most 81 s. In a lane it
+comes out of the job's absolute test deadline; the scanner-only installs of `publish-evidence` and the cancel record
+have no such deadline, so there it adds to the step's run time. Whatever is finally downloaded is still checked against the pinned digest, a mismatch is not retried, and
 a scanner that fails every attempt is still reported unavailable, so the lane still withholds its report. Tests:
 `test_a_scanner_download_that_times_out_once_is_retried_and_still_checksum_verified` and
 `test_a_scanner_download_that_fails_every_bounded_attempt_still_reports_the_scanner_unavailable`

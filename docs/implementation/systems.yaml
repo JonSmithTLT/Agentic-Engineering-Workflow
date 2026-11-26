@@ -2351,8 +2351,12 @@ systems:
   touches_new:
   - src/aew/skills/**
   - tests/unit/test_lead_skills.py
+  - eval/skill_eval/**
+  - tests/unit/test_skill_eval.py
+  - tests/integration/test_skill_eval_opencode.py
   depends_on:
   - SYS-09
+  - SYS-01
   state:
     board_state: staged
     built: partly
@@ -2378,10 +2382,6 @@ systems:
       one foundational skill, once the source-research skill is written (E396)'
     row: E136
     estimate: 1 or 2 batched PRs after the operator's answers (estimate)
-  - slice: 'E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate
-      on E135''s row, outside this finish line'
-    row: E135
-    estimate: 1 PR for the runner (estimate)
   - slice: 'the Lead''s skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the
       per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record.
       Left: the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a
@@ -2404,7 +2404,7 @@ systems:
     drafts and `frontend-design` waits for its own card (E395). Every card but `researcher` requests one foundational skill
     (the operator, 2026-11-26, a ruling for every role card; its cost is reported for each card and is no longer a precondition); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
     hold interim ones (E397, E398). Also
-    E135's evaluation runner is still owed; its qualification
+    E135's evaluation runner is built (eval/skill_eval, on SYS-01's instrument); its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
@@ -2424,8 +2424,9 @@ systems:
   - 'docs/implementation/future-work.yaml (the Now list''s E127 line, at c11a61ea): E127, E142 and E136'
   - 'docs/implementation/future-work.yaml (row E127, at c11a61ea) E127 runs ''after CAP-1 PR 2, since both change the
     same binds''; BOARD v2 §7: E127 and E123 both touch containment/layout.py'
-  - 'docs/implementation/future-work.yaml (row E135, at c11a61ea) E135: runner not built; earlier result no detectable
-    benefit at about 1.5 times the cost'
+  - 'eval/skill_eval/__init__.py:1-25 E135''s evaluation runner: a shipped skill''s paired runs on the evaluation instrument
+    (cases, the two arms, the paired plan''s checks, the budgeted schedule, the report), proved offline in tests/unit/test_skill_eval.py
+    and against the fake OpenCode server in tests/integration/test_skill_eval_opencode.py; no model has run it'
 - id: SYS-23
   name: Declared-but-unenforced policy and role-card fields
   purpose: Keep designed policy and role features (dependency-direction rules, card path limits, typed output contracts,

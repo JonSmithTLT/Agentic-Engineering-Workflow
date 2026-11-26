@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 17 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-43, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-22, SYS-40, SYS-42, SYS-43, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -67,6 +67,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
+
+### SYS-22 — Specialist skills delivered to runs and the Lead
+
+**Board state:** staged
+
+**Who:** Lead
+
+**Now:** 24
+
+**Own slices left:** 2 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
+
+**Wired:** pack
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -244,7 +256,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 10 — SYS-29, SYS-41, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -257,18 +269,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route (E356); Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route — E356 — 1 PR (estimate), with I-6's route
 
 **Wired:** none
-
-### SYS-22 — Specialist skills delivered to runs and the Lead
-
-**Board state:** staged
-
-**Who:** Lead
-
-**Now:** 24
-
-**Own slices left:** 3 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate on E135's row, outside this finish line (E135); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
-
-**Wired:** pack
 
 ### SYS-41 — Lead consult (spawn a non-mutating agent for the Lead's own question)
 

@@ -1,0 +1,63 @@
+# A paired skill evaluation's preregistration (aew/eval-prereg/v1), to copy and fill outside this repository.
+# Every value that starts with REQUIRED is its owner's to decide, and `python -m skill_eval check` refuses a frozen
+# plan that still holds one. Freeze it with `python -m aew_eval.prereg freeze PLAN.yaml --by NAME`, once: a change
+# after freezing is a new experiment id. README.md beside this file says what each choice is.
+schema: aew/eval-prereg/v1
+experiment: REQUIRED-lowercase-id-one-per-skill-model-and-mode
+purpose: qualification            # or treatment_effect: the guide's benefit claim needs private cases (README)
+question: REQUIRED one falsifiable claim for this skill, this model and these cases (guide §1)
+profiles:
+  roles: {worker: REQUIRED provider/model#effort}   # a keyed, paid model the operator approves for this event
+  budget_usd: 10                  # at most the operator's limit, USD 10 (register E135)
+runs_per_cell: 1                  # the paired repeats per case; the count and its reason are the owner's (guide §1)
+assignment: {method: randomized_blocked, seed: 0}   # the seed is recorded before any run; the order comes from it
+primary_measure: REQUIRED one primary measure with its unit and denominator (guide §6)
+secondary_measures: []
+metrics: [{name: skill-eval-report, version: '1'}]
+validity_rules:
+  infrastructure_invalid: [the arm's exposure is not its frozen one, the model is not the pinned one]
+  counted_failures: [a wrong answer, a timeout, a step limit, a skill-caused failure]
+  retry_policy: {max_retries: 0, allowed_for: []}   # a model's failure is an outcome, never retried into a pass
+  missing_result_policy: REQUIRED how a pair with a missing run is reported (never dropped, never zero)
+stopping_rule: REQUIRED fixed sample, or the predeclared sequential rule
+held_out: []                      # F19 refuses a held-out case on a model arm until its evaluator/arm-host split
+scoring:
+  hidden_channel: the evaluator's directory (skill_eval materialize), never on a path an arm can read
+  who_scores: operator            # automated, model, operator or mixed: who grades is the owner's choice
+  blinding: arm_hidden            # `python -m skill_eval packets` removes the arm, its exposure, its loads and cost
+  adjudication_policy: REQUIRED the rubric's rules for duplicates, partial findings and disagreements
+  rubric_sha256: null             # the sha256 of the frozen rubric, when one is committed to
+exposure_policy: REQUIRED which cases these are (public development cases make a pilot) and who could read them
+amendment_policy: A material change is a new experiment id.
+cases: []                         # paste the `cases` block `python -m skill_eval materialize` prints
+arms:
+# The two arms are equal outside skills, optional_skills, skill_sha256 and told. The candidate arm exposes exactly
+# one skill more than the baseline: under `skills` for a procedure trial, under `optional_skills` for a selection
+# trial. Skills listed in both arms are the other candidates a selection trial keeps frozen.
+- id: baseline
+  kind: raw
+  description: the candidate absent
+  config: &raw
+    role: worker
+    model: REQUIRED the same provider/model#effort as profiles.roles.worker
+    profile:
+      id: REQUIRED the profile record's id
+      effective_profile: {context.orientation: null, tools.presentation: null}
+      qualification_state: REQUIRED the profile's state at preregistration
+    harness: {name: opencode, version: REQUIRED, artifact_sha256: {linux-x64: REQUIRED}}
+    contain: true                 # Linux with bubblewrap; false makes the lane a pilot
+    steps: 40
+    cap_usd: 0.25                 # charged when a run's cost is unknown; a pair is not started unless both caps fit
+    provider_env: [REQUIRED_NAME_OF_THE_KEY_VARIABLE]
+    session_db: {retain: true, retention_days: 30, fields: [{field: tool.name, transform: none}]}
+    skills: []
+    optional_skills: []
+    skill_sha256: {}
+- id: candidate
+  kind: raw
+  description: the candidate exposed
+  config:
+    <<: *raw
+    optional_skills: [REQUIRED-skill-id]
+    skill_sha256: {REQUIRED-skill-id: REQUIRED the id's sha256 in src/aew/skills/manifest.json}
+    # told: text appended to the task, verbatim; `python -m skill_eval told --skills ID` prints a worker's own lines

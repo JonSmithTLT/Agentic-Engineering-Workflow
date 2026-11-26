@@ -1628,7 +1628,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E135
 
-**Work:** The skill evaluation: whether a skill helps the weaker models AEW's workers would use, whether such a model picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs' usage. Its runner is not built
+**Work:** The skill evaluation: whether a skill helps the weaker models AEW's workers would use, whether such a model picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs' usage. Its runner is built (`eval/skill_eval/`); the qualification itself has not run
 
 **Source:** The evaluation plan of 2026-10-28, with the operator's limit of USD 10; the designer's decisions of 2026-11-04
 

@@ -258,8 +258,8 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     operator_commands.register_lead_mode(lsub)
 
     q = lsub.add_parser("telemetry", help="per Lead session, from its broker's local log: typed calls and their "
-                                          "misuse (refusals, defects, invalid arguments), guide reads and help lookups "
-                                          "(read-only; E231)")
+                                          "stops (by error code), defects and invalid arguments, guide reads and "
+                                          "help lookups (read-only; E231)")
     _add_json(q)
     q.set_defaults(handler=_lead_telemetry)
 

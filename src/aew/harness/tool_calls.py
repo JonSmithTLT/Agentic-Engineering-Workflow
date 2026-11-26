@@ -9,8 +9,9 @@ mutations from it together with the harness transcripts.
 The same log holds the session's lookups (E231: the operator's failure criterion for the guide's core, 2026-11-25: a
 Lead that "fails to use typed tools correctly, is using help all the time for shell commands"): one line per relayed
 ``aew guide`` read and per ``--help`` lookup its shell asks for (:func:`lookup`). Every line the broker writes names the
-Lead session it served (``session``, one per broker) and its generation, so :func:`counters` reads typed-tool misuse
-(refusals, defects, ill-formed arguments), guide reads and help lookups per session: what the scripted probe, the
+Lead session it served (``session``, one per broker) and its generation, so :func:`counters` reads, per session, the
+typed calls that stopped (by error code: a stop is not always the Lead's misuse), defects and ill-formed arguments,
+guide reads and help lookups: what the scripted probe, the
 dogfood and UAT compare (``aew lead telemetry``).
 
 It is telemetry under ``.aew/local/`` (git-ignored, rebuildable, KC §5.3): never control state, never read by a gate,
@@ -129,21 +130,22 @@ def lookup(aew_root: Path, *, kind: str, session: str | None, generation: int | 
         log.warning("the typed-tool call log dropped a lookup: %s: %s", type(exc).__name__, exc)
 
 
-COUNTERS = ("typed_calls", "refusals", "defects", "invalid_arguments", "guide_reads", "help_lookups")
+COUNTERS = ("typed_calls", "stopped", "defects", "invalid_arguments", "guide_reads", "help_lookups")
 
 
 def counters(lines: list[dict[str, Any]]) -> dict[str | None, dict[str, Any]]:
-    """Per Lead session (lines from before sessions were named fall under ``None``): its typed calls; their misuse,
-    as refusals (a call that ended refused, a defect aside), defects, and arguments the adapter refused before the
-    runner (``INVALID_ARGUMENTS``, an unknown tool); its guide reads, by section; and its help lookups, by command. A
-    line is counted by what it says, never by what it was meant to say: a guide read of a section that does not exist
-    is a guide read that failed (``ok`` false), and still a read."""
+    """Per Lead session (lines from before sessions were named fall under ``None``): its typed calls; those that
+    stopped with an error code (a defect aside), by code in ``stopped_codes``, since a stop is not always the Lead's
+    misuse (a launch that failed, a publish that only rebuilt, a report that failed: review of #593, m4); defects;
+    and arguments the adapter refused before the runner (``INVALID_ARGUMENTS``, an unknown tool); its guide reads, by
+    section; and its help lookups, by command. A line is counted by what it says, never by what it was meant to say: a
+    guide read of a section that does not exist is a guide read that failed (``ok`` false), and still a read."""
     out: dict[str | None, dict[str, Any]] = {}
     for line in lines:
         session = line.get("session")
         row = out.setdefault(None if session is None else str(session), {
             **dict.fromkeys(COUNTERS, 0), "generation": line.get("generation"), "first_at": line.get("at"),
-            "last_at": None, "guide_sections": {}, "help_commands": {}})
+            "last_at": None, "stopped_codes": {}, "guide_sections": {}, "help_commands": {}})
         row["last_at"] = line.get("at")
         kind = line.get("lookup")
         if kind == GUIDE:
@@ -162,8 +164,9 @@ def counters(lines: list[dict[str, Any]]) -> dict[str | None, dict[str, Any]]:
                 row["invalid_arguments"] += 1
             elif line.get("error_code") == DEFECT:
                 row["defects"] += 1
-            elif line.get("error_code") is not None:
-                row["refusals"] += 1
+            elif (code := line.get("error_code")) is not None:
+                row["stopped"] += 1
+                row["stopped_codes"][code] = row["stopped_codes"].get(code, 0) + 1
     return out
 
 
@@ -178,8 +181,9 @@ def render_counters(sessions: dict[str | None, dict[str, Any]]) -> str:
 
         out += ["", f"- {name or '(no session named: written before sessions were)'}, generation "
                     f"{row['generation']}, {row['first_at']} to {row['last_at']}: {row['typed_calls']} typed calls; "
-                    f"misuse: {row['refusals']} refused, {row['defects']} defects, {row['invalid_arguments']} with "
-                    f"invalid arguments; {row['guide_reads']} guide reads{by(row['guide_sections'])}; "
+                    f"{row['stopped']} stopped{by(row['stopped_codes'])}, {row['defects']} defects, "
+                    f"{row['invalid_arguments']} with invalid arguments; "
+                    f"{row['guide_reads']} guide reads{by(row['guide_sections'])}; "
                     f"{row['help_lookups']} help lookups{by(row['help_commands'])}."]
     return "\n".join(out)
 

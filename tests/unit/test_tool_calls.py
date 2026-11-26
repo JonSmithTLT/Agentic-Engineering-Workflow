@@ -121,7 +121,7 @@ def test_the_counters_read_typed_misuse_guide_reads_and_help_lookups_per_session
         T.record(tmp_path, **fields)
 
     call("LS-a", result=_result(ok=True, stopped=None))
-    call("LS-a", result=_result())  # stopped with a code: refused
+    call("LS-a", result=_result())  # stopped with a code (here a launch that failed: not always misuse)
     call("LS-a", input_error={"code": "INVALID_ARGUMENTS"})
     call("LS-a", error={"code": "DEFECT", "details": {}})
     T.lookup(tmp_path, kind=T.GUIDE, session="LS-a", generation=2, command="guide", section="steps", ok=True)
@@ -131,8 +131,9 @@ def test_the_counters_read_typed_misuse_guide_reads_and_help_lookups_per_session
     T.append(tmp_path, {"tool": "status", "ok": True})  # a line from before sessions were named
     counted = T.counters(T.read(tmp_path))
     a = counted["LS-a"]
-    assert {k: a[k] for k in T.COUNTERS} == {"typed_calls": 4, "refusals": 1, "defects": 1, "invalid_arguments": 1,
+    assert {k: a[k] for k in T.COUNTERS} == {"typed_calls": 4, "stopped": 1, "defects": 1, "invalid_arguments": 1,
                                              "guide_reads": 2, "help_lookups": 1}
+    assert a["stopped_codes"] == {"HARNESS_LAUNCH_FAILED": 1}  # review of #593, m4: by code, to tell misuse apart
     assert a["guide_sections"] == {"steps": 1, "(list)": 1} and a["help_commands"] == {"work create": 1}
     assert (counted["LS-b"]["help_lookups"], counted["LS-b"]["help_commands"]) == (1, {"aew": 1})
     assert counted[None]["typed_calls"] == 1

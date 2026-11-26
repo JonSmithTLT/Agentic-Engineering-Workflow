@@ -1806,6 +1806,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.wake_queue`
+- `aew.knowledge.context`
 - `aew.skills`
 - `aew.surface`
 - `aew.surface.contract`

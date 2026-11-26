@@ -809,7 +809,7 @@ class Validation:
                 "created_at": utc_now(), "seq": seq,
                 "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": staged["before"],
-                "method": {"capability": "targeted_test_execution" if r["command"][0] != "aew-builtin"
+                "method": {"capability": E.CHECK_CAPABILITY if r["command"][0] != "aew-builtin"
                            else "guardrail_check", "provider": "aew-check-runner", "command": r["command"],
                            "cwd": r.get("cwd"),
                            "containment": label.get("filesystem", containment.WORKDIR_ONLY),

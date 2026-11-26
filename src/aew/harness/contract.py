@@ -346,6 +346,11 @@ class LaunchContract:
         return preamble(self) + "\n\n" + self.pack_text + (continuation_text(self) or "")
 
 
+# The preamble's title: what a run's first message starts with (``LaunchContract.prompt``: the preamble, then the pack),
+# which the run's own text names when it says what that message holds.
+RUN_HEADING = "# AEW harness run"
+
+
 def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
@@ -354,7 +359,7 @@ def preamble(c: LaunchContract) -> str:
     commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
                           "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
-        f"# AEW harness run {c.run}",
+        f"{RUN_HEADING} {c.run}",
         "",
         f"You are AEW invocation **{c.invocation}**: a bounded `{c.role}` (role card `{card}`) for "
         f"work unit **{c.work_unit}**. The AEW launch contract below is authoritative; this harness session is "

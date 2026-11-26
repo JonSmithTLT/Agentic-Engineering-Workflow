@@ -1090,7 +1090,7 @@ class EvidenceCommands:
                 "created_at": utc_now(), "seq": seq,
                 "plan_revision": E.plan_binding(plan),
                 "evaluated_snapshot": before,
-                "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
+                "method": {"capability": E.CHECK_CAPABILITY if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
                            "cwd": run.get("cwd"),
                            "containment": (run.get("containment") or {}).get("filesystem")

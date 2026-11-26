@@ -114,6 +114,60 @@ def test_bridge_never_unpickles(server, tmp_path):
     assert not planted.exists() and not calls
 
 
+@pytest.fixture
+def accepting():
+    """A bridge whose handler accepts every operation, and the sizes of the text each request carried."""
+    got: list[tuple[str, int]] = []
+    srv = bridge.BridgeServer(lambda op, args: got.append((op, len(args.get("text", "")))) or {"ok": op})
+    srv.start()
+    yield srv, got
+    srv.close()
+
+
+def submission(size: int) -> dict[str, str]:
+    """A ``submit`` whose request is exactly ``size`` bytes as the client sends it."""
+    args = {"kind": "review", "text": ""}
+    args["text"] = "x" * (size - len(bridge.request_bytes("submit", args)))
+    assert len(bridge.request_bytes("submit", args)) == size
+    return args
+
+
+def test_a_request_over_the_bridges_limit_is_refused_saying_so_never_as_a_closed_bridge(accepting):
+    """Register E241: the server reads at most ``MAX_REQUEST`` and drops a longer request's connection unanswered,
+    which the client reported as ``StaleAuthority`` (the bridge closed, the outcome unconfirmed): false on both
+    counts. The client refuses it before sending, on every route, and the bridge serves the next request."""
+    srv, got = accepting
+    at_the_limit = submission(bridge.MAX_REQUEST)
+    assert bridge.call("submit", at_the_limit, endpoint=srv.address, key=srv.key_hex) == {"ok": "submit"}
+    with pytest.raises(errors.UsageError, match="nothing was sent") as refused:
+        bridge.call("submit", submission(bridge.MAX_REQUEST + 1), endpoint=srv.address, key=srv.key_hex)
+    assert refused.value.details == {"op": "submit", "size": bridge.MAX_REQUEST + 1, "limit": bridge.MAX_REQUEST,
+                                     "reason": bridge.REQUEST_TOO_LARGE}
+    assert str(bridge.MAX_REQUEST) in refused.value.message and "shorten" in refused.value.message
+    assert bridge.call("whoami", {}, endpoint=srv.address, key=srv.key_hex) == {"ok": "whoami"}  # still open
+    assert got == [("submit", len(at_the_limit["text"])), ("whoami", 0)] and not srv.closed
+
+
+def test_a_workers_oversized_submission_is_refused_saying_so_through_its_own_route(accepting, tmp_path, monkeypatch):
+    """The worker's route (``aew submit`` inside a harness run): non-ASCII text counts as JSON sends it, so a
+    file under the limit in bytes can be over it as a request."""
+    from aew.cli.main import build_parser
+
+    srv, got = accepting
+    monkeypatch.setenv(bridge.ENV_ENDPOINT, srv.address)
+    monkeypatch.setenv(bridge.ENV_KEY, srv.key_hex)
+    monkeypatch.delenv("AEW_INVOCATION_TOKEN", raising=False)
+    big = tmp_path / "report.md"
+    big.write_bytes(("\u00e9" * (bridge.MAX_REQUEST // 6 + 1)).encode())  # 6 bytes as JSON, 2 in the file
+    assert big.stat().st_size < bridge.MAX_REQUEST
+    parsed = build_parser().parse_args(["submit", "--kind", "review", "--file", str(big)])
+    with pytest.raises(errors.UsageError, match="nothing was sent") as refused:
+        parsed.handler(parsed)
+    assert refused.value.details["reason"] == bridge.REQUEST_TOO_LARGE and got == []
+    big.write_bytes(b"small")
+    assert parsed.handler(parsed) == {"ok": "submit"} and got == [("submit", 5)]
+
+
 def test_a_closed_bridge_is_stale_authority(server):
     srv, _ = server
     srv.close()

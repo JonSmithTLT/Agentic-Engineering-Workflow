@@ -178,3 +178,15 @@ def test_a_guide_read_records_only_a_section_the_guide_has():
     assert B.section_named("my private note") == B.section_named("nope") == B.UNKNOWN_SECTION
     assert B.guide_read(["-C", "x", "guide", "--json", "steps"]) == ("steps",) and B.guide_read(["guide"]) == (None,)
     assert B.guide_read(["status"]) is None
+
+
+def test_a_torn_line_is_skipped_and_counted_never_a_failed_read(tmp_path):
+    """Review of #593, n4: `aew lead telemetry` reads the whole log; a line that does not parse costs a count, never
+    the read."""
+    T.append(tmp_path, {"tool": "status", "ok": True, "session": "LS-a"})
+    with T.path(tmp_path).open("a", encoding="utf-8") as fh:
+        fh.write('{"tool": "stat\n[1, 2]\n')
+    T.append(tmp_path, {"lookup": T.HELP, "session": "LS-a", "command": "work show"})
+    lines, skipped = T.read_counted(tmp_path)
+    assert (len(lines), skipped) == (2, 2) and T.read(tmp_path) == lines
+    assert "2 line(s) that did not parse were skipped" in T.render_counters(T.counters(lines), skipped)

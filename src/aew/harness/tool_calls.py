@@ -170,11 +170,12 @@ def counters(lines: list[dict[str, Any]]) -> dict[str | None, dict[str, Any]]:
     return out
 
 
-def render_counters(sessions: dict[str | None, dict[str, Any]]) -> str:
-    """``aew lead telemetry``: one paragraph per session, oldest first."""
+def render_counters(sessions: dict[str | None, dict[str, Any]], skipped: int = 0) -> str:
+    """``aew lead telemetry``: one paragraph per session, oldest first, and how many lines did not parse."""
+    torn = f" {skipped} line(s) that did not parse were skipped." if skipped else ""
     if not sessions:
-        return f"No Lead session has written to .aew/{LOG_REL} yet."
-    out = [f"Lead sessions, from .aew/{LOG_REL} (local telemetry, oldest first; rotated files included):"]
+        return f"No Lead session has written to .aew/{LOG_REL} yet.{torn}"
+    out = [f"Lead sessions, from .aew/{LOG_REL} (local telemetry, oldest first; rotated files included):{torn}"]
     for name, row in sessions.items():
         def by(counts: dict[str, int]) -> str:
             return f" ({', '.join(f'{k} {v}' for k, v in counts.items())})" if counts else ""
@@ -217,13 +218,30 @@ def _rotate(aew_root: Path, target: Path, log_rel: str) -> None:
 
 def read(aew_root: Path) -> list[dict[str, Any]]:
     """Every line kept, oldest first (the rotated files, then the current one)."""
+    return read_counted(aew_root)[0]
+
+
+def read_counted(aew_root: Path) -> tuple[list[dict[str, Any]], int]:
+    """Every line kept, oldest first, and how many lines were skipped because they do not parse as a JSON object (a
+    torn write: review of #593, n4). Telemetry: a bad line costs a count, never the read."""
     from aew.engine.store import retry_lock_free
 
     out: list[dict[str, Any]] = []
+    skipped = 0
     for p in [*(rotated(aew_root, n) for n in range(KEEP, 0, -1)), path(aew_root)]:
         try:
-            text = retry_lock_free(p.read_bytes).decode("utf-8")
+            text = retry_lock_free(p.read_bytes).decode("utf-8", "replace")
         except FileNotFoundError:
             continue
-        out.extend(json.loads(x) for x in text.splitlines() if x.strip())
-    return out
+        for raw in text.splitlines():
+            if not raw.strip():
+                continue
+            try:
+                line = json.loads(raw)
+            except ValueError:
+                line = None
+            if isinstance(line, dict):
+                out.append(line)
+            else:
+                skipped += 1
+    return out, skipped

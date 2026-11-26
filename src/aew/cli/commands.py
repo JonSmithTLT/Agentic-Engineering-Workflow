@@ -320,10 +320,11 @@ def _guide(args: argparse.Namespace) -> Any:
 def _lead_telemetry(args: argparse.Namespace) -> Any:
     from aew.harness import tool_calls
 
-    sessions = tool_calls.counters(tool_calls.read(_engine(args).aew_root))
+    lines, skipped = tool_calls.read_counted(_engine(args).aew_root)
+    sessions = tool_calls.counters(lines)
     if args.json:
-        return {"sessions": [{"session": name, **row} for name, row in sessions.items()]}
-    return tool_calls.render_counters(sessions)
+        return {"sessions": [{"session": name, **row} for name, row in sessions.items()], "skipped_lines": skipped}
+    return tool_calls.render_counters(sessions, skipped)
 
 
 def _stage_resolve(args: argparse.Namespace) -> Any:

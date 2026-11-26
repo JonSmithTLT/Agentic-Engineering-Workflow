@@ -215,8 +215,24 @@ class ProcessTree:
         self.pids.append(proc.pid)
         return proc
 
+    def _members(self) -> dict[int, str]:  # pragma: posix-only
+        """Linux: each process in the tree's group and its state letter (``Z``: a zombie), read from ``/proc``."""
+        out: dict[int, str] = {}
+        for name in os.listdir("/proc"):
+            if name.isdigit():
+                try:
+                    fields = Path("/proc", name, "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()
+                    if int(fields[2]) == self._pgid:
+                        out[int(name)] = fields[0]
+                except (OSError, ValueError, IndexError):
+                    continue
+        return out
+
     def active(self) -> int:
-        """Processes still running in the tree (Windows: the job's count; POSIX: 1 if the group exists)."""
+        """Processes still running in the tree (Windows: the job's count; POSIX: 1 if the group has a member that
+        runs). A zombie runs nothing, and one nobody has reaped yet keeps its group: Linux reads the members, so a
+        group holding only zombies is not active (register E247). Another POSIX names no member, and answers 1 while
+        the group exists."""
         if sys.platform == "win32":  # pragma: windows-only
             if not self._job:  # closed: kill-on-close ended everything (a NULL handle would ask about our own job)
                 return 0
@@ -229,9 +245,18 @@ class ProcessTree:
             return 0
         try:
             os.killpg(self._pgid, 0)
-            return 1
         except OSError:
             return 0
+        if not sys.platform.startswith("linux"):
+            return 1
+        # Two readings, because one is not atomic: a member that forked and exited between the listing and its own
+        # read would hide its child. With every member a zombie in both and none new in the second, none runs: a new
+        # process in the group has a parent that ran after the first reading.
+        first = self._members()
+        if any(state != "Z" for state in first.values()):
+            return 1
+        second = self._members()
+        return int(any(state != "Z" or pid not in first for pid, state in second.items()))
 
     def survivors(self, wait_s: float = 10.0) -> list[tuple[int, str | None]]:
         """What of the tree still runs once it was killed, each ``(pid, start_id)``, after waiting up to ``wait_s``,
@@ -245,15 +270,7 @@ class ProcessTree:
             return []
         if sys.platform == "win32":  # pragma: windows-only
             return [(0, None)]
-        out: list[tuple[int, str | None]] = []
-        for name in os.listdir("/proc"):
-            if name.isdigit():
-                try:
-                    pgrp = int(Path("/proc", name, "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[2])
-                except (OSError, ValueError, IndexError):
-                    continue
-                if pgrp == self._pgid:
-                    out.append((int(name), start_id(int(name))))
+        out = [(pid, start_id(pid)) for pid in self._members()]
         return out or [(0, None)]
 
     def kill(self) -> None:

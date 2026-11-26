@@ -433,9 +433,11 @@ class Operator:
 # ---------------------------------------------------------------------------------------------- the world
 
 
-def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
+def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None,
+              host_data: Path | None = None) -> HarnessLab:
     """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
-    sample declares check caches in policy and has no `.gitignore` entry for them."""
+    sample declares check caches in policy and has no `.gitignore` entry for them. ``host_data`` is the world's
+    host-state base where AEW places its tools: a caller that has already built a synthetic home passes its own."""
     files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
@@ -459,7 +461,7 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
         # The world's own host state, so the tool offers it settles in setup (:func:`settle_tool_offers`) are its
         # own and no other test's: the session's shared base would carry its "no" into every later test. Only where
         # AEW places its tools: elsewhere nothing is offered as needed, and the host's base stays the session's.
-        env[hoststate.base_variable()] = str(tmp / "host-data")
+        env[hoststate.base_variable()] = str(host_data or tmp / "host-data")
     return HarnessLab(Project(repo), tmp, env)
 
 

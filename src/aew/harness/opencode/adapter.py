@@ -186,13 +186,27 @@ def _changed_now(contract: LaunchContract) -> Callable[[], list[str] | None] | N
     return read
 
 
+# The architecture names OpenCode Desktop gives its CLI folders (``cli\\<version>-<name>``). ``x64`` is the one seen
+# (2.2.6, register E235); another joins this when it is seen, never by guess.
+DESKTOP_CLI_ARCHITECTURES = ("x64",)
+
+
 def default_binary() -> Path | None:
-    """The pinned CLI: OpenCode Desktop's version-specific copy on Windows, else ``opencode-cli`` on PATH."""
+    """The pinned CLI: OpenCode Desktop's version-specific copy on Windows, else ``opencode-cli`` on PATH.
+
+    The Desktop keeps each CLI it downloaded under ``%APPDATA%\\ai.opencode.desktop\\cli``, in a folder named for its
+    version: the version alone before 2.2.6, and from 2.2.6 the version, a hyphen and the build's architecture
+    (``2.2.6-x64``; register E235). Exactly those names are read, the version alone first, then one per name in
+    ``DESKTOP_CLI_ARCHITECTURES``: a folder of another version, a pre-release (``2.2.6-rc.1-x64``) or any other
+    suffix is never taken for the pin. The Desktop's own copy under ``Programs\\ai.opencode.desktop\\resources``
+    is not looked for: its folder names no version, so the pin could not choose it."""
     if sys.platform == "win32" and os.environ.get("APPDATA"):
-        pinned = Path(os.environ["APPDATA"], "ai.opencode.desktop", "cli", capabilities.TESTED_VERSIONS[0],
-                      "opencode-cli.exe")
-        if pinned.exists():
-            return pinned
+        cli = Path(os.environ["APPDATA"], "ai.opencode.desktop", "cli")
+        version = capabilities.TESTED_VERSIONS[0]
+        for name in (version, *(f"{version}-{arch}" for arch in DESKTOP_CLI_ARCHITECTURES)):
+            pinned = cli / name / "opencode-cli.exe"
+            if pinned.exists():
+                return pinned
     found = shutil.which("opencode-cli") or shutil.which("opencode")
     return Path(found) if found else None
 

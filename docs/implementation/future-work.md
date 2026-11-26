@@ -65,7 +65,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
 | 32 | E161 | The Lead's skills, after E127 |
 | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-| 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -1902,18 +1902,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E166/`, oldest first (`python tools/register.py show E166`).*
 
-### E167
-
-**Work:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
-
-**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work (v2), (c)
-
-**When:** **Now.** Item 34 of the Now list, with E136's batches. Part of E168's new system, under the same limit
-
-**Notes:** Filed by the Lead. Data, the designer's reading
-
-*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
-
 ### E168
 
 **Work:** A review of any local branch or ref, as a non-mutating Ticket: the ref is resolved at dispatch and pinned to a commit, with its merge-base against the authoritative branch (AEW fetches nothing), and observed read-only there. A new record kind, `ref_review`, isn't source-bound to the authoritative commit: when the ref moves, the record says so and doesn't gate. A `branch_reviewer` card on the investigator archetype, which gains the kind, takes the requirement and the diff from the merge-base; its skill is the Lead's fit choice, checked in the PR. It never changes code or integrates
@@ -2550,18 +2538,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E234/`, oldest first (`python tools/register.py show E234`).*
 
-### E235
-
-**Work:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set. Fix the lookup with a test on the real folder name, and weigh the desktop's `Programs\ai.opencode.desktop\resources\` copy, whose path moved in that update. Read from the code, not yet run
-
-**Source:** Found by the Lead, 2026-11-08; works out of the box is the operator's rule
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
-
 ### E237
 
 **Work:** Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server = None`: the thread then reaches `os._exit(0)` and kills the test worker
@@ -2609,18 +2585,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the week's register PR
 
 *Later notes: `notes.d/E240/`, oldest first (`python tools/register.py show E240`).*
-
-### E241
-
-**Work:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route. Read, not reproduced
-
-**Source:** The quick check of #388, 2026-11-08
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E242
 
@@ -5104,6 +5068,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
 
+### E167
+
+**Was:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
+
+**Closed:** 2026-11-26
+
+**By:** #611, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
+
+*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
+
 ### E171
 
 **Was:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
@@ -5224,6 +5198,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E227/`, oldest first (`python tools/register.py show E227`).*
 
+### E235
+
+**Was:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set
+
+**Closed:** 2026-11-26
+
+**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version's, a pre-release's or another suffix's (#609's review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
+
+*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
+
 ### E236
 
 **Was:** `tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port` fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process's own listener, though it answers requests. CI's Windows passes. The E75 diagnostic loses its listener row on such a host, so the fix is the diagnostic saying so, with the test holding that, not a skip
@@ -5233,6 +5217,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E241
+
+**Was:** The worker's route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized request there should still give the false "bridge closed" refusal that #388 fixed for the Lead's route
+
+**Closed:** 2026-11-26
+
+**By:** #610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST` before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker's commands and the typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610's review), and the Lead's own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`
+
+*Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
 ### E251
 

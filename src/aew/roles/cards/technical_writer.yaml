@@ -8,7 +8,8 @@ use_when:
   - the Ticket's change surface is the repository's documentation
 responsibilities:
   - keep each claim true to its source, with the source's conditions, limits and exact normative wording
-  # The archetype already bars generated paths; this says what a writer does about one instead of editing it.
+  # The archetype prohibits editing generated paths, and the guardrails check refuses only those a project lists in
+  # `generated_paths` (empty by default), so this line is what tells a writer what to do about one.
   - leave generated reference to its generator and report a needed change to it, never edit it by hand
   - run the project's own document checks where it defines them, and say which were not run
 skills: [technical-writing]

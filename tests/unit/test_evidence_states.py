@@ -856,11 +856,17 @@ def test_a_serial_controllers_receipt_is_read_from_its_live_writer_and_an_xdist_
             rows[0]["collecting_s"] = collecting_s
         assert ev.before_tests(tmp_path, 1.0, rows, observer="warning")
         record = json.loads((tmp_path / BEFORE_TESTS).read_text())
+        # By name: the record lists the sessions in the order the file system gives their folders, which differs by
+        # platform (Windows listed the serial one first: fast 1/2 (windows-latest), job 139886271839).
+        listed = {s["session"]: s for s in record["sessions"]}
+        assert sorted(listed) == ["autopsy/session-serial", "autopsy/session-xdist"], record
+        assert len(record["sessions"]) == 2, record
+        assert "serial" not in listed["autopsy/session-xdist"] and listed["autopsy/session-xdist"]["workers"] == []
         # How long the controller had been collecting is kept, so a collection that hangs shows (#616, m2).
-        assert record["sessions"][1]["workers"] == [{"worker": CONTROLLER, "pid": pid, "start": birth,
-                                                     "phase": "collection-ended", "collecting_s": collecting_s}]
-        assert [(s["session"], s.get("serial"), len(s["workers"])) for s in record["sessions"]] == [
-            ("autopsy/session-xdist", None, 0), ("autopsy/session-serial", True, 1)]
+        assert listed["autopsy/session-serial"]["serial"] is True, record
+        assert listed["autopsy/session-serial"]["workers"] == [{
+            "worker": CONTROLLER, "pid": pid, "start": birth, "phase": "collection-ended",
+            "collecting_s": collecting_s}], record
         (tmp_path / BEFORE_TESTS).unlink()
         controller._record_phase(session_deadline.WORKER_PHASES[-1])
         rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())

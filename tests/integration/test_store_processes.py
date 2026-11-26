@@ -27,8 +27,10 @@ WORKER = HELPERS / "store_worker.py"
 HISTORY_WORKER = HELPERS / "history_worker.py"
 # Every child of this module runs without a console window on Windows (CLAUDE.md, "never open console windows").
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
-# Transactions per racing writer. The merge gate uses 50; the nightly race-repeat job raises it.
-RACE_WRITES = int(os.environ.get("AEW_RACE_WRITES", "50"))
+# Transactions per racing writer. The merge gate uses the default; the nightly race-repeat job raises it, and its fit
+# pin scales the recorded time by the ratio (tests/unit/test_repetition_fit.py).
+RACE_WRITES_DEFAULT = 50
+RACE_WRITES = int(os.environ.get("AEW_RACE_WRITES", str(RACE_WRITES_DEFAULT)))
 FAULT_POINTS = [
     "txn.before_stage",
     "txn.after_stage",

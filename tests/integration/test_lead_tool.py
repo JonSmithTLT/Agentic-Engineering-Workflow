@@ -210,8 +210,9 @@ def test_the_bridge_key_is_not_a_lead_credential(held):
 
 def _fake_wait(engine, monkeypatch, seen, until=None):
     """A run that never ends, or that ends once ``until`` is set: each single check (timeout 0) reports it."""
-    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False, lead=False, message_after=None):
         assert lead, "the typed wait is the Lead's own"  # its end then needs no wake (record_told)
+        assert message_after == {}, "a new project's typed wait observes the coordination lane"
         seen.append(timeout)
         run = runs if isinstance(runs, str) else runs[0]
         if until is not None and until.is_set():
@@ -269,7 +270,8 @@ def test_a_typed_wait_ends_at_its_own_timeout(held, monkeypatch):
     _fake_wait(engine, monkeypatch, seen)
     started = time.monotonic()
     out = call("harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 1})
-    assert out["ok"] and out["result"]["timed_out"] is True
+    assert out["ok"], out["stopped"]
+    assert out["result"]["timed_out"] is True
     assert 1 <= time.monotonic() - started < 15 and set(seen) == {0}
 
 

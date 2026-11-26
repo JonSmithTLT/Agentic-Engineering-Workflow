@@ -14,7 +14,7 @@ import contextvars
 import copy
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +35,7 @@ from aew.engine.seams import (
     GATE,
     GATE_CONTEXT,
     INGEST,
+    INGEST_QUERY,
     INVOKE,
     MUTATING,
     NON_MUTATING,
@@ -149,7 +150,7 @@ class Gates:
     Ticket's is computed here, a non-mutating Ticket's and a parent's by their own collaborators."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 kinds: KindRegistry, guards: GuardTable, archive: ArchivePort) -> None:
+                 kinds: KindRegistry, guards: GuardTable, archive: ArchivePort, coordination: CoordinationPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
@@ -157,6 +158,7 @@ class Gates:
         self.kinds = kinds
         self.guards = guards  # the return from escalation rechecks the entry guards of the phase it enters
         self.archive = archive
+        self.coordination = coordination
 
     def record_meta(self, unit: dict[str, Any]) -> dict[str, Any]:
         """The unit's record meta, with its effective scope: the paths added on the record join the declared ones
@@ -347,9 +349,23 @@ class Gates:
                                   unmet=unmet, fingerprint=(gc["snapshot"] or {}).get("relevant_inputs_fingerprint"))
 
     def ingest_ref(self, unit: dict[str, Any], ev: dict[str, Any]) -> None:
+        """Add the ref on an in-memory view. Commit paths pin through :meth:`pin_evidence`."""
         refs = unit.setdefault("evidence", [])
         if not any(r["id"] == ev["id"] for r in refs):
             refs.append(self.evidence_ref(ev))
+
+    def pin_evidence(self, ctx: TxnContext, unit: dict[str, Any], ev: dict[str, Any]) -> None:
+        ctx.post_report_message_pending.extend(self.coordination.require_final(ctx.state, ev))
+        self.ingest_ref(unit, ev)
+
+    def query_report_finality(self, state: dict[str, Any], args: dict[str, Any],
+                              report: Callable[[], dict[str, Any]]) -> Any:
+        def check() -> None:
+            ev = report()
+            pending = self.coordination.require_final(state, ev)
+            args.setdefault("found", {}).update(evidence=ev, post_report_message_pending=pending)
+
+        return guard_checked(check)
 
     @staticmethod
     def evidence_ref(ev: dict[str, Any]) -> dict[str, Any]:
@@ -413,8 +429,13 @@ class Gates:
         wanted = self._gate_evidence_ids(gc, names)
         for ev in gc["evidence"]:
             if ev["id"] in wanted:
-                self.ingest_ref(unit, ev)
+                self.pin_evidence(ctx, unit, ev)
                 ctx.refs.append(ev["_path"])
+
+    def _finality_of_gates(self, state: dict[str, Any], gc: dict[str, Any], names: list[str]) -> list[dict[str, Any]]:
+        wanted = self._gate_evidence_ids(gc, names)
+        return [message for ev in gc["evidence"] if ev["id"] in wanted
+                for message in self.coordination.require_final(state, ev)]
 
     def _ingest_implementation(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
         self.record_relied_on(ctx, unit, gc, self.PRE_REVIEW)
@@ -444,7 +465,8 @@ class Gates:
                                   self._guard_ready_for_verification_without_review,
                                   query=self._query_ready_for_verification_without_review, role=GATE),
                 GuardRegistration("commit_ready_without_review_or_verification",
-                                  self._guard_commit_ready_without_review_or_verification, role=GATE),
+                                  self._guard_commit_ready_without_review_or_verification,
+                                  query=self._query_commit_ready_without_review_or_verification, role=GATE),
                 GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current,
                                   role=GATE),
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification,
@@ -463,7 +485,9 @@ class Gates:
             if not self.review_gates(gc):
                 raise GateUnsatisfied("no review gate applies to this Ticket; advance to verification or commit-ready")
             self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
-            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW))
+            pending = self._finality_of_gates(state, gc, self.PRE_REVIEW)
+            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW),
+                                                post_report_message_pending=pending)
 
         return guard_checked(check)
 
@@ -484,7 +508,9 @@ class Gates:
             if not self.verification_gates(gc):
                 raise GateUnsatisfied("no verification gate applies; advance to commit-ready")
             self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> VERIFY_PENDING")
-            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW))
+            pending = self._finality_of_gates(state, gc, self.PRE_REVIEW)
+            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW),
+                                                post_report_message_pending=pending)
 
         return guard_checked(check)
 
@@ -493,12 +519,22 @@ class Gates:
         require(self._query_ready_for_verification_without_review(ctx.state, work_id, args))
         self._ingest_implementation(ctx, work_id, unit, args["found"]["gate_context"])
 
+    def _query_commit_ready_without_review_or_verification(self, state: dict[str, Any], work_id: str,
+                                                          args: dict[str, Any]) -> Any:
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            if required := self.review_gates(gc) + self.verification_gates(gc):
+                raise GateUnsatisfied("review/verification gates apply to this Ticket", required=required)
+            self._require_commit_ready(gc)
+            pending = self._finality_of_gates(state, gc, list(gc["gates"]))
+            args.setdefault("found", {}).update(gate_context=gc, post_report_message_pending=pending)
+
+        return guard_checked(check)
+
     def _guard_commit_ready_without_review_or_verification(self, ctx, work_id, unit, to) -> None:
-        gc = self.gate_context(ctx.state, work_id)
-        if self.review_gates(gc) or self.verification_gates(gc):
-            raise GateUnsatisfied("review/verification gates apply to this Ticket",
-                                  required=self.review_gates(gc) + self.verification_gates(gc))
-        self._commit_ready(ctx, work_id, unit, gc)
+        args: dict[str, Any] = {"to": to}
+        require(self._query_commit_ready_without_review_or_verification(ctx.state, work_id, args))
+        self._accept_commit_ready(ctx, work_id, unit, args["found"]["gate_context"])
 
     def _query_review_current(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """REVIEW_PASSED -> VERIFY_PENDING (M4-E E4: its query form): the pre-review and review gates are current for
@@ -643,10 +679,6 @@ class Gates:
             raise GateUnsatisfied("mandatory review findings are unresolved and not waived",
                                   findings=[f["id"] for f in gc["open_required_findings"]])
 
-    def _commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
-        self._require_commit_ready(gc)
-        self._accept_commit_ready(ctx, work_id, unit, gc)
-
     def _accept_commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
         """The COMMIT_READY acceptance: the evidence relied on is pinned, the gated snapshot recorded, and the
         acceptance's identity (``commit_ready_seq``) moves on."""
@@ -767,6 +799,7 @@ class EvidenceCommands:
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(INVOKE, MUTATING, self._invoke_ticket),
                 KindRegistration(INGEST, MUTATING, self._ingest_ticket_report),
+                KindRegistration(INGEST_QUERY, MUTATING, self._query_ticket_report),
                 KindRegistration(CLASSIFY_VERIFICATION, MUTATING, self._classify_ticket_verification),
                 KindRegistration(CLASSIFY_VERIFICATION, NON_MUTATING, self._classify_ticket_verification)]
 
@@ -1139,7 +1172,9 @@ class EvidenceCommands:
                 **diagnostic,
                 **({"failure_output": C.failure_output(run["log"])} if run["exit_code"] != 0 else {})}
 
-    def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
+    def submit(self, *, invocation_token: str, kind: str, text: str,
+               admitted: dict[str, str] | None = None,
+               continued: tuple[str, list[str]] | None = None) -> dict[str, Any]:
         submitted, body = parse_frontmatter(text, source="submission")
         with self.k.store.session() as s:
             state = s.state
@@ -1231,17 +1266,13 @@ class EvidenceCommands:
                                              "plan_revision", "evaluated_snapshot", "method", "claim", "result",
                                              "evidence") if k in meta}
             ordered.update({k: v for k, v in meta.items() if k not in ordered})
-            # F9-A plan D-35: the Lead messages this invocation had before it submitted, recorded on its evidence so
-            # whoever judges the report's independence sees the Lead text it received. Provenance only, read under
-            # the lock this submission holds; absent where none (always, while messaging was never enabled).
-            inputs = self.coordination.evidence_inputs(work_id, inv_id)
-            if inputs:
-                ordered["coordination_inputs"] = inputs
+            pending = self.coordination.report_snapshot(state, ordered, admitted, continued)
             path = self.k.aew_root / f"evidence/{work_id}/{meta['id']}.md"
             create_exclusive(path, E.seal(ordered, body))
         return {"ok": True, "evidence": meta["id"], "result": meta["result"],
                 "evaluated_snapshot": meta["evaluated_snapshot"], "path": str(path),
-                **({"coverage": meta["coverage"]} if "coverage" in meta else {})}
+                **({"coverage": meta["coverage"]} if "coverage" in meta else {}),
+                **({"pending_lead_messages": pending} if pending is not None else {})}
 
     def _coverage_files(self, workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
         if not base or scope not in {"ticket", "integration"}:
@@ -1343,14 +1374,17 @@ class EvidenceCommands:
     # ---- `review.ingest`'s guard as a query (M4-E E4; aew.engine.guards)
 
     def review_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
-        """``review.ingest`` of report ``args["evidence"]``: the guard of the ingest the ``KindRegistry`` selects for
-        the unit, where it has a query form (a mutating Ticket's); another kind's is ``NotQueryable``."""
+        return self._ingest_query(state, work_id, args, "review")
+
+    def _ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any], kind: str) -> Any:
         found = guard_checked(lambda: self.units.unit(state, work_id))
         if found is not None:
             return found
-        if self.kinds.resolve(INGEST, state["work"][work_id]) != self._ingest_ticket_report:
-            return NotQueryable("review.ingest")
-        return self._query_ticket_review(state, work_id, args)
+        return self.kinds.resolve(INGEST_QUERY, state["work"][work_id])(state, work_id, args, kind)
+
+    def _query_ticket_report(self, state: dict[str, Any], work_id: str, args: dict[str, Any], kind: str) -> Any:
+        check = self._query_ticket_review if kind == "review" else self._query_ticket_verification
+        return check(state, work_id, args)
 
     def _query_ticket_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """Accepting a review report for a mutating Ticket: it is REVIEW_PENDING; the report is a sealed review of it by
@@ -1378,6 +1412,7 @@ class EvidenceCommands:
                 raise GateUnsatisfied("review evaluated a snapshot that is no longer current (stale)",
                                       reviewed=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
             self.gates.require_bound_report(state, unit, ev, scope="ticket")
+            advisory = self.coordination.require_final(state, ev)
             findings = unit.get("findings") or []
             resolved = list(ev["review"].get("resolved_findings", []))
             for rid in resolved:
@@ -1392,7 +1427,7 @@ class EvidenceCommands:
                 self._apply_review(after, ev)
                 DO.require_disposed(DO.unit_items(DO.marks(self.k.policy("gates")), after), after, work_id, to)
             args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev),
-                                                to=to or unit["state"])
+                                                to=to or unit["state"], post_report_message_pending=advisory)
 
         return guard_checked(check)
 
@@ -1443,6 +1478,7 @@ class EvidenceCommands:
             require(self.review_ingest_query(state, work_id, args))  # the guard, as `explain` and a stage ask it
             unit = state["work"][work_id]
             ev = args["found"]["evidence"]
+            self.gates.pin_evidence(ctx, unit, ev)
             self._apply_review(unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             # The outcome, by the function the query predicted it with (it applies the review to a copy: applied
@@ -1458,7 +1494,7 @@ class EvidenceCommands:
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "transition": change, "pending_reviews": pending,
                 "open_required_findings": [f["id"] for f in open_required],
-                "revision": ctx.session.committed_revision}
+                "revision": ctx.session.committed_revision, **ctx.result_advisories()}
 
     # ---- `verify.ingest`'s guard as a query (M4-E E4b; aew.engine.guards). One query for both scopes: the report's own
     # scope selects the checks, as the ingest's does; the primitives `verify.ingest` (Ticket scope) and
@@ -1467,17 +1503,17 @@ class EvidenceCommands:
     def verify_ingest_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """``verify.ingest`` of report ``args["evidence"]`` (either scope): the guard of the ingest the
         ``KindRegistry`` selects for the unit, where it has a query form (a mutating Ticket's)."""
-        found = guard_checked(lambda: self.units.unit(state, work_id))
-        if found is not None:
-            return found
-        if self.kinds.resolve(INGEST, state["work"][work_id]) != self._ingest_ticket_report:
-            return NotQueryable("verify.ingest")
-        return self._query_ticket_verification(state, work_id, args)
+        return self._ingest_query(state, work_id, args, "verification")
 
     def scoped_verify_query(self, scope: str) -> Any:
         """The query of the primitive that ingests a report of ``scope`` (``ticket``: `verify.ingest`;
         ``integration``: `verify.ingest.integration`): the ingest's guard, and the report is of that scope."""
         def query(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+            unit = state["work"].get(work_id)
+            if unit is not None and self.kinds.resolve(INGEST, unit) != self._ingest_ticket_report:
+                if scope == "ticket":
+                    return self.verify_ingest_query(state, work_id, args)
+                return refusal(UsageError("an integration verification ingest is a mutating Ticket's"))
             found = self.verify_ingest_query(state, work_id, args)
             if found is not None:
                 return found
@@ -1545,6 +1581,7 @@ class EvidenceCommands:
                 raise GateUnsatisfied("verification evaluated a snapshot that is no longer current (stale)",
                                       verified=ev["evaluated_snapshot"]["relevant_inputs_fingerprint"], current=current)
             self.gates.require_bound_report(state, unit, ev, scope=scope)
+            advisory = self.coordination.require_final(state, ev)
             to, status, _pending = self._verification_outcome(state, work_id, ev)
             if to is not None:  # the change the ingest makes: the table's edge and the state hooks
                 transitions.check(unit["state"], to, "verify.ingest")
@@ -1553,6 +1590,7 @@ class EvidenceCommands:
                 DO.require_disposed(DO.report_items(DO.marks(self.k.policy("gates")), ev), unit, work_id,
                                     to or "validated")
             args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev), to=to or unit["state"],
+                                                post_report_message_pending=advisory,
                                                 integration_status=status)
 
         return guard_checked(check)
@@ -1610,7 +1648,7 @@ class EvidenceCommands:
             unit = state["work"][work_id]
             ev = args["found"]["evidence"]
             scope = ev["verification"]["scope"]
-            self.gates.ingest_ref(unit, ev)
+            self.gates.pin_evidence(ctx, unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]
             unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope,
@@ -1644,7 +1682,7 @@ class EvidenceCommands:
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "scope": scope, "result": result, "transition": change,
                 "pending_verifications": pending, "revision": ctx.session.committed_revision,
-                "coverage": ev.get("coverage") or CV.legacy()}
+                "coverage": ev.get("coverage") or CV.legacy(), **ctx.result_advisories()}
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
                         reason: str, binding: str | None = None) -> dict[str, Any]:

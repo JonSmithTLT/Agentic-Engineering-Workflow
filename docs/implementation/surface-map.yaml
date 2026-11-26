@@ -1130,12 +1130,14 @@ commands:
       homes: [message_send]
       primitive: message.send
       lands: F9-A
-      reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
-      options: {run: homes, "--text": homes, "--file": homes, "--when": uncovered}
-      uncovered: {lands: F9-A, uses: ["option --when"]}
+      reason: "The typed message_send records both timings. The shell send also wakes a held run."
+      options: {run: homes, "--text": homes, "--file": homes, "--when": uncovered, "--idempotency-id": homes}
+      uncovered: {lands: A4, uses: ["option --when"]}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
-    note: "messaging (F9-A1): A4 keeps a typed home or leaves it reachable, with its reason"
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE, STALE_REVISION,
+               MESSAGING_SNAPSHOT_MISMATCH, TURN_END_NEEDS_MESSAGING, COORDINATION_LIMIT, IDEMPOTENCY_CONFLICT,
+               ILLEGAL_TRANSITION, MIGRATION_REQUIRED, MESSAGING_DISABLED]
+    note: "Messaging-enabled sends use the coordination store and wake a held run. Both off retains next-step requests."
   - name: harness interrupt
     home: product
     users: [lead]
@@ -1788,6 +1790,16 @@ commands:
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
 
+  - name: message lost
+    home: product
+    users: [operator, lead]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "reads recent verified transition and seal records without writing a receipt"
+    probe: [message, lost]
+    refusals: [PROJECT_NOT_FOUND, USAGE, INTEGRITY_ERROR]
+    conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
+
   - name: message reply
     home: product
     users: [worker]
@@ -1826,7 +1838,7 @@ tools:
     refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION, USAGE, MESSAGING_DISABLED,
                COORDINATION_LIMIT, IDEMPOTENCY_CONFLICT, NOT_A_WORKER, RECIPIENT_INDEPENDENT,
                REF_UNKNOWN, REF_OUT_OF_SCOPE, REPLY_NOT_IN_THREAD, ILLEGAL_TRANSITION, MIGRATION_REQUIRED]
-    note: "coordination.messaging switch only; records a next-step message without commit/dispatch. Delivery is not built yet; turn-end refused until MS5b. Does not interrupt a run."
+    note: "Records next-step or turn-end under coordination.messaging. Stages a held run's message until it resumes."
   - name: status
     home: product
     users: [lead]

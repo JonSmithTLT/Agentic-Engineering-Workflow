@@ -1269,21 +1269,17 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: The design's R9 surface (`aew usage show` and `aew usage runs`) and the bounded `aew status --json` summary
-    total each run, Ticket and project from the existing projections, with cost when a price table is adopted. The surface
-    has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
+  finish_line: The design's R9 surface (`aew usage show`, whose `show <invocation>` rows stand in for `aew usage runs`)
+    and the bounded `aew status --json` summary total each run, Ticket and project from the existing projections, with cost
+    when a price table is adopted, and `aew usage show` also shows requests, tokens in the declared rate basis and the largest
+    request. The surface has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: R9's `aew usage show [WORK-ID] [--all]` and `aew usage runs`, and the status summary, over the existing projections
-      (unit_projection, project_projection, Reader.invocation), with the surface-map entry; it shows requests, tokens in
-      the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 2)
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07) also shows
+      requests, tokens in the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Until R9 merges, the two texts that name `aew usage show --all` as if it existed say it is designed, not built:
-      implementation-status.md:247 (listed in BOARD v2 §6''s docs PR) and the code comment at engine/api.py:349 (not listed
-      there)'
-    row: row owed
-    estimate: part of BOARD v2 §6's docs PR (estimate)
+    estimate: 1 small PR (estimate)
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized
@@ -1297,9 +1293,9 @@ systems:
     item 6'
   recommendation: freeze
   who: designer (the HOLD-21 match), then operator (release the CLI and status line), then Lead
-  reason: The write side runs on every launch and every Lead transaction, and nothing totals or shows it. The read side's
-    projections exist with no caller, so a CLI and status line over them is small. It is held in HOLD-21, so the operator
-    decides after the designer's match.
+  reason: The write side runs on every launch and every Lead transaction, and the read side is built over its projections
+    (`aew usage show` and the status line, F25's note of 2026-11-07; the price table at init and `/aew-usage`, its note of
+    2026-11-08). Left are ruling 2's fields in `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
   evidence:
   - src/aew/harness/usage.py (262 lines), src/aew/engine/usage_ops.py (705), src/aew/harness/usage_live.py (751) (wc -l
     at c11a61ea)
@@ -1313,13 +1309,11 @@ systems:
   - src/aew/harness/supervisor.py:543, :584-592 result.usage_record recorded with wall time
   - src/aew/harness/runlog.py:33 LIVE_FILE; :119 write_live; :125-133 read_live checks only the schema tag (:133)
   - src/aew/schemas/__init__.py:35-37 run-usage, usage-live and pricing schemas registered
-  - unit_projection, project_projection and runlog.read_live have no caller in src/aew (grep); Reader.invocation is called
-    only inside them (usage_ops.py:664, :687)
-  - 'grep -rn ''add_parser("usage"'' src/aew/cli finds nothing: no usage command'
+  - src/aew/engine/usage_read.py calls Reader.invocation, unit_projection and project_projection (`aew usage show`'s read);
+    runlog.read_live has no caller in src/aew (grep)
+  - src/aew/cli/usage_commands.py registers `aew usage show`; src/aew/engine/api.py Engine.usage_show is its one projection
   - docs/design/cost-usage-ledger-design-v0.2.md:311 R9 names `aew usage show [WORK-ID] [--all]`, `aew usage runs` and `aew
     usage lead`; :422 the surface names and the bounded `aew status --json` summary
-  - docs/implementation/implementation-status.md:247 and src/aew/engine/api.py:349 name `aew usage show --all`, which is
-    designed (R9) and not built
   - docs/implementation/implementation-status.md:243 only OpenCode 2.0.18 with openai qualified; every other provider unknown
     and never priced
   - 'docs/implementation/implementation-status.md:251 slice 2b''s rest: `aew usage`, the status summary, H2 re-measure;
@@ -1420,8 +1414,7 @@ systems:
     O-CMD judge what a reader is really asked" and 92003836 "test(D2): remove the 32 keys no longer observed, with --remove"'
 - id: SYS-13
   name: Lead-worker coordination messaging
-  purpose: 'Let the Lead and a running worker exchange recorded, hash-chained messages (questions and replies) without
-    moving control state. (Thread messaging: `aew work send` already delivers to a running agent outside it.)'
+  purpose: Let the Lead and a running worker exchange recorded, hash-chained messages without moving control state.
   serves_claims:
     closing_works: []
     extra:
@@ -1448,6 +1441,7 @@ systems:
   - cli-commands:message thread
   - cli-commands:message list
   - cli-commands:message unseen
+  - cli-commands:message lost
   - cli-commands:harness send
   - control-keys:coordination_store
   - control-keys:coordination_unseen
@@ -1478,37 +1472,29 @@ systems:
   switch:
     key: coordination.messaging
     default: disabled
+    new_project_default: enabled
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
-    owner: operator (read from the adopted execution policy only, src/aew/policy/execution.py:172-174)
-    turning_on_changes: 'Today: the typed message_send records without delivery, and `aew message thread|list|unseen`
-      register. Every `aew harness send` is refused MESSAGING_SNAPSHOT_MISMATCH, because no run can yet record a messaging-on
-      launch snapshot (the refusal says to switch messaging off), so the one live send path stops. HARNESS_SEND_NEEDS_STORE
-      is unreachable until MS4. After MS3-MS5b: the Lead sends recorded messages and workers reply on their thread.'
+    owner: operator (adopted execution policy, src/aew/policy/execution.py messaging)
+    turning_on_changes: 'Registers the Lead and worker messaging surfaces. Live and continuation delivery use the thread,
+      including both timings and recorded `aew harness send`. Result ingest checks whether a report accounts for Lead
+      messages recorded before submission. Existing projects with the key absent may adopt the offer.'
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - tool:message_send
     - cli:message thread
     - cli:message list
     - cli:message unseen
+    - cli:message lost
     - cli:harness send
-    on_by_default: false
+    on_by_default: true
     used_in_default_flow: partly
-  finish_line: 'After MS3''s record-only typed send, MS4 (worker reply/read/wait bridge ops and real launch snapshots)
-    and MS6 (Lead attention), all done: delivery (MS5), finality and store-recorded harness send (MS5b), with messaging
-    on by default and an absent-key-only operator offer for existing projects; then the operator''s live check, a real
-    recorded exchange (MS7, owed separately, not a default-on gate). Narrowed by the operator on 2026-11-25: steering''s
-    progress digest is built (the evidence), and a typed harness_interrupt (E248) and the standalone off/compact surface.presentation
-    policy are SYS-52''s, outside this finish line; until E248, `aew harness interrupt` is the Lead''s interrupt path.'
+  finish_line: 'MS5 live delivery and continuation, plus MS5b finality, both timings, recorded harness send and default-on.
+    The operator qualifies the feature with a real recorded exchange in MS7. The progress digest is already built and
+    the operator moved typed harness_interrupt (E248) and standalone off/compact surface.presentation to SYS-52.'
   remaining:
-  - slice: 'MS5: live delivery and continuation'
-    row: E175
-    estimate: 1 PR
-  - slice: 'MS5b: finality, both timings, recorded harness send and default-on'
-    row: E175
-    estimate: 1 PR
-  - slice: 'MS7: separately approved real-provider qualification; not a default-on gate'
+  - slice: 'MS7: operator real-provider qualification and sign-off'
     row: E175
     estimate: not sized
   decision: 'decided: narrowed to MS5 and MS5b, with MS7 as the operator''s live check (the operator, 2026-11-25, agreeing
@@ -1517,45 +1503,23 @@ systems:
     path while E248 waits."); E248 and the presentation policy moved to SYS-52. Earlier: finished and switched on in slot
     3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
-  who: Lead (MS5, MS5b); operator (MS7, the real recorded exchange)
-  reason: 'MS3 builds the typed record-only send and compact on-catalog. MS4 and MS6 merged together (at bb59e60c), still
-    off by default: worker reply/read/wait through the run''s bridge, the enabled-only launch snapshot, and the Lead''s
-    attention and wakes (F9''s and E175''s notes of 2026-11-11). Live delivery (MS5) is unbuilt, and harness send refuses
-    every send while messaging is on until MS5b. Steering''s progress digest, which the reset placed here as slot 3''s
-    first slice, is built: the run''s meter writes it as aew/run-progress/v1, and the Lead''s harness_wait returns on
-    its triggers (steering PR 1, merged at c906180f and f398f258; F9''s notes of 2026-11-07). The operator placed E131/E175
-    and withdrew the consult gate on 2026-11-10: finish the implementation slices with default-on at MS5b. Required Linux
-    qualification can hold the affected implementation and usable release; Windows qualification remains held/not run.'
+  who: operator (MS7, the real recorded exchange and sign-off)
+  reason: 'MS5 delivered the live and continuation paths. MS5b adds next-step and turn-end timing, records harness send,
+    pins the report''s coordination snapshot, and provides a read-only lost-message command. Fresh projects enable the
+    feature at init, while an operator can take the offer when an existing project has no setting. The remaining live
+    qualification and sign-off belong to the operator.'
   evidence:
-  - src/aew/policy/execution.py:138,149-150 (coordination.messaging and surface.presentation enums)
-  - 'src/aew/policy/execution.py:171-176 (messaging(): disabled unless the adopted policy says enabled)'
-  - src/aew/policy/execution.py:179-182 (presentation(); grep finds no caller of presentation() in src)
-  - src/aew/surface/contract.py (catalog and switch-registered message_send)
-  - src/aew/surface/run.py (_message_send, record-only result and turn-end refusal)
-  - src/aew/engine/coordination_ops.py:902 (_require_recordable)
-  - src/aew/engine/api.py (message_record_lead/worker, message_mark_shown and messaging_enabled passthroughs)
-  - src/aew/engine/primitives.py:136,176-177 (message.send declared, listed in NOT_STEPS)
-  - src/aew/engine/harness_ops.py:562 (harness_send, the HS1 path)
-  - 'src/aew/engine/harness_ops.py:1106 run_messaging_snapshot reads the run''s recorded launch snapshot (MS4, merged
-    at bb59e60c); :1113 send_route: with messaging on and a matching snapshot, every send is refused HARNESS_SEND_NEEDS_STORE
-    until MS5b'
-  - src/aew/harness/worker_messages.py (MS4, the worker's own-thread wait through the run's bridge)
-  - src/aew/engine/store.py:313,320-375 (the seal check; acts only where a thread file exists, :331)
-  - src/aew/engine/api.py:542-544 (coordination.finalize among the commit finalizers)
-  - src/aew/cli/commands.py:150-153 and src/aew/cli/main.py:84 (aew message registered only while messaging is on or a
-    thread exists)
-  - 'grep: no message_send or harness send tool under src/aew/surface'
-  - docs/implementation/implementation-status.md:255-269 (MS0-MS2 and HS1 built; later slices on F9)
-  - 'docs/implementation/future-work.yaml (row E131, at c11a61ea) (E131: unscheduled, the operator''s to place, depends
-    on HOLD-09)'
-  - docs/implementation/future-work.yaml (row HOLD-09, at c11a61ea) (HOLD-09 members include F9, F9.1, F9.2, E55, E60)
-  - src/aew/harness/progress.py:1-10 (the run's progress digest, aew/run-progress/v1, and the triggers that wake the Lead);
-    src/aew/harness/runlog.py:51 PROGRESS_SCHEMA, :199-207 read_progress
-  - 'src/aew/engine/harness_ops.py:552-573 (harness_wait''s triggers: a wait returns when a named run''s digest holds
-    a trigger it has not returned yet); src/aew/surface/run.py:124-129 (the typed harness_wait waits with triggers)'
-  - docs/implementation/notes.d/F9/2026-11-07-feat-steering-pr1-digest.md and 2026-11-07-feat-steering-pr1-part2.md (steering
-    PR 1, merged at c906180f and f398f258)
-  - 'src/aew/cli/work_commands.py:502 (aew harness interrupt: stop a run''s current turn, keeping its session)'
+  - src/aew/policy/execution.py (messaging and the new-project switch table)
+  - src/aew/switch_offer.py (absent-key-only coordination_messaging offer)
+  - src/aew/surface/contract.py (switch-registered message_send)
+  - src/aew/engine/harness_ops.py (harness_send records while messaging is enabled)
+  - src/aew/harness/worker_messages.py (next-step and turn-end delivery, worker wait, and continuation admission)
+  - src/aew/engine/coordination_ops.py (report_snapshot, report_finality and message_lost)
+  - src/aew/cli/message_commands.py (message thread, list, unseen and lost)
+  - tests/integration/test_message_finality.py (finality, recovery and historical report compatibility)
+  - tests/integration/test_message_delivery.py (live and continuation receipts)
+  - docs/implementation/notes.d/E175/2026-11-25-feat-sys13-ms5-live-delivery.md
+  - docs/implementation/notes.d/E175/2026-11-25-feat-sys13-ms5b.md
 - id: SYS-14
   name: Knowledge system (Arm B raw-history search; M6b capture, admission and recall)
   purpose: Capture, admit and recall project knowledge for agents; today only an explicit, switched full-text search over

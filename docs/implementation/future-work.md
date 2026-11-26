@@ -74,7 +74,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
 | 42 | E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25) |
-| 43 | E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25) |
+| 43 | closed: E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25), closed by #594 |
 | 44 | E367 | The Lead's system text and tool list rewritten, with a truth test, after the guide's core plus pointers |
 | 45 | E368 | Worker packs as a core plus pointers, after E367 |
 | 46 | E369 | The always-sent context audit, a standing item the operator schedules |
@@ -4086,18 +4086,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E365/`, oldest first (`python tools/register.py show E365`).*
 
-### E366
-
-**Work:** The plan assessor's pack says what is true at its scope. The pack renders the reviewer archetype's text (`src/aew/roles/archetypes/reviewer.yaml:7-19`, through `knowledge/context.py`) unchanged at every scope. At `plan_assessment` scope it tells the assessor to report "findings about the change", to read a "diff and check output" and to state which earlier findings are resolved; there is no change, diff or earlier review, and an assessor that follows the text is refused by `evidence.schema.json`. At observation scope the same text asks for a diff the reviewer does not have, though its `review` is accepted. Fix: the archetype's text is fitted to the scope it is rendered at, and a pack-truth test holds that no pack tells a role to do what its scope cannot give or its record kind refuses (scope fit). Both scopes are in this row and on SYS-43, since one change to the archetype's text serves both. Parent scope is not in it: its pack carries each child's integrated diff and the aggregate diffstat
-
-**Source:** The operator, 2026-11-25, with the always-sent context audit reports of that day: the audit of the worker packs, the plan assessor's pack at `plan_assessment` scope
-
-**When:** **Now**, first in the always-sent context work (the operator's order of 2026-11-25)
-
-**Notes:** Filed by the always-sent audit register PR. It follows E160's assessor entrypoint, whose pack it corrects
-
-*Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
-
 ### E367
 
 **Work:** The Lead's system text and tool list, rewritten so every line is true and needed. The false lines: "A shell mutation still needs `--expect-rev`" (`harness/opencode/projection.py:454`); approval channels "as the guide says" (`:463`), which the guide never states; Lead "handoff … refused" (`:486`), though `handoff cancel` is allowed; and `message_send`'s `when: turn-end`, which is always refused. The rewrite saves about 4.4 KB per request and needs no ruling. The typed `status` and `resume` results get a compact payload, about 3.9 KB less per status call. A Lead-text truth test checks each claim the text makes against the parser, `lead_broker` and the enums. For the designer: four schema changes worth about 3.1 KB, and whether the MCP server's instructions count in the Lead's pool. Related: E162 (the Lead text fixes, frozen on SYS-51), which this row does not absorb: it corrects and shortens the lines the Lead is told today, and E162's additions stay E162's, whose unfreezing is the operator's
@@ -5165,6 +5153,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #453 (`739f3a5c`), with the dated ADR-0009 amendment. E355 is the usage pot's PR 2
 
 *Later notes: `notes.d/E354/`, oldest first (`python tools/register.py show E354`).*
+
+### E366
+
+**Was:** The plan assessor's pack says what is true at its scope: the reviewer archetype's text fitted to the scope it is rendered at (`plan_assessment` and observation), with a pack-truth test of scope fit
+
+**Closed:** 2026-11-26
+
+**By:** #594: the archetype's text is scope-neutral, `knowledge.context._scope_duties` adds each scope's duties only where the pack delivers their input, and `test_pack_truth`'s scope-fit guard holds it. Parent scope, outside the row, gained only the change duty for the child diffs its pack carries, on #594's review (m1) (`notes.d/E366/`)
+
+*Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
 
 ### F1
 

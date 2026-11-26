@@ -127,8 +127,9 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     _add_json(p)
     p.set_defaults(handler=_resume)
 
-    p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
-                                     "requires, the Ticket lifecycle and the tool or command for each step (read-only)")
+    p = sub.add_parser("guide", help="how work flows in AEW for this project, from its own policy: with no section, "
+                                     "the guide's sections; `core` is what every Lead request carries (read-only)")
+    p.add_argument("section", nargs="?", help="the section to print: `core`, or one `aew guide` lists")
     _add_json(p)
     p.set_defaults(handler=_guide)
 
@@ -256,6 +257,12 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
 
     operator_commands.register_lead_mode(lsub)
 
+    q = lsub.add_parser("telemetry", help="per Lead session, from its broker's local log: typed calls and their "
+                                          "stops (by error code), defects and invalid arguments, guide reads and "
+                                          "help lookups (read-only; E231)")
+    _add_json(q)
+    q.set_defaults(handler=_lead_telemetry)
+
     q = lsub.add_parser("mcp", help="the Lead's MCP server, aew-lead (F15.1): spawned by the Lead's harness in a Lead "
                                     "session; it holds no credential and forwards every call to the session's broker")
     q.add_argument("--profile", choices=["normal", "recovery"], default="normal",
@@ -300,8 +307,25 @@ def _register_stage(sub: argparse._SubParsersAction) -> None:
 def _guide(args: argparse.Namespace) -> Any:
     from aew.surface import lead_text
 
-    text = lead_text.guide_for(_engine(args))
-    return {"guide": text} if args.json else text
+    doc = lead_text.document_for(_engine(args))
+    if args.section is None:
+        if not args.json:
+            return doc.listing()
+        return {"sections": [{"name": doc.names()[0], "topic": "the core, which every Lead request carries",
+                              "when": "always: it comes with every request"},
+                             *({"name": s.name, "topic": s.topic, "when": s.when} for s in doc.sections.values())]}
+    text = doc.read(args.section)
+    return {"section": args.section, "text": text} if args.json else text
+
+
+def _lead_telemetry(args: argparse.Namespace) -> Any:
+    from aew.harness import tool_calls
+
+    lines, skipped = tool_calls.read_counted(_engine(args).aew_root)
+    sessions = tool_calls.counters(lines)
+    if args.json:
+        return {"sessions": [{"session": name, **row} for name, row in sessions.items()], "skipped_lines": skipped}
+    return tool_calls.render_counters(sessions, skipped)
 
 
 def _stage_resolve(args: argparse.Namespace) -> Any:

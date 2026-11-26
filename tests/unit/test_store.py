@@ -145,13 +145,18 @@ def test_the_windowed_oracle_checks_the_newest_log_records_and_their_chain_link(
     assert ranges == [(4, 6)]  # from the link, not from the start of history
 
 
+# The merge gate's iterations. The nightly crash-extended job raises the count, and its fit pin scales the recorded time
+# by the ratio (tests/unit/test_repetition_fit.py).
+CRASH_ITERATIONS_DEFAULT = 200
+
+
 def test_randomized_crash_iterations(tmp_path, monkeypatch):
     # Merge gate: seed 20260925, 200 iterations. The nightly crash-extended job rotates the seed and raises the count.
     rng = random.Random(int(os.environ.get("AEW_CRASH_SEED", "20260925")))
     init(tmp_path)
     monkeypatch.setenv("AEW_FAULT_MODE", "raise")
     expected = 0
-    iterations = int(os.environ.get("AEW_CRASH_ITERATIONS", "200"))
+    iterations = int(os.environ.get("AEW_CRASH_ITERATIONS", str(CRASH_ITERATIONS_DEFAULT)))
     for i in range(iterations):
         point = rng.choice(FAULT_POINTS + [None, None])
         if point:

@@ -533,7 +533,7 @@ def _scanner_download(monkeypatch, tmp_path, outcomes):
     archive = built.read_bytes()
     monkeypatch.setitem(installer.GITLEAKS, installer.sys.platform,
                         (archive_name, installer.hashlib.sha256(archive).hexdigest()))
-    calls, sleeps = [], []
+    calls = []
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
@@ -543,7 +543,9 @@ def _scanner_download(monkeypatch, tmp_path, outcomes):
         Path(command[command.index("--output") + 1]).write_bytes(archive if outcome is None else outcome)
 
     monkeypatch.setattr(installer.subprocess, "run", run)
-    monkeypatch.setattr(installer.time, "sleep", sleeps.append)
+    # The backoff is recorded and skipped for this test's thread only; other threads keep the real sleep.
+    from sleep_patch import patch_sleep
+    sleeps = patch_sleep(monkeypatch, installer)
     return installer, binary, calls, sleeps
 
 

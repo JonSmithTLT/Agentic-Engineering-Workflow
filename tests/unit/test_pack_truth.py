@@ -106,7 +106,7 @@ def launch(pack: str, role: str, scope: str = "ticket", card: dict[str, Any] | N
     """A harness run's contract for ``pack``, as ``harness_contract`` records a card's lists (``extra``)."""
     card = card or {}
     return K.LaunchContract(
-        run="R-INV-1-1", invocation="INV-1", work_unit="T-1", role=role, scope="ticket",
+        run="R-INV-1-1", invocation="INV-1", work_unit="T-1", role=role, scope=scope,
         card={"id": card["role"]} if card else None,
         execution_profile={}, workspace="/ws/T-1", expected_kinds=sorted(E.kinds_for(role, scope)),
         operations=sorted(E.submit_operations(roles.archetype(role)["engine_operations"], role, scope)),
@@ -477,9 +477,12 @@ def test_the_mechanism_guard_right_wrong_and_missing(line, found):
         f"### Allowed engine operations\n- submit.review\n\n{line}\n") == []
 
 
-def test_a_checks_evidence_names_the_capability_the_pack_says_the_check_command_serves():
-    """One owner (``evidence.CHECK_CAPABILITY``): the method a check's evidence records is the capability the pack
-    names beside `aew check run`, and the command is on the bridge."""
+def test_every_operation_that_serves_a_capability_has_a_command_and_is_on_the_bridge():
+    """The two tables agree, and the check command is the one the check guard reads. That a real check's evidence
+    names ``evidence.CHECK_CAPABILITY`` as its method is read from one in
+    ``test_evidence_gates.test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_label`` (#613
+    review, m4). Limit (n3): the first line restates the table, so a new operation that serves a capability fails
+    nothing here until it is added."""
     assert E.OPERATION_CAPABILITIES == {"check.run": (E.CHECK_CAPABILITY,)}
     assert set(ctx.OPERATION_COMMANDS) == set(E.OPERATION_CAPABILITIES) <= set(bridge.OPERATIONS)
     assert check_trap(f"{ctx.OPERATION_COMMANDS['check.run']}\n{ctx.CHECK_WRITES_NOTE}", "verifier") is None

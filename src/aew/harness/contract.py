@@ -355,8 +355,11 @@ def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
     # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
-    # 2026-09-30, R-INV-0007-1).
-    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+    # 2026-09-30, R-INV-0007-1). The check command is the pack's own, since this says "exactly as the contract shows"
+    # (#613 review, m3); imported here because the pack's module imports the bridge, which imports this one.
+    from aew.knowledge.context import OPERATION_COMMANDS
+
+    commands = ", ".join([*([OPERATION_COMMANDS["check.run"]] if "check.run" in c.operations else []),
                           "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
         f"{RUN_HEADING} {c.run}",

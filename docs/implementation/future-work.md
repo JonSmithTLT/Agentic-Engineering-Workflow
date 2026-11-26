@@ -3978,6 +3978,186 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
+### E373
+
+**Work:** An empty project offers the action for the operator's request: the project's projection offers `ticket_draft` as an AVAILABLE action on a project with no open Ticket, naming the inputs its call needs (title, scope, goal, plan), so a Lead asked for a fix starts from an offered action, not a guessed one. Today `_control_part` returns the project's part before any action (`src/aew/surface/projection.py:122`) and `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so `ticket_draft`, a built stage (`src/aew/surface/availability.py:173`), is never projected. With it, the scripted Lead fills those inputs from its own draft (`tests/helpers/vertical/lead.py`, `judged`)
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C3), from the vertical's re-measure of 2026-11-26 at `3640b585`: `guessed_commands` in every case with a Lead; V01-01 step 4 (W15)
+
+**When:** **V-01**, the strict track of the burn-down; it waits for the designer's answer to the plan's Q4 (whether the interim offer is `ticket_draft` or step 4 waits for `CREATE_PROPOSED_WORK`), and for the judgment_inputs row being filed with #597
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E373/`, oldest first (`python tools/register.py show E373`).*
+
+### E374
+
+**Work:** RESOLVE_STAGE is offered only for a stage the Lead must resolve: a stage intent the steering loop is running (`auto_run`, the loop active, its next step pending) is not a RESOLVE_STAGE decision, and a RESOLVE_STAGE that is offered carries what `resolve` requires (`choice` with its options, and `rationale`), so its call passes the tool's schema. Today `_stage_decisions` lists every unfinished stage intent, the loop's own included (`src/aew/surface/projection.py:233-243`), and its arguments omit `choice` and `rationale`, which `resolve` requires (`src/aew/surface/contract.py:285-295`). Naming judgment inputs on every projected decision is the judgment_inputs row being filed with #597; this row is RESOLVE_STAGE's own two parts
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C5), from the vertical's re-measure of 2026-11-26 at `3640b585`: `resolve` refused `INVALID_ARGUMENTS` in each steering-on case and in V2's forced case
+
+**When:** **V-01**, the strict track of the burn-down, after E335 (the owner decides who fills the inputs); whether the loop's running stage is offered at all waits for the designer's answer to the plan's Q9
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Coordinated with the judgment_inputs row being filed with #597, which it does not duplicate
+
+*Later notes: `notes.d/E374/`, oldest first (`python tools/register.py show E374`).*
+
+### E375
+
+**Work:** The scripted Lead's steering-on policy: with steering on, it honours a wait the projection marks `woken` (`src/aew/surface/projection.py:558`) by ending its turn until a wake or the operator arrives, with the fake TUI given a wake channel to it (today it reads only chat, `tests/helpers/vertical/lead.py:167-191`, and calls the single AVAILABLE action, `:355-364`); and it counts a BLOCKED loop stop as a decline only when its blocker is still present after the run ends (today `loop_acts` counts it at once, `:379-382`, while the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`)
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical's re-measure of 2026-11-26 at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case
+
+**When:** **V-01**, the strict track of the burn-down, beside E338; it changes the Lead policy of `vertical-uat.md` §2, so it waits for the operator's answer to the plan's Q1 and the amendment that follows it
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E375/`, oldest first (`python tools/register.py show E375`).*
+
+### E376
+
+**Work:** V2's reopen reaches the seat resume: the vertical's offline world settles AEW's tool offers before the first open, or the scripted operator answers the tool-consent screen, as the operator rules. Today only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`, `_tools_before_the_tui`; `src/aew/capability/consent.py:401-405`) for a needed tool missing on the host; the screen waits on the terminal for `src/aew/operator.py:28`'s timeout, the driver's own session bound, and the scripted operator answers only the seat-resume code (`scripted_operator.py:316-321`). The takeover fallback then interrupts the implementer, so E330's resume (#447) has not been exercised by any V2 case
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C7), from the vertical's re-measure of 2026-11-26 at `3640b585`: every fresh-terminal reopen (V2's four cases and the forced one) went silent at the consent screen, then took the counted takeover
+
+**When:** **V-01**, the alpha track of the burn-down, after E335: with E335 it is expected to make the alpha gate pass, which a rerun confirms. Whether the consent screen is a setup fixture or a counted operator step waits for the operator's answer to the plan's Q5
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed, with E377 in the same pull request
+
+*Later notes: `notes.d/E376/`, oldest first (`python tools/register.py show E376`).*
+
+### E377
+
+**Work:** The scripted Lead's first words are the readable text of `resume`: the MCP result's `content[0].text` (`src/aew/surface/mcp.py:240-247`, `readable.render`), not only `structuredContent` (`tests/helpers/vertical/lead.py:254`), whose fields `_words` looks for (`:710-715`) and does not find. If the rendered resume does not say where T-0001 stands, that part is a product gap, recorded on this row
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C8), from the vertical's re-measure of 2026-11-26 at `3640b585`: V2's "told where things stand in words" read nothing in every V2 case
+
+**When:** **V-01**, the alpha track of the burn-down, in E376's pull request
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E377/`, oldest first (`python tools/register.py show E377`).*
+
+### E378
+
+**Work:** A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED), with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today `_ticket_actions` emits no decision there (`src/aew/surface/projection.py:246-299`), the only guidance is a hint to `aew integrate requeue` (`src/aew/engine/resume_ops.py:471-476`), and after each requeue `ticket_prepare` is projected AVAILABLE and refused `ILLEGAL_TRANSITION`. The scripted Lead's gap key includes the revision (`tests/helpers/vertical/lead.py:510-525`), so it loops on that hint until its step budget ends: this row also gives it a loop breaker
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C9), from the vertical's re-measure of 2026-11-26 at `3640b585`: V1 semantic-conflict held its hard limit (E333), then looped on the requeue hint
+
+**When:** **V-01**, the strict track of the burn-down, after E335; it waits for the designer's answer to the plan's Q2
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E378/`, oldest first (`python tools/register.py show E378`).*
+
+### E379
+
+**Work:** The operator's publish approval covers a compatible rebuild of the same change: the rebuilt candidate on a moved head is re-verified (new evidence, as "reuse work product, not proof" requires), and AEW publishes it without a second question. Today the PUBLISH decision binds the validated candidate (`src/aew/surface/projection.py:270-289`), and the rebuilt one raises a new PUBLISH that the Lead asks again
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C10), from the vertical's re-measure of 2026-11-26 at `3640b585`; `vertical-uat.md` §4, the compatible counterpart of the semantic conflict
+
+**When:** **V-01**, the strict track of the burn-down; it waits for the designer's answer to the plan's Q3 on what a publish approval binds (W09, G3's approval binding)
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E379/`, oldest first (`python tools/register.py show E379`).*
+
+### E380
+
+**Work:** A gate refusal for a check that changes a tracked file is a projected decision, naming the path (E332 names it in the refusal), so the Lead is not left at RUNNING with nothing offered (`src/aew/surface/projection.py:334-372`, BLOCKED with no decision). With it, the vertical driver stops appending `--expect-rev` to a hinted read command (`tests/helpers/vertical/hints.py:79` appends it to every one), whose refusal it counts today
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C11), from the vertical's re-measure of 2026-11-26 at `3640b585`: V1 evidence-mismatch held its hard limit, then stuck at RUNNING
+
+**When:** **V-01**, the strict track of the burn-down, after E335; which decision is offered, and whose, waits for the designer's answer to the plan's Q6
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E380/`, oldest first (`python tools/register.py show E380`).*
+
+### E381
+
+**Work:** `ATTACH_LEAD` on the O-01 wire: V01-01 step 3 (`open`, L01 and L02), admitted by the carrier and reaching its owner with the confirmer's PIN, so the oracle derives the step as landed and its G3 fallback stops (`tests/helpers/vertical/oracle.py`, `STEPS`). Today the vendored O-01 registry carries it registry-only and the carrier admits one origin (`oracle.py:196-210`). STG-03's closure left it "proposed, with no row"; F31 holds the owner-side attachment state behind it, not the command
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the open fallback in every failing case but G3-213
+
+**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E381/`, oldest first (`python tools/register.py show E381`).*
+
+### E382
+
+**Work:** `REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), with its reads (U01's waiting and attention, C18's continuation state, L07's attachments), so the oracle derives the step as landed and V2's G3 reopen fallback stops. Today `REATTACH_LEAD` is registry-only and the attention and attachments reads are not served. STG-03's closure left it "proposed, with no row"
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the reopen fallback in every V2 case
+
+**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E382/`, oldest first (`python tools/register.py show E382`).*
+
+### E383
+
+**Work:** `APPROVE_INTEGRATION` on the O-01 wire: V01-01 step 7 (`publish`, W09 and C10), held by G3, I4-06 and I4-B7, so the operator's publish is a confirmed approval and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and no row held it
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26 at `3640b585`: the publish fallback in every case that reaches a publish
+
+**When:** **V-01**, the wire track of the burn-down; its order with the other wire steps waits for the operator's answer to the plan's Q7
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E383/`, oldest first (`python tools/register.py show E383`).*
+
+### E384
+
+**Work:** `aew doctor` has a seat row: a Lead seat held by a session that is no longer running is a WARN naming the dead session and the fix (plain `aew opencode` resumes it, E330; a takeover where resume is refused). Today neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat. With it, the vertical's `V3_HELD` cites this row instead of G3-C (`tests/acceptance/test_vertical_path.py:753`), which merged with STG-03
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C14), from the vertical's re-measure of 2026-11-26 at `3640b585`: V3 stale-lead-session, where doctor named neither cause nor fix
+
+**When:** **V-01**, the strict track of the burn-down, after E330 (merged)
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
+
+### E385
+
+**Work:** The #213 reconstruction sees the contained TUI's diagnostics: its children directory, which the autopsy names in the scripts directory (`tests/helpers/autopsy.py:431-442`), is writable inside the contained Lead's sandbox, whose writable roots are only the scripts directory and `sync` (`tests/helpers/vertical/scripted_operator.py:494`): the world's `containment.writable` fixture includes it, or childdiag writes under `sync/` and the autopsy collects it
+
+**Source:** STG-13's note of 2026-10-30 (the failure "tracked for a test-fixture fix in a later pull request", which no row held); the V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C15), from the vertical's re-measure of 2026-11-26 at `3640b585`
+
+**When:** **V-01**, the alpha track of the burn-down, first
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed
+
+*Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E386
+
+**Work:** The forced kill's own refusal is not the Lead's: in V2's forced case, the call in flight when the test kills the session mid-stage (`ticket_start`, refused `BROKER_UNREACHABLE`) is recorded as the scenario's, not counted under the Lead's `refusals`, a one-line rule beside E338's excuses
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C16), from the vertical's re-measure of 2026-11-26 at `3640b585`
+
+**When:** **V-01**, the strict track of the burn-down, beside E338
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
+
+### E387
+
+**Work:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows (`src/aew/doctor.py:160`, `src/aew/harness/doctor_relay.py`) send the world's synthetic OpenCode login to the real provider host, which answers HTTP 401, in every V3 case. The world gives doctor's relay probe a local upstream, or the probe is held off in it, so no offline case reaches a real host
+
+**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C17), from the vertical's re-measure of 2026-11-26 at `3640b585`: an observation with no counter; it changes no verdict
+
+**When:** **V-01**, the strict track of the burn-down
+
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
+
+*Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
